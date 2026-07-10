@@ -24,6 +24,9 @@ import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
 import {
   APP_PERMISSION_CATALOG,
+  APP_PERMISSION_GROUPS,
+  PERMISSION_SCHEMA_VERSION,
+  VISIBLE_APP_PERMISSION_CATALOG,
   buildPermissionOverrides,
   getEffectiveAppPermissions,
   getRoleAppPermissions,
@@ -112,6 +115,7 @@ type UserRow = {
   employeeId?: string;
   permissions?: AppPermission[];
   permissionOverrides?: PermissionOverrides;
+  permissionVersion?: number;
   deletedAt?: any;
   createdAt?: any;
   updatedAt?: any;
@@ -148,7 +152,8 @@ type InviteDraft = {
   notes: string;
 };
 
-const PERMISSION_META = APP_PERMISSION_CATALOG;
+const PERMISSION_META = VISIBLE_APP_PERMISSION_CATALOG;
+const ALL_PERMISSION_META = APP_PERMISSION_CATALOG;
 
 const ROLE_LABELS: Record<UiRole, string> = {
   owner: "المالك",
@@ -247,10 +252,17 @@ export default function SettingsUsers({
       ? allowAdminManageUsersOverride
       : allowAdminManageUsersState;
 
-  const canManageUsers = useMemo(() => {
-    return isOwner || isHr || (isAdmin && allowAdminManageUsers);
-  }, [isOwner, isHr, isAdmin, allowAdminManageUsers]);
+  const [actorPermissions, setActorPermissions] = useState<AppPermission[]>(() =>
+    getRoleAppPermissions(mapFirestoreRoleToUi(initialRole ?? "guest") as any)
+  );
 
+  const canManageUsers = useMemo(() => {
+    return isOwner || actorPermissions.includes("admin_accounts.manage") || (isAdmin && allowAdminManageUsers);
+  }, [isOwner, isAdmin, allowAdminManageUsers, actorPermissions]);
+
+  const canManagePermissions = useMemo(() => {
+    return isOwner || actorPermissions.includes("permissions.manage");
+  }, [isOwner, actorPermissions]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -259,6 +271,8 @@ export default function SettingsUsers({
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditUserDraft | null>(null);
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("all");
 
   const [createForm, setCreateForm] = useState({
     displayName: "",
@@ -329,11 +343,12 @@ export default function SettingsUsers({
     return ROLE_TONES[role] || ROLE_TONES.guest;
   }
 
-  function getUserPermissions(row: Pick<UserRow, "role" | "permissions" | "permissionOverrides">) {
+  function getUserPermissions(row: Pick<UserRow, "role" | "permissions" | "permissionOverrides" | "permissionVersion">) {
     return getEffectiveAppPermissions({
       role: row.role as any,
       permissions: row.permissions,
       permissionOverrides: row.permissionOverrides,
+      permissionVersion: row.permissionVersion,
     });
   }
 
@@ -372,9 +387,33 @@ export default function SettingsUsers({
     }
   }
 
+  function roleRank(role: UiRole) {
+    const ranks: Record<UiRole, number> = {
+      owner: 60,
+      admin: 50,
+      hr: 40,
+      reception: 30,
+      staff: 20,
+      pending: 10,
+      client: 0,
+      guest: 0,
+    };
+    return ranks[role] ?? 0;
+  }
+
+  function canAssignRole(role: UiRole) {
+    if (!canManageUsers) return false;
+    if (isOwner) return role !== "client" && role !== "guest";
+    if (uiRole === "admin") return ["hr", "reception", "staff", "pending"].includes(role);
+    if (uiRole === "hr") return ["staff", "pending"].includes(role);
+    return false;
+  }
+
   function canEditTargetUser(row?: UserRow | null) {
     if (!row) return false;
-    return row.role !== "owner" || isOwner;
+    if (isOwner) return true;
+    if (!canManageUsers) return false;
+    return roleRank(row.role) < roleRank(uiRole);
   }
 
   function toAccountUserLinkRow(row: Partial<UserRow> & { uid: string }): AccountUserLinkRow {
@@ -422,7 +461,7 @@ export default function SettingsUsers({
     const permissionPayload = {
       permissions: effectivePermissions,
       permissionOverrides: args.permissionOverrides || buildPermissionOverrides(args.role, effectivePermissions),
-      permissionVersion: 2,
+      permissionVersion: PERMISSION_SCHEMA_VERSION,
     };
 
     await setDoc(
@@ -530,6 +569,7 @@ export default function SettingsUsers({
           role: role as any,
           permissions: x?.permissions,
           permissionOverrides,
+          permissionVersion: x?.permissionVersion,
         });
         const baseRow: UserRow = {
           uid: d.id,
@@ -543,6 +583,7 @@ export default function SettingsUsers({
           employeeId: String(x?.employeeId || ""),
           permissions,
           permissionOverrides,
+          permissionVersion: Number(x?.permissionVersion || 0) || undefined,
           deletedAt: x?.deletedAt,
           createdAt: x?.createdAt,
           updatedAt: x?.updatedAt,
@@ -573,6 +614,7 @@ export default function SettingsUsers({
                     role: fixedRole as any,
                     permissions: u.permissions,
                     permissionOverrides: u.permissionOverrides,
+                    permissionVersion: u.permissionVersion,
                 }),
           };
         })
@@ -684,7 +726,7 @@ export default function SettingsUsers({
           role: toFirestoreRole(role),
           permissions,
           permissionOverrides,
-          permissionVersion: 2,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
           active: true,
           createdAt: serverTimestamp(),
           createdByUid: (auth as any)?.currentUser?.uid || "",
@@ -807,7 +849,7 @@ export default function SettingsUsers({
           role: toFirestoreRole(role),
           permissions,
           permissionOverrides,
-          permissionVersion: 2,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
           active: true,
           notes,
           createdAt: serverTimestamp(),
@@ -876,7 +918,7 @@ export default function SettingsUsers({
           role: toFirestoreRole(newRole),
           permissions,
           permissionOverrides,
-          permissionVersion: 2,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
           active: nextActive,
           updatedAt: serverTimestamp(),
         },
@@ -1104,9 +1146,20 @@ export default function SettingsUsers({
     const notes = editDraft.notes.trim();
     const role = editDraft.role;
     const active = role === "pending" ? false : editDraft.active !== false;
-    const permissions = PERMISSION_META
+
+    if (role !== row.role && !canAssignRole(role)) {
+      toastMsg("❌ لا يمكنك تعيين هذا الدور", 2200);
+      return;
+    }
+
+    const requestedPermissions = ALL_PERMISSION_META
       .map((item) => item.key)
       .filter((permission) => editDraft.permissions.includes(permission));
+    const permissions = canManagePermissions
+      ? requestedPermissions
+      : role === row.role
+        ? getUserPermissions(row)
+        : getRoleAppPermissions(role as any);
     const permissionOverrides = buildPermissionOverrides(role as any, permissions);
 
     if (!displayName) {
@@ -1153,7 +1206,7 @@ export default function SettingsUsers({
           role: nextRole,
           permissions,
           permissionOverrides,
-          permissionVersion: 2,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
           active,
           linkedEmployeeDocId: staffId || row.linkedEmployeeDocId || row.employeeId || "",
           employeeId: staffId || row.employeeId || row.linkedEmployeeDocId || "",
@@ -1221,6 +1274,8 @@ export default function SettingsUsers({
 
   const openEditUser = (row: UserRow) => {
     setCreateMsg("");
+    setPermissionSearch("");
+    setPermissionGroupFilter("all");
     setEditDraft({
       uid: row.uid,
       displayName: row.displayName || "",
@@ -1233,6 +1288,7 @@ export default function SettingsUsers({
         role: row.role as any,
         permissions: row.permissions,
         permissionOverrides: row.permissionOverrides,
+        permissionVersion: row.permissionVersion,
       }),
     });
   };
@@ -1301,6 +1357,21 @@ export default function SettingsUsers({
           "guest";
 
         setUiRole(resolvedRole);
+
+        const userData =
+          userSnap && "exists" in userSnap && userSnap.exists()
+            ? (userSnap.data() as any)
+            : adminSnap && "exists" in adminSnap && adminSnap.exists()
+              ? (adminSnap.data() as any)
+              : null;
+        setActorPermissions(
+          getEffectiveAppPermissions({
+            role: resolvedRole as any,
+            permissions: userData?.permissions,
+            permissionOverrides: userData?.permissionOverrides,
+            permissionVersion: userData?.permissionVersion,
+          })
+        );
       } catch (e) {
         console.error("SettingsUsers role load error:", e);
         setUiRole("guest");
@@ -1518,6 +1589,29 @@ export default function SettingsUsers({
   const editDisabledDefaults = editDraft
     ? editRoleDefaultPermissions.filter((permission) => !editPermissionSet.has(permission)).length
     : 0;
+  const normalizedPermissionSearch = permissionSearch.trim().toLowerCase();
+  const visiblePermissionGroups = APP_PERMISSION_GROUPS
+    .map((group) => ({
+      ...group,
+      permissions: PERMISSION_META.filter((permission) => {
+        if (permission.group !== group.key) return false;
+        if (permissionGroupFilter !== "all" && permission.group !== permissionGroupFilter) return false;
+        if (!normalizedPermissionSearch) return true;
+        return [permission.label, permission.hint, permission.key]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedPermissionSearch);
+      }),
+    }))
+    .filter((group) => group.permissions.length > 0);
+  const canEditSelectedPermissions = Boolean(
+    editDraft &&
+      selectedUser &&
+      canEditTargetUser(selectedUser) &&
+      selectedUser.role !== "owner" &&
+      editDraft.role !== "owner" &&
+      canManagePermissions
+  );
   const bannerTone = createMsg.startsWith("❌")
     ? "danger"
     : createMsg.startsWith("✅")
@@ -2314,6 +2408,7 @@ export default function SettingsUsers({
                         setEditDraft((prev) => {
                           if (!prev) return prev;
                           const role = e.target.value as UiRole;
+                          if (!canAssignRole(role) && role !== prev.role) return prev;
                           return {
                             ...prev,
                             role,
@@ -2324,12 +2419,13 @@ export default function SettingsUsers({
                       }
                       disabled={!canEditTargetUser(selectedUser)}
                     >
-                      {isOwner ? <option value="owner">Owner</option> : null}
-                      <option value="admin">Admin</option>
-                      <option value="hr">HR</option>
-                      <option value="reception">Reception</option>
-                      <option value="staff">Staff</option>
-                      <option value="pending">Pending</option>
+                      {(["owner", "admin", "hr", "reception", "staff", "pending"] as UiRole[])
+                        .filter((role) => role === editDraft.role || canAssignRole(role))
+                        .map((role) => (
+                          <option key={role} value={role}>
+                            {getRoleLabel(role)}
+                          </option>
+                        ))}
                     </select>
                   </label>
 
@@ -2371,59 +2467,157 @@ export default function SettingsUsers({
                     </div>
                   </div>
 
-                  <div className="accounts-permissions-editor__grid">
-                    {PERMISSION_META.map((permission) => {
-                      const isEnabled = editPermissionSet.has(permission.key);
-                      const isDefault = editRoleDefaultPermissions.includes(permission.key);
-                      const isAdded = isEnabled && !isDefault;
-                      const isDisabledDefault = !isEnabled && isDefault;
+                  <div className="accounts-permissions-editor__toolbar">
+                    <label className="accounts-permissions-editor__search">
+                      <span>بحث داخل الصلاحيات</span>
+                      <input
+                        value={permissionSearch}
+                        onChange={(event) => setPermissionSearch(event.target.value)}
+                        placeholder="اكتب اسم الصلاحية أو المفتاح..."
+                      />
+                    </label>
+
+                    <label className="accounts-permissions-editor__filter">
+                      <span>القسم</span>
+                      <select
+                        value={permissionGroupFilter}
+                        onChange={(event) =>
+                          setPermissionGroupFilter(event.target.value as typeof permissionGroupFilter)
+                        }
+                      >
+                        <option value="all">كل الأقسام</option>
+                        {APP_PERMISSION_GROUPS.map((group) => (
+                          <option key={group.key} value={group.key}>
+                            {group.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {!canManagePermissions ? (
+                    <div className="accounts-permissions-editor__notice">
+                      يمكنك إدارة الحساب والدور، لكن تعديل الاستثناءات التفصيلية يتطلب صلاحية
+                      <code>permissions.manage</code>.
+                    </div>
+                  ) : null}
+
+                  <div className="accounts-permissions-editor__groups">
+                    {visiblePermissionGroups.map((group) => {
+                      const groupKeys = group.permissions.map((permission) => permission.key);
+                      const enabledCount = groupKeys.filter((key) => editPermissionSet.has(key)).length;
+                      const canEnableWholeGroup = groupKeys.every(
+                        (key) => isOwner || actorPermissions.includes(key)
+                      );
 
                       return (
-                        <button
-                          key={permission.key}
-                          type="button"
-                          className={[
-                            "accounts-permission-toggle",
-                            isEnabled ? "is-on" : "is-off",
-                            isDefault ? "is-default" : "",
-                            isAdded ? "is-added" : "",
-                            isDisabledDefault ? "is-disabled-default" : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
-                          disabled={!canEditTargetUser(selectedUser)}
-                          onClick={() =>
-                            setEditDraft((prev) => {
-                              if (!prev) return prev;
-                              const current = new Set(prev.permissions);
-                              if (current.has(permission.key)) current.delete(permission.key);
-                              else current.add(permission.key);
-                              const permissions = PERMISSION_META
-                                .map((item) => item.key)
-                                .filter((key) => current.has(key));
-                              return { ...prev, permissions };
-                            })
-                          }
-                        >
-                          <span className="accounts-permission-toggle__dot" aria-hidden="true" />
-                          <span className="accounts-permission-toggle__copy">
-                            <strong>{permission.label}</strong>
-                            <small>{permission.key}</small>
-                            <em>{permission.hint}</em>
-                          </span>
-                          <span className="accounts-permission-toggle__state">
-                            {isAdded ? "استثناء مضاف" : isDisabledDefault ? "متوقف" : isDefault ? "ضمن الدور" : isEnabled ? "مفعلة" : "غير مفعلة"}
-                          </span>
-                        </button>
+                        <section key={group.key} className="accounts-permission-group">
+                          <div className="accounts-permission-group__head">
+                            <div>
+                              <span>{group.label}</span>
+                              <p>{group.hint}</p>
+                            </div>
+                            <div className="accounts-permission-group__actions">
+                              <strong>{enabledCount}/{groupKeys.length}</strong>
+                              <button
+                                type="button"
+                                className="accounts-btn accounts-btn--compact"
+                                disabled={!canEditSelectedPermissions || !canEnableWholeGroup}
+                                onClick={() =>
+                                  setEditDraft((prev) => {
+                                    if (!prev) return prev;
+                                    const current = new Set(prev.permissions);
+                                    const shouldEnable = groupKeys.some((key) => !current.has(key));
+                                    groupKeys.forEach((key) => {
+                                      if (!isOwner && !actorPermissions.includes(key)) return;
+                                      if (shouldEnable) current.add(key);
+                                      else current.delete(key);
+                                    });
+                                    const permissions = ALL_PERMISSION_META
+                                      .map((item) => item.key)
+                                      .filter((key) => current.has(key));
+                                    return { ...prev, permissions };
+                                  })
+                                }
+                              >
+                                {enabledCount === groupKeys.length ? "إلغاء القسم" : "تحديد القسم"}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="accounts-permissions-editor__grid">
+                            {group.permissions.map((permission) => {
+                              const isEnabled = editPermissionSet.has(permission.key);
+                              const isDefault = editRoleDefaultPermissions.includes(permission.key);
+                              const isAdded = isEnabled && !isDefault;
+                              const isDisabledDefault = !isEnabled && isDefault;
+                              const actorCanGrant = isOwner || actorPermissions.includes(permission.key);
+
+                              return (
+                                <button
+                                  key={permission.key}
+                                  type="button"
+                                  className={[
+                                    "accounts-permission-toggle",
+                                    isEnabled ? "is-on" : "is-off",
+                                    isDefault ? "is-default" : "",
+                                    isAdded ? "is-added" : "",
+                                    isDisabledDefault ? "is-disabled-default" : "",
+                                    permission.sensitive ? "is-sensitive" : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                  disabled={!canEditSelectedPermissions || !actorCanGrant}
+                                  onClick={() =>
+                                    setEditDraft((prev) => {
+                                      if (!prev) return prev;
+                                      const current = new Set(prev.permissions);
+                                      if (current.has(permission.key)) current.delete(permission.key);
+                                      else current.add(permission.key);
+                                      const permissions = ALL_PERMISSION_META
+                                        .map((item) => item.key)
+                                        .filter((key) => current.has(key));
+                                      return { ...prev, permissions };
+                                    })
+                                  }
+                                >
+                                  <span className="accounts-permission-toggle__dot" aria-hidden="true" />
+                                  <span className="accounts-permission-toggle__copy">
+                                    <strong>{permission.label}</strong>
+                                    <small>{permission.key}</small>
+                                    <em>{permission.hint}</em>
+                                  </span>
+                                  <span className="accounts-permission-toggle__state">
+                                    {!actorCanGrant
+                                      ? "خارج صلاحياتك"
+                                      : isAdded
+                                        ? "استثناء مضاف"
+                                        : isDisabledDefault
+                                          ? "متوقف"
+                                          : isDefault
+                                            ? "ضمن الدور"
+                                            : isEnabled
+                                              ? "مفعلة"
+                                              : "غير مفعلة"}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
                       );
                     })}
                   </div>
+
+                  {!visiblePermissionGroups.length ? (
+                    <div className="accounts-permissions-editor__empty">لا توجد صلاحيات تطابق البحث الحالي.</div>
+                  ) : null}
 
                   <div className="accounts-permissions-editor__actions">
                     <button
                       type="button"
                       className="accounts-btn"
-                      disabled={!canEditTargetUser(selectedUser)}
+                      disabled={!canEditSelectedPermissions}
                       onClick={() =>
                         setEditDraft((prev) =>
                           prev ? { ...prev, permissions: getRoleAppPermissions(prev.role as any) } : prev

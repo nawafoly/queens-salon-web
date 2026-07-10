@@ -31202,3 +31202,153 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   flex: 0 0 auto;
   min-width: 118px;
 }
+
+/* Permission system v3 — grouped access editor */
+.accounts-page--settings .accounts-permissions-editor__toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(190px, 260px);
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.accounts-page--settings .accounts-permissions-editor__search,
+.accounts-page--settings .accounts-permissions-editor__filter {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #46536b;
+}
+
+.accounts-page--settings .accounts-permissions-editor__search input,
+.accounts-page--settings .accounts-permissions-editor__filter select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #dce3ee;
+  border-radius: 13px;
+  background: #fff;
+  color: #0c1736;
+  padding: 0 14px;
+  outline: none;
+}
+
+.accounts-page--settings .accounts-permissions-editor__search input:focus,
+.accounts-page--settings .accounts-permissions-editor__filter select:focus {
+  border-color: #0c1736;
+  box-shadow: 0 0 0 3px rgba(12, 23, 54, 0.08);
+}
+
+.accounts-page--settings .accounts-permissions-editor__notice,
+.accounts-page--settings .accounts-permissions-editor__empty {
+  border: 1px dashed #d6b35a;
+  border-radius: 14px;
+  background: #fff9e8;
+  color: #6b5318;
+  padding: 13px 15px;
+  line-height: 1.8;
+  margin-bottom: 14px;
+}
+
+.accounts-page--settings .accounts-permissions-editor__notice code {
+  direction: ltr;
+  display: inline-block;
+  margin-inline: 5px;
+}
+
+.accounts-page--settings .accounts-permissions-editor__groups {
+  display: grid;
+  gap: 16px;
+}
+
+.accounts-page--settings .accounts-permission-group {
+  border: 1px solid #e0e6ef;
+  border-radius: 18px;
+  background: #fbfcfe;
+  padding: 14px;
+}
+
+.accounts-page--settings .accounts-permission-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.accounts-page--settings .accounts-permission-group__head > div:first-child {
+  min-width: 0;
+}
+
+.accounts-page--settings .accounts-permission-group__head span {
+  display: block;
+  color: #0b1738;
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.accounts-page--settings .accounts-permission-group__head p {
+  margin: 4px 0 0;
+  color: #738099;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.accounts-page--settings .accounts-permission-group__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.accounts-page--settings .accounts-permission-group__actions strong {
+  min-width: 48px;
+  text-align: center;
+  border-radius: 999px;
+  background: #0c1736;
+  color: #fff;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.accounts-page--settings .accounts-btn--compact {
+  min-height: 34px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-sensitive {
+  border-color: #ead8d8;
+}
+
+.accounts-page--settings .accounts-permission-toggle.is-sensitive::after {
+  content: "حساسة";
+  position: absolute;
+  inset-inline-end: 10px;
+  inset-block-start: 8px;
+  border-radius: 999px;
+  background: #fff0f0;
+  color: #9b2c2c;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.accounts-page--settings .accounts-permission-toggle {
+  position: relative;
+}
+
+@media (max-width: 900px) {
+  .accounts-page--settings .accounts-permissions-editor__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-page--settings .accounts-permission-group__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .accounts-page--settings .accounts-permission-group__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

@@ -18,6 +18,7 @@ import { normalizeAuthRole } from "./authAccess";
 import { writeStoredAuthSession } from "./localAuthSession";
 import {
   buildPermissionOverrides,
+  PERMISSION_SCHEMA_VERSION,
   getEffectiveAppPermissions,
   getRoleAppPermissions,
   normalizePermissionOverrides,
@@ -236,6 +237,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       role,
       permissions: data?.permissions,
       permissionOverrides,
+      permissionVersion: data?.permissionVersion,
     });
 
     const dataName = safeStr(data?.name).trim();
@@ -272,7 +274,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       active,
       permissions,
       permissionOverrides,
-      permissionVersion: 2,
+      permissionVersion: PERMISSION_SCHEMA_VERSION,
       membershipId: safeStr(data?.membershipId),
       membershipPercent:
         typeof data?.membershipPercent === "number" ? data.membershipPercent : 0,
@@ -357,6 +359,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
           role,
           permissions: inviteData.permissions,
           permissionOverrides,
+          permissionVersion: (inviteData as any)?.permissionVersion,
         })
       : [];
   const permissions = invitePermissions.length ? invitePermissions : getRoleAppPermissions(role);
@@ -380,7 +383,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     active,
     permissions,
     permissionOverrides: finalPermissionOverrides,
-    permissionVersion: 2,
+    permissionVersion: PERMISSION_SCHEMA_VERSION,
     membershipId,
     membershipPercent: 0,
     createdAt: serverTimestamp(), // ✅ وقت إنشاء الحساب فقط
