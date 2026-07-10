@@ -16,9 +16,23 @@ export type InternalAuthRole = (typeof INTERNAL_AUTH_ROLES)[number];
 export function normalizeAuthRole(raw: unknown): UiRole {
   const role = String(raw || "").toLowerCase().trim();
 
-  if (role === "administrator") return "admin";
+  if (role === "administrator" || role === "super_admin" || role === "super-admin") return "admin";
   if (role === "employee") return "staff";
-  if (role === "hr" || role === "human resources" || role === "humanresources") {
+  if (role === "owner-role" || role === "malik" || role === "owner" || role === "المالك" || role === "مالك") {
+    return "owner";
+  }
+  if (
+    role === "hr" ||
+    role === "human resources" ||
+    role === "humanresources" ||
+    role === "human_resources" ||
+    role === "human-resources" ||
+    role === "اتش ار" ||
+    role === "الموارد البشرية" ||
+    role === "موارد بشرية" ||
+    role === "مسؤول موارد بشرية" ||
+    role === "مسؤولة موارد بشرية"
+  ) {
     return "hr";
   }
   if (role === "receptionist" || role === "frontdesk" || role === "desk") {

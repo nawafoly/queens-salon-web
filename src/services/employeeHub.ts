@@ -45,6 +45,11 @@ export type EmployeeRole =
 export type EmployeeDirectoryEntry = {
   employeeId: string;
   employeeKey?: string;
+  employeeUid?: string;
+  employeeDocId?: string;
+  linkedEmployeeDocId?: string;
+  authUid?: string;
+  userId?: string;
   name: string;
   email?: string;
   phone?: string;

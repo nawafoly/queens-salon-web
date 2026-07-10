@@ -172,7 +172,13 @@ function canManageAttendance(runtime) {
 
 function canReadAttendanceRecords(runtime, requesterUid, employeeUid) {
   if (!runtime?.isActive) return false;
-  if (ATTENDANCE_ADMIN_ROLES.has(runtime?.role)) return true;
+
+  // Use the same centralized management authorization used by attendance
+  // editing. This supports owner/admin/HR and explicit settings.manage grants,
+  // while still honoring settings.manage denies.
+  if (canManageAttendance(runtime)) return true;
+
+  // Regular employees may only read their own attendance records.
   return Boolean(employeeUid && employeeUid === requesterUid);
 }
 

@@ -33,6 +33,18 @@ export type AttendanceVerification = {
   radiusMeters?: number;
 };
 
+export type AttendanceRawRecord = {
+  id?: string;
+  type?: string;
+  result?: string;
+  serverTime?: string | null;
+  clientTime?: string | null;
+  location?: AttendanceLocation;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  distanceMeters?: number | null;
+};
+
 export type StaffAttendanceDoc = {
   date: string; // YYYY-MM-DD
   type?: AttendanceViolationType;
@@ -56,6 +68,7 @@ export type StaffAttendanceDoc = {
   };
   checkInVerification?: AttendanceVerification;
   checkOutVerification?: AttendanceVerification;
+  records?: AttendanceRawRecord[];
   adminCorrection?: boolean;
 };
 

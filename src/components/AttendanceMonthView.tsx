@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
@@ -19,7 +20,6 @@ import {
   type AttendanceStatus,
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
-import { isWeeklyOffDateKey } from "../helpers/hr/workSchedule";
 
 type AttendanceViewerMode = "employee" | "admin";
 
@@ -214,7 +214,32 @@ function formatHours(value: number) {
 }
 
 
+function cleanText(value: unknown) {
+  return String(value || "").trim();
+}
+
 function recordsFromRow(row: StaffAttendanceWithId | null): AttendanceRecord[] {
+  const rawRecords = Array.isArray(row?.records) ? row.records : [];
+  if (rawRecords.length) {
+    return rawRecords
+      .map((record, index) => ({
+        id: cleanText(record.id) || `${row?.id || "record"}-${index}`,
+        type: cleanText(record.type) || "record",
+        serverTime: cleanText(record.serverTime || record.clientTime),
+        location: record.location,
+        result: record.result,
+        zoneName: record.zoneName,
+        zoneId: record.zoneId,
+        distanceMeters: record.distanceMeters,
+      }))
+      .filter((record) => record.serverTime)
+      .sort(
+        (left, right) =>
+          Date.parse(left.serverTime || "") -
+          Date.parse(right.serverTime || "")
+      );
+  }
+
   const records: AttendanceRecord[] = [];
   if (row?.checkInAtClient) {
     records.push({ id: `${row.id}-in`, type: "check_in", serverTime: row.checkInAtClient });
@@ -223,6 +248,47 @@ function recordsFromRow(row: StaffAttendanceWithId | null): AttendanceRecord[] {
     records.push({ id: `${row.id}-out`, type: "check_out", serverTime: row.checkOutAtClient });
   }
   return records;
+}
+
+function selectedEventCount(row: StaffAttendanceWithId | null) {
+  return recordsFromRow(row).length;
+}
+
+function recordTypeLabel(type: unknown) {
+  const clean = cleanText(type);
+  if (clean === "check_in") return "دخول";
+  if (clean === "check_out") return "خروج";
+  return clean || "سجل";
+}
+
+function recordLocationLabel(record: AttendanceRecord) {
+  const location = record.location as
+    | { lat?: number; lng?: number; accuracy?: number }
+    | undefined;
+  const zoneName = cleanText(record.zoneName);
+  const distance = Number(record.distanceMeters);
+  const parts: string[] = [];
+
+  if (zoneName) parts.push(zoneName);
+  if (
+    location &&
+    Number.isFinite(Number(location.lat)) &&
+    Number.isFinite(Number(location.lng))
+  ) {
+    parts.push(
+      `${Number(location.lat).toFixed(5)}, ${Number(location.lng).toFixed(5)}`
+    );
+  }
+  if (Number.isFinite(distance)) {
+    parts.push(`${Math.round(distance)} م`);
+  }
+
+  return parts.join(" - ") || "--";
+}
+
+function attendanceDebug(...args: unknown[]) {
+  if (!(import.meta as any).env?.DEV) return;
+  console.info("[attendance-debug]", ...args);
 }
 
 function statusTone(status: AttendanceStatus) {
@@ -244,10 +310,6 @@ function statusLabel(status: AttendanceStatus) {
   return "يوم قادم";
 }
 
-
-function selectedEventCount(row: StaffAttendanceWithId | null) {
-  return (row?.checkInAtClient ? 1 : 0) + (row?.checkOutAtClient ? 1 : 0);
-}
 
 export default function AttendanceMonthView({
   rows,
@@ -281,15 +343,16 @@ export default function AttendanceMonthView({
       ? selectedDate
       : `${safeMonthKey}-01`;
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
+  const selectedDayRecords = recordsFromRow(selectedRow);
   const selectedSchedule = scheduleForDate(safeSelectedDate, schedule);
   const selectedComputation = computeAttendanceDay(
     safeSelectedDate,
-    recordsFromRow(selectedRow),
+    selectedDayRecords,
     selectedSchedule
   );
   const selectedStatus = getAttendanceDayStatus({
     date: safeSelectedDate,
-    hasAttendance: Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient),
+    hasAttendance: selectedDayRecords.length > 0,
     checkOut: selectedComputation.checkOut,
     computation: selectedComputation,
     todayDateKey: todayKey,
@@ -308,10 +371,11 @@ export default function AttendanceMonthView({
       const dateKey = `${safeMonthKey}-${pad2(day)}`;
       const row = rowsByDate.get(dateKey) || null;
       const daySchedule = scheduleForDate(dateKey, schedule);
-      const computation = computeAttendanceDay(dateKey, recordsFromRow(row), daySchedule);
+      const dayRecords = recordsFromRow(row);
+      const computation = computeAttendanceDay(dateKey, dayRecords, daySchedule);
       const status = getAttendanceDayStatus({
         date: dateKey,
-        hasAttendance: Boolean(row?.checkInAtClient || row?.checkOutAtClient),
+        hasAttendance: dayRecords.length > 0,
         checkOut: computation.checkOut,
         computation,
         todayDateKey: todayKey,
@@ -329,19 +393,27 @@ export default function AttendanceMonthView({
       };
     }),
   ];
+  const rowsDebugKey = Array.from(rowsByDate.keys()).sort().join("|");
+  const statusDebugKey = calendarCells
+    .flatMap((cell) => (cell.blank ? [] : [`${cell.dateKey}:${cell.status}`]))
+    .join("|");
+
+  useEffect(() => {
+    attendanceDebug(
+      `dates=${JSON.stringify(rowsDebugKey ? rowsDebugKey.split("|") : [])}`
+    );
+    calendarCells.forEach((cell) => {
+      if (cell.blank) return;
+      attendanceDebug(`${cell.dateKey} => ${cell.status}`);
+    });
+  }, [safeMonthKey, rowsDebugKey, statusDebugKey]);
 
   const canShowAdminControls = viewerMode === "admin" || showAdminActions;
   const shouldShowEdit = canShowAdminControls && (canEdit ?? showAdminActions);
   const shouldShowDelete = canShowAdminControls && (canDelete ?? showAdminActions);
   const shouldShowReview = canShowAdminControls && (canReview ?? showAdminActions);
-  const isWeeklyOff = isWeeklyOffDateKey(
-    safeSelectedDate,
-    selectedSchedule.weeklyOffDays
-  );
-
   const isRestDay =
-    selectedStatus === "off_day" ||
-    isWeeklyOff;
+    selectedStatus === "off_day";
 
   const isLeaveDay =
     selectedStatus === "leave";
@@ -618,6 +690,21 @@ export default function AttendanceMonthView({
                 </b>
               </div>
             </div>
+
+            {selectedDayRecords.length ? (
+              <div className="attendance-month__raw-records">
+                {selectedDayRecords.map((record) => (
+                  <div
+                    key={`${record.id || record.type}-${record.serverTime}`}
+                    className="attendance-month__raw-record"
+                  >
+                    <span>{recordTypeLabel(record.type)}</span>
+                    <b>{formatTime(record.serverTime)}</b>
+                    <small>{recordLocationLabel(record)}</small>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div className="attendance-month__performance">
               {isPartialDay ? (

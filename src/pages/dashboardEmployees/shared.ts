@@ -74,7 +74,12 @@ export type StaffPublicDoc = {
   uid?: string;
   linkedUid?: string;
   linkedUserId?: string;
+  authUid?: string;
+  userId?: string;
+  employeeUid?: string;
   employeeId?: string;
+  employeeDocId?: string;
+  linkedEmployeeDocId?: string;
   email?: string;
   phone?: string;
   role?: string;

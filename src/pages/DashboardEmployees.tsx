@@ -57,6 +57,7 @@ import {
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
+import { normalizeAuthRole } from "../services/authAccess";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
@@ -199,6 +200,71 @@ function dateTimeLocalToIso(value: string) {
   return date.toISOString();
 }
 
+function uniqueCleanTexts(values: unknown[]) {
+  return Array.from(
+    new Set(values.map(cleanText).filter(Boolean))
+  );
+}
+
+function isFullAttendanceIdentifier(value: unknown) {
+  return /^[A-Za-z0-9_-]{20,}$/.test(cleanText(value));
+}
+
+function attendanceDebug(...args: unknown[]) {
+  if (!(import.meta as any).env?.DEV) return;
+  console.info("[attendance-debug]", ...args);
+}
+
+function resolveEmployeeAttendanceIdentity(
+  profile: Partial<StaffPublicUi> | Record<string, any> | null | undefined,
+  selectedEmployeeId = ""
+) {
+  const source = profile || {};
+  const uidCandidates = uniqueCleanTexts([
+    (source as any).employeeUid,
+    (source as any).linkedUid,
+    (source as any).authUid,
+    (source as any).uid,
+    (source as any).userId,
+    (source as any).linkedUserId,
+    (source as any).employeeDocId,
+    (source as any).linkedEmployeeDocId,
+    (source as any).employeeId,
+    (source as any).id,
+    selectedEmployeeId,
+    (source as any).employeeKey,
+  ]);
+  const docCandidates = uniqueCleanTexts([
+    (source as any).employeeDocId,
+    (source as any).linkedEmployeeDocId,
+    (source as any).employeeId,
+    (source as any).id,
+    selectedEmployeeId,
+    (source as any).employeeUid,
+    (source as any).linkedUid,
+    (source as any).authUid,
+    (source as any).uid,
+    (source as any).linkedUserId,
+  ]);
+  const fullUid = uidCandidates.find(isFullAttendanceIdentifier) || "";
+  const fullDocId = docCandidates.find(isFullAttendanceIdentifier) || "";
+  const employeeUid =
+    fullUid || fullDocId || uidCandidates[0] || docCandidates[0] || "";
+  const employeeDocId =
+    fullDocId || fullUid || docCandidates[0] || employeeUid;
+
+  return {
+    employeeUid,
+    employeeDocId,
+    allIds: uniqueCleanTexts([
+      ...uidCandidates,
+      ...docCandidates,
+      employeeUid,
+      employeeDocId,
+    ]),
+  };
+}
+
 const EMPLOYEE_BOOKING_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
 let employeeBookingStatsCache:
   | {
@@ -299,14 +365,32 @@ type EmployeeIdentity = {
   linkedUid: string;
   employeeId: string;
   email: string;
+  name: string;
 };
 
 function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIdentity {
   return {
     id: cleanText(staff?.id),
-    linkedUid: cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId),
-    employeeId: cleanText((staff as any)?.employeeId || staff?.id),
+    linkedUid: cleanText(
+      (staff as any)?.linkedUid ||
+        (staff as any)?.employeeUid ||
+        (staff as any)?.authUid ||
+        (staff as any)?.uid ||
+        (staff as any)?.userId ||
+        (staff as any)?.linkedUserId
+    ),
+    employeeId: cleanText(
+      (staff as any)?.employeeDocId ||
+        (staff as any)?.linkedEmployeeDocId ||
+        (staff as any)?.employeeId ||
+        staff?.id
+    ),
     email: cleanText((staff as any)?.email).toLowerCase(),
+    name: cleanText(
+      (staff as any)?.name ||
+        (staff as any)?.displayName ||
+        (staff as any)?.fullName
+    ).toLowerCase(),
   };
 }
 
@@ -317,7 +401,8 @@ function employeeMatchesIdentity(staff: Partial<StaffPublicUi>, identity: Employ
     (!!identity.id && current.id === identity.id) ||
     (!!identity.linkedUid && current.linkedUid === identity.linkedUid) ||
     (!!identity.employeeId && current.employeeId === identity.employeeId) ||
-    (!!identity.email && current.email === identity.email)
+    (!!identity.email && current.email === identity.email) ||
+    (!!identity.name && current.name === identity.name)
   );
 }
 
@@ -330,6 +415,7 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
         identity.linkedUid ? `uid:${identity.linkedUid}` : "",
         identity.employeeId ? `employee:${identity.employeeId}` : "",
         identity.email ? `email:${identity.email}` : "",
+        identity.name ? `name:${identity.name}` : "",
         rawDocId ? `doc:${cleanText(rawDocId)}` : "",
       ].filter(Boolean)
     )
@@ -337,9 +423,74 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
 }
 
 function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): StaffPublicUi {
+  const linkedUid = cleanText(
+    (primary as any)?.linkedUid ||
+      (primary as any)?.employeeUid ||
+      (primary as any)?.authUid ||
+      (primary as any)?.uid ||
+      (primary as any)?.userId ||
+      (primary as any)?.linkedUserId ||
+      (fallback as any)?.linkedUid ||
+      (fallback as any)?.employeeUid ||
+      (fallback as any)?.authUid ||
+      (fallback as any)?.uid ||
+      (fallback as any)?.userId ||
+      (fallback as any)?.linkedUserId
+  );
+
   return {
     ...fallback,
     ...primary,
+    uid: cleanText(
+      (primary as any)?.uid ||
+        (primary as any)?.authUid ||
+        (primary as any)?.employeeUid ||
+        linkedUid ||
+        (fallback as any)?.uid
+    ),
+    linkedUid,
+    linkedUserId: cleanText(
+      (primary as any)?.linkedUserId ||
+        linkedUid ||
+        (fallback as any)?.linkedUserId
+    ),
+    authUid: cleanText(
+      (primary as any)?.authUid ||
+        (fallback as any)?.authUid
+    ),
+    userId: cleanText(
+      (primary as any)?.userId ||
+        (fallback as any)?.userId
+    ),
+    employeeUid: cleanText(
+      (primary as any)?.employeeUid ||
+        linkedUid ||
+        (fallback as any)?.employeeUid
+    ),
+    employeeDocId: cleanText(
+      (primary as any)?.employeeDocId ||
+        (primary as any)?.linkedEmployeeDocId ||
+        (primary as any)?.employeeId ||
+        (fallback as any)?.employeeDocId ||
+        (fallback as any)?.linkedEmployeeDocId ||
+        (fallback as any)?.employeeId ||
+        primary.id ||
+        fallback.id
+    ),
+    linkedEmployeeDocId: cleanText(
+      (primary as any)?.linkedEmployeeDocId ||
+        (fallback as any)?.linkedEmployeeDocId
+    ),
+    employeeId: cleanText(
+      (primary as any)?.employeeDocId ||
+        (primary as any)?.linkedEmployeeDocId ||
+        (primary as any)?.employeeId ||
+        (fallback as any)?.employeeDocId ||
+        (fallback as any)?.linkedEmployeeDocId ||
+        (fallback as any)?.employeeId ||
+        primary.id ||
+        fallback.id
+    ),
     name: cleanText(primary.name || fallback.name),
     email: cleanText(primary.email || fallback.email),
     phone: cleanText(primary.phone || fallback.phone),
@@ -357,15 +508,14 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
 
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
-  const authRole = cleanText(authUser?.role).toLowerCase();
+  const authRole = normalizeAuthRole(authUser?.role);
   const canAccessEmployeesDashboard =
     authRole === "owner" ||
     authRole === "admin" ||
     authRole === "reception" ||
     authRole === "hr";
   const canManage = authRole === "owner" || authRole === "admin" || authRole === "hr";
-  const canManageAttendance =
-    canManage || authRole === "reception";
+  const canManageAttendance = authRole === "owner" || authRole === "hr";
   const canDeleteEmployees = authRole === "owner";
   const canFixBookings = authRole === "owner";
   const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
@@ -555,6 +705,12 @@ export default function DashboardEmployees() {
   }, []);
 
   const loadAttendanceZones = useCallback(async () => {
+    if (!canManageAttendance) {
+      setAttendanceZones([]);
+      setAttendanceZonesLoading(false);
+      return;
+    }
+
     setAttendanceZonesLoading(true);
     try {
       setAttendanceZones(await listWorkZones());
@@ -564,9 +720,16 @@ export default function DashboardEmployees() {
     } finally {
       setAttendanceZonesLoading(false);
     }
-  }, []);
+  }, [canManageAttendance]);
 
   const loadSelectedEmployeeAttendance = useCallback(async () => {
+    if (!canManageAttendance) {
+      setEmployeeAttendanceRows([]);
+      setSelectedEmployeeLeaveRequests([]);
+      setEmployeeAttendanceLoading(false);
+      return;
+    }
+
     const employeeId = String(selectedEmployeeId || "").trim();
     if (!employeeId) {
       setEmployeeAttendanceRows([]);
@@ -585,24 +748,27 @@ export default function DashboardEmployees() {
       .slice(0, 10);
     setEmployeeAttendanceLoading(true);
     try {
+      const selectedIdentity = selectedEmployeeIdentityRef.current;
       const employeeProfile =
-        list.find(
-          (item) => item.id === employeeId
-        ) || { id: employeeId };
+        list.find((item) => item.id === employeeId) ||
+        list.find((item) => employeeMatchesIdentity(item, selectedIdentity)) ||
+        { id: employeeId };
 
-      const employeeUid = cleanText(
-        (employeeProfile as any)?.linkedUid ||
-          (employeeProfile as any)?.uid ||
-          (employeeProfile as any)?.linkedUserId ||
-          (employeeProfile as any)?.employeeKey ||
-          (employeeProfile as any)?.employeeId ||
-          employeeId
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+        employeeProfile,
+        employeeId
+      );
+      attendanceDebug(
+        `employeeUid=${attendanceIdentity.employeeUid}`,
+        `employeeDocId=${attendanceIdentity.employeeDocId}`,
+        `month=${monthKey}`,
+        { selectedEmployeeId: employeeId, ids: attendanceIdentity.allIds }
       );
 
       const [rows, leaveRows] = await Promise.all([
         listAttendanceByDateRangeForEmployeeFromWorker({
-          employeeUid,
-          employeeId,
+          employeeUid: attendanceIdentity.employeeUid,
+          employeeId: attendanceIdentity.employeeDocId,
           fromDate: monthStart,
           toDate: monthEnd,
         }),
@@ -611,7 +777,11 @@ export default function DashboardEmployees() {
       setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
       setSelectedEmployeeLeaveRequests(
         leaveRows.filter((request) =>
-          leaveRequestMatchesProfile(request, employeeProfile, [employeeId])
+          leaveRequestMatchesProfile(
+            request,
+            employeeProfile,
+            attendanceIdentity.allIds
+          )
         )
       );
     } catch (error) {
@@ -621,7 +791,7 @@ export default function DashboardEmployees() {
     } finally {
       setEmployeeAttendanceLoading(false);
     }
-  }, [employeeAttendanceMonth, list, selectedEmployeeId]);
+  }, [canManageAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
 
   useEffect(() => {
     void loadAttendanceZones();
@@ -677,22 +847,23 @@ export default function DashboardEmployees() {
     setErrorMsg("");
     try {
       const employeeProfile =
-        list.find(
-          (item) => item.id === selectedEmployeeId
-        ) || { id: selectedEmployeeId };
+        list.find((item) => item.id === selectedEmployeeId) ||
+        list.find((item) =>
+          employeeMatchesIdentity(
+            item,
+            selectedEmployeeIdentityRef.current
+          )
+        ) ||
+        { id: selectedEmployeeId };
 
-      const employeeUid = cleanText(
-        (employeeProfile as any)?.linkedUid ||
-          (employeeProfile as any)?.uid ||
-          (employeeProfile as any)?.linkedUserId ||
-          (employeeProfile as any)?.employeeKey ||
-          (employeeProfile as any)?.employeeId ||
-          selectedEmployeeId
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+        employeeProfile,
+        selectedEmployeeId
       );
 
       await adjustAttendanceDayFromWorker({
-        employeeUid,
-        employeeId: selectedEmployeeId,
+        employeeUid: attendanceIdentity.employeeUid,
+        employeeId: attendanceIdentity.employeeDocId,
         date,
         checkInTime:
           attendanceEditCheckIn.slice(11, 16),
@@ -708,7 +879,11 @@ export default function DashboardEmployees() {
         source: "dashboard",
         description: "تعديل بصمة حضور الموظفة من الإدارة",
         after: { date, checkInAtClient: checkInIso, checkOutAtClient: checkOutIso || "" },
-        meta: { staffId: selectedEmployeeId },
+        meta: {
+          staffId: selectedEmployeeId,
+          employeeUid: attendanceIdentity.employeeUid,
+          employeeDocId: attendanceIdentity.employeeDocId,
+        },
       });
       closeAttendancePunchEditor();
       await loadSelectedEmployeeAttendance();
@@ -746,33 +921,47 @@ export default function DashboardEmployees() {
     setErrorMsg("");
     try {
       const employeeProfile =
-        list.find(
-          (item) => item.id === selectedEmployeeId
-        ) || { id: selectedEmployeeId };
+        list.find((item) => item.id === selectedEmployeeId) ||
+        list.find((item) =>
+          employeeMatchesIdentity(
+            item,
+            selectedEmployeeIdentityRef.current
+          )
+        ) ||
+        { id: selectedEmployeeId };
 
-      const employeeUid = cleanText(
-        (employeeProfile as any)?.linkedUid ||
-          (employeeProfile as any)?.uid ||
-          (employeeProfile as any)?.linkedUserId ||
-          (employeeProfile as any)?.employeeKey ||
-          (employeeProfile as any)?.employeeId ||
-          selectedEmployeeId
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+        employeeProfile,
+        selectedEmployeeId
       );
 
-      await clearAttendanceDayFromWorker({
-        employeeUid,
-        employeeId: selectedEmployeeId,
+      const clearResult = await clearAttendanceDayFromWorker({
+        employeeUid: attendanceIdentity.employeeUid,
+        employeeId: attendanceIdentity.employeeDocId,
         date,
         note: "مسح بصمة اليوم من إدارة الموظفات",
       });
-      void writeAuditLog({
+
+      const clearedRecords = Number(clearResult?.clearedRecords || 0);
+      if (clearedRecords <= 0) {
+        throw new Error(
+          "لم يتم العثور على بصمات لهذا اليوم، لذلك لم يتم حذف أي سجل."
+        );
+      }
+
+      await writeAuditLog({
         action: "attendance_deleted",
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
         description: "مسح بصمة حضور الموظفة من الإدارة",
-        before: { date },
-        meta: { staffId: selectedEmployeeId },
+        before: { date, clearedRecords },
+        meta: {
+          staffId: selectedEmployeeId,
+          employeeUid: attendanceIdentity.employeeUid,
+          employeeDocId: attendanceIdentity.employeeDocId,
+          clearedRecords,
+        },
       });
       await loadSelectedEmployeeAttendance();
     } catch (error) {
@@ -1006,7 +1195,14 @@ export default function DashboardEmployees() {
           const data = rawData || {};
           if (isRemovedFromStaffRecord(data)) return;
 
-          const linkedUid = cleanText(data?.linkedUid || data?.uid || data?.linkedUserId);
+          const linkedUid = cleanText(
+            data?.linkedUid ||
+              data?.employeeUid ||
+              data?.authUid ||
+              data?.uid ||
+              data?.userId ||
+              data?.linkedUserId
+          );
           const linkedUser = linkedUid ? userByUid.get(linkedUid) || {} : {};
           const combined = { ...linkedUser, ...data };
 
@@ -1021,7 +1217,11 @@ export default function DashboardEmployees() {
           if (["client", "pending", "guest"].includes(role)) return;
 
           const employeeId = cleanText(
-            combined?.employeeId || combined?.linkedEmployeeDocId || rawDocId || linkedUid
+            combined?.employeeDocId ||
+              combined?.linkedEmployeeDocId ||
+              combined?.employeeId ||
+              rawDocId ||
+              linkedUid
           );
           const isEmployeeCandidate =
             administrative ||
@@ -1036,9 +1236,34 @@ export default function DashboardEmployees() {
           const specialties = canonicalizeSpecialties(combined?.specialties, serviceLookup);
           const row: StaffPublicUi = {
             id: employeeId,
-            uid: cleanText(combined?.uid || linkedUid),
+            uid: cleanText(
+              combined?.uid ||
+                combined?.authUid ||
+                combined?.employeeUid ||
+                linkedUid
+            ),
             linkedUid,
-            linkedUserId: cleanText(combined?.linkedUserId || linkedUid),
+            linkedUserId: cleanText(
+              combined?.linkedUserId ||
+                combined?.userId ||
+                linkedUid
+            ),
+            authUid: cleanText(combined?.authUid),
+            userId: cleanText(combined?.userId),
+            employeeUid: cleanText(
+              combined?.employeeUid ||
+                combined?.linkedUid ||
+                combined?.authUid ||
+                combined?.uid ||
+                linkedUid
+            ),
+            employeeDocId: cleanText(
+              combined?.employeeDocId ||
+                combined?.linkedEmployeeDocId ||
+                combined?.employeeId ||
+                employeeId
+            ),
+            linkedEmployeeDocId: cleanText(combined?.linkedEmployeeDocId),
             employeeId,
             email: cleanText(combined?.email || combined?.userEmail),
             phone: cleanText(combined?.phone),
@@ -1707,6 +1932,7 @@ export default function DashboardEmployees() {
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
         employeeId: cleanText(payload.employeeId || targetEmployeeId),
         email: cleanText(payload.email).toLowerCase(),
+        name: cleanText(payload.name).toLowerCase(),
       };
       setSelectedEmployeeId(targetEmployeeId);
       setEditId(targetEmployeeId);
@@ -3579,10 +3805,14 @@ export default function DashboardEmployees() {
   const modalLeaveEntries = Array.isArray((editingStaff as any)?.leaveEntries)
     ? ((editingStaff as any).leaveEntries as LeaveEntry[])
     : [];
+  const selectedAttendanceIdentity = resolveEmployeeAttendanceIdentity(
+    editingStaff || selectedEmployee,
+    selectedEmployeeId || ""
+  );
   const selectedEmployeeApprovedLeaveDateKeys = buildApprovedLeaveDateKeys({
-    profile: editingStaff,
+    profile: editingStaff || selectedEmployee,
     leaveRequests: selectedEmployeeLeaveRequests,
-    extraIds: [selectedEmployeeId],
+    extraIds: selectedAttendanceIdentity.allIds,
     todayDateKey: todayIso(),
   });
 

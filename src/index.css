@@ -19501,6 +19501,43 @@ textarea.form-control {
   font-weight: 950;
 }
 
+.attendance-month__raw-records {
+  display: grid;
+  gap: 9px;
+}
+
+.attendance-month__raw-record {
+  display: grid;
+  grid-template-columns: minmax(60px, auto) minmax(80px, auto) 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dce3ed;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.attendance-month__raw-record span {
+  color: #6c7384;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.attendance-month__raw-record b {
+  color: #121d38;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.attendance-month__raw-record small {
+  overflow: hidden;
+  color: #7c879a;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .attendance-month__performance {
   display: grid;
   grid-template-columns:
@@ -19577,6 +19614,11 @@ textarea.form-control {
   .attendance-month__worked-metrics {
     grid-template-columns:
       repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-month__raw-record {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .attendance-month__state-card {

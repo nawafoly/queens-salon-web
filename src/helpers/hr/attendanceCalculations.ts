@@ -130,19 +130,12 @@ export function getAttendanceDayStatus(input: {
       ? input.absenceDateKeys
       : new Set(input.absenceDateKeys || []);
 
+  if (input.hasAttendance) {
+    return input.computation?.isComplete ? "present" : "partial";
+  }
+
   if (approvedLeaveDateKeys.has(input.date)) return "leave";
   if (absenceDateKeys.has(input.date)) return "absent";
-
-  if (input.hasAttendance) {
-    if (
-      !input.computation?.isComplete ||
-      input.computation.lateHours > 0 ||
-      (input.checkOut && input.computation.missingHours > 0)
-    ) {
-      return "partial";
-    }
-    return "present";
-  }
 
   if (
     isWeeklyOffDateKey(input.date, input.weeklyOffDays) ||
