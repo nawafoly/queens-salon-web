@@ -31203,3 +31203,45 @@ body:has(.dashboard-skin) .modal-box .dash-select,
   flex: 0 0 auto;
   min-width: 118px;
 }
+
+/* FIX: admin booking edit modal must remain vertically scrollable */
+.qs-modal-overlay:has(.bk-edit-modal) {
+  align-items: flex-start !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-top: max(12px, env(safe-area-inset-top)) !important;
+  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.qs-modal-panel.bk-edit-modal {
+  width: min(820px, calc(100vw - 24px)) !important;
+  max-height: calc(100dvh - 24px) !important;
+  min-height: 0 !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.qs-modal-panel.bk-edit-modal > .bk-cancel-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.qs-modal-panel.bk-edit-modal > .bk-cancel-head,
+.qs-modal-panel.bk-edit-modal > .bk-cancel-foot {
+  flex: 0 0 auto !important;
+}
+
+@supports not (height: 100dvh) {
+  .qs-modal-panel.bk-edit-modal {
+    max-height: calc(100vh - 24px) !important;
+  }
+}
