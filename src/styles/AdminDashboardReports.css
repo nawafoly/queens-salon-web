@@ -1552,3 +1552,14 @@
 }
 
 /* REPORTS KPI MOBILE FIX END */
+
+/* REPORTS DESKTOP KPI CONTRAST FIX START */
+@media (min-width: 768px) {
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis .kpi h3,
+  .dashboard-skin.madan-admin-shell .reports-v2 .reports-v2__kpis .kpi strong {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  }
+}
+/* REPORTS DESKTOP KPI CONTRAST FIX END */
