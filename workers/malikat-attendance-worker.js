@@ -1,7 +1,17 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { handleAttendanceRequest } from "./attendance-worker.js";
 
 const DEFAULT_FIREBASE_PROJECT_ID = "waves-hotel-dashboard";
 const DEFAULT_SALON_ID = "main";
+
+const FIREBASE_JWKS = createRemoteJWKSet(
+  new URL(
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+  )
+);
+
+const FIRESTORE_PROFILE_BACKOFF_MS = 5 * 60 * 1000;
+let firestoreProfileBackoffUntil = 0;
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost",
@@ -120,7 +130,7 @@ export default {
       directoryDb: null,
       salonId: getSalonId(env),
       resolveRequesterContext: currentRequest =>
-        resolveRequesterContext(currentRequest, env),
+        resolveRequesterContext(currentRequest, env, env.ATTENDANCE_DB),
       fetchFirestoreDocument: args =>
         fetchFirestoreDocument({
           ...args,
@@ -137,7 +147,7 @@ export default {
   },
 };
 
-async function resolveRequesterContext(request, env) {
+async function resolveRequesterContext(request, env, db) {
   const idToken = readBearerToken(request);
 
   if (!idToken) {
@@ -150,57 +160,40 @@ async function resolveRequesterContext(request, env) {
     };
   }
 
-  const tokenPayload = decodeJwtPayload(idToken);
-  const projectId = cleanText(tokenPayload?.aud);
-  const uid = cleanText(tokenPayload?.user_id || tokenPayload?.sub);
-  const email = cleanText(tokenPayload?.email).toLowerCase();
-  const issuer = cleanText(tokenPayload?.iss);
-  const expiresAt = Number(tokenPayload?.exp || 0);
-  const expectedProjectId = getExpectedProjectId(env);
+  const verifiedToken = await verifyFirebaseIdToken(idToken, env);
 
-  if (
-    !projectId ||
-    !uid ||
-    projectId !== expectedProjectId ||
-    issuer !== `https://securetoken.google.com/${expectedProjectId}` ||
-    !Number.isFinite(expiresAt) ||
-    expiresAt * 1000 <= Date.now()
-  ) {
+  if (!verifiedToken.ok) {
     return {
       ok: false,
       response: json(401, {
         ok: false,
         message: "invalid_firebase_id_token",
+        detail: verifiedToken.error || null,
       }),
     };
   }
 
+  const tokenPayload = verifiedToken.payload;
+  const projectId = verifiedToken.projectId;
+  const uid = verifiedToken.uid;
+  const email = verifiedToken.email;
   const salonId = getSalonId(env);
+  const d1Identity = await loadRequesterAttendanceIdentity(db, uid);
 
-  const userResult = await fetchFirestoreDocument({
-    projectId,
-    idToken,
-    documentPath: `salons/${salonId}/users/${uid}`,
-    env,
-  });
-
-  if (!userResult.ok) {
-    return {
-      ok: false,
-      response: json(userResult.status || 403, {
-        ok: false,
-        message: "firebase_user_lookup_failed",
-        detail: userResult.error || null,
-      }),
-    };
-  }
-
-  const adminResult = await fetchFirestoreDocument({
-    projectId,
-    idToken,
-    documentPath: `salons/${salonId}/admin_users/${uid}`,
-    env,
-  });
+  const [userResult, adminResult] = await Promise.all([
+    fetchFirestoreDocument({
+      projectId,
+      idToken,
+      documentPath: `salons/${salonId}/users/${uid}`,
+      env,
+    }),
+    fetchFirestoreDocument({
+      projectId,
+      idToken,
+      documentPath: `salons/${salonId}/admin_users/${uid}`,
+      env,
+    }),
+  ]);
 
   const userData =
     userResult.ok && userResult.found
@@ -212,11 +205,84 @@ async function resolveRequesterContext(request, env) {
       ? adminResult.data?.data || {}
       : null;
 
+  const profileFound = Boolean(userData || adminData);
+  const tokenRole = normalizeRole(
+    tokenPayload?.role || tokenPayload?.roleKey
+  );
+  const fallbackRole =
+    tokenRole !== "guest"
+      ? tokenRole
+      : d1Identity.employeeDocId
+        ? "staff"
+        : "guest";
+
+  let runtime = profileFound
+    ? resolveEffectiveRuntime(userData, adminData)
+    : createVerifiedTokenRuntime(fallbackRole);
+
+  // Firestore can temporarily reject one of the profile lookups (for example
+  // quota exhaustion). In that degraded state, keep the verified Firebase
+  // custom claim as a trusted role source instead of silently downgrading an
+  // owner/admin/HR account to the lower role from the only profile that loaded.
+  // Explicit profile denies and inactive profiles still win.
+  const firestoreLookupDegraded = !userResult.ok || !adminResult.ok;
+  const tokenRuntime = createVerifiedTokenRuntime(tokenRole);
+  const tokenRolePriority = ROLE_PRIORITY[tokenRuntime.role] ?? ROLE_PRIORITY.guest;
+  const runtimeRolePriority = ROLE_PRIORITY[runtime.role] ?? ROLE_PRIORITY.guest;
+  const hasManagementDeny = runtime.permissionsDeny.includes("settings.manage");
+  const configuredManagementEmail = isAttendanceManagementEmail(email, env);
+
+  // Legacy admin accounts may not yet have a role custom claim. During a
+  // Firestore quota outage, use this server-side allowlist of verified
+  // Firebase emails as a narrow management fallback.
+  if (
+    configuredManagementEmail &&
+    runtime.isActive &&
+    !hasManagementDeny &&
+    (ROLE_PRIORITY[runtime.role] ?? ROLE_PRIORITY.guest) < ROLE_PRIORITY.admin
+  ) {
+    runtime = {
+      ...runtime,
+      role: "admin",
+      sources: {
+        ...(runtime.sources || {}),
+        configuredManagementEmail: true,
+      },
+    };
+  }
+
+  if (
+    profileFound &&
+    firestoreLookupDegraded &&
+    runtime.isActive &&
+    !hasManagementDeny &&
+    tokenRolePriority > runtimeRolePriority
+  ) {
+    runtime = {
+      ...runtime,
+      role: tokenRuntime.role,
+      sources: {
+        ...(runtime.sources || {}),
+        token: tokenRuntime,
+      },
+    };
+  }
+
   const identityData = {
     ...(adminData || {}),
     ...(userData || {}),
   };
 
+  identityData.uid = firstText(identityData.uid, uid);
+  identityData.email = firstText(identityData.email, email);
+  identityData.role = firstText(identityData.role, fallbackRole);
+  identityData.active =
+    identityData.active === undefined ? true : identityData.active;
+  identityData.employeeProfileEnabled =
+    identityData.employeeProfileEnabled === undefined
+      ? Boolean(d1Identity.employeeDocId) ||
+        ATTENDANCE_FALLBACK_EMPLOYEE_ROLES.has(fallbackRole)
+      : identityData.employeeProfileEnabled;
   identityData.linkedEmployeeId = firstText(
     userData?.linkedEmployeeId,
     userData?.linkedEmployeeDocId,
@@ -224,10 +290,20 @@ async function resolveRequesterContext(request, env) {
     adminData?.linkedEmployeeId,
     adminData?.linkedEmployeeDocId,
     adminData?.employeeId,
+    d1Identity.employeeDocId,
     uid
   );
 
-  const runtime = resolveEffectiveRuntime(userData, adminData);
+  if (
+    !normalizeStringArray(identityData.allowedZoneIds).length &&
+    d1Identity.lastZoneId
+  ) {
+    identityData.allowedZoneIds = [d1Identity.lastZoneId];
+    identityData.attendanceZoneId = firstText(
+      identityData.attendanceZoneId,
+      d1Identity.lastZoneId
+    );
+  }
 
   return {
     ok: true,
@@ -238,7 +314,136 @@ async function resolveRequesterContext(request, env) {
     runtime,
     userData: identityData,
     adminUserData: adminData,
+    authSource: profileFound
+      ? "firebase_jwt+firestore_profile"
+      : "firebase_jwt+d1_fallback",
+    firestoreProfileStatus: {
+      user: userResult.ok ? (userResult.found ? "found" : "missing") : userResult.error,
+      admin: adminResult.ok ? (adminResult.found ? "found" : "missing") : adminResult.error,
+    },
   };
+}
+
+const ATTENDANCE_FALLBACK_EMPLOYEE_ROLES = new Set([
+  "owner",
+  "admin",
+  "hr",
+  "reception",
+  "accountant",
+  "staff",
+]);
+
+function createVerifiedTokenRuntime(role) {
+  return {
+    role: normalizeRole(role),
+    isActive: true,
+    permissionsAllow: [],
+    permissionsDeny: [],
+    sources: {
+      user: null,
+      admin: null,
+      token: true,
+    },
+  };
+}
+
+async function verifyFirebaseIdToken(idToken, env) {
+  const expectedProjectId = getExpectedProjectId(env);
+
+  try {
+    const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
+      algorithms: ["RS256"],
+      audience: expectedProjectId,
+      issuer: `https://securetoken.google.com/${expectedProjectId}`,
+    });
+
+    const uid = cleanText(payload?.user_id || payload?.sub);
+    const email = cleanText(payload?.email).toLowerCase();
+    const issuedAt = Number(payload?.iat || 0);
+    const authTime = Number(payload?.auth_time || 0);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    if (
+      !uid ||
+      uid.length > 128 ||
+      !Number.isFinite(issuedAt) ||
+      issuedAt > nowSeconds + 60 ||
+      (authTime && (!Number.isFinite(authTime) || authTime > nowSeconds + 60))
+    ) {
+      return {
+        ok: false,
+        error: "invalid_firebase_token_claims",
+      };
+    }
+
+    return {
+      ok: true,
+      payload,
+      projectId: expectedProjectId,
+      uid,
+      email,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: cleanText(error?.code || error?.message) || "firebase_token_verification_failed",
+    };
+  }
+}
+
+async function loadRequesterAttendanceIdentity(db, uid) {
+  const cleanUid = cleanText(uid);
+
+  if (!db || !cleanUid) {
+    return {
+      employeeDocId: "",
+      lastZoneId: "",
+    };
+  }
+
+  try {
+    const state = await db
+      .prepare(
+        `
+        SELECT employee_doc_id, last_zone_id
+        FROM attendance_state
+        WHERE employee_uid = ?
+        LIMIT 1
+      `
+      )
+      .bind(cleanUid)
+      .first();
+
+    const latestRecord = await db
+      .prepare(
+        `
+        SELECT employee_doc_id, zone_id
+        FROM attendance_records
+        WHERE employee_uid = ?
+        ORDER BY server_time DESC, id DESC
+        LIMIT 1
+      `
+      )
+      .bind(cleanUid)
+      .first();
+
+    return {
+      employeeDocId: firstText(
+        state?.employee_doc_id,
+        latestRecord?.employee_doc_id
+      ),
+      lastZoneId: firstText(
+        state?.last_zone_id,
+        latestRecord?.zone_id
+      ),
+    };
+  } catch (error) {
+    console.warn("[attendance] D1 requester identity lookup failed", error);
+    return {
+      employeeDocId: "",
+      lastZoneId: "",
+    };
+  }
 }
 
 async function fetchFirestoreDocument({
@@ -248,6 +453,14 @@ async function fetchFirestoreDocument({
   env,
 }) {
   const expectedProjectId = getExpectedProjectId(env);
+
+  if (Date.now() < firestoreProfileBackoffUntil) {
+    return {
+      ok: false,
+      status: 429,
+      error: "firestore_profile_lookup_backoff",
+    };
+  }
 
   if (cleanText(projectId) !== expectedProjectId) {
     return {
@@ -292,9 +505,14 @@ async function fetchFirestoreDocument({
   }
 
   if (!response.ok) {
+    if (response.status === 429 || response.status >= 500) {
+      firestoreProfileBackoffUntil =
+        Date.now() + FIRESTORE_PROFILE_BACKOFF_MS;
+    }
+
     return {
       ok: false,
-      status: response.status === 401 ? 401 : 403,
+      status: response.status,
       error:
         cleanText(payload?.error?.message) ||
         `firestore_request_failed_${response.status}`,
@@ -317,6 +535,15 @@ async function queryFirestoreDocuments({
   env,
 }) {
   const expectedProjectId = getExpectedProjectId(env);
+
+  if (Date.now() < firestoreProfileBackoffUntil) {
+    return {
+      ok: false,
+      status: 429,
+      error: "firestore_profile_lookup_backoff",
+      documents: [],
+    };
+  }
 
   if (cleanText(projectId) !== expectedProjectId) {
     return {
@@ -381,9 +608,14 @@ async function queryFirestoreDocuments({
   const payload = await safeReadJson(response);
 
   if (!response.ok) {
+    if (response.status === 429 || response.status >= 500) {
+      firestoreProfileBackoffUntil =
+        Date.now() + FIRESTORE_PROFILE_BACKOFF_MS;
+    }
+
     return {
       ok: false,
-      status: response.status === 401 ? 401 : 403,
+      status: response.status,
       error:
         cleanText(payload?.error?.message) ||
         `firestore_query_failed_${response.status}`,
@@ -667,6 +899,23 @@ function getExpectedProjectId(env) {
 
 function getSalonId(env) {
   return cleanText(env?.SALON_ID) || DEFAULT_SALON_ID;
+}
+
+function getAttendanceManagementEmails(env) {
+  return new Set(
+    cleanText(env?.ATTENDANCE_MANAGEMENT_EMAILS)
+      .split(",")
+      .map(value => value.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function isAttendanceManagementEmail(email, env) {
+  const normalizedEmail = cleanText(email).toLowerCase();
+  return Boolean(
+    normalizedEmail &&
+      getAttendanceManagementEmails(env).has(normalizedEmail)
+  );
 }
 
 function getAllowedOrigins(env) {

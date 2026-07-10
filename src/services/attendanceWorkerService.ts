@@ -5,6 +5,7 @@ import {
   type WorkZone,
 } from "./attendanceSettingsService";
 import type {
+  AttendanceRawRecord,
   AttendanceVerification,
   StaffAttendanceToday,
   StaffAttendanceWithId,
@@ -87,6 +88,15 @@ type AttendanceWorkerZoneResponse = {
 
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function isAttendanceDebugEnabled() {
+  return Boolean((import.meta as any).env?.DEV);
+}
+
+function attendanceDebug(...args: unknown[]) {
+  if (!isAttendanceDebugEnabled()) return;
+  console.info("[attendance-debug]", ...args);
 }
 
 function getWorkerBaseUrl() {
@@ -272,16 +282,28 @@ async function requestAttendanceWorker<T>(
     );
   }
 
-  let response: Response;
+type WorkerPayload = T & {
+    message?: string;
+    detail?: string;
+  };
 
-  try {
-    response = await fetch(
+  const executeRequest = async (
+    forceRefreshToken: boolean
+  ): Promise<{
+    response: Response;
+    payload: WorkerPayload | null;
+  }> => {
+    const idToken = await currentUser.getIdToken(
+      forceRefreshToken
+    );
+
+    const response = await fetch(
       buildWorkerUrl(pathname, params),
       {
         ...init,
         headers: {
           Accept: "application/json",
-          Authorization: `Bearer ${await currentUser.getIdToken()}`,
+          Authorization: `Bearer ${idToken}`,
           ...(init.body
             ? { "Content-Type": "application/json" }
             : {}),
@@ -290,6 +312,39 @@ async function requestAttendanceWorker<T>(
         cache: "no-store",
       }
     );
+
+    const payload = (await response
+      .json()
+      .catch(() => null)) as WorkerPayload | null;
+
+    return { response, payload };
+  };
+
+  let result: {
+    response: Response;
+    payload: WorkerPayload | null;
+  };
+
+  try {
+    result = await executeRequest(false);
+
+    const authFailureMessage = cleanText(
+      result.payload?.message || result.payload?.detail
+    );
+    const shouldRefreshToken =
+      result.response.status === 401 ||
+      (result.response.status === 403 &&
+        [
+          "attendance_records_forbidden",
+          "attendance_management_forbidden",
+          "invalid_firebase_id_token",
+        ].includes(authFailureMessage));
+
+    // Firebase caches ID tokens. When an account role/custom claim changes,
+    // refresh once and retry before surfacing a permission error.
+    if (shouldRefreshToken) {
+      result = await executeRequest(true);
+    }
   } catch (cause) {
     const error = new Error(
       "تم التقاط الموقع، لكن تعذر الاتصال بخادم الحضور. تحقق من اتصال الإنترنت وإعدادات CORS الخاصة بـ Cloudflare Worker."
@@ -301,14 +356,7 @@ async function requestAttendanceWorker<T>(
     throw error;
   }
 
-  const payload = (await response
-    .json()
-    .catch(() => null)) as
-    | (T & {
-        message?: string;
-        detail?: string;
-      })
-    | null;
+  const { response, payload } = result;
 
   if (!response.ok || !payload) {
     const error = new Error(
@@ -329,7 +377,6 @@ async function requestAttendanceWorker<T>(
 
   return payload;
 }
-
 function normalizeLocation(
   location: AttendanceLocation
 ) {
@@ -411,6 +458,7 @@ export async function submitAttendanceToWorker(input: {
 export async function fetchAttendanceRecordsFromWorker(
   input: {
     employeeUid: string;
+    employeeDocId?: string;
     fromDate?: string;
     toDate?: string;
     result?: AttendanceWorkerResult;
@@ -419,12 +467,21 @@ export async function fetchAttendanceRecordsFromWorker(
     cursor?: string;
   }
 ) {
+  attendanceDebug(
+    `worker-request employeeUid=${cleanText(input.employeeUid) || "(empty)"}`,
+    `employeeDocId=${cleanText(input.employeeDocId) || "(empty)"}`,
+    `from=${cleanText(input.fromDate) || "(none)"}`,
+    `to=${cleanText(input.toDate) || "(none)"}`,
+    `result=${input.result || "(any)"}`
+  );
+
   const payload =
     await requestAttendanceWorker<AttendanceRecordsResponse>(
       "/attendance/records",
       { method: "GET" },
       {
         employeeUid: cleanText(input.employeeUid),
+        employeeDocId: cleanText(input.employeeDocId),
         fromDate: cleanText(input.fromDate),
         toDate: cleanText(input.toDate),
         result: input.result,
@@ -452,8 +509,22 @@ export async function fetchAttendanceRecordsFromWorker(
     );
   }
 
+  const records = payload.records;
+  attendanceDebug(
+    `records=${records.length}`,
+    `dates=${JSON.stringify(
+      Array.from(
+        new Set(
+          records
+            .map((record) => toRiyadhDateKey(record.serverTime))
+            .filter(Boolean)
+        )
+      ).sort()
+    )}`
+  );
+
   return {
-    records: payload.records,
+    records,
     total: Number(payload.total || 0),
     nextCursor: cleanText(payload.nextCursor) || null,
   };
@@ -506,6 +577,55 @@ function recordVerification(
   };
 }
 
+function recordMatchesEmployee(
+  record: AttendanceWorkerRecord,
+  employeeUid: string,
+  employeeId: string
+) {
+  const recordUid = cleanText(record.employeeUid);
+  const recordDocId = cleanText(record.employeeDocId);
+
+  return (
+    (!!employeeUid && (recordUid === employeeUid || recordDocId === employeeUid)) ||
+    (!!employeeId && (recordDocId === employeeId || recordUid === employeeId))
+  );
+}
+
+function toAttendanceRawRecord(record: AttendanceWorkerRecord): AttendanceRawRecord {
+  return {
+    id: record.id,
+    type: record.type,
+    result: record.result,
+    serverTime: record.serverTime,
+    clientTime: record.clientTime || null,
+    location: record.location,
+    zoneId: record.zoneId || null,
+    zoneName: record.zoneName || null,
+    distanceMeters:
+      record.distanceMeters == null
+        ? null
+        : Number(record.distanceMeters),
+  };
+}
+
+function getRecordDateKeysInRange(
+  records: AttendanceWorkerRecord[],
+  fromDate: string,
+  toDate: string
+) {
+  const dates = new Set<string>();
+
+  for (const record of records) {
+    const date = toRiyadhDateKey(record.serverTime);
+
+    if (date && date >= fromDate && date <= toDate) {
+      dates.add(date);
+    }
+  }
+
+  return Array.from(dates).sort();
+}
+
 function buildAttendanceDay(
   records: AttendanceWorkerRecord[],
   employeeId: string,
@@ -553,6 +673,7 @@ function buildAttendanceDay(
       recordVerification(checkIn),
     checkOutVerification:
       recordVerification(checkOut),
+    records: allowed.map(toAttendanceRawRecord),
   };
 }
 
@@ -566,6 +687,7 @@ export async function getAttendanceForDateFromWorker(
   const result =
     await fetchAttendanceRecordsFromWorker({
       employeeUid: input.employeeUid,
+      employeeDocId: input.employeeId,
       fromDate: input.date,
       toDate: input.date,
       result: "allowed",
@@ -590,6 +712,7 @@ export async function listAttendanceByDateRangeFromWorker(
   const result =
     await fetchAttendanceRecordsFromWorker({
       employeeUid: input.employeeUid,
+      employeeDocId: input.employeeId,
       fromDate: input.fromDate,
       toDate: input.toDate,
       result: "allowed",
@@ -661,32 +784,39 @@ export async function listAttendanceForEmployeesDateFromWorker(
     return [];
   }
 
-  const result = await fetchAttendanceRecordsFromWorker({
-    employeeUid: "",
-    fromDate: date,
-    toDate: date,
-    result: "allowed",
-    limit: 200,
-  });
+  return Promise.all(
+    employees.map(async (employee) => {
+      const requestEmployeeUid =
+        employee.employeeUid || employee.employeeId;
 
-  return employees.map((employee) => {
-    const employeeRecords = result.records.filter((record) => {
-      const uidMatches =
-        Boolean(employee.employeeUid) &&
-        record.employeeUid === employee.employeeUid;
+      if (!requestEmployeeUid) {
+        return buildAttendanceDay([], employee.employeeId, date);
+      }
 
-      const documentMatches =
-        record.employeeDocId === employee.employeeId;
+      const result = await fetchAttendanceRecordsFromWorker({
+        employeeUid: requestEmployeeUid,
+        employeeDocId: employee.employeeId,
+        fromDate: date,
+        toDate: date,
+        result: "allowed",
+        limit: 200,
+      });
 
-      return uidMatches || documentMatches;
-    });
+      const employeeRecords = result.records.filter((record) =>
+        recordMatchesEmployee(
+          record,
+          employee.employeeUid,
+          employee.employeeId
+        )
+      );
 
-    return buildAttendanceDay(
-      employeeRecords,
-      employee.employeeId,
-      date
-    );
-  });
+      return buildAttendanceDay(
+        employeeRecords,
+        employee.employeeId,
+        date
+      );
+    })
+  );
 }
 
 export async function listAttendanceByDateRangeForEmployeeFromWorker(
@@ -702,42 +832,39 @@ export async function listAttendanceByDateRangeForEmployeeFromWorker(
   const fromDate = cleanText(input.fromDate);
   const toDate = cleanText(input.toDate);
 
-  if (!employeeId || !fromDate || !toDate) {
+  const requestEmployeeUid = employeeUid || employeeId;
+
+  if (!requestEmployeeUid || !employeeId || !fromDate || !toDate) {
     return [];
   }
 
+  attendanceDebug(
+    `employeeUid=${requestEmployeeUid}`,
+    `employeeId=${employeeId}`,
+    `range=${fromDate}..${toDate}`
+  );
+
   const result = await fetchAttendanceRecordsFromWorker({
-    employeeUid: "",
+    employeeUid: requestEmployeeUid,
+    employeeDocId: employeeId,
     fromDate,
     toDate,
     result: "allowed",
     limit: 200,
   });
 
-  const employeeRecords = result.records.filter((record) => {
-    const uidMatches =
-      Boolean(employeeUid) &&
-      record.employeeUid === employeeUid;
+  const employeeRecords = result.records.filter((record) =>
+    recordMatchesEmployee(record, employeeUid, employeeId)
+  );
 
-    const documentMatches =
-      record.employeeDocId === employeeId;
+  const dates = getRecordDateKeysInRange(employeeRecords, fromDate, toDate);
 
-    return uidMatches || documentMatches;
-  });
+  attendanceDebug(
+    `matched-records=${employeeRecords.length}`,
+    `dates=${JSON.stringify(dates)}`
+  );
 
-  const dates = new Set<string>();
-
-  for (const record of employeeRecords) {
-    const date = toRiyadhDateKey(record.serverTime);
-
-    if (date && date >= fromDate && date <= toDate) {
-      dates.add(date);
-    }
-  }
-
-  return Array.from(dates)
-    .sort()
-    .map((date) =>
+  return dates.map((date) =>
       buildAttendanceDay(
         employeeRecords,
         employeeId,

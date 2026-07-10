@@ -7,3 +7,8 @@ binding = "ATTENDANCE_DB"
 database_name = "malikat-attendance"
 database_id = "425bb0b9-2e3e-4c6e-84f3-22a7afa4ace9"
 migrations_dir = "attendance-migrations"
+
+[vars]
+FIREBASE_PROJECT_ID = "waves-hotel-dashboard"
+SALON_ID = "main"
+ATTENDANCE_MANAGEMENT_EMAILS = "nawafaaa6@gmail.com,nawafaaa0@gmail.com,alolayan3@gmail.com"

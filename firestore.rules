@@ -241,7 +241,7 @@ service cloud.firestore {
       return signedIn()
         && (
           isBootstrapAdmin()
-          || roleForSalon(salonId) in ["owner","admin","hr","reception"]
+          || roleForSalon(salonId) in ["owner","hr"]
         );
     }
 
@@ -638,6 +638,7 @@ service cloud.firestore {
     match /salons/{salonId}/admin_users/{uid} {
       allow read: if signedIn() && (
         isHrManagementForSalon(salonId)
+        || uid == request.auth.uid
         || (resource.data.uid is string && resource.data.uid == request.auth.uid)
         || (resource.data.employeeId is string && resource.data.employeeId == request.auth.uid)
       );
