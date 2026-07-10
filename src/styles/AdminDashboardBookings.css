@@ -2246,3 +2246,22 @@
   }
 }
 /* BOOKINGS MOBILE APP UI END */
+
+
+/* Keep the filtered bookings visibly in place while the authorization dialog opens.
+   The modal still blocks interaction, but it no longer visually erases the current results. */
+.bk-action-pin-overlay.qs-modal-overlay {
+  --qs-modal-overlay-bg: rgba(10, 18, 36, 0.08);
+  --qs-modal-overlay-blur: none;
+}
+
+.bk-action-pin-overlay .bk-action-pin-modal {
+  box-shadow: 0 22px 60px rgba(10, 18, 36, 0.24);
+}
+
+@media (max-width: 767px) {
+  .bk-action-pin-overlay.qs-modal-overlay {
+    --qs-modal-overlay-bg: rgba(10, 18, 36, 0.12);
+    --qs-modal-overlay-blur: none;
+  }
+}

@@ -150,6 +150,13 @@ function BookingMoney({ value }: { value: unknown }) {
   );
 }
 
+function compactPaymentStatusLabel(payment: ReturnType<typeof resolveBookingPaymentSummary>) {
+  if (payment.totalAmount <= 0) return "بدون سعر";
+  if (payment.paidAmount <= 0 && payment.remainingAmount > 0) return "بانتظار السداد";
+  if (payment.remainingAmount <= 0) return "مدفوع بالكامل";
+  return "دفع جزئي";
+}
+
 /* =========================
    Helpers
 ========================= */
@@ -847,6 +854,7 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
       open={open}
       onClose={handleClose}
       ariaLabel="التحقق برمز التفويض الإداري"
+      overlayClassName="bk-action-pin-overlay"
       panelClassName="bk-cancel-modal bk-action-pin-modal"
       size="sm"
     >
@@ -2110,6 +2118,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const bookingTrackFallbackRequestRef = useRef(0);
   const historyBookingsCacheRef = useRef<Record<string, Booking[]>>({});
   const historyBookingsRequestRef = useRef(0);
+  const employeeFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
+  const serviceFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
   const [confirmSaving, setConfirmSaving] = useState(false);
@@ -2704,10 +2714,24 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     bookings.forEach((b) => {
       const id = String(b.employeeId || b.employeeUid || b.employeeName || "").trim();
       const label = String(b.employeeName || id || "").trim();
-      if (id && label) map.set(id, label);
+      if (!id || !label) return;
+      map.set(id, label);
+      employeeFilterLabelCacheRef.current.set(id, label);
     });
+
+    // Keep the active option visible even when the edited booking was the last
+    // row using that employee. Otherwise the native select visually falls back
+    // to "all" while the state still contains the old value, which looks like
+    // the filter disappeared and leaves the list unexpectedly empty.
+    if (employeeFilter !== "all" && !map.has(employeeFilter)) {
+      map.set(
+        employeeFilter,
+        employeeFilterLabelCacheRef.current.get(employeeFilter) || employeeFilter
+      );
+    }
+
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [bookings]);
+  }, [bookings, employeeFilter]);
 
   const serviceFilterOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -2717,15 +2741,30 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         services.forEach((service) => {
           const key = String(service.serviceId || service.serviceName || "").trim();
           const label = String(service.serviceName || service.serviceId || "").trim();
-          if (key && label) map.set(key, label);
+          if (!key || !label) return;
+          map.set(key, label);
+          serviceFilterLabelCacheRef.current.set(key, label);
         });
         return;
       }
       const fallback = serviceSummaryForTable(b);
-      if (fallback && fallback !== "—") map.set(fallback, fallback);
+      if (fallback && fallback !== "—") {
+        map.set(fallback, fallback);
+        serviceFilterLabelCacheRef.current.set(fallback, fallback);
+      }
     });
+
+    // Same protection for the service filter. Editing the only matching row
+    // must not remove the selected option from the control.
+    if (serviceFilter !== "all" && !map.has(serviceFilter)) {
+      map.set(
+        serviceFilter,
+        serviceFilterLabelCacheRef.current.get(serviceFilter) || serviceFilter
+      );
+    }
+
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [bookings]);
+  }, [bookings, serviceFilter]);
 
   const applyDatePreset = useCallback((preset: DatePresetOption) => {
     setDatePreset(preset);
@@ -4277,21 +4316,29 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-payment-cell">
-                            <span className="bk-price-pill"><BookingMoney value={payment.totalAmount} /></span>
-                            <span
-                              className={`bk-payment-status ${
-                                payment.remainingAmount <= 0
-                                  ? "is-paid"
-                                  : payment.paidAmount > 0
-                                    ? "is-partial"
-                                    : "is-unpaid"
-                              }`}
-                            >
-                              {paymentStatusLabel(payment)}
-                            </span>
-                            <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
-                              {paymentMethodLabel(bookingPaymentMethodFilterValue(b))}
-                            </span>
+                            <div className="bk-payment-total">
+                              <span className="bk-payment-total-label">الإجمالي</span>
+                              <span className="bk-payment-total-value"><BookingMoney value={payment.totalAmount} /></span>
+                            </div>
+                            <div className="bk-payment-state-row">
+                              <span
+                                className={`bk-payment-status ${
+                                  payment.remainingAmount <= 0
+                                    ? "is-paid"
+                                    : payment.paidAmount > 0
+                                      ? "is-partial"
+                                      : "is-unpaid"
+                                }`}
+                                title={paymentStatusLabel(payment)}
+                              >
+                                {compactPaymentStatusLabel(payment)}
+                              </span>
+                              {bookingPaymentMethodFilterValue(b) !== "none" ? (
+                                <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
+                                  {paymentMethodLabel(bookingPaymentMethodFilterValue(b))}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className="bk-payment-details-cell">
@@ -4308,7 +4355,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
-                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
+                            <button type="button" className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
                               تفاصيل
                             </button>
                             <button
@@ -4322,11 +4369,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
                             {canEditBookings && (
-                              <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
+                              <button type="button" className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
                             )}
                             <button
+                              type="button"
                               className="exp-btn ghost sm bk-refund-btn"
                               onClick={() => openRefundModal(b)}
                               disabled={!canManageRefund(b) || refundBusyId === b.id}
@@ -4338,6 +4386,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <>
                                 {uiRole === "owner" && (
                                   <button
+                                    type="button"
                                     className="exp-btn danger sm"
                                     onClick={() => handleDeleteBooking(b)}
                                     title="حذف الحجز"
@@ -4361,12 +4410,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             {uiRole === "reception" && b.status === "pending" && (
                               <>
                                 <button
+                                  type="button"
                                   className="exp-btn sm"
                                   onClick={() => handleUpdateStatus(b.id, "confirmed")}
                                 >
                                   تأكيد
                                 </button>
                                 <button
+                                  type="button"
                                   className="exp-btn danger sm"
                                   onClick={() => handleUpdateStatus(b.id, "cancelled")}
                                 >
@@ -4480,7 +4531,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </div>
                       </div>
                       <div className="bk-mobile-actions">
-                        <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                        <button type="button" className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                         <button
                           type="button"
                           className="exp-btn ghost sm w-100 bk-print-invoice-btn"
@@ -4491,11 +4542,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           {printInvoiceBusyId === b.id ? "جاري تجهيز الفاتورة..." : "طباعة الفاتورة"}
                         </button>
                         {canEditBookings && (
-                          <button className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
+                          <button type="button" className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
                             تعديل
                           </button>
                         )}
                         <button
+                          type="button"
                           className="exp-btn ghost sm w-100 bk-refund-btn"
                           onClick={() => openRefundModal(b)}
                           disabled={!canManageRefund(b) || refundBusyId === b.id}
@@ -4505,7 +4557,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         {(uiRole === "owner" || uiRole === "admin") && (
                           <>
                             {uiRole === "owner" && (
-                              <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                              <button type="button" className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
                                 حذف الحجز
                               </button>
                             )}
@@ -4525,10 +4577,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         )}
                         {uiRole === "reception" && b.status === "pending" && (
                           <>
-                            <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
+                            <button type="button" className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
                               تأكيد
                             </button>
-                            <button className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
+                            <button type="button" className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
                               إلغاء
                             </button>
                           </>
@@ -5203,18 +5255,29 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-payment-cell">
-                            <span className="bk-price-pill"><BookingMoney value={payment.totalAmount} /></span>
-                            <span
-                              className={`bk-payment-status ${
-                                payment.remainingAmount <= 0
-                                  ? "is-paid"
-                                  : payment.paidAmount > 0
-                                    ? "is-partial"
-                                    : "is-unpaid"
-                              }`}
-                            >
-                              {paymentStatusLabel(payment)}
-                            </span>
+                            <div className="bk-payment-total">
+                              <span className="bk-payment-total-label">الإجمالي</span>
+                              <span className="bk-payment-total-value"><BookingMoney value={payment.totalAmount} /></span>
+                            </div>
+                            <div className="bk-payment-state-row">
+                              <span
+                                className={`bk-payment-status ${
+                                  payment.remainingAmount <= 0
+                                    ? "is-paid"
+                                    : payment.paidAmount > 0
+                                      ? "is-partial"
+                                      : "is-unpaid"
+                                }`}
+                                title={paymentStatusLabel(payment)}
+                              >
+                                {compactPaymentStatusLabel(payment)}
+                              </span>
+                              {bookingPaymentMethodFilterValue(b) !== "none" ? (
+                                <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
+                                  {paymentMethodLabel(bookingPaymentMethodFilterValue(b))}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className="bk-payment-details-cell">
@@ -5231,15 +5294,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row">
-                            <button className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
+                            <button type="button" className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
                               تفاصيل
                             </button>
                             {canEditBookings && (
-                              <button className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
+                              <button type="button" className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
                             )}
                             <button
+                              type="button"
                               className="exp-btn ghost sm bk-refund-btn"
                               onClick={() => openRefundModal(b)}
                               disabled={!canManageRefund(b) || refundBusyId === b.id}
@@ -5251,6 +5315,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <>
                                 {uiRole === "owner" && (
                                   <button
+                                    type="button"
                                     className="exp-btn danger sm"
                                     onClick={() => handleDeleteBooking(b)}
                                     title="حذف نهائي"
@@ -5275,12 +5340,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             {uiRole === "reception" && b.status === "pending" && (
                               <>
                                 <button
+                                  type="button"
                                   className="exp-btn sm"
                                   onClick={() => handleUpdateStatus(b.id, "confirmed")}
                                 >
                                   تأكيد
                                 </button>
                                 <button
+                                  type="button"
                                   className="exp-btn danger sm"
                                   onClick={() => handleUpdateStatus(b.id, "cancelled")}
                                 >
@@ -5372,9 +5439,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </div>
                     </div>
                     <div className="bk-mobile-actions">
-                       <button className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                       <button type="button" className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                        {canEditBookings && (
-                         <button className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
+                         <button type="button" className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
                            تعديل
                          </button>
                        )}
@@ -5388,7 +5455,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                        {(uiRole === "owner" || uiRole === "admin") && (
                          <>
                            {uiRole === "owner" && (
-                             <button className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                             <button type="button" className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
                                حذف نهائي
                              </button>
                            )}
@@ -5408,10 +5475,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                        )}
                        {uiRole === "reception" && b.status === "pending" && (
                          <>
-                           <button className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
+                           <button type="button" className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
                              تأكيد
                            </button>
-                           <button className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
+                           <button type="button" className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
                              إلغاء
                            </button>
                          </>
