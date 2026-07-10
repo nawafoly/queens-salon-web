@@ -1754,3 +1754,61 @@
     width: 100% !important;
   }
 }
+
+/* =========================================================
+   Desktop sidebar viewport lock
+   Keep the desktop sidebar attached to the viewport and reserve
+   its width in the page layout so scrolling never exposes a gap.
+========================================================= */
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    > .container-fluid
+    > .row {
+    position: relative !important;
+    display: block !important;
+    min-height: 100dvh !important;
+    padding-inline-start: var(--dash-pro-sidebar-width) !important;
+    overflow: visible !important;
+    transition: padding-inline-start 220ms ease !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+    position: fixed !important;
+    inset-block: 0 !important;
+    inset-inline-start: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    z-index: 1200 !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    align-self: auto !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    > .container-fluid
+    > .row {
+    padding-inline-start: var(--dash-pro-sidebar-collapsed) !important;
+  }
+}
