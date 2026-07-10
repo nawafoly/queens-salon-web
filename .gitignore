@@ -47,3 +47,5 @@ android-hr/app/src/main/assets/public/
 android-hr/app/src/main/assets/capacitor.config.json
 
 .wrangler/
+vite-*.out.log
+vite-*.err.log
