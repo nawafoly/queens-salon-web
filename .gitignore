@@ -49,3 +49,12 @@ android-hr/app/src/main/assets/capacitor.config.json
 .wrangler/
 vite-*.out.log
 vite-*.err.log
+
+# Local inspection files
+/project-files-report.txt
+/project-tree.txt
+/structure.txt
+/structuregit.txt
+/tmp_snip.txt
+/queens-bookings-review.zip
+/queens-salon-source.zip
