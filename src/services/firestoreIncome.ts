@@ -15,7 +15,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 
-import type { IncomeItem, PaymentMethod } from "../types/finance";
+import type { IncomeItem, PaymentBreakdown, PaymentMethod } from "../types/finance";
 import { writeAuditLog } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
 
@@ -74,14 +74,26 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   if (s === "cash") return "cash";
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
+  if (s === "mixed") return "mixed";
   if (s === "other") return "other";
 
   // arabic / legacy
   if (s.includes("كاش") || s.includes("نقد")) return "cash";
   if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
   if (s.includes("تحويل")) return "transfer";
+  if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
 
   return "other";
+}
+
+function normalizePaymentBreakdown(raw: any): PaymentBreakdown | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const cash = Number((raw as any).cash ?? 0);
+  const card = Number((raw as any).card ?? 0);
+  const out: PaymentBreakdown = {};
+  if (Number.isFinite(cash) && cash > 0) out.cash = Math.round(cash * 100) / 100;
+  if (Number.isFinite(card) && card > 0) out.card = Math.round(card * 100) / 100;
+  return out.cash || out.card ? out : undefined;
 }
 
 function normalizeIncome(raw: any, id: string): IncomeItem {
@@ -93,6 +105,7 @@ function normalizeIncome(raw: any, id: string): IncomeItem {
     date, // YYYY-MM-DD
     amount: Number(raw?.amount ?? 0),
     method: normalizePaymentMethod(raw?.method),
+    paymentBreakdown: normalizePaymentBreakdown(raw?.paymentBreakdown),
     source: String(raw?.source ?? "دخل").trim(),
     note: raw?.note ? String(raw.note).trim() : undefined,
     bookingId: raw?.bookingId ? String(raw.bookingId).trim() : undefined,
@@ -144,6 +157,7 @@ export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
     date: item.date,
     amount: item.amount,
     method: item.method,
+    paymentBreakdown: item.paymentBreakdown,
     source: item.source,
     note: item.note ?? undefined,
     bookingId: item.bookingId ?? undefined,

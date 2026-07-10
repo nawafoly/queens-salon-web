@@ -32,6 +32,7 @@ import EmployeeLeavePage from "./hr/EmployeeLeave";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession } from "./hr/shared";
+import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import "../styles/EmployeePortalMobileNav.css";
 
@@ -61,6 +62,23 @@ function portalRoleLabel(role: unknown) {
   if (normalized === "hr") return "الموارد البشرية";
   if (normalized === "reception") return "الاستقبال";
   return "موظفة";
+}
+
+function getEmployeePortalTitle(pathname: string) {
+  const section = pathname.replace(/^\/employee\/?/, "").split("/")[0] || "overview";
+  const titles: Record<string, string> = {
+    overview: "بوابة الموظف",
+    attendance: "الحضور والانصراف",
+    notifications: "التنبيهات",
+    more: "المزيد",
+    profile: "الملف الشخصي",
+    messages: "الرسائل",
+    files: "الملفات",
+    leave: "الإجازات والطلبات",
+    payroll: "الراتب",
+  };
+
+  return titles[section] || "بوابة الموظف";
 }
 
 type EmployeeMorePageProps = {
@@ -277,6 +295,32 @@ export default function EmployeePortal() {
     { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/messages" },
     { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/messages" },
   ];
+  const employeeHeaderTitle = getEmployeePortalTitle(location.pathname);
+  const renderEmployeeHeaderActions = () => (
+    <>
+      <InternalPortalSwitcher
+        canOpenDashboard={canOpenDashboard}
+        canOpenHr={canOpenHr}
+        loggingOut={loggingOut}
+        onLogout={handleLogout}
+      />
+
+      <Link
+        to="/employee/notifications"
+        className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
+        aria-label="التنبيهات"
+        title="التنبيهات"
+      >
+        <FontAwesomeIcon icon={faBell} />
+
+        {notificationCounts.all > 0 ? (
+          <span className="employee-header-notification__badge employee-app-topbar__badge">
+            {notificationCounts.all}
+          </span>
+        ) : null}
+      </Link>
+    </>
+  );
 
   if (session.loading) {
     return (
@@ -293,53 +337,13 @@ export default function EmployeePortal() {
 
   return (
     <div className="employee-portal madan-employee-portal" dir="rtl">
-      <header
-        className="employee-mobile-topbar employee-app-topbar"
-        aria-label="بوابة الموظف"
-      >
-        <Link
-          to="/employee/profile"
-          className="employee-app-topbar__profile"
-          aria-label="فتح الملف الشخصي"
-        >
-          <span className="employee-app-topbar__avatar">
-            {displayInitial(displayName, session.email)}
-          </span>
-
-          <span className="employee-app-topbar__copy">
-            <strong>بوابة الموظف</strong>
-            <small>{displayName}</small>
-          </span>
-        </Link>
-
-        <div
-          className="employee-app-topbar__actions"
-          aria-label="اختصارات بوابة الموظف"
-        >
-          <InternalPortalSwitcher
-            canOpenDashboard={canOpenDashboard}
-            canOpenHr={canOpenHr}
-            canOpenEmployee={true}
-            loggingOut={loggingOut}
-            onLogout={handleLogout}
-          />
-
-          <Link
-            to="/employee/notifications"
-            className="employee-app-topbar__action employee-app-topbar__action--notifications"
-            aria-label="التنبيهات"
-            title="التنبيهات"
-          >
-            <FontAwesomeIcon icon={faBell} />
-
-            {notificationCounts.all > 0 ? (
-              <span className="employee-app-topbar__badge">
-                {notificationCounts.all}
-              </span>
-            ) : null}
-          </Link>
-        </div>
-      </header>
+      <DashboardHeader
+        theme="employee"
+        title={employeeHeaderTitle}
+        subtitle="Queens Salon"
+        className="employee-workspace-header--mobile dashboard-header--mobile-shell"
+        actions={renderEmployeeHeaderActions()}
+      />
 
       <div className="employee-portal-layout employee-portal-layout--app">
         <aside className="employee-portal-sidebar employee-portal-sidebar--desktop" aria-label="التنقل داخل بوابة الموظف">
@@ -399,8 +403,16 @@ export default function EmployeePortal() {
         </aside>
 
         <main className="employee-portal-main">
+          <DashboardHeader
+            theme="employee"
+            title={employeeHeaderTitle}
+            subtitle="Queens Salon"
+            className="employee-workspace-header--desktop dashboard-header--desktop-shell"
+            actions={renderEmployeeHeaderActions()}
+          />
+
           <div className="employee-app-route-scroll">
-<Routes>
+          <Routes>
             <Route index element={<Navigate to="/employee/overview" replace />} />
             <Route
               path="overview"
@@ -470,7 +482,7 @@ export default function EmployeePortal() {
             />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
-</div>
+          </div>
         </main>
       </div>
 

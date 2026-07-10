@@ -442,6 +442,11 @@
   background: #f0ebf7;
 }
 
+.dashboard-skin .income-page .income-method-badge.mixed {
+  color: #6d3f00;
+  background: #fff3d4;
+}
+
 .dashboard-skin .income-page .income-method-badge.other {
   color: #866713;
   background: #fff5d9;

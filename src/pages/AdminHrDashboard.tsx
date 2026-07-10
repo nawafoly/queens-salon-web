@@ -16,6 +16,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { useEmployeeSession, cleanText } from "./hr/shared";
+import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
@@ -1164,13 +1165,13 @@ export default function AdminHrDashboard() {
         </aside>
 
         <main className="hr-shell-main">
-          <div className="hr-shell-header">
-            <div>
-              <p className="hr-shell-kicker">الموارد البشرية</p>
-              <h1>جاري تحميل لوحة الموارد البشرية...</h1>
-              <p className="hr-shell-subtitle">نجهز بيانات الموظفين والطلبات قبل عرض اللوحة.</p>
-            </div>
-          </div>
+          <DashboardHeader
+            theme="admin"
+            title="جاري تحميل لوحة الموارد البشرية..."
+            subtitle="Queens Salon"
+            className="hr-shell-header"
+            showProfileButton={false}
+          />
 
           <div className="hr-loading-panel">
             <div className="hr-loading-card" />
@@ -1226,50 +1227,32 @@ export default function AdminHrDashboard() {
         </div>
       </aside>
 
-      <header className="hr-mobile-appbar">
-        <div className="hr-mobile-appbar__brand">
-          <span className="hr-mobile-appbar__mark">HR</span>
-
-          <div>
-            <small>الموارد البشرية</small>
-            <strong>{isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}</strong>
-          </div>
-        </div>
-
-        <InternalPortalSwitcher
-          canOpenDashboard={true}
-          canOpenHr={true}
-          canOpenEmployee={true}
-          loggingOut={loggingOut}
-          onLogout={handleLogout}
-          className="hr-mobile-appbar__actions"
-        />
-      </header>
-      <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
-        <header className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}>
-          {!isEmployeesRoute ? (
-            <div>
-              <p className="hr-shell-kicker">{routeMeta.kicker}</p>
-              <h1>{routeMeta.title}</h1>
-              <p className="hr-shell-subtitle">{routeMeta.subtitle}</p>
-            </div>
-          ) : (
-            <div>
-              <p className="hr-shell-kicker">الموارد البشرية</p>
-              <h1>إدارة الموظفات</h1>
-            </div>
-          )}
-
-          <div className="hr-shell-user">
-            <div className="hr-shell-user__identity">
-              <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
-              <span>{readableRole(session.role)}</span>
-            </div>
-
+      <DashboardHeader
+        theme="admin"
+        title={isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}
+        subtitle="Queens Salon"
+        className="hr-mobile-appbar dashboard-header--mobile-shell"
+        actions={
             <InternalPortalSwitcher
               canOpenDashboard={true}
               canOpenHr={true}
-              canOpenEmployee={true}
+              loggingOut={loggingOut}
+              onLogout={handleLogout}
+              className="hr-mobile-appbar__actions"
+          />
+        }
+      />
+      <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
+        <DashboardHeader
+          theme="admin"
+          title={isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}
+          subtitle="Queens Salon"
+          className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}
+          actions={
+            <>
+            <InternalPortalSwitcher
+              canOpenDashboard={true}
+              canOpenHr={true}
               loggingOut={loggingOut}
               onLogout={handleLogout}
             />
@@ -1284,8 +1267,9 @@ export default function AdminHrDashboard() {
                 {loadingData ? "جارٍ التحديث..." : "تحديث الملخص"}
               </button>
             ) : null}
-          </div>
-        </header>
+            </>
+          }
+        />
 
         {isOverviewRoute && error ? <div className="hr-alert">{error}</div> : null}
 

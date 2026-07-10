@@ -1,0 +1,390 @@
+.dashboard-header {
+  --workspace-header-height: 74px;
+  --workspace-header-mobile-height: 66px;
+  --workspace-header-bg: rgba(255, 255, 255, 0.97);
+  --workspace-header-border: rgba(15, 23, 42, 0.1);
+  --workspace-header-shadow: 0 8px 28px rgba(15, 23, 42, 0.065);
+  --workspace-header-title: #0f172a;
+  --workspace-header-muted: #64748b;
+  --workspace-header-action-bg: #ffffff;
+  --workspace-header-action-border: rgba(15, 23, 42, 0.11);
+  --workspace-header-action-text: #243047;
+  --workspace-header-profile-bg: #fffaf0;
+  --workspace-header-profile-text: #4c3a00;
+  --workspace-header-radius: 16px;
+  --workspace-header-button-radius: 12px;
+
+  position: relative;
+  z-index: 80;
+  display: flex;
+  width: 100%;
+  min-height: var(--workspace-header-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 24px;
+  border: 1px solid var(--workspace-header-border);
+  border-radius: var(--workspace-header-radius);
+  background: var(--workspace-header-bg);
+  box-shadow: var(--workspace-header-shadow);
+  color: var(--workspace-header-title);
+  direction: rtl;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dashboard-header--sticky {
+  position: sticky;
+  top: 8px;
+}
+
+.dashboard-header__primary,
+.dashboard-header__meta,
+.dashboard-header__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.dashboard-header__primary {
+  flex: 1 1 auto;
+  gap: 11px;
+}
+
+.dashboard-header__meta {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 11px;
+}
+
+.dashboard-header__actions {
+  direction: rtl;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  gap: 7px;
+}
+
+.dashboard-header__actions > * {
+  flex: 0 0 auto;
+}
+
+.dashboard-header__leading {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.dashboard-header__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  text-align: right;
+}
+
+.dashboard-header__copy h1 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--workspace-header-title);
+  font-size: 1.08rem;
+  font-weight: 950;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-header__copy span {
+  display: block;
+  overflow: hidden;
+  color: var(--workspace-header-muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-header__profile-button,
+.dashboard-header__clock,
+.dashboard-header .internal-portal-switcher__item,
+.dashboard-header .employee-header-notification {
+  min-height: 40px;
+  border: 1px solid var(--workspace-header-action-border);
+  border-radius: var(--workspace-header-button-radius);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.dashboard-header .dashboard-header__profile-button {
+  color: var(--workspace-header-profile-text);
+  background: var(--workspace-header-profile-bg);
+}
+
+.dashboard-header .dashboard-header__profile-button[aria-current="page"] {
+  border-color: rgba(202, 157, 24, 0.46);
+  color: #6d5100;
+  background: #fff8da;
+}
+
+.dashboard-header__clock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--workspace-header-action-text);
+  background: var(--workspace-header-action-bg);
+  white-space: nowrap;
+}
+
+.dashboard-header--dashboard {
+  --workspace-header-bg: rgba(255, 255, 255, 0.96);
+  --workspace-header-border: var(--admin-border, rgba(15, 23, 42, 0.1));
+  --workspace-header-title: var(--admin-wine, #101a3d);
+  --workspace-header-muted: var(--admin-muted, #64748b);
+  --workspace-header-action-border: var(--admin-border, rgba(15, 23, 42, 0.11));
+  --workspace-header-action-text: var(--admin-text, #0f172a);
+  --workspace-header-profile-bg: #fff8dc;
+  --workspace-header-profile-text: #765800;
+  --workspace-header-shadow: 0 8px 26px rgba(38, 23, 30, 0.055);
+}
+
+.dashboard-header--admin {
+  --workspace-header-bg: rgba(255, 255, 255, 0.97);
+  --workspace-header-border: var(--hr-border, rgba(15, 23, 42, 0.1));
+  --workspace-header-title: var(--hr-text, #0f172a);
+  --workspace-header-muted: var(--hr-muted, #64748b);
+  --workspace-header-action-border: var(--hr-border, rgba(15, 23, 42, 0.11));
+  --workspace-header-action-text: var(--hr-text, #0f172a);
+  --workspace-header-profile-bg: #f2f5fa;
+  --workspace-header-profile-text: #081432;
+  --workspace-header-shadow: 0 8px 26px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-header--employee {
+  --workspace-header-bg: rgba(255, 255, 255, 0.97);
+  --workspace-header-border: var(--employee-border, rgba(15, 23, 42, 0.1));
+  --workspace-header-title: var(--employee-ink, #0f172a);
+  --workspace-header-muted: var(--employee-muted, #64748b);
+  --workspace-header-action-border: var(--employee-border, rgba(15, 23, 42, 0.11));
+  --workspace-header-action-text: var(--employee-ink, #0f172a);
+  --workspace-header-profile-bg: #fffaf0;
+  --workspace-header-profile-text: #4c3a00;
+  --workspace-header-shadow: 0 8px 28px rgba(15, 23, 42, 0.07);
+}
+
+.dashboard-header--mobile-shell {
+  display: none !important;
+}
+
+.employee-workspace-header--desktop {
+  margin: 0 0 12px;
+}
+
+.employee-header-notification {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  color: #64748b;
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.employee-header-notification__badge {
+  position: absolute;
+  top: -6px;
+  right: -5px;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  padding-inline: 4px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #e11d48;
+  font-size: 0.46rem;
+  font-weight: 950;
+}
+
+.dashboard-header.dash-topbar::after {
+  content: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header--dashboard {
+  top: 8px !important;
+  width: auto !important;
+  min-height: var(--workspace-header-height) !important;
+  margin: 8px 8px 0 !important;
+  padding: 10px 24px !important;
+  border: 1px solid var(--workspace-header-border) !important;
+  border-radius: var(--workspace-header-radius) !important;
+  background: var(--workspace-header-bg) !important;
+  box-shadow: var(--workspace-header-shadow) !important;
+}
+
+.hr-shell.madan-admin-shell .dashboard-header.hr-shell-header {
+  min-height: var(--workspace-header-height) !important;
+  padding: 10px 24px !important;
+  border: 1px solid var(--workspace-header-border) !important;
+  border-radius: var(--workspace-header-radius) !important;
+  background: var(--workspace-header-bg) !important;
+  box-shadow: var(--workspace-header-shadow) !important;
+}
+
+@media (min-width: 821px) {
+  .dashboard-header--desktop-shell {
+    display: flex !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-portal-main {
+    display: block !important;
+  }
+}
+
+@media (max-width: 991px) {
+  .dashboard-header {
+    min-height: 62px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .dashboard-header__primary {
+    gap: 6px;
+  }
+
+  .dashboard-header__meta {
+    flex: 1 1 auto;
+    gap: 5px;
+  }
+
+  .dashboard-header__copy h1 {
+    font-size: 0.94rem;
+  }
+
+  .dashboard-header__copy span {
+    max-width: 150px;
+    font-size: 0.63rem;
+  }
+
+  .dashboard-header__actions {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 820px) {
+  .dashboard-header--desktop-shell {
+    display: none !important;
+  }
+
+  .dashboard-header--mobile-shell {
+    display: flex !important;
+  }
+
+  .employee-portal.madan-employee-portal .employee-workspace-header--mobile {
+    position: fixed !important;
+    inset-inline: 0;
+    top: 0;
+    z-index: 300;
+    width: 100%;
+    height: calc(68px + env(safe-area-inset-top, 0px));
+    min-height: calc(68px + env(safe-area-inset-top, 0px));
+    padding:
+      calc(8px + env(safe-area-inset-top, 0px))
+      10px
+      8px !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.09) !important;
+    border-radius: 0 !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 7px 24px rgba(15, 23, 42, 0.07) !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-workspace-header--mobile
+    .dashboard-header__primary {
+    flex: 1 1 auto;
+    max-width: 150px;
+    overflow: hidden;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-workspace-header--mobile
+    .dashboard-header__meta {
+    direction: ltr;
+    flex: 0 0 auto;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-workspace-header--mobile
+    .dashboard-header__actions {
+    direction: ltr;
+    gap: 5px;
+  }
+
+  .hr-shell .dashboard-header--admin.dashboard-header--mobile-shell {
+    grid-row: 1;
+  }
+
+  .hr-shell .hr-mobile-appbar.dashboard-header--mobile-shell {
+    min-height:
+      calc(
+        var(--hr-mobile-header-height, 64px) +
+        env(safe-area-inset-top, 0px)
+      ) !important;
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-header--dashboard {
+    top: 0 !important;
+    z-index: 900 !important;
+    min-height: var(--workspace-header-mobile-height) !important;
+    margin: 0 !important;
+    padding:
+      calc(9px + env(safe-area-inset-top))
+      13px
+      9px !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+    border-radius: 0 !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.06) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .dashboard-header--dashboard
+    .dashboard-header__leading {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    .dashboard-header--dashboard
+    .dashboard-header__meta {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-header__copy span {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-header__profile-button,
+  .dashboard-header .internal-portal-switcher__item,
+  .employee-header-notification {
+    width: 35px;
+    min-width: 35px;
+    height: 37px;
+    min-height: 37px;
+    border-radius: 10px;
+  }
+}

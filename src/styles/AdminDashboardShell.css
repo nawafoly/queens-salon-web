@@ -1085,3 +1085,257 @@
 }
 
 /* DESKTOP DASHBOARD SCROLL LAYOUT END */
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-logo {
+  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.24)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(216, 182, 77, 0.24);
+  color: #d8b64d;
+  background: rgba(216, 182, 77, 0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav-section {
+  display: block;
+  margin: 18px 8px 7px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
+  letter-spacing: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav-section:first-child {
+  margin-top: 6px !important;
+  padding-top: 0 !important;
+  border-top: 0;
+}
+
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page
+    > .container-fluid
+    > .row {
+    min-height: 100dvh !important;
+    align-items: stretch !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar,
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
+    transition:
+      width 220ms ease,
+      max-width 220ms ease,
+      flex-basis 220ms ease;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    align-self: flex-start !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding-bottom: 8px !important;
+    scrollbar-width: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav ul {
+    align-content: start;
+    padding-bottom: 4px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-header {
+    position: relative;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse {
+    position: absolute;
+    top: 50%;
+    left: 8px;
+    display: inline-flex !important;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    transform: translateY(-50%);
+    transition:
+      transform 160ms ease,
+      background 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse:hover {
+    border-color: rgba(216, 182, 77, 0.42);
+    background: rgba(216, 182, 77, 0.14);
+    transform: translateY(-50%) translateX(-1px);
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed {
+    --dash-sidebar-width: 88px;
+    --madan-sidebar-width: 88px;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    > .container-fluid
+    > .row {
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dashboard-sidebar {
+    flex: 0 0 88px !important;
+    width: 88px !important;
+    max-width: 88px !important;
+    padding: 14px 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dashboard-main {
+    width: calc(100% - 88px) !important;
+    max-width: calc(100% - 88px) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-header {
+    min-height: 76px;
+    padding: 10px 6px 42px !important;
+    justify-content: center;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-logo {
+    max-width: 54px !important;
+    max-height: 34px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dash-sidebar-collapse {
+    top: auto;
+    bottom: 6px;
+    left: 50%;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    transform: translateX(-50%);
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dash-sidebar-collapse:hover {
+    transform: translateX(-50%) translateY(-1px);
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .user-info {
+    justify-content: center;
+    margin: 0 0 12px !important;
+    padding: 10px 6px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .user-avatar {
+    margin: 0 auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .user-details {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav {
+    padding: 2px 0 6px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav ul {
+    gap: 5px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav-section {
+    width: 36px;
+    height: 1px;
+    margin: 12px auto 7px !important;
+    padding: 0 !important;
+    border: 0;
+    overflow: hidden;
+    color: transparent !important;
+    background: rgba(255, 255, 255, 0.14);
+    font-size: 0 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav-section:first-child {
+    margin-top: 4px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav .nav-link {
+    position: relative;
+    justify-content: center;
+    width: 46px;
+    min-height: 44px !important;
+    margin-inline: auto;
+    padding: 0 !important;
+    gap: 0 !important;
+    border-radius: 14px !important;
+    font-size: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav .nav-link > svg,
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .sidebar-nav .nav-link .svg-inline--fa {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    font-size: 18px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dash-nav-label {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
+    .dash-badge {
+    position: absolute;
+    top: 6px;
+    left: 7px;
+    width: 8px;
+    min-width: 8px;
+    height: 8px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    font-size: 0;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .dashboard-skin.madan-admin-shell.dashboard-page .dash-sidebar-collapse {
+    display: none !important;
+  }
+}

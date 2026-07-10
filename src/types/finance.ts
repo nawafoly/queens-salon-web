@@ -1,6 +1,11 @@
 // ✅ src/types/finance.ts
 
-export type PaymentMethod = "cash" | "card" | "transfer" | "other";
+export type PaymentMethod = "cash" | "card" | "transfer" | "other" | "mixed";
+
+export type PaymentBreakdown = {
+  cash?: number;
+  card?: number;
+};
 
 /** مصروف */
 export type Expense = {
@@ -54,6 +59,8 @@ export type IncomeItem = {
 
   /** طريقة الدفع */
   method: PaymentMethod;
+
+  paymentBreakdown?: PaymentBreakdown;
 
   /** مصدر الدخل */
   source: string;

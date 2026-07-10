@@ -4,7 +4,6 @@ import {
   faRightFromBracket,
   faTableColumns,
   faUserShield,
-  faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
 
 import "../styles/InternalPortalSwitcher.css";
@@ -12,7 +11,6 @@ import "../styles/InternalPortalSwitcher.css";
 type InternalPortalSwitcherProps = {
   canOpenDashboard: boolean;
   canOpenHr: boolean;
-  canOpenEmployee: boolean;
   loggingOut?: boolean;
   onLogout: () => void | Promise<void>;
   className?: string;
@@ -25,7 +23,6 @@ function joinClassNames(...parts: Array<string | false | null | undefined>) {
 export default function InternalPortalSwitcher({
   canOpenDashboard,
   canOpenHr,
-  canOpenEmployee,
   loggingOut = false,
   onLogout,
   className,
@@ -34,7 +31,6 @@ export default function InternalPortalSwitcher({
   const pathname = location.pathname;
   const isDashboardArea = pathname.startsWith("/dashboard");
   const isHrArea = pathname.startsWith("/admin");
-  const isEmployeeArea = pathname.startsWith("/employee");
 
   return (
     <nav
@@ -74,24 +70,6 @@ export default function InternalPortalSwitcher({
         >
           <FontAwesomeIcon icon={faUserShield} />
           <span>HR</span>
-        </NavLink>
-      ) : null}
-
-      {canOpenEmployee && !isEmployeeArea ? (
-        <NavLink
-          to="/employee/profile"
-          className={() =>
-            joinClassNames(
-              "internal-portal-switcher__item",
-              "internal-portal-switcher__item--employee",
-              isEmployeeArea && "is-current"
-            )
-          }
-          aria-label="فتح بروفايل الموظف"
-          title="بروفايل الموظف"
-        >
-          <FontAwesomeIcon icon={faUserTie} />
-          <span>البروفايل</span>
         </NavLink>
       ) : null}
 

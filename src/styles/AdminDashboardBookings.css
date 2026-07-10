@@ -241,6 +241,27 @@
   font-weight: 950 !important;
 }
 
+.dashboard-skin .bk-page-wrapper .bk-result-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: #687080;
+  font-size: 0.64rem;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-result-summary span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border: 1px solid #e2e6ed;
+  border-radius: 999px;
+  background: #f8f9fb;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 /* Filters */
 
 .dashboard-skin .bk-page-wrapper .bk-filters {
@@ -333,6 +354,135 @@
 .dashboard-skin .bk-page-wrapper .exp-btn:hover {
   transform: none !important;
   filter: brightness(0.97);
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-toolbar {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(0, 2.2fr);
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #e1e5eb;
+  border-radius: 14px;
+  background: #fbfcfd;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  color: #687080;
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-summary strong {
+  min-width: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--bk-navy);
+  font-size: 0.82rem;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-actions .exp-btn {
+  min-height: 35px;
+  padding: 6px 10px !important;
+  font-size: 0.62rem !important;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-result,
+.dashboard-skin .bk-page-wrapper .bk-bulk-error {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-result {
+  border: 1px solid rgba(38, 132, 87, 0.18);
+  color: #176c49;
+  background: #effaf5;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-bulk-error {
+  border: 1px solid rgba(180, 60, 80, 0.18);
+  color: #9b2f42;
+  background: #fff3f5;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid #e1e5eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-count {
+  color: #687080;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #687080;
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-controls .bk-select {
+  width: 76px !important;
+  min-height: 35px !important;
+  padding: 5px 8px !important;
+  font-size: 0.66rem !important;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-pagination-controls .exp-btn {
+  min-height: 35px;
+  padding: 6px 10px !important;
+  font-size: 0.62rem !important;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-page-number {
+  min-height: 35px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid #e1e5eb;
+  border-radius: 9px;
+  color: var(--bk-navy);
+  background: #f8f9fb;
+  font-size: 0.64rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 /* Sections */
@@ -558,6 +708,46 @@
   gap: 4px;
 }
 
+.dashboard-skin .bk-page-wrapper .bk-payment-method-chip {
+  width: max-content;
+  max-width: 100%;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #334155;
+  background: #eef2f7;
+  font-size: 0.59rem;
+  font-weight: 900;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-method-cash {
+  color: #176c49;
+  background: #eaf8f1;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-method-card {
+  color: #1f5f8b;
+  background: #eaf4ff;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-method-transfer {
+  color: #685018;
+  background: #fff4d6;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-method-mixed {
+  color: #6c3f11;
+  background: #fff1e1;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-payment-method-none,
+.dashboard-skin .bk-page-wrapper .bk-payment-method-other {
+  color: #5d6675;
+  background: #f0f2f5;
+}
+
 .dashboard-skin .bk-page-wrapper .bk-payment-metric-row {
   display: flex;
   align-items: center;
@@ -591,6 +781,82 @@
 
 .dashboard-skin .bk-page-wrapper .bk-owner-status-select {
   min-width: 105px;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-select-checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--bk-navy);
+  cursor: pointer;
+}
+
+.dashboard-skin .bk-page-wrapper .bk-mobile-select-row {
+  display: none;
+}
+
+.dashboard-skin .bk-mixed-payment-box {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #e3e7ed;
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.dashboard-skin .bk-mixed-payment-box label {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: #646c79;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .bk-mixed-payment-balance {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.dashboard-skin .bk-mixed-payment-balance.is-balanced {
+  border: 1px solid rgba(38, 132, 87, 0.16);
+  color: #176c49;
+  background: #effaf5;
+}
+
+.dashboard-skin .bk-mixed-payment-balance.is-unbalanced {
+  border: 1px solid rgba(180, 60, 80, 0.16);
+  color: #9b2f42;
+  background: #fff3f5;
+}
+
+.dashboard-skin .bk-bulk-confirm-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-skin .bk-bulk-confirm-list > div {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #e3e7ed;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.dashboard-skin .bk-bulk-confirm-list span {
+  color: #7a828f;
+  font-size: 0.61rem;
+}
+
+.dashboard-skin .bk-bulk-confirm-list strong {
+  color: #252b37;
+  font-size: 0.72rem;
+  font-weight: 950;
 }
 
 /* Mobile cards hidden on desktop */
@@ -814,7 +1080,11 @@
     display: none;
   }
 
-  .dashboard-skin .bk-page-wrapper .bookings-table-card,
+  .dashboard-skin .bk-page-wrapper .bookings-table-card {
+    display: block !important;
+    overflow: visible;
+  }
+
   .dashboard-skin .bk-page-wrapper .bk-table-wrap {
     display: none !important;
   }
@@ -850,6 +1120,21 @@
     border-radius: 13px !important;
     background: #fff !important;
     box-shadow: 0 5px 16px rgba(21, 35, 74, 0.045) !important;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-mobile-select-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    margin: 0 0 4px;
+    padding: 7px 8px;
+    border: 1px solid #e5e9ef;
+    border-radius: 10px;
+    color: #515b6b;
+    background: #f8f9fb;
+    font-size: 0.65rem;
+    font-weight: 850;
   }
 
   .dashboard-skin .bk-page-wrapper .bk-mobile-card::before {
@@ -959,6 +1244,39 @@
   .dashboard-skin .bk-modal .modal-foot .exp-btn,
   .dashboard-skin .bk-cancel-foot .exp-btn {
     width: 100% !important;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-bulk-toolbar,
+  .dashboard-skin .bk-page-wrapper .bk-pagination-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-bulk-actions,
+  .dashboard-skin .bk-page-wrapper .bk-pagination-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-bulk-actions .exp-btn,
+  .dashboard-skin .bk-page-wrapper .bk-pagination-controls .exp-btn,
+  .dashboard-skin .bk-page-wrapper .bk-page-number {
+    width: 100% !important;
+    justify-content: center;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-pagination-controls label {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+
+  .dashboard-skin .bk-mixed-payment-box {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-skin .bk-mixed-payment-balance {
+    grid-column: auto;
   }
 }
 
@@ -1638,6 +1956,7 @@
 }
 
 
+@media (max-width: 767px) {
   /* Mobile scroll and visibility enforcement */
   .dashboard-skin.madan-admin-shell .bk-page-wrapper,
   .dashboard-skin.madan-admin-shell .bk-mini,
@@ -1689,4 +2008,5 @@
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
   }
+}
 /* BOOKINGS MOBILE APP UI END */

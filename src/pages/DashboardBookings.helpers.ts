@@ -892,6 +892,7 @@ function bookingPaymentMethodLabelAr(method: unknown) {
   if (raw === "cash") return "كاش";
   if (raw === "card") return "شبكة";
   if (raw === "transfer") return "تحويل";
+  if (raw === "mixed") return "مختلط";
   if (raw === "other") return "أخرى";
   return "";
 }

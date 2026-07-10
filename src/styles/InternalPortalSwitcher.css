@@ -60,9 +60,16 @@
   background: #f2f5fa;
 }
 
-.internal-portal-switcher__item--employee {
-  color: #4c3a00;
-  background: #fffaf0;
+.internal-portal-switcher__item--logout {
+  order: 2;
+}
+
+.internal-portal-switcher__item--dashboard {
+  order: 3;
+}
+
+.internal-portal-switcher__item--hr {
+  order: 4;
 }
 
 .internal-portal-switcher__item--logout {

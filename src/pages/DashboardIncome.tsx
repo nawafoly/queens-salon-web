@@ -102,6 +102,7 @@ function methodLabel(m: PaymentMethod) {
   if (m === "cash") return "\u0643\u0627\u0634";
   if (m === "card") return "\u0634\u0628\u0643\u0629";
   if (m === "transfer") return "\u062a\u062d\u0648\u064a\u0644";
+  if (m === "mixed") return "مختلط";
   return "\u0623\u062e\u0631\u0649";
 }
 
@@ -139,6 +140,7 @@ function methodLabelFromRaw(raw?: string): string {
   const s = String(raw || "").trim().toLowerCase();
   if (!s) return "غير محدد";
   if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
+  if (s === "mixed" || s.includes("مختلط")) return "مختلط";
   if (
     s === "card" ||
     s === "mada" ||
@@ -423,6 +425,7 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   if (s === "cash") return "cash";
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
+  if (s === "mixed") return "mixed";
   if (s === "other") return "other";
 
   // arabic / legacy
@@ -430,6 +433,7 @@ function normalizePaymentMethod(x: any): PaymentMethod {
   if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق"))
     return "card";
   if (s.includes("تحويل")) return "transfer";
+  if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
 
   return "other";
 }
@@ -450,9 +454,9 @@ function normalizeIncomeSourceInput(raw: string): string {
   return trimmed;
 }
 
-function normalizeConfirmedPaymentMethod(raw: any): "cash" | "card" | "transfer" | null {
+function normalizeConfirmedPaymentMethod(raw: any): "cash" | "card" | "transfer" | "mixed" | null {
   const m = normalizePaymentMethod(raw);
-  if (m === "cash" || m === "card" || m === "transfer") return m;
+  if (m === "cash" || m === "card" || m === "transfer" || m === "mixed") return m;
   return null;
 }
 
@@ -1230,6 +1234,7 @@ export default function DashboardIncome() {
               <option value="cash">كاش</option>
               <option value="card">شبكة</option>
               <option value="transfer">تحويل</option>
+              <option value="mixed">مختلط</option>
               <option value="other">أخرى</option>
             </select>
 
@@ -1563,6 +1568,7 @@ export default function DashboardIncome() {
                     <option value="cash">كاش</option>
                     <option value="card">شبكة</option>
                     <option value="transfer">تحويل</option>
+                    <option value="mixed">مختلط</option>
                     <option value="other">أخرى</option>
                   </select>
                 </label>

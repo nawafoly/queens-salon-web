@@ -195,10 +195,12 @@ function normalizePaymentMethod(raw: any): PaymentMethod {
   if (s === "cash") return "cash";
   if (s === "card" || s === "pos_card" || s === "mada_online") return "card";
   if (s === "transfer") return "transfer";
+  if (s === "mixed") return "mixed";
   if (s === "other") return "other";
   if (s.includes("كاش") || s.includes("نقد")) return "cash";
   if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
   if (s.includes("تحويل")) return "transfer";
+  if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
   return "other";
 }
 
@@ -206,6 +208,7 @@ function methodLabelFromRaw(raw?: string): string {
   const s = String(raw || "").trim().toLowerCase();
   if (!s) return "\u063a\u064a\u0631 \u0645\u062d\u062f\u062f";
   if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
+  if (s === "mixed" || s.includes("مختلط")) return "مختلط";
   if (
     s === "card" ||
     s === "mada" ||
@@ -1448,6 +1451,7 @@ export default function DashboardReports() {
               <option value="cash">كاش</option>
               <option value="card">شبكة</option>
               <option value="transfer">تحويل</option>
+              <option value="mixed">مختلط</option>
               <option value="other">أخرى</option>
             </select>
           </label>

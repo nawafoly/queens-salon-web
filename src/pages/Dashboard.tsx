@@ -19,6 +19,8 @@ import {
   faWallet,
   faXmark,
   faBars,
+  faChevronLeft,
+  faChevronRight,
   faHouse,
   faClockRotateLeft,
   faFingerprint,
@@ -27,6 +29,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
+import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import Modal from "../components/Modal";
 
@@ -48,7 +51,7 @@ import DashboardPartners from "../pages/DashboardPartners";
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
 import BookingInternal from "../pages/BookingInternal";
 
-import logo1 from "../assets/images/ssunnamed3.png";
+import logo1 from "../assets/images/ssunnamed.png";
 
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs } from "firebase/firestore";
@@ -1358,6 +1361,43 @@ function getInitialDashboardUserInfo(): UserInfo | null {
   }
 }
 
+function getDashboardHeaderTitle(pathname: string) {
+  const parts = pathname.replace(/^\/dashboard\/?/, "").split("/").filter(Boolean);
+  const section = parts[0] || "overview";
+  const subSection = parts[1] || "";
+
+  if (section === "settings") {
+    const settingsTitles: Record<string, string> = {
+      bookings: "إعدادات الحجوزات",
+      catalog: "إدارة الكتالوج",
+      users: "إدارة الحسابات",
+      contact: "محتوى الموقع",
+      attendance: "الحضور والبصمة",
+    };
+    return settingsTitles[subSection] || "الإعدادات الأساسية";
+  }
+
+  const titles: Record<string, string> = {
+    overview: "لوحة التحكم",
+    staff: "بوابة الموظفات",
+    bookings: "الحجوزات",
+    "booking-internal": "الحجز الإداري",
+    "tv-queue": "شاشة نداء الحجوزات",
+    "day-audit": "إغلاق اليوم / الشفت",
+    clients: "العملاء",
+    partners: "الشركاء",
+    loyalty: "الولاء (VIP)",
+    offers: "العروض والكوبونات",
+    reports: "التقارير",
+    income: "الإيرادات",
+    expenses: "المصروفات",
+    logs: "سجل الحركات",
+    "admin-profile": "الملف الشخصي",
+  };
+
+  return titles[section] || "لوحة التحكم";
+}
+
 const Dashboard: React.FC<DashboardProps> = ({
   initialRole,
   initialName,
@@ -1420,6 +1460,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [missingExpenseNotesCount, setMissingExpenseNotesCount] = useState(0);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [topbarNowMs, setTopbarNowMs] = useState<number>(() => Date.now());
 
   const location = useLocation();
@@ -2241,17 +2282,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     );
   }
 
-  const topbarName = String(userInfo?.name ?? "")
-    .replace(/[\u200B-\u200F\u202A-\u202E]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
   const topbarClockText = `${new Date(topbarNowMs).toISOString().slice(0, 10)} • ${new Intl.DateTimeFormat("ar-SA", {
     timeStyle: "medium",
   }).format(new Date(topbarNowMs))}`;
+  const dashboardHeaderTitle = isTvQueuePage
+    ? "شاشة نداء الحجوزات"
+    : getDashboardHeaderTitle(location.pathname);
 
 
   return (
-    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}`}>
+    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -2669,7 +2709,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="row">
           {/* Sidebar */}
           <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}
+            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}${isSidebarCollapsed ? " is-collapsed" : ""}`}
           >
             <button
               type="button"
@@ -2683,6 +2723,16 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <div className="sidebar-header">
               <img src={logo1} alt="MALIKAT SALON Logo" className="sidebar-logo" />
+              <button
+                type="button"
+                className="dash-sidebar-collapse"
+                onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                aria-expanded={!isSidebarCollapsed}
+                aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+                title={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+              >
+                <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
+              </button>
             </div>
 
             <div className="user-info">
@@ -2697,19 +2747,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <nav className="sidebar-nav">
               <ul>
-                <li className="sidebar-nav-section">التشغيل اليومي</li>
-
-                {(isStaff || hasAdminPower || isReception) && (
-                  <li>
-                    <NavLink
-                      to="/employee/overview"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faUserTie} />
-                      بوابة الموظفات
-                    </NavLink>
-                  </li>
+                {(!isStaff || hasAdminPower || isReception) && (
+                  <li className="sidebar-nav-section">الحجوزات والعملاء والمالية</li>
                 )}
 
                 {!isStaff && (
@@ -2791,7 +2830,38 @@ const Dashboard: React.FC<DashboardProps> = ({
                   )}
 
                 {hasAdminPower && (
-                  <li className="sidebar-nav-section">الإدارة والتحليلات</li>
+                  <li>
+                    <NavLink
+                      to="/dashboard/income"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faWallet} />
+                      الإيرادات
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li>
+                    <NavLink
+                      to="/dashboard/expenses"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faMoneyBillWave} />
+                      <span className="dash-nav-label">
+                        المصروفات
+                        {missingExpenseNotesCount > 0 && (
+                          <span className="dash-badge">{missingExpenseNotesCount}</span>
+                        )}
+                      </span>
+                    </NavLink>
+                  </li>
+                )}
+
+                {hasAdminPower && (
+                  <li className="sidebar-nav-section">الإدارة والتقارير</li>
                 )}
 
                 {hasAdminPower && (
@@ -2836,37 +2906,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {hasAdminPower && (
                   <li>
                     <NavLink
-                      to="/dashboard/income"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faWallet} />
-                      الإيرادات
-                    </NavLink>
-                  </li>
-                )}
-
-                {hasAdminPower && (
-                  <li>
-                    <NavLink
-                      to="/dashboard/expenses"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faMoneyBillWave} />
-                      <span className="dash-nav-label">
-                        المصروفات
-                        {missingExpenseNotesCount > 0 && (
-                          <span className="dash-badge">{missingExpenseNotesCount}</span>
-                        )}
-                      </span>
-                    </NavLink>
-                  </li>
-                )}
-
-                {hasAdminPower && (
-                  <li>
-                    <NavLink
                       to="/dashboard/logs"
                       className="nav-link"
                       onClick={() => setIsSidebarOpen(false)}
@@ -2890,8 +2929,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 )}
 
-                {hasAdminPower && (
-                  <li className="sidebar-nav-section">النظام</li>
+                {(isStaff || hasAdminPower || isReception || canManageAdminUsers) && (
+                  <li className="sidebar-nav-section">الموظفات والحسابات والإعدادات</li>
+                )}
+
+                {(isStaff || hasAdminPower || isReception) && (
+                  <li>
+                    <NavLink
+                      to="/employee/overview"
+                      className="nav-link"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <FontAwesomeIcon icon={faUserTie} />
+                      بوابة الموظفات
+                    </NavLink>
+                  </li>
                 )}
 
                 {hasAdminPower && (
@@ -2991,8 +3043,13 @@ const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Main Content */}
           <div className={`col-md-9 col-lg-10 dashboard-main${isBookingInternalPage ? " has-single-scroll" : ""}`}>
-            <div className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}>
-              <div className="dash-topbar-left">
+            <DashboardHeader
+              theme="dashboard"
+              title={dashboardHeaderTitle}
+              subtitle={settings.salonName || "Queens Salon"}
+              className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}
+              showProfileButton={hasAdminPower || isReception || isStaff}
+              leading={
                 <button
                   type="button"
                   className="dash-topbar-toggle"
@@ -3002,40 +3059,22 @@ const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <FontAwesomeIcon icon={faBars} />
                 </button>
-
-                <div className="dash-topbar-title">
-                  <h2>{isTvQueuePage ? "شاشة نداء الحجوزات" : "لوحة التحكم"}</h2>
-                  <span>{settings.salonName}</span>
-                </div>
-              </div>
-
-              <div className="dash-topbar-right">
-                {!isTvQueuePage ? (
+              }
+              actions={
+                isTvQueuePage ? (
+                  <span className="dashboard-header__clock">
+                    {topbarClockText}
+                  </span>
+                ) : (
                   <InternalPortalSwitcher
                     canOpenDashboard={true}
                     canOpenHr={hasAdminPower}
-                    canOpenEmployee={
-                      hasAdminPower ||
-                      isReception ||
-                      isStaff
-                    }
                     onLogout={handleLogout}
                     className="dash-topbar-actions"
                   />
-                ) : null}
-
-                <div className={`dash-topbar-user ${isTvQueuePage ? "is-tv-clock" : ""}`}>
-                  <span
-                    className="dash-topbar-name"
-                    dir="rtl"
-                    style={{ unicodeBidi: "plaintext" }}
-                  >
-                    {isTvQueuePage ? topbarClockText : topbarName || "-"}
-                  </span>
-                  {!isTvQueuePage ? <span className="dash-topbar-role">{displayedRoleTitle}</span> : null}
-                </div>
-              </div>
-            </div>
+                )
+              }
+            />
 
             <div className="dashboard-inner">
               <Routes>
@@ -3098,7 +3137,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   />
                 )}
 
-                // ✅ NEW: Route للحجز الداخلي داخل الداشبورد (Owner/Admin/Reception فقط)
+                {/* Route للحجز الداخلي داخل الداشبورد (Owner/Admin/Reception فقط) */}
                 {(hasAdminPower || isReception) && (
                   <Route
                     path="booking-internal"
