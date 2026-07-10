@@ -24,6 +24,16 @@ function lockBodyScroll() {
   if (typeof document === "undefined") return;
   if (openCount === 1) {
     const body = document.body;
+
+    // Recover from a stale lock left by a previously interrupted/unmounted
+    // modal. Without this guard, the next modal captures "hidden" as the
+    // previous value and restores it on close, leaving the dashboard frozen.
+    if (body.classList.contains("qs-modal-open")) {
+      body.classList.remove("qs-modal-open");
+      if (body.style.overflow === "hidden") body.style.overflow = "";
+      body.style.paddingRight = "";
+    }
+
     previousBodyOverflow = body.style.overflow;
     previousBodyPaddingRight = body.style.paddingRight;
 
@@ -43,6 +53,9 @@ function unlockBodyScroll() {
     body.style.overflow = previousBodyOverflow || "";
     body.style.paddingRight = previousBodyPaddingRight || "";
     body.classList.remove("qs-modal-open");
+
+    previousBodyOverflow = "";
+    previousBodyPaddingRight = "";
   }
 }
 
