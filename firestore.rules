@@ -386,6 +386,30 @@ service cloud.firestore {
         && hasEmployeeRef();
     }
 
+    function canManageBookingSlots(salonId) {
+      return signedIn()
+        && !isAnonymous()
+        && (
+          isBootstrapAdmin()
+          || roleForSalon(salonId) in ["owner", "admin", "reception"]
+        );
+    }
+
+    function isSignedInClientSlotLockCreate(salonId, slotId) {
+      return signedIn()
+        && !isAnonymous()
+        && !exists(/databases/$(database)/documents/salons/$(salonId)/booking_slots/$(slotId))
+        && (request.resource.data.bookingId is string)
+        && (request.resource.data.userId is string)
+        && request.resource.data.userId == request.auth.uid
+        && (request.resource.data.date is string)
+        && (request.resource.data.time is string)
+        && hasEmployeeRef()
+        && existsAfter(/databases/$(database)/documents/salons/$(salonId)/bookings/$(request.resource.data.bookingId))
+        && getAfter(/databases/$(database)/documents/salons/$(salonId)/bookings/$(request.resource.data.bookingId)).data.userId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/salons/$(salonId)/bookings/$(request.resource.data.bookingId)).data.channel == "client";
+    }
+
     /* =========================
        users (OLD ROOT)
     ========================= */
@@ -947,18 +971,30 @@ service cloud.firestore {
     match /salons/{salonId}/booking_slots/{slotId} {
       allow read: if true;
 
-      allow create: if (
-        (signedIn()
-          && !exists(/databases/$(database)/documents/salons/$(salonId)/booking_slots/$(slotId))
-        )
-        || isGuestSlotLockCreate(slotId)
-      );
+      allow create: if canManageBookingSlots(salonId)
+        || isSignedInClientSlotLockCreate(salonId, slotId)
+        || isGuestSlotLockCreate(slotId);
 
-      allow update: if false;
+      // Existing slot documents may only be reused by authorized administrators.
+      // createdAt is immutable; operational changes use updatedAt.
+      allow update: if canManageBookingSlots(salonId)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "bookingId",
+          "employeeId",
+          "employeeUid",
+          "employeeName",
+          "employeeKey",
+          "date",
+          "time",
+          "startTime",
+          "durationMin",
+          "userId",
+          "clientPhone",
+          "updatedAt"
+        ]);
 
-      allow delete: if signedIn() && (
-        isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]
-      );
+      allow delete: if canManageBookingSlots(salonId);
     }
 
     /* =========================
