@@ -132,6 +132,11 @@ function readableRole(role: unknown) {
   return cleanText(role) || "غير محدد";
 }
 
+function canReadTeamAttendanceRole(role: unknown) {
+  const value = normalizeText(role);
+  return value === "owner" || value === "hr";
+}
+
 function formatLongDate(value: unknown) {
   const raw = cleanText(value);
   if (!raw) return "غير محدد";
@@ -269,12 +274,61 @@ function getEmployeeFileBadgeTone(status: EmployeeFile["status"]): StatusTone {
   return "neutral";
 }
 
+function uniqueCleanTexts(values: unknown[]) {
+  return Array.from(
+    new Set(values.map(cleanText).filter(Boolean))
+  );
+}
+
+function isFullAttendanceIdentifier(value: unknown) {
+  return /^[A-Za-z0-9_-]{20,}$/.test(cleanText(value));
+}
+
+function resolveRosterAttendanceIdentity(item: DirectoryEmployee) {
+  const uidCandidates = uniqueCleanTexts([
+    item.employeeUid,
+    item.linkedUid,
+    item.authUid,
+    item.uid,
+    item.userId,
+    item.linkedUserId,
+    item.employeeDocId,
+    item.linkedEmployeeDocId,
+    item.employeeId,
+    item.id,
+    item.employeeKey,
+  ]);
+  const docCandidates = uniqueCleanTexts([
+    item.employeeDocId,
+    item.linkedEmployeeDocId,
+    item.employeeId,
+    item.id,
+    item.employeeUid,
+    item.linkedUid,
+    item.authUid,
+    item.uid,
+    item.linkedUserId,
+    item.employeeKey,
+  ]);
+  const fullUid = uidCandidates.find(isFullAttendanceIdentifier) || "";
+  const fullDocId = docCandidates.find(isFullAttendanceIdentifier) || "";
+  const employeeUid =
+    fullUid || fullDocId || uidCandidates[0] || docCandidates[0] || "";
+  const employeeId =
+    fullDocId || fullUid || docCandidates[0] || employeeUid;
+
+  return {
+    employeeUid,
+    employeeId,
+  };
+}
+
 function getRosterAttendanceId(item: DirectoryEmployee) {
-  return cleanText(item.employeeId || item.id || item.uid || item.linkedUid || item.linkedUserId);
+  return resolveRosterAttendanceIdentity(item).employeeId;
 }
 
 function getRosterEmployeeUid(item: DirectoryEmployee) {
-  return cleanText(item.linkedUid || item.uid || item.employeeKey || item.employeeId || item.id);
+  return resolveRosterAttendanceIdentity(item).employeeUid;
 }
 
 function getEmployeeBaseSalary(item: DirectoryEmployee | null) {
@@ -378,7 +432,36 @@ function HrOverview({
   const [payrollMessage, setPayrollMessage] = useState("");
 
   const rosterSorted = useMemo(() => {
-    return [...roster].sort((a, b) => {
+    const uniqueRoster = new Map<string, DirectoryEmployee>();
+
+    for (const item of roster) {
+      const identity =
+        getRosterAttendanceId(item) ||
+        cleanText(item.id) ||
+        cleanText(item.email) ||
+        getEmployeeName(item);
+
+      const current = uniqueRoster.get(identity);
+      if (!current) {
+        uniqueRoster.set(identity, item);
+        continue;
+      }
+
+      const currentScore = Object.values(current).filter((value) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === "boolean" || typeof value === "number") return true;
+        return cleanText(value).length > 0;
+      }).length;
+      const nextScore = Object.values(item).filter((value) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === "boolean" || typeof value === "number") return true;
+        return cleanText(value).length > 0;
+      }).length;
+
+      if (nextScore > currentScore) uniqueRoster.set(identity, item);
+    }
+
+    return Array.from(uniqueRoster.values()).sort((a, b) => {
       const aStatus = getStatusMeta(a);
       const bStatus = getStatusMeta(b);
       if (aStatus.active !== bStatus.active) return Number(bStatus.active) - Number(aStatus.active);
@@ -908,7 +991,14 @@ function HrOverview({
               <select value={absenceForm.employeeKey} onChange={(e) => setAbsenceForm((current) => ({ ...current, employeeKey: e.target.value }))}>
                 {rosterSorted.map((item) => {
                   const employeeId = getRosterAttendanceId(item);
-                  return <option key={employeeId || getEmployeeName(item)} value={employeeId}>{getEmployeeName(item)}</option>;
+                  return (
+                    <option
+                      key={`absence-${employeeId || getEmployeeName(item)}`}
+                      value={employeeId}
+                    >
+                      {getEmployeeName(item)}
+                    </option>
+                  );
                 })}
               </select>
             </label>
@@ -968,7 +1058,14 @@ function HrOverview({
               <select value={payrollForm.employeeKey} onChange={(e) => handlePayrollEmployeeChange(e.target.value)}>
                 {rosterSorted.map((item) => {
                   const employeeId = getRosterAttendanceId(item);
-                  return <option key={employeeId || getEmployeeName(item)} value={employeeId}>{getEmployeeName(item)}</option>;
+                  return (
+                    <option
+                      key={`payroll-${employeeId || getEmployeeName(item)}`}
+                      value={employeeId}
+                    >
+                      {getEmployeeName(item)}
+                    </option>
+                  );
                 })}
               </select>
             </label>
@@ -1105,11 +1202,12 @@ export default function AdminHrDashboard() {
         }))
         .filter((item) => item.employeeId);
 
-      const attendanceRows =
-        await listAttendanceForEmployeesDateFromWorker({
-          employees: attendanceEmployees,
-          date: getTodayAttendanceDateKey(),
-        });
+      const attendanceRows = canReadTeamAttendanceRole(session.role)
+        ? await listAttendanceForEmployeesDateFromWorker({
+            employees: attendanceEmployees,
+            date: getTodayAttendanceDateKey(),
+          })
+        : [];
       if (requestId !== loadRequestRef.current) return;
       setRoster(Array.isArray(rosterRows) ? rosterRows : []);
       setApplications(Array.isArray(applicationRows) ? applicationRows : []);
@@ -1126,7 +1224,7 @@ export default function AdminHrDashboard() {
         setLoadingData(false);
       }
     }
-  }, []);
+  }, [session.role]);
 
   useEffect(() => {
     if (!isOverviewRoute) {

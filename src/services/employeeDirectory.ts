@@ -22,28 +22,48 @@ function normalizeRole(value: unknown) {
 }
 
 function normalizeEntry(raw: any, id: string, source: DirectorySource): DirectoryEntryWithSource {
-  const employeeId = cleanText(
-    raw?.employeeId ||
-      raw?.linkedEmployeeDocId ||
-      raw?.linkedUserId ||
-      raw?.uid ||
+  const employeeUid = cleanText(
+    raw?.employeeUid ||
       raw?.linkedUid ||
+      raw?.authUid ||
+      raw?.uid ||
+      raw?.userId ||
+      raw?.linkedUserId ||
+      ""
+  );
+  const employeeDocId = cleanText(
+    raw?.employeeDocId ||
+      raw?.linkedEmployeeDocId ||
+      raw?.employeeId ||
+      id
+  );
+  const employeeId = cleanText(
+    raw?.employeeDocId ||
+      raw?.linkedEmployeeDocId ||
+      raw?.employeeId ||
       raw?.id ||
       id
   );
 
   const linkedUid = cleanText(
     raw?.linkedUid ||
-      raw?.uid ||
-      raw?.linkedUserId ||
       raw?.employeeUid ||
+      raw?.authUid ||
+      raw?.uid ||
+      raw?.userId ||
+      raw?.linkedUserId ||
       ""
   );
 
   return {
     employeeId,
+    employeeUid: employeeUid || undefined,
+    employeeDocId: employeeDocId || undefined,
+    linkedEmployeeDocId: cleanText(raw?.linkedEmployeeDocId) || undefined,
+    authUid: cleanText(raw?.authUid) || undefined,
+    userId: cleanText(raw?.userId) || undefined,
     employeeKey:
-      cleanText(raw?.employeeKey || raw?.linkedUid || raw?.uid || raw?.linkedUserId || id) ||
+      cleanText(raw?.employeeKey || employeeUid || linkedUid || employeeDocId || id) ||
       undefined,
     name: cleanText(raw?.name || raw?.displayName || raw?.fullName || ""),
     email: cleanEmail(raw?.email || raw?.userEmail || "") || undefined,
@@ -69,6 +89,11 @@ function directoryKeys(row: EmployeeDirectoryEntry | undefined) {
     cleanText(row.linkedUid) ||
       "",
     cleanText(row.employeeKey) || "",
+    cleanText(row.employeeUid) || "",
+    cleanText(row.employeeDocId) || "",
+    cleanText(row.linkedEmployeeDocId) || "",
+    cleanText(row.authUid) || "",
+    cleanText(row.userId) || "",
     cleanEmail(row.email) || "",
     cleanText(row.employeeId) || "",
   ].filter(Boolean)));
@@ -91,6 +116,11 @@ function mergeEntry(
   return {
     employeeId: preferNext ? next.employeeId || current.employeeId : current.employeeId || next.employeeId,
     employeeKey: current.employeeKey || next.employeeKey,
+    employeeUid: current.employeeUid || next.employeeUid,
+    employeeDocId: current.employeeDocId || next.employeeDocId,
+    linkedEmployeeDocId: current.linkedEmployeeDocId || next.linkedEmployeeDocId,
+    authUid: current.authUid || next.authUid,
+    userId: current.userId || next.userId,
     name: next.name || current.name,
     email: next.email || current.email,
     phone: next.phone || current.phone,
@@ -129,21 +159,46 @@ async function fetchDirectoryFromFirestore(): Promise<EmployeeDirectoryEntry[]> 
     readDirectoryCollection("admin_users"),
   ]);
 
-  const map = new Map<string, DirectoryEntryWithSource>();
+  type DirectoryCluster = {
+    entry: DirectoryEntryWithSource;
+    keys: Set<string>;
+  };
+
+  const clusters: DirectoryCluster[] = [];
 
   for (const row of [...staffPublic, ...adminUsers, ...employees]) {
-    const keys = directoryKeys(row);
-    if (!keys.length) continue;
+    const rowKeys = new Set(directoryKeys(row));
+    if (!rowKeys.size) continue;
 
-    const current = keys.map((key) => map.get(key)).find(Boolean);
-    const merged = mergeEntry(current, row);
-
-    for (const key of Array.from(new Set([...keys, ...directoryKeys(current), ...directoryKeys(merged)]))) {
-      map.set(key, merged);
+    const matchedIndexes: number[] = [];
+    for (let index = 0; index < clusters.length; index += 1) {
+      const cluster = clusters[index];
+      if (Array.from(rowKeys).some((key) => cluster.keys.has(key))) {
+        matchedIndexes.push(index);
+      }
     }
+
+    let merged: DirectoryEntryWithSource | undefined;
+    const mergedKeys = new Set(rowKeys);
+
+    for (const index of matchedIndexes) {
+      const cluster = clusters[index];
+      merged = mergeEntry(merged, cluster.entry);
+      for (const key of cluster.keys) mergedKeys.add(key);
+    }
+
+    merged = mergeEntry(merged, row);
+    for (const key of directoryKeys(merged)) mergedKeys.add(key);
+
+    for (let index = matchedIndexes.length - 1; index >= 0; index -= 1) {
+      clusters.splice(matchedIndexes[index], 1);
+    }
+
+    clusters.push({ entry: merged, keys: mergedKeys });
   }
 
-  return Array.from(new Set(map.values()))
+  return clusters
+    .map((cluster) => cluster.entry)
     .filter((row) => row.active !== false)
     .sort((a, b) => {
       const an = cleanText(a.name || a.email || a.employeeId);
