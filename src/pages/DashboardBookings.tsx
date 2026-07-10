@@ -878,18 +878,19 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
           </label>
           <input
             id={authorizationInputId}
-            type="password"
+            type="text"
             className="bk-input bk-action-pin-input"
+            style={{ WebkitTextSecurity: "disc" } as any}
             value={pin}
-            onChange={(e) => setPin(e.target.value)}
+            onChange={(e) => setPin(e.target.value.replace(/\D+/g, ""))}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               e.preventDefault();
               void handleConfirm();
             }}
             placeholder="أدخلي رمز التفويض لإكمال هذا الإجراء"
-            autoComplete="off"
-            name="booking_action_authorization_code"
+            autoComplete="one-time-code"
+            name="booking_action_authorization_code_no_autofill"
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={BOOKING_ACTION_PIN.length}
@@ -2133,6 +2134,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     mixedCardAmount: "",
   });
   const [pendingSensitiveAction, setPendingSensitiveAction] = useState<SensitiveBookingAction | null>(null);
+  const searchQueryBeforeSensitiveActionRef = useRef("");
   const [newBookingsSeenAt, setNewBookingsSeenAt] = useState<number>(() => {
     try {
       if (typeof window === "undefined") return 0;
@@ -3148,8 +3150,28 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [uiRole]);
 
   const requestSensitiveAction = useCallback((action: SensitiveBookingAction) => {
+    // Preserve the active booking search. Password managers used to pair the
+    // authorization-code field with the page search and inject the admin email.
+    searchQueryBeforeSensitiveActionRef.current = q;
     setPendingSensitiveAction(action);
-  }, []);
+  }, [q]);
+
+  useEffect(() => {
+    if (!pendingSensitiveAction) return;
+
+    const expectedQuery = searchQueryBeforeSensitiveActionRef.current;
+    const currentEmail = String(auth.currentUser?.email || authUser.email || "")
+      .trim()
+      .toLowerCase();
+    const currentQuery = String(q || "").trim().toLowerCase();
+    const expectedNormalized = String(expectedQuery || "").trim().toLowerCase();
+
+    // Defense in depth for browser/password-manager autofill. Restore only
+    // when the injected value is exactly the signed-in administrator email.
+    if (currentEmail && currentQuery === currentEmail && currentQuery !== expectedNormalized) {
+      setQ(expectedQuery);
+    }
+  }, [authUser.email, pendingSensitiveAction, q]);
 
   const sensitiveActionDescription = (action: SensitiveBookingAction | null) => {
     if (!action) return "";
@@ -4893,7 +4915,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <input 
                 type="text"
                 className="bk-input bk-search-input" 
-                autoComplete="new-password"
+                name="booking_filters_search_query"
+                autoComplete="off"
+                data-form-type="other"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
