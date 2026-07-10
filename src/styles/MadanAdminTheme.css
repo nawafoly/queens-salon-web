@@ -27406,3 +27406,387 @@ body.emp-detail-open {
     margin-inline-end: 0 !important;
   }
 }
+
+/* =========================================================
+   Catalog details modal — polished viewport layout
+   Keeps the details editor compact, centered and readable.
+========================================================= */
+body.scatalog-modal-open {
+  overscroll-behavior: none;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 2299;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal > * {
+  pointer-events: auto;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__modal-backdrop {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(242, 183, 5, 0.15), transparent 34%),
+    rgba(3, 6, 64, 0.68) !important;
+  backdrop-filter: blur(7px) saturate(0.82) !important;
+  cursor: default !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  z-index: 1 !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  width: min(1000px, calc(100vw - 56px)) !important;
+  max-width: 1000px !important;
+  height: auto !important;
+  max-height: min(780px, calc(100dvh - 56px)) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  transform: translate(-50%, -50%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  border-radius: 26px !important;
+  background: #f8fafc !important;
+  box-shadow:
+    0 42px 120px rgba(3, 6, 64, 0.42),
+    0 0 0 1px rgba(15, 23, 42, 0.04) !important;
+  animation: scatalog-polished-modal-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__detail-head {
+  position: relative !important;
+  top: auto !important;
+  z-index: 2 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 20px !important;
+  margin: 0 !important;
+  padding: 24px 26px 22px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 88% -20%, rgba(242, 183, 5, 0.28), transparent 38%),
+    linear-gradient(135deg, #030640 0%, #101a2d 72%, #181b27 100%) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__detail-head::after {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline-end: -54px !important;
+  top: -92px !important;
+  width: 230px !important;
+  height: 230px !important;
+  border: 30px solid rgba(242, 183, 5, 0.08) !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  pointer-events: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-head > div:first-child {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-head h2 {
+  max-width: 100%;
+  margin: 0 0 8px !important;
+  overflow: hidden;
+  color: #fff !important;
+  font-size: clamp(24px, 2.1vw, 32px) !important;
+  font-weight: 950 !important;
+  line-height: 1.25 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-head .scatalog-ref__pill {
+  min-height: 25px;
+  padding: 4px 10px !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #d1fae5 !important;
+  background: rgba(16, 185, 129, 0.2) !important;
+  font-size: 11px !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions {
+  position: relative;
+  z-index: 2;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .exp-btn {
+  min-width: 74px !important;
+  min-height: 40px !important;
+  padding: 9px 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  border-radius: 12px !important;
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.5) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .exp-btn:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .exp-btn.primary {
+  border-color: rgba(242, 183, 5, 0.72) !important;
+  color: #030640 !important;
+  background: linear-gradient(135deg, #f6cf57, #f2b705) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .exp-btn.danger {
+  border-color: rgba(254, 202, 202, 0.9) !important;
+  color: #b42318 !important;
+  background: #fff1f1 !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .scatalog-ref__modal-close {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__detail-actions .scatalog-ref__modal-close:hover:not(:disabled) {
+  color: #030640 !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__tabs {
+  position: relative !important;
+  z-index: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 12px 22px !important;
+  overflow-x: auto !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px -26px rgba(15, 23, 42, 0.5) !important;
+  scrollbar-width: none;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__tabs button {
+  flex: 0 0 auto !important;
+  min-height: 38px !important;
+  padding: 8px 15px !important;
+  border: 1px solid rgba(15, 23, 42, 0.09) !important;
+  border-radius: 11px !important;
+  color: #64748b !important;
+  background: #f8fafc !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__tabs button:hover,
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__tabs button.active {
+  border-color: rgba(242, 183, 5, 0.5) !important;
+  color: #030640 !important;
+  background: rgba(242, 183, 5, 0.13) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__content {
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 22px 24px 26px !important;
+  overflow: auto !important;
+  align-content: start !important;
+  gap: 16px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.22) transparent;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .scatalog-ref__grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  :where(.settings-field, .scatalog-ref__stack, .scatalog-ref__linked-row) {
+  min-width: 0;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .settings-field {
+  padding: 14px !important;
+  border: 1px solid rgba(15, 23, 42, 0.075) !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 14px 30px -28px rgba(15, 23, 42, 0.5) !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  .settings-field > label {
+  display: block;
+  margin-bottom: 8px !important;
+  color: #334155 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.scatalog-modal-portal
+  .scatalog-ref__right--modal
+  :where(.settings-input, .settings-select, .settings-textarea) {
+  min-height: 44px !important;
+  border-radius: 12px !important;
+  background: #f8fafc !important;
+}
+
+@keyframes scatalog-polished-modal-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 14px)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal {
+    top: 8px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 16px) !important;
+    transform: none !important;
+    border-radius: 20px !important;
+    animation: scatalog-polished-modal-mobile-in 180ms ease !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__right--modal
+    .scatalog-ref__detail-head {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 20px 18px 18px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__detail-head h2 {
+    font-size: 24px !important;
+    white-space: normal;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__detail-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100%;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__detail-actions .exp-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__right--modal
+    .scatalog-ref__tabs {
+    padding: 10px 14px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__right--modal
+    .scatalog-ref__content {
+    padding: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal
+    .scatalog-ref__right--modal
+    .scatalog-ref__grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@keyframes scatalog-polished-modal-mobile-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-skin.madan-admin-shell.scatalog-modal-portal .scatalog-ref__right--modal {
+    animation: none !important;
+  }
+}

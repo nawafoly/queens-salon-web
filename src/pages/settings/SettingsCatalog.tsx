@@ -121,6 +121,19 @@ const DEFAULT_PACKAGE_SESSIONS = 10;
 function CatalogModalPortal(props: { active: boolean; children: ReactNode }) {
   const { active, children } = props;
 
+  useEffect(() => {
+    if (!active || typeof document === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("scatalog-modal-open");
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("scatalog-modal-open");
+    };
+  }, [active]);
+
   if (!active || typeof document === "undefined") {
     return <>{children}</>;
   }
@@ -129,6 +142,7 @@ function CatalogModalPortal(props: { active: boolean; children: ReactNode }) {
     <div
       className="dashboard-skin madan-admin-shell scatalog-modal-portal"
       dir="rtl"
+      role="presentation"
     >
       {children}
     </div>,
