@@ -91,6 +91,18 @@ function getNameFromStorage(): string {
   return String(localStorage.getItem("userName") || "").trim();
 }
 
+function hasCachedClientProfile(): boolean {
+  try {
+    const profile = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
+    if (!profile || typeof profile !== "object") return false;
+
+    const role = profile?.role ? normalizeAuthRole(profile.role) : "client";
+    return role === "client";
+  } catch {
+    return false;
+  }
+}
+
 function writeLiveAuthCache(args: {
   uid: string;
   email: string;
@@ -248,6 +260,8 @@ const App: React.FC = () => {
 
   const location = useLocation();
   const legacyClientSession = isLegacyClientSession(storedSession);
+  const hasProfileShellCache =
+    legacyClientSession || isClientRole(userRole) || hasCachedClientProfile();
 
   const effectiveSessionUser = authUser
     ? authUser
@@ -399,6 +413,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const onAuthChanged = () => {
+      if (document.documentElement.dataset.profileEditOpen === "true") {
+        return;
+      }
+
       readWelcomeFromStorage();
       const currentSession = readStoredAuthSession();
       setStoredSession(currentSession);
@@ -418,7 +436,7 @@ const App: React.FC = () => {
      Guards
   ================================ */
 
-  const DashboardGuard = ({ children }: { children: React.ReactNode }) => {
+  const renderDashboardRoute = (children: React.ReactElement) => {
     if (!authReady || !firebaseAuthReady) {
       return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
@@ -429,13 +447,13 @@ const App: React.FC = () => {
     if (role === "staff") return <Navigate to="/employee/overview" replace />;
     if (role === "hr") return <Navigate to="/admin" replace />;
     if (role === "owner" || role === "admin" || role === "reception") {
-      return <>{children}</>;
+      return children;
     }
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/hr" replace />;
   };
 
-  const AdminGuard = ({ children }: { children: React.ReactNode }) => {
+  const renderAdminRoute = (children: React.ReactElement) => {
     if (!authReady || !firebaseAuthReady) {
       return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
@@ -443,14 +461,14 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (isAdminPortalRole(role)) return <>{children}</>;
+    if (isAdminPortalRole(role)) return children;
     if (role === "reception") return <Navigate to="/dashboard" replace />;
     if (role === "staff") return <Navigate to="/employee/overview" replace />;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/hr" replace />;
   };
 
-  const EmployeeGuard = ({ children }: { children: React.ReactNode }) => {
+  const renderEmployeeRoute = (children: React.ReactElement) => {
     if (!authReady || !firebaseAuthReady) {
       return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
@@ -458,21 +476,22 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (isEmployeePortalRole(role)) return <>{children}</>;
+    if (isEmployeePortalRole(role)) return children;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
     return <Navigate to="/hr" replace />;
   };
 
-  const ClientGuard = ({ children }: { children: React.ReactNode }) => {
+  const renderClientRoute = (children: React.ReactElement) => {
     if (!authReady || !firebaseAuthReady) {
+      if (hasProfileShellCache) return children;
       return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
 
-    if (!authUser && legacyClientSession) return <>{children}</>;
+    if (!authUser && legacyClientSession) return children;
     if (!authUser) return <Navigate to="/login" replace />;
 
     const role = userRole;
-    if (isClientRole(role) && userActive) return <>{children}</>;
+    if (isClientRole(role) && userActive) return children;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (isInternalAuthRole(role)) {
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
@@ -480,18 +499,14 @@ const App: React.FC = () => {
     return <Navigate to="/login" replace />;
   };
 
-  const ProfileGuard = ({ children }: { children: React.ReactNode }) => {
-    return <ClientGuard>{children}</ClientGuard>;
-  };
-
-  const PendingGuard = ({ children }: { children: React.ReactNode }) => {
+  const renderPendingRoute = (children: React.ReactElement) => {
     if (!authReady || !firebaseAuthReady) {
       return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
     }
     if (!authUser) return <Navigate to="/hr" replace />;
 
     const role = userRole;
-    if (isPendingRole(role)) return <>{children}</>;
+    if (isPendingRole(role)) return children;
     if (isInternalAuthRole(role)) {
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     }
@@ -595,9 +610,7 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : (
-              <PendingGuard>
-                <DashboardPending />
-              </PendingGuard>
+              renderPendingRoute(<DashboardPending />)
             )
           }
         />
@@ -609,9 +622,7 @@ const App: React.FC = () => {
             IS_STAFF_APP ? (
               <Navigate to="/hr" replace />
             ) : (
-              <ClientGuard>
-                <Profile />
-              </ClientGuard>
+              renderClientRoute(<Profile />)
             )
           }
         />
@@ -623,14 +634,14 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : (
-              <DashboardGuard>
+              renderDashboardRoute(
                 <Dashboard
                   initialRole={userRole}
                   initialName={userName}
                   initialEmail={String(effectiveSessionUser?.email || "")}
                   authReady={authReady}
                 />
-              </DashboardGuard>
+              )
             )
           }
         />
@@ -642,9 +653,7 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : (
-              <AdminGuard>
-                <AdminHrDashboard />
-              </AdminGuard>
+              renderAdminRoute(<AdminHrDashboard />)
             )
           }
         />
@@ -670,9 +679,7 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : (
-              <EmployeeGuard>
-                <EmployeePortal />
-              </EmployeeGuard>
+              renderEmployeeRoute(<EmployeePortal />)
             )
           }
         />
@@ -684,9 +691,7 @@ const App: React.FC = () => {
             IS_STAFF_APP ? (
               <Navigate to="/hr" replace />
             ) : (
-              <ProfileGuard>
-                <Profile />
-              </ProfileGuard>
+              renderClientRoute(<Profile />)
             )
           }
         />

@@ -3247,6 +3247,28 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     saveHintTimerRef.current = window.setTimeout(() => setSavedNoteId(""), 1800);
   };
 
+  const hasActiveBookingFilters = useMemo(
+    () =>
+      Boolean(
+        q.trim() ||
+        statusFilter !== "all" ||
+        excludedStatus ||
+        settlementFilter !== "all" ||
+        dateFrom ||
+        dateTo
+      ),
+    [dateFrom, dateTo, excludedStatus, q, settlementFilter, statusFilter]
+  );
+
+  const resetBookingFilters = useCallback(() => {
+    setQ("");
+    setStatusFilter("all");
+    setExcludedStatus("");
+    setSettlementFilter("all");
+    setDateFrom("");
+    setDateTo("");
+  }, []);
+
   const renderBookingSection = useCallback((section: BookingDisplaySection) => (
     <section
       key={section.key}
@@ -3588,8 +3610,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </div>
         </div>
       ) : (
-        <div className="bk-bookings-section-empty">
-          لا توجد حجوزات في هذا القسم حسب الفلاتر الحالية.
+        <div className="bk-bookings-section-empty" role="status">
+          <div className="bk-bookings-empty-card">
+            <span className="bk-bookings-empty-icon" aria-hidden="true">
+              <FontAwesomeIcon icon={faFilter} />
+            </span>
+            <strong>
+              {hasActiveBookingFilters
+                ? "لا توجد نتائج مطابقة"
+                : `لا توجد ${section.key === "internal" ? "حجوزات داخلية" : "حجوزات عادية"} حالياً`}
+            </strong>
+            <p>
+              {hasActiveBookingFilters
+                ? "غيّر البحث أو الفلاتر الحالية لعرض حجوزات هذا القسم."
+                : "عند إضافة حجوزات لهذا القسم ستظهر هنا مباشرة."}
+            </p>
+            {hasActiveBookingFilters ? (
+              <button type="button" className="exp-btn ghost sm" onClick={resetBookingFilters}>
+                <FontAwesomeIcon icon={faRotate} /> إعادة ضبط الفلاتر
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
     </section>
@@ -3598,12 +3639,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     canManageRefund,
     handleDeleteBooking,
     handleUpdateStatus,
+    hasActiveBookingFilters,
     lastUpdateMap,
     openEditBookingModal,
     openRefundModal,
     paymentSummaryByBookingId,
     refundBusyId,
     refundMapByBookingId,
+    resetBookingFilters,
     uiRole,
   ]);
 
@@ -3914,14 +3957,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
             <button
               className="exp-btn ghost"
-              onClick={() => {
-                setQ("");
-                setStatusFilter("all");
-                setExcludedStatus("");
-                setSettlementFilter("all");
-                setDateFrom("");
-                setDateTo("");
-              }}
+              onClick={resetBookingFilters}
             >
               <FontAwesomeIcon icon={faRotate} /> إعادة ضبط
             </button>

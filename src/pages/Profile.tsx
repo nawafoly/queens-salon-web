@@ -13,6 +13,7 @@ import {
   LuIdCard,
   LuInstagram,
   LuImage,
+  LuLogOut,
   LuMapPin,
   LuPencil,
   LuPhone,
@@ -87,6 +88,72 @@ interface BookingData {
 }
 
 type ProfileMode = "firebase" | "local";
+type ProfileTab = "profile" | "loyalty" | "bookings";
+type ProfileViewData = {
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  birthdate: string;
+  avatar: string;
+};
+
+type EditProfileForm = {
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  birthdate: string;
+};
+
+const PROFILE_ACTIVE_TAB_STORAGE_KEY = "profile_active_tab_v1";
+
+function isProfileTab(value: string | null): value is ProfileTab {
+  return value === "profile" || value === "loyalty" || value === "bookings";
+}
+
+function readStoredProfileTab(): ProfileTab {
+  if (typeof window === "undefined") return "profile";
+
+  try {
+    const value = window.sessionStorage.getItem(PROFILE_ACTIVE_TAB_STORAGE_KEY);
+    if (value === "qr") return "loyalty";
+    return isProfileTab(value) ? value : "profile";
+  } catch {
+    return "profile";
+  }
+}
+
+function writeStoredProfileTab(tab: ProfileTab) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(PROFILE_ACTIVE_TAB_STORAGE_KEY, tab);
+  } catch {
+    // Session storage can be unavailable in restricted browser modes.
+  }
+}
+
+function clearStoredProfileTab() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(PROFILE_ACTIVE_TAB_STORAGE_KEY);
+  } catch {
+    // noop
+  }
+}
+
+function sameProfileViewData(a: ProfileViewData, b: ProfileViewData) {
+  return (
+    a.name === b.name &&
+    a.phone === b.phone &&
+    a.email === b.email &&
+    a.city === b.city &&
+    a.birthdate === b.birthdate &&
+    a.avatar === b.avatar
+  );
+}
 
 function statusKey(status?: string) {
   const s = String(status || "").trim().toLowerCase();
@@ -224,7 +291,7 @@ function mapFsBookingToUi(id: string, b: FsBooking): BookingData {
   const serviceForDisplay =
     snapName || legacyServiceName || (serviceId ? getServiceName(serviceId) : "—");
 
-  const createdAt = toMillisAny(b.createdAt) || toMillisAny(b.updatedAt) || Date.now();
+  const createdAt = toMillisAny(b.createdAt) || toMillisAny(b.updatedAt) || 0;
 
   return {
     id,
@@ -240,6 +307,36 @@ function mapFsBookingToUi(id: string, b: FsBooking): BookingData {
     createdAt,
     publicId: String(b.publicId || ""),
   };
+}
+
+function sameBooking(a: BookingData, b: BookingData) {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.phone === b.phone &&
+    a.service === b.service &&
+    a.employee === b.employee &&
+    a.date === b.date &&
+    a.time === b.time &&
+    a.status === b.status &&
+    a.total === b.total &&
+    a.finalPrice === b.finalPrice &&
+    a.createdAt === b.createdAt &&
+    a.publicId === b.publicId
+  );
+}
+
+function sameBookings(a: BookingData[], b: BookingData[]) {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => sameBooking(item, b[index]));
+}
+
+function displayBookingRef(booking: BookingData) {
+  const publicId = String(booking.publicId || "").trim();
+  if (publicId) return publicId.toUpperCase();
+
+  const rawId = String(booking.id || "").trim();
+  return rawId ? rawId.slice(-6).toUpperCase() : "—";
 }
 
 const Profile: React.FC = () => {
@@ -270,11 +367,8 @@ const Profile: React.FC = () => {
   const [authChecked, setAuthChecked] = useState(
     () => !!auth.currentUser || !!cachedProfile || !!currentUser
   );
-  const [showQrCamera, setShowQrCamera] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
 
-  const [userData, setUserData] = useState({
+  const [userData, setUserData] = useState<ProfileViewData>({
     name: cachedProfile?.name || currentUser?.name || localStorage.getItem("userName") || "",
     phone: normalizeKsaPhone(
       cachedProfile?.phone || currentUser?.phone || localStorage.getItem("userPhone") || ""
@@ -282,7 +376,7 @@ const Profile: React.FC = () => {
     email: cachedProfile?.email || currentUser?.email || localStorage.getItem("userEmail") || "",
     city: cachedProfile?.city || currentUser?.city || "",
     birthdate: cachedProfile?.birthdate || currentUser?.birthdate || "",
-    avatar: localStorage.getItem("userAvatar") || "",
+    avatar: resolveStableAvatarUrl(localStorage.getItem("userAvatar")) || "",
   });
 
   // =======================
@@ -296,8 +390,14 @@ const Profile: React.FC = () => {
       localStorage.removeItem("userAvatar");
       return;
     }
-    setUserData((prev) => ({ ...prev, avatar: stableAvatar }));
-    localStorage.setItem("userAvatar", stableAvatar);
+    setUserData((prev) => {
+      if (prev.avatar === stableAvatar) return prev;
+      return { ...prev, avatar: stableAvatar };
+    });
+
+    if (localStorage.getItem("userAvatar") !== stableAvatar) {
+      localStorage.setItem("userAvatar", stableAvatar);
+    }
   }, []);
 
   useEffect(() => {
@@ -309,17 +409,23 @@ const Profile: React.FC = () => {
       const stableAvatar = resolveStableAvatarUrl((raw as any)?.avatarUrl);
       const fallbackAvatar = resolveStableAvatarUrl(localStorage.getItem("userAvatar"));
 
-      setUserData((prev) => ({
-        ...prev,
-        name: String(raw.name || prev.name || ""),
-        phone: normalizeKsaPhone(String(raw.phone || prev.phone || "")),
-        email: String(raw.email || prev.email || ""),
-        city: String(raw.city || prev.city || ""),
-        birthdate: String(raw.birthdate || prev.birthdate || ""),
-        avatar: stableAvatar || fallbackAvatar || prev.avatar || "",
-      }));
+      setUserData((prev) => {
+        const next = {
+          ...prev,
+          name: String(raw.name || prev.name || ""),
+          phone: normalizeKsaPhone(String(raw.phone || prev.phone || "")),
+          email: String(raw.email || prev.email || ""),
+          city: String(raw.city || prev.city || ""),
+          birthdate: String(raw.birthdate || prev.birthdate || ""),
+          avatar: stableAvatar || fallbackAvatar || prev.avatar || "",
+        };
 
-      if (stableAvatar) localStorage.setItem("userAvatar", stableAvatar);
+        return sameProfileViewData(prev, next) ? prev : next;
+      });
+
+      if (stableAvatar && localStorage.getItem("userAvatar") !== stableAvatar) {
+        localStorage.setItem("userAvatar", stableAvatar);
+      }
     };
 
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -379,8 +485,6 @@ const Profile: React.FC = () => {
           if (p?.name) localStorage.setItem("userName", String(p.name));
           if (p?.email) localStorage.setItem("userEmail", String(p.email));
           if (p?.phone) localStorage.setItem("userPhone", normalizeKsaPhone(String(p.phone)));
-
-          window.dispatchEvent(new Event("authChanged"));
         })
         .catch((e) => {
           if (!alive) return;
@@ -414,12 +518,17 @@ const Profile: React.FC = () => {
   // =======================
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [bookingsErr, setBookingsErr] = useState<string>("");
+  const bookingsUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (profileMode !== "firebase" || !firebaseUid) {
-      setBookings([]);
       return;
     }
+
+    if (bookingsUidRef.current && bookingsUidRef.current !== firebaseUid) {
+      setBookings((prev) => (prev.length ? [] : prev));
+    }
+    bookingsUidRef.current = firebaseUid;
 
     setBookingsErr("");
 
@@ -440,13 +549,12 @@ const Profile: React.FC = () => {
           return tsB - tsA;
         });
 
-        setBookings(arr);
-        setBookingsErr("");
+        setBookings((prev) => (sameBookings(prev, arr) ? prev : arr));
+        setBookingsErr((prev) => (prev ? "" : prev));
       },
       (err) => {
         console.error("Bookings snapshot error:", err);
         setBookingsErr(`خطأ في تحميل الحجوزات: ${err.message}`);
-        setBookings([]);
       }
     );
 
@@ -482,22 +590,6 @@ const Profile: React.FC = () => {
 
     future.sort((a, b) => toTs(a.date, a.time) - toTs(b.date, b.time));
     return future[0];
-  }, [bookings]);
-
-  // =======================
-  // Last booking
-  // =======================
-  const lastBooking = useMemo(() => {
-    const completed = bookings.filter((b) => statusKey(b.status) === "completed");
-    if (!completed.length) return null;
-
-    completed.sort((a, b) => {
-      const tsA = toTs(a.date, a.time);
-      const tsB = toTs(b.date, b.time);
-      return tsB - tsA;
-    });
-
-    return completed[0];
   }, [bookings]);
 
   // =======================
@@ -651,66 +743,31 @@ const Profile: React.FC = () => {
     });
   };
 
-  const handleBottomQr = () => {
-    setActiveTab("qr");
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() => readStoredProfileTab());
+
+  const selectProfileTab = (tab: ProfileTab) => {
+    writeStoredProfileTab(tab);
+    setActiveTab(tab);
+  };
+
+  const handleBottomLoyalty = () => {
+    selectProfileTab("loyalty");
   };
 
   const handleBottomBookings = () => {
-    setActiveTab("bookings");
+    selectProfileTab("bookings");
   };
 
   const handleBottomProfile = () => {
-    setActiveTab("profile");
-  };
-
-  const closeQrCamera = () => {
-    if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
-      cameraStreamRef.current = null;
-    }
-    setShowQrCamera(false);
-  };
-
-  const openQrCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-      cameraStreamRef.current = stream;
-      setShowQrCamera(true);
-
-      window.setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }, 0);
-    } catch (err) {
-      console.error("Camera open failed:", err);
-      alert("تعذر فتح الكاميرا. تأكد من السماح بالوصول للكاميرا.");
-    }
-  };
-
-  const handleRepeatLastBooking = () => {
-    if (!lastBooking) {
-      alert("ما فيه حجز مكتمل سابق للتكرار حالياً.");
-      return;
-    }
-    leavingForBookingRef.current = true;
-    navigate("/booking", {
-      state: {
-        repeatFromBookingId: lastBooking.id,
-        prefillServiceName: lastBooking.service,
-      },
-    });
+    selectProfileTab("profile");
   };
 
   // =======================
   // Edit Modal
   // =======================
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [editForm, setEditForm] = useState<EditProfileForm>({
     name: "",
     phone: "",
     email: "",
@@ -718,19 +775,39 @@ const Profile: React.FC = () => {
     birthdate: "",
   });
 
-  useEffect(() => {
-    if (showEditModal) {
-      setEditForm({
-        name: userData.name,
-        phone: userData.phone,
-        email: userData.email,
-        city: userData.city,
-        birthdate: userData.birthdate,
-      });
-    }
-  }, [showEditModal, userData]);
+  const openEditProfile = () => {
+    const nextForm = {
+      name: userData.name,
+      phone: userData.phone,
+      email: userData.email,
+      city: userData.city,
+      birthdate: userData.birthdate,
+    };
 
-  const handleSaveProfile = async () => {
+    setEditForm(nextForm);
+    setIsEditOpen(true);
+  };
+
+  const closeEditProfile = () => {
+    setIsEditOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isEditOpen) return;
+
+    document.documentElement.dataset.profileEditOpen = "true";
+
+    return () => {
+      delete document.documentElement.dataset.profileEditOpen;
+    };
+  }, [isEditOpen]);
+
+  const handleSaveProfile = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if (isSavingProfile) return;
+
+    setIsSavingProfile(true);
+
     const trimmedName = editForm.name.trim();
     const trimmedEmail = editForm.email.trim();
     const trimmedCity = editForm.city.trim();
@@ -738,11 +815,13 @@ const Profile: React.FC = () => {
 
     if (!trimmedName) {
       alert("الاسم مطلوب.");
+      setIsSavingProfile(false);
       return;
     }
 
     if (trimmedBd && !isValidISODate(trimmedBd)) {
       alert("تاريخ الميلاد يجب أن يكون بصيغة YYYY-MM-DD (مثال: 1995-07-20).");
+      setIsSavingProfile(false);
       return;
     }
 
@@ -759,7 +838,10 @@ const Profile: React.FC = () => {
         await updateUserProfile(firebaseUid, updated);
       }
 
-      setUserData((prev) => ({ ...prev, ...updated }));
+      setUserData((prev) => {
+        const next = { ...prev, ...updated };
+        return sameProfileViewData(prev, next) ? prev : next;
+      });
 
       const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "{}");
       const merged = { ...cached, ...updated };
@@ -769,13 +851,17 @@ const Profile: React.FC = () => {
       if (updated.email) localStorage.setItem("userEmail", updated.email);
       if (updated.phone) localStorage.setItem("userPhone", updated.phone);
 
-      window.dispatchEvent(new Event("authChanged"));
+      setIsEditOpen(false);
+      window.setTimeout(() => {
+        window.dispatchEvent(new Event("authChanged"));
+      }, 0);
 
       alert("تم حفظ البيانات بنجاح ✅");
-      setShowEditModal(false);
     } catch (e) {
       console.error("Save profile error:", e);
       alert("صار خطأ أثناء حفظ البيانات. حاول مرة ثانية.");
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -787,6 +873,7 @@ const Profile: React.FC = () => {
       await logoutFirebase();
     } catch { }
 
+    clearStoredProfileTab();
     window.dispatchEvent(new Event("authChanged"));
     window.location.href = "/login";
   };
@@ -794,7 +881,6 @@ const Profile: React.FC = () => {
   // =======================
   // UI helpers: search + filter
   // =======================
-  const [activeTab, setActiveTab] = useState<"profile" | "qr" | "bookings">("profile");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [q, setQ] = useState("");
 
@@ -842,12 +928,12 @@ const Profile: React.FC = () => {
 
         {/* Top Navigation / Header */}
         <div className="p-nav-header">
-          <button className="p-icon-btn" onClick={() => navigate("/", { replace: true })}>
+          <button className="p-icon-btn" type="button" onClick={() => navigate("/", { replace: true })}>
             <LuArrowLeft />
           </button>
           <h1 className="p-nav-title">الملف الشخصي</h1>
-          <button className="p-icon-btn" onClick={() => setShowEditModal(true)}>
-            <LuSettings />
+          <button className="p-icon-btn" type="button" onClick={handleLogout} aria-label="تسجيل الخروج">
+            <LuLogOut />
           </button>
         </div>
 
@@ -868,7 +954,7 @@ const Profile: React.FC = () => {
               {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span><LuImage /></span>}
             </div>
             {!userData.avatar ? (
-              <button className="p-avatar-edit" onClick={() => fileInputRef.current?.click()}>+</button>
+              <button className="p-avatar-edit" type="button" onClick={() => fileInputRef.current?.click()}>+</button>
             ) : null}
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </div>
@@ -909,8 +995,8 @@ const Profile: React.FC = () => {
           </div>
           <section className="p-quick-booking">
             <div className="p-quick-booking-head">
-              <h3>ابدئي حجزك بسرعة</h3>
-              <p>اختاري حجز جديد أو كرري آخر موعد لك.</p>
+              <h3>اختصاراتك السريعة</h3>
+              <p>احجزي موعد جديد، راجعي حجوزاتك، أو تابعي موعدك الحالي.</p>
             </div>
             <div className="p-quick-booking-actions">
               <button
@@ -927,27 +1013,39 @@ const Profile: React.FC = () => {
               </button>
               <button
                 className="p-link-action p-link-action-soft"
-                onClick={handleRepeatLastBooking}
+                onClick={() => selectProfileTab("bookings")}
                 type="button"
-                aria-label="تكرار آخر حجز"
+                aria-label="عرض حجوزاتي"
               >
-                <span>تكرار آخر حجز</span>
+                <span>حجوزاتي</span>
               </button>
-              <button
-                className="p-link-action p-link-action-ghost"
-                onClick={openQrCamera}
-                type="button"
-                aria-label="QR"
-              >
-                <span>QR</span>
-              </button>
+              {upcomingBooking ? (
+                <button
+                  className="p-link-action p-link-action-ghost"
+                  onClick={() => navigate("/track")}
+                  type="button"
+                  aria-label="تتبع الحجز القادم"
+                >
+                  <span>تتبع الحجز</span>
+                </button>
+              ) : (
+                <a
+                  className="p-link-action p-link-action-ghost"
+                  href={getWhatsAppLink(SUPPORT_PHONE, "مرحباً، أحتاج مساعدة في حجز موعد.")}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="التواصل عبر واتساب"
+                >
+                  <span>واتساب الدعم</span>
+                </a>
+              )}
             </div>
           </section>
         </>
         ) : null}
 
         {/* ===== Achievement / Loyalty Section (Inspired by image) ===== */}
-        {activeTab === "qr" ? (
+        {activeTab === "loyalty" ? (
         <div className="p-section-container">
           <div className="p-section-header">
             <h3>النقاط والولاء</h3>
@@ -1011,7 +1109,7 @@ const Profile: React.FC = () => {
                 <div className="p-footer-item"><LuClock3 className="p-inline-icon" /> {formatTime12(upcomingBooking.time, "-")}</div>
               </div>
               <div className="p-booking-actions-modern">
-                <button className="p-btn-modern primary" onClick={() => navigate("/track")}>تتبع الحجز</button>
+                <button className="p-btn-modern primary" type="button" onClick={() => navigate("/track")}>تتبع الحجز</button>
                 <a className="p-btn-modern ghost" href={getWhatsAppLink(SUPPORT_PHONE, `مرحباً، استفسار عن حجز ${upcomingBooking.service}`)} target="_blank" rel="noreferrer">واتساب</a>
               </div>
             </div>
@@ -1048,6 +1146,9 @@ const Profile: React.FC = () => {
                       <span className={`p-list-status status-${statusKey(b.status)}`}>{statusLabelAr(b.status)}</span>
                     </div>
                     <div className="p-list-row-bottom">
+                      <span className="p-list-booking-ref">
+                        <LuIdCard className="p-inline-icon" /> رقم الحجز <bdi dir="ltr">{displayBookingRef(b)}</bdi>
+                      </span>
                       <span><LuCalendarDays className="p-inline-icon" /> {formatDateAr(b.date)}</span>
                       <span><LuClock3 className="p-inline-icon" /> {formatTime12(b.time, "-")}</span>
                     </div>
@@ -1071,7 +1172,7 @@ const Profile: React.FC = () => {
       </div>
 
       <nav className="p-bottom-nav" aria-label="Profile quick navigation">
-        <button className={`p-bottom-item ${activeTab === "qr" ? "is-active" : ""}`} type="button" onClick={handleBottomQr} aria-label="Loyalty">
+        <button className={`p-bottom-item ${activeTab === "loyalty" ? "is-active" : ""}`} type="button" onClick={handleBottomLoyalty} aria-label="Loyalty">
           <LuAward />
         </button>
         <button className={`p-bottom-item ${activeTab === "bookings" ? "is-active" : ""}`} type="button" onClick={handleBottomBookings} aria-label="Bookings">
@@ -1088,18 +1189,31 @@ const Profile: React.FC = () => {
         <a className="p-bottom-item is-instagram" href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram">
           <LuInstagram />
         </a>
-        <button className="p-bottom-item" type="button" onClick={() => setShowEditModal(true)} aria-label="Settings">
+        <button className="p-bottom-item" type="button" onClick={openEditProfile} aria-label="Settings">
           <LuSettings />
         </button>
       </nav>
 
       {/* ===== Edit Modal (Modernized) ===== */}
-      {showEditModal ? (
-        <div className="p-modal-overlay-modern" onClick={() => setShowEditModal(false)}>
-          <div className="p-modal-content-modern" onClick={(e) => e.stopPropagation()}>
+      {isEditOpen ? (
+        <div className="p-modal-overlay-modern">
+          <div
+            className="p-modal-content-modern"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-edit-title"
+          >
+            <form className="p-modal-form-modern" onSubmit={handleSaveProfile}>
             <div className="p-modal-header-modern">
-              <h3>تعديل الملف الشخصي</h3>
-              <button className="p-close-modal" onClick={() => setShowEditModal(false)}>✕</button>
+              <h3 id="profile-edit-title">تعديل الملف الشخصي</h3>
+              <button
+                className="p-close-modal"
+                type="button"
+                onClick={closeEditProfile}
+                aria-label="إغلاق نافذة تعديل الملف الشخصي"
+              >
+                ✕
+              </button>
             </div>
             <div className="p-modal-body-modern">
               <button
@@ -1140,21 +1254,11 @@ const Profile: React.FC = () => {
               </div>
             </div>
             <div className="p-modal-footer-modern">
-              <button className="p-btn-save-modern" onClick={handleSaveProfile}>حفظ التغييرات</button>
-              <button className="p-btn-logout-modal" onClick={handleLogout}>تسجيل الخروج</button>
+              <button className="p-btn-save-modern" type="submit" disabled={isSavingProfile}>
+                {isSavingProfile ? "جاري الحفظ..." : "حفظ التغييرات"}
+              </button>
             </div>
-          </div>
-        </div>
-      ) : null}
-
-      {showQrCamera ? (
-        <div className="p-camera-overlay" onClick={closeQrCamera}>
-          <div className="p-camera-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="p-camera-head">
-              <h3>QR</h3>
-              <button className="p-close-modal" onClick={closeQrCamera}>✕</button>
-            </div>
-            <video ref={videoRef} className="p-camera-video" autoPlay playsInline muted />
+            </form>
           </div>
         </div>
       ) : null}

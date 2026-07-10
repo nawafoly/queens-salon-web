@@ -10190,6 +10190,44 @@
   background: #f8fafc;
 }
 
+.dashboard-skin.madan-admin-shell .bk-bookings-empty-card {
+  width: min(100%, 420px);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.dashboard-skin.madan-admin-shell .bk-bookings-empty-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: var(--madan-navy-950);
+  background: rgba(242, 183, 5, 0.12);
+  border: 1px solid rgba(242, 183, 5, 0.24);
+}
+
+.dashboard-skin.madan-admin-shell .bk-bookings-empty-card strong {
+  color: var(--madan-navy-950);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.dashboard-skin.madan-admin-shell .bk-bookings-empty-card p {
+  max-width: 34rem;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.dashboard-skin.madan-admin-shell .bk-bookings-empty-card .exp-btn {
+  min-height: 38px !important;
+  margin-top: 2px;
+}
+
 /* ---------- Booking mobile cards ---------- */
 .dashboard-skin.madan-admin-shell .bk-mobile-grid {
   display: none;
