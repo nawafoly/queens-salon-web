@@ -284,8 +284,21 @@ async function resolveRequesterContext(request, env, db) {
     });
   } else if (manualOwnerBootstrap) {
     // Emergency owner cache is UID-bound, short-lived, and created only through D1 CLI.
-    // Keep it authoritative until Firestore exposes a valid active owner profile.
-    runtime = cachedPermissionProfile;
+    // Rebuild the owner runtime instead of trusting serialized permission arrays.
+    // Owner always has the complete attendance permission set.
+    runtime = {
+      ...createVerifiedTokenRuntime("owner"),
+      permissionVersion: Math.max(
+        PERMISSION_SCHEMA_VERSION,
+        Number(cachedPermissionProfile?.permissionVersion || 0) || 0
+      ),
+      cachedAt: cachedPermissionProfile?.cachedAt || null,
+      expiresAt: cachedPermissionProfile?.expiresAt || null,
+      sources: {
+        permissionCache: true,
+        cacheSource: "manual-bootstrap",
+      },
+    };
     authSource = "firebase_jwt+d1_manual_owner_bootstrap";
   } else if (authoritativeProfile && !firestoreLookupDegraded) {
     runtime = authoritativeRuntime;

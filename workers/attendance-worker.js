@@ -90,7 +90,22 @@ export async function handleAttendanceRequest({
   if (pathname === "/attendance/records" && request.method === "GET") {
     const employeeUid = normalizeText(url.searchParams.get("employeeUid"));
     if (!canReadAttendanceRecords(requester.runtime, requester.uid, employeeUid)) {
-      return json(403, { ok: false, message: "attendance_records_forbidden" });
+      return json(403, {
+        ok: false,
+        message: "attendance_records_forbidden",
+        requiredPermission: "attendance.view",
+        authorization: {
+          role: requester.runtime?.role || "guest",
+          active: Boolean(requester.runtime?.isActive),
+          permissionVersion: Number(requester.runtime?.permissionVersion || 0) || 0,
+          permissions: Array.isArray(requester.runtime?.permissionsAllow)
+            ? requester.runtime.permissionsAllow
+            : [],
+          authSource: requester.authSource || null,
+          cacheHit: Boolean(requester.permissionCache?.hit),
+          cacheExpiresAt: requester.permissionCache?.expiresAt || null,
+        },
+      });
     }
     return listAttendanceRecords(url, db, directoryDb);
   }
@@ -98,7 +113,22 @@ export async function handleAttendanceRequest({
   if (pathname === "/attendance/monthly-summaries" && request.method === "GET") {
     const employeeUid = normalizeText(url.searchParams.get("employeeUid"));
     if (!canReadAttendanceRecords(requester.runtime, requester.uid, employeeUid)) {
-      return json(403, { ok: false, message: "attendance_records_forbidden" });
+      return json(403, {
+        ok: false,
+        message: "attendance_records_forbidden",
+        requiredPermission: "attendance.view",
+        authorization: {
+          role: requester.runtime?.role || "guest",
+          active: Boolean(requester.runtime?.isActive),
+          permissionVersion: Number(requester.runtime?.permissionVersion || 0) || 0,
+          permissions: Array.isArray(requester.runtime?.permissionsAllow)
+            ? requester.runtime.permissionsAllow
+            : [],
+          authSource: requester.authSource || null,
+          cacheHit: Boolean(requester.permissionCache?.hit),
+          cacheExpiresAt: requester.permissionCache?.expiresAt || null,
+        },
+      });
     }
     return listAttendanceMonthlySummaries(url, db);
   }
@@ -177,6 +207,10 @@ function methodNotAllowed(methods) {
 
 function hasRuntimePermission(runtime, permission) {
   if (!runtime?.isActive) return false;
+
+  // The central permission model defines owner as an unconditional superuser.
+  // Keep this invariant at the final authorization boundary as defense in depth.
+  if (runtime?.role === "owner") return true;
 
   const allow = new Set(
     Array.isArray(runtime?.permissionsAllow)
