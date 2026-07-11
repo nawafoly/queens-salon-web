@@ -285,6 +285,7 @@ async function requestAttendanceWorker<T>(
 type WorkerPayload = T & {
     message?: string;
     detail?: string;
+    requiredPermission?: string;
   };
 
   const executeRequest = async (
@@ -337,6 +338,7 @@ type WorkerPayload = T & {
         [
           "attendance_records_forbidden",
           "attendance_management_forbidden",
+          "attendance_permission_forbidden",
           "invalid_firebase_id_token",
         ].includes(authFailureMessage));
 
@@ -359,13 +361,22 @@ type WorkerPayload = T & {
   const { response, payload } = result;
 
   if (!response.ok || !payload) {
-    const error = new Error(
-      cleanText(
-        payload?.message ||
-          payload?.detail ||
-          `attendance_worker_request_failed_${response.status}`
-      )
-    ) as Error & {
+    const rawMessage = cleanText(
+      payload?.message ||
+        payload?.detail ||
+        `attendance_worker_request_failed_${response.status}`
+    );
+    const requiredPermission = cleanText(
+      payload?.requiredPermission
+    );
+    const displayMessage =
+      rawMessage === "attendance_permission_forbidden"
+        ? requiredPermission
+          ? `لا تملك صلاحية الحضور المطلوبة: ${requiredPermission}`
+          : "لا تملك صلاحية تنفيذ هذا الإجراء في نظام الحضور."
+        : rawMessage;
+
+    const error = new Error(displayMessage) as Error & {
       status?: number;
       payload?: unknown;
     };

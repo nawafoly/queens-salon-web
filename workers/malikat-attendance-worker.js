@@ -51,16 +51,6 @@ const ROLE_ALIASES = {
   "super-admin": "admin",
 };
 
-const ROLE_PRIORITY = {
-  guest: 0,
-  client: 1,
-  staff: 2,
-  reception: 3,
-  hr: 4,
-  accountant: 5,
-  admin: 6,
-  owner: 7,
-};
 
 const ACTIVE_TRUE_VALUES = new Set([
   "active",
@@ -78,6 +68,49 @@ const ACTIVE_FALSE_VALUES = new Set([
   "no",
   "blocked",
 ]);
+
+const PERMISSION_SCHEMA_VERSION = 3;
+const PERMISSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const ATTENDANCE_PERMISSION_KEYS = new Set([
+  "attendance.own.view",
+  "attendance.view",
+  "attendance.records.create",
+  "attendance.records.update",
+  "attendance.records.delete",
+  "attendance.absences.manage",
+  "attendance.leaves.manage",
+  "attendance.export",
+  "attendance.settings.manage",
+]);
+
+const ROLE_ATTENDANCE_PERMISSIONS = {
+  owner: [...ATTENDANCE_PERMISSION_KEYS],
+  admin: [
+    "attendance.own.view",
+    "attendance.view",
+    "attendance.records.create",
+    "attendance.records.update",
+    "attendance.absences.manage",
+    "attendance.leaves.manage",
+    "attendance.export",
+    "attendance.settings.manage",
+  ],
+  hr: [
+    "attendance.own.view",
+    "attendance.view",
+    "attendance.records.create",
+    "attendance.records.update",
+    "attendance.absences.manage",
+    "attendance.leaves.manage",
+    "attendance.export",
+  ],
+  reception: ["attendance.own.view", "attendance.view"],
+  accountant: ["attendance.view", "attendance.export"],
+  staff: ["attendance.own.view"],
+  client: [],
+  guest: [],
+};
 
 export default {
   async fetch(request, env) {
@@ -178,7 +211,10 @@ async function resolveRequesterContext(request, env, db) {
   const uid = verifiedToken.uid;
   const email = verifiedToken.email;
   const salonId = getSalonId(env);
-  const d1Identity = await loadRequesterAttendanceIdentity(db, uid);
+  const [d1Identity, cachedPermissionProfile] = await Promise.all([
+    loadRequesterAttendanceIdentity(db, uid),
+    loadPermissionCache(db, uid),
+  ]);
 
   const [userResult, adminResult] = await Promise.all([
     fetchFirestoreDocument({
@@ -205,7 +241,8 @@ async function resolveRequesterContext(request, env, db) {
       ? adminResult.data?.data || {}
       : null;
 
-  const profileFound = Boolean(userData || adminData);
+  const firestoreLookupDegraded = !userResult.ok || !adminResult.ok;
+  const authoritativeProfile = userData || adminData || null;
   const tokenRole = normalizeRole(
     tokenPayload?.role || tokenPayload?.roleKey
   );
@@ -216,56 +253,31 @@ async function resolveRequesterContext(request, env, db) {
         ? "staff"
         : "guest";
 
-  let runtime = profileFound
-    ? resolveEffectiveRuntime(userData, adminData)
-    : createVerifiedTokenRuntime(fallbackRole);
+  let runtime;
+  let authSource;
 
-  // Firestore can temporarily reject one of the profile lookups (for example
-  // quota exhaustion). In that degraded state, keep the verified Firebase
-  // custom claim as a trusted role source instead of silently downgrading an
-  // owner/admin/HR account to the lower role from the only profile that loaded.
-  // Explicit profile denies and inactive profiles still win.
-  const firestoreLookupDegraded = !userResult.ok || !adminResult.ok;
-  const tokenRuntime = createVerifiedTokenRuntime(tokenRole);
-  const tokenRolePriority = ROLE_PRIORITY[tokenRuntime.role] ?? ROLE_PRIORITY.guest;
-  const runtimeRolePriority = ROLE_PRIORITY[runtime.role] ?? ROLE_PRIORITY.guest;
-  const hasManagementDeny = runtime.permissionsDeny.includes("settings.manage");
-  const configuredManagementEmail = isAttendanceManagementEmail(email, env);
+  if (authoritativeProfile && !firestoreLookupDegraded) {
+    runtime = createRuntime(authoritativeProfile);
+    authSource = "firebase_jwt+firestore_permissions";
+    await savePermissionCache(db, {
+      uid,
+      email,
+      runtime,
+      source: userData ? "users" : "admin_users",
+    });
+  } else if (firestoreLookupDegraded && cachedPermissionProfile) {
+    runtime = cachedPermissionProfile;
+    authSource = "firebase_jwt+d1_permission_cache";
+  } else if (authoritativeProfile) {
+    runtime = createRuntime(authoritativeProfile);
+    authSource = "firebase_jwt+partial_firestore_permissions";
+  } else {
+    runtime = createVerifiedTokenRuntime(fallbackRole);
+    authSource = "firebase_jwt+employee_fallback";
 
-  // Legacy admin accounts may not yet have a role custom claim. During a
-  // Firestore quota outage, use this server-side allowlist of verified
-  // Firebase emails as a narrow management fallback.
-  if (
-    configuredManagementEmail &&
-    runtime.isActive &&
-    !hasManagementDeny &&
-    (ROLE_PRIORITY[runtime.role] ?? ROLE_PRIORITY.guest) < ROLE_PRIORITY.admin
-  ) {
-    runtime = {
-      ...runtime,
-      role: "admin",
-      sources: {
-        ...(runtime.sources || {}),
-        configuredManagementEmail: true,
-      },
-    };
-  }
-
-  if (
-    profileFound &&
-    firestoreLookupDegraded &&
-    runtime.isActive &&
-    !hasManagementDeny &&
-    tokenRolePriority > runtimeRolePriority
-  ) {
-    runtime = {
-      ...runtime,
-      role: tokenRuntime.role,
-      sources: {
-        ...(runtime.sources || {}),
-        token: tokenRuntime,
-      },
-    };
+    if (!firestoreLookupDegraded) {
+      await deletePermissionCache(db, uid);
+    }
   }
 
   const identityData = {
@@ -275,13 +287,13 @@ async function resolveRequesterContext(request, env, db) {
 
   identityData.uid = firstText(identityData.uid, uid);
   identityData.email = firstText(identityData.email, email);
-  identityData.role = firstText(identityData.role, fallbackRole);
+  identityData.role = firstText(identityData.role, runtime.role, fallbackRole);
   identityData.active =
-    identityData.active === undefined ? true : identityData.active;
+    identityData.active === undefined ? runtime.isActive : identityData.active;
   identityData.employeeProfileEnabled =
     identityData.employeeProfileEnabled === undefined
       ? Boolean(d1Identity.employeeDocId) ||
-        ATTENDANCE_FALLBACK_EMPLOYEE_ROLES.has(fallbackRole)
+        ATTENDANCE_FALLBACK_EMPLOYEE_ROLES.has(runtime.role)
       : identityData.employeeProfileEnabled;
   identityData.linkedEmployeeId = firstText(
     userData?.linkedEmployeeId,
@@ -314,9 +326,10 @@ async function resolveRequesterContext(request, env, db) {
     runtime,
     userData: identityData,
     adminUserData: adminData,
-    authSource: profileFound
-      ? "firebase_jwt+firestore_profile"
-      : "firebase_jwt+d1_fallback",
+    authSource,
+    permissionCache: cachedPermissionProfile
+      ? { hit: true, expiresAt: cachedPermissionProfile.expiresAt || null }
+      : { hit: false, expiresAt: null },
     firestoreProfileStatus: {
       user: userResult.ok ? (userResult.found ? "found" : "missing") : userResult.error,
       admin: adminResult.ok ? (adminResult.found ? "found" : "missing") : adminResult.error,
@@ -334,14 +347,22 @@ const ATTENDANCE_FALLBACK_EMPLOYEE_ROLES = new Set([
 ]);
 
 function createVerifiedTokenRuntime(role) {
+  const normalizedRole = normalizeRole(role);
+  const effectivePermissions = resolveAttendancePermissions({
+    role: normalizedRole,
+    permissions: [],
+    permissionOverrides: null,
+    permissionVersion: 0,
+  });
+
   return {
-    role: normalizeRole(role),
+    role: normalizedRole,
     isActive: true,
-    permissionsAllow: [],
+    permissionVersion: 0,
+    permissions: effectivePermissions,
+    permissionsAllow: effectivePermissions,
     permissionsDeny: [],
     sources: {
-      user: null,
-      admin: null,
       token: true,
     },
   };
@@ -443,6 +464,152 @@ async function loadRequesterAttendanceIdentity(db, uid) {
       employeeDocId: "",
       lastZoneId: "",
     };
+  }
+}
+
+async function loadPermissionCache(db, uid) {
+  const cleanUid = cleanText(uid);
+  if (!db || !cleanUid) return null;
+
+  try {
+    const row = await db
+      .prepare(
+        `
+        SELECT uid, email, role, active, permission_version,
+               permissions_json, overrides_enabled_json,
+               overrides_disabled_json, effective_permissions_json,
+               source, cached_at, expires_at
+        FROM attendance_permission_cache
+        WHERE uid = ?
+        LIMIT 1
+      `
+      )
+      .bind(cleanUid)
+      .first();
+
+    if (!row) return null;
+
+    const expiresAt = cleanText(row.expires_at);
+    if (!expiresAt || Date.parse(expiresAt) <= Date.now()) {
+      await deletePermissionCache(db, cleanUid);
+      return null;
+    }
+
+    const role = normalizeRole(row.role);
+    const cachedEffectivePermissions = normalizeAttendancePermissions(
+      safeJsonArray(row.effective_permissions_json)
+    );
+    const permissions =
+      role === "owner" || !cachedEffectivePermissions.length
+        ? resolveAttendancePermissions({
+            role,
+            permissions: safeJsonArray(row.permissions_json),
+            permissionOverrides: {
+              enabled: safeJsonArray(row.overrides_enabled_json),
+              disabled: safeJsonArray(row.overrides_disabled_json),
+            },
+            permissionVersion: Number(row.permission_version || 0) || 0,
+          })
+        : cachedEffectivePermissions;
+
+    return {
+      role,
+      isActive: Number(row.active) === 1,
+      permissionVersion: Number(row.permission_version || 0) || 0,
+      permissions,
+      permissionsAllow: permissions,
+      permissionsDeny: normalizeAttendancePermissions(
+        safeJsonArray(row.overrides_disabled_json)
+      ),
+      cachedAt: cleanText(row.cached_at) || null,
+      expiresAt,
+      sources: {
+        permissionCache: true,
+        cacheSource: cleanText(row.source) || "firestore",
+      },
+    };
+  } catch (error) {
+    console.warn("[attendance] permission cache lookup failed", error);
+    return null;
+  }
+}
+
+async function savePermissionCache(db, { uid, email, runtime, source }) {
+  const cleanUid = cleanText(uid);
+  if (!db || !cleanUid || !runtime) return;
+
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + PERMISSION_CACHE_TTL_MS
+  ).toISOString();
+
+  try {
+    await db
+      .prepare(
+        `
+        INSERT INTO attendance_permission_cache (
+          uid, email, role, active, permission_version, permissions_json,
+          overrides_enabled_json, overrides_disabled_json,
+          effective_permissions_json, source, cached_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(uid) DO UPDATE SET
+          email = excluded.email,
+          role = excluded.role,
+          active = excluded.active,
+          permission_version = excluded.permission_version,
+          permissions_json = excluded.permissions_json,
+          overrides_enabled_json = excluded.overrides_enabled_json,
+          overrides_disabled_json = excluded.overrides_disabled_json,
+          effective_permissions_json = excluded.effective_permissions_json,
+          source = excluded.source,
+          cached_at = excluded.cached_at,
+          expires_at = excluded.expires_at
+      `
+      )
+      .bind(
+        cleanUid,
+        cleanText(email) || null,
+        normalizeRole(runtime.role),
+        runtime.isActive ? 1 : 0,
+        Number(runtime.permissionVersion || 0) || 0,
+        JSON.stringify(normalizeAttendancePermissions(runtime.permissions)),
+        "[]",
+        JSON.stringify(
+          normalizeAttendancePermissions(runtime.permissionsDeny)
+        ),
+        JSON.stringify(
+          normalizeAttendancePermissions(runtime.permissionsAllow)
+        ),
+        cleanText(source) || "firestore",
+        now.toISOString(),
+        expiresAt
+      )
+      .run();
+  } catch (error) {
+    console.warn("[attendance] permission cache write failed", error);
+  }
+}
+
+async function deletePermissionCache(db, uid) {
+  const cleanUid = cleanText(uid);
+  if (!db || !cleanUid) return;
+
+  try {
+    await db
+      .prepare("DELETE FROM attendance_permission_cache WHERE uid = ?")
+      .bind(cleanUid)
+      .run();
+  } catch (error) {
+    console.warn("[attendance] permission cache delete failed", error);
+  }
+}
+
+function safeJsonArray(value) {
+  try {
+    const parsed = JSON.parse(cleanText(value) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
 
@@ -703,63 +870,107 @@ function normalizeFirestoreCollectionPath(collectionPath, env) {
   return cleanPath;
 }
 
-function resolveEffectiveRuntime(userData, adminData) {
-  const userRuntime = createRuntime(userData);
-  const adminRuntime = createRuntime(adminData);
-  const runtimes = [userRuntime, adminRuntime];
-
-  const activeRuntimes = runtimes.filter(item => item.isActive);
-  const roleCandidates = activeRuntimes.length
-    ? activeRuntimes
-    : runtimes;
-
-  let role = "guest";
-  let priority = ROLE_PRIORITY.guest;
-
-  for (const runtime of roleCandidates) {
-    const currentPriority =
-      ROLE_PRIORITY[runtime.role] ?? ROLE_PRIORITY.guest;
-
-    if (currentPriority > priority) {
-      role = runtime.role;
-      priority = currentPriority;
-    }
-  }
-
-  return {
-    role,
-    isActive: runtimes.some(item => item.isActive),
-    permissionsAllow: uniqueStrings(
-      ...(runtimes.flatMap(item => item.permissionsAllow))
-    ),
-    permissionsDeny: uniqueStrings(
-      ...(runtimes.flatMap(item => item.permissionsDeny))
-    ),
-    sources: {
-      user: userRuntime,
-      admin: adminRuntime,
-    },
-  };
-}
-
 function createRuntime(data) {
   if (!data || typeof data !== "object") {
     return {
       role: "guest",
       isActive: false,
+      permissionVersion: 0,
+      permissions: [],
       permissionsAllow: [],
       permissionsDeny: [],
+      sources: { profile: false },
     };
   }
 
+  const role = normalizeRole(data.role || data.roleKey);
+  const permissionVersion = Number(data.permissionVersion || 0) || 0;
+  const permissionOverrides = normalizePermissionOverridesObject(
+    data.permissionOverrides
+  );
+  const permissions = resolveAttendancePermissions({
+    role,
+    permissions: data.permissions,
+    permissionOverrides,
+    permissionVersion,
+    legacyAllow: data.permissionsAllow,
+    legacyDeny: data.permissionsDeny,
+  });
+
   return {
-    role: normalizeRole(data.role || data.roleKey),
+    role,
     isActive: resolveActive(data),
-    permissionsAllow: normalizeStringArray(
-      data.permissionsAllow
+    permissionVersion,
+    permissions,
+    permissionsAllow: permissions,
+    permissionsDeny: uniqueStrings(
+      ...permissionOverrides.disabled,
+      ...normalizeStringArray(data.permissionsDeny)
     ),
-    permissionsDeny: normalizeStringArray(
-      data.permissionsDeny
+    sources: { profile: true },
+  };
+}
+
+function resolveAttendancePermissions({
+  role,
+  permissions,
+  permissionOverrides,
+  permissionVersion,
+  legacyAllow,
+  legacyDeny,
+}) {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === "owner") {
+    return [...ATTENDANCE_PERMISSION_KEYS];
+  }
+
+  const base = new Set(
+    ROLE_ATTENDANCE_PERMISSIONS[normalizedRole] || []
+  );
+  const stored = normalizeAttendancePermissions(permissions);
+  const overrides = normalizePermissionOverridesObject(permissionOverrides);
+  const version = Number(permissionVersion || 0) || 0;
+
+  if (
+    version >= PERMISSION_SCHEMA_VERSION &&
+    Array.isArray(permissions) &&
+    !overrides.enabled.length &&
+    !overrides.disabled.length
+  ) {
+    base.clear();
+    stored.forEach(permission => base.add(permission));
+  } else {
+    overrides.enabled.forEach(permission => base.add(permission));
+    overrides.disabled.forEach(permission => base.delete(permission));
+  }
+
+  normalizeAttendancePermissions(legacyAllow).forEach(permission =>
+    base.add(permission)
+  );
+  normalizeAttendancePermissions(legacyDeny).forEach(permission =>
+    base.delete(permission)
+  );
+
+  return [...ATTENDANCE_PERMISSION_KEYS].filter(permission =>
+    base.has(permission)
+  );
+}
+
+function normalizeAttendancePermissions(input) {
+  return normalizeStringArray(input).filter(permission =>
+    ATTENDANCE_PERMISSION_KEYS.has(permission)
+  );
+}
+
+function normalizePermissionOverridesObject(input) {
+  const value = input && typeof input === "object" ? input : {};
+  return {
+    enabled: normalizeAttendancePermissions(
+      value.enabled || value.added || value.add
+    ),
+    disabled: normalizeAttendancePermissions(
+      value.disabled || value.removed || value.remove
     ),
   };
 }
@@ -899,23 +1110,6 @@ function getExpectedProjectId(env) {
 
 function getSalonId(env) {
   return cleanText(env?.SALON_ID) || DEFAULT_SALON_ID;
-}
-
-function getAttendanceManagementEmails(env) {
-  return new Set(
-    cleanText(env?.ATTENDANCE_MANAGEMENT_EMAILS)
-      .split(",")
-      .map(value => value.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
-
-function isAttendanceManagementEmail(email, env) {
-  const normalizedEmail = cleanText(email).toLowerCase();
-  return Boolean(
-    normalizedEmail &&
-      getAttendanceManagementEmails(env).has(normalizedEmail)
-  );
 }
 
 function getAllowedOrigins(env) {

@@ -81,7 +81,9 @@ export async function handleAttendanceRequest({
   }
 
   if (pathname === "/attendance/work-zones" && request.method === "GET") {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (!hasRuntimePermission(requester.runtime, "attendance.settings.manage")) {
+      return forbidden("attendance.settings.manage");
+    }
     return listWorkZones(db);
   }
 
@@ -102,12 +104,22 @@ export async function handleAttendanceRequest({
   }
 
   if (pathname === "/attendance/work-zones" && request.method === "POST") {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (!hasRuntimePermission(requester.runtime, "attendance.settings.manage")) {
+      return forbidden("attendance.settings.manage");
+    }
     return createWorkZone(request, db, requester);
   }
 
   if (pathname === "/attendance/admin-adjustment" && request.method === "POST") {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (
+      !hasAnyRuntimePermission(requester.runtime, [
+        "attendance.records.create",
+        "attendance.records.update",
+        "attendance.records.delete",
+      ])
+    ) {
+      return forbidden("attendance.records.create|update|delete");
+    }
     return adjustAttendanceRecords(request, db, requester);
   }
 
@@ -115,12 +127,16 @@ export async function handleAttendanceRequest({
     pathname === "/attendance/monthly-summary/generate" &&
     request.method === "POST"
   ) {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (!hasRuntimePermission(requester.runtime, "attendance.export")) {
+      return forbidden("attendance.export");
+    }
     return generateAttendanceMonthlySummaryRequest(request, db);
   }
 
   if (zoneMatch && request.method === "PATCH") {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (!hasRuntimePermission(requester.runtime, "attendance.settings.manage")) {
+      return forbidden("attendance.settings.manage");
+    }
     return updateWorkZone(
       request,
       db,
@@ -130,11 +146,16 @@ export async function handleAttendanceRequest({
   }
 
   if (zoneMatch && request.method === "DELETE") {
-    if (!canManageAttendance(requester.runtime)) return forbidden();
+    if (!hasRuntimePermission(requester.runtime, "attendance.settings.manage")) {
+      return forbidden("attendance.settings.manage");
+    }
     return deleteWorkZone(db, decodeURIComponent(zoneMatch[1]));
   }
 
   if (pathname === "/attendance/record" && request.method === "POST") {
+    if (!hasRuntimePermission(requester.runtime, "attendance.own.view")) {
+      return forbidden("attendance.own.view");
+    }
     return recordAttendance({
       request,
       db,
@@ -154,36 +175,51 @@ function methodNotAllowed(methods) {
   return response;
 }
 
-function canManageAttendance(runtime) {
-  const allow = Array.isArray(runtime?.permissionsAllow)
-    ? runtime.permissionsAllow
-    : [];
-  const deny = Array.isArray(runtime?.permissionsDeny)
-    ? runtime.permissionsDeny
-    : [];
-  if (deny.includes("settings.manage")) return false;
-  if (allow.includes("settings.manage")) return true;
-  return (
-    runtime?.role === "owner" ||
-    runtime?.role === "admin" ||
-    runtime?.role === "hr"
+function hasRuntimePermission(runtime, permission) {
+  if (!runtime?.isActive) return false;
+
+  const allow = new Set(
+    Array.isArray(runtime?.permissionsAllow)
+      ? runtime.permissionsAllow
+      : Array.isArray(runtime?.permissions)
+        ? runtime.permissions
+        : []
+  );
+  const deny = new Set(
+    Array.isArray(runtime?.permissionsDeny)
+      ? runtime.permissionsDeny
+      : []
+  );
+
+  return allow.has(permission) && !deny.has(permission);
+}
+
+function hasAnyRuntimePermission(runtime, permissions) {
+  return permissions.some(permission =>
+    hasRuntimePermission(runtime, permission)
   );
 }
 
 function canReadAttendanceRecords(runtime, requesterUid, employeeUid) {
   if (!runtime?.isActive) return false;
 
-  // Use the same centralized management authorization used by attendance
-  // editing. This supports owner/admin/HR and explicit settings.manage grants,
-  // while still honoring settings.manage denies.
-  if (canManageAttendance(runtime)) return true;
+  if (hasRuntimePermission(runtime, "attendance.view")) {
+    return true;
+  }
 
-  // Regular employees may only read their own attendance records.
-  return Boolean(employeeUid && employeeUid === requesterUid);
+  return Boolean(
+    employeeUid &&
+      employeeUid === requesterUid &&
+      hasRuntimePermission(runtime, "attendance.own.view")
+  );
 }
 
-function forbidden() {
-  return json(403, { ok: false, message: "attendance_management_forbidden" });
+function forbidden(requiredPermission = "attendance.permission") {
+  return json(403, {
+    ok: false,
+    message: "attendance_permission_forbidden",
+    requiredPermission,
+  });
 }
 
 async function listWorkZones(db) {
@@ -902,13 +938,19 @@ async function adjustAttendanceRecords(request, db, requester) {
   const clearRecordIds = normalizeTextList(input.data?.recordIds);
   const clearServerTimes = normalizeTextList(input.data?.serverTimes);
   const note = clampText(input.data?.note, 500);
+
   if (!employeeUid || !employeeDocId) {
     return json(400, { ok: false, message: "invalid_employee" });
   }
   if (!parseRiyadhDateBoundary(date, false)) {
     return json(400, { ok: false, message: "invalid_attendance_date" });
   }
+
   if (clearRequested) {
+    if (!hasRuntimePermission(requester.runtime, "attendance.records.delete")) {
+      return forbidden("attendance.records.delete");
+    }
+
     return clearAttendanceRecordsForDay({
       db,
       requester,
@@ -919,6 +961,7 @@ async function adjustAttendanceRecords(request, db, requester) {
       note,
     });
   }
+
   if (!checkInTime && !checkOutTime) {
     return json(400, { ok: false, message: "missing_attendance_time" });
   }
@@ -927,20 +970,9 @@ async function adjustAttendanceRecords(request, db, requester) {
   if (checkInTime) requested.push(["check_in", checkInTime]);
   if (checkOutTime) requested.push(["check_out", checkOutTime]);
 
-  const source = JSON.stringify({
-    area: "hr",
-    page: "hr_employees",
-    route: "worker.attendance.admin-adjustment",
-    method: "manual_correction",
-    note: note || null,
-    adjustedByUid: requester.uid,
-    adjustedByEmail: requester.email || null,
-    adjustedAt: new Date().toISOString(),
-  });
   const dayStart = parseRiyadhDateBoundary(date, false);
   const dayEnd = parseRiyadhDateBoundary(date, true);
-  const now = new Date().toISOString();
-  const changed = [];
+  const operations = [];
 
   try {
     for (const [type, time] of requested) {
@@ -963,7 +995,39 @@ async function adjustAttendanceRecords(request, db, requester) {
         .bind(employeeUid, type, dayStart, dayEnd)
         .first();
 
-      if (existing?.id) {
+      const action = existing?.id ? "update" : "create";
+      const requiredPermission =
+        action === "update"
+          ? "attendance.records.update"
+          : "attendance.records.create";
+
+      if (!hasRuntimePermission(requester.runtime, requiredPermission)) {
+        return forbidden(requiredPermission);
+      }
+
+      operations.push({
+        type,
+        serverTime,
+        action,
+        existingId: existing?.id || null,
+      });
+    }
+
+    const source = JSON.stringify({
+      area: "hr",
+      page: "hr_employees",
+      route: "worker.attendance.admin-adjustment",
+      method: "manual_correction",
+      note: note || null,
+      adjustedByUid: requester.uid,
+      adjustedByEmail: requester.email || null,
+      adjustedAt: new Date().toISOString(),
+    });
+    const now = new Date().toISOString();
+    const changed = [];
+
+    for (const operation of operations) {
+      if (operation.action === "update") {
         await db
           .prepare(
             `
@@ -975,51 +1039,64 @@ async function adjustAttendanceRecords(request, db, requester) {
           `
           )
           .bind(
-            serverTime,
-            serverTime,
+            operation.serverTime,
+            operation.serverTime,
             source,
             now,
             requester.uid,
             requester.email || null,
             normalizeText(requester.runtime?.role) || "hr",
-            existing.id
+            operation.existingId
           )
           .run();
-        changed.push({ id: existing.id, type, action: "updated", serverTime });
-      } else {
-        const id = crypto.randomUUID();
-        await db
-          .prepare(
-            `
-            INSERT INTO attendance_records (
-              id, employee_uid, employee_doc_id, type, server_time, client_time,
-              location_lat, location_lng, location_accuracy, zone_id, zone_name,
-              zone_type, allowed_zone_ids, distance_meters, result,
-              rejection_reason, accuracy_accepted, device_info, source,
-              created_by_uid, created_by_email, created_by_role, created_at,
-              updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, '[]',
-              NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)
-          `
-          )
-          .bind(
-            id,
-            employeeUid,
-            employeeDocId,
-            type,
-            serverTime,
-            serverTime,
-            JSON.stringify({ adminAdjusted: true }),
-            source,
-            requester.uid,
-            requester.email || null,
-            normalizeText(requester.runtime?.role) || "hr",
-            now,
-            now
-          )
-          .run();
-        changed.push({ id, type, action: "created", serverTime });
+
+        changed.push({
+          id: operation.existingId,
+          type: operation.type,
+          action: "updated",
+          serverTime: operation.serverTime,
+        });
+        continue;
       }
+
+      const id = crypto.randomUUID();
+      await db
+        .prepare(
+          `
+          INSERT INTO attendance_records (
+            id, employee_uid, employee_doc_id, type, server_time, client_time,
+            location_lat, location_lng, location_accuracy, zone_id, zone_name,
+            zone_type, allowed_zone_ids, distance_meters, result,
+            rejection_reason, accuracy_accepted, device_info, source,
+            created_by_uid, created_by_email, created_by_role, created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, '[]',
+            NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)
+        `
+        )
+        .bind(
+          id,
+          employeeUid,
+          employeeDocId,
+          operation.type,
+          operation.serverTime,
+          operation.serverTime,
+          JSON.stringify({ adminAdjusted: true }),
+          source,
+          requester.uid,
+          requester.email || null,
+          normalizeText(requester.runtime?.role) || "hr",
+          now,
+          now
+        )
+        .run();
+
+      changed.push({
+        id,
+        type: operation.type,
+        action: "created",
+        serverTime: operation.serverTime,
+      });
     }
 
     await rebuildAttendanceState(db, employeeUid);

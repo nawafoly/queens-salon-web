@@ -11,4 +11,3 @@ migrations_dir = "attendance-migrations"
 [vars]
 FIREBASE_PROJECT_ID = "waves-hotel-dashboard"
 SALON_ID = "main"
-ATTENDANCE_MANAGEMENT_EMAILS = "nawafaaa6@gmail.com,nawafaaa0@gmail.com,alolayan3@gmail.com"
