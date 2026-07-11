@@ -37,7 +37,6 @@ import {
 import { db } from "../services/firebase";
 import {
   applyStaffLeaveEntryWithBalanceAdjustment,
-  canManageLeaveBalanceRole,
   deleteStaffLeaveEntryWithBalanceAdjustment,
   normalizeLeaveEntryType,
 } from "../services/firestoreLeaveBalance";
@@ -57,7 +56,6 @@ import {
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
-import { normalizeAuthRole } from "../services/authAccess";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
@@ -68,6 +66,7 @@ import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
 import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection";
 import ServicesSection from "./dashboardEmployees/ServicesSection";
+import { usePermissions } from "../security/PermissionContext";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -508,17 +507,28 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
 
 export default function DashboardEmployees() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
-  const authRole = normalizeAuthRole(authUser?.role);
-  const canAccessEmployeesDashboard =
-    authRole === "owner" ||
-    authRole === "admin" ||
-    authRole === "reception" ||
-    authRole === "hr";
-  const canManage = authRole === "owner" || authRole === "admin" || authRole === "hr";
-  const canManageAttendance = authRole === "owner" || authRole === "hr";
-  const canDeleteEmployees = authRole === "owner";
-  const canFixBookings = authRole === "owner";
-  const canManageLeaveBalance = canManageLeaveBalanceRole(authUser?.role);
+  const { hasPermission, hasAnyPermission } = usePermissions();
+
+  const canAccessEmployeesDashboard = hasPermission("employees.view");
+  const canCreateEmployees = hasPermission("employees.create");
+  const canUpdateEmployees = hasAnyPermission(["employees.update", "employees.manage"]);
+  const canManage = canUpdateEmployees;
+  const canDeleteEmployees = hasPermission("employees.delete");
+  const canManageSchedule = hasPermission("employees.schedule.manage");
+
+  const canViewAttendance = hasPermission("attendance.view");
+  const canCreateAttendance = hasPermission("attendance.records.create");
+  const canUpdateAttendance = hasPermission("attendance.records.update");
+  const canDeleteAttendance = hasPermission("attendance.records.delete");
+  const canManageAttendanceSettings = hasPermission("attendance.settings.manage");
+  const canManageAttendanceZones = canManageSchedule || canManageAttendanceSettings;
+  const canManageLeaveBalance = hasPermission("attendance.leaves.manage");
+
+  const canViewPayroll = hasPermission("payroll.view");
+  const canManagePayroll = hasPermission("payroll.manage");
+  const canViewEmployeeMessages = hasAnyPermission(["messages.view", "messages.manage"]);
+  const canViewEmployeeFiles = hasPermission("employees.files.view");
+  const canFixBookings = hasPermission("bookings.update");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -656,10 +666,15 @@ export default function DashboardEmployees() {
   }, []);
 
   const ensureCanManage = useCallback(() => {
-    if (canManage) return true;
-    setErrorMsg("ليست لديك صلاحية لإدارة الموظفات.");
+    const allowed = editId ? canUpdateEmployees : canCreateEmployees;
+    if (allowed) return true;
+    setErrorMsg(
+      editId
+        ? "ليست لديك صلاحية لتعديل بيانات الموظفات."
+        : "ليست لديك صلاحية لإضافة موظفات."
+    );
     return false;
-  }, [canManage]);
+  }, [canCreateEmployees, canUpdateEmployees, editId]);
   const ensureCanDelete = useCallback(() => {
     if (canDeleteEmployees) return true;
     setErrorMsg("ليست لديك صلاحية لحذف الموظفات.");
@@ -705,7 +720,7 @@ export default function DashboardEmployees() {
   }, []);
 
   const loadAttendanceZones = useCallback(async () => {
-    if (!canManageAttendance) {
+    if (!canManageAttendanceZones) {
       setAttendanceZones([]);
       setAttendanceZonesLoading(false);
       return;
@@ -720,10 +735,10 @@ export default function DashboardEmployees() {
     } finally {
       setAttendanceZonesLoading(false);
     }
-  }, [canManageAttendance]);
+  }, [canManageAttendanceZones]);
 
   const loadSelectedEmployeeAttendance = useCallback(async () => {
-    if (!canManageAttendance) {
+    if (!canViewAttendance) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
       setEmployeeAttendanceLoading(false);
@@ -791,7 +806,7 @@ export default function DashboardEmployees() {
     } finally {
       setEmployeeAttendanceLoading(false);
     }
-  }, [canManageAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
+  }, [canViewAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
 
   useEffect(() => {
     void loadAttendanceZones();
@@ -803,20 +818,25 @@ export default function DashboardEmployees() {
   }, [activeTab, loadSelectedEmployeeAttendance]);
 
   const openAttendancePunchEditor = useCallback((dateKey: string) => {
-    if (!canManageAttendance) {
-      setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
-      return;
-    }
     const cleanDate = normalizeLeaveUntil(dateKey);
     if (!cleanDate) return;
     const row = employeeAttendanceRows.find((item) => item.date === cleanDate) || null;
+    const allowed = row ? canUpdateAttendance : canCreateAttendance;
+    if (!allowed) {
+      setErrorMsg(
+        row
+          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
+          : "ليست لديك صلاحية لإضافة بصمة إدارية."
+      );
+      return;
+    }
     setAttendanceEditDate(cleanDate);
     setAttendanceEditCheckIn(toDateTimeLocalValue(row?.checkInAtClient) || `${cleanDate}T09:00`);
     setAttendanceEditCheckOut(toDateTimeLocalValue(row?.checkOutAtClient));
     setAttendanceEditNote(cleanText(row?.notes));
     setAttendanceEditOpen(true);
     setErrorMsg("");
-  }, [canManageAttendance, employeeAttendanceRows]);
+  }, [canCreateAttendance, canUpdateAttendance, employeeAttendanceRows]);
 
   const closeAttendancePunchEditor = useCallback(() => {
     setAttendanceEditOpen(false);
@@ -827,11 +847,21 @@ export default function DashboardEmployees() {
   }, []);
 
   const saveAttendancePunchEditor = useCallback(async () => {
-    if (!canManageAttendance || !selectedEmployeeId) {
-      setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
+    if (!selectedEmployeeId) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     const date = normalizeLeaveUntil(attendanceEditDate);
+    const existingRow = employeeAttendanceRows.find((item) => item.date === date) || null;
+    const allowed = existingRow ? canUpdateAttendance : canCreateAttendance;
+    if (!allowed) {
+      setErrorMsg(
+        existingRow
+          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
+          : "ليست لديك صلاحية لإضافة بصمة إدارية."
+      );
+      return;
+    }
     const checkInIso = dateTimeLocalToIso(attendanceEditCheckIn);
     const checkOutIso = dateTimeLocalToIso(attendanceEditCheckOut);
     if (!date || !checkInIso) {
@@ -900,15 +930,17 @@ export default function DashboardEmployees() {
     authUser?.displayName,
     authUser?.email,
     authUser?.uid,
-    canManageAttendance,
+    canCreateAttendance,
+    canUpdateAttendance,
     closeAttendancePunchEditor,
+    employeeAttendanceRows,
     loadSelectedEmployeeAttendance,
     list,
     selectedEmployeeId,
   ]);
 
   const deleteAttendancePunch = useCallback(async (dateKey: string) => {
-    if (!canManageAttendance || !selectedEmployeeId) {
+    if (!canDeleteAttendance || !selectedEmployeeId) {
       setErrorMsg("ليست لديك صلاحية لمسح بصمة الموظفة.");
       return;
     }
@@ -970,7 +1002,7 @@ export default function DashboardEmployees() {
       setSaving(false);
     }
   }, [
-    canManageAttendance,
+    canDeleteAttendance,
     list,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
@@ -2983,12 +3015,24 @@ export default function DashboardEmployees() {
     { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
     { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
     { key: "booking", label: "جدول الدوام", hint: "الدوام والنطاق", icon: faClock },
-    { key: "attendance", label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck },
-    { key: "payroll", label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave },
-    { key: "requests", label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
-    { key: "leave", label: "الإجازات", hint: "الرصيد والسجل", icon: faCalendarCheck },
-    { key: "messages", label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope },
-    { key: "files", label: "الملفات", hint: "المستندات", icon: faFileLines },
+    ...(canViewAttendance
+      ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
+      : []),
+    ...(canViewPayroll
+      ? [{ key: "payroll" as EmployeeSplitTab, label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave }]
+      : []),
+    ...(canManageLeaveBalance
+      ? [
+          { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
+          { key: "leave" as EmployeeSplitTab, label: "الإجازات", hint: "الرصيد والسجل", icon: faCalendarCheck },
+        ]
+      : []),
+    ...(canViewEmployeeMessages
+      ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
+      : []),
+    ...(canViewEmployeeFiles
+      ? [{ key: "files" as EmployeeSplitTab, label: "الملفات", hint: "المستندات", icon: faFileLines }]
+      : []),
   ];
   const modalLeaveExpired = useMemo(() => {
     const leaveUntil = normalizeLeaveUntil(modalLeaveUntil);
@@ -3701,6 +3745,10 @@ export default function DashboardEmployees() {
   }
 
   const openCreateEmployee = () => {
+    if (!canCreateEmployees) {
+      setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
+      return;
+    }
     resetForm();
     setSelectedEmployeeId(null);
     setMode("edit");
@@ -3831,9 +3879,11 @@ export default function DashboardEmployees() {
           </div>
 
           <div className="dash-topbar-actions">
-            <button className="exp-btn primary" type="button" onClick={openCreateEmployee}>
-              + إضافة موظفة
-            </button>
+            {canCreateEmployees ? (
+              <button className="exp-btn primary" type="button" onClick={openCreateEmployee}>
+                + إضافة موظفة
+              </button>
+            ) : null}
             {canFixBookings && (
               <button
                 className="exp-btn ghost"
@@ -3906,7 +3956,7 @@ export default function DashboardEmployees() {
               onQTextChange={setQText}
             onOnlyActiveChange={setOnlyActive}
             onSpecialtyFilterChange={setSpecialtyFilter}
-            canManage={canManage}
+            canManage={canCreateEmployees}
             onCreateEmployee={openCreateEmployee}
             onOpenEmployee={openEdit}
           />
@@ -3919,7 +3969,7 @@ export default function DashboardEmployees() {
             busy={busy}
             activeTab={activeTab}
             tabs={detailTabs}
-            canManage={canManage}
+            canManage={canUpdateEmployees}
             canDelete={canDeleteEmployees}
             onSave={save}
             onDelete={() => selectedEmployeeId && remove(selectedEmployeeId)}
@@ -3930,7 +3980,7 @@ export default function DashboardEmployees() {
           >
             <EmployeeEditorModal
               isOpen={isOpen}
-              canManage={canManage}
+              canManage={editId ? canUpdateEmployees : canCreateEmployees}
               busy={busy}
               saving={saving}
               editId={editId}
@@ -3956,10 +4006,11 @@ export default function DashboardEmployees() {
                 summary={modalStaffScheduleSummary}
               />
               <EmployeeStatsSection
-                isVisible={!!editingStaff && (activeTab === "payroll" || activeTab === "leave")}
+                isVisible={!!editingStaff && ((activeTab === "payroll" && canViewPayroll) || (activeTab === "leave" && canManageLeaveBalance))}
                 busy={busy}
                 loading={loading}
-                authRole={authUser?.role}
+                canManagePayroll={canManagePayroll}
+                canManageLeaveBalance={canManageLeaveBalance}
                 leaveBalanceDays={parsePositiveInt(String((editingStaff as any)?.leaveBalanceDays || 0), 0)}
                 leaveEntries={modalLeaveEntries}
                 showPayrollSubTab={showPayrollSubTab}
@@ -4016,16 +4067,16 @@ export default function DashboardEmployees() {
                 }}
               />
               <AttendanceSection
-                isVisible={!!editingStaff && activeTab === "attendance"}
+                isVisible={!!editingStaff && activeTab === "attendance" && canViewAttendance}
                 loading={employeeAttendanceLoading}
                 rows={employeeAttendanceRows}
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
                 schedule={editingStaff}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
-                canEdit={canManageAttendance}
-                canDelete={canManageAttendance}
-                canReview={canManageAttendance}
+                canEdit={canCreateAttendance || canUpdateAttendance}
+                canDelete={canDeleteAttendance}
+                canReview={canViewAttendance}
                 onMonthChange={(monthKey) => {
                   setEmployeeAttendanceMonth(monthKey);
                   setEmployeeAttendanceSelectedDate((current) =>
@@ -4041,7 +4092,7 @@ export default function DashboardEmployees() {
                   void deleteAttendancePunch(dateKey);
                 }}
               />
-              {attendanceEditOpen && activeTab === "attendance" ? (
+              {attendanceEditOpen && activeTab === "attendance" && (canCreateAttendance || canUpdateAttendance) ? (
                 <div className="emp-attendance-edit-panel">
                   <div className="emp-attendance-edit-head">
                     <div>
@@ -4220,7 +4271,7 @@ export default function DashboardEmployees() {
                 onSpecialtiesChange={setSpecialties}
               />
                             <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "requests"}
+                isVisible={!!editingStaff && activeTab === "requests" && canManageLeaveBalance}
                 title="طلبات الموظفة"
                 lead="راجعي طلبات الإجازة والطلبات الإدارية الواردة من الموظفات داخل لوحة الموارد البشرية."
                 actionLabel="فتح لوحة الطلبات"
@@ -4233,7 +4284,7 @@ export default function DashboardEmployees() {
                 ]}
               />
                             <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "messages"}
+                isVisible={!!editingStaff && activeTab === "messages" && canViewEmployeeMessages}
                 title="رسائل HR مع الموظفة"
                 lead="افتحي نظام الرسائل الداخلية لبدء محادثة أو متابعة الرسائل السابقة مع الموظفة."
                 actionLabel="فتح الرسائل"
@@ -4246,7 +4297,7 @@ export default function DashboardEmployees() {
                 ]}
               />
                             <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "files"}
+                isVisible={!!editingStaff && activeTab === "files" && canViewEmployeeFiles}
                 title="ملفات الموظفة"
                 lead="افتحي نظام الملفات الداخلية لرفع المستندات وعرض الملفات المرتبطة بالموظفات."
                 actionLabel="فتح إدارة الملفات"

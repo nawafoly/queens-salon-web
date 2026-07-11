@@ -18,6 +18,9 @@ import {
 import { useEmployeeSession, cleanText } from "./hr/shared";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
+import PermissionRoute from "../components/PermissionRoute";
+import { usePermissions } from "../security/PermissionContext";
+import type { AppPermission } from "../helpers/permissions";
 import { logoutFirebase } from "../services/authService";
 import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import CreateStaffAccountPage from "./hr/CreateStaffAccount";
@@ -132,10 +135,6 @@ function readableRole(role: unknown) {
   return cleanText(role) || "غير محدد";
 }
 
-function canReadTeamAttendanceRole(role: unknown) {
-  const value = normalizeText(role);
-  return value === "owner" || value === "hr";
-}
 
 function formatLongDate(value: unknown) {
   const raw = cleanText(value);
@@ -1126,6 +1125,37 @@ export default function AdminHrDashboard() {
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
+  const { hasPermission, hasAnyPermission, hasAllPermissions } = usePermissions();
+  const adminNavItems = useMemo(
+    () =>
+      [
+        { to: "/admin/overview", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
+        { to: "/admin/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
+        { to: "/admin/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
+        { to: "/admin/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
+        { to: "/admin/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
+        {
+          to: "/admin/create-staff",
+          label: "إنشاء حساب موظف",
+          icon: faUserShield,
+          permission: "admin_accounts.manage" as AppPermission,
+          allOf: ["admin_accounts.manage", "employees.create"] as AppPermission[],
+        },
+      ].filter((item) =>
+        item.allOf ? hasAllPermissions(item.allOf) : hasPermission(item.permission)
+      ),
+    [hasAllPermissions, hasPermission]
+  );
+  const adminLandingPath = adminNavItems[0]?.to || "/employee/overview";
+  const canOpenDashboard = hasPermission("workspace.dashboard.view");
+  const canOpenHr = hasAnyPermission([
+    "employees.view",
+    "attendance.view",
+    "recruitment.view",
+    "messages.manage",
+    "employees.files.view",
+    "admin_accounts.view",
+  ]);
   const adminSection = useMemo(() => {
     const section = location.pathname.replace(/^\/admin\/?/, "").split("/")[0];
     return section || "overview";
@@ -1181,11 +1211,11 @@ export default function AdminHrDashboard() {
     setError("");
     try {
       const [rosterRows, applicationRows, leaveRows, fileRows, absenceRows] = await Promise.all([
-        listEmployeeDirectory(),
-        listRecruitmentApplications(),
-        listEmployeeLeaveRequests(),
-        listEmployeeFiles(40),
-        listEmployeeAbsences(80),
+        hasPermission("employees.view") ? listEmployeeDirectory() : Promise.resolve([]),
+        hasPermission("recruitment.view") ? listRecruitmentApplications() : Promise.resolve([]),
+        hasPermission("attendance.leaves.manage") ? listEmployeeLeaveRequests() : Promise.resolve([]),
+        hasPermission("employees.files.view") ? listEmployeeFiles(40) : Promise.resolve([]),
+        hasPermission("attendance.absences.manage") ? listEmployeeAbsences(80) : Promise.resolve([]),
       ]);
       const attendanceEmployees = (
         Array.isArray(rosterRows)
@@ -1202,7 +1232,7 @@ export default function AdminHrDashboard() {
         }))
         .filter((item) => item.employeeId);
 
-      const attendanceRows = canReadTeamAttendanceRole(session.role)
+      const attendanceRows = hasPermission("attendance.view")
         ? await listAttendanceForEmployeesDateFromWorker({
             employees: attendanceEmployees,
             date: getTodayAttendanceDateKey(),
@@ -1224,7 +1254,7 @@ export default function AdminHrDashboard() {
         setLoadingData(false);
       }
     }
-  }, [session.role]);
+  }, [hasPermission]);
 
   useEffect(() => {
     if (!isOverviewRoute) {
@@ -1292,30 +1322,16 @@ export default function AdminHrDashboard() {
         </div>
 
         <nav className="hr-shell-nav" aria-label="HR navigation">
-          <NavLink to="/admin/overview" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faHouse} />
-            <span>نظرة عامة</span>
-          </NavLink>
-          <NavLink to="/admin/employees" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faUsers} />
-            <span>إدارة الموظفين</span>
-          </NavLink>
-          <NavLink to="/admin/recruitment-applications" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faUserTie} />
-            <span>طلبات التوظيف</span>
-          </NavLink>
-          <NavLink to="/admin/messages" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faEnvelope} />
-            <span>الرسائل الداخلية</span>
-          </NavLink>
-          <NavLink to="/admin/files" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faFileLines} />
-            <span>الملفات الداخلية</span>
-          </NavLink>
-          <NavLink to="/admin/create-staff" className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}>
-            <FontAwesomeIcon icon={faUserShield} />
-            <span>إنشاء حساب موظف</span>
-          </NavLink>
+          {adminNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}
+            >
+              <FontAwesomeIcon icon={item.icon} />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </nav>
 
         <div className="hr-shell-note">
@@ -1332,8 +1348,8 @@ export default function AdminHrDashboard() {
         className="hr-mobile-appbar dashboard-header--mobile-shell"
         actions={
             <InternalPortalSwitcher
-              canOpenDashboard={true}
-              canOpenHr={true}
+              canOpenDashboard={canOpenDashboard}
+              canOpenHr={canOpenHr}
               loggingOut={loggingOut}
               onLogout={handleLogout}
               className="hr-mobile-appbar__actions"
@@ -1349,8 +1365,8 @@ export default function AdminHrDashboard() {
           actions={
             <>
             <InternalPortalSwitcher
-              canOpenDashboard={true}
-              canOpenHr={true}
+              canOpenDashboard={canOpenDashboard}
+              canOpenHr={canOpenHr}
               loggingOut={loggingOut}
               onLogout={handleLogout}
             />
@@ -1373,102 +1389,76 @@ export default function AdminHrDashboard() {
 
         <section className={`hr-stage ${isEmployeesRoute ? "hr-stage--workspace" : ""}`}>
           <Routes>
-            <Route
-              index
-              element={<Navigate to="overview" replace />}
-            />
+            <Route index element={<Navigate to={adminLandingPath} replace />} />
             <Route
               path="overview"
               element={
-                <HrOverview
-                  roster={roster}
-                  applications={applications}
-                  leaveRequests={leaveRequests}
-                  employeeFiles={employeeFiles}
-                  attendanceToday={attendanceToday}
-                  absences={absences}
-                  loading={loadingData}
-                  onNavigate={(path) => navigate(path)}
-                  onRefresh={() => void loadData(true)}
-                  session={session}
-                />
+                <PermissionRoute permission="employees.view">
+                  <HrOverview
+                    roster={roster}
+                    applications={applications}
+                    leaveRequests={leaveRequests}
+                    employeeFiles={employeeFiles}
+                    attendanceToday={attendanceToday}
+                    absences={absences}
+                    loading={loadingData}
+                    onNavigate={(path) => navigate(path)}
+                    onRefresh={() => void loadData(true)}
+                    session={session}
+                  />
+                </PermissionRoute>
               }
             />
-            <Route path="recruitment-applications" element={<RecruitmentApplicationsPage session={session} />} />
+            <Route
+              path="recruitment-applications"
+              element={<PermissionRoute permission="recruitment.view"><RecruitmentApplicationsPage session={session} /></PermissionRoute>}
+            />
             <Route
               path="employees"
               element={
-                <Suspense
-                  fallback={
-                    <div className="hr-workspace-loading" role="status" aria-live="polite">
-                      <span className="hr-workspace-loading__spinner" />
-                      <strong>جاري فتح إدارة الموظفات...</strong>
-                      <small>يتم تحميل مساحة الموظفات فقط دون إعادة تحميل ملخص الموارد البشرية.</small>
-                    </div>
-                  }
-                >
-                  <DashboardEmployees />
-                </Suspense>
+                <PermissionRoute permission="employees.view">
+                  <Suspense
+                    fallback={
+                      <div className="hr-workspace-loading" role="status" aria-live="polite">
+                        <span className="hr-workspace-loading__spinner" />
+                        <strong>جاري فتح إدارة الموظفات...</strong>
+                        <small>يتم تحميل مساحة الموظفات فقط دون إعادة تحميل ملخص الموارد البشرية.</small>
+                      </div>
+                    }
+                  >
+                    <DashboardEmployees />
+                  </Suspense>
+                </PermissionRoute>
               }
             />
-            <Route path="messages" element={<EmployeeMessagesPage session={session} />} />
-            <Route path="files" element={<EmployeeFilesPage session={session} />} />
+            <Route path="messages" element={<PermissionRoute permission="messages.manage"><EmployeeMessagesPage session={session} /></PermissionRoute>} />
+            <Route path="files" element={<PermissionRoute permission="employees.files.view"><EmployeeFilesPage session={session} /></PermissionRoute>} />
             <Route path="users" element={<Navigate to="/dashboard/settings/users" replace />} />
-            <Route path="create-staff" element={<CreateStaffAccountPage session={session} />} />
-            <Route path="*" element={<Navigate to="overview" replace />} />
+            <Route
+              path="create-staff"
+              element={
+                <PermissionRoute allOf={["admin_accounts.manage", "employees.create"]}>
+                  <CreateStaffAccountPage session={session} />
+                </PermissionRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to={adminLandingPath} replace />} />
           </Routes>
         </section>
       </main>
       <nav className="hr-mobile-bottom-nav" aria-label="تنقل الموارد البشرية">
-        <NavLink
-          to="/admin/overview"
-          className={({ isActive }) =>
-            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
-          }
-        >
-          <FontAwesomeIcon icon={faHouse} />
-          <span>الرئيسية</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/employees"
-          className={({ isActive }) =>
-            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
-          }
-        >
-          <FontAwesomeIcon icon={faUsers} />
-          <span>الموظفات</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/recruitment-applications"
-          className={({ isActive }) =>
-            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
-          }
-        >
-          <FontAwesomeIcon icon={faUserTie} />
-          <span>التوظيف</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/messages"
-          className={({ isActive }) =>
-            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
-          }
-        >
-          <FontAwesomeIcon icon={faEnvelope} />
-          <span>الرسائل</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/files"
-          className={({ isActive }) =>
-            `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
-          }
-        >
-          <FontAwesomeIcon icon={faFileLines} />
-          <span>الملفات</span>
-        </NavLink>
+        {adminNavItems.slice(0, 5).map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `hr-mobile-bottom-nav__item ${isActive ? "is-active" : ""}`
+            }
+          >
+            <FontAwesomeIcon icon={item.icon} />
+            <span>{item.label.replace("إدارة ", "").replace(" الداخلية", "")}</span>
+          </NavLink>
+        ))}
       </nav>
     </div>
   );

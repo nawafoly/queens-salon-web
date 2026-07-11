@@ -13,7 +13,6 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash } from "@fortawesome/free-solid-svg-icons";
 import {
-  canManageLeaveBalanceRole,
   getLeaveEntryActionType,
   getLeaveEntryBalanceAfter,
   getLeaveEntryBalanceBefore,
@@ -55,7 +54,8 @@ type EmployeeStatsSectionProps = {
   isVisible: boolean;
   busy: boolean;
   loading: boolean;
-  authRole: string | null | undefined;
+  canManagePayroll: boolean;
+  canManageLeaveBalance: boolean;
   leaveBalanceDays: number;
   leaveEntries: LeaveEntry[];
   showPayrollSubTab: boolean;
@@ -110,7 +110,8 @@ export default function EmployeeStatsSection({
   isVisible,
   busy,
   loading,
-  authRole,
+  canManagePayroll,
+  canManageLeaveBalance,
   leaveBalanceDays,
   leaveEntries,
   showPayrollSubTab,
@@ -120,8 +121,6 @@ export default function EmployeeStatsSection({
   leave,
 }: EmployeeStatsSectionProps) {
   if (!isVisible) return null;
-
-  const canManageLeaveBalance = canManageLeaveBalanceRole(authRole);
 
   const sortedLeaveEntries = leaveEntries
     .filter((entry) => !isDeletedLeaveEntry(entry))
@@ -180,7 +179,7 @@ export default function EmployeeStatsSection({
                 min={0}
                 step="0.01"
                 value={payroll.monthlySalary}
-                disabled={busy}
+                disabled={busy || !canManagePayroll}
                 onChange={(e) => payroll.onMonthlySalaryChange(e.target.value)}
                 placeholder="مثال: 5000"
               />
@@ -189,7 +188,7 @@ export default function EmployeeStatsSection({
               <label className="emp-label">طريقة احتساب الأوفر تايم</label>
                             <EmployeeSelect
                 value={payroll.overtimeMethod}
-                disabled={busy}
+                disabled={busy || !canManagePayroll}
                 ariaLabel="طريقة احتساب الأوفر تايم"
                 options={[
                   {
@@ -218,7 +217,7 @@ export default function EmployeeStatsSection({
                     min={1}
                     step={1}
                     value={payroll.overtimeDaysPerMonth}
-                    disabled={busy}
+                    disabled={busy || !canManagePayroll}
                     onChange={(e) => payroll.onOvertimeDaysPerMonthChange(e.target.value)}
                     placeholder="مثال: 30"
                   />
@@ -231,7 +230,7 @@ export default function EmployeeStatsSection({
                     min={1}
                     step="0.25"
                     value={payroll.overtimeBaseHoursPerDay}
-                    disabled={busy}
+                    disabled={busy || !canManagePayroll}
                     onChange={(e) => payroll.onOvertimeBaseHoursPerDayChange(e.target.value)}
                     placeholder="مثال: 8"
                   />
@@ -244,7 +243,7 @@ export default function EmployeeStatsSection({
                     min={1}
                     step="0.25"
                     value={payroll.overtimeSeasonBaseHoursPerDay}
-                    disabled={busy}
+                    disabled={busy || !canManagePayroll}
                     onChange={(e) => payroll.onOvertimeSeasonBaseHoursPerDayChange(e.target.value)}
                     placeholder="مثال: 6"
                   />
@@ -253,7 +252,7 @@ export default function EmployeeStatsSection({
                   <label className="emp-label">أساس حساب الأوفر تايم</label>
                                     <EmployeeSelect
                     value={payroll.overtimeHoursBasis}
-                    disabled={busy}
+                    disabled={busy || !canManagePayroll}
                     ariaLabel="أساس حساب الأوفر تايم"
                     options={[
                       {
@@ -282,7 +281,7 @@ export default function EmployeeStatsSection({
                     min={0}
                     step="0.01"
                     value={payroll.overtimePercent}
-                    disabled={busy}
+                    disabled={busy || !canManagePayroll}
                     onChange={(e) => payroll.onOvertimePercentChange(e.target.value)}
                     placeholder="مثال: 25"
                   />
@@ -297,7 +296,7 @@ export default function EmployeeStatsSection({
                   min={0}
                   step="0.01"
                   value={payroll.overtimeInvoicePercent}
-                  disabled={busy}
+                  disabled={busy || !canManagePayroll}
                   onChange={(e) => payroll.onOvertimeInvoicePercentChange(e.target.value)}
                   placeholder="مثال: 40"
                 />
@@ -402,7 +401,7 @@ export default function EmployeeStatsSection({
                 <input
                   type="checkbox"
                   checked={leave.modalOnLeave}
-                  disabled={busy}
+                  disabled={busy || !canManageLeaveBalance}
                   onChange={(e) => leave.onModalOnLeaveChange(e.target.checked)}
                 />
                 في إجازة الآن
@@ -415,7 +414,7 @@ export default function EmployeeStatsSection({
                 className="dash-input"
                 type="date"
                 value={leave.modalLeaveUntil}
-                disabled={busy}
+                disabled={busy || !canManageLeaveBalance}
                 onChange={(e) => leave.onModalLeaveUntilChange(e.target.value)}
               />
             </div>
@@ -425,7 +424,7 @@ export default function EmployeeStatsSection({
               <input
                 className="dash-input"
                 value={leave.modalLeaveNote}
-                disabled={busy}
+                disabled={busy || !canManageLeaveBalance}
                 onChange={(e) => leave.onModalLeaveNoteChange(e.target.value)}
                 placeholder="مثال: عودة يوم الأحد"
               />
@@ -438,7 +437,7 @@ export default function EmployeeStatsSection({
                   value={String(
                     leave.modalLeaveWeekdayDraft || ""
                   )}
-                  disabled={busy}
+                  disabled={busy || !canManageLeaveBalance}
                   ariaLabel="الإجازة الأسبوعية الثابتة"
                   placeholder="اختاري اليوم"
                   options={[
@@ -481,7 +480,7 @@ export default function EmployeeStatsSection({
                       key={`modal_leave_chip_${day}`}
                       type="button"
                       className="exp-btn ghost sm"
-                      disabled={busy}
+                      disabled={busy || !canManageLeaveBalance}
                       onClick={() =>
                         leave.onModalExceptionalLeaveWeekdaysChange((prev) => prev.filter((item) => item !== day))
                       }
@@ -545,10 +544,10 @@ export default function EmployeeStatsSection({
                 onChange={(e) => leave.onLeaveAdjustNoteChange(e.target.value)}
                 placeholder="ملاحظة (اختياري)"
               />
-              <button className="exp-btn primary" type="button" disabled={busy} onClick={() => leave.onApplyLeaveChange("add")}>
+              <button className="exp-btn primary" type="button" disabled={busy || !canManageLeaveBalance} onClick={() => leave.onApplyLeaveChange("add")}>
                 إضافة رصيد
               </button>
-              <button className="exp-btn ghost" type="button" disabled={busy} onClick={() => leave.onApplyLeaveChange("deduct")}>
+              <button className="exp-btn ghost" type="button" disabled={busy || !canManageLeaveBalance} onClick={() => leave.onApplyLeaveChange("deduct")}>
                 تسجيل إجازة (خصم)
               </button>
             </div>
@@ -579,7 +578,7 @@ export default function EmployeeStatsSection({
                   <button
                     type="button"
                     className="leave-log-delete"
-                    disabled={busy}
+                    disabled={busy || !canManageLeaveBalance}
                     title="حذف السجل"
                     onClick={() => leave.onDeleteLeaveEntry(entry)}
                   >

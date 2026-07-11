@@ -416,7 +416,12 @@ export function getEffectiveAppPermissions(args: {
 
   // مستندات v3 تحفظ الصلاحيات الفعلية صراحةً. الإصدارات القديمة تُعامل كدور + استثناءات
   // حتى لا تفقد الحسابات صلاحيات جديدة عند توسيع السجل المركزي.
-  if (version >= PERMISSION_SCHEMA_VERSION && stored.length && !overrides.enabled.length && !overrides.disabled.length) {
+  if (
+    version >= PERMISSION_SCHEMA_VERSION &&
+    Array.isArray(args.permissions) &&
+    !overrides.enabled.length &&
+    !overrides.disabled.length
+  ) {
     return APP_PERMISSION_CATALOG.map((item) => item.key).filter((permission) => stored.includes(permission));
   }
 

@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -13,6 +13,8 @@ import WelcomeModal from "./components/WelcomeModal";
 import ChatBot from "./components/ChatBot";
 import LoadingBrand from "./components/LoadingBrand";
 import PublicAppShell from "./components/PublicAppShell";
+import AccessDenied from "./components/AccessDenied";
+import { PermissionProvider } from "./security/PermissionContext";
 
 // Pages
 import Home from "./pages/Home";
@@ -51,6 +53,7 @@ import {
 } from "./services/localAuthSession";
 import { isInternalAuthRole, normalizeAuthRole } from "./services/authAccess";
 import { IS_CUSTOMER_APP, IS_STAFF_APP } from "./config/appVariant";
+import { getEffectiveAppPermissions, type AppPermission } from "./helpers/permissions";
 
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
@@ -58,20 +61,6 @@ import DashboardPending from "./pages/DashboardPending";
 /* ================================
    Types & Helpers
 ================================ */
-function isAdminPortalRole(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "hr";
-}
-
-function isEmployeePortalRole(role: UiRole) {
-  return (
-    role === "owner" ||
-    role === "admin" ||
-    role === "hr" ||
-    role === "reception" ||
-    role === "staff"
-  );
-}
-
 function isClientRole(role: UiRole) {
   return role === "client";
 }
@@ -259,6 +248,32 @@ const App: React.FC = () => {
   });
 
   const location = useLocation();
+  const permissionSource = useMemo(
+    () => ({
+      role: userRole,
+      permissions: storedSession?.permissions,
+      permissionOverrides: storedSession?.permissionOverrides,
+      permissionVersion: storedSession?.permissionVersion,
+    }),
+    [
+      storedSession?.permissionOverrides,
+      storedSession?.permissionVersion,
+      storedSession?.permissions,
+      userRole,
+    ]
+  );
+  const effectivePermissions = useMemo(
+    () => getEffectiveAppPermissions(permissionSource),
+    [permissionSource]
+  );
+  const effectivePermissionSet = useMemo(
+    () => new Set<AppPermission>(effectivePermissions),
+    [effectivePermissions]
+  );
+  const hasPermission = (permission: AppPermission) => effectivePermissionSet.has(permission);
+  const hasAnyPermission = (permissions: AppPermission[]) =>
+    permissions.some((permission) => effectivePermissionSet.has(permission));
+
   const legacyClientSession = isLegacyClientSession(storedSession);
   const hasProfileShellCache =
     legacyClientSession || isClientRole(userRole) || hasCachedClientProfile();
@@ -444,12 +459,11 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (role === "staff") return <Navigate to="/employee/overview" replace />;
-    if (role === "hr") return <Navigate to="/admin" replace />;
-    if (role === "owner" || role === "admin" || role === "reception") {
-      return children;
-    }
+    if (hasPermission("workspace.dashboard.view")) return children;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+    if (hasPermission("workspace.employee_portal.view")) {
+      return <AccessDenied requiredPermission="workspace.dashboard.view" />;
+    }
     return <Navigate to="/hr" replace />;
   };
 
@@ -461,10 +475,22 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (isAdminPortalRole(role)) return children;
-    if (role === "reception") return <Navigate to="/dashboard" replace />;
-    if (role === "staff") return <Navigate to="/employee/overview" replace />;
+    if (
+      hasAnyPermission([
+        "employees.view",
+        "attendance.view",
+        "recruitment.view",
+        "messages.manage",
+        "employees.files.view",
+        "admin_accounts.view",
+      ])
+    ) {
+      return children;
+    }
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+    if (isInternalAuthRole(role)) {
+      return <AccessDenied message="حسابك مسجل، لكنه لا يملك صلاحية دخول لوحة الموارد البشرية." />;
+    }
     return <Navigate to="/hr" replace />;
   };
 
@@ -476,8 +502,11 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
-    if (isEmployeePortalRole(role)) return children;
+    if (hasPermission("workspace.employee_portal.view")) return children;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
+    if (isInternalAuthRole(role)) {
+      return <AccessDenied requiredPermission="workspace.employee_portal.view" />;
+    }
     return <Navigate to="/hr" replace />;
   };
 
@@ -566,7 +595,19 @@ const App: React.FC = () => {
         />
         <Route
           path="/success-internal"
-          element={IS_CUSTOMER_APP ? <Navigate to="/login" replace /> : <SuccessInternal />}
+          element={
+            IS_CUSTOMER_APP ? (
+              <Navigate to="/login" replace />
+            ) : !authReady || !firebaseAuthReady ? (
+              <LoadingBrand text="جاري تجهيز الفاتورة..." />
+            ) : !authUser ? (
+              <Navigate to="/hr" replace />
+            ) : hasPermission("bookings.print") ? (
+              <SuccessInternal />
+            ) : (
+              <AccessDenied requiredPermission="bookings.print" />
+            )
+          }
         />
 
         <Route
@@ -728,7 +769,13 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
+    <PermissionProvider
+      role={permissionSource.role}
+      permissions={permissionSource.permissions}
+      permissionOverrides={permissionSource.permissionOverrides}
+      permissionVersion={permissionSource.permissionVersion}
+    >
+      <div className={`app ${isInDashboard ? "is-dashboard" : "is-public"}`}>
       {showPublicAppShell ? (
         <PublicAppShell
           header={
@@ -755,7 +802,8 @@ const App: React.FC = () => {
           localStorage.removeItem("showWelcome");
         }}
       />
-    </div>
+      </div>
+    </PermissionProvider>
   );
 };
 

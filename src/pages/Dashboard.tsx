@@ -31,6 +31,8 @@ import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
+import PermissionRoute from "../components/PermissionRoute";
+import { usePermissions } from "../security/PermissionContext";
 import Modal from "../components/Modal";
 
 import DashboardBookings from "../pages/DashboardBookings";
@@ -1465,6 +1467,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const location = useLocation();
   const navigate = useNavigate();
+  const { hasPermission, hasAnyPermission } = usePermissions();
   const refreshRequestIdRef = useRef(0);
   const hasDashboardDataRef = useRef(Boolean(initialDashboardSnapshot));
 
@@ -1530,7 +1533,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     let step = "start";
-    const canReadExpensesNow = roleForRefresh === "owner" || roleForRefresh === "admin";
+    const canReadIncomeNow = hasPermission("income.view");
+    const canReadExpensesNow = hasPermission("expenses.view");
 
     try {
       step = "migrateBookingsIfNeeded";
@@ -1595,77 +1599,83 @@ const Dashboard: React.FC<DashboardProps> = ({
       let nextFinanceToday = emptyFinanceToday;
       let nextRecentFinanceTransactions: DashboardFinanceTransaction[] = [];
 
-      if (canReadExpensesNow) {
-        step = "income:listAllIncomeFS";
-        const incomes = await listAllIncomeFS("main");
-        if (requestId !== refreshRequestIdRef.current) return;
+      const incomes = canReadIncomeNow ? await listAllIncomeFS("main") : [];
+      if (requestId !== refreshRequestIdRef.current) return;
+      const expenses = canReadExpensesNow ? await listAllExpensesFS() : [];
+      if (requestId !== refreshRequestIdRef.current) return;
 
-        const effectiveIncomeAmount = (x: any) =>
-          resolveIncomeEffectiveAmount(x, bookingPaidById);
-        const effectiveIncomeDate = (x: any) => {
-          const linkedBookingId = resolveLinkedBookingIdFromIncome(x);
-          const linkedDate = String(bookingDateById[linkedBookingId] || "").trim();
-          return linkedDate || resolveIncomeDateForTodayFilter(x);
-        };
+      const effectiveIncomeAmount = (x: any) =>
+        resolveIncomeEffectiveAmount(x, bookingPaidById);
+      const effectiveIncomeDate = (x: any) => {
+        const linkedBookingId = resolveLinkedBookingIdFromIncome(x);
+        const linkedDate = String(bookingDateById[linkedBookingId] || "").trim();
+        return linkedDate || resolveIncomeDateForTodayFilter(x);
+      };
 
-        step = "income:sum";
-        nextIncomeTotal = incomes.reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
-
+      if (canReadIncomeNow) {
+        nextIncomeTotal = incomes.reduce(
+          (sum: number, x: any) => sum + effectiveIncomeAmount(x),
+          0
+        );
         todayRevenue = incomes
           .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
           .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
+      }
 
-        step = "expenses:listAllExpensesFS";
-        const expenses = await listAllExpensesFS();
-        if (requestId !== refreshRequestIdRef.current) return;
-
-        step = "expenses:sum";
+      if (canReadExpensesNow) {
         nextExpensesTotal = expenses.reduce(
           (sum, e) => sum + (Number((e as any).amount) || 0),
           0
         );
-
-        const incomeToday = incomes
-          .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
-          .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0);
-
-        const expensesToday = expenses
-          .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
-          .reduce((sum: number, x: any) => sum + (Number((x as any)?.amount) || 0), 0);
-
-        nextFinanceToday = {
-          income: incomeToday,
-          expenses: expensesToday,
-          net: incomeToday - expensesToday,
-        };
-
-        const recentIncomeTx = incomes.map((x: any) => ({
-          id: `inc_${String(x?.id || "")}`,
-          type: "income" as const,
-          title: String(x?.note || "").trim() || financeSourceLabelAr(x?.source),
-          amount: effectiveIncomeAmount(x),
-          date: effectiveIncomeDate(x),
-          createdAt: Number(x?.createdAt || 0) || Date.now(),
-        }));
-
-        const recentExpenseTx = expenses.map((x: any) => {
-          const rawTitle =
-            String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
-          const title = /^booking$/i.test(rawTitle) ? "حجز" : rawTitle;
-          return {
-            id: `exp_${String((x as any)?.id || "")}`,
-            type: "expense" as const,
-            title,
-            amount: Number((x as any)?.amount || 0),
-            date: String((x as any)?.date || ""),
-            createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
-          };
-        });
-
-        nextRecentFinanceTransactions = [...recentIncomeTx, ...recentExpenseTx]
-          .sort((a, b) => b.createdAt - a.createdAt)
-          .slice(0, 7);
       }
+
+      const incomeToday = canReadIncomeNow
+        ? incomes
+            .filter((x: any) => normalizeISODateLoose(effectiveIncomeDate(x)) === todayStr)
+            .reduce((sum: number, x: any) => sum + effectiveIncomeAmount(x), 0)
+        : 0;
+      const expensesToday = canReadExpensesNow
+        ? expenses
+            .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
+            .reduce((sum: number, x: any) => sum + (Number((x as any)?.amount) || 0), 0)
+        : 0;
+
+      nextFinanceToday = {
+        income: incomeToday,
+        expenses: expensesToday,
+        net: incomeToday - expensesToday,
+      };
+
+      const recentIncomeTx = canReadIncomeNow
+        ? incomes.map((x: any) => ({
+            id: `inc_${String(x?.id || "")}`,
+            type: "income" as const,
+            title: String(x?.note || "").trim() || financeSourceLabelAr(x?.source),
+            amount: effectiveIncomeAmount(x),
+            date: effectiveIncomeDate(x),
+            createdAt: Number(x?.createdAt || 0) || Date.now(),
+          }))
+        : [];
+
+      const recentExpenseTx = canReadExpensesNow
+        ? expenses.map((x: any) => {
+            const rawTitle =
+              String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
+            const title = /^booking$/i.test(rawTitle) ? "حجز" : rawTitle;
+            return {
+              id: `exp_${String((x as any)?.id || "")}`,
+              type: "expense" as const,
+              title,
+              amount: Number((x as any)?.amount || 0),
+              date: String((x as any)?.date || ""),
+              createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
+            };
+          })
+        : [];
+
+      nextRecentFinanceTransactions = [...recentIncomeTx, ...recentExpenseTx]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 7);
 
       if (requestId !== refreshRequestIdRef.current) return;
 
@@ -1712,9 +1722,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     if (!userInfo) return;
 
-    const isAdminPowerNow = userInfo.role === "owner" || userInfo.role === "admin";
-
-    if (!isAdminPowerNow) {
+    if (!hasPermission("expenses.view")) {
       setMissingExpenseNotesCount(0);
       return;
     }
@@ -1737,7 +1745,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       alive = false;
       window.clearInterval(t);
     };
-  }, [userInfo?.role]);
+  }, [hasPermission, userInfo?.role]);
 
   /**
    * ✅ ربط Dashboard مع Firestore settings/app (Realtime)
@@ -2123,19 +2131,44 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const isOwner = userInfo?.role === "owner";
-  const isAdmin = userInfo?.role === "admin";
-  const isReception = userInfo?.role === "reception";
-  const isStaff = userInfo?.role === "staff";
+  const canOpenEmployeePortal = hasPermission("workspace.employee_portal.view");
+  const canOpenHrPortal = hasAnyPermission([
+    "employees.view",
+    "attendance.view",
+    "recruitment.view",
+    "messages.manage",
+    "employees.files.view",
+    "admin_accounts.view",
+  ]);
+  const hasPrimaryNavigation = hasAnyPermission([
+    "workspace.dashboard.view",
+    "bookings.view",
+    "bookings.create",
+    "bookings.day_audit.manage",
+    "bookings.queue_tv.view",
+    "clients.view",
+    "income.view",
+    "expenses.view",
+  ]);
+  const hasManagementNavigation = hasAnyPermission([
+    "partners.manage",
+    "offers.manage",
+    "reports.view",
+    "logs.view",
+    "clients.loyalty.manage",
+  ]);
+  const hasSettingsNavigation =
+    canOpenEmployeePortal ||
+    hasAnyPermission([
+      "settings.general.manage",
+      "settings.booking.manage",
+      "catalog.manage",
+      "admin_accounts.view",
+      "admin_accounts.manage",
+      "settings.content.manage",
+      "attendance.settings.manage",
+    ]);
 
-  const hasAdminPower = Boolean(isOwner || isAdmin);
-
-  const allowStaffChangeStatus = settings.policies.allowStaffChangeStatus;
-  const allowStaffViewClients = settings.policies.allowStaffViewClients;
-  const allowAdminManageUsers = settings.policies.allowAdminManageUsers;
-  const canManageAdminUsers = isOwner || (isAdmin && allowAdminManageUsers);
-
-  const canSeeSection = (key: SectionKey) => settings.sections[key] !== false;
 
   const getRoleIcon = (role: UiRole) => {
     switch (role) {
@@ -2747,295 +2780,209 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <nav className="sidebar-nav">
               <ul>
-                {(!isStaff || hasAdminPower || isReception) && (
+                {hasPrimaryNavigation ? (
                   <li className="sidebar-nav-section">الحجوزات والعملاء والمالية</li>
-                )}
+                ) : null}
 
-                {!isStaff && (
+                {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/overview"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/overview" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
                       نظرة عامة
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(hasAdminPower || isReception) && (
+                {hasPermission("bookings.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/bookings"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
                       الحجوزات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(hasAdminPower || isReception) && (
+                {hasPermission("bookings.create") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/booking-internal"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/booking-internal" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
                       الحجز الإداري
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(hasAdminPower || isReception) && (
+                {hasPermission("bookings.day_audit.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/day-audit"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/day-audit" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
                       إغلاق اليوم / الشفت
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(hasAdminPower || isReception) && (
+                {hasPermission("bookings.queue_tv.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/tv-queue"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/tv-queue" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faTv} />
                       شاشة الحجوزات (TV)
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(hasAdminPower || (isReception && allowStaffViewClients)) && (
-                    <li>
-                      <NavLink
-                        to="/dashboard/clients"
-                        className="nav-link"
-                        onClick={() => setIsSidebarOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faUsers} />
-                        العملاء
-                      </NavLink>
-                    </li>
-                  )}
-
-                {hasAdminPower && (
+                {hasPermission("clients.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/income"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/clients" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUsers} />
+                      العملاء
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("income.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/income" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
                       الإيرادات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("expenses.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/expenses"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/expenses" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       <span className="dash-nav-label">
                         المصروفات
-                        {missingExpenseNotesCount > 0 && (
-                          <span className="dash-badge">{missingExpenseNotesCount}</span>
-                        )}
+                        {missingExpenseNotesCount > 0 ? <span className="dash-badge">{missingExpenseNotesCount}</span> : null}
                       </span>
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasManagementNavigation ? (
                   <li className="sidebar-nav-section">الإدارة والتقارير</li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("partners.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/partners"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/partners" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faStore} />
                       الشريكات والمساحات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/offers"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/offers" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       العروض والكوبونات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("reports.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/reports"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/reports" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
                       التقارير
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("logs.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/logs"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/logs" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faClockRotateLeft} />
                       سجل الحركات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("clients.loyalty.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/loyalty"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/loyalty" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
                       الولاء (VIP)
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {(isStaff || hasAdminPower || isReception || canManageAdminUsers) && (
+                {hasSettingsNavigation ? (
                   <li className="sidebar-nav-section">الموظفات والحسابات والإعدادات</li>
-                )}
+                ) : null}
 
-                {(isStaff || hasAdminPower || isReception) && (
+                {canOpenEmployeePortal ? (
                   <li>
-                    <NavLink
-                      to="/employee/overview"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/employee/overview" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserTie} />
                       بوابة الموظفات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/admin-profile"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/admin-profile" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUser} />
                       الملف الشخصي
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("settings.general.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings"
-                      className="nav-link"
-                      end
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings" className="nav-link" end onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
                       الإعدادات الأساسية
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("settings.booking.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings/bookings"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
                       إعدادات الحجوزات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("catalog.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings/catalog"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings/catalog" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       إدارة الكتالوج
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {canManageAdminUsers && (
+                {hasPermission("admin_accounts.view") || hasPermission("admin_accounts.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings/users"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings/users" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
                       إدارة الحسابات
                     </NavLink>
                   </li>
-                )}
+                ) : null}
 
-                {hasAdminPower && (
+                {hasPermission("settings.content.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings/contact"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings/contact" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faHouse} />
                       محتوى الموقع
                     </NavLink>
                   </li>
-                )}
-                {hasAdminPower && (
+                ) : null}
+
+                {hasPermission("attendance.settings.manage") ? (
                   <li>
-                    <NavLink
-                      to="/dashboard/settings/attendance"
-                      className="nav-link"
-                      onClick={() => setIsSidebarOpen(false)}
-                    >
+                    <NavLink to="/dashboard/settings/attendance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faFingerprint} />
                       الحضور والبصمة
                     </NavLink>
                   </li>
-                )}
+                ) : null}
               </ul>
             </nav>
 
@@ -3048,7 +2995,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               title={dashboardHeaderTitle}
               subtitle={settings.salonName || "Queens Salon"}
               className={`dash-topbar dash-topbar--sticky ${isTvQueuePage ? "is-tv-queue-topbar" : ""}`}
-              showProfileButton={hasAdminPower || isReception || isStaff}
+              showProfileButton={hasPermission("workspace.dashboard.view")}
               leading={
                 <button
                   type="button"
@@ -3067,8 +3014,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                 ) : (
                   <InternalPortalSwitcher
-                    canOpenDashboard={true}
-                    canOpenHr={hasAdminPower}
+                    canOpenDashboard={hasPermission("workspace.dashboard.view")}
+                    canOpenHr={canOpenHrPortal}
                     onLogout={handleLogout}
                     className="dash-topbar-actions"
                   />
@@ -3078,32 +3025,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <div className="dashboard-inner">
               <Routes>
-                <Route
-                  index
-                  element={
-                    isStaff ? (
-                      <Navigate to="/employee/overview" replace />
-                    ) : (
-                      <DashboardOverview
-                        userInfo={userInfo}
-                        stats={stats}
-                        scheduleBookings={todayScheduleBookings}
-                        selectedScheduleDate={scheduleDate}
-                        onSelectedScheduleDateChange={setScheduleDate}
-                        businessHours={settings.booking?.businessHours}
-                        onOpenBooking={handleOpenBooking}
-                        onQuickAction={handleQuickAction}
-                        financial={{
-                          income: totalIncome,
-                          expenses: totalExpenses,
-                          profit: netProfit,
-                        }}
-                        financeToday={financeToday}
-                        recentFinanceTransactions={recentFinanceTransactions}
-                      />
-                    )
-                  }
-                />
+                <Route index element={<Navigate to="/dashboard/overview" replace />} />
 
                 <Route
                   path="staff"
@@ -3112,10 +3034,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                   }
                 />
 
-                {!isStaff && (
-                  <Route
-                    path="overview"
-                    element={
+                <Route
+                  path="overview"
+                  element={
+                    <PermissionRoute permission="workspace.dashboard.view">
                       <DashboardOverview
                         userInfo={userInfo}
                         stats={stats}
@@ -3133,88 +3055,67 @@ const Dashboard: React.FC<DashboardProps> = ({
                         financeToday={financeToday}
                         recentFinanceTransactions={recentFinanceTransactions}
                       />
-                    }
-                  />
-                )}
+                    </PermissionRoute>
+                  }
+                />
 
-                {/* Route للحجز الداخلي داخل الداشبورد (Owner/Admin/Reception فقط) */}
-                {(hasAdminPower || isReception) && (
-                  <Route
-                    path="booking-internal"
-                    element={<BookingInternal internalMode />}
-                  />
-                )}
+                <Route
+                  path="booking-internal"
+                  element={
+                    <PermissionRoute permission="bookings.create">
+                      <BookingInternal internalMode />
+                    </PermissionRoute>
+                  }
+                />
 
-                {(hasAdminPower || isReception) && (
-                  <Route path="bookings" element={<DashboardBookings currentRole={userInfo.role} />} />
-                )}
+                <Route
+                  path="bookings"
+                  element={
+                    <PermissionRoute permission="bookings.view">
+                      <DashboardBookings currentRole={userInfo.role} />
+                    </PermissionRoute>
+                  }
+                />
 
-                {(hasAdminPower || isReception) && (
-                  <Route path="tv-queue" element={<DashboardQueueTv />} />
-                )}
+                <Route path="tv-queue" element={<PermissionRoute permission="bookings.queue_tv.view"><DashboardQueueTv /></PermissionRoute>} />
+                <Route path="day-audit" element={<PermissionRoute permission="bookings.day_audit.manage"><DashboardDayAudit /></PermissionRoute>} />
+                <Route path="clients" element={<PermissionRoute permission="clients.view"><DashboardClients currentRole={userInfo.role} /></PermissionRoute>} />
+                <Route path="partners" element={<PermissionRoute permission="partners.manage"><DashboardPartners /></PermissionRoute>} />
+                <Route path="loyalty" element={<PermissionRoute permission="clients.loyalty.manage"><DashboardLoyalty /></PermissionRoute>} />
+                <Route path="offers" element={<PermissionRoute permission="offers.manage"><DashboardOffers /></PermissionRoute>} />
+                <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports /></PermissionRoute>} />
+                <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
+                <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
 
-                {(hasAdminPower || isReception) && (
-                  <Route path="day-audit" element={<DashboardDayAudit />} />
-                )}
-
-                {(hasAdminPower || (isReception && allowStaffViewClients)) && (
-                    <Route path="clients" element={<DashboardClients currentRole={userInfo.role} />} />
-                  )}
-
-                {hasAdminPower && (
-                  <Route path="partners" element={<DashboardPartners />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="loyalty" element={<DashboardLoyalty />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="offers" element={<DashboardOffers />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="reports" element={<DashboardReports />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="income" element={<DashboardIncome />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="expenses" element={<DashboardExpenses />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route
-                    path="settings/*"
-                    element={
+                <Route
+                  path="settings/*"
+                  element={
+                    <PermissionRoute
+                      anyOf={[
+                        "settings.general.manage",
+                        "settings.booking.manage",
+                        "catalog.manage",
+                        "admin_accounts.view",
+                        "admin_accounts.manage",
+                        "settings.content.manage",
+                        "attendance.settings.manage",
+                      ]}
+                    >
                       <DashboardSettings
                         initialRole={userInfo.role}
                         authReady={Boolean(userInfo)}
                         settings={settings}
                       />
-                    }
-                  />
-                )}
+                    </PermissionRoute>
+                  }
+                />
 
-                {hasAdminPower && (
-                  <Route path="admin-profile" element={<DashboardAdminProfile />} />
-                )}
-
-                {hasAdminPower && (
-                  <Route path="logs" element={<DashboardLogs />} />
-                )}
+                <Route path="admin-profile" element={<PermissionRoute permission="workspace.dashboard.view"><DashboardAdminProfile /></PermissionRoute>} />
+                <Route path="logs" element={<PermissionRoute permission="logs.view"><DashboardLogs /></PermissionRoute>} />
 
                 <Route
                   path="*"
-                  element={
-                    isStaff ? (
-                      <Navigate to="/employee/overview" replace />
-                    ) : (
-                      <Navigate to="/dashboard/overview" replace />
-                    )
-                  }
+                  element={<Navigate to="/dashboard/overview" replace />}
                 />
               </Routes>
             </div>
@@ -3223,14 +3124,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* ✅ Modal تفاصيل الحجز */}
-      <DashboardMobileNav
-        hasAdminPower={hasAdminPower}
-        isReception={isReception}
-        isStaff={isStaff}
-        canManageAdminUsers={Boolean(canManageAdminUsers)}
-        allowStaffViewClients={Boolean(allowStaffViewClients)}
-        missingExpenseNotesCount={missingExpenseNotesCount}
-      />
+      <DashboardMobileNav missingExpenseNotesCount={missingExpenseNotesCount} />
       {selectedBooking && (
         <Modal
           open={!!selectedBooking}

@@ -34,6 +34,9 @@ import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession } from "./hr/shared";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
+import PermissionRoute from "../components/PermissionRoute";
+import { usePermissions } from "../security/PermissionContext";
+import type { AppPermission } from "../helpers/permissions";
 import "../styles/EmployeePortalMobileNav.css";
 
 function PortalSkeleton({ title, subtitle }: { title: string; subtitle: string }) {
@@ -99,6 +102,7 @@ function EmployeeMorePage({
   roleLabel,
   notificationCounts,
 }: EmployeeMorePageProps) {
+  const { hasPermission } = usePermissions();
   const items = [
     {
       to: "/employee/notifications",
@@ -106,6 +110,7 @@ function EmployeeMorePage({
       description: "آخر التحديثات والتنبيهات",
       icon: faBell,
       badge: notificationCounts.all,
+      permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/messages",
@@ -113,6 +118,7 @@ function EmployeeMorePage({
       description: "التواصل الداخلي مع الإدارة",
       icon: faPaperPlane,
       badge: notificationCounts.messages,
+      permission: "messages.view" as AppPermission,
     },
     {
       to: "/employee/files",
@@ -120,6 +126,7 @@ function EmployeeMorePage({
       description: "العقود والمستندات والمرفقات",
       icon: faFileLines,
       badge: notificationCounts.files,
+      permission: "workspace.employee_portal.view" as AppPermission,
     },
     {
       to: "/employee/payroll",
@@ -127,6 +134,7 @@ function EmployeeMorePage({
       description: "التفاصيل والسجلات المالية",
       icon: faWallet,
       badge: notificationCounts.payroll,
+      permission: "workspace.employee_portal.view" as AppPermission,
     },
   ];
 
@@ -145,7 +153,7 @@ function EmployeeMorePage({
       </header>
 
       <div className="employee-more-grid">
-        {items.map((item) => (
+        {items.filter((item) => hasPermission(item.permission)).map((item) => (
           <Link
             key={item.to}
             to={item.to}
@@ -175,6 +183,7 @@ export default function EmployeePortal() {
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
+  const { hasPermission, hasAnyPermission } = usePermissions();
   const [notifications, setNotifications] = useState<EmployeeNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -263,38 +272,44 @@ export default function EmployeePortal() {
   const role = cleanPortalText(session.role).toLowerCase();
   const roleLabel = portalRoleLabel(role);
   const portalSubtitle = "الدوام، الإجازات، الملفات والرسائل";
-  const canOpenHr = role === "owner" || role === "admin" || role === "hr";
-  const canOpenDashboard =
-    role === "owner" || role === "admin" || role === "hr" || role === "reception";
+  const canOpenHr = hasAnyPermission([
+    "employees.view",
+    "attendance.view",
+    "recruitment.view",
+    "messages.manage",
+    "employees.files.view",
+    "admin_accounts.view",
+  ]);
+  const canOpenDashboard = hasPermission("workspace.dashboard.view");
 
   const bottomNavItems = [
-    { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true },
-    { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true },
-    { to: "/employee/leave", label: "الطلبات", icon: faPaperPlane },
-    { to: "/employee/profile", label: "الملف الشخصي", icon: faUser },
-    { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all },
-  ];
+    { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/leave", label: "الطلبات", icon: faPaperPlane, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
+  ].filter((item) => hasPermission(item.permission));
 
   const desktopNavItems = [
-    { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true },
-    { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true },
-    { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave },
-    { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll },
-    { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages },
-    { to: "/employee/files", label: "الملفات", description: "المستندات والعقود", icon: faFileLines, badge: notificationCounts.files },
-    { to: "/employee/profile", label: "الملف الشخصي", description: "البيانات الوظيفية", icon: faUser, badge: notificationCounts.profile },
-    { to: "/employee/notifications", label: "التنبيهات", description: "آخر التحديثات", icon: faBell, badge: notificationCounts.all },
-  ];
+    { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
+    { to: "/employee/files", label: "الملفات", description: "المستندات والعقود", icon: faFileLines, badge: notificationCounts.files, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/profile", label: "الملف الشخصي", description: "البيانات الوظيفية", icon: faUser, badge: notificationCounts.profile, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/notifications", label: "التنبيهات", description: "آخر التحديثات", icon: faBell, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
+  ].filter((item) => hasPermission(item.permission));
 
   const requestItems = [
-    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/attendance" },
-    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/messages" },
-    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/messages" },
-    { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/payroll" },
-    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/leave" },
-    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/messages" },
-    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/messages" },
-  ];
+    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/attendance", permission: "attendance.own.view" as AppPermission },
+    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/messages", permission: "messages.view" as AppPermission },
+    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/messages", permission: "messages.view" as AppPermission },
+    { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/payroll", permission: "workspace.employee_portal.view" as AppPermission },
+    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/leave", permission: "workspace.employee_portal.view" as AppPermission },
+    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/messages", permission: "messages.view" as AppPermission },
+    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/messages", permission: "messages.view" as AppPermission },
+  ].filter((item) => hasPermission(item.permission));
   const employeeHeaderTitle = getEmployeePortalTitle(location.pathname);
   const renderEmployeeHeaderActions = () => (
     <>
@@ -305,20 +320,21 @@ export default function EmployeePortal() {
         onLogout={handleLogout}
       />
 
-      <Link
-        to="/employee/notifications"
-        className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
-        aria-label="التنبيهات"
-        title="التنبيهات"
-      >
-        <FontAwesomeIcon icon={faBell} />
-
-        {notificationCounts.all > 0 ? (
-          <span className="employee-header-notification__badge employee-app-topbar__badge">
-            {notificationCounts.all}
-          </span>
-        ) : null}
-      </Link>
+      {hasPermission("workspace.employee_portal.view") ? (
+        <Link
+          to="/employee/notifications"
+          className="employee-header-notification employee-app-topbar__action employee-app-topbar__action--notifications"
+          aria-label="التنبيهات"
+          title="التنبيهات"
+        >
+          <FontAwesomeIcon icon={faBell} />
+          {notificationCounts.all > 0 ? (
+            <span className="employee-header-notification__badge employee-app-topbar__badge">
+              {notificationCounts.all}
+            </span>
+          ) : null}
+        </Link>
+      ) : null}
     </>
   );
 
@@ -417,69 +433,40 @@ export default function EmployeePortal() {
             <Route
               path="overview"
               element={
-                <EmployeeOverviewPage
-                  session={session}
-                  notifications={notifications}
-                  onRefresh={loadNotifications}
-                />
+                <PermissionRoute permission="workspace.employee_portal.view">
+                  <EmployeeOverviewPage session={session} notifications={notifications} onRefresh={loadNotifications} />
+                </PermissionRoute>
               }
             />
             <Route
               path="attendance"
               element={
-                <EmployeeOverviewPage
-                  session={session}
-                  notifications={notifications}
-                  onRefresh={loadNotifications}
-                  attendanceOnly
-                />
+                <PermissionRoute permission="attendance.own.view">
+                  <EmployeeOverviewPage session={session} notifications={notifications} onRefresh={loadNotifications} attendanceOnly />
+                </PermissionRoute>
               }
             />
             <Route
               path="notifications"
               element={
-                <EmployeeNotificationsPage
-                  session={session}
-                  notifications={notifications}
-                  onRefresh={loadNotifications}
-                />
+                <PermissionRoute permission="workspace.employee_portal.view">
+                  <EmployeeNotificationsPage session={session} notifications={notifications} onRefresh={loadNotifications} />
+                </PermissionRoute>
               }
             />
             <Route
               path="more"
               element={
-                <EmployeeMorePage
-                  displayName={displayName}
-                  roleLabel={roleLabel}
-                  notificationCounts={notificationCounts}
-                />
+                <PermissionRoute permission="workspace.employee_portal.view">
+                  <EmployeeMorePage displayName={displayName} roleLabel={roleLabel} notificationCounts={notificationCounts} />
+                </PermissionRoute>
               }
             />
-            <Route
-              path="profile"
-              element={
-                <EmployeeProfilePage
-                    session={session}
-                    onPortalChange={loadNotifications}
-                  />
-              }
-            />
-            <Route
-              path="messages"
-              element={<EmployeeMessagesPage session={session} onPortalChange={loadNotifications} />}
-            />
-            <Route
-              path="files"
-              element={<EmployeeFilesPage session={session} onPortalChange={loadNotifications} />}
-            />
-            <Route
-              path="leave"
-              element={<EmployeeLeavePage session={session} onPortalChange={loadNotifications} />}
-            />
-            <Route
-              path="payroll"
-              element={<EmployeePayrollPage session={session} onPortalChange={loadNotifications} />}
-            />
+            <Route path="profile" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeProfilePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="messages" element={<PermissionRoute permission="messages.view"><EmployeeMessagesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="files" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeFilesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="leave" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeLeavePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
           </div>

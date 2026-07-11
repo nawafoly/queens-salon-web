@@ -11,6 +11,8 @@ import { auth, db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 import { readStoredAuthSession } from "../services/localAuthSession";
+import PermissionRoute from "../components/PermissionRoute";
+import { usePermissions } from "../security/PermissionContext";
 
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalog from "./settings/SettingsCatalog";
@@ -75,17 +77,21 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   settings: settingsProp,
 }) => {
   const [uiRole, setUiRole] = useState<UiRole>(mapFirestoreRoleToUi(initialRole ?? "guest"));
+  const { hasPermission, hasAnyPermission } = usePermissions();
   const [authLoading, setAuthLoading] = useState(() =>
     typeof authReady === "boolean" ? !authReady : true
   );
 
-  const isOwner = uiRole === "owner";
-  const isAdmin = uiRole === "admin";
-  const isReception = uiRole === "reception";
-  const isStaff = uiRole === "staff";
-
-  const hasAdminPower = isOwner || isAdmin;
-  const canView = hasAdminPower || isReception || isStaff;
+  const canManageGeneralSettings = hasPermission("settings.general.manage");
+  const canView = hasAnyPermission([
+    "settings.general.manage",
+    "settings.booking.manage",
+    "catalog.manage",
+    "admin_accounts.view",
+    "admin_accounts.manage",
+    "settings.content.manage",
+    "attendance.settings.manage",
+  ]);
 
   const [settings, setSettings] = useState<AppSettings>(() =>
     settingsProp || AppSettingsService.getCached()
@@ -103,7 +109,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         hint: "هوية الصالون والإعدادات العامة",
         to: currentRootPath,
         badge: "01",
-        visible: true,
+        visible: canManageGeneralSettings,
         activePaths: [currentRootPath],
       },
       {
@@ -112,7 +118,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         hint: "الدوام والاستثناءات",
         to: `${currentRootPath}/bookings`,
         badge: "02",
-        visible: hasAdminPower,
+        visible: hasPermission("settings.booking.manage"),
         activePaths: [`${currentRootPath}/bookings`],
       },
       {
@@ -121,7 +127,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         hint: "الأقسام والخدمات",
         to: `${currentRootPath}/catalog`,
         badge: "03",
-        visible: hasAdminPower,
+        visible: hasPermission("catalog.manage"),
         activePaths: [`${currentRootPath}/catalog`],
       },
       {
@@ -130,7 +136,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         hint: "إنشاء وتعديل حسابات الموظفات",
         to: `${currentRootPath}/users`,
         badge: "04",
-        visible: isOwner || (isAdmin && Boolean((settings as any)?.policies?.allowAdminManageUsers)),
+        visible: hasPermission("admin_accounts.view") || hasPermission("admin_accounts.manage"),
         activePaths: [`${currentRootPath}/users`],
       },
       {
@@ -139,11 +145,24 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         hint: "العنوان وبيانات التواصل",
         to: `${currentRootPath}/contact`,
         badge: "05",
-        visible: hasAdminPower,
+        visible: hasPermission("settings.content.manage"),
         activePaths: [`${currentRootPath}/contact`],
       },
+      {
+        key: "attendance",
+        label: "الحضور والبصمة",
+        hint: "النطاقات وسياسات تسجيل الحضور",
+        to: `${currentRootPath}/attendance`,
+        badge: "06",
+        visible: hasPermission("attendance.settings.manage"),
+        activePaths: [`${currentRootPath}/attendance`],
+      },
     ],
-    [currentRootPath, hasAdminPower, isAdmin, isOwner, settings]
+    [
+      canManageGeneralSettings,
+      currentRootPath,
+      hasPermission,
+    ]
   );
 
   const accessibleNavCount = settingsNavItems.filter((item) => item.visible).length;
@@ -171,13 +190,13 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
       },
       {
         label: "الحالة الحالية",
-        value: hasAdminPower ? "قابل للتعديل" : "عرض فقط",
-        hint: hasAdminPower ? "صلاحية إدارية" : "صلاحية محدودة",
+        value: canManageGeneralSettings ? "قابل للتعديل" : "محدود",
+        hint: canManageGeneralSettings ? "صلاحية إعدادات عامة" : "حسب الصلاحيات الممنوحة",
       },
     ],
     [
       accessibleNavCount,
-      hasAdminPower,
+      canManageGeneralSettings,
       policiesEnabledCount,
       policyTotalCount,
       sectionTotalCount,
@@ -207,9 +226,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     (settings as any)?.policies?.allowAdminManageUsers
   );
 
-  const canManageUsers = useMemo(() => {
-    return isOwner || (isAdmin && allowAdminManageUsers);
-  }, [isOwner, isAdmin, allowAdminManageUsers]);
 
   /* =========================
      Auth & Role
@@ -272,15 +288,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   }, [settingsProp]);
 
   const hint = useMemo(() => {
-    if (hasAdminPower) return "تقدر تعدّل وتحفظ مباشرة.";
-    if (isReception) return "عرض فقط لموظفة الاستقبال (لا يمكن التعديل).";
-    if (isStaff) return "عرض فقط للموظفة (لا يمكن التعديل).";
+    if (canManageGeneralSettings) return "تقدر تعدّل وتحفظ مباشرة.";
+    if (canView) return "يمكنك فتح الأقسام التي تسمح بها صلاحيات حسابك.";
     return "غير مصرح.";
-  }, [hasAdminPower, isReception, isStaff]);
+  }, [canManageGeneralSettings, canView]);
 
 
   const handleSave = async () => {
-    if (!hasAdminPower) return;
+    if (!canManageGeneralSettings) return;
 
     try {
       await AppSettingsService.saveRemote(settings);
@@ -298,7 +313,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
 
 
   const toggleSection = (key: SectionKey) => {
-    if (!hasAdminPower) return;
+    if (!canManageGeneralSettings) return;
     setSettings((prev: any) => ({
       ...prev,
       sections: { ...prev.sections, [key]: !prev.sections?.[key] },
@@ -306,7 +321,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   };
 
   const togglePolicy = (key: string) => {
-    if (!hasAdminPower) return;
+    if (!canManageGeneralSettings) return;
     setSettings((prev: any) => ({
       ...prev,
       policies: { ...(prev.policies || {}), [key]: !prev.policies?.[key] },
@@ -354,7 +369,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               <span className="settings-shell__pill settings-shell__pill--success">جاهز للحفظ</span>
               <span className="settings-shell__pill settings-shell__pill--outline">{accessibleNavCount} روابط مباشرة</span>
               <span className="settings-shell__pill settings-shell__pill--outline">
-                {hasAdminPower ? "صلاحية كاملة" : "عرض فقط"}
+                {canManageGeneralSettings ? "صلاحية إعدادات عامة" : "عرض محدود"}
               </span>
             </>
           }
@@ -395,8 +410,8 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             title="هوية المنصة"
             hint="البيانات الأساسية التي تظهر في الشاشات العامة والإدارية."
             actions={
-              <span className={`settings-shell__pill ${hasAdminPower ? "settings-shell__pill--success" : "settings-shell__pill--outline"}`}>
-                {hasAdminPower ? "قابل للتعديل" : "عرض فقط"}
+              <span className={`settings-shell__pill ${canManageGeneralSettings ? "settings-shell__pill--success" : "settings-shell__pill--outline"}`}>
+                {canManageGeneralSettings ? "قابل للتعديل" : "عرض فقط"}
               </span>
             }
             className="settings-basic-panel"
@@ -408,10 +423,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                   className="settings-input"
                   value={(settings as any)?.salonName || ""}
                   onChange={(e) =>
-                    hasAdminPower &&
+                    canManageGeneralSettings &&
                     setSettings({ ...(settings as any), salonName: e.target.value })
                   }
-                  disabled={!hasAdminPower}
+                  disabled={!canManageGeneralSettings}
                   placeholder="مثال: Queens Salon"
                 />
               </div>
@@ -422,10 +437,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                   className="settings-input"
                   value={(settings as any)?.phone || ""}
                   onChange={(e) =>
-                    hasAdminPower &&
+                    canManageGeneralSettings &&
                     setSettings({ ...(settings as any), phone: e.target.value })
                   }
-                  disabled={!hasAdminPower}
+                  disabled={!canManageGeneralSettings}
                   placeholder="05xxxxxxxx"
                 />
               </div>
@@ -436,17 +451,17 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                   className="settings-input"
                   value={(settings as any)?.city || ""}
                   onChange={(e) =>
-                    hasAdminPower &&
+                    canManageGeneralSettings &&
                     setSettings({ ...(settings as any), city: e.target.value })
                   }
-                  disabled={!hasAdminPower}
+                  disabled={!canManageGeneralSettings}
                   placeholder="المدينة المنورة"
                 />
               </div>
             </div>
 
-            {!hasAdminPower ? (
-              <div className="settings-note">* للتعديل تحتاج صلاحية Owner/Admin.</div>
+            {!canManageGeneralSettings ? (
+              <div className="settings-note">* للتعديل تحتاج صلاحية settings.general.manage.</div>
             ) : null}
           </SettingsSection>
         ) : null}
@@ -483,7 +498,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                     type="button"
                     className={`settings-toggle-card ${enabled ? "is-on" : ""}`}
                     aria-pressed={enabled}
-                    disabled={!hasAdminPower}
+                    disabled={!canManageGeneralSettings}
                     onClick={() => toggleSection(key)}
                   >
                     <span className="settings-toggle-card__mark" aria-hidden="true">
@@ -549,7 +564,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                     type="button"
                     className={`settings-toggle-card ${enabled ? "is-on" : ""}`}
                     aria-pressed={enabled}
-                    disabled={!hasAdminPower}
+                    disabled={!canManageGeneralSettings}
                     onClick={() => togglePolicy(key)}
                   >
                     <span className="settings-toggle-card__mark" aria-hidden="true">
@@ -584,11 +599,11 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
           }
           actions={
             <button
-              className={`exp-btn primary ${!hasAdminPower ? "is-disabled" : ""}`}
+              className={`exp-btn primary ${!canManageGeneralSettings ? "is-disabled" : ""}`}
               onClick={handleSave}
-              disabled={!hasAdminPower}
+              disabled={!canManageGeneralSettings}
               type="button"
-              title={!hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ الإعدادات"}
+              title={!canManageGeneralSettings ? "تحتاج صلاحية settings.general.manage" : "حفظ الإعدادات"}
             >
               حفظ التغييرات
             </button>
@@ -606,44 +621,49 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
       <main className="settings-shell__main" dir="rtl">
         <section className="settings-shell__content">
             <Routes>
-              <Route index element={<MainSettings />} />
+              <Route
+                index
+                element={
+                  <PermissionRoute permission="settings.general.manage">
+                    <MainSettings />
+                  </PermissionRoute>
+                }
+              />
 
-              <Route path="bookings" element={<SettingsBookings />} />
-              <Route path="catalog" element={<SettingsCatalog hasAdminPower={hasAdminPower} />} />
+              <Route
+                path="bookings"
+                element={<PermissionRoute permission="settings.booking.manage"><SettingsBookings /></PermissionRoute>}
+              />
+              <Route
+                path="catalog"
+                element={<PermissionRoute permission="catalog.manage"><SettingsCatalog hasAdminPower={hasPermission("catalog.manage")} /></PermissionRoute>}
+              />
               <Route
                 path="users"
                 element={
-                  canManageUsers ? (
+                  <PermissionRoute anyOf={["admin_accounts.view", "admin_accounts.manage"]}>
                     <SettingsUsers
                       initialRole={uiRole}
                       authReady={!authLoading}
                       allowAdminManageUsers={allowAdminManageUsers}
                     />
-                  ) : (
-                    <Navigate to={SETTINGS_ROOT_PATH} replace />
-                  )
+                  </PermissionRoute>
                 }
               />
-              <Route path="contact" element={<SettingsContact hasAdminPower={hasAdminPower} />} />
-              <Route path="attendance" element={<SettingsAttendance hasAdminPower={hasAdminPower} />} />
+              <Route
+                path="contact"
+                element={<PermissionRoute permission="settings.content.manage"><SettingsContact hasAdminPower={hasPermission("settings.content.manage")} /></PermissionRoute>}
+              />
+              <Route
+                path="attendance"
+                element={<PermissionRoute permission="attendance.settings.manage"><SettingsAttendance hasAdminPower={hasPermission("attendance.settings.manage")} /></PermissionRoute>}
+              />
 
               <Route path="advanced" element={<Navigate to={SETTINGS_ROOT_PATH} replace />} />
-              <Route
-                path="advanced/bookings"
-                element={<Navigate to={`${SETTINGS_ROOT_PATH}/bookings`} replace />}
-              />
-              <Route
-                path="advanced/catalog"
-                element={<Navigate to={`${SETTINGS_ROOT_PATH}/catalog`} replace />}
-              />
-              <Route
-                path="advanced/users"
-                element={<Navigate to={`${SETTINGS_ROOT_PATH}/users`} replace />}
-              />
-              <Route
-                path="advanced/contact"
-                element={<Navigate to={`${SETTINGS_ROOT_PATH}/contact`} replace />}
-              />
+              <Route path="advanced/bookings" element={<Navigate to={`${SETTINGS_ROOT_PATH}/bookings`} replace />} />
+              <Route path="advanced/catalog" element={<Navigate to={`${SETTINGS_ROOT_PATH}/catalog`} replace />} />
+              <Route path="advanced/users" element={<Navigate to={`${SETTINGS_ROOT_PATH}/users`} replace />} />
+              <Route path="advanced/contact" element={<Navigate to={`${SETTINGS_ROOT_PATH}/contact`} replace />} />
               <Route path="*" element={<Navigate to="." replace />} />
             </Routes>
         </section>

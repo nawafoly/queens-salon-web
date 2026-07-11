@@ -1,0 +1,113 @@
+.access-denied {
+  min-height: min(72vh, 720px);
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.access-denied--compact {
+  min-height: 360px;
+}
+
+.access-denied__card {
+  width: min(100%, 680px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: rgba(20, 20, 22, 0.94);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  color: #fff;
+}
+
+.access-denied__icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(120, 0, 0, 0.24);
+  color: #f3c7c7;
+  font-size: 20px;
+}
+
+.access-denied__copy small {
+  display: block;
+  margin-bottom: 7px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.access-denied__copy h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 3vw, 31px);
+}
+
+.access-denied__copy p {
+  margin: 12px 0 0;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.85;
+}
+
+.access-denied__permission {
+  display: inline-flex;
+  margin-top: 14px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.78);
+  direction: ltr;
+}
+
+.access-denied__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.access-denied__actions button,
+.access-denied__actions a {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.access-denied__actions a {
+  background: #780000;
+  border-color: #780000;
+}
+
+@media (max-width: 640px) {
+  .access-denied {
+    padding: 18px 14px 96px;
+  }
+
+  .access-denied__card {
+    grid-template-columns: 1fr;
+    padding: 22px;
+  }
+
+  .access-denied__actions {
+    grid-column: 1;
+  }
+
+  .access-denied__actions button,
+  .access-denied__actions a {
+    flex: 1 1 140px;
+  }
+}

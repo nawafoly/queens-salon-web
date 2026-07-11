@@ -14,45 +14,37 @@ import {
   faStore,
   faTv,
   faUser,
-  faUsers,
   faUserShield,
   faWallet,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
+import type { AppPermission } from "../helpers/permissions";
+import { usePermissions } from "../security/PermissionContext";
+
 type DashboardMobileNavProps = {
-  hasAdminPower: boolean;
-  isReception: boolean;
-  isStaff: boolean;
-  canManageAdminUsers: boolean;
-  allowStaffViewClients: boolean;
   missingExpenseNotesCount: number;
 };
 
-type MoreItem = {
-  to?: string;
+type NavigationItem = {
+  to: string;
   label: string;
-  description?: string;
   icon: typeof faHouse;
-  danger?: boolean;
-  action?: () => void;
+  permission: AppPermission;
+  primary?: boolean;
+};
+
+type MoreItem = NavigationItem & {
+  description?: string;
 };
 
 export default function DashboardMobileNav({
-  hasAdminPower,
-  isReception,
-  isStaff,
-  canManageAdminUsers,
-  allowStaffViewClients,
   missingExpenseNotesCount,
 }: DashboardMobileNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const [moreOpen, setMoreOpen] = useState(false);
-
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -65,225 +57,137 @@ export default function DashboardMobileNav({
     };
 
     document.addEventListener("keydown", closeOnEscape);
-
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [moreOpen]);
 
-  const canViewClients =
-    hasAdminPower || (isReception && allowStaffViewClients);
+  const primaryItems = useMemo<NavigationItem[]>(() => {
+    const items: NavigationItem[] = [
+      { to: "/dashboard/bookings", label: "الحجوزات", icon: faCalendarAlt, permission: "bookings.view" },
+      { to: "/dashboard/income", label: "الإيرادات", icon: faWallet, permission: "income.view" },
+      { to: "/dashboard/expenses", label: "المصروفات", icon: faMoneyBillWave, permission: "expenses.view", primary: true },
+      { to: "/dashboard/reports", label: "التقارير", icon: faChartPie, permission: "reports.view" },
+    ];
+    return items.filter((item) => hasPermission(item.permission));
+  }, [hasPermission]);
 
   const moreItems = useMemo<MoreItem[]>(() => {
-    const items: MoreItem[] = [];
+    const items: MoreItem[] = [
+      {
+        to: "/dashboard/overview",
+        label: "نظرة عامة",
+        description: "ملخص لوحة التشغيل",
+        icon: faHouse,
+        permission: "workspace.dashboard.view",
+      },
+      {
+        to: "/dashboard/booking-internal",
+        label: "الحجز الإداري",
+        description: "إنشاء حجز من داخل الإدارة",
+        icon: faUserShield,
+        permission: "bookings.create",
+      },
+      {
+        to: "/dashboard/day-audit",
+        label: "إغلاق اليوم والشفت",
+        description: "مراجعة العمليات وإقفال اليوم",
+        icon: faWallet,
+        permission: "bookings.day_audit.manage",
+      },
+      {
+        to: "/dashboard/tv-queue",
+        label: "شاشة الحجوزات TV",
+        description: "عرض نداء ومتابعة الحجوزات",
+        icon: faTv,
+        permission: "bookings.queue_tv.view",
+      },
+      {
+        to: "/dashboard/clients",
+        label: "العملاء",
+        description: "ملفات العملاء والباقات",
+        icon: faUser,
+        permission: "clients.view",
+      },
+      {
+        to: "/dashboard/partners",
+        label: "الشريكات والمساحات",
+        description: "إدارة المستأجرات ومقاعد العمل",
+        icon: faStore,
+        permission: "partners.manage",
+      },
+      { to: "/dashboard/offers", label: "العروض والكوبونات", icon: faPercent, permission: "offers.manage" },
+      { to: "/dashboard/logs", label: "سجل الحركات", icon: faClockRotateLeft, permission: "logs.view" },
+      { to: "/dashboard/loyalty", label: "الولاء VIP", icon: faChartPie, permission: "clients.loyalty.manage" },
+      { to: "/dashboard/admin-profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.dashboard.view" },
+      { to: "/dashboard/settings", label: "الإعدادات الأساسية", icon: faCog, permission: "settings.general.manage" },
+      { to: "/dashboard/settings/bookings", label: "إعدادات الحجوزات", icon: faCalendarAlt, permission: "settings.booking.manage" },
+      { to: "/dashboard/settings/catalog", label: "إدارة الكتالوج", icon: faPercent, permission: "catalog.manage" },
+      { to: "/dashboard/settings/users", label: "إدارة الحسابات", icon: faUserShield, permission: "admin_accounts.view" },
+      { to: "/dashboard/settings/contact", label: "محتوى الموقع", icon: faHouse, permission: "settings.content.manage" },
+      { to: "/dashboard/settings/attendance", label: "الحضور والبصمة", icon: faFingerprint, permission: "attendance.settings.manage" },
+    ];
 
-    if (hasAdminPower || isReception) {
-      items.push(
-        {
-          to: "/dashboard/booking-internal",
-          label: "الحجز الإداري",
-          description: "إنشاء حجز من داخل الإدارة",
-          icon: faUserShield,
-        },
-        {
-          to: "/dashboard/day-audit",
-          label: "إغلاق اليوم والشفت",
-          description: "مراجعة العمليات وإقفال اليوم",
-          icon: faWallet,
-        },
-        {
-          to: "/dashboard/tv-queue",
-          label: "شاشة الحجوزات TV",
-          description: "عرض نداء ومتابعة الحجوزات",
-          icon: faTv,
-        }
+    return items
+      .filter((item) => hasPermission(item.permission))
+      .filter((item) => !primaryItems.some((primary) => primary.to === item.to))
+      .map((item) =>
+        item.to === "/dashboard/expenses" && missingExpenseNotesCount > 0
+          ? { ...item, label: `المصروفات (${missingExpenseNotesCount})` }
+          : item
       );
-    }
+  }, [hasPermission, missingExpenseNotesCount, primaryItems]);
 
-    if (hasAdminPower) {
-      items.push(
-        {
-          to: "/dashboard/partners",
-          label: "الشريكات والمساحات",
-          description: "إدارة المستأجرات ومقاعد العمل",
-          icon: faStore,
-        },
-        {
-          to: "/dashboard/offers",
-          label: "العروض والكوبونات",
-          icon: faPercent,
-        },
-        {
-          to: "/dashboard/reports",
-          label: "التقارير",
-          icon: faChartPie,
-        },
-        {
-          to: "/dashboard/income",
-          label: "الإيرادات",
-          icon: faWallet,
-        },
-        {
-          to: "/dashboard/expenses",
-          label:
-            missingExpenseNotesCount > 0
-              ? `المصروفات (${missingExpenseNotesCount})`
-              : "المصروفات",
-          icon: faMoneyBillWave,
-        },
-        {
-          to: "/dashboard/logs",
-          label: "سجل الحركات",
-          icon: faClockRotateLeft,
-        },
-        {
-          to: "/dashboard/loyalty",
-          label: "الولاء VIP",
-          icon: faChartPie,
-        },
-        {
-          to: "/dashboard/admin-profile",
-          label: "الملف الشخصي",
-          icon: faUser,
-        },
-        {
-          to: "/dashboard/settings",
-          label: "الإعدادات الأساسية",
-          icon: faCog,
-        },
-        {
-          to: "/dashboard/settings/bookings",
-          label: "إعدادات الحجوزات",
-          icon: faCalendarAlt,
-        },
-        {
-          to: "/dashboard/settings/catalog",
-          label: "إدارة الكتالوج",
-          icon: faPercent,
-        }
-      );
+  const isMoreActive = moreItems.some(
+    (item) => item.to !== "/" && location.pathname.startsWith(item.to)
+  );
 
-      if (canManageAdminUsers) {
-        items.push({
-          to: "/dashboard/settings/users",
-          label: "إدارة الحسابات",
-          icon: faUserShield,
-        });
-      }
-
-      items.push(
-        {
-          to: "/dashboard/settings/contact",
-          label: "محتوى الموقع",
-          icon: faHouse,
-        },
-        {
-          to: "/dashboard/settings/attendance",
-          label: "الحضور والبصمة",
-          icon: faFingerprint,
-        }
-      );
-    }
-
-    return items;
-  }, [
-    allowStaffViewClients,
-    canManageAdminUsers,
-    hasAdminPower,
-    isReception,
-    isStaff,
-    missingExpenseNotesCount,
-  ]);
-
-  const isMoreActive =
-    moreItems.some(
-      (item) =>
-        item.to &&
-        item.to !== "/" &&
-        location.pathname.startsWith(item.to)
-    ) &&
-    !location.pathname.startsWith("/dashboard/bookings") &&
-    !location.pathname.startsWith("/dashboard/income") &&
-    !location.pathname.startsWith("/dashboard/expenses") &&
-    !location.pathname.startsWith("/dashboard/reports");
+  if (!primaryItems.length && !moreItems.length) return null;
 
   return (
     <>
-      <nav
-        className="dashboard-mobile-bottom-nav"
-        aria-label="تنقل لوحة التحكم"
-      >
-        <NavLink
-          to="/dashboard/bookings"
-          className={({ isActive }) =>
-            `dashboard-mobile-bottom-nav__item ${
-              isActive ? "is-active" : ""
-            }`
-          }
-        >
-          <FontAwesomeIcon icon={faCalendarAlt} />
-          <span>الحجوزات</span>
-        </NavLink>
+      <nav className="dashboard-mobile-bottom-nav" aria-label="تنقل لوحة التحكم">
+        {primaryItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `dashboard-mobile-bottom-nav__item ${item.primary ? "dashboard-mobile-bottom-nav__item--primary" : ""} ${
+                isActive ? "is-active" : ""
+              }`
+            }
+          >
+            {item.primary ? (
+              <span className="dashboard-mobile-bottom-nav__primary-icon">
+                <FontAwesomeIcon icon={item.icon} />
+              </span>
+            ) : (
+              <FontAwesomeIcon icon={item.icon} />
+            )}
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
 
-        <NavLink
-          to="/dashboard/income"
-          className={({ isActive }) =>
-            `dashboard-mobile-bottom-nav__item ${
-              isActive ? "is-active" : ""
-            }`
-          }
-        >
-          <FontAwesomeIcon icon={faWallet} />
-          <span>الإيرادات</span>
-        </NavLink>
-
-        <NavLink
-          to="/dashboard/expenses"
-          className={({ isActive }) =>
-            `dashboard-mobile-bottom-nav__item dashboard-mobile-bottom-nav__item--primary ${
-              isActive ? "is-active" : ""
-            }`
-          }
-        >
-          <span className="dashboard-mobile-bottom-nav__primary-icon">
-            <FontAwesomeIcon icon={faMoneyBillWave} />
-          </span>
-          <span>المصروفات</span>
-        </NavLink>
-
-        <NavLink
-          to="/dashboard/reports"
-          className={({ isActive }) =>
-            `dashboard-mobile-bottom-nav__item ${
-              isActive ? "is-active" : ""
-            }`
-          }
-        >
-          <FontAwesomeIcon icon={faChartPie} />
-          <span>التقارير</span>
-        </NavLink>
-
-        <button
-          type="button"
-          className={`dashboard-mobile-bottom-nav__item ${
-            moreOpen || isMoreActive ? "is-active" : ""
-          }`}
-          onClick={() => setMoreOpen(true)}
-          aria-expanded={moreOpen}
-        >
-          <FontAwesomeIcon icon={faBars} />
-          <span>المزيد</span>
-        </button>
+        {moreItems.length ? (
+          <button
+            type="button"
+            className={`dashboard-mobile-bottom-nav__item ${moreOpen || isMoreActive ? "is-active" : ""}`}
+            onClick={() => setMoreOpen(true)}
+            aria-expanded={moreOpen}
+          >
+            <FontAwesomeIcon icon={faBars} />
+            <span>المزيد</span>
+          </button>
+        ) : null}
       </nav>
+
       {moreOpen ? (
         <div
           className="dashboard-mobile-more-overlay"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setMoreOpen(false);
-            }
+            if (event.target === event.currentTarget) setMoreOpen(false);
           }}
         >
           <section
@@ -297,9 +201,8 @@ export default function DashboardMobileNav({
                 <div className="dashboard-mobile-more-header__title">
                   <span>القائمة الإدارية</span>
                   <h2>المزيد</h2>
-                  <p>الإدارة والتقارير والإعدادات في مكان واحد.</p>
+                  <p>تظهر هنا الأقسام التي تسمح بها صلاحيات حسابك.</p>
                 </div>
-
                 <button
                   type="button"
                   className="dashboard-mobile-more-header__close"
@@ -309,44 +212,25 @@ export default function DashboardMobileNav({
                   <FontAwesomeIcon icon={faXmark} />
                 </button>
               </div>
-
             </header>
 
             <div className="dashboard-mobile-more-grid">
               {moreItems.map((item) => (
                 <button
-                  key={`${item.label}:${item.to || "action"}`}
+                  key={`${item.permission}:${item.to}`}
                   type="button"
-                  className={`dashboard-mobile-more-card ${
-                    item.danger ? "is-danger" : ""
-                  }`}
+                  className="dashboard-mobile-more-card"
                   onClick={() => {
                     setMoreOpen(false);
-
-                    if (item.action) {
-                      item.action();
-                      return;
-                    }
-
-                    if (item.to) navigate(item.to);
+                    navigate(item.to);
                   }}
                 >
                   <span className="dashboard-mobile-more-card__icon">
                     <FontAwesomeIcon icon={item.icon} />
                   </span>
-
-                  <span className="dashboard-mobile-more-card__content">
+                  <span className="dashboard-mobile-more-card__copy">
                     <strong>{item.label}</strong>
-                    {item.description ? (
-                      <small>{item.description}</small>
-                    ) : null}
-                  </span>
-
-                  <span
-                    className="dashboard-mobile-more-card__arrow"
-                    aria-hidden="true"
-                  >
-                    ‹
+                    {item.description ? <small>{item.description}</small> : null}
                   </span>
                 </button>
               ))}
@@ -357,5 +241,3 @@ export default function DashboardMobileNav({
     </>
   );
 }
-
-
