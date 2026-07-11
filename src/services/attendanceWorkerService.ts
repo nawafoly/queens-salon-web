@@ -795,39 +795,56 @@ export async function listAttendanceForEmployeesDateFromWorker(
     return [];
   }
 
-  return Promise.all(
-    employees.map(async (employee) => {
-      const requestEmployeeUid =
-        employee.employeeUid || employee.employeeId;
+  // Load the entire team's records for the selected day in one paginated request
+  // instead of issuing one HTTP request per employee.
+  const allRecords: AttendanceWorkerRecord[] = [];
+  const seenCursors = new Set<string>();
+  let cursor = "";
 
-      if (!requestEmployeeUid) {
-        return buildAttendanceDay([], employee.employeeId, date);
-      }
+  do {
+    const page = await fetchAttendanceRecordsFromWorker({
+      employeeUid: "",
+      employeeDocId: "",
+      fromDate: date,
+      toDate: date,
+      result: "allowed",
+      limit: 200,
+      cursor,
+    });
 
-      const result = await fetchAttendanceRecordsFromWorker({
-        employeeUid: requestEmployeeUid,
-        employeeDocId: employee.employeeId,
-        fromDate: date,
-        toDate: date,
-        result: "allowed",
-        limit: 200,
-      });
+    allRecords.push(...page.records);
 
-      const employeeRecords = result.records.filter((record) =>
-        recordMatchesEmployee(
-          record,
-          employee.employeeUid,
-          employee.employeeId
-        )
-      );
+    const nextCursor = cleanText(page.nextCursor);
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      cursor = "";
+      break;
+    }
 
-      return buildAttendanceDay(
-        employeeRecords,
-        employee.employeeId,
-        date
-      );
-    })
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+
+  attendanceDebug(
+    `team-batch date=${date}`,
+    `employees=${employees.length}`,
+    `records=${allRecords.length}`
   );
+
+  return employees.map((employee) => {
+    const employeeRecords = allRecords.filter((record) =>
+      recordMatchesEmployee(
+        record,
+        employee.employeeUid,
+        employee.employeeId
+      )
+    );
+
+    return buildAttendanceDay(
+      employeeRecords,
+      employee.employeeId,
+      date
+    );
+  });
 }
 
 export async function listAttendanceByDateRangeForEmployeeFromWorker(
