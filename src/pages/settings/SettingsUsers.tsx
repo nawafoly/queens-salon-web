@@ -1336,25 +1336,23 @@ export default function SettingsUsers({
             ? mapFirestoreRoleToUi((adminSnap.data() as any)?.role)
             : "guest";
 
-        const rolePriority: UiRole[] = [
-          userRole,
-          adminRole,
-          tokenRole,
-          "owner",
-          "admin",
-          "hr",
-          "reception",
-          "staff",
-          "pending",
-        ];
+        const roleCandidates = [userRole, adminRole, tokenRole].filter(
+          (role): role is UiRole => role !== "guest"
+        );
+        const roleWeight: Record<UiRole, number> = {
+          owner: 700,
+          admin: 600,
+          hr: 500,
+          reception: 400,
+          staff: 300,
+          pending: 200,
+          client: 150,
+          guest: 100,
+        };
         const resolvedRole =
-          rolePriority.find((r) => r === "owner") ||
-          rolePriority.find((r) => r === "admin") ||
-          rolePriority.find((r) => r === "hr") ||
-          rolePriority.find((r) => r === "reception") ||
-          rolePriority.find((r) => r === "staff") ||
-          rolePriority.find((r) => r === "pending") ||
-          "guest";
+          roleCandidates.sort(
+            (left, right) => roleWeight[right] - roleWeight[left]
+          )[0] || "guest";
 
         setUiRole(resolvedRole);
 

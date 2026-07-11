@@ -242,7 +242,11 @@ async function resolveRequesterContext(request, env, db) {
       : null;
 
   const firestoreLookupDegraded = !userResult.ok || !adminResult.ok;
-  const authoritativeProfile = userData || adminData || null;
+  const selectedProfile = selectAuthoritativePermissionProfile({
+    userData,
+    adminData,
+  });
+  const authoritativeProfile = selectedProfile?.data || null;
   const tokenRole = normalizeRole(
     tokenPayload?.role || tokenPayload?.roleKey
   );
@@ -256,14 +260,41 @@ async function resolveRequesterContext(request, env, db) {
   let runtime;
   let authSource;
 
-  if (authoritativeProfile && !firestoreLookupDegraded) {
-    runtime = createRuntime(authoritativeProfile);
+  const authoritativeRuntime = authoritativeProfile
+    ? createRuntime(authoritativeProfile)
+    : null;
+  const manualOwnerBootstrap = Boolean(
+    cachedPermissionProfile?.isActive &&
+      cachedPermissionProfile?.role === "owner" &&
+      cachedPermissionProfile?.sources?.cacheSource === "manual-bootstrap"
+  );
+
+  if (
+    authoritativeRuntime?.isActive &&
+    authoritativeRuntime.role === "owner" &&
+    !firestoreLookupDegraded
+  ) {
+    runtime = authoritativeRuntime;
     authSource = "firebase_jwt+firestore_permissions";
     await savePermissionCache(db, {
       uid,
       email,
       runtime,
-      source: userData ? "users" : "admin_users",
+      source: selectedProfile.source,
+    });
+  } else if (manualOwnerBootstrap) {
+    // Emergency owner cache is UID-bound, short-lived, and created only through D1 CLI.
+    // Keep it authoritative until Firestore exposes a valid active owner profile.
+    runtime = cachedPermissionProfile;
+    authSource = "firebase_jwt+d1_manual_owner_bootstrap";
+  } else if (authoritativeProfile && !firestoreLookupDegraded) {
+    runtime = authoritativeRuntime;
+    authSource = "firebase_jwt+firestore_permissions";
+    await savePermissionCache(db, {
+      uid,
+      email,
+      runtime,
+      source: selectedProfile.source,
     });
   } else if (firestoreLookupDegraded && cachedPermissionProfile) {
     runtime = cachedPermissionProfile;
@@ -281,8 +312,9 @@ async function resolveRequesterContext(request, env, db) {
   }
 
   const identityData = {
-    ...(adminData || {}),
     ...(userData || {}),
+    ...(adminData || {}),
+    ...(authoritativeProfile || {}),
   };
 
   identityData.uid = firstText(identityData.uid, uid);
@@ -868,6 +900,45 @@ function normalizeFirestoreCollectionPath(collectionPath, env) {
   }
 
   return cleanPath;
+}
+
+const AUTHORITY_ROLE_WEIGHT = {
+  owner: 700,
+  admin: 600,
+  hr: 500,
+  reception: 400,
+  accountant: 350,
+  staff: 300,
+  client: 200,
+  guest: 100,
+};
+
+function selectAuthoritativePermissionProfile({ userData, adminData }) {
+  const candidates = [
+    userData ? { data: userData, source: "users" } : null,
+    adminData ? { data: adminData, source: "admin_users" } : null,
+  ].filter(Boolean);
+
+  if (!candidates.length) return null;
+
+  return candidates.sort((left, right) => {
+    const leftRole = normalizeRole(left.data?.role || left.data?.roleKey);
+    const rightRole = normalizeRole(right.data?.role || right.data?.roleKey);
+    const roleDiff =
+      (AUTHORITY_ROLE_WEIGHT[rightRole] || 0) -
+      (AUTHORITY_ROLE_WEIGHT[leftRole] || 0);
+
+    if (roleDiff !== 0) return roleDiff;
+
+    const versionDiff =
+      (Number(right.data?.permissionVersion || 0) || 0) -
+      (Number(left.data?.permissionVersion || 0) || 0);
+
+    if (versionDiff !== 0) return versionDiff;
+
+    // admin_users is the transitional authority for privileged internal accounts.
+    return right.source === "admin_users" ? 1 : -1;
+  })[0];
 }
 
 function createRuntime(data) {
