@@ -7251,6 +7251,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                           }
                         }}
                       >
+                        <span className="booking-date-icon" aria-hidden="true">
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </span>
                         <input
                           id="bookingDateInternal"
                           type="text"

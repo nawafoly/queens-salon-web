@@ -281,6 +281,224 @@
   .bk-hair-guide-drawer__image img { max-height: calc(92dvh - 210px); }
 }
 
+/* Final panel alignment and control-system pass. */
+.dashboard-skin.is-booking-internal-route .bk-internal {
+  --booking-dashboard-header-offset: 190px;
+  --booking-panels-height: clamp(620px, calc(100dvh - var(--booking-dashboard-header-offset)), 780px);
+  --booking-primary: #40010d;
+  --booking-primary-hover: #2f0009;
+  --booking-border: #d9dce1;
+  --booking-field-bg: #ffffff;
+  --booking-disabled-bg: #eceef1;
+  --booking-disabled-text: #8a8f98;
+  --booking-gold: #9a6a10;
+}
+
+@media (min-width: 1200px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-sections-grid {
+    grid-template-columns: minmax(420px, 0.9fr) minmax(0, 1.1fr) !important;
+    align-items: stretch !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-sections-grid > :first-child,
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-side-col {
+    height: var(--booking-panels-height) !important;
+    min-height: 0 !important;
+    align-self: stretch !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section,
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-section--wide {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    scrollbar-color: rgba(64, 1, 13, 0.3) transparent;
+    scrollbar-width: thin;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section .bk-add-cart-btn {
+    position: sticky;
+    z-index: 2;
+    bottom: 0;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1199px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-sections-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-sections-grid > :first-child,
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-side-col {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+    position: static !important;
+  }
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section :where(.form-control, .form-select, .bk-unified-dropdown-trigger),
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-search .form-control {
+  min-height: 46px !important;
+  border: 1px solid var(--booking-border) !important;
+  border-radius: 11px !important;
+  color: #17191d !important;
+  background: var(--booking-field-bg) !important;
+  box-shadow: none !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section :where(.form-control, .form-select, .bk-unified-dropdown-trigger):focus,
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-search .form-control:focus {
+  border-color: rgba(64, 1, 13, 0.55) !important;
+  outline: 3px solid rgba(64, 1, 13, 0.1) !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section :where(.form-control, .form-select, .bk-unified-dropdown-trigger):disabled {
+  color: var(--booking-disabled-text) !important;
+  background: var(--booking-disabled-bg) !important;
+  cursor: not-allowed !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section .form-label {
+  margin-bottom: 6px !important;
+  color: #4f535a !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-date-calendar-toggle {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 !important;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 3px;
+  border: 1px solid var(--booking-border);
+  border-radius: 12px;
+  background: #f3f4f6;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-date-calendar-toggle .btn {
+  min-height: 44px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  color: #3e4147 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-weight: 850 !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-date-calendar-toggle .btn-dark {
+  color: #fff !important;
+  background: var(--booking-primary) !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-date-calendar-toggle .btn:focus-visible {
+  outline: 3px solid rgba(64, 1, 13, 0.18) !important;
+  outline-offset: 1px;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-date-group {
+  min-height: 46px;
+  border: 1px solid var(--booking-border);
+  border-radius: 11px;
+  overflow: hidden;
+  background: #fff;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-date-group .form-control,
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-date-group .input-group-text,
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-date-group .btn {
+  min-height: 44px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-date-group .booking-date-icon {
+  display: grid;
+  width: 46px;
+  min-width: 46px;
+  place-items: center;
+  color: var(--booking-primary);
+  background: #fff;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-date-display-input {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: plaintext;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-add-cart-btn {
+  min-height: 48px !important;
+  border: 1px solid var(--booking-primary) !important;
+  border-radius: 11px !important;
+  color: #fff !important;
+  background: var(--booking-primary) !important;
+  font-weight: 900 !important;
+  box-shadow: none !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-picker-block > .col-12:first-child .btn {
+  min-height: 44px !important;
+  flex: 1 1 0;
+  border: 1px solid rgba(64, 1, 13, 0.28) !important;
+  border-radius: 10px !important;
+  color: var(--booking-primary) !important;
+  background: #fff !important;
+  font-weight: 850 !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-service-picker-block > .col-12:first-child .btn-dark {
+  border-color: var(--booking-primary) !important;
+  color: #fff !important;
+  background: var(--booking-primary) !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-add-cart-btn:hover,
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-add-cart-btn:focus-visible {
+  border-color: var(--booking-primary-hover) !important;
+  background: var(--booking-primary-hover) !important;
+  outline: 3px solid rgba(64, 1, 13, 0.12) !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-add-cart-btn:disabled {
+  border-color: var(--booking-disabled-bg) !important;
+  color: var(--booking-disabled-text) !important;
+  background: var(--booking-disabled-bg) !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-price {
+  color: var(--booking-gold) !important;
+}
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-hair-guide-trigger,
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-open-mobile-price-list {
+  min-height: 46px !important;
+  border-color: rgba(64, 1, 13, 0.3) !important;
+  color: var(--booking-primary) !important;
+  background: #fff !important;
+}
+
+@media (max-width: 1199px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section,
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-section--wide {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-list-results {
+    max-height: 620px;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal {
+    --booking-panels-height: auto;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-service-section {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-side-col.is-mobile-open .bk-price-list-section--wide {
+    height: 100dvh !important;
+  }
+  .dashboard-skin.is-booking-internal-route .bk-internal .bk-price-side-col.is-mobile-open .bk-price-list-results {
+    max-height: none;
+  }
+}
+
 @keyframes bk-guide-sheet-enter {
   from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
