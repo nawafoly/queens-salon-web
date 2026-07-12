@@ -1,9 +1,13 @@
 ﻿import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
+import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import logo from "../assets/images/ssunnamed2.png";
 import hairGuideImg from "../assets/images/hair-length-guide.png";
+import HairLengthGuideDrawer from "../components/bookingInternal/HairLengthGuideDrawer";
+import PriceListPanel from "../components/bookingInternal/PriceListPanel";
+import "../styles/BookingInternalPriceList.css";
 
 import {
   faCalendarAlt,
@@ -419,8 +423,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const dateRef = useRef<HTMLInputElement>(null);
   const hijriPickerRef = useRef<HTMLDivElement>(null);
   const serviceSectionCardRef = useRef<HTMLDivElement>(null);
-  const priceListCardRef = useRef<HTMLDivElement>(null);
-  const hairGuideCardRef = useRef<HTMLDivElement>(null);
+  const hairGuideButtonRef = useRef<HTMLButtonElement>(null);
 
   // =========================
   // Settings (live)
@@ -587,6 +590,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   });
 
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
+  const [hairGuideOpen, setHairGuideOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
 
@@ -627,7 +631,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     Record<string, true>
   >({});
   const [expandedPreviewRows, setExpandedPreviewRows] = useState<Record<string, true>>({});
-  const [serviceSectionHeightPx, setServiceSectionHeightPx] = useState(0);
 
   // =========================
   // ✅ NEW: Future availability (للأيام القادمة)
@@ -672,52 +675,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     void loadOffers();
     return () => {
       mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const measureServiceSectionHeight = () => {
-      if (typeof window === "undefined" || window.innerWidth < 992) {
-        setServiceSectionHeightPx(0);
-        return;
-      }
-      const serviceHeight = Math.max(
-        0,
-        Math.round(serviceSectionCardRef.current?.getBoundingClientRect().height || 0)
-      );
-      const priceHeight = Math.max(
-        0,
-        Math.round(priceListCardRef.current?.getBoundingClientRect().height || 0)
-      );
-      const guideHeight = Math.max(
-        0,
-        Math.round(hairGuideCardRef.current?.getBoundingClientRect().height || 0)
-      );
-      const next = serviceHeight > 0 ? serviceHeight : Math.max(priceHeight, guideHeight);
-      setServiceSectionHeightPx((prev) => (prev === next ? prev : next));
-    };
-
-    measureServiceSectionHeight();
-    requestAnimationFrame(measureServiceSectionHeight);
-    setTimeout(measureServiceSectionHeight, 120);
-
-    const observedNodes = [
-      serviceSectionCardRef.current,
-      priceListCardRef.current,
-      hairGuideCardRef.current,
-    ].filter(Boolean) as HTMLDivElement[];
-    let observer: ResizeObserver | null = null;
-    if (observedNodes.length && typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => {
-        measureServiceSectionHeight();
-      });
-      observedNodes.forEach((node) => observer?.observe(node));
-    }
-
-    window.addEventListener("resize", measureServiceSectionHeight);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measureServiceSectionHeight);
     };
   }, []);
 
@@ -6169,10 +6126,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       return availableTimeSlots.length === 0;
     });
   }, [formData.items, staffByService, bookingDate, busyByItem, baseSlotsForUi, openTime, closeTime]);
-  const sideCardsMatchServiceStyle: React.CSSProperties | undefined =
-    serviceSectionHeightPx > 0
-      ? { height: `${serviceSectionHeightPx}px`, maxHeight: `${serviceSectionHeightPx}px` }
-      : undefined;
+  const closeHairGuide = useCallback(() => setHairGuideOpen(false), []);
 
   return (
     <div className="bk-page-wrapper bk-internal">
@@ -7216,7 +7170,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             <div className="col-12">
               <div className="row g-3 align-items-stretch bk-sections-grid">
             {/* اختيار الخدمة */}
-                <div className="col-12 col-lg-6 order-1 h-100">
+                <div className="col-12 order-1">
               <div ref={serviceSectionCardRef} className="card p-3 bk-panel bk-service-section">
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div className="bk-soft-title">
@@ -7471,146 +7425,41 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </div>
             </div>
 
-            {/* عرض قائمة الأسعار (قراءة فقط) */}
-            <div className="col-12 col-lg-6 order-2 h-100 bk-price-side-col">
-              <div className="row g-3 h-100 align-items-stretch bk-price-guide-row">
-                <div className="col-12 col-lg-6 h-100">
-                  <div ref={priceListCardRef} className="card p-3 bk-panel bk-price-list-section h-100" style={sideCardsMatchServiceStyle}>
-                    <div className="mb-2 bk-soft-title">عرض قائمة الأسعار</div>
-
-                    <div className="mb-3">
-                      <input
-                        className="form-control"
-                        value={priceLookupQuery}
-                        onChange={(e) => setPriceLookupQuery(String(e.target.value || ""))}
-                        placeholder={
-                          pickerScope === "packages"
-                            ? "ابحث عن بكج..."
-                            : "ابحث عن خدمة..."
-                        }
-                      />
-                    </div>
-
-                    <div className="bk-price-list-body">
-                      {(pickerScope === "packages" ? catalogLoading : priceLookupLoading) ? (
-                        <div className="alert alert-secondary mb-0 bk-soft-alert">
-                          {pickerScope === "packages"
-                            ? "جاري تحميل البكجات..."
-                            : "جاري تحميل الخدمات..."}
-                        </div>
-                      ) : priceLookupResults.length ? (
-                        <div className="bk-price-list-grid" role="list">
-                          {priceLookupResults.map((row) => {
-                            const displayName = toArabicCatalogLabel(String(row.name || row.id));
-                            const icon = pickPriceLookupIcon(displayName);
-                            const seasonPrice = Number(row.seasonPrice || 0);
-
-                            return (
-                              <div
-                                key={row.id}
-                                className={`bk-price-list-item ${
-                                  String(servicePicker || "").trim() === String(row.id || "").trim()
-                                    ? "is-selected"
-                                    : ""
-                                }`}
-                                role="button"
-                                tabIndex={0}
-                                aria-pressed={
-                                  String(servicePicker || "").trim() === String(row.id || "").trim()
-                                }
-                                title={
-                                  row.kind === "package"
-                                    ? "اضغطي لاختيار البكج وتعبئة الحقل"
-                                    : "اضغطي لاختيار الخدمة وتعبئة الحقول"
-                                }
-                                onClick={() => selectPriceLookupItem(row)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    selectPriceLookupItem(row);
-                                  }
-                                }}
-                              >
-                                <div
-                                  className="bk-price-list-thumb bk-price-list-icon"
-                                  title={icon.label}
-                                  role="img"
-                                  aria-label={icon.label}
-                                >
-                                  <icon.Icon className="bk-price-list-icon-svg" aria-hidden="true" />
-                                </div>
-
-                                <div>
-                                  <div className="bk-price-list-name">{displayName}</div>
-                                  <div className="bk-price-list-price">
-                                    {Number(row.price || 0).toFixed(0)} ريال
-                                  </div>
-                                </div>
-
-                                {false && (
-                                <div className="bk-price-list-season">
-                                  <div className="bk-price-list-season-label">سعر الموسم</div>
-                                  <div className={`bk-price-list-season-value ${seasonPrice > 0 ? "" : "is-empty"}`}>
-                                    {seasonPrice > 0 ? `${seasonPrice.toFixed(0)} ريال` : "غير محدد"}
-                                  </div>
-                                </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="alert alert-secondary mb-0 bk-soft-alert">
-                          {pickerScope === "packages"
-                            ? "لا توجد بكجات مطابقة."
-                            : "لا توجد خدمات مطابقة."}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-lg-6 h-100">
-                  <div ref={hairGuideCardRef} className="card p-3 bk-panel bk-service-hair-guide h-100" style={sideCardsMatchServiceStyle}>
-                    <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
-                      <span className="badge text-bg-secondary bk-guide-badge">
-                        دليل أطوال الشعر
-                      </span>
-
-                      {isOwner ? (
-                        <label
-                          className="btn btn-outline-info btn-sm mb-0 bk-guide-upload-btn"
-                        >
-                          {uploadingGuide ? "جاري الرفع..." : "رفع صورة جديدة"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            style={{ display: "none" }}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) uploadHairGuide(f);
-                            }}
-                            disabled={uploadingGuide}
-                          />
-                        </label>
-                      ) : (
-                        <span className="text-muted bk-guide-note">
-                          رفع الصورة للإدارة فقط
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="p-2 bk-guide-image-wrap flex-grow-1 d-flex align-items-center justify-content-center">
-                      <img
-                        src={hairGuideUrl}
-                        alt="hair guide"
-                        className="bk-guide-image"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {/* قائمة الأسعار هي المحتوى الرئيسي، والدليل يفتح عند الطلب. */}
+            <div className="col-12 order-2 bk-price-side-col">
+              <PriceListPanel
+                rows={priceLookupResults.map((row) => ({
+                  ...row,
+                  name: toArabicCatalogLabel(String(row.name || row.id)),
+                }))}
+                selectedId={String(servicePicker || "").trim()}
+                query={priceLookupQuery}
+                loading={pickerScope === "packages" ? catalogLoading : priceLookupLoading}
+                modeLabel={pickerScope === "packages" ? "بكج" : "خدمة"}
+                emptyText={pickerScope === "packages" ? "لا توجد بكجات مطابقة." : "لا توجد خدمات مطابقة."}
+                guideButtonRef={hairGuideButtonRef}
+                onQueryChange={setPriceLookupQuery}
+                onOpenGuide={() => setHairGuideOpen(true)}
+                onSelect={selectPriceLookupItem}
+                renderIcon={(name) => {
+                  const icon = pickPriceLookupIcon(name);
+                  return {
+                    label: icon.label,
+                    node: <icon.Icon className="bk-price-list-icon-svg" aria-hidden="true" />,
+                  };
+                }}
+              />
             </div>
+
+            <HairLengthGuideDrawer
+              open={hairGuideOpen}
+              imageUrl={hairGuideUrl}
+              triggerRef={hairGuideButtonRef}
+              canUpload={isOwner}
+              uploading={uploadingGuide}
+              onUpload={uploadHairGuide}
+              onClose={closeHairGuide}
+            />
 
 
             {/* السلة */}
@@ -8599,4 +8448,3 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
-

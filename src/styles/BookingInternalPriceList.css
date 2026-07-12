@@ -1,0 +1,292 @@
+.bk-internal .bk-price-list-section--wide {
+  padding: 18px !important;
+  overflow: visible !important;
+  background: #fff !important;
+}
+
+.bk-internal .bk-price-list-toolbar {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(190px, auto) minmax(280px, 1fr) auto;
+  grid-template-areas: "heading search guide";
+  align-items: center;
+  gap: 14px;
+  margin: -2px -2px 16px;
+  padding: 2px 2px 14px;
+  border-bottom: 1px solid rgba(64, 1, 13, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.bk-internal .bk-price-list-heading { grid-area: heading; }
+.bk-internal .bk-price-list-heading span,
+.bk-internal .bk-price-list-heading small {
+  display: block;
+  color: #777;
+  font-size: 12px;
+  font-weight: 700;
+}
+.bk-internal .bk-price-list-heading h2 {
+  margin: 2px 0;
+  color: #27050b;
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.bk-internal .bk-price-list-search { grid-area: search; }
+.bk-internal .bk-price-list-search .form-control {
+  min-height: 46px;
+  border-radius: 13px;
+  padding-inline: 15px;
+}
+
+.bk-internal .bk-hair-guide-trigger {
+  grid-area: guide;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  border-radius: 13px;
+  color: #40010d;
+  background: #faf6f7;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.bk-internal .bk-hair-guide-trigger:hover,
+.bk-internal .bk-hair-guide-trigger:focus-visible {
+  border-color: #40010d;
+  outline: 3px solid rgba(64, 1, 13, 0.1);
+}
+
+.bk-internal .bk-price-list-section--wide .bk-price-list-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 0 !important;
+}
+
+.bk-internal .bk-price-list-section--wide .bk-price-list-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  min-height: 82px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e7dfe1;
+  border-radius: 14px;
+  color: #241b1d;
+  background: #fff;
+  text-align: right;
+  cursor: pointer;
+}
+.bk-internal .bk-price-list-section--wide .bk-price-list-item:hover,
+.bk-internal .bk-price-list-section--wide .bk-price-list-item:focus-visible {
+  border-color: rgba(64, 1, 13, 0.42);
+  outline: 3px solid rgba(64, 1, 13, 0.08);
+  box-shadow: 0 10px 22px rgba(64, 1, 13, 0.08);
+  transform: none;
+}
+.bk-internal .bk-price-list-section--wide .bk-price-list-item.is-selected {
+  border-color: #40010d;
+  background: #fff8f9;
+  box-shadow: inset 0 0 0 1px #40010d;
+}
+.bk-internal .bk-price-list-copy { min-width: 0; }
+.bk-internal .bk-price-list-copy small {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: #777;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bk-internal .bk-price-list-section--wide .bk-price-list-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.4;
+}
+.bk-internal .bk-price-list-section--wide .bk-price-list-price {
+  align-self: center;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+.bk-internal .bk-price-list-section--wide .bk-price-list-price small { font-size: 11px; }
+.bk-internal .bk-price-list-check {
+  position: absolute;
+  inset: 7px auto auto 7px;
+  display: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  place-items: center;
+  color: #fff;
+  background: #40010d;
+  font-size: 12px;
+}
+.bk-internal .bk-price-list-item.is-selected .bk-price-list-check { display: grid; }
+.bk-internal .bk-price-list-state {
+  min-height: 100px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #ddd1d4;
+  border-radius: 14px;
+  color: #777;
+  background: #faf9f8;
+}
+
+.bk-hair-guide-overlay {
+  position: fixed;
+  z-index: 12050;
+  inset: 0;
+  display: flex;
+  justify-content: flex-start;
+  padding: 18px;
+  background: rgba(10, 8, 9, 0.48);
+  backdrop-filter: blur(3px);
+}
+.bk-hair-guide-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  animation: bk-guide-enter 180ms ease-out;
+}
+.bk-hair-guide-drawer__header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee5e7;
+  background: #fff;
+}
+.bk-hair-guide-drawer__header span { color: #777; font-size: 12px; font-weight: 700; }
+.bk-hair-guide-drawer__header h2 { margin: 2px 0 0; color: #2c070e; font-size: 20px; font-weight: 950; }
+.bk-hair-guide-close {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e4d7da;
+  border-radius: 13px;
+  color: #40010d;
+  background: #faf6f7;
+  font-size: 28px;
+}
+.bk-hair-guide-drawer__image {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 0;
+  background: #f5f3f2;
+  cursor: zoom-in;
+}
+.bk-hair-guide-drawer__image.is-zoomed { cursor: zoom-out; }
+.bk-hair-guide-drawer__image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 190px);
+  margin: auto;
+  object-fit: contain;
+  opacity: 0;
+}
+.bk-hair-guide-drawer__image.is-loaded img { opacity: 1; }
+.bk-hair-guide-drawer__image.is-zoomed img { width: auto; max-width: none; max-height: none; }
+.bk-hair-guide-placeholder {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #d8c7cb;
+  border-radius: 16px;
+  color: #8a7378;
+  background: #faf8f8;
+  font-weight: 800;
+}
+.bk-hair-guide-drawer__image.is-loaded .bk-hair-guide-placeholder { display: none; }
+.bk-hair-guide-drawer__admin {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid #eee5e7;
+  color: #777;
+  background: #fff;
+  font-size: 12px;
+}
+.bk-hair-guide-upload {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 11px;
+  color: #fff;
+  background: #40010d;
+  font-weight: 800;
+  cursor: pointer;
+}
+.bk-hair-guide-upload input { display: none; }
+
+@keyframes bk-guide-enter {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 1100px) {
+  .bk-internal .bk-price-list-section--wide .bk-price-list-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .bk-internal .bk-price-list-section--wide { padding: 12px !important; }
+  .bk-internal .bk-price-list-toolbar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "heading guide" "search search";
+    top: env(safe-area-inset-top, 0);
+    gap: 10px;
+  }
+  .bk-internal .bk-hair-guide-trigger { min-height: 44px; padding: 0 11px; font-size: 12px; }
+  .bk-internal .bk-price-list-section--wide .bk-price-list-grid { grid-template-columns: 1fr; }
+  .bk-internal .bk-price-list-section--wide .bk-price-list-item { min-height: 76px; }
+  .bk-hair-guide-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .bk-hair-guide-drawer {
+    width: 100%;
+    max-height: calc(92dvh - env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation-name: bk-guide-sheet-enter;
+  }
+  .bk-hair-guide-drawer__image img { max-height: calc(92dvh - 210px); }
+}
+
+@keyframes bk-guide-sheet-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-hair-guide-drawer { animation: none; }
+  .bk-internal .bk-price-list-item { transition: none !important; }
+}
