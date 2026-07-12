@@ -4643,7 +4643,7 @@ export default function DashboardEmployees() {
 
   return (
     <div className={`emp-page-wrapper ${isEmployeeProfileRoute ? "is-profile-route" : ""}`}>
-      <style>{EMPLOYEE_PAGE_FORCE_SKIN}</style>
+      {!isEmployeeProfileRoute ? <style>{EMPLOYEE_PAGE_FORCE_SKIN}</style> : null}
       <div className="container">
         <div className="dash-topbar emp-page-hero-sticky">
           <div className="dash-topbar-title">
