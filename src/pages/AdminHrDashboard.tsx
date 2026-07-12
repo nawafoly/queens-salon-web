@@ -1419,7 +1419,7 @@ export default function AdminHrDashboard() {
               element={<PermissionRoute permission="recruitment.view"><RecruitmentApplicationsPage session={session} /></PermissionRoute>}
             />
             <Route
-              path="employees"
+              path="employees/*"
               element={
                 <PermissionRoute permission="employees.view">
                   <Suspense

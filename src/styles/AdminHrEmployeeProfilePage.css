@@ -1,0 +1,235 @@
+.emp-page-wrapper.is-profile-route,
+.emp-page-wrapper.is-profile-route > .container {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0;
+  background: #f4f5f7;
+}
+
+.emp-page-wrapper.is-profile-route > .container {
+  padding-inline: clamp(14px, 2vw, 28px) !important;
+}
+
+.emp-page-wrapper.is-profile-route :where(.emp-page-hero-sticky, .emp-summary-strip) {
+  display: none !important;
+}
+
+.emp-page-wrapper.is-profile-route .emp-directory-shell {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-page {
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 28px;
+  color: #172033;
+}
+
+.employee-profile-page .emp-editor-panel {
+  display: grid !important;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  grid-template-areas: "breadcrumb breadcrumb" "header header" "tabs content" "tabs footer";
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-page .employee-profile-breadcrumb {
+  grid-area: breadcrumb;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  color: #788294;
+  font-size: 12px;
+}
+
+.employee-profile-page .employee-profile-breadcrumb button {
+  padding: 0;
+  border: 0;
+  color: #40010d;
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+}
+
+.employee-profile-page .employee-profile-breadcrumb strong { color: #172033; }
+
+.employee-profile-page .emp-editor-header {
+  grid-area: header;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px;
+  min-height: 126px;
+  margin-bottom: 16px;
+  padding: 20px !important;
+  border: 1px solid #e1e5ea !important;
+  border-radius: 18px !important;
+  color: #172033 !important;
+  background: linear-gradient(135deg, #fff, #fbf8f2) !important;
+  box-shadow: 0 10px 28px rgba(20, 30, 50, 0.06) !important;
+}
+
+.employee-profile-page .emp-editor-identity {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-editor-avatar {
+  flex: 0 0 76px;
+  width: 76px !important;
+  height: 76px !important;
+  border-radius: 16px !important;
+  object-fit: cover;
+  background: #f0e8ea;
+}
+
+.employee-profile-page .emp-editor-title :where(span, h3, p) { color: inherit !important; }
+.employee-profile-page .emp-editor-title h3 { margin: 2px 0 !important; font-size: clamp(20px, 2vw, 28px) !important; }
+.employee-profile-page .emp-editor-title p { margin: 0 !important; color: #6f7888 !important; }
+
+.employee-profile-page .employee-profile-back {
+  flex: 0 0 auto;
+  min-height: 44px;
+  color: #40010d !important;
+  border-color: rgba(64, 1, 13, 0.2) !important;
+  background: #fff !important;
+}
+
+.employee-profile-page .emp-editor-tabs {
+  grid-area: tabs;
+  position: sticky;
+  top: 92px;
+  display: flex !important;
+  flex-direction: column;
+  align-self: start;
+  gap: 6px;
+  min-width: 0;
+  margin-inline-end: 16px;
+  padding: 10px !important;
+  overflow: visible !important;
+  border: 1px solid #e1e5ea !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 8px 22px rgba(20, 30, 50, 0.045) !important;
+}
+
+.employee-profile-page .emp-editor-tab {
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr);
+  min-height: 50px !important;
+  padding: 8px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 11px !important;
+  color: #566173 !important;
+  background: transparent !important;
+  text-align: right;
+}
+
+.employee-profile-page .emp-editor-tab small { grid-column: 2; color: #8a93a1 !important; }
+.employee-profile-page .emp-editor-tab.active {
+  color: #40010d !important;
+  border-color: rgba(64, 1, 13, 0.14) !important;
+  background: #fff3f5 !important;
+}
+
+.employee-profile-page .emp-editor-fieldset {
+  grid-area: content;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+.employee-profile-page .emp-editor-content {
+  width: 100%;
+  min-width: 0;
+  height: auto !important;
+  max-height: none !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.employee-profile-page .emp-modal-section {
+  width: 100%;
+  min-width: 0;
+  padding: clamp(14px, 1.6vw, 22px) !important;
+  border: 1px solid #e1e5ea !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(20, 30, 50, 0.045) !important;
+}
+
+.employee-profile-page .emp-editor-footer {
+  grid-area: footer;
+  position: static !important;
+  inset: auto !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100% !important;
+  margin-top: 16px !important;
+  padding: 14px 16px !important;
+  border: 1px solid #e1e5ea !important;
+  border-radius: 14px !important;
+  color: #606b7c !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-route-state {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 320px;
+  padding: 24px;
+  border: 1px solid #e1e5ea;
+  border-radius: 18px;
+  background: #fff;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .employee-profile-page .emp-editor-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "breadcrumb" "header" "tabs" "content" "footer";
+  }
+  .employee-profile-page .emp-editor-tabs {
+    position: static;
+    flex-direction: row;
+    margin: 0 0 12px;
+    overflow-x: auto !important;
+  }
+  .employee-profile-page .emp-editor-tab { flex: 0 0 auto; min-width: 145px; }
+}
+
+@media (max-width: 600px) {
+  .emp-page-wrapper.is-profile-route > .container { padding-inline: 10px !important; }
+  .employee-profile-page .emp-editor-header { align-items: flex-start !important; flex-wrap: wrap; padding: 14px !important; }
+  .employee-profile-page .emp-editor-avatar { flex-basis: 58px; width: 58px !important; height: 58px !important; }
+  .employee-profile-page .employee-profile-back { width: 100%; }
+  .employee-profile-page .emp-editor-footer { align-items: stretch; flex-direction: column; }
+  .employee-profile-page .emp-editor-footer-actions { display: grid !important; grid-template-columns: 1fr; width: 100%; }
+  .employee-profile-page .emp-editor-footer-actions button { width: 100%; min-height: 44px; }
+}
