@@ -66,6 +66,7 @@ import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
 import EmployeeDetailShell from "./dashboardEmployees/EmployeeDetailShell";
 import EmployeeEditorModal from "./dashboardEmployees/EmployeeEditorModal";
+import EmployeeProfilePageLayout from "./dashboardEmployees/EmployeeProfilePageLayout";
 import EmployeeListPanel from "./dashboardEmployees/EmployeeListPanel";
 import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
@@ -1228,7 +1229,7 @@ export default function DashboardEmployees() {
   const navigate = useNavigate();
   const employeeRouteMatch = /^\/admin\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
   const routeEmployeeId = employeeRouteMatch ? decodeURIComponent(employeeRouteMatch[1]) : "";
-  const routeSection = employeeRouteMatch?.[2] || "basic";
+  const routeSection = (employeeRouteMatch?.[2] || "basic") as EmployeeSplitTab;
   const isEmployeeProfileRoute = Boolean(routeEmployeeId);
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthUser());
   const { hasPermission, hasAnyPermission } = usePermissions();
@@ -1807,7 +1808,7 @@ export default function DashboardEmployees() {
     setLeaveEntitlementDate("");
   };
 
-  const openEdit = (x: StaffPublicUi, navigateToProfile = true) => {
+  const openEdit = (x: StaffPublicUi, updateRoute = true) => {
     selectedEmployeeIdentityRef.current = employeeIdentityOf(x);
     setSelectedEmployeeId(x.id);
     setActiveTab("basic");
@@ -1878,41 +1879,17 @@ export default function DashboardEmployees() {
     setLeaveAdjustNote("");
     setLeaveEntitlementDate(String((x as any).leaveEntitlementDate || ""));
     setIsOpen(true);
-    if (navigateToProfile) {
-      navigate(`/admin/employees/${encodeURIComponent(x.id)}/basic`);
-    }
+    if (updateRoute) navigate(`/admin/employees/${encodeURIComponent(x.id)}/basic`);
   };
 
   useEffect(() => {
     if (!routeEmployeeId || !list.length) return;
     const matched = list.find((item) => item.id === routeEmployeeId);
     if (!matched) return;
-    const allowedSections: EmployeeSplitTab[] = [
-      "basic", "profile", "services", "booking",
-      ...(canViewAttendance ? ["attendance" as EmployeeSplitTab] : []),
-      ...(canViewPayroll ? ["payroll" as EmployeeSplitTab] : []),
-      ...(canManageLeaveBalance ? ["requests" as EmployeeSplitTab, "leave" as EmployeeSplitTab] : []),
-      ...(canViewEmployeeMessages ? ["messages" as EmployeeSplitTab] : []),
-      ...(canViewEmployeeFiles ? ["files" as EmployeeSplitTab] : []),
-    ];
-    const nextSection = allowedSections.includes(routeSection as EmployeeSplitTab)
-      ? routeSection as EmployeeSplitTab
-      : "basic";
-    if (nextSection !== routeSection) {
-      navigate(`/admin/employees/${encodeURIComponent(matched.id)}/${nextSection}`, { replace: true });
-    }
     if (editId !== matched.id) openEdit(matched, false);
-    setActiveTab(nextSection);
-    if (nextSection === "payroll") setActiveStatsSubTab("payroll");
-    if (nextSection === "leave") setActiveStatsSubTab("stats");
-    if (["basic", "profile", "services", "booking"].includes(nextSection)) {
-      setModalTab(nextSection as EmployeeModalTab);
-    }
-  }, [
-    canManageLeaveBalance, canViewAttendance, canViewEmployeeFiles,
-    canViewEmployeeMessages, canViewPayroll, editId, list,
-    navigate, routeEmployeeId, routeSection,
-  ]);
+    setActiveTab(routeSection);
+    if (["basic", "profile", "services", "booking"].includes(routeSection)) setModalTab(routeSection as EmployeeModalTab);
+  }, [editId, list, routeEmployeeId, routeSection]);
 
   const closeModal = () => {
     setIsOpen(false);
@@ -2804,7 +2781,6 @@ export default function DashboardEmployees() {
         deletedBy: authUser?.uid,
       });
       if (selectedEmployeeId === id) {
-        navigate("/admin/employees");
         setSelectedEmployeeId(null);
         setEditId(null);
         setIsOpen(false);
@@ -4554,9 +4530,7 @@ export default function DashboardEmployees() {
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
-    if (selectedEmployeeId) {
-      navigate(`/admin/employees/${encodeURIComponent(selectedEmployeeId)}/${tab}`);
-    }
+    if (selectedEmployeeId) navigate(`/admin/employees/${encodeURIComponent(selectedEmployeeId)}/${tab}`);
     setActiveTab(tab);
     if (tab === "payroll") {
       setActiveStatsSubTab("payroll");
@@ -4665,6 +4639,7 @@ export default function DashboardEmployees() {
     extraIds: selectedAttendanceIdentity.allIds,
     todayDateKey: todayIso(),
   });
+  const EmployeeEditorSurface = editingStaff ? EmployeeProfilePageLayout : EmployeeEditorModal;
 
   return (
     <div className={`emp-page-wrapper ${isEmployeeProfileRoute ? "is-profile-route" : ""}`}>
@@ -4764,14 +4739,6 @@ export default function DashboardEmployees() {
             onOpenEmployee={openEdit}
           /> : null}
 
-          {isEmployeeProfileRoute && !loading && !selectedEmployee ? (
-            <div className="employee-profile-route-state" role="alert">
-              <strong>تعذر العثور على ملف الموظفة</strong>
-              <span>قد يكون الملف مؤرشفًا أو أن الرابط غير صحيح.</span>
-              <button type="button" className="exp-btn" onClick={() => navigate("/admin/employees")}>العودة إلى الموظفات</button>
-            </div>
-          ) : null}
-
           <EmployeeDetailShell
             selectedEmployeeId={selectedEmployeeId}
             selectedEmployee={selectedEmployee}
@@ -4789,7 +4756,7 @@ export default function DashboardEmployees() {
             onClose={closeEmployeeDetail}
             showEditor={isOpen}
           >
-            <EmployeeEditorModal
+            <EmployeeEditorSurface
               isOpen={isOpen}
               canManage={editId ? canUpdateEmployees : canCreateEmployees}
               busy={busy}
@@ -4812,7 +4779,7 @@ export default function DashboardEmployees() {
               onDetailTabChange={handleSplitTabChange}
             >
               <ScheduleSummarySection
-                isVisible={(!editingStaff && modalTab === "basic") || (!!editingStaff && activeTab === "basic")}
+                isVisible={!editingStaff && modalTab === "basic"}
                 nowTick={nowTick}
                 summary={modalStaffScheduleSummary}
               />
@@ -5120,7 +5087,7 @@ export default function DashboardEmployees() {
                   "متابعة حالة القراءة والنسخة الحالية",
                 ]}
               />
-            </EmployeeEditorModal>
+            </EmployeeEditorSurface>
           </EmployeeDetailShell>
         </div>
       </div>

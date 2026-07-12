@@ -1166,6 +1166,7 @@ export default function AdminHrDashboard() {
   }, [location.pathname]);
   const isOverviewRoute = adminSection === "overview";
   const isEmployeesRoute = adminSection === "employees";
+  const isEmployeeProfileRoute = /^\/admin\/employees\/[^/]+/.test(location.pathname);
   const routeMeta = useMemo(() => {
     const meta: Record<string, { kicker: string; title: string; subtitle: string }> = {
       overview: {
@@ -1362,7 +1363,7 @@ export default function AdminHrDashboard() {
         }
       />
       <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
-        <DashboardHeader
+        {!isEmployeeProfileRoute ? <DashboardHeader
           theme="admin"
           title={isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}
           subtitle="Queens Salon"
@@ -1388,7 +1389,7 @@ export default function AdminHrDashboard() {
             ) : null}
             </>
           }
-        />
+        /> : null}
 
         {isOverviewRoute && error ? <div className="hr-alert">{error}</div> : null}
 

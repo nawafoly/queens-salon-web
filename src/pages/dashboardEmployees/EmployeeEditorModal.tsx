@@ -13,7 +13,7 @@ import {
   type StaffPublicUi,
 } from "./shared";
 
-type EmployeeEditorModalProps = {
+export type EmployeeEditorModalProps = {
   isOpen: boolean;
   canManage: boolean;
   busy: boolean;
@@ -107,7 +107,7 @@ export default function EmployeeEditorModal({
   }, [onClose]);
 
   useEffect(() => {
-    if (!isOpen || !isCreateMode) return;
+    if (!isOpen) return;
 
     lockBodyScroll();
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -128,7 +128,7 @@ export default function EmployeeEditorModal({
       unlockBodyScroll();
       previouslyFocused?.focus?.();
     };
-  }, [busy, isCreateMode, isOpen]);
+  }, [busy, isOpen]);
 
   const title = isCreateMode ? "إضافة موظفة" : employeeName || "ملف الموظفة";
   const subtitle = isCreateMode
@@ -164,29 +164,26 @@ export default function EmployeeEditorModal({
       onModalTabChange,
     ]
   );
-  const activeSectionLabel = tabs.find((tab) => tab.active)?.label || "البيانات الأساسية";
 
   if (!isOpen || typeof document === "undefined") return null;
 
-  const panel = (
+  return createPortal(
     <div
+      className={`emp-editor-overlay ${isHrRoute ? "emp-editor-overlay--hr" : ""} ${isCreateMode ? "is-create" : "is-edit"}`}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <div
         ref={panelRef}
         className={`emp-editor-panel ${isCreateMode ? "emp-editor-panel--create" : "emp-editor-panel--edit"}`}
-        role={isCreateMode ? "dialog" : undefined}
-        aria-modal={isCreateMode ? "true" : undefined}
+        role="dialog"
+        aria-modal="true"
         aria-label={isCreateMode ? "إضافة موظفة" : `تحرير ملف ${employeeName || "الموظفة"}`}
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        {!isCreateMode ? (
-          <div className="employee-profile-breadcrumb" aria-label="مسار التنقل">
-            <button type="button" onClick={onClose}>الموظفات</button>
-            <span>/</span>
-            <b>{employeeName || "ملف الموظفة"}</b>
-            <span>/</span>
-            <strong>{activeSectionLabel}</strong>
-          </div>
-        ) : null}
         <header className="emp-editor-header">
           <div className="emp-editor-identity">
             {!isCreateMode ? (
@@ -220,15 +217,9 @@ export default function EmployeeEditorModal({
             </div>
           </div>
 
-          {isCreateMode ? (
-            <button className="exp-btn ghost sm" type="button" onClick={onClose} disabled={busy} aria-label="إغلاق">
-              <FontAwesomeIcon icon={faXmark} />
-            </button>
-          ) : (
-            <button className="exp-btn ghost employee-profile-back" type="button" onClick={onClose} disabled={busy}>
-              العودة إلى الموظفات
-            </button>
-          )}
+          <button className="exp-btn ghost sm" type="button" onClick={onClose} disabled={busy} aria-label="إغلاق">
+            <FontAwesomeIcon icon={faXmark} />
+          </button>
         </header>
 
         <nav className="emp-editor-tabs" role="tablist" aria-label={isCreateMode ? "أقسام إنشاء الموظفة" : "أقسام ملف الموظفة"}>
@@ -284,22 +275,7 @@ export default function EmployeeEditorModal({
             )}
           </div>
         </footer>
-    </div>
-  );
-
-  if (!isCreateMode) {
-    return <div className="employee-profile-page">{panel}</div>;
-  }
-
-  return createPortal(
-    <div
-      className={`emp-editor-overlay ${isHrRoute ? "emp-editor-overlay--hr" : ""} is-create`}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
-    >
-      {panel}
+      </div>
     </div>,
     document.body
   );
