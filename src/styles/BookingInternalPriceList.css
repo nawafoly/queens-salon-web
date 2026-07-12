@@ -317,7 +317,7 @@
     flex-direction: column !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    overscroll-behavior: contain;
+    overscroll-behavior-y: auto;
     scrollbar-color: rgba(64, 1, 13, 0.3) transparent;
     scrollbar-width: thin;
   }
