@@ -281,6 +281,103 @@
   .bk-hair-guide-drawer__image img { max-height: calc(92dvh - 210px); }
 }
 
+/* The two primary panels share one real layout height. The cart is a sibling below it. */
+.dashboard-skin.is-booking-internal-route .bk-internal {
+  --booking-workspace-offset: 190px;
+  --booking-workspace-height: clamp(
+    620px,
+    calc(100dvh - var(--booking-workspace-offset)),
+    760px
+  );
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.9fr);
+  gap: 16px;
+  align-items: stretch;
+  height: var(--booking-workspace-height);
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-column,
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace > .bk-price-side-col {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-panel,
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace .bk-price-list-section--wide {
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  box-sizing: border-box;
+  overflow: hidden !important;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-panel {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-header {
+  flex: 0 0 auto;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  padding-inline-end: 3px;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-footer {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 12px;
+  background: #fff;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .booking-form-footer .bk-add-cart-btn {
+  position: static !important;
+  width: 100%;
+}
+
+.dashboard-skin.is-booking-internal-route .bk-internal .bk-post-workspace {
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-form-column,
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace > .bk-price-side-col,
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-form-panel,
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace .bk-price-list-section--wide {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-form-body {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace .bk-price-side-col.is-mobile-open,
+  .dashboard-skin.is-booking-internal-route .bk-internal .booking-service-workspace .bk-price-side-col.is-mobile-open .bk-price-list-section--wide {
+    height: 100dvh !important;
+  }
+}
+
 /* Final panel alignment and control-system pass. */
 .dashboard-skin.is-booking-internal-route .bk-internal {
   --booking-dashboard-header-offset: 190px;

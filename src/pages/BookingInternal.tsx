@@ -7169,11 +7169,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               </div>
             </div>
             <div className="col-12">
-              <div className="row g-3 align-items-stretch bk-sections-grid">
+              <div className="booking-service-workspace">
             {/* اختيار الخدمة */}
-                <div className="col-12 order-1">
-              <div ref={serviceSectionCardRef} className="card p-3 bk-panel bk-service-section">
-                <div className="d-flex align-items-center justify-content-between mb-2">
+                <div className="booking-form-column">
+              <div ref={serviceSectionCardRef} className="card p-3 bk-panel bk-service-section booking-form-panel">
+                <div className="d-flex align-items-center justify-content-between mb-2 booking-form-header">
                   <div className="bk-soft-title">
                     <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                     اختيار الخدمة
@@ -7186,6 +7186,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     فتح قائمة الأسعار
                   </button>
                 </div>
+
+                <div className="booking-form-body">
 
                 <div className="row g-2 mb-3 bk-service-client-fields">
                   <div className="col-12 col-md-6">
@@ -7422,22 +7424,23 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     </div>
                   )}
 
-                  <div className="col-12 d-grid mt-1">
-                    <button
-                      type="button"
-                      className="btn btn-primary bk-add-cart-btn"
-                      disabled={!servicePicker || !selectedDayOpen}
-                      onClick={() => addServiceToCart(servicePicker)}
-                    >
-                      + إضافة للسلة
-                    </button>
-                  </div>
+                </div>
+                </div>
+                <div className="booking-form-footer">
+                  <button
+                    type="button"
+                    className="btn btn-primary bk-add-cart-btn"
+                    disabled={!servicePicker || !selectedDayOpen}
+                    onClick={() => addServiceToCart(servicePicker)}
+                  >
+                    + إضافة للسلة
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* قائمة الأسعار هي المحتوى الرئيسي، والدليل يفتح عند الطلب. */}
-            <div className={`col-12 order-2 bk-price-side-col ${mobilePriceListOpen ? "is-mobile-open" : ""}`}>
+            <div className={`bk-price-side-col ${mobilePriceListOpen ? "is-mobile-open" : ""}`}>
               <PriceListPanel
                 rows={priceLookupResults.map((row) => ({
                   ...row,
@@ -7468,6 +7471,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               />
             </div>
 
+              </div>
+            </div>
+
             <HairLengthGuideDrawer
               open={hairGuideOpen}
               imageUrl={hairGuideUrl}
@@ -7477,6 +7483,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               onUpload={uploadHairGuide}
               onClose={closeHairGuide}
             />
+
+            <div className="col-12 bk-post-workspace">
+              <div className="row g-3 align-items-stretch">
 
 
             {/* السلة */}

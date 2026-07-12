@@ -62,8 +62,8 @@ export default function PriceListPanel<T extends PriceListPanelRow>({
     [category, rows]
   );
   return (
-    <section className="card bk-panel bk-price-list-section bk-price-list-section--wide" aria-labelledby="bk-price-list-title">
-      <div className="bk-price-list-toolbar">
+    <section className="card bk-panel bk-price-list-section bk-price-list-section--wide price-list-panel" aria-labelledby="bk-price-list-title">
+      <div className="bk-price-list-toolbar price-list-header">
         <div className="bk-price-list-heading">
           <span>{modeLabel}</span>
           <h2 id="bk-price-list-title">قائمة الأسعار</h2>
@@ -101,7 +101,7 @@ export default function PriceListPanel<T extends PriceListPanelRow>({
       {loading ? (
         <div className="bk-price-list-state" role="status">جاري تحميل {modeLabel}...</div>
       ) : visibleRows.length ? (
-        <div className="bk-price-list-results">
+        <div className="bk-price-list-results price-list-results">
         <div className="bk-price-list-grid" role="list">
           {visibleRows.map((row) => {
             const selected = selectedId === row.id;
@@ -118,7 +118,7 @@ export default function PriceListPanel<T extends PriceListPanelRow>({
                 <span className="bk-price-list-thumb bk-price-list-icon" role="img" aria-label={icon.label}>{icon.node}</span>
                 <span className="bk-price-list-copy">
                   <strong className="bk-price-list-name">{row.name}</strong>
-                  <small>{row.categoryName || row.sectionId || "خدمة صالون"}</small>
+                  <small>{categoryLabel(row)}</small>
                 </span>
                 <span className="bk-price-list-price">{Number(row.price || 0).toFixed(0)} <small>ريال</small></span>
                 <span className="bk-price-list-check" aria-hidden="true">✓</span>
