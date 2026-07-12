@@ -6748,7 +6748,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         </div>
       </Modal>
 
-      <div className="container bk-internal-container">
+      <div className="bk-internal-container">
         <div className="mb-3 bk-page-header">
           <div className="bk-page-header-center">
             <img src={logo} alt="logo" className="bk-logo" />
@@ -7485,7 +7485,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             />
 
             <div className="col-12 bk-post-workspace">
-              <div className="row g-3 align-items-stretch">
+              <div className="row g-3 align-items-stretch booking-bottom-grid">
 
 
             {/* السلة */}
