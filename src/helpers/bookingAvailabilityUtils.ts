@@ -51,8 +51,18 @@ export type BlockedReasonSummary = {
 
 export type StaffResolverTarget = {
   kind?: string;
+  name?: string;
+  sectionId?: string;
+  sectionTitle?: string;
+  categoryId?: string;
+  category?: string;
   packageServiceIds?: string[];
-  packageServices?: Array<{ serviceId?: string }>;
+  packageServices?: Array<{
+    serviceId?: string;
+    serviceName?: string;
+    sectionId?: string;
+    categoryId?: string;
+  }>;
 } | null;
 
 const BLOCKED_TIME_TOKEN_RE = /\d{1,2}:\d{2}\s*(?:AM|PM|am|pm|ص|م|a\.m\.|p\.m\.)?/g;
@@ -199,9 +209,25 @@ export function filterStaffForResolverTarget<T>(
     });
   }
 
-  const wanted = normalizeSpecialty(serviceId);
-  if (!wanted) return [] as T[];
-  return all.filter((st: any) => normalizeStaffSpecialties(st).includes(wanted));
+  const wanted = Array.from(
+    new Set(
+      [
+        serviceId,
+        target?.name,
+        target?.sectionId,
+        target?.sectionTitle,
+        target?.categoryId,
+        target?.category,
+      ]
+        .map((value) => normalizeSpecialty(String(value || "")))
+        .filter(Boolean)
+    )
+  );
+  if (!wanted.length) return [] as T[];
+  return all.filter((st: any) => {
+    const specs = normalizeStaffSpecialties(st);
+    return wanted.some((key) => specs.includes(key));
+  });
 }
 
 export function buildSlotId(
