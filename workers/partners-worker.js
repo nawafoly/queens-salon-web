@@ -139,6 +139,67 @@ function parseJsonArray(value) {
   }
 }
 
+function parseJsonObject(value) {
+  if (!value) return {};
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function cleanPlainObject(value, maxLength = 30_000) {
+  const parsed = parseJsonObject(value);
+  try {
+    const serialized = JSON.stringify(parsed);
+    if (serialized.length > maxLength) return {};
+    return JSON.parse(serialized);
+  } catch {
+    return {};
+  }
+}
+
+function cleanPlainObjectArray(value, maxRows = 120) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, maxRows)
+    .map((item) => cleanPlainObject(item, 8_000))
+    .filter((item) => Object.keys(item).length > 0);
+}
+
+function normalizeOperationalProfile(value) {
+  const raw = parseJsonObject(value);
+  const specialties = cleanStringList(raw.specialties).slice(0, 80);
+  const specialtyLabels = cleanStringList(raw.specialtyLabels).slice(0, 80);
+
+  return {
+    employeeId: optionalText(raw.employeeId) || undefined,
+    department: optionalText(raw.department) || undefined,
+    title: optionalText(raw.title) || undefined,
+    avatarUrl: optionalText(raw.avatarUrl) || undefined,
+    specialties,
+    specialtyLabels: specialtyLabels.length ? specialtyLabels : specialties,
+    bio: optionalText(raw.bio) || undefined,
+    showOnBooking: raw.showOnBooking !== false,
+    onLeave: raw.onLeave === true,
+    leaveUntil: optionalText(raw.leaveUntil) || undefined,
+    employmentEndDate: optionalText(raw.employmentEndDate) || undefined,
+    useCustomWorkingHours: raw.useCustomWorkingHours === true,
+    customWorkingHours: cleanPlainObject(raw.customWorkingHours),
+    customWorkingHourOverrides: cleanPlainObjectArray(raw.customWorkingHourOverrides),
+    exceptionalLeaveDates: cleanStringList(raw.exceptionalLeaveDates).slice(0, 366),
+    exceptionalLeaveWeekdays: cleanStringList(raw.exceptionalLeaveWeekdays).slice(0, 14),
+    resourceIds: cleanStringList(raw.resourceIds).slice(0, 100),
+    contractId: optionalText(raw.contractId) || undefined,
+    rating: optionalNumber(raw.rating, 0) ?? undefined,
+    reviewsCount: optionalNumber(raw.reviewsCount, 0) ?? undefined,
+    syncedAt: optionalText(raw.syncedAt) || undefined,
+  };
+}
+
 function allowedOrigins(env) {
   return new Set(
     cleanText(env.ALLOWED_ORIGINS)
@@ -527,6 +588,7 @@ function mapMember(row) {
     canManageTeam: Number(row.can_manage_team) === 1,
     canManageInventory: Number(row.can_manage_inventory) === 1,
     canViewFinancials: Number(row.can_view_financials) === 1,
+    operationalProfile: normalizeOperationalProfile(row.operational_profile_json),
     notes: row.notes || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -599,6 +661,9 @@ function normalizeMemberInput(input) {
     canManageTeam: booleanInt(input.canManageTeam),
     canManageInventory: booleanInt(input.canManageInventory),
     canViewFinancials: booleanInt(input.canViewFinancials),
+    operationalProfile: JSON.stringify(
+      normalizeOperationalProfile(input.operationalProfile)
+    ),
     notes: optionalText(input.notes),
   };
 }
@@ -988,9 +1053,9 @@ async function createMember(env, salonId, input, identity) {
       `INSERT INTO partner_members (
         id, salon_id, partner_id, member_type, status, display_name, user_uid,
         employee_id, email, phone, can_work_as_provider, can_manage_team,
-        can_manage_inventory, can_view_financials, notes, created_at, updated_at,
-        created_by_uid, updated_by_uid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        can_manage_inventory, can_view_financials, operational_profile_json,
+        notes, created_at, updated_at, created_by_uid, updated_by_uid
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id,
       salonId,
@@ -1006,6 +1071,7 @@ async function createMember(env, salonId, input, identity) {
       member.canManageTeam,
       member.canManageInventory,
       member.canViewFinancials,
+      member.operationalProfile,
       member.notes,
       timestamp,
       timestamp,
@@ -1146,6 +1212,10 @@ async function updateMember(env, salonId, id, patch, identity) {
       canManageTeam: { column: "can_manage_team", transform: booleanInt },
       canManageInventory: { column: "can_manage_inventory", transform: booleanInt },
       canViewFinancials: { column: "can_view_financials", transform: booleanInt },
+      operationalProfile: {
+        column: "operational_profile_json",
+        transform: (v) => JSON.stringify(normalizeOperationalProfile(v)),
+      },
       notes: { column: "notes", transform: optionalText },
     },
     identity

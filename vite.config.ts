@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const variant = String(env.VITE_APP_VARIANT || "web").trim().toLowerCase();
+  const partnersApiTarget = String(
+    env.VITE_PARTNERS_WORKER_URL || "http://127.0.0.1:8787"
+  ).replace(/\/+$/, "");
   const outDir =
     variant === "staff"
       ? "dist-staff"
@@ -19,9 +22,9 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         "/api": {
-          target: "https://queens-salon-web-gnxk.vercel.app",
+          target: partnersApiTarget,
           changeOrigin: true,
-          secure: true,
+          secure: partnersApiTarget.startsWith("https://"),
         },
       },
     },

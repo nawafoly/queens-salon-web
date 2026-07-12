@@ -13,12 +13,30 @@ import {
 import { app } from "./firebase";
 import { PartnerService } from "./partnerService";
 import { linkExistingEmployeeRecordToPartner, syncPartnerEmployeeRecord } from "./employeeHub";
-import type { CreatePartnerMemberInput } from "../types/partner";
+import type { EmployeeDirectoryEntry } from "./employeeHub";
+import {
+  buildPartnerMemberOperationalProfile,
+  getEmployeeDirectoryEntry,
+} from "./employeeDirectory";
+import type {
+  CreatePartnerMemberInput,
+  PartnerMember,
+} from "../types/partner";
 
 const PROVISIONING_APP_NAME = "partner-account-provisioning";
 
+type PartnerEmployeeContext = {
+  partnerName?: string;
+  contractId?: string;
+  resourceIds?: string[];
+};
+
 function cleanEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function cleanText(value: unknown) {
+  return String(value || "").trim();
 }
 
 function getProvisioningAuth() {
@@ -35,7 +53,7 @@ async function createFirebaseAccount(input: {
 }) {
   const email = cleanEmail(input.email);
   const password = String(input.password || "");
-  const displayName = String(input.displayName || "").trim();
+  const displayName = cleanText(input.displayName);
 
   if (!email || !email.includes("@")) {
     throw new Error("partner_account:email_invalid");
@@ -66,11 +84,40 @@ async function rollbackUser(user: User) {
   }
 }
 
+async function syncOperationalProfile(input: {
+  memberId: string;
+  employeeId: string;
+  employee?: EmployeeDirectoryEntry | null;
+  context?: PartnerEmployeeContext;
+  syncIdentity?: boolean;
+}) {
+  const employee = input.employee || (await getEmployeeDirectoryEntry(input.employeeId));
+  if (!employee) {
+    return { synced: false as const, employee: null };
+  }
+
+  const patch = {
+    ...(input.syncIdentity && cleanText(employee.name)
+      ? { displayName: cleanText(employee.name) }
+      : {}),
+    ...(input.syncIdentity && cleanEmail(employee.email)
+      ? { email: cleanEmail(employee.email) }
+      : {}),
+    ...(input.syncIdentity && cleanText(employee.phone)
+      ? { phone: cleanText(employee.phone) }
+      : {}),
+    operationalProfile: buildPartnerMemberOperationalProfile(employee, input.context),
+  };
+
+  await PartnerService.updatePartnerMember(input.memberId, patch);
+  return { synced: true as const, employee };
+}
+
 export const PartnerAccountService = {
   async createMemberWithAccount(
     member: CreatePartnerMemberInput,
     password: string,
-    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
+    context?: PartnerEmployeeContext
   ) {
     const provisioned = await createFirebaseAccount({
       email: member.email || "",
@@ -99,6 +146,7 @@ export const PartnerAccountService = {
         });
         employeeId = linked.employeeId;
         await PartnerService.updatePartnerMember(memberId, { employeeId });
+        await syncOperationalProfile({ memberId, employeeId, context });
       }
       return { memberId, userUid: provisioned.user.uid, email: provisioned.email, employeeId };
     } catch (error) {
@@ -140,7 +188,14 @@ export const PartnerAccountService = {
           contractId: input.contractId,
           resourceIds: input.resourceIds,
         });
-        await PartnerService.updatePartnerMember(input.memberId, { employeeId: linkedEmployee.employeeId });
+        await PartnerService.updatePartnerMember(input.memberId, {
+          employeeId: linkedEmployee.employeeId,
+        });
+        await syncOperationalProfile({
+          memberId: input.memberId,
+          employeeId: linkedEmployee.employeeId,
+          context: input,
+        });
         return { ...linkedAccount, employeeId: linkedEmployee.employeeId };
       }
       return linkedAccount;
@@ -154,7 +209,7 @@ export const PartnerAccountService = {
 
   async createOperationalMemberWithoutAccount(
     member: CreatePartnerMemberInput,
-    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
+    context?: PartnerEmployeeContext
   ) {
     const memberId = await PartnerService.createPartnerMember(member);
     if (member.memberType === "owner") return { memberId };
@@ -170,6 +225,7 @@ export const PartnerAccountService = {
       resourceIds: context?.resourceIds,
     });
     await PartnerService.updatePartnerMember(memberId, { employeeId: linked.employeeId });
+    await syncOperationalProfile({ memberId, employeeId: linked.employeeId, context });
     return { memberId, employeeId: linked.employeeId };
   },
 
@@ -184,7 +240,7 @@ export const PartnerAccountService = {
       userUid?: string;
       status?: string;
     },
-    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
+    context?: PartnerEmployeeContext
   ) {
     if (member.memberType === "owner") throw new Error("partner_employee:owner_not_operational");
     const linked = await syncPartnerEmployeeRecord({
@@ -200,6 +256,11 @@ export const PartnerAccountService = {
       resourceIds: context?.resourceIds,
     });
     await PartnerService.updatePartnerMember(member.id, { employeeId: linked.employeeId });
+    await syncOperationalProfile({
+      memberId: member.id,
+      employeeId: linked.employeeId,
+      context,
+    });
     return linked;
   },
 
@@ -227,28 +288,29 @@ export const PartnerAccountService = {
       ...(linked.employeeUid ? { userUid: linked.employeeUid } : {}),
       ...(input.employeeEmail ? { email: input.employeeEmail } : {}),
     });
+    await syncOperationalProfile({
+      memberId: input.memberId,
+      employeeId: linked.employeeId,
+      context: input,
+      syncIdentity: true,
+    });
     return linked;
   },
 
   async createMemberFromExistingEmployee(input: {
     partnerId: string;
-    employee: {
-      employeeId: string;
-      employeeUid?: string;
-      name: string;
-      email?: string;
-      phone?: string;
-    };
+    employee: EmployeeDirectoryEntry;
     partnerName?: string;
     contractId?: string;
     resourceIds?: string[];
   }) {
+    const operationalProfile = buildPartnerMemberOperationalProfile(input.employee, input);
     const memberId = await PartnerService.createPartnerMember({
       partnerId: input.partnerId,
       memberType: "employee",
       status: "active",
       displayName: input.employee.name,
-      userUid: input.employee.employeeUid,
+      userUid: input.employee.linkedUid || input.employee.employeeUid,
       employeeId: input.employee.employeeId,
       email: input.employee.email,
       phone: input.employee.phone,
@@ -256,10 +318,11 @@ export const PartnerAccountService = {
       canManageTeam: false,
       canManageInventory: false,
       canViewFinancials: false,
+      operationalProfile,
     });
     await linkExistingEmployeeRecordToPartner({
       employeeId: input.employee.employeeId,
-      employeeUid: input.employee.employeeUid,
+      employeeUid: input.employee.linkedUid || input.employee.employeeUid,
       partnerId: input.partnerId,
       partnerMemberId: memberId,
       partnerName: input.partnerName,
@@ -267,5 +330,21 @@ export const PartnerAccountService = {
       resourceIds: input.resourceIds,
     });
     return { memberId, employeeId: input.employee.employeeId };
+  },
+
+  async syncMemberOperationalProfile(
+    member: Pick<PartnerMember, "id" | "employeeId" | "displayName">,
+    context?: PartnerEmployeeContext & { employee?: EmployeeDirectoryEntry | null }
+  ) {
+    if (!member.employeeId) {
+      return { synced: false as const, employee: null };
+    }
+    return syncOperationalProfile({
+      memberId: member.id,
+      employeeId: member.employeeId,
+      employee: context?.employee,
+      context,
+      syncIdentity: true,
+    });
   },
 };

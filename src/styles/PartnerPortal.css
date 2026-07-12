@@ -706,3 +706,283 @@
   .partner-portal-resource-list em,
   .partner-portal-team-list em { grid-column: 2; }
 }
+
+/* Partner team operational profiles. */
+.partner-team-workspace {
+  width: min(1240px, 100%);
+  margin: 0 auto 18px;
+}
+
+.partner-team-overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.partner-team-overview-stats article {
+  display: grid;
+  gap: 5px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.partner-team-overview-stats small {
+  color: #7b8493;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.partner-team-overview-stats strong {
+  color: #030640;
+  font-size: 22px;
+}
+
+.partner-team-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.partner-team-profile-card {
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.partner-team-profile-card__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  padding: 18px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(242, 183, 5, 0.18), transparent 35%),
+    linear-gradient(135deg, #020617, #08122f 58%, #030640);
+}
+
+.partner-team-profile-card__avatar {
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 2px solid #f2b705;
+  border-radius: 18px;
+  color: #030640;
+  background: #f2b705;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.partner-team-profile-card__avatar img,
+.partner-team-list-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.partner-team-profile-card__identity {
+  min-width: 0;
+}
+
+.partner-team-profile-card__identity small {
+  color: #f2b705;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.partner-team-profile-card__identity h2 {
+  margin: 3px 0 2px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partner-team-profile-card__identity p {
+  margin: 0;
+  overflow: hidden;
+  color: rgba(226, 232, 240, .72);
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partner-team-profile-card__status {
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 999px;
+  color: #dbe5f4;
+  background: rgba(255, 255, 255, .08);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.partner-team-profile-card__status.is-active {
+  color: #b7f7d5;
+  border-color: rgba(52, 211, 153, .26);
+  background: rgba(16, 185, 129, .12);
+}
+
+.partner-team-profile-card__status.is-suspended {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, .26);
+  background: rgba(127, 29, 29, .18);
+}
+
+.partner-team-profile-card__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 16px 16px 0;
+}
+
+.partner-team-profile-card__facts > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 13px;
+  background: #f6f8fb;
+}
+
+.partner-team-profile-card__facts span,
+.partner-team-profile-card__services > span,
+.partner-team-profile-card__resources > span {
+  color: #7b8493;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.partner-team-profile-card__facts strong {
+  overflow-wrap: anywhere;
+  color: #17213a;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.partner-team-profile-card__facts strong.is-open { color: #087547; }
+.partner-team-profile-card__facts strong.is-closed { color: #9f2f28; }
+.partner-team-profile-card__facts strong.is-leave { color: #a16207; }
+.partner-team-profile-card__facts strong.is-neutral { color: #57657a; }
+
+.partner-team-profile-card__services,
+.partner-team-profile-card__resources {
+  display: grid;
+  gap: 9px;
+  margin: 12px 16px 0;
+  padding: 13px;
+  border: 1px solid rgba(15, 23, 42, .08);
+  border-radius: 14px;
+}
+
+.partner-team-profile-card__services > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.partner-team-profile-card__services em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #6b4b05;
+  background: rgba(242, 183, 5, .15);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.partner-team-profile-card__services small {
+  color: #8a94a5;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.partner-team-profile-card__resources strong {
+  color: #17213a;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.partner-team-profile-card__contact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding: 13px 16px;
+  border-top: 1px solid rgba(15, 23, 42, .08);
+  background: #fbfcfe;
+}
+
+.partner-team-profile-card__contact span {
+  min-width: 0;
+  overflow: hidden;
+  color: #647187;
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partner-team-profile-card__contact svg {
+  margin-inline-end: 5px;
+  color: #b7791f;
+}
+
+.partner-team-empty {
+  grid-column: 1 / -1;
+  padding: 42px;
+  border: 1px dashed rgba(15, 23, 42, .14);
+  border-radius: 20px;
+  color: #718096;
+  background: rgba(255, 255, 255, .75);
+  text-align: center;
+  font-weight: 850;
+}
+
+.partner-team-list-avatar {
+  overflow: hidden;
+}
+
+.partner-mobile-nav a.is-active {
+  color: #030640;
+  background: rgba(242, 183, 5, .14);
+}
+
+@media (max-width: 900px) {
+  .partner-team-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .partner-team-overview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .partner-team-profile-card__header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .partner-team-profile-card__status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .partner-team-profile-card__facts,
+  .partner-team-profile-card__contact {
+    grid-template-columns: 1fr;
+  }
+}

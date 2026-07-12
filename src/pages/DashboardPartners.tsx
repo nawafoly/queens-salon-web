@@ -850,11 +850,8 @@ export default function DashboardPartners() {
       await PartnerAccountService.createMemberFromExistingEmployee({
         partnerId: importPartnerId,
         employee: {
-          employeeId: employee.employeeId,
+          ...employee,
           employeeUid: employee.linkedUid || employee.employeeUid,
-          name: employee.name,
-          email: employee.email,
-          phone: employee.phone,
         },
         partnerName: partnerNameById.get(importPartnerId),
         contractId: memberContract?.id,
@@ -960,6 +957,60 @@ export default function DashboardPartners() {
     }
   };
 
+  const handleSyncAllMemberProfiles = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const directory = await listEmployeeDirectory();
+      const directoryById = new Map(
+        directory.map((employee) => [String(employee.employeeId || "").trim(), employee])
+      );
+
+      let syncedCount = 0;
+      let missingCount = 0;
+
+      for (const member of members) {
+        if (member.memberType === "owner" || !member.employeeId) continue;
+
+        const employee = directoryById.get(String(member.employeeId || "").trim()) || null;
+        if (!employee) {
+          missingCount += 1;
+          continue;
+        }
+
+        const memberContract =
+          contracts.find(
+            (contract) =>
+              contract.partnerId === member.partnerId && contract.status === "active"
+          ) || contracts.find((contract) => contract.partnerId === member.partnerId);
+
+        const result = await PartnerAccountService.syncMemberOperationalProfile(member, {
+          employee,
+          partnerName: partnerNameById.get(member.partnerId),
+          contractId: memberContract?.id,
+          resourceIds: memberContract?.resourceIds || [],
+        });
+
+        if (result.synced) syncedCount += 1;
+      }
+
+      setSuccessMessage(
+        missingCount > 0
+          ? `تمت مزامنة ${syncedCount} ملف موظفة. تعذر العثور على ${missingCount} ملف مرتبط.`
+          : `تمت مزامنة ${syncedCount} ملف موظفة مع بوابة الشريكات.`
+      );
+      await loadData("refresh");
+    } catch (syncError) {
+      console.error("DashboardPartners.syncAllMemberProfiles error:", syncError);
+      setError(translatePartnerError(syncError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleContractResource = (resourceId: string) => {
     setContractForm((previous) => ({
       ...previous,
@@ -1009,6 +1060,16 @@ export default function DashboardPartners() {
           >
             <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} />
             تحديث
+          </button>
+          <button
+            type="button"
+            className="partner-admin-btn partner-admin-btn--secondary"
+            onClick={() => void handleSyncAllMemberProfiles()}
+            disabled={saving || members.every((member) => !member.employeeId)}
+            title="نسخ البيانات التشغيلية الآمنة من ملفات الموظفات إلى بوابة الشريكات"
+          >
+            <FontAwesomeIcon icon={faArrowRotateRight} spin={saving} />
+            مزامنة ملفات الفريق
           </button>
           <button
             type="button"

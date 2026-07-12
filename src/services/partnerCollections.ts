@@ -10,6 +10,5 @@ export const PARTNER_API_PATHS = {
 export function getPartnersWorkerBaseUrl() {
   const configured = String(import.meta.env.VITE_PARTNERS_WORKER_URL || "").trim();
   if (configured) return configured.replace(/\/+$/, "");
-  if (import.meta.env.DEV) return "http://127.0.0.1:8787";
-  throw new Error("partner_api:not_configured");
+  return "";
 }

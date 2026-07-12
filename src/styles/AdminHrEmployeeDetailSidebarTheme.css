@@ -1,0 +1,724 @@
+/*
+ * Employee detail — sidebar identity theme
+ * Edit workspace only. Keeps all existing behavior and data logic intact.
+ */
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit {
+  --emp-side-bg: #090a0f;
+  --emp-side-bg-soft: #111218;
+  --emp-side-surface: #16171d;
+  --emp-side-gold: #f2b705;
+  --emp-side-gold-soft: #f5cf55;
+  --emp-side-canvas: #f1f2f4;
+  --emp-side-card: #ffffff;
+  --emp-side-line: #e2e5ea;
+  --emp-side-text: #111827;
+  --emp-side-muted: #727b8b;
+  --emp-side-success: #11845b;
+  --emp-side-danger: #cf304d;
+
+  padding: 16px !important;
+  background:
+    radial-gradient(circle at 9% 8%, rgba(242, 183, 5, 0.08), transparent 24%),
+    radial-gradient(circle at 92% 92%, rgba(86, 92, 120, 0.16), transparent 32%),
+    rgba(4, 5, 8, 0.82) !important;
+  backdrop-filter: blur(13px) saturate(0.9);
+  -webkit-backdrop-filter: blur(13px) saturate(0.9);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-panel {
+  grid-template-columns: 252px minmax(0, 1fr) !important;
+  width: min(1500px, calc(100vw - 32px)) !important;
+  height: min(940px, calc(100dvh - 32px)) !important;
+  min-height: 640px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 24px !important;
+  background: var(--emp-side-canvas) !important;
+  box-shadow:
+    0 38px 110px rgba(0, 0, 0, 0.52),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+
+/* Header */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-header {
+  min-height: 118px !important;
+  padding: 20px 28px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.075) !important;
+  background:
+    linear-gradient(90deg, rgba(242, 183, 5, 0.07), transparent 28%),
+    radial-gradient(circle at 84% -40%, rgba(242, 183, 5, 0.19), transparent 38%),
+    linear-gradient(135deg, #08090d 0%, #0d0e13 54%, #17181d 100%) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-header::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: 0;
+  width: 34%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--emp-side-gold));
+  pointer-events: none;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-identity {
+  gap: 17px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-avatar {
+  flex-basis: 76px !important;
+  width: 76px !important;
+  height: 76px !important;
+  border: 2px solid var(--emp-side-gold) !important;
+  border-radius: 22px !important;
+  color: #0a0b0f !important;
+  background: linear-gradient(145deg, #fff3b1, var(--emp-side-gold)) !important;
+  box-shadow:
+    0 0 0 5px rgba(242, 183, 5, 0.09),
+    0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title {
+  gap: 4px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title > span {
+  color: var(--emp-side-gold) !important;
+  font-size: 0.61rem !important;
+  letter-spacing: 0.03em !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title h3 {
+  color: #fff !important;
+  font-size: clamp(1.45rem, 2vw, 2.05rem) !important;
+  letter-spacing: -0.02em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title p {
+  color: rgba(255, 255, 255, 0.53) !important;
+  font-size: 0.69rem !important;
+  line-height: 1.75 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .staff-pill,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-meta-chip {
+  min-height: 28px !important;
+  padding: 5px 10px !important;
+  border-color: rgba(255, 255, 255, 0.105) !important;
+  color: rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  backdrop-filter: blur(8px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .staff-pill.on {
+  border-color: rgba(55, 211, 151, 0.27) !important;
+  color: #8ee5c0 !important;
+  background: rgba(28, 139, 98, 0.16) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-meta-chip--warning,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .staff-pill.warn {
+  border-color: rgba(242, 183, 5, 0.25) !important;
+  color: #f8d86a !important;
+  background: rgba(242, 183, 5, 0.11) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-header > .exp-btn {
+  width: 46px !important;
+  height: 46px !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  border-radius: 14px !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-header > .exp-btn:hover:not(:disabled) {
+  border-color: rgba(242, 183, 5, 0.52) !important;
+  color: var(--emp-side-gold-soft) !important;
+  background: rgba(242, 183, 5, 0.08) !important;
+  transform: translateY(-1px);
+}
+
+/* Sidebar tabs: same visual identity as the dashboard sidebar */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tabs {
+  padding: 15px 12px !important;
+  gap: 5px !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background:
+    linear-gradient(180deg, #0d0e13 0%, #090a0f 64%, #08090d 100%) !important;
+  scrollbar-color: rgba(242, 183, 5, 0.36) transparent;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab {
+  min-height: 61px !important;
+  grid-template-columns: 36px minmax(0, 1fr) !important;
+  padding: 9px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  color: rgba(255, 255, 255, 0.64) !important;
+  background: transparent !important;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab svg {
+  width: 36px !important;
+  height: 36px !important;
+  padding: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.055) !important;
+  border-radius: 10px !important;
+  color: rgba(255, 255, 255, 0.47) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab > span {
+  font-size: 0.69rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab > small {
+  color: rgba(255, 255, 255, 0.31) !important;
+  font-size: 0.5rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab:hover {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  transform: translateX(-2px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab.active {
+  border-color: rgba(242, 183, 5, 0.55) !important;
+  color: #fff !important;
+  background:
+    linear-gradient(90deg, rgba(242, 183, 5, 0.15), rgba(255, 255, 255, 0.055)) !important;
+  box-shadow:
+    inset -3px 0 0 var(--emp-side-gold),
+    0 10px 25px rgba(0, 0, 0, 0.18) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab.active svg {
+  border-color: var(--emp-side-gold) !important;
+  color: #0c0d11 !important;
+  background: var(--emp-side-gold) !important;
+  box-shadow: 0 7px 17px rgba(242, 183, 5, 0.18) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab.active small {
+  color: rgba(255, 255, 255, 0.48) !important;
+}
+
+/* Workspace */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-fieldset {
+  background: var(--emp-side-canvas) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content {
+  padding: 20px !important;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.38)),
+    radial-gradient(circle at 10% 12%, rgba(242, 183, 5, 0.055), transparent 25%),
+    var(--emp-side-canvas) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 18, 24, 0.28) transparent;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content::-webkit-scrollbar,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tabs::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content::-webkit-scrollbar-thumb,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tabs::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(17, 18, 24, 0.22);
+  background-clip: padding-box;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content > * + * {
+  margin-top: 16px !important;
+}
+
+/* Universal cards inside all employee tabs */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-modal-section,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-modal-live-summary,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-attendance-edit-panel {
+  border: 1px solid var(--emp-side-line) !important;
+  border-radius: 18px !important;
+  background: var(--emp-side-card) !important;
+  box-shadow:
+    0 12px 34px rgba(16, 24, 40, 0.055),
+    0 1px 0 rgba(255, 255, 255, 0.82) inset !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-modal-section {
+  padding: 18px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-section-header {
+  position: relative;
+  margin: 0 0 16px !important;
+  padding: 2px 0 15px !important;
+  border-bottom: 1px solid #eceef2 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-section-header::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -1px;
+  width: 64px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--emp-side-gold);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-modal-section-title {
+  color: var(--emp-side-text) !important;
+  font-size: 1rem !important;
+  letter-spacing: -0.015em;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content .emp-section-lead {
+  max-width: 760px;
+  color: var(--emp-side-muted) !important;
+  font-size: 0.64rem !important;
+}
+
+/* Inputs and controls */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit input,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit select,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit textarea,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .dash-input,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .dash-select {
+  border: 1px solid #dce1e8 !important;
+  border-radius: 11px !important;
+  color: var(--emp-side-text) !important;
+  background: #fbfcfd !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit input:hover,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit select:hover,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit textarea:hover {
+  border-color: #c8ced8 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit input:focus,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit select:focus,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit textarea:focus,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .dash-input:focus,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .dash-select:focus {
+  border-color: var(--emp-side-gold) !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(242, 183, 5, 0.13) !important;
+  outline: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-label {
+  color: #343b49 !important;
+  font-weight: 900 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .exp-btn.primary {
+  border-color: var(--emp-side-gold) !important;
+  color: #101116 !important;
+  background: linear-gradient(135deg, var(--emp-side-gold-soft), var(--emp-side-gold)) !important;
+  box-shadow: 0 8px 19px rgba(242, 183, 5, 0.2) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .exp-btn.ghost {
+  border-color: #d8dde5 !important;
+  color: #242b39 !important;
+  background: #fff !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .exp-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Work schedule — compact executive summary */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-card--refined {
+  overflow: hidden !important;
+  padding: 0 !important;
+  border-color: #d9dde5 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero {
+  min-height: 92px !important;
+  padding: 18px 20px !important;
+  border: 0 !important;
+  background:
+    radial-gradient(circle at 7% 110%, rgba(242, 183, 5, 0.14), transparent 34%),
+    linear-gradient(135deg, #0a0b10 0%, #111218 62%, #191a20 100%) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero__copy {
+  position: relative;
+  padding-inline-start: 13px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero__copy::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--emp-side-gold);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero__copy > span {
+  color: var(--emp-side-gold) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero__copy h4 {
+  color: #fff !important;
+  font-size: 1rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero__copy p {
+  color: rgba(255, 255, 255, 0.48) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-state-badge {
+  min-height: 34px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+  font-size: 0.59rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-state-badge.is-open {
+  border-color: rgba(62, 220, 158, 0.3) !important;
+  color: #8ce9c2 !important;
+  background: rgba(25, 137, 96, 0.15) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-state-badge.is-closed {
+  border-color: rgba(242, 183, 5, 0.31) !important;
+  color: #f7d86a !important;
+  background: rgba(242, 183, 5, 0.11) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi-grid {
+  gap: 10px !important;
+  padding: 12px 13px !important;
+  background: #fff !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi {
+  min-height: 76px !important;
+  padding: 13px 14px !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 13px !important;
+  background: #fafbfc !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 0;
+  top: 13px;
+  bottom: 13px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(242, 183, 5, 0.62);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi__label {
+  color: #8a93a2 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi__value {
+  color: #171b25 !important;
+  font-size: 0.75rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi__note {
+  color: #8a93a2 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-disclosure {
+  margin: 0 13px 10px !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 13px !important;
+  background: #fafbfc !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-disclosure summary {
+  min-height: 58px !important;
+  padding: 11px 13px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-disclosure__count {
+  color: #111318 !important;
+  background: var(--emp-side-gold) !important;
+}
+
+/* Basic information */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-section {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-header {
+  min-height: 102px !important;
+  margin: 0 !important;
+  padding: 18px 20px !important;
+  border: 0 !important;
+  background:
+    radial-gradient(circle at 88% 45%, rgba(242, 183, 5, 0.1), transparent 26%),
+    linear-gradient(135deg, #ffffff 0%, #fbfbfc 100%) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-header::after {
+  inset-inline-start: 20px !important;
+  width: 72px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-eyebrow,
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-card__number {
+  color: #9b7600 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-summary {
+  gap: 6px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-summary__item {
+  min-height: 29px !important;
+  padding: 5px 10px !important;
+  border-radius: 999px !important;
+  font-size: 0.55rem !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-layout {
+  gap: 13px !important;
+  padding: 14px !important;
+  background: #f6f7f9 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-card {
+  border: 1px solid #e1e5eb !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-card__head {
+  padding-bottom: 11px !important;
+  border-bottom-color: #edf0f3 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-card__head h4 {
+  color: #171b25 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-choice {
+  border: 1px solid #e0e4ea !important;
+  border-radius: 12px !important;
+  background: #fafbfc !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-choice:hover {
+  border-color: #cfd5de !important;
+  background: #fff !important;
+  transform: translateY(-1px);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-choice.is-selected {
+  border-color: rgba(242, 183, 5, 0.72) !important;
+  background: linear-gradient(135deg, #fffdf4, #fff8d5) !important;
+  box-shadow: 0 0 0 3px rgba(242, 183, 5, 0.08) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-choice.is-selected .emp-basic-choice__indicator {
+  border-color: #15161b !important;
+  background: var(--emp-side-gold) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-weekly-off {
+  border: 1px dashed #d6dbe3 !important;
+  border-radius: 12px !important;
+  background: #fafbfc !important;
+}
+
+/* Footer */
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer {
+  min-height: 76px !important;
+  padding: 11px 18px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: linear-gradient(180deg, #101116, #0a0b0f) !important;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.12) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer > span {
+  max-width: 620px;
+  color: rgba(255, 255, 255, 0.43) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions .exp-btn.ghost {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions .exp-btn.primary {
+  min-width: 142px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions .text-danger {
+  border-color: rgba(207, 48, 77, 0.26) !important;
+  color: #ff7890 !important;
+  background: rgba(207, 48, 77, 0.08) !important;
+}
+
+@media (max-width: 1180px) {
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-panel {
+    grid-template-areas:
+      "header"
+      "tabs"
+      "content"
+      "footer" !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tabs {
+    flex-direction: row !important;
+    padding: 8px 10px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-left: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.075) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab {
+    flex: 0 0 155px !important;
+    min-height: 51px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab:hover {
+    transform: translateY(-1px);
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab.active {
+    box-shadow:
+      inset 0 -3px 0 var(--emp-side-gold),
+      0 8px 20px rgba(0, 0, 0, 0.16) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit {
+    padding: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-panel {
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-header {
+    min-height: 96px !important;
+    padding: 13px 14px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-avatar {
+    flex-basis: 56px !important;
+    width: 56px !important;
+    height: 56px !important;
+    border-radius: 16px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title h3 {
+    max-width: 52vw;
+    font-size: 1.05rem !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-title p {
+    display: none;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-chips {
+    flex-wrap: nowrap !important;
+    max-width: 62vw;
+    overflow-x: auto;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab {
+    flex-basis: 128px !important;
+    grid-template-columns: 31px minmax(0, 1fr) !important;
+    min-height: 48px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab svg {
+    width: 31px !important;
+    height: 31px !important;
+    padding: 8px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-tab > small {
+    display: none;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content {
+    padding: 10px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-content > * + * {
+    margin-top: 10px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-hero,
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-header {
+    padding: 15px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 10px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-basic-layout {
+    padding: 10px !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer {
+    min-height: 0 !important;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer > span {
+    display: none !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-schedule-kpi-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr.is-edit .emp-editor-footer-actions .exp-btn {
+    min-width: 0 !important;
+  }
+}

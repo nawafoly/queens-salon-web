@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-partners-api",
   "main": "workers/partners-worker.js",
-  "compatibility_date": "2026-07-09",
+  "compatibility_date": "2026-06-24",
   "observability": {
     "enabled": true
   },

@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-with-partners.mjs",
+    "dev:full": "node scripts/dev-with-partners.mjs",
+    "dev:vite": "vite",
+    "dev:partners": "wrangler dev --config wrangler.partners.jsonc --local --port 8787 --show-interactive-dev-session=false",
     "build": "tsc -b && vite build --mode web",
     "lint": "eslint .",
     "preview": "vite preview",

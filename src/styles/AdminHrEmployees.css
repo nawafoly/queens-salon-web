@@ -2209,3 +2209,2128 @@ html body
     min-height: 44px;
   }
 }
+
+/* QUEENS EMPLOYEES MODERN SKIN START */
+html:has(.hr-shell.madan-admin-shell.hr-shell--employees),
+body:has(.hr-shell.madan-admin-shell.hr-shell--employees) {
+  background: #0d0d0d !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees {
+  --hr-emp-page-bg: #0d0d0d;
+  --hr-emp-page-bg-soft: #151515;
+  --hr-emp-surface: #f5f5f4;
+  --hr-emp-surface-strong: #ffffff;
+  --hr-emp-surface-soft: #f8f7f5;
+  --hr-emp-border-modern: rgba(245, 245, 244, 0.12);
+  --hr-emp-card-border: rgba(13, 13, 13, 0.12);
+  --hr-emp-ink: #151515;
+  --hr-emp-muted-modern: #6e7372;
+  --hr-emp-wine: #40010d;
+  --hr-emp-wine-soft: #7a1730;
+  --hr-emp-success-modern: #16845d;
+  --hr-emp-warning-modern: #a35c20;
+  --hr-emp-shadow-modern: 0 18px 36px rgba(0, 0, 0, 0.22);
+  --hr-emp-card-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+
+  color: var(--hr-emp-surface);
+  background:
+    linear-gradient(180deg, #0d0d0d 0%, #111111 48%, #0b0b0b 100%) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-sidebar {
+  border-left: 1px solid rgba(245, 245, 244, 0.08) !important;
+  background: #0d0d0d !important;
+  box-shadow: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-link {
+  min-height: 42px !important;
+  border-radius: 8px !important;
+  color: rgba(245, 245, 244, 0.64) !important;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-link:hover {
+  color: #f5f5f4 !important;
+  background: rgba(245, 245, 244, 0.06) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-link.is-active {
+  border-color: rgba(245, 245, 244, 0.1) !important;
+  color: #f5f5f4 !important;
+  background: rgba(64, 1, 13, 0.9) !important;
+  box-shadow: inset 3px 0 0 #f5f5f4 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-note {
+  border-color: rgba(245, 245, 244, 0.1) !important;
+  background: rgba(245, 245, 244, 0.05) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-main,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-main--workspace,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-stage,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-stage--workspace {
+  background: transparent !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header {
+  min-height: 68px !important;
+  border-bottom: 1px solid rgba(245, 245, 244, 0.09) !important;
+  color: #f5f5f4 !important;
+  background: rgba(13, 13, 13, 0.94) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header h1,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header .dashboard-header__copy h1,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header .dashboard-header__copy h1 * {
+  color: #f5f5f4 !important;
+  -webkit-text-fill-color: #f5f5f4 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header span,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-subtitle,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-kicker {
+  color: rgba(245, 245, 244, 0.62) !important;
+  -webkit-text-fill-color: rgba(245, 245, 244, 0.62) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-header :where(.internal-portal-switcher__item, .hr-refresh) {
+  min-height: 38px !important;
+  border: 1px solid rgba(245, 245, 244, 0.1) !important;
+  border-radius: 8px !important;
+  color: #f5f5f4 !important;
+  background: rgba(245, 245, 244, 0.06) !important;
+  box-shadow: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-stage--workspace {
+  margin: 0 !important;
+  padding: 24px 28px 44px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page {
+  --hr-emp-navy: var(--hr-emp-ink);
+  --hr-emp-navy-soft: var(--hr-emp-wine);
+  --hr-emp-gold: var(--hr-emp-wine);
+  --hr-emp-gold-soft: rgba(64, 1, 13, 0.08);
+  --hr-emp-red: var(--hr-emp-wine);
+  --hr-emp-green: var(--hr-emp-success-modern);
+  --hr-emp-border: rgba(13, 13, 13, 0.11);
+  --hr-emp-bg: transparent;
+  --hr-emp-text: var(--hr-emp-ink);
+  --hr-emp-muted: var(--hr-emp-muted-modern);
+
+  color: var(--hr-emp-surface);
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page > .container {
+  display: grid !important;
+  gap: 16px !important;
+  padding: 0 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: end !important;
+  gap: 22px !important;
+  min-height: 132px !important;
+  padding: 24px 26px !important;
+  border: 1px solid rgba(245, 245, 244, 0.1) !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(135deg, rgba(64, 1, 13, 0.92) 0%, rgba(20, 20, 20, 0.98) 58%, #101010 100%) !important;
+  box-shadow: var(--hr-emp-shadow-modern) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar::before,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar::after {
+  display: none !important;
+  content: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-kicker {
+  margin: 0 0 7px !important;
+  color: rgba(245, 245, 244, 0.58) !important;
+  -webkit-text-fill-color: rgba(245, 245, 244, 0.58) !important;
+  font-size: 0.66rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-title h2,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-title h2 * {
+  margin: 0 !important;
+  color: #f5f5f4 !important;
+  -webkit-text-fill-color: #f5f5f4 !important;
+  font-size: 2rem !important;
+  font-weight: 950 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-sub {
+  max-width: 720px !important;
+  margin: 9px 0 0 !important;
+  color: rgba(245, 245, 244, 0.68) !important;
+  -webkit-text-fill-color: rgba(245, 245, 244, 0.68) !important;
+  font-size: 0.84rem !important;
+  line-height: 1.8 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .exp-btn,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-editor-overlay .exp-btn {
+  min-height: 42px !important;
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(13, 13, 13, 0.12) !important;
+  color: #151515 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar .exp-btn {
+  border-color: rgba(245, 245, 244, 0.14) !important;
+  color: #f5f5f4 !important;
+  background: rgba(245, 245, 244, 0.08) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .exp-btn.primary,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar .exp-btn.primary {
+  border-color: rgba(245, 245, 244, 0.12) !important;
+  color: #ffffff !important;
+  background: #40010d !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .exp-btn:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  filter: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-summary-strip,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-card,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-card {
+  border: 1px solid var(--hr-emp-card-border) !important;
+  border-radius: 10px !important;
+  background: var(--hr-emp-surface) !important;
+  box-shadow: var(--hr-emp-card-shadow) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-summary-strip {
+  display: grid !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 12px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metrics {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric {
+  min-height: 72px !important;
+  padding: 12px !important;
+  border: 1px solid rgba(13, 13, 13, 0.1) !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric::before {
+  width: 3px !important;
+  background: var(--hr-emp-wine) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric span {
+  margin: 0 !important;
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  font-size: 0.66rem !important;
+  line-height: 1.45 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric strong {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  font-size: 1.35rem !important;
+  line-height: 1 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-source {
+  margin: 0 !important;
+  padding-inline: 4px !important;
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  font-size: 0.66rem !important;
+  line-height: 1.6 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-source-warning {
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-directory-shell {
+  display: grid !important;
+  gap: 14px !important;
+  margin: 0 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-card {
+  padding: 16px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-header,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-header {
+  margin: 0 0 14px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-kicker,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-kicker {
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+  font-size: 0.66rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-header h3 {
+  margin: 2px 0 0 !important;
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  font-size: 1.05rem !important;
+  font-weight: 950 !important;
+  line-height: 1.35 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-header p {
+  margin: 4px 0 0 !important;
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  font-size: 0.76rem !important;
+  line-height: 1.7 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-filter-count,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-total {
+  display: inline-grid !important;
+  min-width: 40px !important;
+  min-height: 36px !important;
+  place-items: center !important;
+  padding: 5px 10px !important;
+  border: 1px solid rgba(64, 1, 13, 0.14) !important;
+  border-radius: 8px !important;
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+  background: rgba(64, 1, 13, 0.06) !important;
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-grid {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 1.4fr) minmax(180px, 0.55fr) minmax(230px, 0.75fr) !important;
+  gap: 10px !important;
+  align-items: end !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-actions {
+  display: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-field {
+  display: grid !important;
+  gap: 6px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-label {
+  color: #515659 !important;
+  -webkit-text-fill-color: #515659 !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-control {
+  position: relative !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-icon,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-clear {
+  position: absolute !important;
+  top: 50% !important;
+  z-index: 2 !important;
+  transform: translateY(-50%) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-icon {
+  inset-inline-start: 13px !important;
+  color: #888c8c !important;
+  -webkit-text-fill-color: #888c8c !important;
+  font-size: 0.9rem !important;
+  pointer-events: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-clear {
+  inset-inline-end: 9px !important;
+  display: grid !important;
+  width: 30px !important;
+  height: 30px !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: #515659 !important;
+  background: #ecebea !important;
+  cursor: pointer !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-input,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-select {
+  min-height: 46px !important;
+  padding: 9px 12px !important;
+  border: 1px solid rgba(13, 13, 13, 0.13) !important;
+  border-radius: 8px !important;
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  background: #ffffff !important;
+  font-size: 0.8rem !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-search-control .dash-input {
+  padding-inline: 42px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-input:focus,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-select:focus {
+  border-color: rgba(64, 1, 13, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(64, 1, 13, 0.08) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-clear-filters {
+  margin: 12px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+  background: transparent !important;
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+  cursor: pointer !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-card {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title {
+  min-height: 74px !important;
+  margin: 0 !important;
+  padding: 16px 18px !important;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.08) !important;
+  background: #ffffff !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title > div {
+  display: grid !important;
+  gap: 3px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title b {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title small,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-title span:not(.emp-list-kicker):not(.emp-list-total) {
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  font-size: 0.72rem !important;
+  line-height: 1.6 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-list {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  gap: 10px !important;
+  padding: 16px !important;
+  background: #f0efed !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row {
+  display: grid !important;
+  grid-template-columns: 54px minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 12px !important;
+  min-height: 132px !important;
+  padding: 14px !important;
+  border: 1px solid rgba(13, 13, 13, 0.11) !important;
+  border-radius: 10px !important;
+  color: #0d0d0d !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(13, 13, 13, 0.07) !important;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row::before {
+  display: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row:hover {
+  border-color: rgba(64, 1, 13, 0.26) !important;
+  box-shadow: 0 16px 30px rgba(13, 13, 13, 0.11) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row.is-selected {
+  border-color: rgba(64, 1, 13, 0.58) !important;
+  box-shadow:
+    0 16px 30px rgba(13, 13, 13, 0.11),
+    inset 0 0 0 2px rgba(64, 1, 13, 0.08) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row.has-no-services {
+  background:
+    linear-gradient(90deg, rgba(64, 1, 13, 0.04), #ffffff 34%) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-avatar {
+  display: grid !important;
+  width: 54px !important;
+  height: 54px !important;
+  min-width: 54px !important;
+  place-items: center !important;
+  border: 1px solid rgba(64, 1, 13, 0.14) !important;
+  border-radius: 10px !important;
+  color: var(--hr-emp-wine) !important;
+  background: rgba(64, 1, 13, 0.07) !important;
+  font-size: 0.94rem !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-headline {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  margin: 0 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-headline b {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+  font-size: 0.86rem !important;
+  line-height: 1.5 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-dept {
+  margin-top: 4px !important;
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  font-size: 0.7rem !important;
+  line-height: 1.5 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-meta-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 5px !important;
+  margin-top: 9px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .staff-pill,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-service-chip,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-source-chip {
+  min-height: 24px !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  border: 1px solid transparent !important;
+  font-size: 0.58rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .staff-pill.on,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-service-chip.is-ready,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-source-chip.is-complete {
+  border-color: rgba(22, 132, 93, 0.18) !important;
+  color: #137354 !important;
+  -webkit-text-fill-color: #137354 !important;
+  background: rgba(22, 132, 93, 0.09) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .staff-pill.off {
+  border-color: rgba(81, 86, 89, 0.16) !important;
+  color: #515659 !important;
+  -webkit-text-fill-color: #515659 !important;
+  background: rgba(81, 86, 89, 0.08) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .staff-pill.warn,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-service-chip.is-empty,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-source-chip {
+  border-color: rgba(64, 1, 13, 0.14) !important;
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+  background: rgba(64, 1, 13, 0.07) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-footer {
+  grid-column: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  margin-top: 10px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-kpi {
+  display: inline-flex !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 5px 8px !important;
+  border: 1px solid rgba(13, 13, 13, 0.1) !important;
+  border-radius: 999px !important;
+  color: #151515 !important;
+  background: #f5f5f4 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-kpi span,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-kpi b {
+  color: #515659 !important;
+  -webkit-text-fill-color: #515659 !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-kpi b {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-open {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  color: var(--hr-emp-wine) !important;
+  -webkit-text-fill-color: var(--hr-emp-wine) !important;
+  font-size: 0.62rem !important;
+  font-weight: 950 !important;
+  white-space: nowrap !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-state {
+  display: grid !important;
+  min-height: 220px !important;
+  place-items: center !important;
+  gap: 8px !important;
+  padding: 28px !important;
+  color: #6e7372 !important;
+  -webkit-text-fill-color: #6e7372 !important;
+  background: #f0efed !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-state b {
+  color: #0d0d0d !important;
+  -webkit-text-fill-color: #0d0d0d !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-appbar {
+  border-bottom-color: rgba(245, 245, 244, 0.08) !important;
+  background: rgba(13, 13, 13, 0.96) !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-appbar__mark {
+  color: #f5f5f4 !important;
+  background: #40010d !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-bottom-nav {
+  border-top-color: rgba(245, 245, 244, 0.08) !important;
+  background: rgba(13, 13, 13, 0.98) !important;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.32) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-bottom-nav__item {
+  color: rgba(245, 245, 244, 0.52) !important;
+  border-radius: 8px !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-bottom-nav__item.is-active {
+  color: #f5f5f4 !important;
+  background: rgba(64, 1, 13, 0.72) !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-mobile-bottom-nav__item.is-active::before {
+  background: #f5f5f4 !important;
+}
+
+@media (max-width: 1180px) {
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 0.5fr) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-search-field {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 820px) {
+  html body .hr-shell.madan-admin-shell.hr-shell--employees {
+    background: #0d0d0d !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees > .hr-shell-main,
+  html body .hr-shell.madan-admin-shell.hr-shell--employees > .hr-shell-main.hr-shell-main--workspace {
+    padding: 12px 10px 18px !important;
+    background: #0d0d0d !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-stage--workspace {
+    padding: 0 0 18px !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page > .container {
+    gap: 12px !important;
+    padding: 0 0 88px !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 14px !important;
+    min-height: 0 !important;
+    padding: 18px !important;
+    border-radius: 10px !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-title {
+    display: grid !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-title h2,
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-title h2 * {
+    font-size: 1.45rem !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-sub {
+    font-size: 0.74rem !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-actions .exp-btn.primary {
+    grid-column: 1 / -1 !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric:last-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-list-filter-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-input,
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-select {
+    min-height: 48px !important;
+    font-size: 16px !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 10px !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row {
+    min-height: 122px !important;
+    padding: 13px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-actions,
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metrics {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .dash-topbar-actions .exp-btn.primary,
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-topbar-metric:last-child {
+    grid-column: auto !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-row {
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+  }
+
+  html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page .emp-staff-avatar {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+  }
+}
+/* QUEENS EMPLOYEES MODERN SKIN END */
+
+/* QUEENS LEGACY DASHBOARD EMPLOYEES SKIN START
+   The employees page can also render inside the old dashboard shell,
+   not only inside .hr-shell. Keep this block last so it wins. */
+html:has(.dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper),
+body:has(.dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper) {
+  background: #0d0d0d !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page:has(.emp-page-wrapper) {
+  --emp-modern-bg: #0d0d0d;
+  --emp-modern-panel: #f5f5f4;
+  --emp-modern-card: #ffffff;
+  --emp-modern-soft: #efeeec;
+  --emp-modern-ink: #0d0d0d;
+  --emp-modern-muted: #6e7372;
+  --emp-modern-wine: #40010d;
+  --emp-modern-border: rgba(13, 13, 13, 0.12);
+  --emp-modern-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
+
+  background:
+    linear-gradient(180deg, #0d0d0d 0%, #111111 58%, #0b0b0b 100%) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page:has(.emp-page-wrapper)
+  .dashboard-main,
+html body .dashboard-skin.madan-admin-shell.dashboard-page:has(.emp-page-wrapper)
+  .dashboard-inner {
+  background: transparent !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page:has(.emp-page-wrapper)
+  .dashboard-inner {
+  max-width: 1480px !important;
+  padding: 22px 24px 44px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper {
+  color: var(--emp-modern-panel) !important;
+  background: transparent !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  > .container {
+  display: grid !important;
+  max-width: none !important;
+  gap: 16px !important;
+  padding: 0 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: end !important;
+  gap: 22px !important;
+  min-height: 148px !important;
+  padding: 26px 28px !important;
+  border: 1px solid rgba(245, 245, 244, 0.1) !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(135deg, rgba(64, 1, 13, 0.96) 0%, #171717 58%, #101010 100%) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.26) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar::before,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar::after {
+  display: none !important;
+  content: none !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-kicker {
+  margin: 0 0 8px !important;
+  color: rgba(245, 245, 244, 0.58) !important;
+  -webkit-text-fill-color: rgba(245, 245, 244, 0.58) !important;
+  font-size: 0.7rem !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar-title
+  h2,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar-title
+  h2
+  * {
+  margin: 0 !important;
+  color: #f5f5f4 !important;
+  -webkit-text-fill-color: #f5f5f4 !important;
+  font-size: 2.15rem !important;
+  line-height: 1.2 !important;
+  text-shadow: none !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-sub {
+  max-width: 760px !important;
+  margin: 9px 0 0 !important;
+  color: rgba(245, 245, 244, 0.68) !important;
+  -webkit-text-fill-color: rgba(245, 245, 244, 0.68) !important;
+  font-size: 0.84rem !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .exp-btn {
+  min-height: 42px !important;
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(13, 13, 13, 0.12) !important;
+  color: var(--emp-modern-ink) !important;
+  -webkit-text-fill-color: var(--emp-modern-ink) !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .exp-btn {
+  border-color: rgba(245, 245, 244, 0.14) !important;
+  color: #f5f5f4 !important;
+  -webkit-text-fill-color: #f5f5f4 !important;
+  background: rgba(245, 245, 244, 0.08) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .exp-btn.primary,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-topbar
+  .exp-btn.primary {
+  border-color: rgba(245, 245, 244, 0.12) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: var(--emp-modern-wine) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-summary-strip,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-filter-card,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-card {
+  border: 1px solid var(--emp-modern-border) !important;
+  border-radius: 10px !important;
+  background: var(--emp-modern-panel) !important;
+  box-shadow: var(--emp-modern-shadow) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-summary-strip {
+  display: grid !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 12px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-metrics {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-metric {
+  min-height: 72px !important;
+  padding: 12px !important;
+  border: 1px solid rgba(13, 13, 13, 0.1) !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-metric::before {
+  width: 3px !important;
+  background: var(--emp-modern-wine) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-metric
+  span,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-source {
+  color: var(--emp-modern-muted) !important;
+  -webkit-text-fill-color: var(--emp-modern-muted) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-topbar-metric
+  strong {
+  color: var(--emp-modern-ink) !important;
+  -webkit-text-fill-color: var(--emp-modern-ink) !important;
+  font-size: 1.35rem !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-source-warning {
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-directory-shell {
+  display: grid !important;
+  gap: 14px !important;
+  margin: 0 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-filter-card {
+  padding: 16px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-header,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-title {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-header {
+  margin: 0 0 14px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-kicker,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-kicker,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-clear-filters {
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-header
+  h3,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-title
+  b {
+  color: var(--emp-modern-ink) !important;
+  -webkit-text-fill-color: var(--emp-modern-ink) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-header
+  p,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-title
+  small {
+  color: var(--emp-modern-muted) !important;
+  -webkit-text-fill-color: var(--emp-modern-muted) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-filter-count,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-total {
+  display: inline-grid !important;
+  min-width: 40px !important;
+  min-height: 36px !important;
+  place-items: center !important;
+  padding: 5px 10px !important;
+  border: 1px solid rgba(64, 1, 13, 0.14) !important;
+  border-radius: 8px !important;
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+  background: rgba(64, 1, 13, 0.06) !important;
+  font-weight: 950 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-filter-grid {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 1.4fr) minmax(180px, 0.55fr) minmax(230px, 0.75fr) !important;
+  gap: 10px !important;
+  align-items: end !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-filter-actions {
+  display: none !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-label {
+  color: #515659 !important;
+  -webkit-text-fill-color: #515659 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-control {
+  position: relative !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-icon,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-clear {
+  position: absolute !important;
+  top: 50% !important;
+  z-index: 2 !important;
+  transform: translateY(-50%) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-icon {
+  inset-inline-start: 13px !important;
+  color: #888c8c !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-clear {
+  inset-inline-end: 9px !important;
+  display: grid !important;
+  width: 30px !important;
+  height: 30px !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: #515659 !important;
+  background: #ecebea !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-input,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .dash-select {
+  min-height: 46px !important;
+  border: 1px solid rgba(13, 13, 13, 0.13) !important;
+  border-radius: 8px !important;
+  color: var(--emp-modern-ink) !important;
+  -webkit-text-fill-color: var(--emp-modern-ink) !important;
+  background: #ffffff !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-search-control
+  .dash-input {
+  padding-inline: 42px !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-card {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-list-title {
+  min-height: 74px !important;
+  margin: 0 !important;
+  padding: 16px 18px !important;
+  border-bottom: 1px solid rgba(13, 13, 13, 0.08) !important;
+  background: #ffffff !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-list {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+  gap: 12px !important;
+  padding: 16px !important;
+  background: var(--emp-modern-soft) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-row {
+  display: grid !important;
+  grid-template-columns: 54px minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 12px !important;
+  min-height: 132px !important;
+  padding: 14px !important;
+  border: 1px solid rgba(13, 13, 13, 0.11) !important;
+  border-radius: 10px !important;
+  color: var(--emp-modern-ink) !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(13, 13, 13, 0.07) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-row::before {
+  display: none !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-row.is-selected {
+  border-color: rgba(64, 1, 13, 0.58) !important;
+  box-shadow:
+    0 16px 30px rgba(13, 13, 13, 0.11),
+    inset 0 0 0 2px rgba(64, 1, 13, 0.08) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-avatar {
+  width: 54px !important;
+  height: 54px !important;
+  min-width: 54px !important;
+  border: 1px solid rgba(64, 1, 13, 0.14) !important;
+  border-radius: 10px !important;
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+  background: rgba(64, 1, 13, 0.07) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-headline
+  b,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-kpi
+  b {
+  color: var(--emp-modern-ink) !important;
+  -webkit-text-fill-color: var(--emp-modern-ink) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-dept,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-kpi
+  span {
+  color: var(--emp-modern-muted) !important;
+  -webkit-text-fill-color: var(--emp-modern-muted) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .staff-pill,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-service-chip,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-source-chip {
+  min-height: 24px !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  border: 1px solid transparent !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .staff-pill.on,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-service-chip.is-ready {
+  color: #137354 !important;
+  -webkit-text-fill-color: #137354 !important;
+  background: rgba(22, 132, 93, 0.09) !important;
+  border-color: rgba(22, 132, 93, 0.18) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .staff-pill.off {
+  color: #515659 !important;
+  -webkit-text-fill-color: #515659 !important;
+  background: rgba(81, 86, 89, 0.08) !important;
+  border-color: rgba(81, 86, 89, 0.16) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .staff-pill.warn,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-service-chip.is-empty,
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-source-chip {
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+  background: rgba(64, 1, 13, 0.07) !important;
+  border-color: rgba(64, 1, 13, 0.14) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-footer {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid rgba(13, 13, 13, 0.08) !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-kpi {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  min-height: 28px !important;
+  padding: 5px 8px !important;
+  border: 1px solid rgba(13, 13, 13, 0.1) !important;
+  border-radius: 999px !important;
+  background: #f5f5f4 !important;
+}
+
+html body .dashboard-skin.madan-admin-shell.dashboard-page
+  .emp-page-wrapper
+  .emp-staff-open {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  max-width: none !important;
+  overflow: visible !important;
+  color: var(--emp-modern-wine) !important;
+  -webkit-text-fill-color: var(--emp-modern-wine) !important;
+  font-size: 0.62rem !important;
+  font-weight: 950 !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1180px) {
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-topbar-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-list-filter-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 0.5fr) !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-list-search-field {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html body .dashboard-skin.madan-admin-shell.dashboard-page:has(.emp-page-wrapper)
+    .dashboard-inner {
+    padding: 12px 10px 94px !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .dash-topbar,
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-list-filter-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .dash-topbar-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-topbar-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  html body .dashboard-skin.madan-admin-shell.dashboard-page
+    .emp-page-wrapper
+    .emp-staff-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+/* QUEENS LEGACY DASHBOARD EMPLOYEES SKIN END */
+
+/* ========================================================================== */
+/* Employees directory — dashboard sidebar palette                           */
+/* ========================================================================== */
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 {
+  --emp-dir-bg: #07080b;
+  --emp-dir-panel: #0b0c12;
+  --emp-dir-card: #101219;
+  --emp-dir-card-hover: #131620;
+  --emp-dir-line: rgba(255, 255, 255, 0.075);
+  --emp-dir-line-strong: rgba(242, 183, 5, 0.34);
+  --emp-dir-text: rgba(255, 255, 255, 0.94);
+  --emp-dir-muted: rgba(255, 255, 255, 0.52);
+  --emp-dir-gold: #f2b705;
+  --emp-dir-gold-light: #f5cf55;
+  --emp-dir-gold-soft: rgba(242, 183, 5, 0.1);
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--emp-dir-line) !important;
+  border-radius: 18px !important;
+  background: var(--emp-dir-bg) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-hero {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(560px, 1.45fr) !important;
+  align-items: center !important;
+  gap: 24px !important;
+  min-height: 154px !important;
+  margin: 0 !important;
+  padding: 24px 26px !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--emp-dir-line) !important;
+  background:
+    radial-gradient(circle at 88% -18%, rgba(242, 183, 5, 0.16), transparent 34%),
+    linear-gradient(180deg, #0b0c12 0%, #090a0f 100%) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-hero::after {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline-end: -65px !important;
+  top: -90px !important;
+  width: 240px !important;
+  height: 240px !important;
+  display: block !important;
+  border: 1px solid rgba(242, 183, 5, 0.08) !important;
+  border-radius: 50% !important;
+  pointer-events: none !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-heading {
+  position: relative !important;
+  z-index: 1 !important;
+  min-width: 0 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-heading .emp-list-kicker {
+  display: inline-flex !important;
+  margin: 0 0 8px !important;
+  padding: 5px 9px !important;
+  border: 1px solid rgba(242, 183, 5, 0.22) !important;
+  border-radius: 999px !important;
+  color: var(--emp-dir-gold-light) !important;
+  -webkit-text-fill-color: var(--emp-dir-gold-light) !important;
+  background: var(--emp-dir-gold-soft) !important;
+  font-size: 0.58rem !important;
+  font-weight: 900 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-heading h2 {
+  margin: 0 0 7px !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: transparent !important;
+  font-size: clamp(1.55rem, 2.15vw, 2.2rem) !important;
+  font-weight: 950 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.035em !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-heading p {
+  max-width: 540px !important;
+  margin: 0 !important;
+  color: var(--emp-dir-muted) !important;
+  -webkit-text-fill-color: var(--emp-dir-muted) !important;
+  background: transparent !important;
+  font-size: 0.7rem !important;
+  line-height: 1.8 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-summary {
+  position: relative !important;
+  z-index: 1 !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-stat {
+  display: grid !important;
+  grid-template-columns: 38px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  min-height: 70px !important;
+  padding: 11px 12px !important;
+  border: 1px solid var(--emp-dir-line) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-stat-icon {
+  display: grid !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  place-items: center !important;
+  border: 1px solid rgba(242, 183, 5, 0.2) !important;
+  border-radius: 10px !important;
+  color: var(--emp-dir-gold-light) !important;
+  -webkit-text-fill-color: var(--emp-dir-gold-light) !important;
+  background: var(--emp-dir-gold-soft) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-stat div {
+  display: grid !important;
+  min-width: 0 !important;
+  gap: 3px !important;
+  background: transparent !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-stat b {
+  margin: 0 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: transparent !important;
+  font-size: 1.08rem !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-stat small {
+  overflow: hidden !important;
+  color: var(--emp-dir-muted) !important;
+  -webkit-text-fill-color: var(--emp-dir-muted) !important;
+  background: transparent !important;
+  font-size: 0.52rem !important;
+  font-weight: 780 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-list {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  overflow: visible !important;
+  background:
+    radial-gradient(circle at 12% 110%, rgba(242, 183, 5, 0.04), transparent 32%),
+    #0a0b10 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-row {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 62px minmax(0, 1fr) !important;
+  grid-template-rows: auto 1fr auto !important;
+  align-items: start !important;
+  gap: 0 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 198px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--emp-dir-line) !important;
+  border-radius: 14px !important;
+  color: var(--emp-dir-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: linear-gradient(180deg, #11131a 0%, #0e1016 100%) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18) !important;
+  text-align: right !important;
+  transform: translateY(0) !important;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-row::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 0 auto 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, transparent, var(--emp-dir-gold) 50%, transparent) !important;
+  opacity: 0.8 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-row:hover,
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-row.is-selected {
+  border-color: var(--emp-dir-line-strong) !important;
+  background: linear-gradient(180deg, #151821 0%, #101219 100%) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(242, 183, 5, 0.04) !important;
+  transform: translateY(-2px) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-row.has-no-services {
+  background: linear-gradient(180deg, #11131a 0%, #0d0f14 100%) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-avatar {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+  display: grid !important;
+  width: 62px !important;
+  height: 62px !important;
+  min-width: 62px !important;
+  place-items: center !important;
+  margin: 3px 0 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(242, 183, 5, 0.22) !important;
+  border-radius: 13px !important;
+  color: var(--emp-dir-gold-light) !important;
+  -webkit-text-fill-color: var(--emp-dir-gold-light) !important;
+  background: rgba(242, 183, 5, 0.07) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+  font-size: 0.98rem !important;
+  font-weight: 950 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  object-fit: cover !important;
+  border-radius: inherit !important;
+  filter: none !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-main {
+  grid-column: 2 !important;
+  grid-row: 1 / span 2 !important;
+  display: flex !important;
+  min-width: 0 !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  text-align: right !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-headline {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 7px !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-headline b {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: transparent !important;
+  font-size: 0.82rem !important;
+  font-weight: 950 !important;
+  line-height: 1.35 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-dept {
+  width: 100% !important;
+  margin: 8px 0 10px !important;
+  color: var(--emp-dir-muted) !important;
+  -webkit-text-fill-color: var(--emp-dir-muted) !important;
+  background: transparent !important;
+  font-size: 0.61rem !important;
+  font-weight: 760 !important;
+  line-height: 1.5 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-meta-row {
+  display: flex !important;
+  width: 100% !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 :is(.staff-pill, .emp-staff-service-chip, .emp-staff-source-chip) {
+  display: inline-flex !important;
+  min-height: 23px !important;
+  align-items: center !important;
+  padding: 4px 8px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background-image: none !important;
+  font-size: 0.53rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 :is(.staff-pill.on, .emp-staff-service-chip.is-ready) {
+  border-color: rgba(72, 199, 142, 0.2) !important;
+  color: #6ed8aa !important;
+  -webkit-text-fill-color: #6ed8aa !important;
+  background: rgba(72, 199, 142, 0.08) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .staff-pill.off {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.52) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.52) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 :is(.staff-pill.warn, .emp-staff-service-chip.is-empty, .emp-staff-source-chip) {
+  border-color: rgba(242, 183, 5, 0.2) !important;
+  color: var(--emp-dir-gold-light) !important;
+  -webkit-text-fill-color: var(--emp-dir-gold-light) !important;
+  background: rgba(242, 183, 5, 0.075) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-source-chip--partner {
+  border-color: rgba(123, 108, 219, 0.28) !important;
+  color: #aea4f2 !important;
+  -webkit-text-fill-color: #aea4f2 !important;
+  background: rgba(123, 108, 219, 0.09) !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-footer {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  position: static !important;
+  display: flex !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin: 15px 0 0 !important;
+  padding: 13px 0 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--emp-dir-line) !important;
+  background: transparent !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-kpi {
+  position: static !important;
+  display: flex !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  text-align: right !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-kpi-ring {
+  display: grid !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  place-items: center !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: conic-gradient(var(--emp-dir-gold) var(--employee-kpi), rgba(255, 255, 255, 0.09) 0) !important;
+  box-shadow: inset 0 0 0 6px #0f1117 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-kpi-ring b {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: transparent !important;
+  font-size: 0.55rem !important;
+  font-weight: 950 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-kpi > span {
+  color: var(--emp-dir-muted) !important;
+  -webkit-text-fill-color: var(--emp-dir-muted) !important;
+  background: transparent !important;
+  font-size: 0.54rem !important;
+  font-weight: 820 !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-open {
+  position: static !important;
+  inset: auto !important;
+  display: inline-flex !important;
+  max-width: none !important;
+  min-height: 34px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 4px 5px 4px 10px !important;
+  overflow: visible !important;
+  border: 1px solid rgba(242, 183, 5, 0.18) !important;
+  border-radius: 9px !important;
+  color: var(--emp-dir-gold-light) !important;
+  -webkit-text-fill-color: var(--emp-dir-gold-light) !important;
+  background: rgba(242, 183, 5, 0.07) !important;
+  font-size: 0.58rem !important;
+  font-weight: 950 !important;
+  white-space: nowrap !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-open span {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+  background: transparent !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-staff-open i {
+  display: grid !important;
+  width: 25px !important;
+  height: 25px !important;
+  min-width: 25px !important;
+  place-items: center !important;
+  border-radius: 7px !important;
+  color: #090a0f !important;
+  -webkit-text-fill-color: #090a0f !important;
+  background: var(--emp-dir-gold) !important;
+  box-shadow: 0 6px 14px rgba(242, 183, 5, 0.16) !important;
+  font-style: normal !important;
+}
+
+:is(
+  .dashboard-skin.madan-admin-shell.dashboard-page,
+  .hr-shell.madan-admin-shell.hr-shell--employees
+) .emp-page-wrapper .emp-directory-v2 .emp-list-state {
+  margin: 16px !important;
+  border-color: var(--emp-dir-line) !important;
+  color: var(--emp-dir-text) !important;
+  background: var(--emp-dir-card) !important;
+}
+
+@media (max-width: 1450px) {
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-v2 .emp-staff-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-hero {
+    grid-template-columns: minmax(250px, 0.75fr) minmax(500px, 1.25fr) !important;
+  }
+}
+
+@media (max-width: 1120px) {
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-v2 .emp-staff-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-v2 {
+    border-radius: 15px !important;
+  }
+
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-hero {
+    min-height: 0 !important;
+    padding: 20px 16px !important;
+  }
+
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-v2 .emp-staff-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 11px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  :is(
+    .dashboard-skin.madan-admin-shell.dashboard-page,
+    .hr-shell.madan-admin-shell.hr-shell--employees
+  ) .emp-page-wrapper .emp-directory-summary {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

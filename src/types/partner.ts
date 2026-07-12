@@ -52,6 +52,31 @@ export type PartnerMemberType = "owner" | "employee" | "contractor";
 
 export type PartnerMemberStatus = "active" | "inactive" | "suspended";
 
+
+export type PartnerMemberOperationalProfile = {
+  employeeId?: string;
+  department?: string;
+  title?: string;
+  avatarUrl?: string;
+  specialties: string[];
+  specialtyLabels: string[];
+  bio?: string;
+  showOnBooking: boolean;
+  onLeave: boolean;
+  leaveUntil?: string;
+  employmentEndDate?: string;
+  useCustomWorkingHours: boolean;
+  customWorkingHours?: Record<string, unknown>;
+  customWorkingHourOverrides?: Array<Record<string, unknown>>;
+  exceptionalLeaveDates: string[];
+  exceptionalLeaveWeekdays: string[];
+  resourceIds: string[];
+  contractId?: string;
+  rating?: number;
+  reviewsCount?: number;
+  syncedAt?: string;
+};
+
 export type PartnerAuditFields = {
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -132,6 +157,7 @@ export type PartnerMember = PartnerAuditFields & {
   canManageTeam: boolean;
   canManageInventory: boolean;
   canViewFinancials: boolean;
+  operationalProfile?: PartnerMemberOperationalProfile;
   notes?: string;
 };
 
