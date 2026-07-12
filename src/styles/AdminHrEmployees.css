@@ -4334,3 +4334,35 @@ html body .dashboard-skin.madan-admin-shell.dashboard-page
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+/* Final light-surface override for the employee directory. */
+html body .hr-shell.madan-admin-shell.hr-shell--employees,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-main,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .employees-page,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper > .container,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper > .container {
+  background: #ffffff !important;
+  background-image: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-directory-v2,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-directory-hero,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-staff-list,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper .emp-directory-v2,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper .emp-directory-hero,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper .emp-staff-list {
+  background: #ffffff !important;
+  background-image: none !important;
+}
+
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-directory-v2 .emp-staff-row,
+html body .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-directory-v2 .emp-staff-row.has-no-services,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper .emp-directory-v2 .emp-staff-row,
+html body .dashboard-skin.madan-admin-shell.dashboard-page .emp-page-wrapper .emp-directory-v2 .emp-staff-row.has-no-services {
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  border-color: rgba(13, 13, 13, 0.12) !important;
+}
