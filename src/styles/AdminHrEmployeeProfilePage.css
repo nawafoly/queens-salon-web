@@ -21,12 +21,67 @@
 .employee-profile-page :where(.emp-basic-layout,.emp-basic-layout__main,.emp-basic-layout__side,.emp-basic-choice-grid,.emp-schedule-kpi-grid,.emp-form-grid) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
 .employee-profile-page :where(.emp-basic-layout__main,.emp-basic-layout__side) { grid-template-columns:1fr; }
 .employee-profile-page :where(.emp-basic-card,.emp-schedule-kpi,.dash-field) { min-width:0; padding:16px; border:1px solid #e5e8ed; border-radius:13px; background:#fff; }
-.employee-profile-page :where(input,select,textarea,.dash-input,.dash-select) { width:100%; max-width:100%; min-height:44px; box-sizing:border-box; }
-.employee-profile-page :where(h1,h2,h3,h4,p,span,strong,small,label) { overflow-wrap:anywhere; }
+.employee-profile-page :where(input:not([type="checkbox"]):not([type="radio"]),select,textarea,.dash-input,.dash-select) { width:100%; max-width:100%; min-height:44px; box-sizing:border-box; }
+.employee-profile-page input[type="checkbox"],.employee-profile-page input[type="radio"] { width:20px; height:20px; min-height:0; flex:0 0 20px; accent-color:#5b0717; }
+.employee-profile-page :where(h1,h2,h3,h4,p,span,strong,small,label) { overflow-wrap:break-word; }
+.employee-profile-page .emp-section-header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid #e8ebef }
+.employee-profile-page .emp-modal-section-title { margin:4px 0;font-size:clamp(24px,2.2vw,32px);line-height:1.2 }
+.employee-profile-page .emp-section-lead { margin:0;color:#7a8598;line-height:1.7 }
+.employee-profile-page .emp-label { display:block;margin-bottom:7px;font-size:13px;font-weight:800 }
+.employee-profile-page .dash-field { display:flex;flex-direction:column;padding:14px }
+.employee-profile-page :where(.dash-input,.dash-select,.dash-textarea) { padding:10px 13px;border:1px solid #dce2e9;border-radius:11px;background:#fff;font:inherit }
+.employee-profile-page .exp-btn { min-height:40px;padding:8px 14px;border:1px solid #dce1e7;border-radius:10px;background:#fff;font-weight:800 }
+.employee-profile-page .exp-btn.primary { color:#fff;border-color:#5b0717;background:#5b0717 }
+.employee-profile-page .emp-basic-card__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:14px }
+.employee-profile-page .emp-basic-choice-card { display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;min-height:86px;padding:13px;border:1px solid #dce2e8;border-radius:12px;color:#263248;background:#fff;text-align:right }
+.employee-profile-page .emp-basic-choice-card.is-selected { border-color:#79162a;background:#fff3f5;box-shadow:0 0 0 1px rgba(91,7,23,.08) }
+.employee-profile-page .emp-basic-choice-card__indicator { width:22px;height:22px;border:1px solid #cfd6de;border-radius:50%;background:#fff }
+.employee-profile-page .emp-basic-choice-card.is-selected .emp-basic-choice-card__indicator { border:6px solid #5b0717 }
+.employee-profile-page .emp-basic-choice-card strong { display:block;margin-bottom:5px }
+.employee-profile-page .emp-basic-choice-card span { color:#768297;font-size:13px;line-height:1.55 }
+.employee-profile-page .emp-services-toolbar { display:grid;grid-template-columns:minmax(240px,1fr) minmax(220px,.7fr) auto;gap:12px;align-items:end }
+.employee-profile-page .emp-services-view-switch { display:flex;gap:4px;padding:4px;border:1px solid #dfe4ea;border-radius:10px;background:#f6f8fa }
+.employee-profile-page .emp-services-view-switch button { min-width:38px;min-height:36px;border:0;border-radius:7px;background:transparent }
+.employee-profile-page .emp-services-view-switch button.is-active { color:#fff;background:#5b0717 }
+.employee-profile-page .emp-services-bulkbar { display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid #e2e6eb;border-radius:12px;background:#f8fafb }
+.employee-profile-page .emp-services-bulkbar__actions { display:flex;gap:8px }
+.employee-profile-page .emp-services-workspace { display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:16px;align-items:start }
+.employee-profile-page :where(.emp-services-catalog,.emp-services-selected-panel) { min-width:0;padding:16px;border:1px solid #e1e5ea;border-radius:14px;background:#fff }
+.employee-profile-page :where(.emp-services-catalog__head,.emp-services-selected-panel__head) { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px }
+.employee-profile-page .emp-services-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px }
+.employee-profile-page .emp-service-card { display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start;min-width:0;min-height:92px;padding:13px;border:1px solid #dfe4e9;border-radius:12px;color:#1f2a40;background:#fff;text-align:right }
+.employee-profile-page .emp-service-card.is-selected { border-color:#79162a;background:#fff4f6 }
+.employee-profile-page .emp-service-card__check { display:grid;place-items:center;width:21px;height:21px;border:1px solid #ccd4dd;border-radius:6px }
+.employee-profile-page .emp-service-card__body strong { display:block;margin-bottom:7px;line-height:1.45 }
+.employee-profile-page .emp-service-card__facts { display:flex;flex-wrap:wrap;gap:7px;color:#778397;font-size:12px }
+.employee-profile-page .emp-services-selected-panel { position:sticky;top:20px }
+.employee-profile-page .emp-services-selected-list { display:flex;flex-direction:column;gap:8px;max-height:560px;overflow-y:auto }
+.employee-profile-page .emp-services-selected-item { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:11px;border:1px solid #e1e5ea;border-radius:10px;background:#fafbfc }
+.employee-profile-page .emp-form-grid { align-items:start }
+.employee-profile-page .emp-panel { min-width:0;padding:17px;border:1px solid #e0e5ea;border-radius:14px;background:#fff }
+.employee-profile-page .emp-panel:has(.emp-working-week) { grid-column:1/-1 }
+.employee-profile-page .emp-panel-head,.employee-profile-page .emp-working-table-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px }
+.employee-profile-page .emp-toggle-row,.employee-profile-page .emp-check-label { display:flex;align-items:center;gap:10px }
+.employee-profile-page .emp-working-week-cards { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px }
+.employee-profile-page .emp-working-day-card { min-width:0;padding:13px;border:1px solid #dfe4e9;border-radius:12px;background:#fff }
+.employee-profile-page .emp-working-day-card.is-off { opacity:.68;background:#f7f8fa }
+.employee-profile-page .emp-working-day-card__head { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;font-weight:900 }
+.employee-profile-page .emp-working-day-card__times { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px }
+.employee-profile-page .emp-stats-stack { display:flex;flex-direction:column;gap:16px }
+.employee-profile-page :where(.staff-payroll-box,.staff-leave-box) { padding:17px;border:1px solid #e0e5ea;border-radius:14px;background:#fff }
+.employee-profile-page :where(.staff-payroll-head,.staff-leave-head) { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px }
+.employee-profile-page :where(.staff-payroll-form,.staff-leave-settings-grid,.staff-leave-controls) { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px }
+.employee-profile-page .staff-leave-settings-wide { grid-column:1/-1 }
+.employee-profile-page :where(.staff-payroll-preview-grid,.emp-kpi-strip) { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 }
+.employee-profile-page :where(.staff-payroll-chip,.emp-kpi-card) { padding:13px;border:1px solid #e1e5ea;border-radius:11px;background:#f8fafb }
+.employee-profile-page .leave-log-list { margin-top:16px;overflow-x:auto;border:1px solid #e1e5ea;border-radius:12px }
+.employee-profile-page :where(.leave-log-head,.leave-log-row) { display:grid;grid-template-columns:100px 80px 90px 90px 110px minmax(180px,1fr) 44px;gap:8px;align-items:center;min-width:760px;padding:11px 13px;border-top:1px solid #edf0f3 }
 .employee-profile-page .employee-profile-actions { display:flex; justify-content:space-between; gap:12px; margin-top:16px; padding:16px; border:1px solid #e0e5eb; border-radius:14px; background:#fff; }
 .employee-profile-page .employee-profile-actions > div { display:flex; gap:10px; }
 .employee-profile-page .employee-profile-actions button { min-height:44px; padding:0 15px; border:1px solid #dfe3e9; border-radius:10px; background:#fff; font-weight:900; }
 .employee-profile-page .employee-profile-actions .is-primary { color:#fff; border-color:#40010d; background:#40010d; }
 .employee-profile-page .employee-profile-actions .is-danger { color:#b4233c; border-color:#f0cbd2; background:#fff4f6; }
 @media(max-width:1024px){.employee-profile-page .employee-profile-workspace{grid-template-columns:1fr}.employee-profile-page .employee-profile-sidebar{position:static;min-width:0;flex-direction:row;overflow-x:auto}.employee-profile-page .employee-profile-sidebar button{flex:0 0 auto;width:auto;min-width:145px}}
+@media(max-width:1100px){.employee-profile-page .emp-services-workspace{grid-template-columns:1fr}.employee-profile-page .emp-services-selected-panel{position:static}.employee-profile-page .emp-services-selected-list{max-height:360px}.employee-profile-page .emp-services-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.employee-profile-page .emp-services-view-switch{grid-column:1/-1;width:max-content}.employee-profile-page :where(.staff-payroll-form,.staff-leave-settings-grid,.staff-leave-controls){grid-template-columns:1fr}}
 @media(max-width:600px){.employee-profile-page{padding:10px}.employee-profile-page .employee-profile-header{align-items:flex-start;flex-wrap:wrap;padding:14px}.employee-profile-page .employee-profile-back{width:auto}.employee-profile-page :where(.emp-basic-layout,.emp-basic-choice-grid,.emp-schedule-kpi-grid,.emp-form-grid){grid-template-columns:1fr}.employee-profile-page .employee-profile-actions{flex-direction:column}.employee-profile-page .employee-profile-actions>div{display:grid;grid-template-columns:1fr}.employee-profile-page .employee-profile-actions button{width:100%}}
+@media(max-width:700px){.employee-profile-page .emp-section-header,.employee-profile-page .emp-services-bulkbar{flex-direction:column}.employee-profile-page .emp-services-toolbar,.employee-profile-page .emp-services-grid,.employee-profile-page .emp-working-week-cards,.employee-profile-page :where(.staff-payroll-preview-grid,.emp-kpi-strip){grid-template-columns:1fr}.employee-profile-page .emp-services-view-switch{grid-column:auto}.employee-profile-page .emp-services-bulkbar__actions{width:100%}.employee-profile-page .emp-services-bulkbar__actions>*{flex:1}.employee-profile-page .emp-working-day-card__times{grid-template-columns:1fr}.employee-profile-page .employee-profile-content>:not(.employee-profile-actions){padding:14px}}
