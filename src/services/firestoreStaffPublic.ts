@@ -251,7 +251,7 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
     const colRef = collection(db, "salons", sid, "staff_public");
     const snaps = await getDocs(colRef);
 
-    const all = snaps.docs.map((d) => {
+    const all = snaps.docs.filter((d) => !isRemovedFromStaffRecord(d.data())).map((d) => {
       const data = d.data() as any;
       return {
         id: d.id,
@@ -284,10 +284,9 @@ export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWi
         customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
         customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
-    }).filter((staff) => !isRemovedFromStaffRecord(staff));
+    });
 
     const activeOnly = all.filter((x) => isStaffOperationallyActiveForDate(x));
-    console.log("[staff_public] listActiveStaffAll active =", activeOnly.length);
     return activeOnly;
   } catch (e: any) {
     console.error("[staff_public] listActiveStaffAll ERROR:", e?.code, e?.message, e);
@@ -309,7 +308,7 @@ export async function listActiveStaffBySpecialty(args: {
     const colRef = collection(db, "salons", salonId, "staff_public");
     const snaps = await getDocs(colRef);
 
-    const all = snaps.docs.map((d) => {
+    const all = snaps.docs.filter((d) => !isRemovedFromStaffRecord(d.data())).map((d) => {
       const data = d.data() as any;
       return {
         id: d.id,
@@ -342,22 +341,13 @@ export async function listActiveStaffBySpecialty(args: {
         customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
         customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
       } as StaffPublicWithId;
-    }).filter((staff) => !isRemovedFromStaffRecord(staff));
+    });
 
     const filtered = all.filter((staff) => {
       if (!isStaffOperationallyActiveForDate(staff)) return false;
       const specs = normalizeArray(staff.specialties);
       return specs.some((sp) => norm(sp) === wanted);
     });
-
-    console.log(
-      "[staff_public] wanted =",
-      wantedRaw,
-      "active =",
-      all.length,
-      "matched =",
-      filtered.length
-    );
 
     return filtered;
   } catch (e: any) {

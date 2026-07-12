@@ -1,0 +1,37 @@
+.employee-avatar {
+  position: relative;
+  display: inline-grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  place-items: center;
+  contain: layout paint;
+  isolation: isolate;
+}
+
+.employee-avatar__fallback,
+.employee-avatar__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.employee-avatar__fallback {
+  display: grid;
+  place-items: center;
+  font: inherit;
+  color: inherit;
+  background: inherit;
+}
+
+.employee-avatar__image {
+  z-index: 1;
+  display: block;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.employee-avatar.is-loaded .employee-avatar__image { opacity: 1; }

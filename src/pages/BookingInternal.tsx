@@ -733,6 +733,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     Record<string, string>
   >({});
   const staffAllCacheRef = useRef<StaffPublicWithId[] | null>(null);
+  const staffAllCacheLoadedAtRef = useRef(0);
   const staffByResolverCacheRef = useRef<Record<string, StaffPublicWithId[]>>({});
   const staffByResolverInFlightRef = useRef<Record<string, Promise<StaffPublicWithId[]>>>({});
 
@@ -3424,9 +3425,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }
 
   async function getAllActiveStaffCached() {
-    if (Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
+    const fresh = Date.now() - staffAllCacheLoadedAtRef.current < 15_000;
+    if (fresh && Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
     const all = await listActiveStaffAll(SALON_ID);
     staffAllCacheRef.current = Array.isArray(all) ? all : [];
+    staffAllCacheLoadedAtRef.current = Date.now();
     return staffAllCacheRef.current;
   }
 
@@ -3461,6 +3464,28 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   useEffect(() => {
     void getAllActiveStaffCached();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const invalidateStaff = () => {
+      staffAllCacheRef.current = null;
+      staffAllCacheLoadedAtRef.current = 0;
+      staffByResolverCacheRef.current = {};
+      staffByResolverInFlightRef.current = {};
+      setStaffByService({});
+    };
+    const onVisibility = () => {
+      if (!document.hidden) invalidateStaff();
+    };
+    window.addEventListener("focus", invalidateStaff);
+    window.addEventListener("queens:staff-updated", invalidateStaff);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", invalidateStaff);
+      window.removeEventListener("queens:staff-updated", invalidateStaff);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
@@ -8574,5 +8599,4 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 };
 
 export default BookingInternal;
-
 

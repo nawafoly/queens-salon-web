@@ -1,5 +1,6 @@
 import type { CSSProperties, WheelEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
   faArrowLeft,
   faMagnifyingGlass,
@@ -11,7 +12,6 @@ import {
   faScissors,
 } from "@fortawesome/free-solid-svg-icons";
 import {
-  getNameInitials,
   normalizeLeaveUntil,
   normalizeSpecialties,
   toArabicSectionLabel,
@@ -274,13 +274,12 @@ export default function EmployeeListPanel({
                   onClick={() => onOpenEmployee(staff)}
                   onWheel={handleEmployeeWheel}
                 >
-                  <div className="emp-staff-avatar">
-                    {staff.avatarUrl ? (
-                      <img src={staff.avatarUrl} alt={cleanText(staff.name) || "صورة الموظفة"} />
-                    ) : (
-                      getNameInitials(cleanText(staff.name))
-                    )}
-                  </div>
+                  <EmployeeAvatar
+                    className="emp-staff-avatar"
+                    src={staff.avatarUrl}
+                    name={cleanText(staff.name)}
+                    alt={cleanText(staff.name) || "صورة الموظفة"}
+                  />
 
                   <div className="emp-staff-main">
                     <div className="emp-staff-headline">

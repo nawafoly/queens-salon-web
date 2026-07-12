@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
   faBriefcase,
   faBuilding,
@@ -176,7 +177,7 @@ export default function EmployeeProfilePage({ session, onPortalChange }: Props) 
       <section className="employee-workspace-hero employee-workspace-hero--profile">
         <div className="employee-profile-identity">
           <button type="button" className="employee-profile-avatar" onClick={() => avatarInputRef.current?.click()} disabled={saving} aria-label="تغيير الصورة">
-            {profile.avatarUrl ? <img src={profile.avatarUrl} alt={employeeLabel} /> : <span>{employeeLabel.slice(0, 1).toUpperCase()}</span>}
+            <EmployeeAvatar src={profile.avatarUrl} name={employeeLabel} alt={employeeLabel} loading="eager" />
             <em><FontAwesomeIcon icon={faCamera} /></em>
           </button>
           <input ref={avatarInputRef} type="file" accept="image/*" hidden onChange={(event) => void handleAvatarPick(event.target.files?.[0])} />

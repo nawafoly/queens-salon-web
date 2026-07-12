@@ -423,9 +423,13 @@ export function pickAvatarUrl(data: any): string {
 export function resolveAvatarFromAssets(raw: string): string {
   const value = String(raw || "").trim();
   if (!value) return "";
-  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("/")) return value;
   const key = value.split("/").pop()?.toLowerCase() || value.toLowerCase();
-  return STAFF_IMAGE_BY_FILE.get(key) || value;
+  const bundled = STAFF_IMAGE_BY_FILE.get(key);
+  if (bundled) return bundled;
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  // Runtime Firestore values under /src are not transformed by Vite in production.
+  if (/^\/?src\/assets\//i.test(value)) return "";
+  return value;
 }
 
 export function toArabicSectionLabel(sectionId: string, fallbackLabel?: string): string {

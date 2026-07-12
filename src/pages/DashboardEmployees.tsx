@@ -11,7 +11,6 @@ import {
   doc,
   setDoc,
   updateDoc,
-  deleteDoc,
   serverTimestamp,
   query,
   orderBy,
@@ -59,6 +58,7 @@ import {
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
+import { archiveEmployee } from "../services/employeeLifecycleService";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
@@ -2724,6 +2724,7 @@ export default function DashboardEmployees() {
       }
 
       await load();
+      window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (e) {
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
     } finally {
@@ -2733,19 +2734,32 @@ export default function DashboardEmployees() {
 
   const remove = async (id: string) => {
     if (!ensureCanDelete()) return;
-    if (!confirm("متأكد حذف الموظفة؟")) return;
+    const target = list.find((row) => row.id === id);
+    if (!confirm(`هل تريد أرشفة الموظفة "${target?.name || id}"؟\nستختفي من الحجوزات الجديدة مع بقاء الحجوزات التاريخية.`)) return;
     setSaving(true);
     setErrorMsg("");
+    const previousList = list;
     try {
-      await deleteDoc(staffPublicDoc(id));
+      setList((rows) => rows.filter((row) => row.id !== id));
+      await archiveEmployee({
+        employeeId: id,
+        linkedUids: [target?.linkedUid, target?.uid, target?.linkedUserId, target?.employeeUid],
+        deletedBy: authUser?.uid,
+      });
       if (selectedEmployeeId === id) {
         setSelectedEmployeeId(null);
         setEditId(null);
         setIsOpen(false);
         setMode("edit");
       }
-      await load();
+      setBookingStats((stats) => {
+        const next = { ...stats };
+        delete next[id];
+        return next;
+      });
+      window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (e) {
+      setList(previousList);
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف الموظفة."));
     } finally {
       setSaving(false);

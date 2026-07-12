@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import EmployeeAvatar from "../../components/EmployeeAvatar";
 
 import {
   getNameInitials,
@@ -186,13 +187,13 @@ export default function EmployeeEditorModal({
         <header className="emp-editor-header">
           <div className="emp-editor-identity">
             {!isCreateMode ? (
-              <div className="emp-editor-avatar" aria-hidden="true">
-                {editingStaff?.avatarUrl ? (
-                  <img src={editingStaff.avatarUrl} alt="" />
-                ) : (
-                  <span>{employeeInitials}</span>
-                )}
-              </div>
+              <EmployeeAvatar
+                className="emp-editor-avatar"
+                src={editingStaff?.avatarUrl}
+                name={employeeName || employeeInitials}
+                alt=""
+                loading="eager"
+              />
             ) : null}
             <div className="emp-editor-title">
               <span>{isCreateMode ? "إدارة الموظفات" : "الملف الحالي"}</span>

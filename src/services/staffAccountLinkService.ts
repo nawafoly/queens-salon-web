@@ -157,7 +157,17 @@ export function isRemovedFromStaffRecord(data: unknown): boolean {
   const row = (data || {}) as Record<string, unknown>;
   const employmentStatus = cleanText(row.employmentStatus).toLowerCase();
 
-  return Boolean(row.deletedAt) || row.removedFromStaff === true || employmentStatus === "deleted";
+  const status = cleanText(row.status).toLowerCase();
+  return (
+    Boolean(row.deletedAt) ||
+    row.removedFromStaff === true ||
+    row.archived === true ||
+    row.deleted === true ||
+    employmentStatus === "deleted" ||
+    employmentStatus === "archived" ||
+    status === "deleted" ||
+    status === "archived"
+  );
 }
 
 export async function listStaffLinkRows(): Promise<StaffAccountLinkRow[]> {

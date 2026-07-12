@@ -14,6 +14,8 @@
   onReviewsCountChange: (value: string) => void;
 };
 
+import EmployeeAvatar from "../../components/EmployeeAvatar";
+
 export default function ProfileSection({
   isVisible,
   avatarUrl,
@@ -96,9 +98,11 @@ export default function ProfileSection({
               }`}
             >
               {resolvedAvatar ? (
-                <img
+                <EmployeeAvatar
                   src={resolvedAvatar}
+                  name="موظفة"
                   alt="معاينة صورة الموظفة"
+                  loading="eager"
                 />
               ) : (
                 <div className="emp-profile-preview__placeholder">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
   faBell,
   faBriefcase,
@@ -586,9 +587,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     <div className="employee-panel employee-overview">
       <section className="employee-app-intro">
         <div className="employee-app-intro__identity">
-          <span className="employee-app-intro__avatar">
-            {avatarUrl ? <img src={avatarUrl} alt="" /> : displayInitial(displayName)}
-          </span>
+          <EmployeeAvatar
+            className="employee-app-intro__avatar"
+            src={avatarUrl}
+            name={displayName || displayInitial(displayName)}
+            alt=""
+            loading="eager"
+          />
           <div>
             <p>{getGreeting()}</p>
             <h1>{displayName}</h1>

@@ -5,6 +5,7 @@ import "../styles/BookingMobile.css";
 import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import EmployeeAvatar from "../components/EmployeeAvatar";
 import {
   FiDroplet,
   FiEdit3,
@@ -760,11 +761,12 @@ function pickBookingCategoryIcon(categoryTitle: string, sectionTitle?: string) {
 function resolveBookingStaffAvatarUrl(raw: string) {
   const value = String(raw || "").trim();
   if (!value) return "";
-  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:") || value.startsWith("/")) {
-    return value;
-  }
   const fileName = value.split("/").pop()?.toLowerCase() || value.toLowerCase();
-  return BOOKING_STAFF_IMAGE_BY_FILE.get(fileName) || value;
+  const bundled = BOOKING_STAFF_IMAGE_BY_FILE.get(fileName);
+  if (bundled) return bundled;
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  if (/^\/?src\/assets\//i.test(value)) return "";
+  return value;
 }
 
 function pickStaffAvatarUrl(staff: any) {
@@ -3031,9 +3033,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     };
 
     window.addEventListener("focus", refreshStaffDisplayData);
+    window.addEventListener("queens:staff-updated", refreshStaffDisplayData);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("focus", refreshStaffDisplayData);
+      window.removeEventListener("queens:staff-updated", refreshStaffDisplayData);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
@@ -9471,13 +9475,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                                   }}
                                                   aria-pressed={selected}
                                                 >
-                                                  <span className="booking-stylist-row__avatar" aria-hidden="true">
-                                                    {avatarUrl ? (
-                                                      <img src={avatarUrl} alt="" />
-                                                    ) : (
-                                                      <span>{firstDisplayLetter(empName)}</span>
-                                                    )}
-                                                  </span>
+                                                  <EmployeeAvatar
+                                                    className="booking-stylist-row__avatar"
+                                                    src={avatarUrl}
+                                                    name={empName || firstDisplayLetter(empName)}
+                                                    alt=""
+                                                  />
                                                   <span className="booking-stylist-row__body">
                                                     <span className="booking-stylist-row__name">{empName}</span>
                                                     <span className={`booking-stylist-row__rating${ratingMeta ? "" : " is-empty"}`}>
