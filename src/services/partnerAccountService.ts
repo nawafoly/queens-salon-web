@@ -12,6 +12,7 @@ import {
 
 import { app } from "./firebase";
 import { PartnerService } from "./partnerService";
+import { linkExistingEmployeeRecordToPartner, syncPartnerEmployeeRecord } from "./employeeHub";
 import type { CreatePartnerMemberInput } from "../types/partner";
 
 const PROVISIONING_APP_NAME = "partner-account-provisioning";
@@ -68,7 +69,8 @@ async function rollbackUser(user: User) {
 export const PartnerAccountService = {
   async createMemberWithAccount(
     member: CreatePartnerMemberInput,
-    password: string
+    password: string,
+    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
   ) {
     const provisioned = await createFirebaseAccount({
       email: member.email || "",
@@ -82,7 +84,23 @@ export const PartnerAccountService = {
         email: provisioned.email,
         userUid: provisioned.user.uid,
       });
-      return { memberId, userUid: provisioned.user.uid, email: provisioned.email };
+      let employeeId: string | undefined;
+      if (member.memberType !== "owner") {
+        const linked = await syncPartnerEmployeeRecord({
+          partnerId: member.partnerId,
+          partnerMemberId: memberId,
+          partnerName: context?.partnerName,
+          displayName: member.displayName,
+          email: provisioned.email,
+          phone: member.phone,
+          userUid: provisioned.user.uid,
+          contractId: context?.contractId,
+          resourceIds: context?.resourceIds,
+        });
+        employeeId = linked.employeeId;
+        await PartnerService.updatePartnerMember(memberId, { employeeId });
+      }
+      return { memberId, userUid: provisioned.user.uid, email: provisioned.email, employeeId };
     } catch (error) {
       await rollbackUser(provisioned.user);
       throw error;
@@ -93,22 +111,161 @@ export const PartnerAccountService = {
 
   async linkExistingMemberAccount(input: {
     memberId: string;
+    partnerId: string;
+    memberType: CreatePartnerMemberInput["memberType"];
     displayName: string;
     email: string;
+    phone?: string;
     password: string;
+    partnerName?: string;
+    contractId?: string;
+    resourceIds?: string[];
   }) {
     const provisioned = await createFirebaseAccount(input);
 
     try {
-      return await PartnerService.linkPartnerMemberAccount(input.memberId, {
+      const linkedAccount = await PartnerService.linkPartnerMemberAccount(input.memberId, {
         userUid: provisioned.user.uid,
         email: provisioned.email,
       });
+      if (input.memberType !== "owner") {
+        const linkedEmployee = await syncPartnerEmployeeRecord({
+          partnerId: input.partnerId,
+          partnerMemberId: input.memberId,
+          partnerName: input.partnerName,
+          displayName: input.displayName,
+          email: provisioned.email,
+          phone: input.phone,
+          userUid: provisioned.user.uid,
+          contractId: input.contractId,
+          resourceIds: input.resourceIds,
+        });
+        await PartnerService.updatePartnerMember(input.memberId, { employeeId: linkedEmployee.employeeId });
+        return { ...linkedAccount, employeeId: linkedEmployee.employeeId };
+      }
+      return linkedAccount;
     } catch (error) {
       await rollbackUser(provisioned.user);
       throw error;
     } finally {
       await signOut(provisioned.provisioningAuth).catch(() => undefined);
     }
+  },
+
+  async createOperationalMemberWithoutAccount(
+    member: CreatePartnerMemberInput,
+    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
+  ) {
+    const memberId = await PartnerService.createPartnerMember(member);
+    if (member.memberType === "owner") return { memberId };
+
+    const linked = await syncPartnerEmployeeRecord({
+      partnerId: member.partnerId,
+      partnerMemberId: memberId,
+      partnerName: context?.partnerName,
+      displayName: member.displayName,
+      email: member.email,
+      phone: member.phone,
+      contractId: context?.contractId,
+      resourceIds: context?.resourceIds,
+    });
+    await PartnerService.updatePartnerMember(memberId, { employeeId: linked.employeeId });
+    return { memberId, employeeId: linked.employeeId };
+  },
+
+  async syncExistingOperationalMember(
+    member: {
+      id: string;
+      partnerId: string;
+      memberType: CreatePartnerMemberInput["memberType"];
+      displayName: string;
+      email?: string;
+      phone?: string;
+      userUid?: string;
+      status?: string;
+    },
+    context?: { partnerName?: string; contractId?: string; resourceIds?: string[] }
+  ) {
+    if (member.memberType === "owner") throw new Error("partner_employee:owner_not_operational");
+    const linked = await syncPartnerEmployeeRecord({
+      partnerId: member.partnerId,
+      partnerMemberId: member.id,
+      partnerName: context?.partnerName,
+      displayName: member.displayName,
+      email: member.email,
+      phone: member.phone,
+      userUid: member.userUid,
+      active: member.status === "active",
+      contractId: context?.contractId,
+      resourceIds: context?.resourceIds,
+    });
+    await PartnerService.updatePartnerMember(member.id, { employeeId: linked.employeeId });
+    return linked;
+  },
+
+  async linkMemberToExistingEmployee(input: {
+    memberId: string;
+    partnerId: string;
+    employeeId: string;
+    employeeUid?: string;
+    employeeEmail?: string;
+    partnerName?: string;
+    contractId?: string;
+    resourceIds?: string[];
+  }) {
+    const linked = await linkExistingEmployeeRecordToPartner({
+      employeeId: input.employeeId,
+      employeeUid: input.employeeUid,
+      partnerId: input.partnerId,
+      partnerMemberId: input.memberId,
+      partnerName: input.partnerName,
+      contractId: input.contractId,
+      resourceIds: input.resourceIds,
+    });
+    await PartnerService.updatePartnerMember(input.memberId, {
+      employeeId: linked.employeeId,
+      ...(linked.employeeUid ? { userUid: linked.employeeUid } : {}),
+      ...(input.employeeEmail ? { email: input.employeeEmail } : {}),
+    });
+    return linked;
+  },
+
+  async createMemberFromExistingEmployee(input: {
+    partnerId: string;
+    employee: {
+      employeeId: string;
+      employeeUid?: string;
+      name: string;
+      email?: string;
+      phone?: string;
+    };
+    partnerName?: string;
+    contractId?: string;
+    resourceIds?: string[];
+  }) {
+    const memberId = await PartnerService.createPartnerMember({
+      partnerId: input.partnerId,
+      memberType: "employee",
+      status: "active",
+      displayName: input.employee.name,
+      userUid: input.employee.employeeUid,
+      employeeId: input.employee.employeeId,
+      email: input.employee.email,
+      phone: input.employee.phone,
+      canWorkAsProvider: true,
+      canManageTeam: false,
+      canManageInventory: false,
+      canViewFinancials: false,
+    });
+    await linkExistingEmployeeRecordToPartner({
+      employeeId: input.employee.employeeId,
+      employeeUid: input.employee.employeeUid,
+      partnerId: input.partnerId,
+      partnerMemberId: memberId,
+      partnerName: input.partnerName,
+      contractId: input.contractId,
+      resourceIds: input.resourceIds,
+    });
+    return { memberId, employeeId: input.employee.employeeId };
   },
 };

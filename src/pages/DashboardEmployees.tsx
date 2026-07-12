@@ -495,6 +495,15 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     phone: cleanText(primary.phone || fallback.phone),
     department: cleanText(primary.department || fallback.department),
     title: cleanText(primary.title || fallback.title),
+    employmentSource: cleanText(primary.employmentSource || fallback.employmentSource || "salon"),
+    partnerId: cleanText(primary.partnerId || fallback.partnerId),
+    partnerMemberId: cleanText(primary.partnerMemberId || fallback.partnerMemberId),
+    partnerName: cleanText(primary.partnerName || fallback.partnerName),
+    contractId: cleanText(primary.contractId || fallback.contractId),
+    resourceIds:
+      Array.isArray(primary.resourceIds) && primary.resourceIds.length
+        ? primary.resourceIds
+        : fallback.resourceIds,
     avatarUrl: cleanText(primary.avatarUrl || fallback.avatarUrl),
     specialties:
       normalizeSpecialties(primary.specialties).length > 0
@@ -1311,6 +1320,14 @@ export default function DashboardEmployees() {
                 combined?.employeeProfile?.employment?.title ||
                 combined?.employment?.title
             ),
+            employmentSource: cleanText(combined?.employmentSource || "salon"),
+            partnerId: cleanText(combined?.partnerId),
+            partnerMemberId: cleanText(combined?.partnerMemberId),
+            partnerName: cleanText(combined?.partnerName),
+            contractId: cleanText(combined?.contractId),
+            resourceIds: Array.isArray(combined?.resourceIds)
+              ? combined.resourceIds.map(cleanText).filter(Boolean)
+              : [],
             employeeProfileEnabled: combined?.employeeProfileEnabled !== false,
             includeInEmployeeManagement: combined?.includeInEmployeeManagement === true,
             source,
@@ -2049,6 +2066,9 @@ export default function DashboardEmployees() {
           x.linkedUid,
           x.department,
           x.title,
+          x.partnerName,
+          x.partnerId,
+          x.employmentSource,
         ]
           .map((value) => cleanText(value).toLowerCase())
           .join(" ");

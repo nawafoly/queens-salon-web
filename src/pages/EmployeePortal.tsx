@@ -5,6 +5,8 @@ import {
   faBell,
   faCalendarDays,
   faChartLine,
+  faChevronLeft,
+  faChevronRight,
   faFileLines,
   faFingerprint,
   faHouse,
@@ -18,6 +20,7 @@ import {
   faWallet,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
+import logo1 from "../assets/images/ssunnamed.png";
 
 import {
   listEmployeeNotifications,
@@ -180,6 +183,7 @@ function EmployeeMorePage({
 }
 
 export default function EmployeePortal() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
@@ -352,7 +356,7 @@ export default function EmployeePortal() {
   }
 
   return (
-    <div className="employee-portal madan-employee-portal" dir="rtl">
+    <div className={`employee-portal madan-employee-portal${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <DashboardHeader
         theme="employee"
         title={employeeHeaderTitle}
@@ -363,6 +367,17 @@ export default function EmployeePortal() {
 
       <div className="employee-portal-layout employee-portal-layout--app">
         <aside className="employee-portal-sidebar employee-portal-sidebar--desktop" aria-label="التنقل داخل بوابة الموظف">
+          <div className="employee-sidebar-header">
+            <img src={logo1} alt="Malikat" className="employee-sidebar-logo" />
+            <button
+              type="button"
+              className="employee-sidebar-collapse"
+              onClick={() => setIsSidebarCollapsed((value) => !value)}
+              aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+            >
+              <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
+            </button>
+          </div>
           <div className="employee-portal-sidebar__profile">
             <span className="employee-portal-sidebar__avatar">{displayInitial(displayName, session.email)}</span>
             <div>

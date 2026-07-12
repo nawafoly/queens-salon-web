@@ -13,6 +13,7 @@ import {
   faFileContract,
   faEnvelope,
   faKey,
+  faLink,
   faMagnifyingGlass,
   faMoneyBillTransfer,
   faPercent,
@@ -29,6 +30,8 @@ import Modal from "../components/Modal";
 import { auth } from "../services/firebase";
 import { PartnerService } from "../services/partnerService";
 import { PartnerAccountService } from "../services/partnerAccountService";
+import { listEmployeeDirectory } from "../services/employeeDirectory";
+import type { EmployeeDirectoryEntry } from "../services/employeeHub";
 import type {
   Partner,
   PartnerBillingModel,
@@ -45,7 +48,7 @@ import type {
 import "../styles/AdminDashboardPartners.css";
 
 type ActiveTab = "partners" | "resources" | "team" | "contracts";
-type CreateModal = "partner" | "resource" | "member" | "account" | "contract" | null;
+type CreateModal = "partner" | "resource" | "member" | "account" | "employeeLink" | "employeeImport" | "contract" | null;
 
 type PartnerFormState = {
   displayName: string;
@@ -401,6 +404,10 @@ export default function DashboardPartners() {
   const [resourceForm, setResourceForm] = useState<ResourceFormState>(EMPTY_RESOURCE_FORM);
   const [contractForm, setContractForm] = useState<ContractFormState>(() => createEmptyContractForm());
   const [memberForm, setMemberForm] = useState<MemberFormState>(EMPTY_MEMBER_FORM);
+  const [employeeDirectory, setEmployeeDirectory] = useState<EmployeeDirectoryEntry[]>([]);
+  const [selectedExistingEmployeeId, setSelectedExistingEmployeeId] = useState("");
+  const [importPartnerId, setImportPartnerId] = useState("");
+  const [directoryLoading, setDirectoryLoading] = useState(false);
   const [accountForm, setAccountForm] = useState<AccountFormState>(EMPTY_ACCOUNT_FORM);
   const [selectedMember, setSelectedMember] = useState<PartnerMember | null>(null);
 
@@ -748,11 +755,19 @@ export default function DashboardPartners() {
         canManageInventory: memberForm.canManageInventory,
         canViewFinancials: memberForm.canViewFinancials,
       };
+      const memberContract =
+        contracts.find((contract) => contract.partnerId === memberForm.partnerId && contract.status === "active") ||
+        contracts.find((contract) => contract.partnerId === memberForm.partnerId);
+      const employeeContext = {
+        partnerName: partnerNameById.get(memberForm.partnerId),
+        contractId: memberContract?.id,
+        resourceIds: memberContract?.resourceIds || [],
+      };
 
       if (memberForm.createLogin) {
-        await PartnerAccountService.createMemberWithAccount(memberInput, memberForm.password);
+        await PartnerAccountService.createMemberWithAccount(memberInput, memberForm.password, employeeContext);
       } else {
-        await PartnerService.createPartnerMember(memberInput, auth.currentUser?.uid);
+        await PartnerAccountService.createOperationalMemberWithoutAccount(memberInput, employeeContext);
       }
 
       setCreateModal(null);
@@ -782,6 +797,115 @@ export default function DashboardPartners() {
     setCreateModal("account");
   };
 
+  const openExistingEmployeeModal = async (member: PartnerMember) => {
+    setError("");
+    setSuccessMessage("");
+    setSelectedMember(member);
+    setSelectedExistingEmployeeId("");
+    setCreateModal("employeeLink");
+    setDirectoryLoading(true);
+    try {
+      const rows = await listEmployeeDirectory();
+      setEmployeeDirectory(
+        rows.filter((row) => row.active !== false && row.employmentSource !== "partner")
+      );
+    } catch (directoryError) {
+      console.error("DashboardPartners.loadEmployeeDirectory error:", directoryError);
+      setError("تعذر تحميل قائمة الموظفين الحاليين.");
+    } finally {
+      setDirectoryLoading(false);
+    }
+  };
+
+  const openEmployeeImportModal = async () => {
+    setError("");
+    setSuccessMessage("");
+    setSelectedMember(null);
+    setSelectedExistingEmployeeId("");
+    setImportPartnerId(eligiblePartners[0]?.id || "");
+    setCreateModal("employeeImport");
+    setDirectoryLoading(true);
+    try {
+      const rows = await listEmployeeDirectory();
+      setEmployeeDirectory(rows.filter((row) => row.active !== false && row.employmentSource !== "partner"));
+    } catch (directoryError) {
+      console.error("DashboardPartners.loadEmployeeDirectory error:", directoryError);
+      setError("تعذر تحميل قائمة الموظفين الحاليين.");
+    } finally {
+      setDirectoryLoading(false);
+    }
+  };
+
+  const handleImportExistingEmployee = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving || !importPartnerId || !selectedExistingEmployeeId) return;
+    const employee = employeeDirectory.find((row) => row.employeeId === selectedExistingEmployeeId);
+    if (!employee) return;
+    setSaving(true);
+    setError("");
+    try {
+      const memberContract =
+        contracts.find((contract) => contract.partnerId === importPartnerId && contract.status === "active") ||
+        contracts.find((contract) => contract.partnerId === importPartnerId);
+      await PartnerAccountService.createMemberFromExistingEmployee({
+        partnerId: importPartnerId,
+        employee: {
+          employeeId: employee.employeeId,
+          employeeUid: employee.linkedUid || employee.employeeUid,
+          name: employee.name,
+          email: employee.email,
+          phone: employee.phone,
+        },
+        partnerName: partnerNameById.get(importPartnerId),
+        contractId: memberContract?.id,
+        resourceIds: memberContract?.resourceIds || [],
+      });
+      setCreateModal(null);
+      setActiveTab("team");
+      setSuccessMessage(`تم ربط الموظف «${employee.name}» بفريق «${partnerNameById.get(importPartnerId) || "الشريكة"}».`);
+      await loadData("refresh");
+    } catch (importError) {
+      console.error("DashboardPartners.importExistingEmployee error:", importError);
+      setError(translatePartnerError(importError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLinkExistingEmployee = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving || !selectedMember || !selectedExistingEmployeeId) return;
+    const employee = employeeDirectory.find((row) => row.employeeId === selectedExistingEmployeeId);
+    if (!employee) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const memberContract =
+        contracts.find((contract) => contract.partnerId === selectedMember.partnerId && contract.status === "active") ||
+        contracts.find((contract) => contract.partnerId === selectedMember.partnerId);
+      await PartnerAccountService.linkMemberToExistingEmployee({
+        memberId: selectedMember.id,
+        partnerId: selectedMember.partnerId,
+        employeeId: employee.employeeId,
+        employeeUid: employee.linkedUid || employee.employeeUid,
+        employeeEmail: employee.email,
+        partnerName: partnerNameById.get(selectedMember.partnerId),
+        contractId: memberContract?.id,
+        resourceIds: memberContract?.resourceIds || [],
+      });
+      setCreateModal(null);
+      setSelectedMember(null);
+      setSuccessMessage(`تم ربط «${selectedMember.displayName}» بملف الموظف «${employee.name}» دون إنشاء سجل مكرر.`);
+      await loadData("refresh");
+    } catch (linkError) {
+      console.error("DashboardPartners.linkExistingEmployee error:", linkError);
+      setError(translatePartnerError(linkError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateMemberAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving || !selectedMember) return;
@@ -791,9 +915,15 @@ export default function DashboardPartners() {
     try {
       await PartnerAccountService.linkExistingMemberAccount({
         memberId: selectedMember.id,
+        partnerId: selectedMember.partnerId,
+        memberType: selectedMember.memberType,
         displayName: selectedMember.displayName,
         email: accountForm.email,
+        phone: selectedMember.phone,
         password: accountForm.password,
+        partnerName: partnerNameById.get(selectedMember.partnerId),
+        contractId: contracts.find((contract) => contract.partnerId === selectedMember.partnerId && contract.status === "active")?.id,
+        resourceIds: contracts.find((contract) => contract.partnerId === selectedMember.partnerId && contract.status === "active")?.resourceIds || [],
       });
       setCreateModal(null);
       setSelectedMember(null);
@@ -802,6 +932,29 @@ export default function DashboardPartners() {
     } catch (saveError) {
       console.error("DashboardPartners.createMemberAccount error:", saveError);
       setError(translatePartnerError(saveError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSyncMemberToHr = async (member: PartnerMember) => {
+    if (saving || member.memberType === "owner") return;
+    setSaving(true);
+    setError("");
+    try {
+      const memberContract =
+        contracts.find((contract) => contract.partnerId === member.partnerId && contract.status === "active") ||
+        contracts.find((contract) => contract.partnerId === member.partnerId);
+      await PartnerAccountService.syncExistingOperationalMember(member, {
+        partnerName: partnerNameById.get(member.partnerId),
+        contractId: memberContract?.id,
+        resourceIds: memberContract?.resourceIds || [],
+      });
+      setSuccessMessage(`تم ربط «${member.displayName.trim()}» بإدارة الموظفين وHR.`);
+      await loadData("refresh");
+    } catch (syncError) {
+      console.error("DashboardPartners.syncMemberToHr error:", syncError);
+      setError(translatePartnerError(syncError));
     } finally {
       setSaving(false);
     }
@@ -873,6 +1026,15 @@ export default function DashboardPartners() {
           >
             <FontAwesomeIcon icon={faUserPlus} />
             إضافة عضوة
+          </button>
+          <button
+            type="button"
+            className="partner-admin-btn partner-admin-btn--secondary"
+            onClick={() => void openEmployeeImportModal()}
+            disabled={eligiblePartners.length === 0}
+          >
+            <FontAwesomeIcon icon={faLink} />
+            ربط موظف موجود
           </button>
           <button
             type="button"
@@ -1163,6 +1325,22 @@ export default function DashboardPartners() {
                         <FontAwesomeIcon icon={faKey} /> إنشاء حساب دخول
                       </button>
                     )}
+                    {member.memberType !== "owner" ? (
+                      member.employeeId ? (
+                        <span className="partner-account-badge is-linked">
+                          <FontAwesomeIcon icon={faCircleCheck} /> مرتبط بإدارة الموظفين
+                        </span>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => void handleSyncMemberToHr(member)} disabled={saving}>
+                            <FontAwesomeIcon icon={faUserPlus} /> إنشاء ملف موظف
+                          </button>
+                          <button type="button" onClick={() => void openExistingEmployeeModal(member)} disabled={saving}>
+                            <FontAwesomeIcon icon={faLink} /> ربط بموظف موجود
+                          </button>
+                        </>
+                      )
+                    ) : null}
                   </footer>
                 </article>
               ))}
@@ -1607,6 +1785,109 @@ export default function DashboardPartners() {
             <button type="button" className="partner-admin-btn partner-admin-btn--secondary" onClick={closeCreateModal} disabled={saving}>إلغاء</button>
             <button type="submit" className="partner-admin-btn partner-admin-btn--team" disabled={saving}>
               {saving ? "جاري إنشاء العضوة..." : memberForm.createLogin ? "إضافة العضوة وإنشاء الحساب" : "إضافة العضوة"}
+            </button>
+          </footer>
+        </form>
+      </Modal>
+
+      <Modal
+        open={createModal === "employeeImport"}
+        onClose={closeCreateModal}
+        ariaLabel="ربط موظف موجود بشريكة"
+        size="lg"
+        panelClassName="partner-admin-modal"
+      >
+        <form onSubmit={handleImportExistingEmployee}>
+          <header className="partner-admin-modal__header">
+            <div>
+              <span>IMPORT EXISTING EMPLOYEE</span>
+              <h2>ربط موظف موجود بفريق شريكة</h2>
+              <p>اختر الشريكة والموظف السابق. لن يتم إنشاء حساب أو ملف HR جديد.</p>
+            </div>
+            <button type="button" onClick={closeCreateModal} aria-label="إغلاق"><FontAwesomeIcon icon={faXmark} /></button>
+          </header>
+          <div className="partner-admin-form-grid">
+            <label>
+              <span>الشريكة *</span>
+              <select value={importPartnerId} onChange={(event) => setImportPartnerId(event.target.value)} required autoFocus>
+                <option value="">اختر الشريكة</option>
+                {eligiblePartners.map((partner) => <option key={partner.id} value={partner.id}>{partner.displayName}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>الموظف الموجود *</span>
+              <select value={selectedExistingEmployeeId} onChange={(event) => setSelectedExistingEmployeeId(event.target.value)} disabled={directoryLoading} required>
+                <option value="">{directoryLoading ? "جاري تحميل الموظفين..." : "اختر الموظف"}</option>
+                {employeeDirectory.map((employee) => (
+                  <option key={employee.employeeId} value={employee.employeeId}>
+                    {employee.name || employee.email || employee.employeeId}{employee.email ? ` — ${employee.email}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {!directoryLoading && employeeDirectory.length === 0 ? <div className="partner-account-note">لا توجد ملفات موظفين متاحة للربط.</div> : null}
+          <footer className="partner-admin-modal__footer">
+            <button type="button" className="partner-admin-btn partner-admin-btn--secondary" onClick={closeCreateModal} disabled={saving}>إلغاء</button>
+            <button type="submit" className="partner-admin-btn partner-admin-btn--primary" disabled={saving || !importPartnerId || !selectedExistingEmployeeId}>
+              {saving ? "جاري الربط..." : "ربط الموظف بالشريكة"}
+            </button>
+          </footer>
+        </form>
+      </Modal>
+
+      <Modal
+        open={createModal === "employeeLink"}
+        onClose={closeCreateModal}
+        ariaLabel="ربط عضو الشريك بموظف موجود"
+        size="lg"
+        panelClassName="partner-admin-modal"
+      >
+        <form onSubmit={handleLinkExistingEmployee}>
+          <header className="partner-admin-modal__header">
+            <div>
+              <span>LINK EXISTING EMPLOYEE</span>
+              <h2>ربط بموظف موجود</h2>
+              <p>سيتم الاحتفاظ بحساب الموظف وبصمته وسجلاته ورواتبه، وإضافة علاقة الشريك إلى ملفه الحالي.</p>
+            </div>
+            <button type="button" onClick={closeCreateModal} aria-label="إغلاق">
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+          </header>
+
+          <div className="partner-admin-form-grid">
+            <label className="partner-admin-field--wide">
+              <span>عضو فريق الشريك</span>
+              <input value={selectedMember?.displayName || ""} disabled />
+            </label>
+            <label className="partner-admin-field--wide">
+              <span>اختر الموظف الموجود *</span>
+              <select
+                value={selectedExistingEmployeeId}
+                onChange={(event) => setSelectedExistingEmployeeId(event.target.value)}
+                disabled={directoryLoading}
+                required
+                autoFocus
+              >
+                <option value="">{directoryLoading ? "جاري تحميل الموظفين..." : "اختر ملف الموظف"}</option>
+                {employeeDirectory.map((employee) => (
+                  <option key={employee.employeeId} value={employee.employeeId}>
+                    {employee.name || employee.email || employee.employeeId}
+                    {employee.email ? ` — ${employee.email}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {!directoryLoading && employeeDirectory.length === 0 ? (
+            <div className="partner-account-note">لا توجد ملفات موظفين متاحة للربط حاليًا.</div>
+          ) : null}
+
+          <footer className="partner-admin-modal__footer">
+            <button type="button" className="partner-admin-btn partner-admin-btn--secondary" onClick={closeCreateModal} disabled={saving}>إلغاء</button>
+            <button type="submit" className="partner-admin-btn partner-admin-btn--primary" disabled={saving || !selectedExistingEmployeeId}>
+              {saving ? "جاري الربط..." : "ربط الملف الحالي"}
             </button>
           </footer>
         </form>

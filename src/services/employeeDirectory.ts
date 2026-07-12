@@ -77,6 +77,14 @@ function normalizeEntry(raw: any, id: string, source: DirectorySource): Director
     avatarUrl:
       cleanText(raw?.avatarUrl || raw?.photoURL || raw?.photoUrl || raw?.imageUrl || "") ||
       undefined,
+    employmentSource: cleanText(raw?.employmentSource || "salon") || "salon",
+    partnerId: cleanText(raw?.partnerId || "") || undefined,
+    partnerMemberId: cleanText(raw?.partnerMemberId || "") || undefined,
+    partnerName: cleanText(raw?.partnerName || "") || undefined,
+    contractId: cleanText(raw?.contractId || "") || undefined,
+    resourceIds: Array.isArray(raw?.resourceIds)
+      ? raw.resourceIds.map(cleanText).filter(Boolean)
+      : undefined,
     source: "firestore",
     directorySource: source,
   };
@@ -132,6 +140,12 @@ function mergeEntry(
     department: next.department || current.department,
     title: next.title || current.title,
     avatarUrl: next.avatarUrl || current.avatarUrl,
+    employmentSource: next.employmentSource || current.employmentSource,
+    partnerId: next.partnerId || current.partnerId,
+    partnerMemberId: next.partnerMemberId || current.partnerMemberId,
+    partnerName: next.partnerName || current.partnerName,
+    contractId: next.contractId || current.contractId,
+    resourceIds: next.resourceIds?.length ? next.resourceIds : current.resourceIds,
     source: "firestore",
     directorySource: preferNext ? next.directorySource : current.directorySource,
   };
@@ -226,6 +240,9 @@ export async function searchEmployeeDirectory(term: string): Promise<EmployeeDir
       row.role,
       row.department,
       row.title,
+      row.employmentSource,
+      row.partnerName,
+      row.partnerId,
     ]
       .map((x) => cleanText(x).toLowerCase())
       .join(" ");

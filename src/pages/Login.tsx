@@ -13,6 +13,8 @@ import {
   faMobile,
   faCity,
   faCalendarAlt,
+  faStore,
+  faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
 
 // ✅ Firebase Auth
@@ -743,6 +745,19 @@ const Login: React.FC = () => {
                 </>
               )}
             </p>
+
+            {!isRegister ? (
+              <div className="portal-access-links" aria-label="بوابات تسجيل الدخول">
+                <Link to="/hr" className="portal-access-link portal-access-link--staff">
+                  <FontAwesomeIcon icon={faUserTie} />
+                  <span>دخول الموظفين والإدارة</span>
+                </Link>
+                <Link to="/partner/login" className="portal-access-link portal-access-link--partner">
+                  <FontAwesomeIcon icon={faStore} />
+                  <span>دخول الشركاء Partner</span>
+                </Link>
+              </div>
+            ) : null}
 
             <Link to="/" className="back-home-link">
               <i className="fas fa-arrow-right me-2"></i>

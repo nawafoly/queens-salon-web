@@ -2131,7 +2131,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const canOpenEmployeePortal = hasPermission("workspace.employee_portal.view");
   const canOpenHrPortal = hasAnyPermission([
     "employees.view",
     "attendance.view",
@@ -2157,9 +2156,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     "logs.view",
     "clients.loyalty.manage",
   ]);
-  const hasSettingsNavigation =
-    canOpenEmployeePortal ||
-    hasAnyPermission([
+  const hasSettingsNavigation = hasAnyPermission([
+      "workspace.dashboard.view",
       "settings.general.manage",
       "settings.booking.manage",
       "catalog.manage",
@@ -2912,15 +2910,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <li className="sidebar-nav-section">الموظفات والحسابات والإعدادات</li>
                 ) : null}
 
-                {canOpenEmployeePortal ? (
-                  <li>
-                    <NavLink to="/employee/overview" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
-                      <FontAwesomeIcon icon={faUserTie} />
-                      بوابة الموظفات
-                    </NavLink>
-                  </li>
-                ) : null}
-
                 {hasPermission("workspace.dashboard.view") ? (
                   <li>
                     <NavLink to="/dashboard/admin-profile" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
@@ -3327,5 +3316,4 @@ const Dashboard: React.FC<DashboardProps> = ({
 };
 
 export default Dashboard;
-
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -8,6 +8,8 @@ import {
   faBuilding,
   faCalendarDays,
   faChair,
+  faChevronLeft,
+  faChevronRight,
   faClock,
   faFileContract,
   faRightFromBracket,
@@ -15,7 +17,9 @@ import {
   faStore,
   faUsers,
   faWallet,
+  faUserGear,
 } from "@fortawesome/free-solid-svg-icons";
+import logo1 from "../assets/images/ssunnamed.png";
 
 import { auth } from "../services/firebase";
 import { PartnerPortalService } from "../services/partnerPortalService";
@@ -72,6 +76,8 @@ function financialSummary(contract: PartnerContract) {
 
 export default function PartnerPortal() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [overview, setOverview] = useState<PartnerPortalOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,6 +129,20 @@ export default function PartnerPortal() {
     [overview]
   );
 
+  const activeSection = useMemo(() => {
+    const section = location.pathname.replace(/^\/partner\/?/, "").split("/")[0];
+    if (section === "contract" || section === "spaces" || section === "team" || section === "account") return section;
+    return "overview";
+  }, [location.pathname]);
+
+  const sectionTitle: Record<typeof activeSection, string> = {
+    overview: "نظرة عامة",
+    contract: "العقد الحالي",
+    spaces: "المساحات المؤجرة",
+    team: "فريق العمل",
+    account: "الحساب والصلاحيات",
+  };
+
   const handleLogout = async () => {
     await signOut(auth).catch(() => undefined);
     navigate("/partner/login", { replace: true });
@@ -137,26 +157,58 @@ export default function PartnerPortal() {
   }
 
   return (
-    <main className="partner-portal-page" dir="rtl">
+    <main className={`partner-portal-page${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+      <aside className="partner-portal-sidebar">
+        <div className="partner-sidebar-header">
+          <img src={logo1} alt="Malikat" className="partner-sidebar-logo" />
+          <button
+            type="button"
+            className="partner-sidebar-collapse"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+          >
+            <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
+          </button>
+        </div>
+
+        <nav className="partner-portal-sidebar__nav" aria-label="التنقل في بوابة الشركاء">
+          <span className="partner-sidebar-section-title">بوابة الشركاء</span>
+          <NavLink to="/partner" end><FontAwesomeIcon icon={faStore} /><span>نظرة عامة</span></NavLink>
+          <NavLink to="/partner/contract"><FontAwesomeIcon icon={faFileContract} /><span>العقد الحالي</span></NavLink>
+          <NavLink to="/partner/spaces"><FontAwesomeIcon icon={faChair} /><span>المساحات</span></NavLink>
+          <NavLink to="/partner/team"><FontAwesomeIcon icon={faUsers} /><span>فريق العمل</span></NavLink>
+          <NavLink to="/partner/account"><FontAwesomeIcon icon={faUserGear} /><span>الحساب والصلاحيات</span></NavLink>
+        </nav>
+
+        <div className="partner-portal-sidebar__user">
+          <span>{overview?.member.displayName?.slice(0, 1) || "P"}</span>
+          <div><strong>{overview?.member.displayName || "حساب الشريك"}</strong><small>{overview?.member.email || ""}</small></div>
+        </div>
+        <button className="partner-portal-sidebar__logout" type="button" onClick={handleLogout}>
+          <FontAwesomeIcon icon={faRightFromBracket} /> تسجيل الخروج
+        </button>
+      </aside>
+
+      <div className="partner-portal-main" id="partner-overview">
       <header className="partner-portal-topbar">
         <div>
           <span className="partner-portal-logo"><FontAwesomeIcon icon={faBuilding} /></span>
           <div>
             <small>MALIKAT PARTNERS</small>
-            <strong>{overview?.partner.displayName || "بوابة الشريكات"}</strong>
+            <strong>{sectionTitle[activeSection]}</strong>
           </div>
         </div>
         <div className="partner-portal-topbar__actions">
           <button type="button" onClick={() => void loadOverview(true)} disabled={refreshing}>
             <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} /> تحديث
           </button>
-          <button type="button" onClick={handleLogout}>
+          <button className="partner-portal-topbar__logout" type="button" onClick={handleLogout}>
             <FontAwesomeIcon icon={faRightFromBracket} /> خروج
           </button>
         </div>
       </header>
 
-      <section className="partner-portal-hero">
+      {activeSection === "overview" ? <section className="partner-portal-hero">
         <div>
           <span className="partner-portal-chip"><FontAwesomeIcon icon={faShieldHalved} /> حساب شريكة موثق</span>
           <h1>أهلًا {overview?.member.displayName || "بك"}</h1>
@@ -168,21 +220,42 @@ export default function PartnerPortal() {
           <small>حالة النشاط</small>
           <strong>{overview?.partner.status === "active" ? "نشط" : "قيد التجهيز"}</strong>
         </div>
-      </section>
+      </section> : (
+        <section className="partner-route-hero">
+          <div>
+            <small>MALIKAT PARTNERS</small>
+            <h1>{sectionTitle[activeSection]}</h1>
+            <p>بيانات محدثة مباشرة من حساب الشريكة المرتبط بلوحة الإدارة.</p>
+          </div>
+          <button type="button" onClick={() => void loadOverview(true)} disabled={refreshing}>
+            <FontAwesomeIcon icon={faArrowRotateRight} spin={refreshing} /> تحديث البيانات
+          </button>
+        </section>
+      )}
 
       {error ? <div className="partner-portal-error">{error}</div> : null}
 
       {overview ? (
         <>
-          <section className="partner-portal-stats">
+          {activeSection === "overview" ? <section className="partner-portal-stats">
             <article><FontAwesomeIcon icon={faChair} /><div><small>المساحات</small><strong>{overview.resources.length}</strong></div></article>
             <article><FontAwesomeIcon icon={faUsers} /><div><small>أعضاء الفريق</small><strong>{overview.team.filter((member) => member.status === "active").length}</strong></div></article>
             <article><FontAwesomeIcon icon={faFileContract} /><div><small>العقود</small><strong>{overview.contracts.length}</strong></div></article>
             <article><FontAwesomeIcon icon={faClock} /><div><small>رصيد الأوف</small><strong>{activeContract?.timeOffMonthlyHours ?? 0} ساعة</strong></div></article>
-          </section>
+          </section> : null}
 
-          <section className="partner-portal-grid">
-            <article className="partner-portal-card partner-portal-card--contract">
+          <section className={`partner-portal-grid ${activeSection !== "overview" ? "partner-portal-grid--focused" : ""}`}>
+            {activeSection === "account" ? <article className="partner-portal-card partner-account-card">
+              <header><FontAwesomeIcon icon={faUserGear} /><div><small>بيانات الحساب</small><h2>{overview.member.displayName}</h2></div></header>
+              <dl>
+                <div><dt>البريد الإلكتروني</dt><dd>{overview.member.email || "غير مسجل"}</dd></div>
+                <div><dt>نوع العضوية</dt><dd>{overview.member.memberType === "owner" ? "مالكة النشاط" : overview.member.memberType === "contractor" ? "متعاقدة" : "موظفة"}</dd></div>
+                <div><dt>حالة الحساب</dt><dd>{overview.member.status === "active" ? "نشط" : "غير نشط"}</dd></div>
+                <div><dt>الشريكة</dt><dd>{overview.partner.displayName}</dd></div>
+              </dl>
+            </article> : null}
+
+            {activeSection === "overview" || activeSection === "contract" ? <article className="partner-portal-card partner-portal-card--contract" id="partner-contract">
               <header><FontAwesomeIcon icon={faBriefcase} /><div><small>العقد الحالي</small><h2>{activeContract?.contractNumber || "لا يوجد عقد"}</h2></div></header>
               {activeContract ? (
                 <div className="partner-portal-contract-body">
@@ -194,9 +267,9 @@ export default function PartnerPortal() {
                   <div><span>الأوف</span><strong>{activeContract.timeOffMaxHoursPerRolling14Days ?? 0} ساعة لكل 14 يومًا</strong></div>
                 </div>
               ) : <p className="partner-portal-muted">لم يتم ربط عقد بهذا الحساب بعد.</p>}
-            </article>
+            </article> : null}
 
-            <article className="partner-portal-card">
+            {activeSection === "overview" || activeSection === "spaces" ? <article className="partner-portal-card" id="partner-resources">
               <header><FontAwesomeIcon icon={faStore} /><div><small>المساحات المؤجرة</small><h2>موقع العمل</h2></div></header>
               <div className="partner-portal-resource-list">
                 {overview.resources.length ? overview.resources.map((resource: RentalResource) => (
@@ -207,9 +280,9 @@ export default function PartnerPortal() {
                   </div>
                 )) : <p className="partner-portal-muted">لا توجد مساحة مرتبطة حاليًا.</p>}
               </div>
-            </article>
+            </article> : null}
 
-            <article className="partner-portal-card partner-portal-card--team">
+            {activeSection === "overview" || activeSection === "team" ? <article className="partner-portal-card partner-portal-card--team" id="partner-team">
               <header><FontAwesomeIcon icon={faUsers} /><div><small>فريق العمل</small><h2>الأعضاء المسجلون</h2></div></header>
               <div className="partner-portal-team-list">
                 {overview.team.map((member) => (
@@ -220,9 +293,9 @@ export default function PartnerPortal() {
                   </div>
                 ))}
               </div>
-            </article>
+            </article> : null}
 
-            <article className="partner-portal-card partner-portal-card--permissions">
+            {activeSection === "overview" || activeSection === "account" ? <article className="partner-portal-card partner-portal-card--permissions">
               <header><FontAwesomeIcon icon={faWallet} /><div><small>صلاحيات الحساب</small><h2>نطاق الوصول</h2></div></header>
               <ul>
                 <li className={overview.permissions.canViewFinancials ? "is-enabled" : ""}>عرض البيانات المالية</li>
@@ -230,14 +303,23 @@ export default function PartnerPortal() {
                 <li className={overview.permissions.canManageInventory ? "is-enabled" : ""}>إدارة المخزون</li>
                 <li className={overview.permissions.canWorkAsProvider ? "is-enabled" : ""}>تنفيذ الخدمات</li>
               </ul>
-            </article>
+            </article> : null}
           </section>
 
-          <footer className="partner-portal-footer">
-            <FontAwesomeIcon icon={faCalendarDays} /> المرحلة الحالية تعرض العقد والفريق والمساحات. الحجوزات والمستحقات والمخزون ستُربط في المراحل التالية.
-          </footer>
+          {activeSection === "overview" ? <footer className="partner-portal-footer">
+            <FontAwesomeIcon icon={faCalendarDays} /> بيانات العقد والفريق والمساحات متزامنة مع سجل الشريكة في لوحة الإدارة.
+          </footer> : null}
         </>
       ) : null}
+      </div>
+
+      <nav className="partner-mobile-nav" aria-label="تنقل بوابة الشركاء على الجوال">
+        <NavLink to="/partner" end><FontAwesomeIcon icon={faStore} /><span>الرئيسية</span></NavLink>
+        <NavLink to="/partner/contract"><FontAwesomeIcon icon={faFileContract} /><span>العقد</span></NavLink>
+        <NavLink to="/partner/spaces"><FontAwesomeIcon icon={faChair} /><span>المساحات</span></NavLink>
+        <NavLink to="/partner/team"><FontAwesomeIcon icon={faUsers} /><span>الفريق</span></NavLink>
+        <NavLink to="/partner/account"><FontAwesomeIcon icon={faUserGear} /><span>حسابي</span></NavLink>
+      </nav>
     </main>
   );
 }

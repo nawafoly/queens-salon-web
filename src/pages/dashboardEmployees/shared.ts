@@ -85,6 +85,12 @@ export type StaffPublicDoc = {
   role?: string;
   department?: string;
   title?: string;
+  employmentSource?: "salon" | "partner" | string;
+  partnerId?: string;
+  partnerMemberId?: string;
+  partnerName?: string;
+  contractId?: string;
+  resourceIds?: string[];
   employeeProfileEnabled?: boolean;
   includeInEmployeeManagement?: boolean;
   source?: "staff_public" | "employees" | "users";

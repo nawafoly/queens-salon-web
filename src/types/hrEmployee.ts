@@ -70,6 +70,12 @@ export type EmployeeEmploymentDoc = {
   title?: string | null;
   jobTitle?: string | null;
   department?: string | null;
+  employmentSource?: "salon" | "partner" | string | null;
+  partnerId?: string | null;
+  partnerMemberId?: string | null;
+  partnerName?: string | null;
+  contractId?: string | null;
+  resourceIds?: string[] | null;
   startDate?: unknown;
   leaveBalance?: number | null;
 

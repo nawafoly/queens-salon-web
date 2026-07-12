@@ -60,6 +60,12 @@ export type EmployeeDirectoryEntry = {
   department?: string;
   title?: string;
   avatarUrl?: string;
+  employmentSource?: "salon" | "partner" | string;
+  partnerId?: string;
+  partnerMemberId?: string;
+  partnerName?: string;
+  contractId?: string;
+  resourceIds?: string[];
   source?: "api" | "firestore";
 };
 
@@ -412,6 +418,12 @@ export async function syncEmployeeRecordFromUser(args: {
   showOnAbout?: boolean;
   showOnBooking?: boolean;
   employeeProfileEnabled?: boolean;
+  employmentSource?: "salon" | "partner";
+  partnerId?: string;
+  partnerMemberId?: string;
+  partnerName?: string;
+  contractId?: string;
+  resourceIds?: string[];
 }) {
   const uid = cleanText(args.uid);
   const employeeId = cleanText(args.employeeId || args.linkedEmployeeDocId || uid);
@@ -463,6 +475,12 @@ export async function syncEmployeeRecordFromUser(args: {
     avatarUrl: cleanText(args.avatarUrl || "") || "",
     specialties,
     bio: cleanText(args.bio || "") || "",
+    employmentSource: args.employmentSource || "salon",
+    partnerId: cleanText(args.partnerId || "") || null,
+    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
+    partnerName: cleanText(args.partnerName || "") || null,
+    contractId: cleanText(args.contractId || "") || null,
+    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
     updatedAt: serverTimestamp(),
   };
 
@@ -477,6 +495,9 @@ export async function syncEmployeeRecordFromUser(args: {
     employeeId,
     linkedEmployeeDocId: employeeId,
     employeeProfileEnabled,
+    employmentSource: args.employmentSource || "salon",
+    partnerId: cleanText(args.partnerId || "") || null,
+    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
     ...(shouldSetUserCreatedAt ? { createdAt: serverTimestamp() } : {}),
     updatedAt: serverTimestamp(),
   };
@@ -501,6 +522,13 @@ export async function syncEmployeeRecordFromUser(args: {
     specialties,
     bio: cleanText(args.bio || "") || "",
     avatarUrl: cleanText(args.avatarUrl || "") || "",
+    employeeId,
+    employmentSource: args.employmentSource || "salon",
+    partnerId: cleanText(args.partnerId || "") || null,
+    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
+    partnerName: cleanText(args.partnerName || "") || null,
+    contractId: cleanText(args.contractId || "") || null,
+    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
     updatedAt: serverTimestamp(),
   };
 
@@ -529,6 +557,104 @@ export async function syncEmployeeRecordFromUser(args: {
   ]);
 
   return { uid, employeeId, role, active };
+}
+
+export async function syncPartnerEmployeeRecord(args: {
+  partnerId: string;
+  partnerMemberId: string;
+  partnerName?: string;
+  displayName: string;
+  email?: string;
+  phone?: string;
+  userUid?: string;
+  active?: boolean;
+  contractId?: string;
+  resourceIds?: string[];
+}) {
+  const partnerId = cleanText(args.partnerId);
+  const partnerMemberId = cleanText(args.partnerMemberId);
+  if (!partnerId || !partnerMemberId) throw new Error("partner_employee:invalid_link");
+
+  const employeeId = `partner-${partnerMemberId}`;
+  const uid = cleanText(args.userUid || "");
+  const active = args.active !== false;
+  const shared = {
+    employeeId,
+    employeeDocId: employeeId,
+    linkedEmployeeDocId: employeeId,
+    ...(uid ? { uid, linkedUid: uid, linkedUserId: uid, employeeUid: uid } : {}),
+    name: cleanText(args.displayName),
+    displayName: cleanText(args.displayName),
+    email: cleanEmail(args.email || ""),
+    userEmail: cleanEmail(args.email || ""),
+    phone: cleanText(args.phone || ""),
+    role: "staff",
+    active,
+    isActive: active,
+    employmentStatus: active ? "active" : "inactive",
+    employeeProfileEnabled: true,
+    showOnAbout: false,
+    showOnBooking: true,
+    removedFromStaff: false,
+    employmentSource: "partner",
+    partnerId,
+    partnerMemberId,
+    partnerName: cleanText(args.partnerName || "") || null,
+    contractId: cleanText(args.contractId || "") || null,
+    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
+    department: "فريق شريك",
+    title: "موظف شريك",
+    updatedAt: serverTimestamp(),
+  };
+
+  await Promise.all([
+    setDoc(hrDoc("employees", employeeId), shared, { merge: true }),
+    setDoc(hrDoc("staffPublic", employeeId), shared, { merge: true }),
+    uid
+      ? Promise.all([
+          setDoc(hrDoc("users", uid), { ...shared, createdAt: serverTimestamp() }, { merge: true }),
+          setDoc(hrDoc("adminUsers", uid), shared, { merge: true }),
+        ])
+      : Promise.resolve(),
+  ]);
+
+  return { employeeId, uid: uid || undefined };
+}
+
+export async function linkExistingEmployeeRecordToPartner(args: {
+  employeeId: string;
+  employeeUid?: string;
+  partnerId: string;
+  partnerMemberId: string;
+  partnerName?: string;
+  contractId?: string;
+  resourceIds?: string[];
+}) {
+  const employeeId = cleanText(args.employeeId);
+  const employeeUid = cleanText(args.employeeUid || "");
+  const partnerId = cleanText(args.partnerId);
+  const partnerMemberId = cleanText(args.partnerMemberId);
+  if (!employeeId || !partnerId || !partnerMemberId) {
+    throw new Error("partner_employee:invalid_existing_link");
+  }
+
+  const patch = {
+    employmentSource: "partner",
+    partnerId,
+    partnerMemberId,
+    partnerName: cleanText(args.partnerName || "") || null,
+    contractId: cleanText(args.contractId || "") || null,
+    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
+    updatedAt: serverTimestamp(),
+  };
+
+  await Promise.all([
+    setDoc(hrDoc("employees", employeeId), patch, { merge: true }),
+    setDoc(hrDoc("staffPublic", employeeId), patch, { merge: true }),
+    employeeUid ? setDoc(hrDoc("users", employeeUid), { ...patch, employeeId }, { merge: true }) : Promise.resolve(),
+  ]);
+
+  return { employeeId, employeeUid: employeeUid || undefined };
 }
 
 export async function createEmployeeMessage(input: {

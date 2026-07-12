@@ -5,6 +5,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
   faChartLine,
+  faChevronLeft,
+  faChevronRight,
   faEnvelope,
   faFileLines,
   faHouse,
@@ -14,6 +16,7 @@ import {
   faUsers,
   faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
+import logo1 from "../assets/images/ssunnamed.png";
 
 import { useEmployeeSession, cleanText } from "./hr/shared";
 import DashboardHeader from "../components/DashboardHeader";
@@ -1122,6 +1125,7 @@ function HrOverview({
 }
 
 export default function AdminHrDashboard() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const session = useEmployeeSession();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1283,12 +1287,8 @@ export default function AdminHrDashboard() {
     return (
       <div className="hr-shell madan-admin-shell" dir="rtl">
         <aside className="hr-shell-sidebar hr-shell-sidebar--loading">
-          <div className="hr-brand">
-            <span className="hr-brand__mark">HR</span>
-            <div>
-              <strong>الموارد البشرية</strong>
-              <small>جاري التحقق من الجلسة...</small>
-            </div>
+          <div className="hr-sidebar-header">
+            <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
           </div>
         </aside>
 
@@ -1311,17 +1311,22 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees" : ""}`} dir="rtl">
+    <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <aside className="hr-shell-sidebar">
-        <div className="hr-brand">
-          <span className="hr-brand__mark">HR</span>
-          <div>
-            <strong>الموارد البشرية</strong>
-            <small>لوحة إدارة الموظفين</small>
-          </div>
+        <div className="hr-sidebar-header">
+          <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
+          <button
+            type="button"
+            className="hr-sidebar-collapse"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+          >
+            <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
+          </button>
         </div>
 
         <nav className="hr-shell-nav" aria-label="HR navigation">
+          <span className="hr-sidebar-section-title">الموارد البشرية</span>
           {adminNavItems.map((item) => (
             <NavLink
               key={item.to}

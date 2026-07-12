@@ -175,6 +175,11 @@ export default function EmployeeListPanel({
                       {needsCompletion ? (
                         <span className="emp-staff-source-chip">ملف يحتاج إكمال</span>
                       ) : null}
+                      {staff.employmentSource === "partner" ? (
+                        <span className="emp-staff-source-chip emp-staff-source-chip--partner">
+                          موظف شريك{staff.partnerName ? ` · ${staff.partnerName}` : ""}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
