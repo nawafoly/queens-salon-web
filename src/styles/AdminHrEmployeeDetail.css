@@ -42,6 +42,239 @@
   -webkit-backdrop-filter: blur(10px);
 }
 
+/* Attendance calendar UX: today, selection and attendance state remain independent. */
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 16px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary {
+  align-items: end;
+  overflow: visible;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary-tools {
+  align-items: end;
+  gap: 12px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__primary,
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input {
+  min-height: 46px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__primary {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #40010d !important;
+  border-color: rgba(64, 1, 13, 0.24) !important;
+  background: #fff7f8 !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input {
+  min-width: 190px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input input {
+  width: 142px !important;
+  min-width: 142px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  direction: rtl;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__arrow {
+  position: static !important;
+  inset: auto !important;
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__today-button {
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(64, 1, 13, 0.2);
+  border-radius: 10px;
+  color: #40010d;
+  background: #fff7f8;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__arrow, .attendance-month__today-button):hover {
+  border-color: #40010d !important;
+  background: #fff0f2 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__arrow, .attendance-month__today-button, .attendance-month__day):focus-visible {
+  outline: 3px solid rgba(64, 1, 13, 0.18) !important;
+  outline-offset: 2px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__title {
+  min-height: 44px;
+  padding: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__title h3 {
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day,
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__blank {
+  aspect-ratio: 1;
+  min-width: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day {
+  position: relative;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-today strong {
+  border: 2px solid #70051a !important;
+  border-radius: 50% !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-selected {
+  border-color: #d7a51b !important;
+  background: #fff8db !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-selected strong {
+  color: #40010d !important;
+  border-color: transparent !important;
+  background: #f4c84a !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-today.is-selected strong {
+  border-color: #70051a !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__today-label {
+  position: absolute;
+  inset-inline: 2px;
+  bottom: 2px;
+  color: #70051a;
+  font-size: 0.43rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  padding-top: 9px;
+  border-top: 1px solid #edf0f4;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #657084;
+  font-size: 0.56rem;
+  font-weight: 850;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend span::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #a4adba;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-complete::before { background: var(--attendance-complete); }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-partial::before { background: var(--attendance-partial); }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-absent::before { background: var(--attendance-absent); }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-leave::before { background: var(--attendance-leave); }
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__legend .is-off-day::before { background: var(--attendance-off); }
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__selected-date {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__selected-date strong {
+  color: #172033;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__selected-date span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #fff;
+  background: #70051a;
+  font-size: 0.52rem;
+  font-weight: 900;
+}
+
+@media (max-width: 1024px) {
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month {
+    grid-template-columns: 1fr;
+    grid-template-areas: "summary" "calendar" "detail";
+  }
+}
+
+@media (max-width: 600px) {
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary-tools {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__primary, .attendance-month__month-input) {
+    width: 100% !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-head {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 5px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-actions {
+    gap: 4px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__today-button {
+    padding-inline: 8px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__weekdays span {
+    font-size: 0.46rem !important;
+  }
+}
+
 .emp-editor-overlay.emp-editor-overlay--hr *,
 .emp-editor-overlay.emp-editor-overlay--hr *::before,
 .emp-editor-overlay.emp-editor-overlay--hr *::after {
@@ -11164,3 +11397,122 @@
 }
 
 /* EMPLOYEE EDITOR SAVE BAR FIX END */
+
+/* Final attendance calendar cascade overrides. */
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr) !important;
+  gap: 16px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary {
+  align-items: end !important;
+  overflow: visible !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary-tools {
+  align-items: end !important;
+  gap: 12px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__primary, .attendance-month__month-input) {
+  min-height: 46px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input {
+  min-width: 190px !important;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input input {
+  width: 142px !important;
+  min-width: 142px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-head {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  direction: rtl;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__arrow {
+  position: static !important;
+  inset: auto !important;
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__title {
+  min-height: 44px !important;
+  padding: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__title h3 {
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__day, .attendance-month__blank) {
+  aspect-ratio: 1;
+  min-width: 0 !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-today strong {
+  border: 2px solid #70051a !important;
+  border-radius: 50% !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-selected {
+  border-color: #d7a51b !important;
+  background: #fff8db !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-selected strong {
+  color: #40010d !important;
+  border-color: transparent !important;
+  background: #f4c84a !important;
+  box-shadow: none !important;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__day.is-today.is-selected strong {
+  border-color: #70051a !important;
+}
+
+@media (max-width: 1024px) {
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month {
+    grid-template-columns: 1fr !important;
+    grid-template-areas: "summary" "calendar" "detail" !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__summary-tools {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin :where(.attendance-month__primary, .attendance-month__month-input) {
+    width: 100% !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__month-input input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-head {
+    gap: 5px;
+  }
+
+  .emp-editor-overlay.emp-editor-overlay--hr .employee-attendance-admin .attendance-month__calendar-actions {
+    gap: 4px;
+  }
+}

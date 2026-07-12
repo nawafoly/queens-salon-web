@@ -1299,6 +1299,7 @@ export default function DashboardEmployees() {
   const [employeeAttendanceLoading, setEmployeeAttendanceLoading] = useState(false);
   const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [employeeAttendanceSelectedDate, setEmployeeAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
+  const attendanceLoadRequestRef = useRef(0);
   const [selectedEmployeeLeaveRequests, setSelectedEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [attendanceEditOpen, setAttendanceEditOpen] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState("");
@@ -1454,6 +1455,7 @@ export default function DashboardEmployees() {
   }, [canManageAttendanceZones]);
 
   const loadSelectedEmployeeAttendance = useCallback(async () => {
+    const requestId = ++attendanceLoadRequestRef.current;
     if (!canViewAttendance) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
@@ -1505,6 +1507,7 @@ export default function DashboardEmployees() {
         }),
         listEmployeeLeaveRequests(500),
       ]);
+      if (requestId !== attendanceLoadRequestRef.current) return;
       setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
       setSelectedEmployeeLeaveRequests(
         leaveRows.filter((request) =>
@@ -1516,13 +1519,23 @@ export default function DashboardEmployees() {
         )
       );
     } catch (error) {
+      if (requestId !== attendanceLoadRequestRef.current) return;
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
     } finally {
-      setEmployeeAttendanceLoading(false);
+      if (requestId === attendanceLoadRequestRef.current) {
+        setEmployeeAttendanceLoading(false);
+      }
     }
   }, [canViewAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId) return;
+    const todayKey = getTodayAttendanceDateKey();
+    setEmployeeAttendanceMonth(todayKey.slice(0, 7));
+    setEmployeeAttendanceSelectedDate(todayKey);
+  }, [selectedEmployeeId]);
 
   useEffect(() => {
     void loadAttendanceZones();

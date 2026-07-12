@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
@@ -9,10 +8,14 @@ import {
   faEllipsisVertical,
   faFingerprint,
   faPenToSquare,
+  faRotate,
   faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 
-import type { StaffAttendanceWithId } from "../services/firestoreAttendance";
+import {
+  getTodayAttendanceDateKey,
+  type StaffAttendanceWithId,
+} from "../services/firestoreAttendance";
 import {
   computeAttendanceDay,
   getAttendanceDayStatus,
@@ -61,7 +64,7 @@ type AttendanceMonthViewProps = {
   onReviewDay?: (dateKey: string) => void;
 };
 
-const WEEK_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEK_LABELS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
   sun: "sunday",
@@ -85,17 +88,6 @@ function normalizeDateKey(value: unknown) {
 
 function pad2(value: number) {
   return String(value).padStart(2, "0");
-}
-
-function getRiyadhTodayKey() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Riyadh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function monthLabel(monthKey: string) {
@@ -213,6 +205,19 @@ function formatHours(value: number) {
   return `${minutes} دقيقة`;
 }
 
+function fullDateLabel(dateKey: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return dateKey;
+  return new Intl.DateTimeFormat("ar-SA", {
+    timeZone: "Asia/Riyadh",
+    calendar: "gregory",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12)));
+}
+
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -286,11 +291,6 @@ function recordLocationLabel(record: AttendanceRecord) {
   return parts.join(" - ") || "--";
 }
 
-function attendanceDebug(...args: unknown[]) {
-  if (!(import.meta as any).env?.DEV) return;
-  console.info("[attendance-debug]", ...args);
-}
-
 function statusTone(status: AttendanceStatus) {
   if (status === "present") return "complete";
   if (status === "partial" || status === "today_pending") return "partial";
@@ -335,13 +335,15 @@ export default function AttendanceMonthView({
   onReviewDay,
 }: AttendanceMonthViewProps) {
   const safeMonthKey = normalizeMonthKey(monthKey);
-  const todayKey = getRiyadhTodayKey();
+  const todayKey = getTodayAttendanceDateKey();
   const leaveDateKeys = new Set(Array.from(approvedLeaveDateKeys || []).map(normalizeDateKey).filter(Boolean));
   const rowsByDate = new Map(rows.map((row) => [normalizeDateKey(row.date) || row.id, row]));
   const safeSelectedDate =
     normalizeDateKey(selectedDate) && selectedDate.startsWith(safeMonthKey)
       ? selectedDate
-      : `${safeMonthKey}-01`;
+      : todayKey.startsWith(safeMonthKey)
+        ? todayKey
+        : `${safeMonthKey}-01`;
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
   const selectedDayRecords = recordsFromRow(selectedRow);
   const selectedSchedule = scheduleForDate(safeSelectedDate, schedule);
@@ -393,21 +395,6 @@ export default function AttendanceMonthView({
       };
     }),
   ];
-  const rowsDebugKey = Array.from(rowsByDate.keys()).sort().join("|");
-  const statusDebugKey = calendarCells
-    .flatMap((cell) => (cell.blank ? [] : [`${cell.dateKey}:${cell.status}`]))
-    .join("|");
-
-  useEffect(() => {
-    attendanceDebug(
-      `dates=${JSON.stringify(rowsDebugKey ? rowsDebugKey.split("|") : [])}`
-    );
-    calendarCells.forEach((cell) => {
-      if (cell.blank) return;
-      attendanceDebug(`${cell.dateKey} => ${cell.status}`);
-    });
-  }, [safeMonthKey, rowsDebugKey, statusDebugKey]);
-
   const canShowAdminControls = viewerMode === "admin" || showAdminActions;
   const shouldShowEdit = canShowAdminControls && (canEdit ?? showAdminActions);
   const shouldShowDelete = canShowAdminControls && (canDelete ?? showAdminActions);
@@ -443,6 +430,12 @@ export default function AttendanceMonthView({
   const hasOvertime =
     selectedComputation.overtimeHours > 0.001;
 
+  const goToToday = () => {
+    const currentToday = getTodayAttendanceDateKey();
+    onMonthChange(currentToday.slice(0, 7));
+    onSelectedDateChange(currentToday);
+  };
+
   return (
     <section className="attendance-month" dir="rtl">
       {showSummaryTools ? (
@@ -458,7 +451,8 @@ export default function AttendanceMonthView({
               onClick={onGenerateSummary}
               disabled={loading || !onGenerateSummary}
             >
-              تحديث السجلات
+              <FontAwesomeIcon icon={faRotate} spin={loading} />
+              {loading ? "جاري التحديث..." : "تحديث السجلات"}
             </button>
             <label className="attendance-month__month-input">
               <FontAwesomeIcon icon={faCalendarDay} />
@@ -477,26 +471,31 @@ export default function AttendanceMonthView({
       ) : null}
 
       <div className="attendance-month__calendar-shell">
-        <button
-          type="button"
-          className="attendance-month__arrow attendance-month__arrow--prev"
-          onClick={() => onMonthChange(shiftMonth(safeMonthKey, -1))}
-          aria-label="الشهر السابق"
-        >
-          <FontAwesomeIcon icon={faChevronRight} />
-        </button>
-        <button
-          type="button"
-          className="attendance-month__arrow attendance-month__arrow--next"
-          onClick={() => onMonthChange(shiftMonth(safeMonthKey, 1))}
-          aria-label="الشهر التالي"
-        >
-          <FontAwesomeIcon icon={faChevronLeft} />
-        </button>
-
-        <div className="attendance-month__title">
-          <h3>{showSummaryTools ? monthLabel(safeMonthKey) : "الحضور"}</h3>
-          <span>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</span>
+        <div className="attendance-month__calendar-head">
+          <button
+            type="button"
+            className="attendance-month__arrow attendance-month__arrow--prev"
+            onClick={() => onMonthChange(shiftMonth(safeMonthKey, -1))}
+            aria-label="الشهر السابق"
+          >
+            <FontAwesomeIcon icon={faChevronRight} />
+          </button>
+          <div className="attendance-month__title">
+            <h3>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</h3>
+          </div>
+          <div className="attendance-month__calendar-actions">
+            <button type="button" className="attendance-month__today-button" onClick={goToToday}>
+              اليوم
+            </button>
+            <button
+              type="button"
+              className="attendance-month__arrow attendance-month__arrow--next"
+              onClick={() => onMonthChange(shiftMonth(safeMonthKey, 1))}
+              aria-label="الشهر التالي"
+            >
+              <FontAwesomeIcon icon={faChevronLeft} />
+            </button>
+          </div>
         </div>
 
         <div className="attendance-month__weekdays">
@@ -515,21 +514,34 @@ export default function AttendanceMonthView({
                 type="button"
                 className={`attendance-month__day is-${cell.tone} ${
                   safeSelectedDate === cell.dateKey ? "is-selected" : ""
-                }`}
+                } ${todayKey === cell.dateKey ? "is-today" : ""}`}
                 onClick={() => onSelectedDateChange(cell.dateKey)}
                 title={`${cell.dateKey} - ${statusLabel(cell.status)}`}
+                aria-current={todayKey === cell.dateKey ? "date" : undefined}
+                aria-selected={safeSelectedDate === cell.dateKey}
               >
                 <span className="attendance-month__day-marker" />
                 <strong>{cell.day}</strong>
+                {todayKey === cell.dateKey ? <span className="attendance-month__today-label">اليوم</span> : null}
               </button>
             )
           )}
+        </div>
+        <div className="attendance-month__legend" aria-label="دليل حالات الحضور">
+          <span className="is-complete">حاضر</span>
+          <span className="is-partial">متأخر</span>
+          <span className="is-absent">غياب</span>
+          <span className="is-leave">إجازة</span>
+          <span className="is-off-day">يوم راحة</span>
         </div>
       </div>
 
       <div className="attendance-month__detail">
         <div className="attendance-month__detail-head">
-          <span className="attendance-month__leave">إجازتي</span>
+          <div className="attendance-month__selected-date">
+            <strong>{fullDateLabel(safeSelectedDate)}</strong>
+            {safeSelectedDate === todayKey ? <span>اليوم</span> : null}
+          </div>
           <div className="attendance-month__records-tab">
             <span>السجلات</span>
           </div>
