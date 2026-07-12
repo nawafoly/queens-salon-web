@@ -591,6 +591,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   const [hairGuideUrl, setHairGuideUrl] = useState<string>(hairGuideImg);
   const [hairGuideOpen, setHairGuideOpen] = useState(false);
+  const [mobilePriceListOpen, setMobilePriceListOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
 
@@ -7177,6 +7178,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     <FontAwesomeIcon icon={faCalendarAlt} className="me-2" />
                     اختيار الخدمة
                   </div>
+                  <button
+                    type="button"
+                    className="bk-open-mobile-price-list"
+                    onClick={() => setMobilePriceListOpen(true)}
+                  >
+                    فتح قائمة الأسعار
+                  </button>
                 </div>
 
                 <div className="row g-2 mb-3 bk-service-client-fields">
@@ -7426,7 +7434,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             </div>
 
             {/* قائمة الأسعار هي المحتوى الرئيسي، والدليل يفتح عند الطلب. */}
-            <div className="col-12 order-2 bk-price-side-col">
+            <div className={`col-12 order-2 bk-price-side-col ${mobilePriceListOpen ? "is-mobile-open" : ""}`}>
               <PriceListPanel
                 rows={priceLookupResults.map((row) => ({
                   ...row,
@@ -7440,7 +7448,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 guideButtonRef={hairGuideButtonRef}
                 onQueryChange={setPriceLookupQuery}
                 onOpenGuide={() => setHairGuideOpen(true)}
-                onSelect={selectPriceLookupItem}
+                onCloseMobile={() => setMobilePriceListOpen(false)}
+                onSelect={(row) => {
+                  selectPriceLookupItem(row);
+                  if (typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches) {
+                    setMobilePriceListOpen(false);
+                  }
+                }}
                 renderIcon={(name) => {
                   const icon = pickPriceLookupIcon(name);
                   return {
