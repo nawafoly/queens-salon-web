@@ -1,3 +1,5 @@
+import { todayISO as salonTodayISO } from "./bookingDateUtils";
+
 export type StaffAvailabilityLike = {
   active?: boolean;
   showOnBooking?: boolean;
@@ -60,11 +62,7 @@ function isISODate(value: string) {
 }
 
 export function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return salonTodayISO();
 }
 
 export function normalizeISODate(value: string | undefined | null) {
@@ -104,10 +102,12 @@ export function isStaffOperationallyActiveForDate(
 function weekdayFromISO(dateISO: string) {
   const s = normalizeISODate(dateISO);
   if (!s) return "";
-  const d = new Date(`${s}T00:00:00`);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
   if (Number.isNaN(d.getTime())) return "";
   const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-  return map[d.getDay()] || "";
+  return map[d.getUTCDay()] || "";
 }
 
 function normalizeTimeHHMM(value: any) {

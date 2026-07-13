@@ -15,6 +15,13 @@ export type BookingHourOverride = {
 };
 
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+export const SALON_TIME_ZONE = "Asia/Riyadh";
+
+export type SalonDateTimeParts = {
+  dateISO: string;
+  time24: string;
+  minutes: number;
+};
 
 export const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   sat: "السبت",
@@ -26,17 +33,69 @@ export const WEEKDAY_LABEL_AR: Record<WeekdayKey, string> = {
   fri: "الجمعة",
 };
 
+export function getSalonDateTimeParts(date = new Date()): SalonDateTimeParts {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SALON_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || "";
+  const yyyy = read("year");
+  const mm = read("month");
+  const dd = read("day");
+  const hh = read("hour");
+  const min = read("minute");
+  const hourNum = Math.max(0, Math.min(23, Number(hh || 0)));
+  const minuteNum = Math.max(0, Math.min(59, Number(min || 0)));
+
+  return {
+    dateISO: `${yyyy}-${mm}-${dd}`,
+    time24: `${String(hourNum).padStart(2, "0")}:${String(minuteNum).padStart(2, "0")}`,
+    minutes: hourNum * 60 + minuteNum,
+  };
+}
+
 export function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return getSalonDateTimeParts().dateISO;
 }
 
 export function normalizeIsoDate(v: any) {
   const s = String(v || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+export function combineSelectedDateAndTime(
+  selectedDate: string,
+  selectedTime: string
+): SalonDateTimeParts | null {
+  const dateISO = normalizeIsoDate(selectedDate);
+  const time24 = safeTimeHHMM(selectedTime, "");
+  if (!dateISO || !time24) return null;
+  const [hh, mm] = time24.split(":").map((part) => Number(part));
+  return {
+    dateISO,
+    time24,
+    minutes: (Number(hh) || 0) * 60 + (Number(mm) || 0),
+  };
+}
+
+export function isPastSalonAppointmentTime(
+  selectedDate: string,
+  selectedTime: string,
+  nowParts: SalonDateTimeParts = getSalonDateTimeParts()
+) {
+  const appointment = combineSelectedDateAndTime(selectedDate, selectedTime);
+  if (!appointment) return false;
+  return (
+    appointment.dateISO === nowParts.dateISO &&
+    appointment.minutes <= nowParts.minutes
+  );
 }
 
 export function formatDateByCalendar(v: any, calendar: DateCalendar = "gregory") {
@@ -168,13 +227,13 @@ export function safeTimeHHMM(v: any, fallback: string) {
 export function resolveWeekdayFromISO(dateISO: string): WeekdayKey {
   const s = String(dateISO || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return JS_DAY_TO_WEEKDAY[new Date().getDay()] || "sat";
+  if (!m) return resolveWeekdayFromISO(todayISO());
 
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
-  const dt = new Date(y, Math.max(0, mo - 1), d);
-  return JS_DAY_TO_WEEKDAY[dt.getDay()] || "sat";
+  const dt = new Date(Date.UTC(y, Math.max(0, mo - 1), d, 12));
+  return JS_DAY_TO_WEEKDAY[dt.getUTCDay()] || "sat";
 }
 
 export function normalizeWeekdayList(v: any): WeekdayKey[] {

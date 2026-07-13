@@ -111,8 +111,8 @@ export async function readVerifiedUserAccess(uid: string): Promise<VerifiedUserA
 
   const profile = snapshot.data() as Record<string, unknown>;
   const storedRole = normalizeAuthRole(profile?.role);
-  const active = profile?.active !== false;
-  const role = !active && isInternalAuthRole(storedRole) ? "pending" : storedRole;
+  const active = profile?.active !== false && profile?.isActive !== false;
+  const role = storedRole;
 
   return {
     exists: true,

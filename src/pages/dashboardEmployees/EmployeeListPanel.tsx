@@ -1,4 +1,4 @@
-import type { CSSProperties, WheelEvent } from "react";
+import type { CSSProperties } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
@@ -44,49 +44,69 @@ function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
-function findEmployeePageScrollTarget(source: HTMLElement): Element {
-  let current = source.parentElement;
-
-  while (current && current !== document.body && current !== document.documentElement) {
-    if (
-      current.classList.contains("emp-staff-list") ||
-      current.classList.contains("emp-list-card") ||
-      current.classList.contains("emp-directory-v2") ||
-      current.classList.contains("emp-directory-shell")
-    ) {
-      current = current.parentElement;
-      continue;
-    }
-
-    const style = window.getComputedStyle(current);
-    const canScrollY =
-      /(auto|scroll|overlay)/.test(style.overflowY) &&
-      current.scrollHeight > current.clientHeight + 1;
-
-    if (canScrollY) return current;
-    current = current.parentElement;
-  }
-
-  return document.scrollingElement || document.documentElement;
+function formatShortId(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  return raw.length > 12 ? `${raw.slice(0, 6)}…${raw.slice(-4)}` : raw;
 }
 
-function handleEmployeeWheel(event: WheelEvent<HTMLElement>) {
-  if (event.ctrlKey) return;
+function employeeDisplayName(staff: StaffPublicUi) {
+  const name = cleanText(staff.name);
+  if (name) return name;
+  if (staff.source === "users" || staff.profileIncomplete) return "حساب يحتاج مراجعة";
+  return "موظفة بدون اسم";
+}
 
-  const multiplier =
-    event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
-  const top = event.deltaY * multiplier;
-  const left = event.deltaX * multiplier;
+function resolveDepartment(
+  staff: StaffPublicUi,
+  serviceOptions: ServiceOption[],
+  sectionOptions: Array<{ id: string; label: string }>
+) {
+  const specialtyIds = normalizeSpecialties(staff.specialties);
+  const mainService = serviceOptions.find((option) => option.id === specialtyIds[0]);
+  const sectionId = cleanText(mainService?.sectionId);
+  const storedDepartment = cleanText(staff.department || staff.title);
 
-  if (Math.abs(top) < 0.01 && Math.abs(left) < 0.01) return;
+  if (storedDepartment) return storedDepartment;
+  if (!sectionId) return staff.employeeKind === "administrative" ? "إداري" : "قسم غير محدد";
 
-  event.preventDefault();
-  event.stopPropagation();
-  findEmployeePageScrollTarget(event.currentTarget).scrollBy({
-    top,
-    left,
-    behavior: "auto",
-  });
+  return toArabicSectionLabel(
+    sectionId,
+    sectionOptions.find((section) => section.id === sectionId)?.label || ""
+  );
+}
+
+function statusOf(staff: StaffPublicUi) {
+  const leaveUntil = normalizeLeaveUntil(staff.leaveUntil);
+  const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
+  const onLeave = !!staff.onLeave && !leaveExpired;
+
+  if (onLeave) return { label: "في إجازة", className: "warn" };
+  if (staff.active) return { label: "نشطة", className: "on" };
+  return { label: "غير نشطة", className: "off" };
+}
+
+function sourceLabelOf(staff: StaffPublicUi) {
+  if (staff.source === "users") return "حساب غير مكتمل";
+  if (staff.source === "employees") return "سجل إداري";
+  if (staff.profileIncomplete) return "ملف يحتاج إكمال";
+  return "ملف مكتمل";
+}
+
+function EmployeeCardSkeleton({ index }: { index: number }) {
+  return (
+    <article className="employees-card employees-card--skeleton" aria-hidden="true">
+      <span className="employees-skeleton-avatar" />
+      <div className="employees-skeleton-lines">
+        <span style={{ width: `${72 - (index % 3) * 8}%` }} />
+        <span style={{ width: `${54 + (index % 2) * 12}%` }} />
+      </div>
+      <div className="employees-skeleton-chips">
+        <span />
+        <span />
+      </div>
+    </article>
+  );
 }
 
 export default function EmployeeListPanel({
@@ -109,10 +129,18 @@ export default function EmployeeListPanel({
 }: EmployeeListPanelProps) {
   const hasActiveFilters =
     qText.trim().length > 0 || onlyActive !== "all" || specialtyFilter !== "all";
-
   const activeCount = filtered.filter((staff) => staff.active).length;
   const inactiveCount = filtered.length - activeCount;
-  const assignedCount = filtered.filter((staff) => normalizeSpecialties(staff.specialties).length > 0).length;
+  const assignedCount = filtered.filter(
+    (staff) => normalizeSpecialties(staff.specialties).length > 0
+  ).length;
+  const incompleteCount = filtered.filter(
+    (staff) => staff.profileIncomplete || staff.source !== "staff_public"
+  ).length;
+  const serviceFilterOptions = serviceOptions.filter((option, index, all) => {
+    const id = cleanText(option.id);
+    return !!id && all.findIndex((item) => cleanText(item.id) === id) === index;
+  });
 
   const clearFilters = () => {
     onQTextChange("");
@@ -121,208 +149,200 @@ export default function EmployeeListPanel({
   };
 
   return (
-    <>
-      <div className="dash-card emp-list-filter-card">
-        <div className="emp-filter-header">
-          <div>
-            <span className="emp-filter-kicker">تصفية سريعة</span>
-            <h3>ابحثي عن الموظفة مباشرة</h3>
-            <p>فلترة خفيفة بالاسم أو الحالة أو الخدمة بدون مغادرة القائمة.</p>
-          </div>
-          <span className="emp-filter-count">{filtered.length}</span>
+    <section className="employees-directory-panel" aria-label="قائمة الموظفات">
+      <div className="employees-directory-panel__head">
+        <div>
+          <span className="employees-eyebrow">دليل الموظفات</span>
+          <h2>قائمة تشغيلية واضحة للفريق</h2>
+          <p>بحث وفلاتر وفتح سريع للملفات بدون تغيير الصلاحيات أو مصادر البيانات الحالية.</p>
         </div>
 
-        <div className="dash-row emp-list-filter-grid">
-          <div className="dash-field emp-list-search-field">
-            <label className="emp-label">بحث</label>
-            <div className="emp-search-control">
-              <FontAwesomeIcon className="emp-search-icon" icon={faMagnifyingGlass} />
-              <input
-                className="dash-input"
-                value={qText}
-                onChange={(e) => onQTextChange(e.target.value)}
-                placeholder="الاسم، الجوال، البريد أو الرقم الوظيفي"
-                aria-label="بحث في الموظفات"
-              />
-              {qText ? (
-                <button
-                  className="emp-search-clear"
-                  type="button"
-                  onClick={() => onQTextChange("")}
-                  aria-label="مسح البحث"
-                >
-                  <FontAwesomeIcon icon={faXmark} />
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <div className="dash-field">
-            <label className="emp-label">الحالة</label>
-            <select
-              className="dash-select"
-              value={onlyActive}
-              onChange={(e) => onOnlyActiveChange(e.target.value as "all" | "active" | "inactive")}
-            >
-              <option value="all">الكل</option>
-              <option value="active">نشطة فقط</option>
-              <option value="inactive">غير نشطة فقط</option>
-            </select>
-          </div>
-          <div className="dash-field">
-            <label className="emp-label">تصفية بالخدمة</label>
-            <select
-              className="dash-select"
-              value={specialtyFilter}
-              onChange={(e) => onSpecialtyFilterChange(e.target.value)}
-            >
-              <option value="all">كل الموظفات</option>
-              <option value="none">بدون خدمات مسندة</option>
-              {Array.from(new Set(serviceOptions.map((x) => cleanText(x.id)).filter(Boolean))).map(
-                (serviceId) => (
-                  <option key={serviceId} value={serviceId}>
-                    {serviceOptions.find((x) => cleanText(x.id) === serviceId)?.label || serviceId}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-          <div className="dash-actions emp-list-filter-actions">
-            {canManage ? (
-              <button className="exp-btn primary" type="button" onClick={onCreateEmployee}>
-                <FontAwesomeIcon icon={faPlus} />
-                إضافة موظفة
+        <div className="employees-directory-panel__actions">
+          <span className="employees-result-count">{filtered.length} نتيجة</span>
+          {canManage ? (
+            <button className="employees-action employees-action--primary" type="button" onClick={onCreateEmployee}>
+              <FontAwesomeIcon icon={faPlus} />
+              إضافة موظفة
+            </button>
+          ) : (
+            <span className="employees-readonly-chip">عرض فقط</span>
+          )}
+        </div>
+      </div>
+
+      <div className="employees-filter-panel">
+        <label className="employees-search-field">
+          <span>بحث</span>
+          <div className="employees-search-control">
+            <FontAwesomeIcon icon={faMagnifyingGlass} />
+            <input
+              value={qText}
+              onChange={(event) => onQTextChange(event.target.value)}
+              placeholder="الاسم، الجوال، البريد أو الرقم الوظيفي"
+              aria-label="بحث في الموظفات"
+            />
+            {qText ? (
+              <button type="button" onClick={() => onQTextChange("")} aria-label="مسح البحث">
+                <FontAwesomeIcon icon={faXmark} />
               </button>
-            ) : (
-              <span className="emp-meta-chip">عرض فقط</span>
-            )}
+            ) : null}
           </div>
-        </div>
-        {hasActiveFilters ? (
-          <button className="emp-clear-filters" type="button" onClick={clearFilters}>
-            مسح التصفية
-          </button>
-        ) : null}
+        </label>
+
+        <label className="employees-select-field">
+          <span>الحالة</span>
+          <select
+            value={onlyActive}
+            onChange={(event) => onOnlyActiveChange(event.target.value as "all" | "active" | "inactive")}
+          >
+            <option value="all">كل الحالات</option>
+            <option value="active">النشطات فقط</option>
+            <option value="inactive">غير النشطات فقط</option>
+          </select>
+        </label>
+
+        <label className="employees-select-field">
+          <span>الخدمة</span>
+          <select value={specialtyFilter} onChange={(event) => onSpecialtyFilterChange(event.target.value)}>
+            <option value="all">كل الخدمات</option>
+            <option value="none">بدون خدمات مسندة</option>
+            {serviceFilterOptions.map((service) => (
+              <option key={service.id} value={service.id}>
+                {service.label || service.id}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <button
+          className="employees-action employees-action--ghost"
+          type="button"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+        >
+          إعادة ضبط
+        </button>
       </div>
 
-      <div className="dash-card mt-3 emp-list-card emp-directory-v2">
-        <div className="emp-directory-hero">
-          <div className="emp-directory-heading">
-            <span className="emp-list-kicker">فريق العمل</span>
-            <h2>دليل الموظفات</h2>
-            <p>نظرة موحدة على حالة الفريق، الخدمات المسندة، وأداء الحجوزات الشهري.</p>
-          </div>
-
-          <div className="emp-directory-summary" aria-label="ملخص الموظفات">
-            <div className="emp-directory-stat">
-              <span className="emp-directory-stat-icon"><FontAwesomeIcon icon={faUsers} /></span>
-              <div><b>{filtered.length}</b><small>إجمالي الملفات</small></div>
-            </div>
-            <div className="emp-directory-stat">
-              <span className="emp-directory-stat-icon"><FontAwesomeIcon icon={faUserCheck} /></span>
-              <div><b>{activeCount}</b><small>موظفات نشطات</small></div>
-            </div>
-            <div className="emp-directory-stat">
-              <span className="emp-directory-stat-icon"><FontAwesomeIcon icon={faScissors} /></span>
-              <div><b>{assignedCount}</b><small>لديهن خدمات</small></div>
-            </div>
-            <div className="emp-directory-stat">
-              <span className="emp-directory-stat-icon"><FontAwesomeIcon icon={faUserClock} /></span>
-              <div><b>{inactiveCount}</b><small>غير نشطات</small></div>
-            </div>
-          </div>
+      <div className="employees-mini-stats" aria-label="ملخص نتائج البحث">
+        <div>
+          <FontAwesomeIcon icon={faUsers} />
+          <span>المعروض</span>
+          <strong>{filtered.length}</strong>
         </div>
-        {loading ? (
-          <div className="emp-list-state">
-            <span className="emp-list-loader" aria-hidden="true" />
-            <b>جاري تحميل ملفات الموظفات...</b>
-          </div>
-        ) : filtered.length ? (
-          <div className="emp-staff-list" onWheel={handleEmployeeWheel}>
-            {filtered.map((staff) => {
-              const specialtyIds = normalizeSpecialties(staff.specialties);
-              const mainService = serviceOptions.find((option) => option.id === specialtyIds[0]);
-              const sectionId = cleanText(mainService?.sectionId);
-              const storedDepartment = cleanText(staff.department || staff.title);
-              const department = storedDepartment
-                ? storedDepartment
-                : sectionId
-                  ? toArabicSectionLabel(
-                      sectionId,
-                      sectionOptions.find((section) => section.id === sectionId)?.label || ""
-                    )
-                  : "قسم غير محدد";
-              const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
-              const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
-              const onLeave = !!(staff as any).onLeave && !leaveExpired;
-              const statusLabel = onLeave ? "في إجازة" : staff.active ? "نشطة" : "غير نشطة";
-              const statusClass = onLeave ? "warn" : staff.active ? "on" : "off";
-              const total = bookingStats[staff.id]?.total ?? 0;
-              const confirmed = bookingStats[staff.id]?.byStatus.confirmed ?? 0;
-              const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
-              const kpiLabel = statsLoading ? "..." : `${kpi}%`;
-              const isSelected = selectedEmployeeId === staff.id;
-              const hasServices = specialtyIds.length > 0;
-              const needsCompletion = staff.profileIncomplete || staff.source !== "staff_public";
+        <div>
+          <FontAwesomeIcon icon={faUserCheck} />
+          <span>نشطات</span>
+          <strong>{activeCount}</strong>
+        </div>
+        <div>
+          <FontAwesomeIcon icon={faScissors} />
+          <span>لديهن خدمات</span>
+          <strong>{assignedCount}</strong>
+        </div>
+        <div>
+          <FontAwesomeIcon icon={faUserClock} />
+          <span>تحتاج متابعة</span>
+          <strong>{inactiveCount + incompleteCount}</strong>
+        </div>
+      </div>
 
-              return (
-                <button
-                  key={`${staff.source || "staff"}:${staff.id}`}
-                  type="button"
-                  className={`emp-staff-row ${isSelected ? "is-selected" : ""} ${
-                    hasServices ? "" : "has-no-services"
-                  }`}
-                  onClick={() => onOpenEmployee(staff)}
-                  onWheel={handleEmployeeWheel}
-                >
+      {loading ? (
+        <div className="employees-grid employees-grid--loading" aria-label="جاري تحميل الموظفات">
+          {Array.from({ length: 8 }, (_, index) => (
+            <EmployeeCardSkeleton key={index} index={index} />
+          ))}
+        </div>
+      ) : filtered.length ? (
+        <div className="employees-grid">
+          {filtered.map((staff) => {
+            const specialtyIds = normalizeSpecialties(staff.specialties);
+            const status = statusOf(staff);
+            const department = resolveDepartment(staff, serviceOptions, sectionOptions);
+            const total = bookingStats[staff.id]?.total ?? 0;
+            const confirmed = bookingStats[staff.id]?.byStatus.confirmed ?? 0;
+            const kpi = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+            const kpiLabel = statsLoading ? "..." : `${kpi}%`;
+            const isSelected = selectedEmployeeId === staff.id;
+            const needsCompletion = staff.profileIncomplete || staff.source !== "staff_public";
+            const name = employeeDisplayName(staff);
+            const email = cleanText(staff.email);
+            const phone = cleanText(staff.phone);
+            const shortEmployeeId = formatShortId(staff.employeeId || staff.id);
+
+            return (
+              <button
+                key={`${staff.source || "staff"}:${staff.id}`}
+                type="button"
+                className={`employees-card ${isSelected ? "is-selected" : ""} ${
+                  needsCompletion ? "needs-review" : ""
+                }`}
+                onClick={() => onOpenEmployee(staff)}
+                aria-label={`فتح ملف ${name}`}
+              >
+                <div className="employees-card__top">
                   <EmployeeAvatar
-                    className="emp-staff-avatar"
+                    className="employees-card__avatar"
                     src={staff.avatarUrl}
-                    name={cleanText(staff.name)}
-                    alt={cleanText(staff.name) || "صورة الموظفة"}
+                    name={name}
+                    alt={name}
                   />
+                  <span className={`employees-status employees-status--${status.className}`}>
+                    {status.label}
+                  </span>
+                </div>
 
-                  <div className="emp-staff-main">
-                    <div className="emp-staff-headline">
-                      <b>{cleanText(staff.name) || "موظفة بدون اسم"}</b>
-                      <span className={`staff-pill ${statusClass}`}>{statusLabel}</span>
-                    </div>
-                    <div className="emp-staff-dept">{department}</div>
-                    <div className="emp-staff-meta-row">
-                      <span className={`emp-staff-service-chip ${hasServices ? "is-ready" : "is-empty"}`}>
-                        {hasServices ? `${specialtyIds.length} خدمة` : "بدون خدمات"}
-                      </span>
-                      {needsCompletion ? (
-                        <span className="emp-staff-source-chip">ملف يحتاج إكمال</span>
-                      ) : null}
-                      {staff.employmentSource === "partner" ? (
-                        <span className="emp-staff-source-chip emp-staff-source-chip--partner">
-                          موظف شريك{staff.partnerName ? ` · ${staff.partnerName}` : ""}
-                        </span>
-                      ) : null}
-                    </div>
+                <div className="employees-card__body">
+                  <h3>{name}</h3>
+                  <p>{cleanText(staff.title) || department}</p>
+                  <div className="employees-card__contact">
+                    <span>{email || "لا يوجد بريد"}</span>
+                    <span>{phone || "لا يوجد جوال"}</span>
                   </div>
+                </div>
 
-                  <div className="emp-staff-footer">
-                    <div className="emp-staff-kpi" style={{ "--employee-kpi": `${kpi}%` } as CSSProperties}>
-                      <div className="emp-staff-kpi-ring"><b>{kpiLabel}</b></div>
-                      <span>أداء الشهر</span>
-                    </div>
-                    <span className="emp-staff-open">
-                      <span>عرض الملف</span>
-                      <i><FontAwesomeIcon icon={faArrowLeft} /></i>
+                <div className="employees-card__chips">
+                  <span className={specialtyIds.length ? "is-ready" : "is-empty"}>
+                    {specialtyIds.length ? `${specialtyIds.length} خدمة` : "بدون خدمات"}
+                  </span>
+                  <span className={needsCompletion ? "is-warning" : "is-ready"}>
+                    {sourceLabelOf(staff)}
+                  </span>
+                  {staff.employmentSource === "partner" ? (
+                    <span className="is-partner">
+                      شريك{staff.partnerName ? ` · ${staff.partnerName}` : ""}
                     </span>
+                  ) : null}
+                </div>
+
+                <div className="employees-card__footer">
+                  <div
+                    className="employees-card__kpi"
+                    style={{ "--employees-card-kpi": `${kpi}%` } as CSSProperties}
+                  >
+                    <b>{kpiLabel}</b>
+                    <span>أداء الشهر</span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="emp-list-state emp-list-state--empty">
-            <b>لا توجد موظفات مطابقة للفلاتر الحالية.</b>
-            <span>جرّبي اختيار «كل الموظفات» أو مسح عبارة البحث.</span>
-          </div>
-        )}
-      </div>
-    </>
+                  <div className="employees-card__open">
+                    <span>{shortEmployeeId || "ملف الموظفة"}</span>
+                    <i>
+                      <FontAwesomeIcon icon={faArrowLeft} />
+                    </i>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="employees-empty-state">
+          <strong>لا توجد موظفات مطابقة</strong>
+          <span>غيّري البحث أو أعيدي ضبط الفلاتر لعرض كل الملفات المتاحة لك.</span>
+          <button className="employees-action employees-action--ghost" type="button" onClick={clearFilters}>
+            إعادة ضبط الفلاتر
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

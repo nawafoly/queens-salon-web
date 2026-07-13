@@ -1286,26 +1286,36 @@ export default function AdminHrDashboard() {
 
   if (session.loading) {
     return (
-      <div className="hr-shell madan-admin-shell" dir="rtl">
+      <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees" : ""}`} dir="rtl">
         <aside className="hr-shell-sidebar hr-shell-sidebar--loading">
           <div className="hr-sidebar-header">
             <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
           </div>
         </aside>
 
-        <main className="hr-shell-main">
+        <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
           <DashboardHeader
             theme="admin"
-            title="جاري تحميل لوحة الموارد البشرية..."
+            title={isEmployeesRoute ? "إدارة الموظفات" : "جاري تحميل لوحة الموارد البشرية..."}
             subtitle="Queens Salon"
-            className="hr-shell-header"
+            className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}
             showProfileButton={false}
           />
 
-          <div className="hr-loading-panel">
-            <div className="hr-loading-card" />
-            <div className="hr-loading-card" />
-          </div>
+          {isEmployeesRoute ? (
+            <section className="hr-stage hr-stage--workspace">
+              <div className="hr-workspace-loading" role="status" aria-live="polite">
+                <span className="hr-workspace-loading__spinner" />
+                <strong>جاري فتح إدارة الموظفات...</strong>
+                <small>يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات.</small>
+              </div>
+            </section>
+          ) : (
+            <div className="hr-loading-panel">
+              <div className="hr-loading-card" />
+              <div className="hr-loading-card" />
+            </div>
+          )}
         </main>
       </div>
     );

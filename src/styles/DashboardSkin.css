@@ -28051,6 +28051,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .accounts-chip--state.accounts-chip--inactive,
+.accounts-chip--state.accounts-chip--archived,
 .accounts-chip--state.accounts-chip--gray,
 .accounts-chip--gray {
   background: #eef2f7;
@@ -28058,10 +28059,640 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   color: #64748b;
 }
 
+.accounts-chip--state.accounts-chip--deleted {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
 .accounts-chip--gold {
   background: #fef3c7;
   border-color: #f6c94c;
   color: #8a5b00;
+}
+
+.employee-accounts-v2 {
+  --emp-bg: #f5f7fb;
+  --emp-card: #ffffff;
+  --emp-ink: #17243b;
+  --emp-muted: #64748b;
+  --emp-line: #d8e0ec;
+  --emp-gold: #c99a4a;
+  --emp-gold-soft: #fff7e5;
+  --emp-success: #15803d;
+  --emp-danger: #b42318;
+  background: var(--emp-bg);
+  border: 1px solid #e6edf6;
+  border-radius: 24px;
+  padding: 24px;
+  color: var(--emp-ink);
+}
+
+.employee-accounts-v2__header,
+.employee-profile-v2__hero,
+.employee-directory-v2,
+.employee-profile-v2__panel {
+  background: var(--emp-card);
+  border: 1px solid var(--emp-line);
+  border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.employee-accounts-v2__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  margin-bottom: 18px;
+}
+
+.employee-accounts-v2__eyebrow {
+  display: inline-flex;
+  color: var(--emp-gold);
+  font-weight: 900;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.employee-accounts-v2 h1,
+.employee-profile-v2 h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.25;
+  color: var(--emp-ink);
+}
+
+.employee-accounts-v2 p,
+.employee-profile-v2 p {
+  margin: 8px 0 0;
+  color: var(--emp-muted);
+  line-height: 1.8;
+}
+
+.employee-accounts-v2__actions,
+.employee-profile-v2__heroActions,
+.employee-profile-v2__accountActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.employee-accounts-v2__button {
+  min-height: 40px;
+  border: 1px solid var(--emp-line);
+  background: #fff;
+  color: var(--emp-ink);
+  border-radius: 12px;
+  padding: 0 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-accounts-v2__button--primary {
+  background: var(--emp-ink);
+  border-color: var(--emp-ink);
+  color: #fff;
+}
+
+.employee-accounts-v2__button--ghost {
+  background: #f8fafc;
+}
+
+.employee-accounts-v2__button--danger {
+  color: var(--emp-danger);
+  border-color: #fecaca;
+  background: #fff5f5;
+}
+
+.employee-accounts-v2__button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.employee-accounts-v2__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.employee-accounts-v2__stat {
+  background: var(--emp-card);
+  border: 1px solid var(--emp-line);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.employee-accounts-v2__stat span,
+.employee-directory-v2__head span,
+.employee-profile-v2__facts span,
+.employee-profile-v2__formPreview span,
+.employee-profile-v2__payroll span,
+.employee-profile-v2__documents span {
+  color: var(--emp-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.employee-accounts-v2__stat strong {
+  display: block;
+  margin: 8px 0;
+  font-size: 32px;
+  color: var(--emp-ink);
+}
+
+.employee-accounts-v2__stat small {
+  color: var(--emp-muted);
+  line-height: 1.7;
+}
+
+.employee-directory-v2 {
+  padding: 22px;
+}
+
+.employee-directory-v2__head,
+.employee-profile-v2__panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.employee-directory-v2__head h2,
+.employee-profile-v2__panel h2 {
+  margin: 0;
+  color: var(--emp-ink);
+  font-size: 21px;
+}
+
+.employee-directory-v2__filters {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.employee-directory-v2__search,
+.employee-directory-v2__filterRow label,
+.employee-profile-v2__formPreview label {
+  display: grid;
+  gap: 7px;
+}
+
+.employee-directory-v2 input,
+.employee-directory-v2 select,
+.employee-profile-v2__formPreview input {
+  width: 100%;
+  border: 1px solid var(--emp-line);
+  border-radius: 12px;
+  background: #fff;
+  min-height: 42px;
+  padding: 0 13px;
+  color: var(--emp-ink);
+}
+
+.employee-directory-v2__filterRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.employee-directory-v2__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.employee-mini-card {
+  min-height: 178px;
+  background: #fff;
+  border: 1px solid var(--emp-line);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 13px;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.employee-mini-card:hover,
+.employee-mini-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: #c5d0df;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, .08);
+  outline: none;
+}
+
+.employee-mini-card__media {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #eef2f7;
+}
+
+.employee-mini-card__media > * {
+  width: 100%;
+  height: 100%;
+}
+
+.employee-mini-card__body {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.employee-mini-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.employee-mini-card h3 {
+  margin: 0;
+  color: var(--emp-ink);
+  font-size: 16px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.employee-mini-card p {
+  margin: 4px 0 0;
+  color: var(--emp-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.employee-mini-card__arrow {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--emp-gold-soft);
+  color: #8a5b00;
+  font-size: 24px;
+}
+
+.employee-mini-card__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.employee-status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid #d8e0ec;
+  background: #f8fafc;
+  color: var(--emp-muted);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.employee-status-dot::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.employee-status-dot.is-active {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: var(--emp-success);
+}
+
+.employee-status-dot.is-pending {
+  background: #fff7e5;
+  border-color: #f6d79a;
+  color: #9a6a00;
+}
+
+.employee-status-dot.is-deleted,
+.employee-status-dot.is-inactive {
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: var(--emp-danger);
+}
+
+.employee-status-dot.is-archived {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.employee-mini-card__warning {
+  background: #fff7e5;
+  border: 1px solid #f6d79a;
+  border-radius: 12px;
+  padding: 9px;
+  display: grid;
+  gap: 3px;
+}
+
+.employee-mini-card__warning strong,
+.employee-mini-card__warning small {
+  overflow-wrap: anywhere;
+}
+
+.employee-directory-v2__empty {
+  border: 1px dashed var(--emp-line);
+  border-radius: 16px;
+  padding: 22px;
+  text-align: center;
+  color: var(--emp-muted);
+}
+
+.employee-directory-v2__skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.employee-directory-v2__skeleton {
+  height: 178px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, #eef2f7, #f8fafc, #eef2f7);
+  background-size: 200% 100%;
+  animation: employeeAccountsPulse 1.2s ease infinite;
+}
+
+@keyframes employeeAccountsPulse {
+  to { background-position: -200% 0; }
+}
+
+.employee-profile-v2 {
+  display: grid;
+  gap: 16px;
+}
+
+.employee-profile-v2__back {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--emp-ink);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-profile-v2__hero {
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.employee-profile-v2__identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.employee-profile-v2__avatar {
+  flex: 0 0 86px;
+  width: 86px;
+  height: 86px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #eef2f7;
+}
+
+.employee-profile-v2__avatar > * {
+  width: 100%;
+  height: 100%;
+}
+
+.employee-profile-v2__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.employee-profile-v2__chips > span:not(.employee-status-dot) {
+  border: 1px solid var(--emp-line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--emp-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.employee-profile-v2__tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  scrollbar-width: thin;
+}
+
+.employee-profile-v2__tabs button {
+  flex: 0 0 auto;
+  border: 1px solid var(--emp-line);
+  background: #fff;
+  color: var(--emp-ink);
+  border-radius: 999px;
+  min-height: 38px;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.employee-profile-v2__tabs button:first-child {
+  background: var(--emp-ink);
+  color: #fff;
+  border-color: var(--emp-ink);
+}
+
+.employee-profile-v2__tabs button:disabled {
+  opacity: .5;
+}
+
+.employee-profile-v2__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
+  gap: 16px;
+}
+
+.employee-profile-v2__panel {
+  padding: 20px;
+}
+
+.employee-profile-v2__facts,
+.employee-profile-v2__formPreview,
+.employee-profile-v2__payroll,
+.employee-profile-v2__documents {
+  display: grid;
+  gap: 12px;
+}
+
+.employee-profile-v2__facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.employee-profile-v2__facts div,
+.employee-profile-v2__payroll article,
+.employee-profile-v2__documents article {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 13px;
+}
+
+.employee-profile-v2__facts strong,
+.employee-profile-v2__payroll strong,
+.employee-profile-v2__documents strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--emp-ink);
+  overflow-wrap: anywhere;
+}
+
+.employee-profile-v2__formPreview {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.employee-profile-v2__formPreview input {
+  background: #f8fafc;
+  color: var(--emp-ink);
+}
+
+.employee-profile-v2__accountActions {
+  align-items: stretch;
+}
+
+.employee-profile-v2__technical {
+  margin-top: 14px;
+  border: 1px solid var(--emp-line);
+  border-radius: 14px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.employee-profile-v2__technical summary {
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--emp-ink);
+}
+
+.employee-profile-v2__technical dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.employee-profile-v2__technical dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.employee-profile-v2__payroll {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.employee-profile-v2__documents {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.employee-profile-v2__documents .employee-avatar,
+.employee-profile-v2__documents img {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  margin-top: 10px;
+}
+
+@media (max-width: 1280px) {
+  .employee-directory-v2__grid,
+  .employee-directory-v2__skeletonGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .employee-profile-v2__payroll {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .employee-directory-v2__grid,
+  .employee-directory-v2__skeletonGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .employee-directory-v2__filterRow,
+  .employee-profile-v2__grid,
+  .employee-profile-v2__facts,
+  .employee-profile-v2__formPreview,
+  .employee-profile-v2__documents {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-v2__hero,
+  .employee-accounts-v2__header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .employee-accounts-v2 {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 14px;
+    margin-inline: -12px;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .employee-accounts-v2__stats,
+  .employee-directory-v2__grid,
+  .employee-directory-v2__skeletonGrid,
+  .employee-profile-v2__payroll {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-mini-card {
+    min-height: 150px;
+  }
+
+  .employee-profile-v2__identity {
+    align-items: flex-start;
+  }
+
+  .employee-profile-v2__avatar {
+    width: 68px;
+    height: 68px;
+    flex-basis: 68px;
+    border-radius: 18px;
+  }
+
+  .employee-accounts-v2 h1,
+  .employee-profile-v2 h1 {
+    font-size: 24px;
+  }
+
+  .employee-profile-v2__heroActions,
+  .employee-profile-v2__accountActions,
+  .employee-accounts-v2__actions {
+    width: 100%;
+  }
+
+  .employee-accounts-v2__button {
+    flex: 1 1 100%;
+  }
 }
 
 .accounts-chip--blue {

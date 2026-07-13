@@ -17,7 +17,6 @@ export async function archiveEmployee(input: ArchiveEmployeeInput) {
   const employeeId = clean(input.employeeId);
   if (!employeeId) throw new Error("معرّف الموظفة مفقود؛ لم تتم الأرشفة.");
 
-  const uids = Array.from(new Set((input.linkedUids || []).map(clean).filter(Boolean)));
   const archivedPatch = {
     active: false,
     isActive: false,
@@ -35,9 +34,5 @@ export async function archiveEmployee(input: ArchiveEmployeeInput) {
   const batch = writeBatch(db);
   batch.set(doc(db, "salons", SALON_ID, "staff_public", employeeId), archivedPatch, { merge: true });
   batch.set(doc(db, "salons", SALON_ID, "employees", employeeId), archivedPatch, { merge: true });
-  for (const uid of uids) {
-    batch.set(doc(db, "salons", SALON_ID, "users", uid), archivedPatch, { merge: true });
-    batch.set(doc(db, "salons", SALON_ID, "admin_users", uid), archivedPatch, { merge: true });
-  }
   await batch.commit();
 }

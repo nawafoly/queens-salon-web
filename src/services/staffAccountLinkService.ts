@@ -459,25 +459,10 @@ export async function repairLegacyStaffUserLinks() {
       userPatch.role = cleanText(staff.role);
     }
 
+    // Account management repairs must not mutate staff_public/employees.
+    // The employee file remains owned by /admin/employees.
     if (Object.keys(staffPatch).length) {
-      batch.set(
-        doc(db, ...STAFF_PUBLIC_COLLECTION, cleanStaffId),
-        { ...staffPatch, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-
-      batch.set(
-        doc(db, ...EMPLOYEES_COLLECTION, cleanStaffId),
-        {
-          ...staffPatch,
-          ...(staffPatch.active !== undefined ? { isActive: staffPatch.active } : {}),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      patchedStaff += 1;
-      writes += 2;
+      patchedStaff += 0;
     }
 
     if (Object.keys(userPatch).length) {
@@ -491,7 +476,7 @@ export async function repairLegacyStaffUserLinks() {
       writes += 1;
     }
 
-    if (Object.keys(staffPatch).length || Object.keys(userPatch).length) {
+    if (Object.keys(userPatch).length) {
       linkedPairs += 1;
       usedUserUids.add(cleanUid);
     }

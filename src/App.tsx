@@ -69,6 +69,32 @@ function isPendingRole(role: UiRole) {
   return role === "pending";
 }
 
+type LiveAccountState = "active" | "pending" | "disabled" | "archived" | "deleted";
+
+function resolveLiveAccountState(
+  profile: Record<string, unknown> | null | undefined,
+  role: UiRole,
+  active: boolean
+): LiveAccountState {
+  const employmentStatus = String(profile?.employmentStatus || "").trim().toLowerCase();
+  if (profile?.deleted === true || Boolean(profile?.deletedAt) || employmentStatus === "deleted") {
+    return "deleted";
+  }
+  if (profile?.archived === true || profile?.removedFromStaff === true || employmentStatus === "archived") {
+    return "archived";
+  }
+  if (role === "pending") return "pending";
+  if (!active && isInternalAuthRole(role)) return "disabled";
+  return "active";
+}
+
+function isBlockedInternalAccount(role: UiRole, accountState: LiveAccountState) {
+  return (
+    isInternalAuthRole(role) &&
+    (accountState === "disabled" || accountState === "archived" || accountState === "deleted")
+  );
+}
+
 function getNameFromStorage(): string {
   try {
     const p = JSON.parse(localStorage.getItem("user_profile_v1") || "null");
@@ -246,6 +272,7 @@ const App: React.FC = () => {
     const session = readStoredAuthSession();
     return isLegacyClientSession(session);
   });
+  const [accountState, setAccountState] = useState<LiveAccountState>("active");
 
   const location = useLocation();
   const permissionSource = useMemo(
@@ -291,6 +318,7 @@ const App: React.FC = () => {
   const isInDashboard =
     location.pathname.startsWith("/dashboard") ||
     location.pathname.startsWith("/dashboard-pending") ||
+    location.pathname.startsWith("/account-disabled") ||
     location.pathname.startsWith("/hr") ||
     location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/employee") ||
@@ -321,6 +349,7 @@ const App: React.FC = () => {
       setUserRole("client");
       setUserName(currentSession?.displayName || getNameFromStorage());
       setUserActive(true);
+      setAccountState("active");
     }
   }, []);
 
@@ -349,12 +378,14 @@ const App: React.FC = () => {
           setUserRole("client");
           setUserName(currentSession?.displayName || getNameFromStorage());
           setUserActive(true);
+          setAccountState("active");
         } else {
           if (currentSession) clearStoredAuthSession();
           setStoredSession(null);
           setUserRole("guest");
           setUserName("");
           setUserActive(false);
+          setAccountState("active");
         }
 
         setAuthReady(true);
@@ -374,14 +405,15 @@ const App: React.FC = () => {
             setUserRole("guest");
             setUserName(user.displayName || "");
             setUserActive(false);
+            setAccountState("active");
             setAuthReady(true);
             return;
           }
 
           const data = snap.data() as Record<string, unknown>;
-          const active = data?.active !== false;
-          let liveRole = normalizeAuthRole(data?.role);
-          if (!active && isInternalAuthRole(liveRole)) liveRole = "pending";
+          const active = data?.active !== false && data?.isActive !== false;
+          const liveRole = normalizeAuthRole(data?.role);
+          const liveAccountState = resolveLiveAccountState(data, liveRole, active);
 
           const liveName = String(
             data?.displayName || data?.name || user.displayName || ""
@@ -390,6 +422,7 @@ const App: React.FC = () => {
           setUserRole(liveRole);
           setUserName(liveName);
           setUserActive(active);
+          setAccountState(liveAccountState);
 
           writeLiveAuthCache({
             uid: user.uid,
@@ -410,6 +443,7 @@ const App: React.FC = () => {
           setUserRole("guest");
           setUserName(user.displayName || "");
           setUserActive(false);
+          setAccountState("active");
           setAuthReady(true);
         }
       );
@@ -440,6 +474,7 @@ const App: React.FC = () => {
         setUserRole("client");
         setUserName(currentSession?.displayName || getNameFromStorage());
         setUserActive(true);
+        setAccountState("active");
       }
     };
 
@@ -458,6 +493,7 @@ const App: React.FC = () => {
     if (!authUser) return <Navigate to="/hr" replace />;
 
     const role = userRole;
+    if (isBlockedInternalAccount(role, accountState)) return <Navigate to="/account-disabled" replace />;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (hasPermission("workspace.dashboard.view")) return children;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
@@ -474,6 +510,7 @@ const App: React.FC = () => {
     if (!authUser) return <Navigate to="/hr" replace />;
 
     const role = userRole;
+    if (isBlockedInternalAccount(role, accountState)) return <Navigate to="/account-disabled" replace />;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (
       hasAnyPermission([
@@ -501,6 +538,7 @@ const App: React.FC = () => {
     if (!authUser) return <Navigate to="/hr" replace />;
 
     const role = userRole;
+    if (isBlockedInternalAccount(role, accountState)) return <Navigate to="/account-disabled" replace />;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (hasPermission("workspace.employee_portal.view")) return children;
     if (isClientRole(role)) return <Navigate to="/client" replace />;
@@ -521,6 +559,7 @@ const App: React.FC = () => {
 
     const role = userRole;
     if (isClientRole(role) && userActive) return children;
+    if (isBlockedInternalAccount(role, accountState)) return <Navigate to="/account-disabled" replace />;
     if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (isInternalAuthRole(role)) {
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
@@ -535,7 +574,24 @@ const App: React.FC = () => {
     if (!authUser) return <Navigate to="/hr" replace />;
 
     const role = userRole;
+    if (isBlockedInternalAccount(role, accountState)) return <Navigate to="/account-disabled" replace />;
     if (isPendingRole(role)) return children;
+    if (isInternalAuthRole(role)) {
+      return <Navigate to={resolveDashboardLandingPath(role)} replace />;
+    }
+    if (isClientRole(role)) return <Navigate to="/client" replace />;
+    return <Navigate to="/hr" replace />;
+  };
+
+  const renderDisabledAccountRoute = (children: React.ReactElement) => {
+    if (!authReady || !firebaseAuthReady) {
+      return <LoadingBrand text="جاري تجهيز مساحة العمل..." />;
+    }
+    if (!authUser) return <Navigate to="/hr" replace />;
+
+    const role = userRole;
+    if (isBlockedInternalAccount(role, accountState)) return children;
+    if (isPendingRole(role)) return <Navigate to="/dashboard-pending" replace />;
     if (isInternalAuthRole(role)) {
       return <Navigate to={resolveDashboardLandingPath(role)} replace />;
     }
@@ -642,6 +698,18 @@ const App: React.FC = () => {
         <Route
           path="/track/:trackId"
           element={IS_STAFF_APP ? <Navigate to="/hr" replace /> : <Track />}
+        />
+
+        {/* Disabled account */}
+        <Route
+          path="/account-disabled"
+          element={
+            IS_CUSTOMER_APP ? (
+              <Navigate to="/login" replace />
+            ) : (
+              renderDisabledAccountRoute(<DashboardPending mode="disabled" />)
+            )
+          }
         />
 
         {/* Pending */}

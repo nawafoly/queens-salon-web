@@ -11,12 +11,21 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 const SALON_ID = "main";
 const USERS_COL = ["salons", SALON_ID, "users"] as const;
 
-type AdminRole = "owner" | "admin" | "reception" | "staff" | "pending";
+type AdminRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending";
+type PendingPageMode = "pending" | "disabled";
 
 function normalizeAdminRole(raw: any): AdminRole {
   const r = String(raw || "").toLowerCase().trim();
   if (r === "owner") return "owner";
   if (r === "admin" || r === "administrator") return "admin";
+  if (
+    r === "hr" ||
+    r === "human resources" ||
+    r === "humanresources" ||
+    r === "human_resources" ||
+    r === "human-resources"
+  )
+    return "hr";
   if (
     r === "reception" ||
     r === "receptionist" ||
@@ -28,10 +37,30 @@ function normalizeAdminRole(raw: any): AdminRole {
   return "pending";
 }
 
-export default function DashboardPending() {
+function getBlockedStatus(data: any, role: AdminRole) {
+  const employmentStatus = String(data?.employmentStatus || "").trim().toLowerCase();
+  if (data?.deleted === true || Boolean(data?.deletedAt) || employmentStatus === "deleted") {
+    return "deleted" as const;
+  }
+  if (data?.archived === true || data?.removedFromStaff === true || employmentStatus === "archived") {
+    return "archived" as const;
+  }
+  if (role === "pending") return "active" as const;
+  const active = data?.active !== false && data?.isActive !== false;
+  return active ? "active" as const : "disabled" as const;
+}
+
+type DashboardPendingProps = {
+  mode?: PendingPageMode;
+};
+
+export default function DashboardPending({ mode = "pending" }: DashboardPendingProps) {
   const navigate = useNavigate();
+  const isDisabledMode = mode === "disabled";
   const [statusText, setStatusText] = useState<string>(
-    "بانتظار تفعيل الحساب من الإدارة...",
+    isDisabledMode
+      ? "حساب الدخول غير مفعل حاليًا. راجع إدارة الحسابات لإعادة تفعيله."
+      : "بانتظار تفعيل الحساب من الإدارة...",
   );
 
   useEffect(() => {
@@ -60,12 +89,32 @@ export default function DashboardPending() {
           }
 
           const data: any = snap.data();
-          const active = data?.active !== false;
-          const role: AdminRole = active
-            ? normalizeAdminRole(data?.role)
-            : "pending";
+          const active = data?.active !== false && data?.isActive !== false;
+          const role: AdminRole = normalizeAdminRole(data?.role);
+          const blockedStatus = getBlockedStatus(data, role);
 
-          if (role !== "pending") {
+          if (blockedStatus !== "active") {
+            if (!isDisabledMode) {
+              navigate("/account-disabled", { replace: true });
+              return;
+            }
+
+            const reason =
+              blockedStatus === "deleted"
+                ? "تم حذف حساب الدخول منطقيًا من إدارة الحسابات."
+                : blockedStatus === "archived"
+                  ? "حساب الدخول مؤرشف أو مربوط بحالة إزالة قديمة."
+                  : "حساب الدخول معطل حاليًا.";
+            setStatusText(`${reason} لا يتم التعامل مع هذه الحالة كحساب بانتظار التفعيل.`);
+            return;
+          }
+
+          if (isDisabledMode && role === "pending") {
+            navigate("/dashboard-pending", { replace: true });
+            return;
+          }
+
+          if (role !== "pending" && active) {
             localStorage.setItem("userRole", role);
 
             try {
@@ -133,7 +182,7 @@ export default function DashboardPending() {
         // ignore
       }
     };
-  }, [navigate]);
+  }, [isDisabledMode, navigate]);
 
   return (
     <main className="madan-pending-page" dir="rtl">
@@ -144,7 +193,9 @@ export default function DashboardPending() {
         </div>
 
         <div className="madan-pending-kicker">Queens Salon · إدارة الحسابات</div>
-        <h1 className="madan-pending-title">حسابك بانتظار التفعيل</h1>
+        <h1 className="madan-pending-title">
+          {isDisabledMode ? "حساب الدخول غير مفعل" : "حسابك بانتظار التفعيل"}
+        </h1>
         <p className="madan-pending-text">{statusText}</p>
 
         <div className="madan-pending-progress" aria-hidden="true">
@@ -154,7 +205,9 @@ export default function DashboardPending() {
         </div>
 
         <div className="madan-pending-note">
-          سيتم تحويلك تلقائيًا إلى لوحة التحكم فور اعتماد الحساب.
+          {isDisabledMode
+            ? "هذه الحالة تُدار من صفحة إدارة الحسابات، وليست طلب تفعيل جديد."
+            : "سيتم تحويلك تلقائيًا إلى لوحة التحكم فور اعتماد الحساب."}
         </div>
 
         <div className="madan-pending-actions">

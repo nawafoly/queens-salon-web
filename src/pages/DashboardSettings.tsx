@@ -639,7 +639,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 element={<PermissionRoute permission="catalog.manage"><SettingsCatalog hasAdminPower={hasPermission("catalog.manage")} /></PermissionRoute>}
               />
               <Route
-                path="users"
+                path="users/*"
                 element={
                   <PermissionRoute anyOf={["admin_accounts.view", "admin_accounts.manage"]}>
                     <SettingsUsers

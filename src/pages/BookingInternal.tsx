@@ -33,8 +33,11 @@ import {
 import {
   addDaysISO,
   buildHijriMonthDays,
+  combineSelectedDateAndTime,
   findHijriMonthStartISO,
   formatDateByCalendar,
+  getSalonDateTimeParts,
+  isPastSalonAppointmentTime,
   normalizeIsoDate,
   readBookingHourOverrides,
   resolveWeekdayFromISO,
@@ -136,7 +139,6 @@ import {
   DEFAULT_SERVICE_DURATION_MIN,
   PACKAGE_SECTION_ID,
   PACKAGE_SECTION_TITLE,
-  ALLOW_OVERTIME_MIN,
   HOME_SERVICE_MIN_TOTAL_SAR,
 } from "../helpers/bookingSharedConstants";
 import {
@@ -144,6 +146,7 @@ import {
   filterStaffSlotsByWorkingHours,
   isStaffWorkingAtTime,
   isStaffOperationallyActiveForDate,
+  resolveStaffWorkingWindowsForDate,
 } from "../helpers/staffAvailability";
 import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
@@ -396,6 +399,104 @@ function makeLocalId() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+const INTERNAL_ALLOW_OVERTIME_MIN = 0;
+
+function isTimeInsideWindowRange(time24: string, start24: string, end24: string) {
+  const t = toMinutes(time24);
+  const s = toMinutes(start24);
+  const e = toMinutes(end24);
+  if (s === e) return false;
+  if (s < e) return t >= s && t < e;
+  return t >= s || t < e;
+}
+
+function sortSlotsByBaseOrder<T extends { value24: string }>(slots: T[], baseSlots: T[]) {
+  const order = new Map<string, number>();
+  baseSlots.forEach((slot, idx) => {
+    const key = String(slot.value24 || "").trim();
+    if (key && !order.has(key)) order.set(key, idx);
+  });
+  return [...slots].sort(
+    (a, b) =>
+      (order.get(String(a.value24 || "").trim()) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(String(b.value24 || "").trim()) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function removePastStartsForToday<T extends { value24: string }>(
+  dateISO: string,
+  slots: T[],
+  nowParts: ReturnType<typeof getSalonDateTimeParts>
+) {
+  return (slots || []).filter(
+    (slot) => !isPastSalonAppointmentTime(dateISO, String(slot.value24 || "").trim(), nowParts)
+  );
+}
+
+function buildPastStartReasonBySlot<T extends { value24: string }>(
+  dateISO: string,
+  slots: T[],
+  nowParts: ReturnType<typeof getSalonDateTimeParts>
+) {
+  const out: Record<string, string> = {};
+  for (const slot of slots || []) {
+    const value = String(slot.value24 || "").trim();
+    if (!value) continue;
+    if (isPastSalonAppointmentTime(dateISO, value, nowParts)) {
+      out[value] = "وقت مضى ولا يمكن حجزه.";
+    }
+  }
+  return out;
+}
+
+function filterStaffBookableStartSlots(
+  staff: StaffPublicWithId,
+  args: {
+    dateISO: string;
+    slots: TimeSlot[];
+    fallbackOpenTime: string;
+    fallbackCloseTime: string;
+    durationMin: number;
+    bufferMin: number;
+    nowParts: ReturnType<typeof getSalonDateTimeParts>;
+  }
+) {
+  const windows = resolveStaffWorkingWindowsForDate(staff as any, {
+    dateISO: args.dateISO,
+    fallbackOpenTime: args.fallbackOpenTime,
+    fallbackCloseTime: args.fallbackCloseTime,
+  });
+  if (!windows.length) return [] as TimeSlot[];
+
+  const byValue = new Map<string, TimeSlot>();
+  for (const window of windows) {
+    const windowSlots = (args.slots || []).filter((slot) =>
+      isTimeInsideWindowRange(
+        String(slot.value24 || "").trim(),
+        String(window.start || "").trim(),
+        String(window.end || "").trim()
+      )
+    );
+    const allowedInWindow = filterSlotsByServiceEnd(
+      windowSlots,
+      String(window.end || "").trim(),
+      Math.max(1, Number(args.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
+      Math.max(0, Number(args.bufferMin || 0)),
+      INTERNAL_ALLOW_OVERTIME_MIN
+    );
+    for (const slot of allowedInWindow) {
+      const value = String(slot.value24 || "").trim();
+      if (value && !byValue.has(value)) byValue.set(value, slot);
+    }
+  }
+
+  return removePastStartsForToday(
+    args.dateISO,
+    sortSlotsByBaseOrder(Array.from(byValue.values()), args.slots),
+    args.nowParts
+  );
+}
+
 type BusyState = {
   busyTimes: Set<string>;
   disabledStartTimes: Set<string>;
@@ -437,6 +538,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const sequentialBooking = !!(booking as any)?.sequentialBooking;
   // ✅ الاستقبال يختار التاريخ أول
   const [bookingDate, setBookingDate] = useState<string>(() => todayISO());
+  const [salonClockTick, setSalonClockTick] = useState(() => Date.now());
+  const salonNow = useMemo(
+    () => getSalonDateTimeParts(new Date(salonClockTick)),
+    [salonClockTick]
+  );
   const allowPastBookingDate = !!internalMode;
   const [bookingDateCalendar, setBookingDateCalendar] = useState<DateCalendar>("gregory");
   const [hijriPickerOpen, setHijriPickerOpen] = useState(false);
@@ -449,6 +555,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, [bookingDate, bookingDateCalendar]);
   const hijriMonthTitle = useMemo(() => toHijriMonthYearLabel(hijriViewMonthISO), [hijriViewMonthISO]);
   const hijriMonthDays = useMemo(() => buildHijriMonthDays(hijriViewMonthISO), [hijriViewMonthISO]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSalonClockTick(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!hijriPickerOpen) return;
@@ -546,6 +657,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     setTimeSlots(generateSalonTimeSlots(openTime, closeTime, slotStepMin));
   }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
+
+  function getBookingSlotsForDate(dateISO?: string) {
+    const targetDate = normalizeIsoDate(dateISO) || todayISO();
+    const daySettings = getDaySettingsForDate(targetDate);
+    const dayOpenTime = safeTimeHHMM(daySettings.openTime, "10:00");
+    const dayCloseTime = safeTimeHHMM(daySettings.closeTime, "22:00");
+    return {
+      dateISO: targetDate,
+      daySettings,
+      openTime: dayOpenTime,
+      closeTime: dayCloseTime,
+      slots: daySettings.enabled
+        ? generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin)
+        : ([] as TimeSlot[]),
+    };
+  }
 
   useEffect(() => {
     const unsub = AppSettingsService.subscribe((remote: any) => {
@@ -1453,6 +1580,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       target?.durationMin ||
       DEFAULT_SERVICE_DURATION_MIN
     );
+    const selectionDaySlots = getBookingSlotsForDate(dateISO).slots;
 
     let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
     if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
@@ -1507,7 +1635,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             targetItemId,
             empKey,
             dateISO,
-            timeSlots,
+            selectionDaySlots,
             slotStepMin,
             bufferMin,
             DEFAULT_SERVICE_DURATION_MIN,
@@ -1545,7 +1673,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           targetItemId,
           chosenKey,
           dateISO,
-          timeSlots,
+          selectionDaySlots,
           slotStepMin,
           bufferMin,
           DEFAULT_SERVICE_DURATION_MIN,
@@ -1721,13 +1849,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setFutureLoading(true);
     try {
       const results: { date: string; times: string[]; note?: string; contributors?: string[] }[] = [];
-      const baseSlots =
-        timeSlots.length > 0
-          ? timeSlots
-          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
-
       for (let i = 0; i < scanDays; i++) {
         const dateISO = addDaysISO(startISO, i);
+        const daySlotsForSearch = getBookingSlotsForDate(dateISO).slots;
+        if (!daySlotsForSearch.length) continue;
         let dayTimes: string[] = [];
         let dayNote = "";
 
@@ -1751,7 +1876,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 targetItemId,
                 fixedEmployeeKey,
                 dateISO,
-                timeSlots,
+                daySlotsForSearch,
                 slotStepMin,
                 bufferMin,
                 DEFAULT_SERVICE_DURATION_MIN,
@@ -1796,7 +1921,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 targetItemId,
                 empKey,
                 dateISO,
-                timeSlots,
+                daySlotsForSearch,
                 slotStepMin,
                 bufferMin,
                 DEFAULT_SERVICE_DURATION_MIN,
@@ -1828,7 +1953,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             }
           }
 
-          dayTimes = sortTimesBySlotOrder(Array.from(merged.values()), baseSlots).slice(0, 5);
+          dayTimes = sortTimesBySlotOrder(Array.from(merged.values()), daySlotsForSearch).slice(0, 5);
 
           if (dayTimes.length) {
             const visibleContributors = new Set<string>();
@@ -2437,7 +2562,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // Helper: تعارض داخل السلة
   // =========================
   function isCartItemStaffAvailable(it: CartItem) {
-    const date = String(it?.date || "").trim();
+    const date = String(it?.date || bookingDate || "").trim();
     if (!date) return true;
 
     const serviceId = String(it?.serviceId || "").trim();
@@ -4051,16 +4176,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   function resolveBookableStartTimes(args: {
     allSlots: TimeSlot[];
+    candidateSlots?: TimeSlot[];
+    closeTimeForDate: string;
     durationMin: number;
     takenAll: Set<string>;
   }) {
     const normalizedDuration = Number(args.durationMin || DEFAULT_SERVICE_DURATION_MIN);
     const slotsForThisService = filterSlotsByServiceEnd(
-      args.allSlots,
-      closeTime,
+      args.candidateSlots || args.allSlots,
+      args.closeTimeForDate,
       normalizedDuration,
       bufferMin,
-      ALLOW_OVERTIME_MIN
+      INTERNAL_ALLOW_OVERTIME_MIN
     );
     if (!slotsForThisService.length) return [] as string[];
 
@@ -4105,10 +4232,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       staff,
     } = args;
 
-    const baseSlots =
-      timeSlots.length > 0
-        ? timeSlots
-        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const daySlots = getBookingSlotsForDate(dateISO);
+    const baseSlots = daySlots.slots;
     if (!baseSlots.length) return [];
 
     const takenFs = await collectTakenTimesForEmployeeDay({
@@ -4122,18 +4247,41 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const takenAll = new Set<string>(takenFs);
     (localTakenTimes || new Set<string>()).forEach((t) => takenAll.add(t));
 
-    const staffScopedSlots = staff
+    const staffTimelineSlots = staff
       ? filterStaffSlotsByWorkingHours(staff as any, {
           dateISO,
           slots: baseSlots,
-          fallbackOpenTime: openTime,
-          fallbackCloseTime: closeTime,
+          fallbackOpenTime: daySlots.openTime,
+          fallbackCloseTime: daySlots.closeTime,
         })
       : baseSlots;
-    if (!staffScopedSlots.length) return [];
+    const candidateStartSlots = staff
+      ? filterStaffBookableStartSlots(staff as any, {
+          dateISO,
+          slots: baseSlots,
+          fallbackOpenTime: daySlots.openTime,
+          fallbackCloseTime: daySlots.closeTime,
+          durationMin: Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
+          bufferMin,
+          nowParts: salonNow,
+        })
+      : removePastStartsForToday(
+          dateISO,
+          filterSlotsByServiceEnd(
+            baseSlots,
+            daySlots.closeTime,
+            Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
+            bufferMin,
+            INTERNAL_ALLOW_OVERTIME_MIN
+          ),
+          salonNow
+        );
+    if (!staffTimelineSlots.length || !candidateStartSlots.length) return [];
 
     const list = resolveBookableStartTimes({
-      allSlots: staffScopedSlots,
+      allSlots: staffTimelineSlots,
+      candidateSlots: candidateStartSlots,
+      closeTimeForDate: daySlots.closeTime,
       durationMin: Number(durationMin || DEFAULT_SERVICE_DURATION_MIN),
       takenAll,
     });
@@ -4149,10 +4297,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     async function loadBusyForItems() {
       const items = formData.items || [];
-      const baseSlots =
-        timeSlots.length > 0
-          ? timeSlots
-          : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
 
       const takenFsCache = new Map<string, Promise<Set<string>>>();
       const bookedMetaCache = new Map<string, Promise<Record<string, string>>>();
@@ -4199,7 +4343,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
         const itemId = it.id;
         const employeeId = String(it.employeeId || "").trim();
-        const date = String(it.date || "").trim();
+        const date = String(it.date || bookingDate || "").trim();
+        const daySlots = getBookingSlotsForDate(date);
+        const baseSlots = daySlots.slots;
         const queryKey = `${employeeId}__${date}`;
 
         if (!employeeId || !date) {
@@ -4264,7 +4410,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             itemId,
             empKey,
             date,
-            timeSlots,
+            baseSlots,
             slotStepMin,
             bufferMin,
             DEFAULT_SERVICE_DURATION_MIN,
@@ -4286,34 +4432,56 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           const selectedStaff = staffListForService.find(
             (st) => String((st as any)?.id || "").trim() === employeeId
           );
-          const staffScopedSlots = selectedStaff
+          const staffWorkingSlots = selectedStaff
             ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
                 dateISO: date,
                 slots: baseSlots,
-                fallbackOpenTime: openTime,
-                fallbackCloseTime: closeTime,
+                fallbackOpenTime: daySlots.openTime,
+                fallbackCloseTime: daySlots.closeTime,
               })
             : baseSlots;
-          const staffScopedSet = new Set(staffScopedSlots.map((s) => s.value24));
+          const staffScopedSet = new Set(staffWorkingSlots.map((s) => s.value24));
 
-          const slotsForThisService = filterSlotsByServiceEnd(
-            staffScopedSlots,
-            closeTime,
-            durationMin,
-            bufferMin,
-            ALLOW_OVERTIME_MIN
-          );
+          const slotsForThisService = selectedStaff
+            ? filterStaffBookableStartSlots(selectedStaff as any, {
+                dateISO: date,
+                slots: baseSlots,
+                fallbackOpenTime: daySlots.openTime,
+                fallbackCloseTime: daySlots.closeTime,
+                durationMin,
+                bufferMin,
+                nowParts: salonNow,
+              })
+            : removePastStartsForToday(
+                date,
+                filterSlotsByServiceEnd(
+                  baseSlots,
+                  daySlots.closeTime,
+                  durationMin,
+                  bufferMin,
+                  INTERNAL_ALLOW_OVERTIME_MIN
+                ),
+                salonNow
+              );
           const allowedByEndSet = new Set<string>(
             slotsForThisService.map((s) => s.value24)
           );
           const availableStarts = resolveBookableStartTimes({
-            allSlots: staffScopedSlots,
+            allSlots: staffWorkingSlots,
+            candidateSlots: slotsForThisService,
+            closeTimeForDate: daySlots.closeTime,
             durationMin,
             takenAll,
           });
           const availableSet = new Set<string>(availableStarts);
+          const pastReasonByStart = buildPastStartReasonBySlot(date, baseSlots, salonNow);
           baseSlots.forEach((s) => {
             const start = s.value24;
+            if (pastReasonByStart[start]) {
+              disabled.add(start);
+              disabledReasonByStart[start] = pastReasonByStart[start];
+              return;
+            }
             if (!staffScopedSet.has(start)) {
               disabled.add(start);
               disabledReasonByStart[start] = "خارج ساعات عمل الموظفة.";
@@ -4330,7 +4498,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             disabled.add(start);
 
             const needed = getTimesToLock(
-              staffScopedSlots,
+              baseSlots,
               slotStepMin,
               start,
               durationMin,
@@ -4392,7 +4560,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               if (!start) return;
 
               const locked = getTimesToLock(
-                timeSlots,
+                baseSlots,
                 slotStepMin,
                 start,
                 Number(other.durationMin || 0),
@@ -4488,7 +4656,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.items, sequentialBooking, timeSlots, slotStepMin, bufferMin, openTime, closeTime, staffByService]);
+  }, [formData.items, sequentialBooking, timeSlots, slotStepMin, bufferMin, openTime, closeTime, staffByService, salonNow]);
 
   // =========================
   // Handlers
@@ -4798,14 +4966,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   }, [discountApplicableIdx, formData.items]);
 
   const finalPrice = useMemo(() => applied.finalPrice, [applied.finalPrice]);
-  const baseSlotsForUi = useMemo(
-    () =>
-      timeSlots.length > 0
-        ? timeSlots
-        : generateSalonTimeSlots(openTime, closeTime, slotStepMin),
-    [timeSlots, openTime, closeTime, slotStepMin]
-  );
-
   const setManualDiscountMode = (next: "" | "fixed" | "percent") => {
     setSelectedOfferId("");
     setManualDiscountType(next);
@@ -4828,9 +4988,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
     const employeeIdFallback = String(it.employeeId || "").trim();
-    const date = String(it.date || "").trim();
+    const date = String(it.date || bookingDate || "").trim();
     const time = String(it.time || "").trim();
     if (!employeeKey || !date || !time) return { ok: false, msg: "بيانات الوقت ناقصة" };
+    const appointmentDateTime = combineSelectedDateAndTime(date, time);
+    if (!appointmentDateTime) return { ok: false, msg: "بيانات الوقت ناقصة" };
+    if (isPastSalonAppointmentTime(date, time, salonNow)) {
+      return { ok: false, msg: "الوقت المختار مضى. اختاري وقتًا مستقبليًا." };
+    }
+    const daySlots = getBookingSlotsForDate(date);
+    if (!daySlots.daySettings.enabled) {
+      return { ok: false, msg: "اليوم المختار مغلق للحجوزات." };
+    }
     if (!isCartItemStaffAvailable(it)) {
       return { ok: false, msg: "الموظفة غير متاحة في هذا اليوم." };
     }
@@ -4841,37 +5010,37 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       !isStaffWorkingAtTime(staff as any, {
         dateISO: date,
         time24: time,
-        fallbackOpenTime: openTime,
-        fallbackCloseTime: closeTime,
+        fallbackOpenTime: daySlots.openTime,
+        fallbackCloseTime: daySlots.closeTime,
       })
     ) {
       return { ok: false, msg: "الوقت المختار خارج ساعات عمل الموظفة في هذا اليوم." };
     }
-    const baseSlots =
-      timeSlots.length > 0
-        ? timeSlots
-        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const baseSlots = daySlots.slots;
     const durationMin = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
     const allowedStarts = filterSlotsByServiceEnd(
       baseSlots,
-      closeTime,
+      daySlots.closeTime,
       durationMin,
       bufferMin,
-      ALLOW_OVERTIME_MIN
+      INTERNAL_ALLOW_OVERTIME_MIN
     );
     const allowedStartsByStaff = staff
-      ? filterStaffSlotsByWorkingHours(staff as any, {
+      ? filterStaffBookableStartSlots(staff as any, {
           dateISO: date,
-          slots: allowedStarts,
-          fallbackOpenTime: openTime,
-          fallbackCloseTime: closeTime,
+          slots: baseSlots,
+          fallbackOpenTime: daySlots.openTime,
+          fallbackCloseTime: daySlots.closeTime,
+          durationMin,
+          bufferMin,
+          nowParts: salonNow,
         })
-      : allowedStarts;
+      : removePastStartsForToday(date, allowedStarts, salonNow);
     const isStartAllowed = allowedStartsByStaff.some((s) => s.value24 === time);
     if (!isStartAllowed) {
       return {
         ok: false,
-        msg: "هذا الوقت لا يكفي مدة الخدمة مع البافر ضمن حدود دوام الصالون.",
+        msg: "هذا الوقت لا يكفي مدة الخدمة مع البافر ضمن حدود الدوام.",
       };
     }
 
@@ -4930,9 +5099,32 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
     const employeeKey = resolveEmployeeKey(temp);
     const employeeIdFallback = String(temp.employeeId || "").trim();
-    const date = String(temp.date || "").trim();
+    const date = String(temp.date || bookingDate || "").trim();
     const time = String(temp.time || "").trim();
     if (!employeeKey || !date || !time) return;
+    const appointmentDateTime = combineSelectedDateAndTime(date, time);
+    if (!appointmentDateTime) return;
+    if (isPastSalonAppointmentTime(date, time, salonNow)) {
+      openModal({
+        title: "وقت مضى",
+        message: "الوقت المختار مضى. اختاري وقتًا مستقبليًا.",
+        variant: "danger",
+        confirmText: "تمام",
+      });
+      updateItem(itemId, { time: "", locked: false });
+      return;
+    }
+    const daySlots = getBookingSlotsForDate(date);
+    if (!daySlots.daySettings.enabled) {
+      openModal({
+        title: "اليوم مغلق",
+        message: "اليوم المختار مغلق للحجوزات.",
+        variant: "danger",
+        confirmText: "تمام",
+      });
+      updateItem(itemId, { time: "", locked: false });
+      return;
+    }
     if (!isCartItemStaffAvailable(temp)) {
       openModal({
         title: "الموظفة غير متاحة",
@@ -4952,8 +5144,8 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       !isStaffWorkingAtTime(staff as any, {
         dateISO: date,
         time24: time,
-        fallbackOpenTime: openTime,
-        fallbackCloseTime: closeTime,
+        fallbackOpenTime: daySlots.openTime,
+        fallbackCloseTime: daySlots.closeTime,
       })
     ) {
       openModal({
@@ -4965,26 +5157,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       updateItem(itemId, { time: "", locked: false });
       return;
     }
-    const baseSlots =
-      timeSlots.length > 0
-        ? timeSlots
-        : generateSalonTimeSlots(openTime, closeTime, slotStepMin);
+    const baseSlots = daySlots.slots;
     const durationMin = Number(temp.durationMin || DEFAULT_SERVICE_DURATION_MIN);
     const allowedStarts = filterSlotsByServiceEnd(
       baseSlots,
-      closeTime,
+      daySlots.closeTime,
       durationMin,
       bufferMin,
-      ALLOW_OVERTIME_MIN
+      INTERNAL_ALLOW_OVERTIME_MIN
     );
     const allowedStartsByStaff = staff
-      ? filterStaffSlotsByWorkingHours(staff as any, {
+      ? filterStaffBookableStartSlots(staff as any, {
           dateISO: date,
-          slots: allowedStarts,
-          fallbackOpenTime: openTime,
-          fallbackCloseTime: closeTime,
+          slots: baseSlots,
+          fallbackOpenTime: daySlots.openTime,
+          fallbackCloseTime: daySlots.closeTime,
+          durationMin,
+          bufferMin,
+          nowParts: salonNow,
         })
-      : allowedStarts;
+      : removePastStartsForToday(date, allowedStarts, salonNow);
     const isStartAllowed = allowedStartsByStaff.some((s) => s.value24 === time);
     if (!isStartAllowed) {
       openModal({
@@ -6102,6 +6294,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       if (!staffList.length) return false;
 
       const dateISO = String(it.date || bookingDate || "").trim();
+      const daySlotsForItem = getBookingSlotsForDate(dateISO);
       const visibleStaff = staffList.filter(
         (st: any) =>
           (st as any)?.showOnBooking !== false &&
@@ -6117,16 +6310,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
       const slotsForSelectedStaff = filterStaffSlotsByWorkingHours(selectedStaff as any, {
         dateISO,
-        slots: baseSlotsForUi,
-        fallbackOpenTime: openTime,
-        fallbackCloseTime: closeTime,
+        slots: daySlotsForItem.slots,
+        fallbackOpenTime: daySlotsForItem.openTime,
+        fallbackCloseTime: daySlotsForItem.closeTime,
       });
       const availableTimeSlots = slotsForSelectedStaff.filter(
-        (s) => !busy.disabledStartTimes?.has(s.value24)
+        (s) =>
+          !busy.disabledStartTimes?.has(s.value24) &&
+          !isPastSalonAppointmentTime(dateISO, String(s.value24 || "").trim(), salonNow)
       );
       return availableTimeSlots.length === 0;
     });
-  }, [formData.items, staffByService, bookingDate, busyByItem, baseSlotsForUi, openTime, closeTime]);
+  }, [formData.items, staffByService, bookingDate, busyByItem, salonNow]);
   const closeHairGuide = useCallback(() => setHairGuideOpen(false), []);
 
   return (
@@ -7518,7 +7713,15 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                       const sid = String(it.serviceId || "").trim();
                       const staffList = (staffByService[sid] || []) as StaffPublicWithId[];
                       const busy = busyByItem[it.id] || emptyBusyState();
-                      const dateISO = String(it.date || "").trim();
+                      const dateISO = String(it.date || bookingDate || "").trim();
+                      const daySlotsForItem = getBookingSlotsForDate(dateISO);
+                      const baseSlotsForItem = daySlotsForItem.slots;
+                      const durationMinForItem = Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN);
+                      const selectedTimeForItem = String(it.time || "").trim();
+                      const selectedAppointmentDateTime = combineSelectedDateAndTime(
+                        dateISO,
+                        selectedTimeForItem
+                      );
                       const visibleStaff = staffList.filter(
                         (st: any) =>
                           (st as any)?.showOnBooking !== false &&
@@ -7530,23 +7733,47 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                         });
                         const hasWorkingHours = filterStaffSlotsByWorkingHours(st as any, {
                           dateISO,
-                          slots: baseSlotsForUi,
-                          fallbackOpenTime: openTime,
-                          fallbackCloseTime: closeTime,
+                          slots: baseSlotsForItem,
+                          fallbackOpenTime: daySlotsForItem.openTime,
+                          fallbackCloseTime: daySlotsForItem.closeTime,
                         }).length > 0;
-                        return { staff: st, dayAvailable, hasWorkingHours };
+                        const selectedTimeFitsSchedule =
+                          !selectedAppointmentDateTime ||
+                          filterStaffBookableStartSlots(st as any, {
+                            dateISO,
+                            slots: baseSlotsForItem,
+                            fallbackOpenTime: daySlotsForItem.openTime,
+                            fallbackCloseTime: daySlotsForItem.closeTime,
+                            durationMin: durationMinForItem,
+                            bufferMin,
+                            nowParts: salonNow,
+                          }).some((slot) => String(slot.value24 || "").trim() === selectedTimeForItem);
+                        return { staff: st, dayAvailable, hasWorkingHours, selectedTimeFitsSchedule };
                       });
                       const selectedStaffForTime = visibleStaff.find(
                         (x) => String((x as any)?.id || "").trim() === String(it.employeeId || "").trim()
                       );
                       const slotsForSelectedStaff = selectedStaffForTime
-                        ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
+                        ? filterStaffBookableStartSlots(selectedStaffForTime as any, {
                             dateISO,
-                            slots: baseSlotsForUi,
-                            fallbackOpenTime: openTime,
-                            fallbackCloseTime: closeTime,
+                            slots: baseSlotsForItem,
+                            fallbackOpenTime: daySlotsForItem.openTime,
+                            fallbackCloseTime: daySlotsForItem.closeTime,
+                            durationMin: durationMinForItem,
+                            bufferMin,
+                            nowParts: salonNow,
                           })
-                        : baseSlotsForUi;
+                        : removePastStartsForToday(
+                            dateISO,
+                            filterSlotsByServiceEnd(
+                              baseSlotsForItem,
+                              daySlotsForItem.closeTime,
+                              durationMinForItem,
+                              bufferMin,
+                              INTERNAL_ALLOW_OVERTIME_MIN
+                            ),
+                            salonNow
+                          );
                       const availableTimeSlots = slotsForSelectedStaff.filter(
                         (s) => !busy.disabledStartTimes?.has(s.value24)
                       );
@@ -7609,9 +7836,13 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                             hint: empId ? "جاري التحقق من الأوقات المتاحة..." : "",
                             disabledStartTimes: new Set(
                               (
-                                timeSlots.length > 0
-                                  ? timeSlots
-                                  : generateSalonTimeSlots(openTime, closeTime, slotStepMin)
+                                baseSlotsForItem.length > 0
+                                  ? baseSlotsForItem
+                                  : generateSalonTimeSlots(
+                                      daySlotsForItem.openTime,
+                                      daySlotsForItem.closeTime,
+                                      slotStepMin
+                                    )
                               ).map((x) => x.value24)
                             ),
                           },
@@ -7701,10 +7932,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                               ) : (
                                 <div className="bk-staff-card-grid" role="list">
                                   {staffWithAvailability.length ? (
-                                    staffWithAvailability.map(({ staff: st, dayAvailable, hasWorkingHours }) => {
+                                    staffWithAvailability.map(({ staff: st, dayAvailable, hasWorkingHours, selectedTimeFitsSchedule }) => {
                                       const staffId = String((st as any)?.id || "").trim();
                                       const isSelected = selectedEmployeeId === staffId;
-                                      const blockedBySchedule = !dayAvailable || !hasWorkingHours;
+                                      const blockedBySchedule =
+                                        !dayAvailable || !hasWorkingHours || !selectedTimeFitsSchedule;
                                       const disabled = !canEditThis || blockedBySchedule;
                                       const staffName = String((st as any)?.name || st.id || "").trim() || "بدون اسم";
                                       const leaveUntilISO = normalizeIsoDate((st as any)?.leaveUntil);
@@ -7717,7 +7949,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                             : "في إجازة"
                                           : !dayAvailable
                                             ? "غير متاحة اليوم"
-                                            : "خارج ساعات العمل"
+                                            : selectedAppointmentDateTime && !selectedTimeFitsSchedule
+                                              ? "غير متاحة لهذا الوقت"
+                                              : "لا تعمل في هذا اليوم"
                                         : "";
 
                                       return (

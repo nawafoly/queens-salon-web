@@ -1,6 +1,6 @@
 // src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   getIdTokenResult,
@@ -38,10 +38,10 @@ import {
   findStaffMatchesForUser,
   listStaffLinkRows,
   repairLegacyStaffUserLinks,
-  softDeleteLinkedStaffByUser,
   type AccountUserLinkRow,
 } from "../../services/staffAccountLinkService";
 import { SettingsPageHeader, SettingsState } from "./SettingsFrame";
+import EmployeeAvatar from "../../components/EmployeeAvatar";
 
 /* =========================
    Roles helpers
@@ -110,6 +110,29 @@ type UserRow = {
   displayName: string;
   role: UiRole;
   active: boolean;
+  isActive?: boolean;
+  archived?: boolean;
+  deleted?: boolean;
+  removedFromStaff?: boolean;
+  employmentStatus?: string;
+  employeeName?: string;
+  department?: string;
+  jobTitle?: string;
+  startDate?: string;
+  fingerprintNo?: string;
+  employeeNo?: string;
+  avatarUrl?: string;
+  cvUrl?: string;
+  baseSalary?: number;
+  housingAllowance?: number;
+  transportAllowance?: number;
+  otherAllowances?: number;
+  insuranceDeduction?: number;
+  monthlySalary?: number;
+  workDaysPerMonth?: number;
+  monthlyHours?: number;
+  staffSource?: Record<string, unknown>;
+  employeeSource?: Record<string, unknown>;
   notes?: string;
   linkedEmployeeDocId?: string;
   employeeId?: string;
@@ -117,9 +140,14 @@ type UserRow = {
   permissionOverrides?: PermissionOverrides;
   permissionVersion?: number;
   deletedAt?: any;
+  deletedBy?: any;
   createdAt?: any;
   updatedAt?: any;
 };
+
+type AccountState = "active" | "inactive" | "pending" | "archived" | "deleted";
+type AccountStatusFilter = "all" | AccountState;
+type AccountLinkFilter = "all" | "linked" | "unlinked" | "incomplete";
 
 type EditUserDraft = {
   uid: string;
@@ -189,6 +217,7 @@ export default function SettingsUsers({
   allowAdminManageUsers: allowAdminManageUsersOverride,
 }: SettingsUsersProps = {}) {
   const location = useLocation();
+  const navigate = useNavigate();
   const isAdminShell = location.pathname.startsWith("/admin");
   const pageTitle = isAdminShell ? "إدارة الحسابات الإدارية" : "إدارة الحسابات";
   const pageHint = isAdminShell
@@ -267,7 +296,8 @@ export default function SettingsUsers({
   const [usersLoading, setUsersLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<UiRole | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<AccountStatusFilter>("all");
+  const [linkFilter, setLinkFilter] = useState<AccountLinkFilter>("all");
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditUserDraft | null>(null);
@@ -305,6 +335,33 @@ export default function SettingsUsers({
     return String(v || "").trim();
   }
 
+  function firstText(...values: unknown[]) {
+    for (const value of values) {
+      const text = cleanText(value);
+      if (text && text !== "undefined" && text !== "null") return text;
+    }
+    return "";
+  }
+
+  function firstNumber(...values: unknown[]) {
+    for (const value of values) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+    return 0;
+  }
+
+  function nestedRecord(source: Record<string, unknown> | undefined, key: string) {
+    const value = source?.[key];
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  }
+
+  function shortUid(uid: string) {
+    const normalized = cleanText(uid);
+    if (normalized.length <= 12) return normalized || "—";
+    return `${normalized.slice(0, 6)}…${normalized.slice(-4)}`;
+  }
+
   function isMalikatEmail(email: string) {
     return cleanEmail(email).endsWith("@malikat.com");
   }
@@ -325,14 +382,84 @@ export default function SettingsUsers({
     return isManagedAccountRole(row.role) || isMalikatEmail(row.email) || isBootstrapAccountEmail(row.email);
   }
 
+  function hasLinkedEmployee(row: Pick<UserRow, "linkedEmployeeDocId" | "employeeId" | "employeeSource" | "staffSource">) {
+    return Boolean(
+      cleanText(row.linkedEmployeeDocId) ||
+        cleanText(row.employeeId) ||
+        row.employeeSource ||
+        row.staffSource
+    );
+  }
+
+  function isIncompleteAccount(row: UserRow) {
+    return !cleanText(row.displayName) || !cleanText(row.email) || !hasLinkedEmployee(row);
+  }
+
+  function matchesLinkFilter(row: UserRow, filter: AccountLinkFilter) {
+    if (filter === "all") return true;
+    if (filter === "linked") return hasLinkedEmployee(row);
+    if (filter === "unlinked") return !hasLinkedEmployee(row);
+    return isIncompleteAccount(row);
+  }
+
   const toastMsg = (msg: string, ms = 2200) => {
     setCreateMsg(msg);
     if (ms > 0) setTimeout(() => setCreateMsg(""), ms);
   };
 
-  function getUserState(row: UserRow) {
-    if (row.role === "pending") return "pending" as const;
-    return row.active !== false ? "active" as const : "inactive" as const;
+  function isAccountDeleted(row: Pick<UserRow, "deleted" | "deletedAt" | "employmentStatus">) {
+    const employmentStatus = cleanText(row.employmentStatus).toLowerCase();
+    return row.deleted === true || Boolean(row.deletedAt) || employmentStatus === "deleted";
+  }
+
+  function isAccountArchived(row: Pick<UserRow, "archived" | "removedFromStaff" | "employmentStatus">) {
+    const employmentStatus = cleanText(row.employmentStatus).toLowerCase();
+    return row.archived === true || row.removedFromStaff === true || employmentStatus === "archived";
+  }
+
+  function getUserState(row: UserRow): AccountState {
+    if (isAccountDeleted(row)) return "deleted";
+    if (isAccountArchived(row)) return "archived";
+    if (row.role === "pending") return "pending";
+    if (row.active === false || row.isActive === false) return "inactive";
+    return "active";
+  }
+
+  function matchesStatusFilter(row: UserRow, filter: AccountStatusFilter) {
+    if (filter === "all") return true;
+    const state = getUserState(row);
+    if (filter === "inactive") {
+      return state === "inactive" || state === "archived" || state === "deleted";
+    }
+    if (filter === "archived") {
+      return state === "archived" || state === "deleted";
+    }
+    return state === filter;
+  }
+
+  function getUserStateLabel(state: AccountState) {
+    if (state === "active") return "نشطة";
+    if (state === "pending") return "قيد المراجعة";
+    if (state === "archived") return "مؤرشف";
+    if (state === "deleted") return "محذوف منطقيًا";
+    return "غير نشطة";
+  }
+
+  function getUserStateSummary(state: AccountState) {
+    if (state === "active") return "مفعلة";
+    if (state === "pending") return "مراجعة";
+    if (state === "archived") return "مؤرشفة";
+    if (state === "deleted") return "محذوفة";
+    return "معطلة";
+  }
+
+  function canRestoreUserAccount(row: UserRow) {
+    if (isAccountDeleted(row) || isAccountArchived(row)) return true;
+    if (row.role === "pending") return false;
+    return (
+      row.active === false ||
+      row.isActive === false
+    );
   }
 
   function getRoleLabel(role: UiRole) {
@@ -438,8 +565,13 @@ export default function SettingsUsers({
     permissions?: AppPermission[];
     permissionOverrides?: PermissionOverrides;
     createIfMissing?: boolean;
+    writeStaff?: boolean;
   }) => {
     const userRow = toAccountUserLinkRow(args.user);
+    if (args.writeStaff === false) {
+      return cleanText(userRow.linkedEmployeeDocId) || cleanText(userRow.employeeId) || null;
+    }
+
     const staffRows = await listStaffLinkRows();
     const matches = findStaffMatchesForUser(userRow, staffRows);
     const existing = matches[0] as any;
@@ -556,10 +688,33 @@ export default function SettingsUsers({
         repairResult = await repairLegacyStaffUserLinks();
       }
 
-      const [snap, staffRows] = await Promise.all([
+      const [snap, staffRows, employeeSnap] = await Promise.all([
         getDocs(collection(db, ...USERS_COLLECTION)),
         listStaffLinkRows(),
+        getDocs(collection(db, ...EMPLOYEES_COLLECTION)).catch(() => null),
       ]);
+
+      const employeeRows: Array<Record<string, unknown> & { id: string }> = (employeeSnap?.docs || []).map((employeeDoc) => ({
+        id: employeeDoc.id,
+        ...(employeeDoc.data() as Record<string, unknown>),
+      }));
+      const employeesById = new Map(employeeRows.map((row) => [cleanText(row.id), row]));
+      const employeesByUid = new Map(
+        employeeRows
+          .map((row) => [
+            firstText(row["uid"], row["linkedUid"], row["linkedUserId"], row["authUid"], row["userId"]),
+            row,
+          ] as const)
+          .filter(([key]) => Boolean(key))
+      );
+      const employeesByEmail = new Map(
+        employeeRows
+          .map((row) => [
+            cleanEmail(firstText(row["email"], row["userEmail"])),
+            row,
+          ] as const)
+          .filter(([key]) => Boolean(key))
+      );
 
       const listAll: UserRow[] = snap.docs.map((d) => {
         const x = d.data() as any;
@@ -578,6 +733,11 @@ export default function SettingsUsers({
           displayName: String(x?.displayName || x?.name || ""),
           role,
           active: x?.active !== false,
+          isActive: x?.isActive !== false,
+          archived: x?.archived === true,
+          deleted: x?.deleted === true,
+          removedFromStaff: x?.removedFromStaff === true,
+          employmentStatus: String(x?.employmentStatus || ""),
           notes: String(x?.notes || x?.memo || ""),
           linkedEmployeeDocId: String(x?.linkedEmployeeDocId || ""),
           employeeId: String(x?.employeeId || ""),
@@ -585,20 +745,89 @@ export default function SettingsUsers({
           permissionOverrides,
           permissionVersion: Number(x?.permissionVersion || 0) || undefined,
           deletedAt: x?.deletedAt,
+          deletedBy: x?.deletedBy,
           createdAt: x?.createdAt,
           updatedAt: x?.updatedAt,
         };
-        const linkedStaff = findStaffMatchesForUser(toAccountUserLinkRow(baseRow), staffRows)[0] as any;
+        const linkedStaff = findStaffMatchesForUser(toAccountUserLinkRow(baseRow), staffRows)[0] as Record<string, unknown> | undefined;
+        const linkedEmployeeId =
+          cleanText(baseRow.linkedEmployeeDocId) ||
+          cleanText(baseRow.employeeId) ||
+          cleanText(linkedStaff?.id);
+        const linkedEmployee =
+          employeesById.get(linkedEmployeeId) ||
+          employeesByUid.get(baseRow.uid) ||
+          employeesByEmail.get(cleanEmail(baseRow.email));
+        const employeeProfile = nestedRecord(linkedEmployee, "employeeProfile");
+        const employeeEmployment = nestedRecord(linkedEmployee, "employment");
+        const staffEmployment = nestedRecord(linkedStaff, "employment");
+        const payrollConfig = {
+          ...nestedRecord(linkedStaff, "payroll"),
+          ...nestedRecord(linkedStaff, "payrollConfig"),
+          ...nestedRecord(linkedEmployee, "payroll"),
+          ...nestedRecord(linkedEmployee, "payrollConfig"),
+        };
+        const salaryBase = firstNumber(
+          linkedEmployee?.["monthlySalary"],
+          linkedEmployee?.["baseSalary"],
+          payrollConfig["monthlySalary"],
+          payrollConfig["baseSalary"],
+          linkedStaff?.["monthlySalary"],
+          linkedStaff?.["baseSalary"]
+        );
+        const housingAllowance = firstNumber(linkedEmployee?.["housingAllowance"], payrollConfig["housingAllowance"]);
+        const transportAllowance = firstNumber(linkedEmployee?.["transportAllowance"], payrollConfig["transportAllowance"]);
+        const otherAllowances = firstNumber(
+          linkedEmployee?.["otherAllowances"],
+          linkedEmployee?.["allowances"],
+          payrollConfig["otherAllowances"],
+          payrollConfig["allowances"]
+        );
         return {
           ...baseRow,
-          linkedEmployeeDocId: cleanText(baseRow.linkedEmployeeDocId) || cleanText(linkedStaff?.id),
-          employeeId: cleanText(baseRow.employeeId) || cleanText(linkedStaff?.id),
+          linkedEmployeeDocId: linkedEmployeeId,
+          employeeId: cleanText(baseRow.employeeId) || linkedEmployeeId,
+          employeeName: firstText(linkedEmployee?.["name"], linkedStaff?.["name"], linkedEmployee?.["displayName"]),
+          department: firstText(
+            linkedEmployee?.["department"],
+            employeeEmployment["department"],
+            employeeProfile["department"],
+            linkedStaff?.["department"],
+            staffEmployment["department"]
+          ),
+          jobTitle: firstText(
+            linkedEmployee?.["jobTitle"],
+            linkedEmployee?.["title"],
+            employeeEmployment["jobTitle"],
+            employeeProfile["jobTitle"],
+            linkedStaff?.["jobTitle"],
+            linkedStaff?.["title"]
+          ),
+          startDate: firstText(linkedEmployee?.["startDate"], linkedEmployee?.["hireDate"], employeeEmployment["startDate"]),
+          fingerprintNo: firstText(
+            linkedEmployee?.["fingerprintNo"],
+            linkedEmployee?.["fingerprint"],
+            linkedEmployee?.["badgeNo"],
+            linkedEmployee?.["employeeNo"]
+          ),
+          employeeNo: firstText(linkedEmployee?.["employeeNo"], linkedEmployee?.["employeeNumber"], linkedEmployeeId),
+          avatarUrl: firstText(linkedEmployee?.["avatarUrl"], linkedStaff?.["avatarUrl"], linkedEmployee?.["photoURL"], linkedEmployee?.["photoUrl"]),
+          cvUrl: firstText(linkedEmployee?.["cvUrl"], linkedStaff?.["cvUrl"]),
+          baseSalary: salaryBase,
+          monthlySalary: salaryBase,
+          housingAllowance,
+          transportAllowance,
+          otherAllowances,
+          insuranceDeduction: firstNumber(linkedEmployee?.["insuranceDeduction"], payrollConfig["insuranceDeduction"]),
+          workDaysPerMonth: firstNumber(linkedEmployee?.["workDaysPerMonth"], payrollConfig["workDaysPerMonth"], 30),
+          monthlyHours: firstNumber(linkedEmployee?.["monthlyHours"], payrollConfig["monthlyHours"], 240),
+          staffSource: linkedStaff,
+          employeeSource: linkedEmployee,
         };
       });
 
       // ✅ عرض الحسابات الداخلية + bootstrap حتى لو createdAt ناقص أو البريد ليس malikat.com
       const listFiltered = listAll
-        .filter((u) => !u.deletedAt)
         .filter((u) => shouldShowManagedAccount(u))
         .map((u) => {
           // أي حساب malikat.com لو كان client/guest نخليه pending (عرض + إدارة)
@@ -920,6 +1149,7 @@ export default function SettingsUsers({
           permissionOverrides,
           permissionVersion: PERMISSION_SCHEMA_VERSION,
           active: nextActive,
+          isActive: nextActive,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -945,12 +1175,31 @@ export default function SettingsUsers({
         permissions,
         permissionOverrides,
         createIfMissing: isEmployeeRole(newRole),
+        writeStaff: false,
       });
+
+      await setDoc(
+        doc(db, "salons", SALON_ID, "admin_users", uid),
+        {
+          uid,
+          email: row?.email || "",
+          displayName: row?.displayName || "",
+          phone: row?.phone || "",
+          role: toFirestoreRole(newRole),
+          permissions,
+          permissionOverrides,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
+          active: nextActive,
+          isActive: nextActive,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       setUsers((prev) =>
         prev.map((u) =>
           u.uid === uid
-            ? { ...u, role: newRole, active: nextActive, permissions, permissionOverrides }
+            ? { ...u, role: newRole, active: nextActive, isActive: nextActive, permissions, permissionOverrides }
             : u
         )
       );
@@ -1003,11 +1252,11 @@ export default function SettingsUsers({
 
       await setDoc(
         doc(db, ...USERS_COLLECTION, uid),
-        { active, updatedAt: serverTimestamp() },
+        { active, isActive: active, updatedAt: serverTimestamp() },
         { merge: true }
       );
 
-      // ✅ لو هو Staff خله يتزامن مع staff_public/employees
+      // Preserve the current employee link only; do not mutate staff_public/employees here.
       if (row?.role && isEmployeeRole(row.role as UiRole)) {
         await syncLinkedStaffFromUser({
           user: {
@@ -1027,10 +1276,17 @@ export default function SettingsUsers({
           permissions: row.permissions,
           permissionOverrides: row.permissionOverrides,
           createIfMissing: false,
+          writeStaff: false,
         });
       }
 
-      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active } : u)));
+      await setDoc(
+        doc(db, "salons", SALON_ID, "admin_users", uid),
+        { active, isActive: active, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+
+      setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, active, isActive: active } : u)));
 
       void writeAuditLog({
         salonId: SALON_ID,
@@ -1101,8 +1357,15 @@ export default function SettingsUsers({
           permissions: row.permissions,
           permissionOverrides: row.permissionOverrides,
           createIfMissing: false,
+          writeStaff: false,
         });
       }
+
+      await setDoc(
+        doc(db, "salons", SALON_ID, "admin_users", uid),
+        { displayName: name, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
 
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, displayName: name } : u)));
 
@@ -1195,6 +1458,7 @@ export default function SettingsUsers({
         permissions,
         permissionOverrides,
         createIfMissing: isEmployeeRole(role),
+        writeStaff: false,
       });
 
       await setDoc(
@@ -1208,8 +1472,27 @@ export default function SettingsUsers({
           permissionOverrides,
           permissionVersion: PERMISSION_SCHEMA_VERSION,
           active,
+          isActive: active,
           linkedEmployeeDocId: staffId || row.linkedEmployeeDocId || row.employeeId || "",
           employeeId: staffId || row.employeeId || row.linkedEmployeeDocId || "",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, "salons", SALON_ID, "admin_users", row.uid),
+        {
+          uid: row.uid,
+          email: row.email || editDraft.email,
+          displayName,
+          phone,
+          role: nextRole,
+          permissions,
+          permissionOverrides,
+          permissionVersion: PERMISSION_SCHEMA_VERSION,
+          active,
+          isActive: active,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -1227,6 +1510,7 @@ export default function SettingsUsers({
                 permissions,
                 permissionOverrides,
                 active,
+                isActive: active,
                 linkedEmployeeDocId: staffId || u.linkedEmployeeDocId,
                 employeeId: staffId || u.employeeId,
               }
@@ -1408,7 +1692,7 @@ export default function SettingsUsers({
     }
 
     const ok = confirm(
-      `سيتم تعطيل الحساب وإخفاء الموظفة المرتبطة من الإدارة والحجز.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
+      `سيتم تعطيل حساب الدخول فقط دون تعديل ملف الموظفة أو إخفائها من الحجز.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
     );
     if (!ok) return;
 
@@ -1420,7 +1704,8 @@ export default function SettingsUsers({
         doc(db, ...USERS_COLLECTION, uid),
         {
           active: false,
-          role: "pending",
+          isActive: false,
+          deleted: true,
           deletedAt: serverTimestamp(),
           deletedBy: actorUid || "",
           updatedAt: serverTimestamp(),
@@ -1429,29 +1714,39 @@ export default function SettingsUsers({
       );
 
       await setDoc(
-        doc(db, "users", uid),
+        doc(db, "salons", SALON_ID, "admin_users", uid),
         {
           active: false,
+          isActive: false,
+          deleted: true,
           deletedAt: serverTimestamp(),
           deletedBy: actorUid || "",
           updatedAt: serverTimestamp(),
         },
         { merge: true }
-      ).catch(() => {});
+      );
 
-      const deleteResult = await softDeleteLinkedStaffByUser({
-        user: toAccountUserLinkRow(row),
-        actorUid,
-      });
-
-      setUsers((prev) => prev.filter((u) => u.uid !== uid));
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.uid === uid
+            ? {
+                ...u,
+                active: false,
+                isActive: false,
+                deleted: true,
+                deletedAt: true,
+                deletedBy: actorUid || "",
+              }
+            : u
+        )
+      );
 
       void writeAuditLog({
         salonId: SALON_ID,
         action: "user_deleted",
         entityType: "user",
         entityId: uid,
-        description: "تم حذف الحساب تعطيلًا وربط حذف الموظفة soft delete",
+        description: "تم حذف الحساب منطقيًا دون تعديل ملف الموظفة",
         source: "dashboard",
         before: {
           role: row.role,
@@ -1459,17 +1754,105 @@ export default function SettingsUsers({
           linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || null,
         },
         after: {
-          role: "pending",
+          role: row.role,
           active: false,
           deletedAt: true,
-          linkedStaffCount: deleteResult.matchedStaffIds.length,
+          staffFileChanged: false,
         },
       });
 
-      toastMsg("✅ تم حذف الحساب وتعطيل الموظفة المرتبطة", 2400);
+      toastMsg("✅ تم حذف الحساب منطقيًا دون تعديل ملف الموظفة", 2400);
     } catch (e) {
       console.error("deleteUserAccount error:", e);
-      toastMsg("❌ تعذر حذف الحساب أو تعطيل الموظفة المرتبطة", 2800);
+      toastMsg("❌ تعذر حذف الحساب", 2800);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const restoreUserAccount = async (uid: string) => {
+    if (!canManageUsers) return;
+
+    const row = users.find((x) => x.uid === uid);
+    if (!row) return;
+
+    if (!canEditTargetUser(row)) {
+      toastMsg("❌ لا تملك صلاحية استعادة هذا الحساب", 2400);
+      return;
+    }
+
+    if ((auth as any)?.currentUser?.uid === uid) {
+      toastMsg("❌ لا يمكن تعديل حسابك من هنا", 2400);
+      return;
+    }
+
+    const ok = confirm(
+      `سيتم استعادة حساب الدخول فقط مع الحفاظ على الدور والصلاحيات الحالية.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
+    );
+    if (!ok) return;
+
+    try {
+      setUsersLoading(true);
+      const restorePatch = {
+        active: true,
+        isActive: true,
+        archived: false,
+        deleted: false,
+        removedFromStaff: false,
+        employmentStatus: "active",
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: serverTimestamp(),
+      };
+
+      await Promise.all([
+        setDoc(doc(db, ...USERS_COLLECTION, uid), restorePatch, { merge: true }),
+        setDoc(doc(db, "salons", SALON_ID, "admin_users", uid), restorePatch, { merge: true }),
+      ]);
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.uid === uid
+            ? {
+                ...u,
+                active: true,
+                isActive: true,
+                archived: false,
+                deleted: false,
+                removedFromStaff: false,
+                employmentStatus: "active",
+                deletedAt: null,
+                deletedBy: null,
+              }
+            : u
+        )
+      );
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_restored",
+        entityType: "user",
+        entityId: uid,
+        description: "تمت استعادة حساب الدخول دون تعديل ملف الموظفة",
+        source: "dashboard",
+        before: {
+          role: row.role,
+          active: row.active,
+          archived: row.archived === true,
+          deleted: row.deleted === true || Boolean(row.deletedAt),
+          employmentStatus: row.employmentStatus || null,
+        },
+        after: {
+          role: row.role,
+          active: true,
+          staffFileChanged: false,
+        },
+      });
+
+      toastMsg("✅ تمت استعادة الحساب", 1800);
+    } catch (e) {
+      console.error("restoreUserAccount error:", e);
+      toastMsg("❌ تعذر استعادة الحساب", 2600);
     } finally {
       setUsersLoading(false);
     }
@@ -1482,13 +1865,14 @@ export default function SettingsUsers({
       .filter((user) => {
         if (roleFilter !== "all" && user.role !== roleFilter) return false;
 
-        const userState = getUserState(user);
-        if (statusFilter !== "all" && userState !== statusFilter) return false;
+        if (!matchesStatusFilter(user, statusFilter)) return false;
+        if (!matchesLinkFilter(user, linkFilter)) return false;
 
         if (!search) return true;
 
         const haystack = [
           user.displayName,
+          user.employeeName,
           user.email,
           user.phone,
           user.uid,
@@ -1496,6 +1880,10 @@ export default function SettingsUsers({
           user.role,
           user.linkedEmployeeDocId,
           user.employeeId,
+          user.department,
+          user.jobTitle,
+          user.employeeNo,
+          user.fingerprintNo,
         ]
           .map((part) => cleanText(part).toLowerCase())
           .join(" | ");
@@ -1503,7 +1891,7 @@ export default function SettingsUsers({
         return haystack.includes(search);
       })
       ;
-  }, [users, roleFilter, searchQuery, statusFilter]);
+  }, [users, roleFilter, searchQuery, statusFilter, linkFilter]);
 
   const selectedUser = useMemo(() => {
     if (!selectedUserId) return visibleUsers[0] || null;
@@ -1513,11 +1901,13 @@ export default function SettingsUsers({
   const stats = useMemo(() => {
     const total = users.length;
     const active = users.filter((user) => getUserState(user) === "active").length;
-    const inactive = users.filter((user) => getUserState(user) === "inactive").length;
+    const inactive = users.filter((user) => matchesStatusFilter(user, "inactive")).length;
     const pending = users.filter((user) => getUserState(user) === "pending").length;
+    const incomplete = users.filter((user) => isIncompleteAccount(user)).length;
+    const unlinked = users.filter((user) => !hasLinkedEmployee(user)).length;
     const editors = users.filter((user) => ["owner", "hr", "admin"].includes(user.role)).length;
 
-    return { total, active, inactive, pending, editors };
+    return { total, active, inactive, pending, incomplete, unlinked, editors };
   }, [users]);
 
   const inviteStats = useMemo(() => {
@@ -1540,7 +1930,11 @@ export default function SettingsUsers({
 
   const exceptionCount = useMemo(() => {
     return users.filter(
-      (user) => user.role === "pending" || user.active === false || Boolean(cleanText(user.notes))
+      (user) =>
+        getUserState(user) !== "active" ||
+        user.active === false ||
+        user.isActive === false ||
+        Boolean(cleanText(user.notes))
     ).length;
   }, [users]);
 
@@ -1564,12 +1958,7 @@ export default function SettingsUsers({
   }, [editDraft, users]);
 
   const selectedState = selectedUser ? getUserState(selectedUser) : "inactive";
-  const selectedStateLabel =
-    selectedState === "active"
-      ? "نشطة"
-      : selectedState === "pending"
-        ? "قيد المراجعة"
-        : "غير نشطة";
+  const selectedStateLabel = getUserStateLabel(selectedState);
   const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "-";
   const selectedRoleTone = selectedUser ? getRoleTone(selectedUser.role) : "gray";
   const createPermissionCount = getRoleAppPermissions(createForm.role as any).length;
@@ -1579,6 +1968,18 @@ export default function SettingsUsers({
   const currentUid = String((auth as any)?.currentUser?.uid || "");
   const selectedIsSelf = Boolean(selectedUser && selectedUser.uid === currentUid);
   const selectedCanMutate = Boolean(selectedUser && !selectedIsSelf && canEditTargetUser(selectedUser));
+  const usersBasePath = "/dashboard/settings/users";
+  const profileUid = useMemo(() => {
+    const marker = `${usersBasePath}/`;
+    if (!location.pathname.startsWith(marker)) return "";
+    return decodeURIComponent(location.pathname.slice(marker.length).split("/")[0] || "");
+  }, [location.pathname]);
+  const profileUser = useMemo(
+    () => (profileUid ? users.find((user) => user.uid === profileUid) || null : null),
+    [profileUid, users]
+  );
+  const profileEmployeeId = cleanText(profileUser?.employeeId || profileUser?.linkedEmployeeDocId || "");
+  const profileCanMutate = Boolean(profileUser && profileUser.uid !== currentUid && canEditTargetUser(profileUser));
   const editRoleDefaultPermissions = editDraft ? getRoleAppPermissions(editDraft.role as any) : [];
   const editPermissionSet = new Set<AppPermission>(editDraft?.permissions || []);
   const editAddedPermissions = editDraft
@@ -1654,6 +2055,455 @@ export default function SettingsUsers({
       hint: "حسابات تحتاج مراجعة.",
     },
   ];
+  const listStats = [
+    {
+      label: "إجمالي الحسابات",
+      value: stats.total,
+      hint: "كل حسابات الطاقم الظاهرة من مصدر الحسابات.",
+    },
+    {
+      label: "الحسابات النشطة",
+      value: stats.active,
+      hint: "حسابات فعالة وعلى رأس العمل أو قابلة للدخول.",
+    },
+    {
+      label: "متابعة الحالات",
+      value: stats.inactive,
+      hint: `المعطلون ${stats.inactive} · قيد المراجعة ${stats.pending} · غير مكتمل ${stats.incomplete}`,
+    },
+  ];
+
+  const getDisplayName = (row: UserRow) =>
+    firstText(row.displayName, row.employeeName, row.email) || "حساب غير مرتبط بموظفة";
+  const getDisplayTitle = (row: UserRow) => firstText(row.jobTitle, getRoleLabel(row.role));
+  const getDepartmentLabel = (row: UserRow) => firstText(row.department, "غير محدد");
+  const renderListPage = () => (
+    <>
+      <header className="employee-accounts-v2__header">
+        <div>
+          <span className="employee-accounts-v2__eyebrow">إدارة الحسابات</span>
+          <h1>إدارة حسابات الدخول</h1>
+          <p>إدارة حسابات الدخول، الأدوار، والصلاحيات فقط. ملفات الموظفات الإدارية تبقى في إدارة الموظفين.</p>
+        </div>
+
+        <div className="employee-accounts-v2__actions">
+          <button
+            type="button"
+            className="employee-accounts-v2__button employee-accounts-v2__button--primary"
+            onClick={() => {
+              setCreateMsg("");
+              setCreateOpen(true);
+            }}
+          >
+            حساب جديد
+          </button>
+          <button
+            type="button"
+            className="employee-accounts-v2__button"
+            disabled={usersLoading}
+            onClick={() => void loadUsers({ runRepair: true })}
+          >
+            {usersLoading ? "جار التحديث..." : "تحديث"}
+          </button>
+        </div>
+      </header>
+
+      <section className="employee-accounts-v2__stats" aria-label="إحصائيات الحسابات">
+        {listStats.map((item) => (
+          <article key={item.label} className="employee-accounts-v2__stat">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.hint}</small>
+          </article>
+        ))}
+      </section>
+
+      {createMsg ? <div className={`accounts-banner accounts-banner--${bannerTone}`}>{createMsg}</div> : null}
+
+      <section className="employee-directory-v2">
+        <div className="employee-directory-v2__head">
+          <div>
+            <h2>قائمة حسابات الدخول</h2>
+            <p>ابحث وفلتر حسب الحالة أو الدور أو الارتباط بسجل موظفة.</p>
+          </div>
+          <span>{visibleUsers.length} نتيجة</span>
+        </div>
+
+        <div className="employee-directory-v2__filters">
+          <label className="employee-directory-v2__search">
+            <span>بحث</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="الاسم، البريد، الجوال، القسم، أو المسمى الوظيفي"
+            />
+          </label>
+
+          <div className="employee-directory-v2__filterRow">
+            <label>
+              <span>الحالة</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
+                <option value="all">كل الحالات</option>
+                <option value="active">نشطة</option>
+                <option value="inactive">غير نشطة</option>
+                <option value="pending">قيد المراجعة</option>
+                <option value="archived">مؤرشفة</option>
+                <option value="deleted">محذوفة منطقيًا</option>
+              </select>
+            </label>
+
+            <label>
+              <span>الدور</span>
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
+                <option value="all">كل الأدوار</option>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="hr">HR</option>
+                <option value="reception">Reception</option>
+                <option value="staff">Staff</option>
+                <option value="pending">Pending</option>
+              </select>
+            </label>
+
+            <label>
+              <span>الارتباط</span>
+              <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as AccountLinkFilter)}>
+                <option value="all">الكل</option>
+                <option value="linked">مرتبط بسجل موظفة</option>
+                <option value="unlinked">غير مرتبط</option>
+                <option value="incomplete">غير مكتمل</option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              className="employee-accounts-v2__button employee-accounts-v2__button--ghost"
+              onClick={() => {
+                setSearchQuery("");
+                setRoleFilter("all");
+                setStatusFilter("all");
+                setLinkFilter("all");
+              }}
+            >
+              إعادة ضبط
+            </button>
+          </div>
+        </div>
+
+        {usersLoading ? (
+          <div className="employee-directory-v2__skeletonGrid" aria-live="polite">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <span key={index} className="employee-directory-v2__skeleton" />
+            ))}
+          </div>
+        ) : null}
+
+        {!usersLoading && !users.length ? (
+          <div className="employee-directory-v2__empty">
+            <strong>لا توجد حسابات موظفين</strong>
+            <p>لم يتم العثور على أي حساب إداري يمكن عرضه من مصدر البيانات الحالي.</p>
+          </div>
+        ) : null}
+
+        {!usersLoading && users.length > 0 && !visibleUsers.length ? (
+          <div className="employee-directory-v2__empty">
+            <strong>لا توجد نتائج مطابقة</strong>
+            <p>جرّب تغيير البحث أو الفلاتر الحالية.</p>
+          </div>
+        ) : null}
+
+        {!usersLoading && visibleUsers.length ? (
+          <div className="employee-directory-v2__grid">
+            {visibleUsers.map((row) => {
+              const state = getUserState(row);
+              const linked = hasLinkedEmployee(row);
+              const incomplete = isIncompleteAccount(row);
+              const displayName = getDisplayName(row);
+              return (
+                <article
+                  key={row.uid}
+                  className={`employee-mini-card ${linked ? "" : "is-unlinked"}`}
+                  tabIndex={0}
+                  role="button"
+                  onClick={() => navigate(`${usersBasePath}/${encodeURIComponent(row.uid)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigate(`${usersBasePath}/${encodeURIComponent(row.uid)}`);
+                    }
+                  }}
+                >
+                  <div className="employee-mini-card__media">
+                    <EmployeeAvatar src={row.avatarUrl} name={displayName} alt={displayName} loading="lazy" />
+                  </div>
+
+                  <div className="employee-mini-card__body">
+                    <div className="employee-mini-card__top">
+                      <div>
+                        <h3>{displayName}</h3>
+                        <p>{getDisplayTitle(row)}</p>
+                      </div>
+                      <span className="employee-mini-card__arrow" aria-hidden="true">‹</span>
+                    </div>
+
+                    <div className="employee-mini-card__meta">
+                      <span className={`employee-status-dot is-${state}`}>{getUserStateLabel(state)}</span>
+                      <span>{getDepartmentLabel(row)}</span>
+                    </div>
+
+                    {!linked || incomplete ? (
+                      <div className="employee-mini-card__warning">
+                        <strong>حساب غير مرتبط بموظفة</strong>
+                        <small>{row.email || "لا يوجد بريد"} · {getRoleLabel(row.role)}</small>
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+
+  const renderProfilePage = () => {
+    if (usersLoading && !profileUser) {
+      return (
+        <section className="employee-profile-v2 employee-profile-v2--loading">
+          <div className="employee-directory-v2__empty">جاري تحميل حساب الدخول...</div>
+        </section>
+      );
+    }
+
+    if (!profileUser) {
+      return (
+        <section className="employee-profile-v2">
+          <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(usersBasePath)}>
+            العودة إلى القائمة
+          </button>
+          <div className="employee-directory-v2__empty">
+            <strong>تعذر العثور على الحساب</strong>
+            <p>قد يكون الحساب خارج الفلاتر أو لا تملك صلاحية عرضه.</p>
+          </div>
+        </section>
+      );
+    }
+
+    const state = getUserState(profileUser);
+    const linked = hasLinkedEmployee(profileUser);
+    const displayName = getDisplayName(profileUser);
+    const linkedEmployeePath = profileEmployeeId
+      ? `/admin/employees/${encodeURIComponent(profileEmployeeId)}/basic`
+      : "";
+    const accountSections = [
+      { label: "ملخص الحساب", href: "#account-summary" },
+      { label: "إعدادات الدخول", href: "#account-settings" },
+      { label: "الربط الوظيفي", href: "#employee-link" },
+      { label: "البيانات التقنية", href: "#account-technical" },
+    ];
+    const rowCanRestore = canRestoreUserAccount(profileUser);
+
+    return (
+      <section className="employee-profile-v2">
+        <button type="button" className="employee-profile-v2__back" onClick={() => navigate(usersBasePath)}>
+          العودة إلى حسابات الدخول
+        </button>
+
+        <header className="employee-profile-v2__hero">
+          <div className="employee-profile-v2__identity">
+            <span className="employee-profile-v2__avatar">
+              <EmployeeAvatar src={profileUser.avatarUrl} name={displayName} alt={displayName} loading="eager" />
+            </span>
+            <div>
+              <span className="employee-accounts-v2__eyebrow">حساب الدخول</span>
+              <h1>{displayName}</h1>
+              <p>{getDisplayTitle(profileUser)} · {getDepartmentLabel(profileUser)}</p>
+              <div className="employee-profile-v2__chips">
+                <span className={`employee-status-dot is-${state}`}>{getUserStateLabel(state)}</span>
+                <span>{linked ? "مرتبط بسجل موظفة" : "حساب غير مرتبط بموظفة"}</span>
+                <span>رقم الموظف: {profileUser.employeeNo || shortUid(profileUser.uid)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="employee-profile-v2__heroActions">
+            <button
+              type="button"
+              className="employee-accounts-v2__button employee-accounts-v2__button--primary"
+              disabled={!profileCanMutate}
+              onClick={() => {
+                setSelectedUserId(profileUser.uid);
+                openEditUser(profileUser);
+              }}
+            >
+              تعديل الحساب
+            </button>
+            {linkedEmployeePath ? (
+              <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(linkedEmployeePath)}>
+                فتح ملف الموظفة الإداري
+              </button>
+            ) : (
+              <button type="button" className="employee-accounts-v2__button" disabled>
+                حساب غير مرتبط بسجل موظفة
+              </button>
+            )}
+          </div>
+        </header>
+
+        <nav className="employee-profile-v2__tabs" aria-label="أقسام حساب الدخول">
+          {accountSections.map((tab) => (
+            <button
+              key={tab.label}
+              type="button"
+              onClick={() => {
+                document.querySelector(tab.href)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="employee-profile-v2__grid" id="account-summary">
+          <article className="employee-profile-v2__panel employee-profile-v2__panel--summary">
+            <div className="employee-profile-v2__panelHead">
+              <div>
+                <h2>ملخص الحساب</h2>
+                <p>بيانات حساب الدخول وحالة الربط بسجل الموظفة كما هي مخزنة حاليًا.</p>
+              </div>
+            </div>
+
+            <div className="employee-profile-v2__facts">
+              {[
+                ["الاسم", displayName],
+                ["البريد", profileUser.email || "—"],
+                ["الجوال", profileUser.phone || "—"],
+                ["تاريخ بداية العمل", profileUser.startDate || "—"],
+                ["رقم البصمة", profileUser.fingerprintNo || "—"],
+                ["القسم", getDepartmentLabel(profileUser)],
+                ["المسمى الوظيفي", getDisplayTitle(profileUser)],
+                ["الحالة الوظيفية", profileUser.employmentStatus || getUserStateSummary(state)],
+                ["حالة حساب الدخول", getUserStateLabel(state)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="employee-profile-v2__panel" id="account-settings">
+            <div className="employee-profile-v2__panelHead">
+              <div>
+                <h2>إعدادات الحساب</h2>
+                <p>إجراءات الدخول والصلاحيات بدون تعديل ملف الموظفة الإداري.</p>
+              </div>
+            </div>
+
+            <div className="employee-profile-v2__accountActions">
+              <button
+                type="button"
+                className="employee-accounts-v2__button"
+                disabled={!profileCanMutate}
+                onClick={() => {
+                  if (rowCanRestore) {
+                    restoreUserAccount(profileUser.uid);
+                    return;
+                  }
+                  toggleUserActive(profileUser.uid, !(profileUser.active !== false));
+                }}
+              >
+                {rowCanRestore ? "استعادة الحساب" : profileUser.active !== false ? "تعطيل الحساب" : "تفعيل الحساب"}
+              </button>
+              <button
+                type="button"
+                className="employee-accounts-v2__button"
+                disabled={profileUser.uid !== currentUid}
+                title={profileUser.uid !== currentUid ? "فتح بوابة موظفة أخرى غير مدعوم من إدارة الحسابات." : undefined}
+                onClick={() => navigate("/employee/overview")}
+              >
+                فتح بوابتي
+              </button>
+              <button
+                type="button"
+                className="employee-accounts-v2__button"
+                onClick={() => navigate("/admin/messages")}
+              >
+                عرض الرسائل
+              </button>
+              <button
+                type="button"
+                className="employee-accounts-v2__button employee-accounts-v2__button--danger"
+                disabled={!profileCanMutate || usersLoading}
+                onClick={() => deleteUserAccount(profileUser.uid)}
+              >
+                حذف الحساب
+              </button>
+            </div>
+
+            {!linked ? (
+              <details className="employee-profile-v2__technical" id="account-technical" open>
+                <summary>الحساب غير مرتبط بموظفة</summary>
+                <p>راجع الحساب واربطه من ملف الموظفة في الموارد البشرية.</p>
+                <dl>
+                  <div><dt>الدور</dt><dd>{getRoleLabel(profileUser.role)}</dd></div>
+                  <div><dt>البريد</dt><dd>{profileUser.email || "—"}</dd></div>
+                  <div><dt>UID</dt><dd>{shortUid(profileUser.uid)}</dd></div>
+                </dl>
+              </details>
+            ) : (
+              <details className="employee-profile-v2__technical" id="account-technical">
+                <summary>بيانات تقنية</summary>
+                <dl>
+                  <div><dt>UID</dt><dd>{shortUid(profileUser.uid)}</dd></div>
+                  <div><dt>Employee ID</dt><dd>{profileEmployeeId || "—"}</dd></div>
+                </dl>
+              </details>
+            )}
+          </article>
+        </div>
+
+        <section className="employee-profile-v2__panel" id="employee-link">
+          <div className="employee-profile-v2__panelHead">
+            <div>
+              <h2>الربط مع ملف الموظفة</h2>
+              <p>هذه قراءة فقط من سجل الموظفة المرتبط. تعديل الراتب والحضور والإجازات والبيانات الإدارية يتم من إدارة الموظفين.</p>
+            </div>
+            {linkedEmployeePath ? (
+              <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(linkedEmployeePath)}>
+                فتح ملف الموظفة في إدارة الموظفين
+              </button>
+            ) : null}
+          </div>
+
+          <div className="employee-profile-v2__formPreview">
+            {[
+              ["اسم الموظف", displayName],
+              ["البريد", profileUser.email || "—"],
+              ["رقم الجوال", profileUser.phone || "—"],
+              ["المسمى الوظيفي", getDisplayTitle(profileUser)],
+              ["القسم", getDepartmentLabel(profileUser)],
+              ["تاريخ بداية العمل", profileUser.startDate || "—"],
+              ["الحالة الوظيفية", profileUser.employmentStatus || getUserStateSummary(state)],
+              ["رقم البصمة", profileUser.fingerprintNo || "—"],
+              ["الدور والصلاحيات", `${getRoleLabel(profileUser.role)} · ${getUserPermissions(profileUser).length} صلاحية`],
+              ["حالة الحساب", getUserStateLabel(state)],
+              ["الملاحظات الإدارية", profileUser.notes || "—"],
+            ].map(([label, value]) => (
+              <label key={label}>
+                <span>{label}</span>
+                <input value={value} readOnly />
+              </label>
+            ))}
+          </div>
+        </section>
+
+      </section>
+    );
+  };
 
   /* =========================
      Render
@@ -1696,467 +2546,9 @@ export default function SettingsUsers({
   return (
     <div className="accounts-page accounts-page--settings" dir="rtl">
       <div className="accounts-shell">
-        <SettingsPageHeader
-          eyebrow="الوحدة 03"
-          title={pageTitle}
-          hint={pageHint}
-          badges={
-            <>
-              <span className="settings-shell__pill settings-shell__pill--outline">المصدر: salons/main/users</span>
-              <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{getRoleLabel(uiRole)}</span>
-            </>
-          }
-          actions={
-            <>
-              <button
-                type="button"
-                className="accounts-btn accounts-btn--primary"
-                onClick={() => {
-                  setCreateMsg("");
-                  setCreateOpen(true);
-                }}
-              >
-                حساب إداري جديد <span aria-hidden="true">+</span>
-              </button>
-              <button
-                type="button"
-                className="accounts-btn"
-                disabled={usersLoading}
-                onClick={() => void loadUsers({ runRepair: true })}
-              >
-                {usersLoading ? "جارِ التحديث..." : "تحديث القائمة"}
-              </button>
-            </>
-          }
-          compact
-        />
-
-        <section className="accounts-hero">
-          <article className="accounts-hero__summary accounts-hero__summary--dark">
-            <span className="accounts-eyebrow">حسابات الإدارة</span>
-            <h1>إدارة الوصول</h1>
-            <p>لوحة طولية منظمة لمتابعة الحسابات الإدارية، الدعوات، وربط الأدوار من واجهة واحدة واضحة وسريعة القراءة.</p>
-            <div className="accounts-hero__summary-list">
-              {heroHighlights.map((item) => (
-                <div key={item.label} className="accounts-hero__summary-item">
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <small>{item.hint}</small>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <div className="accounts-hero__copy">
-            <span className="accounts-hero__badge">وصول الإدارة</span>
-            <h2>حسابات الإدارة</h2>
-            <p>إدارة الحسابات والدعوات والصلاحيات من تبويب واحد، مع عرض واضح للحالة الحالية والروابط الفعلية بين الحسابات والموظفين.</p>
-            <div className="accounts-hero__chips">
-              <span className="accounts-chip accounts-chip--gold">إجمالي: {stats.total}</span>
-              <span className="accounts-chip accounts-chip--mint">نشطة: {stats.active}</span>
-              <span className="accounts-chip accounts-chip--blue">دعوات: {inviteStats.active}</span>
-              <span className="accounts-chip accounts-chip--slate">استثناءات: {exceptionCount}</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="accounts-section accounts-invites">
-          <div className="accounts-section__head">
-            <div>
-              <span className="accounts-section__eyebrow">دعوات الأدوار</span>
-              <h2>دعوات الأدوار</h2>
-              <p>اربط دورًا ببريد إلكتروني ليُطبّق تلقائيًا عند تسجيل الدخول أو إنشاء الحساب.</p>
-            </div>
-            <div className="accounts-section__chips">
-              <span className="accounts-chip accounts-chip--gold">فعالة: {inviteStats.active}</span>
-              <span className="accounts-chip accounts-chip--soft">مستخدمة: {inviteStats.used}</span>
-            </div>
-          </div>
-
-          <div className="accounts-invites__grid">
-            <article className="accounts-panel accounts-panel--invite">
-              <div className="accounts-panel__head">
-                <div>
-                  <span className="accounts-kicker">دعوة جديدة</span>
-                  <h3>حفظ دعوة دور</h3>
-                  <p>تستخدم نفس collection والدخول التلقائي الموجودين أصلًا في التطبيق دون تغيير المنطق.</p>
-                </div>
-                <div className="accounts-panel__metric">
-                  <span>ROLE</span>
-                  <strong>{inviteDraft.role.toUpperCase()}</strong>
-                </div>
-              </div>
-
-              <div className="accounts-form-grid">
-                <label className="accounts-field">
-                  <span>البريد</span>
-                  <input
-                    value={inviteDraft.email}
-                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, email: e.target.value }))}
-                    placeholder="name@malikat.com"
-                  />
-                </label>
-
-                <label className="accounts-field">
-                  <span>الدور</span>
-                  <select
-                    value={inviteDraft.role}
-                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, role: e.target.value as UiRole }))}
-                  >
-                    {isOwner ? <option value="owner">Owner</option> : null}
-                    <option value="admin">Admin</option>
-                    <option value="hr">HR</option>
-                    <option value="reception">Reception</option>
-                    <option value="staff">Staff</option>
-                  </select>
-                </label>
-
-                <label className="accounts-field accounts-field--wide">
-                  <span>ملاحظات اختيارية</span>
-                  <textarea
-                    value={inviteDraft.notes}
-                    onChange={(e) => setInviteDraft((prev) => ({ ...prev, notes: e.target.value }))}
-                    placeholder="ملاحظات داخلية أو تعليمات خاصة..."
-                  />
-                </label>
-              </div>
-
-              <div className="accounts-permission-preview">
-                <span>الصلاحيات المتوقعة لهذا الدور</span>
-                <div className="accounts-permission-preview__chips">
-                  {invitePreviewPermissions.slice(0, 4).map((permission) => (
-                    <span key={permission.key} className="accounts-permission-preview__chip">
-                      {permission.label}
-                    </span>
-                  ))}
-                  {invitePreviewPermissions.length > 4 ? (
-                    <span className="accounts-permission-preview__chip accounts-permission-preview__chip--more">
-                      +{invitePreviewPermissions.length - 4}
-                    </span>
-                  ) : null}
-                  {!invitePreviewPermissions.length ? (
-                    <span className="accounts-permission-preview__empty">لا توجد صلاحيات</span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="accounts-modal__footer accounts-modal__footer--inline">
-                <button
-                  type="button"
-                  className="accounts-btn"
-                  disabled={inviteSaving || invitesLoading}
-                  onClick={() => setInviteDraft({ email: "", role: "staff", notes: "" })}
-                >
-                  إعادة ضبط
-                </button>
-                <button
-                  type="button"
-                  className="accounts-btn accounts-btn--primary"
-                  disabled={inviteSaving}
-                  onClick={handleCreateInvite}
-                >
-                  {inviteSaving ? "جاري الحفظ..." : "حفظ الدعوة"}
-                </button>
-              </div>
-            </article>
-
-            <article className="accounts-panel accounts-panel--invite-list">
-              <div className="accounts-panel__head">
-                <div>
-                  <span className="accounts-kicker">الدعوات الحالية</span>
-                  <h3>الدعوات الحالية</h3>
-                  <p>تظهر هنا الدعوات غير المستخدمة أو المستخدمة مع حالة كل دعوة.</p>
-                </div>
-                <div className="accounts-panel__metric">
-                  <span>OPEN</span>
-                  <strong>{inviteStats.active}</strong>
-                </div>
-              </div>
-
-              {invitesLoading ? (
-                <div className="accounts-inline-note">تحميل الدعوات…</div>
-              ) : invites.length ? (
-                <div className="accounts-invite-list">
-                  {invites.map((invite) => {
-                    const inviteTone = invite.used ? "gray" : invite.active !== false ? "mint" : "amber";
-                    const inviteState = invite.used ? "مستخدمة" : invite.active !== false ? "فعالة" : "متوقفة";
-
-                    return (
-                      <article key={invite.id} className="accounts-invite-card">
-                        <div className="accounts-invite-card__head">
-                          <div>
-                            <strong>{invite.email}</strong>
-                            <span>{formatDate(invite.createdAt)}</span>
-                          </div>
-                          <div className="accounts-card__badgeStack">
-                            <span className={`accounts-chip accounts-chip--${getRoleTone(invite.role)}`}>
-                              {getRoleLabel(invite.role)}
-                            </span>
-                            <span className={`accounts-chip accounts-chip--state accounts-chip--${inviteTone}`}>
-                              {inviteState}
-                            </span>
-                          </div>
-                        </div>
-
-                        <p>{invite.notes || "لا توجد ملاحظات مرتبطة بهذه الدعوة."}</p>
-
-                        <div className="accounts-invite-card__footer">
-                          <span className="accounts-chip accounts-chip--soft">ID: {invite.id}</span>
-                          <span className="accounts-chip accounts-chip--soft">
-                            {invite.used ? "تم التطبيق" : "تنتظر التسجيل"}
-                          </span>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="accounts-empty-state">
-                  <strong>لا توجد دعوات محفوظة حتى الآن</strong>
-                  <p>أنشئ دعوة جديدة من البطاقة المجاورة، ثم ستظهر هنا بمجرد حفظها.</p>
-                </div>
-              )}
-            </article>
-          </div>
-        </section>
-
-        <section className="accounts-section accounts-guide">
-          <div className="accounts-section__head">
-            <div>
-              <span className="accounts-section__eyebrow">دليل الحسابات الإدارية</span>
-              <h2>دليل الحسابات الإدارية</h2>
-              <p>مراجعة سريعة للحالة الحالية، متوسط الصلاحيات، والاستثناءات التي تحتاج انتباهًا.</p>
-            </div>
-            <button
-              type="button"
-              className="accounts-btn accounts-btn--primary"
-              onClick={() => {
-                setCreateMsg("");
-                setCreateOpen(true);
-              }}
-            >
-              حساب إداري جديد <span aria-hidden="true">+</span>
-            </button>
-          </div>
-
-          <div className="accounts-guide__grid">
-            <article className="accounts-guide-card">
-              <span>الإجمالي</span>
-              <strong>{stats.total}</strong>
-              <small>كل الحسابات الإدارية الظاهرة في المصدر الحالي.</small>
-            </article>
-            <article className="accounts-guide-card">
-              <span>النشطة</span>
-              <strong>{stats.active}</strong>
-              <small>الحسابات المفعلة والمسموح لها بالعمل الآن.</small>
-            </article>
-            <article className="accounts-guide-card">
-              <span>متوسط الصلاحيات</span>
-              <strong>{averagePermissions}</strong>
-              <small>مؤشر سريع لمدى اتساع الأدوار الفعلية داخل الحسابات.</small>
-            </article>
-            <article className="accounts-guide-card">
-              <span>الاستثناءات</span>
-              <strong>{exceptionCount}</strong>
-              <small>حسابات عليها ملاحظات أو بانتظار مراجعة إدارية.</small>
-            </article>
-          </div>
-        </section>
-
-        {createMsg ? <div className={`accounts-banner accounts-banner--${bannerTone}`}>{createMsg}</div> : null}
-
-        <section className="accounts-directory">
-          <div className="accounts-toolbar">
-            <label className="accounts-search">
-              <span>بحث</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث باسم الموظفة أو البريد"
-              />
-            </label>
-
-            <div className="accounts-toolbar__row">
-              <label className="accounts-filter">
-                <span>الدور</span>
-                <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UiRole | "all")}>
-                  <option value="all">الكل</option>
-                  <option value="owner">Owner</option>
-                  <option value="admin">Admin</option>
-                  <option value="hr">HR</option>
-                  <option value="reception">Reception</option>
-                  <option value="staff">Staff</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </label>
-
-              <label className="accounts-filter">
-                <span>الحالة</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive" | "pending")}
-                >
-                  <option value="all">الكل</option>
-                  <option value="active">نشطة</option>
-                  <option value="pending">قيد المراجعة</option>
-                  <option value="inactive">غير نشطة</option>
-                </select>
-              </label>
-            </div>
-
-            <button
-              type="button"
-              className="accounts-btn accounts-btn--ghost"
-              onClick={() => {
-                setSearchQuery("");
-                setRoleFilter("all");
-                setStatusFilter("all");
-              }}
-            >
-              إعادة ضبط الفلاتر
-            </button>
-          </div>
-
-          <div className="accounts-list">
-            {usersLoading ? <div className="accounts-inline-note">تحميل الحسابات…</div> : null}
-
-            {!usersLoading && !visibleUsers.length ? (
-              <div className="accounts-empty-state">
-                <strong>لا توجد نتائج</strong>
-                <p>جرّب تغيير الفلاتر أو تحديث القائمة من الأعلى.</p>
-              </div>
-            ) : null}
-
-            {visibleUsers.map((row) => {
-              const state = getUserState(row);
-              const rowPermissions = getUserPermissions(row);
-              const effectiveCount = rowPermissions.length;
-              const rowCanMutate = canEditTargetUser(row) && row.uid !== currentUid;
-              const rowBlockedMessage =
-                row.uid === currentUid
-                  ? "لا يمكن تعديل الحساب المستخدم حاليًا من هذه البطاقة."
-                  : "لا تملك صلاحية تعديل هذا الحساب.";
-              const rowInitial = cleanText(row.displayName || row.email || row.uid).slice(0, 1) || "?";
-
-              return (
-                <article
-                  key={row.uid}
-                  className="accounts-card"
-                >
-                  <div className="accounts-card__aside">
-                    <div className="accounts-card__avatar">{rowInitial}</div>
-                    <div className="accounts-card__metric">
-                      <span>EFFECTIVE</span>
-                      <strong>{effectiveCount}</strong>
-                    </div>
-                  </div>
-
-                  <div className="accounts-card__body">
-                    <div className="accounts-card__top">
-                      <div>
-                        <strong>{row.displayName || "بدون اسم"}</strong>
-                        <span>{row.email || "لا يوجد بريد"}</span>
-                      </div>
-
-                      <div className="accounts-card__badgeStack">
-                        <span className={`accounts-chip accounts-chip--${getRoleTone(row.role)}`}>{getRoleLabel(row.role)}</span>
-                        <span className={`accounts-chip accounts-chip--state accounts-chip--${state}`}>
-                          {state === "active" ? "نشطة" : state === "pending" ? "قيد المراجعة" : "غير نشطة"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="accounts-card__miniGrid">
-                      <div className="accounts-card__mini">
-                        <span>الحالة</span>
-                        <strong>{state === "active" ? "مفعلة" : state === "pending" ? "مراجعة" : "معطلة"}</strong>
-                      </div>
-                      <div className="accounts-card__mini">
-                        <span>الدور</span>
-                        <strong>{getRoleLabel(row.role)}</strong>
-                      </div>
-                      <div className="accounts-card__mini">
-                        <span>استثناءات</span>
-                        <strong>{row.notes ? "ملاحظة" : "لا توجد"}</strong>
-                      </div>
-                    </div>
-
-                    <p>{row.notes || "لا توجد ملاحظات مرتبطة بهذا الحساب."}</p>
-
-                    <div className="accounts-card__perms">
-                      {PERMISSION_META.filter((permission) => rowPermissions.includes(permission.key)).slice(0, 4).map((permission) => (
-                        <span key={permission.key} className="accounts-permission-preview__chip">
-                          {permission.label}
-                        </span>
-                      ))}
-                      {rowPermissions.length > 4 ? (
-                        <span className="accounts-permission-preview__chip accounts-permission-preview__chip--more">
-                          +{rowPermissions.length - 4}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="accounts-card__footer">
-                      <span className="accounts-chip accounts-chip--soft">ID: {row.uid}</span>
-                      <span className="accounts-chip accounts-chip--soft">{row.phone || "بدون هاتف"}</span>
-                    </div>
-                  </div>
-
-                  <div className="accounts-card__actions">
-                    <button
-                      type="button"
-                      className="accounts-btn accounts-btn--primary"
-                      aria-disabled={!rowCanMutate}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!rowCanMutate) {
-                          toastMsg(rowBlockedMessage, 2200);
-                          return;
-                        }
-                        setSelectedUserId(row.uid);
-                        openEditUser(row);
-                      }}
-                    >
-                      تعديل
-                    </button>
-                    <button
-                      type="button"
-                      className="accounts-btn"
-                      aria-disabled={!rowCanMutate}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!rowCanMutate) {
-                          toastMsg(rowBlockedMessage, 2200);
-                          return;
-                        }
-                        toggleUserActive(row.uid, !(row.active !== false));
-                      }}
-                    >
-                      {row.active !== false ? "تعطيل" : "تفعيل"}
-                    </button>
-                    <button
-                      type="button"
-                      className="accounts-btn accounts-btn--danger"
-                      disabled={usersLoading}
-                      aria-disabled={!rowCanMutate || usersLoading}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!rowCanMutate) {
-                          toastMsg(rowBlockedMessage, 2200);
-                          return;
-                        }
-                        deleteUserAccount(row.uid);
-                      }}
-                    >
-                      حذف
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+        <div className="employee-accounts-v2">
+          {profileUid ? renderProfilePage() : renderListPage()}
+        </div>
       {createOpen ? (
         <div className="accounts-modal" role="dialog" aria-modal="true">
           <button

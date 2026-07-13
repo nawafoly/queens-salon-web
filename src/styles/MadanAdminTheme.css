@@ -20505,6 +20505,9 @@ transform: translateY(-2px) !important;
 .hr-shell.madan-admin-shell.hr-shell--employees {
 min-height: 100vh;
 align-items: stretch;
+color: #172033;
+background: #ffffff;
+color-scheme: light;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .hr-shell-sidebar {
@@ -20517,6 +20520,7 @@ align-self: start;
 min-width: 0;
 min-height: 100vh;
 padding: 0 !important;
+background: #ffffff;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .hr-stage--workspace {
@@ -20524,6 +20528,7 @@ width: 100%;
 max-width: none;
 min-width: 0;
 padding: clamp(14px, 1.8vw, 24px) !important;
+background: #ffffff;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper,
@@ -20546,38 +20551,28 @@ gap: 16px;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar {
-position: sticky !important;
-top: 0;
-z-index: 28;
-min-height: 104px;
+position: relative;
+top: auto;
+z-index: 1;
+min-height: 0;
 margin: 0 !important;
-padding: 20px 22px !important;
+padding: 18px 20px !important;
 display: flex;
 align-items: center;
 justify-content: space-between;
 gap: 18px;
 overflow: hidden;
-border: 1px solid rgba(255,255,255,.1) !important;
-border-radius: 25px !important;
-color: #fff !important;
-background:
-  radial-gradient(circle at 88% 8%, rgba(242,183,5,.22), transparent 32%),
-  linear-gradient(135deg, #030640 0%, #0b1220 70%, #111c30 100%) !important;
-box-shadow: 0 25px 58px -38px rgba(3,6,64,.8) !important;
-backdrop-filter: blur(18px);
+border: 1px solid rgba(15,23,42,.09) !important;
+border-radius: 20px !important;
+color: #172033 !important;
+background: #ffffff !important;
+box-shadow: 0 16px 38px -31px rgba(3,6,64,.28) !important;
+backdrop-filter: none;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar::after {
-content: "";
-position: absolute;
-inset-inline-end: -70px;
-bottom: -130px;
-width: 280px;
-height: 280px;
-border: 1px solid rgba(242,183,5,.18);
-border-radius: 50%;
-box-shadow: 0 0 0 34px rgba(242,183,5,.04), 0 0 0 68px rgba(242,183,5,.02);
-pointer-events: none;
+content: none;
+display: none;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar-title,
@@ -20588,26 +20583,26 @@ z-index: 1;
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar-title h2 {
 margin: 3px 0 6px !important;
-color: #fff !important;
+color: #172033 !important;
 font-size: clamp(23px, 2.4vw, 34px) !important;
 line-height: 1.2;
 font-weight: 950 !important;
-letter-spacing: -.03em;
+letter-spacing: 0;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .emp-topbar-kicker {
 margin: 0;
-color: #ffe486 !important;
+color: #9b7800 !important;
 font-size: 10px;
 font-weight: 900;
-letter-spacing: .12em;
-text-transform: uppercase;
+letter-spacing: 0;
+text-transform: none;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-sub {
 max-width: 720px;
 margin: 0;
-color: rgba(226,232,240,.7) !important;
+color: #64748b !important;
 font-size: 12px;
 line-height: 1.8;
 }
@@ -20626,16 +20621,16 @@ font-weight: 850;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar-actions .exp-btn.primary {
-border-color: #f2b705 !important;
-color: #030640 !important;
-background: linear-gradient(135deg, #ffe486, #f2b705) !important;
-box-shadow: 0 15px 28px -18px rgba(242,183,5,.85) !important;
+border-color: #172033 !important;
+color: #ffffff !important;
+background: #172033 !important;
+box-shadow: none !important;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-topbar-actions .exp-btn:not(.primary) {
-border-color: rgba(255,255,255,.15) !important;
-color: #fff !important;
-background: rgba(255,255,255,.075) !important;
+border-color: rgba(15,23,42,.12) !important;
+color: #172033 !important;
+background: #ffffff !important;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .emp-summary-strip {
@@ -20929,8 +20924,7 @@ background: rgba(242,183,5,.1) !important;
 }
 
 .hr-shell.madan-admin-shell .madan-hr-overview-v3 .hr-card,
-.hr-shell.madan-admin-shell.hr-shell--employees .emp-page-wrapper .dash-card,
-.hr-shell.madan-admin-shell.hr-shell--employees .emp-summary-strip {
+.hr-shell.madan-admin-shell .madan-hr-overview-v3 .hr-card--attendance-overview {
 content-visibility: auto;
 contain-intrinsic-size: 1px 420px;
 }

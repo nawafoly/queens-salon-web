@@ -227,11 +227,8 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   if (snapSalon.exists()) {
     const data = snapSalon.data() as any;
 
-    const active = data?.active !== false;
-    let role = normalizeRole(data?.role);
-
-    // الحساب الداخلي غير النشط يبقى pending حتى تتم إعادة تفعيله.
-    if (!active && role !== "client" && role !== "guest") role = "pending";
+    const active = data?.active !== false && data?.isActive !== false;
+    const role = normalizeRole(data?.role);
     const permissionOverrides = normalizePermissionOverrides(data?.permissionOverrides);
     const permissions = getEffectiveAppPermissions({
       role,

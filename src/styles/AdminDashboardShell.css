@@ -399,9 +399,9 @@
 .dashboard-skin .dashboard-inner {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1600px;
+  max-width: none;
   min-height: calc(100dvh - 70px);
-  margin: 0 auto !important;
+  margin: 0 !important;
   padding: 22px 24px 42px !important;
 }
 
@@ -1792,9 +1792,12 @@
   .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     min-height: 100dvh !important;
     margin: 0 !important;
+    box-sizing: border-box;
     overflow: visible !important;
+    background: #ffffff !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .sidebar-nav {
@@ -1809,47 +1812,49 @@
   .dashboard-skin.madan-admin-shell.dashboard-page.is-sidebar-collapsed
     > .container-fluid
     > .row {
+    display: block !important;
+    grid-template-columns: none !important;
     padding-inline-start: var(--dash-pro-sidebar-collapsed) !important;
   }
 }
 
 /* =========================================================
-   Dashboard dark canvas integration
-   - Unifies the main dashboard canvas with the sidebar.
-   - Keeps content cards light for readability.
-   - Adds restrained navy/gold details without creating a full
-     dark-mode conflict inside forms, tables, and modals.
+   Dashboard white canvas integration
+   - Keeps the dashboard shell full-width without overlapping the sidebar.
+   - Leaves the sidebar layout rules to reserve its own viewport width.
+   - Keeps content cards light for readability across dashboard routes.
 ========================================================= */
 
 html:has(body .dashboard-skin.madan-admin-shell.dashboard-page),
 body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
-  background: #07080b !important;
+  background: #ffffff !important;
 }
 
 body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
-  --dashboard-canvas: #07080b;
-  --dashboard-canvas-soft: #0b0e14;
-  --dashboard-canvas-raised: #10141d;
-  --dashboard-canvas-line: rgba(255, 255, 255, 0.075);
-  --dashboard-canvas-text: rgba(255, 255, 255, 0.94);
-  --dashboard-canvas-muted: rgba(255, 255, 255, 0.52);
+  --dashboard-canvas: #ffffff;
+  --dashboard-canvas-soft: #f8fafc;
+  --dashboard-canvas-raised: #ffffff;
+  --dashboard-canvas-line: rgba(15, 23, 42, 0.08);
+  --dashboard-canvas-text: #0f172a;
+  --dashboard-canvas-muted: #64748b;
   --dashboard-canvas-gold: #f2b705;
   --dashboard-canvas-gold-soft: rgba(242, 183, 5, 0.12);
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page {
-  --admin-bg: var(--dashboard-canvas, #07080b);
+  --admin-bg: var(--dashboard-canvas, #ffffff);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at 82% -12%, rgba(242, 183, 5, 0.08), transparent 28%),
-    radial-gradient(circle at 16% 92%, rgba(34, 51, 102, 0.16), transparent 32%),
-    var(--dashboard-canvas, #07080b) !important;
+  background: #ffffff !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page > .container-fluid,
 .dashboard-skin.madan-admin-shell.dashboard-page > .container-fluid > .row,
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-main {
-  background: transparent !important;
+  min-width: 0;
+  background: #ffffff !important;
 }
 
 /* Remove the visual "separate panel" feeling from the sidebar. */
@@ -1863,13 +1868,14 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
     -1px 0 0 rgba(0, 0, 0, 0.34) !important;
 }
 
-/* Dark application bar: same visual system as the sidebar. */
+/* Light application bar inside the reserved content area. */
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.075) !important;
-  background:
-    linear-gradient(90deg, rgba(242, 183, 5, 0.035), transparent 30%),
-    rgba(9, 10, 15, 0.94) !important;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22) !important;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, 0.06) !important;
   backdrop-filter: blur(18px) saturate(125%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
 }
@@ -1887,18 +1893,18 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-toggle,
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action,
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-user {
-  border-color: rgba(255, 255, 255, 0.095) !important;
-  color: rgba(255, 255, 255, 0.82) !important;
-  background: rgba(255, 255, 255, 0.045) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05) !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-toggle:hover,
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action:hover,
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-user:hover {
-  border-color: rgba(242, 183, 5, 0.25) !important;
-  color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.075) !important;
+  border-color: rgba(242, 183, 5, 0.28) !important;
+  color: #0f172a !important;
+  background: rgba(242, 183, 5, 0.08) !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-action--hr {
@@ -1917,12 +1923,15 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner {
   position: relative;
   isolation: isolate;
-  background: transparent !important;
+  min-width: 0;
+  max-width: none;
+  background: #ffffff !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner::before,
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner::after {
   content: "";
+  display: none;
   position: fixed;
   z-index: -1;
   pointer-events: none;
@@ -1949,6 +1958,73 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 .dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner > * {
   position: relative;
   z-index: 1;
+  width: 100% !important;
+  min-width: 0;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  box-sizing: border-box;
+}
+
+/* Dashboard page roots must use the full content lane reserved by the shell. */
+.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner > :where(
+  .overview-page,
+  .bk-page-wrapper,
+  .clients-page,
+  .emp-page-wrapper,
+  .reports-v2,
+  .income-page,
+  .exp-page,
+  .offers-page,
+  .loyalty-page,
+  .logs-page,
+  .day-audit-page,
+  .dashstaff-page,
+  .settings-page,
+  .settings-page-frame,
+  .settings-shell--embedded,
+  .accounts-page,
+  .accounts-page--settings
+) {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-inline: 0 !important;
+  box-sizing: border-box;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page :where(
+  .settings-shell,
+  .settings-shell--embedded,
+  .settings-shell__main,
+  .settings-shell__content,
+  .settings-page-frame,
+  .settings-wrap,
+  .settings-master-detail,
+  .accounts-shell,
+  .accounts-workspace,
+  .employee-accounts-v2,
+  .employee-accounts-v2__header,
+  .employee-accounts-v2__stats,
+  .employee-directory-v2,
+  .employee-directory-v2__filters,
+  .employee-directory-v2__grid,
+  .employee-profile-v2,
+  .employee-profile-v2__hero,
+  .employee-profile-v2__grid
+) {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-inline: 0 !important;
+  box-sizing: border-box;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page .logs-page > .container {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-inline: 0 !important;
+  box-sizing: border-box;
 }
 
 /* Keep all functional content light, but give it a subtle shell identity. */
@@ -1974,46 +2050,44 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 
 /* Internal booking is the page with the most exposed background area. */
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal {
-  --bk-bg: transparent;
+  --bk-bg: #ffffff;
   min-height: calc(100dvh - 70px);
-  background: transparent !important;
+  background: #ffffff !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal-page {
-  background: transparent !important;
+  background: #ffffff !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-page-header {
   min-height: 78px;
   margin-bottom: 18px !important;
   padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
-  background:
-    linear-gradient(120deg, rgba(242, 183, 5, 0.055), transparent 32%),
-    rgba(255, 255, 255, 0.035);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  background: #ffffff;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, 0.05);
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-title {
-  color: #ffffff !important;
+  color: #0f172a !important;
   letter-spacing: 0.01em;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-subtitle {
-  color: rgba(255, 255, 255, 0.55) !important;
+  color: #64748b !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-close-btn {
-  border: 1px solid rgba(255, 255, 255, 0.11) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
-  background: rgba(255, 255, 255, 0.055) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  color: #0f172a !important;
+  background: #ffffff !important;
   box-shadow: none !important;
 }
 
 .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-close-btn:hover {
   border-color: rgba(242, 183, 5, 0.28) !important;
-  color: #ffffff !important;
+  color: #0f172a !important;
   background: rgba(242, 183, 5, 0.09) !important;
 }
 
@@ -2024,50 +2098,50 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
     inset 0 1px 0 rgba(242, 183, 5, 0.15) !important;
 }
 
-/* Mobile keeps the same identity instead of switching back to a white shell. */
+/* Mobile keeps the dashboard shell white and lets the bottom nav overlay only itself. */
 @media (max-width: 767px) {
   body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
-    background: #07080b !important;
+    background: #ffffff !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar {
-    border-bottom-color: rgba(255, 255, 255, 0.075) !important;
-    background: rgba(9, 10, 15, 0.96) !important;
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24) !important;
+    border-bottom-color: rgba(15, 23, 42, 0.08) !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.06) !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-title h2,
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-name {
-    color: #ffffff !important;
+    color: #0f172a !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-title span,
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-role {
-    color: rgba(255, 255, 255, 0.48) !important;
+    color: #64748b !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page .dash-topbar-user {
-    border-color: rgba(255, 255, 255, 0.08) !important;
-    background: rgba(255, 255, 255, 0.045) !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+    background: rgba(255, 255, 255, 0.98) !important;
   }
 
   .dashboard-mobile-bottom-nav {
-    border-top-color: rgba(255, 255, 255, 0.08) !important;
-    background: rgba(9, 10, 15, 0.97) !important;
-    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.3) !important;
+    border-top-color: rgba(15, 23, 42, 0.08) !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.09) !important;
   }
 
   .dashboard-mobile-bottom-nav__item {
-    color: rgba(255, 255, 255, 0.5) !important;
+    color: #7d8799 !important;
   }
 
   .dashboard-mobile-bottom-nav__item.is-active {
-    color: #ffffff !important;
-    background: rgba(242, 183, 5, 0.11) !important;
+    color: #07143d !important;
+    background: #fff4c8 !important;
   }
 
   .dashboard-mobile-bottom-nav__primary-icon {
-    border-color: #090a0f !important;
+    border-color: #ffffff !important;
   }
 
   .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal {
@@ -2079,6 +2153,10 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
     padding: 9px 11px;
     border-radius: 16px;
   }
+
+  .dashboard-skin.madan-admin-shell.dashboard-page .employee-accounts-v2 {
+    margin-inline: 0 !important;
+  }
 }
 
-/* DASHBOARD DARK CANVAS INTEGRATION END */
+/* DASHBOARD WHITE CANVAS INTEGRATION END */
