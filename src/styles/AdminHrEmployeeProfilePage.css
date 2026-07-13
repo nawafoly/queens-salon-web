@@ -1,87 +1,1372 @@
-.employee-profile-page { width:100%; max-width:none; min-width:0; box-sizing:border-box; padding:20px; background:#f4f5f7; color:#172033; }
-.emp-page-wrapper.is-profile-route > .container { width:100%!important; max-width:none!important; padding:0!important; }
-.emp-page-wrapper.is-profile-route :where(.emp-page-hero-sticky,.emp-summary-strip) { display:none!important; }
-.emp-page-wrapper.is-profile-route .emp-directory-shell { margin:0!important; padding:0!important; border:0!important; background:transparent!important; }
-.employee-profile-page .employee-profile-breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-height:44px; margin-bottom:12px; color:#778195; }
-.employee-profile-page .employee-profile-breadcrumb button { border:0; padding:0; color:#40010d; background:transparent; font:inherit; font-weight:900; }
-.employee-profile-page .employee-profile-header { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:140px; padding:20px; border:1px solid #e0e5eb; border-radius:18px; background:#fff; box-shadow:0 8px 24px rgba(20,30,50,.05); }
-.employee-profile-page .employee-profile-identity { display:flex; align-items:center; gap:16px; min-width:0; }
-.employee-profile-page .employee-profile-avatar { flex:0 0 76px; width:76px; height:76px; border-radius:16px; object-fit:cover; background:#f2e8ea; }
-.employee-profile-page .employee-profile-identity h1 { margin:2px 0; font-size:clamp(21px,2vw,28px); }
-.employee-profile-page .employee-profile-identity p { margin:0; color:#707b8e; }
-.employee-profile-page .employee-profile-chips { display:flex; gap:8px; margin-top:9px; }
-.employee-profile-page .employee-profile-chips > span { padding:5px 9px; border:1px solid #e1e5ea; border-radius:999px; background:#fff; font-size:12px; }
-.employee-profile-page .employee-profile-back { min-width:max-content; min-height:44px; padding:0 14px; border:1px solid rgba(64,1,13,.2); border-radius:11px; color:#40010d; background:#fff; font-weight:900; white-space:nowrap; }
-.employee-profile-page .employee-profile-workspace { display:grid; grid-template-columns:minmax(220px,260px) minmax(0,1fr); gap:20px; align-items:start; margin-top:20px; }
-.employee-profile-page .employee-profile-sidebar { position:sticky; top:20px; display:flex; flex-direction:column; gap:6px; min-width:220px; padding:10px; border:1px solid #e0e5eb; border-radius:16px; background:#fff; }
-.employee-profile-page .employee-profile-sidebar button { display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; width:100%; min-height:46px; padding:8px 10px; border:1px solid transparent; border-radius:10px; color:#5f6a7c; background:transparent; text-align:right; white-space:nowrap; }
-.employee-profile-page .employee-profile-sidebar button.is-active { color:#40010d; border-color:rgba(64,1,13,.14); background:#fff1f4; }
-.employee-profile-page .employee-profile-content { min-width:0; overflow:visible; }
-.employee-profile-page .employee-profile-content > :not(.employee-profile-actions) { width:100%; min-width:0; box-sizing:border-box; padding:20px; border:1px solid #e0e5eb; border-radius:16px; background:#fff; }
-.employee-profile-page :where(.emp-basic-layout,.emp-basic-layout__main,.emp-basic-layout__side,.emp-basic-choice-grid,.emp-schedule-kpi-grid,.emp-form-grid) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
-.employee-profile-page :where(.emp-basic-layout__main,.emp-basic-layout__side) { grid-template-columns:1fr; }
-.employee-profile-page :where(.emp-basic-card,.emp-schedule-kpi,.dash-field) { min-width:0; padding:16px; border:1px solid #e5e8ed; border-radius:13px; background:#fff; }
-.employee-profile-page :where(input:not([type="checkbox"]):not([type="radio"]),select,textarea,.dash-input,.dash-select) { width:100%; max-width:100%; min-height:44px; box-sizing:border-box; }
-.employee-profile-page input[type="checkbox"],.employee-profile-page input[type="radio"] { width:20px; height:20px; min-height:0; flex:0 0 20px; accent-color:#5b0717; }
-.employee-profile-page :where(h1,h2,h3,h4,p,span,strong,small,label) { overflow-wrap:break-word; }
-.employee-profile-page .emp-section-header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid #e8ebef }
-.employee-profile-page .emp-modal-section-title { margin:4px 0;font-size:clamp(24px,2.2vw,32px);line-height:1.2 }
-.employee-profile-page .emp-section-lead { margin:0;color:#7a8598;line-height:1.7 }
-.employee-profile-page .emp-label { display:block;margin-bottom:7px;font-size:13px;font-weight:800 }
-.employee-profile-page .dash-field { display:flex;flex-direction:column;padding:14px }
-.employee-profile-page :where(.dash-input,.dash-select,.dash-textarea) { padding:10px 13px;border:1px solid #dce2e9;border-radius:11px;background:#fff;font:inherit }
-.employee-profile-page .exp-btn { min-height:40px;padding:8px 14px;border:1px solid #dce1e7;border-radius:10px;background:#fff;font-weight:800 }
-.employee-profile-page .exp-btn.primary { color:#fff;border-color:#5b0717;background:#5b0717 }
-.employee-profile-page .emp-basic-card__head { display:flex;justify-content:space-between;gap:12px;margin-bottom:14px }
-.employee-profile-page .emp-basic-choice-card { display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;min-height:86px;padding:13px;border:1px solid #dce2e8;border-radius:12px;color:#263248;background:#fff;text-align:right }
-.employee-profile-page .emp-basic-choice-card.is-selected { border-color:#79162a;background:#fff3f5;box-shadow:0 0 0 1px rgba(91,7,23,.08) }
-.employee-profile-page .emp-basic-choice-card__indicator { width:22px;height:22px;border:1px solid #cfd6de;border-radius:50%;background:#fff }
-.employee-profile-page .emp-basic-choice-card.is-selected .emp-basic-choice-card__indicator { border:6px solid #5b0717 }
-.employee-profile-page .emp-basic-choice-card strong { display:block;margin-bottom:5px }
-.employee-profile-page .emp-basic-choice-card span { color:#768297;font-size:13px;line-height:1.55 }
-.employee-profile-page .emp-services-toolbar { display:grid;grid-template-columns:minmax(240px,1fr) minmax(220px,.7fr) auto;gap:12px;align-items:end }
-.employee-profile-page .emp-services-view-switch { display:flex;gap:4px;padding:4px;border:1px solid #dfe4ea;border-radius:10px;background:#f6f8fa }
-.employee-profile-page .emp-services-view-switch button { min-width:38px;min-height:36px;border:0;border-radius:7px;background:transparent }
-.employee-profile-page .emp-services-view-switch button.is-active { color:#fff;background:#5b0717 }
-.employee-profile-page .emp-services-bulkbar { display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid #e2e6eb;border-radius:12px;background:#f8fafb }
-.employee-profile-page .emp-services-bulkbar__actions { display:flex;gap:8px }
-.employee-profile-page .emp-services-workspace { display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:16px;align-items:start }
-.employee-profile-page :where(.emp-services-catalog,.emp-services-selected-panel) { min-width:0;padding:16px;border:1px solid #e1e5ea;border-radius:14px;background:#fff }
-.employee-profile-page :where(.emp-services-catalog__head,.emp-services-selected-panel__head) { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px }
-.employee-profile-page .emp-services-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px }
-.employee-profile-page .emp-service-card { display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start;min-width:0;min-height:92px;padding:13px;border:1px solid #dfe4e9;border-radius:12px;color:#1f2a40;background:#fff;text-align:right }
-.employee-profile-page .emp-service-card.is-selected { border-color:#79162a;background:#fff4f6 }
-.employee-profile-page .emp-service-card__check { display:grid;place-items:center;width:21px;height:21px;border:1px solid #ccd4dd;border-radius:6px }
-.employee-profile-page .emp-service-card__body strong { display:block;margin-bottom:7px;line-height:1.45 }
-.employee-profile-page .emp-service-card__facts { display:flex;flex-wrap:wrap;gap:7px;color:#778397;font-size:12px }
-.employee-profile-page .emp-services-selected-panel { position:sticky;top:20px }
-.employee-profile-page .emp-services-selected-list { display:flex;flex-direction:column;gap:8px;max-height:560px;overflow-y:auto }
-.employee-profile-page .emp-services-selected-item { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:11px;border:1px solid #e1e5ea;border-radius:10px;background:#fafbfc }
-.employee-profile-page .emp-form-grid { align-items:start }
-.employee-profile-page .emp-panel { min-width:0;padding:17px;border:1px solid #e0e5ea;border-radius:14px;background:#fff }
-.employee-profile-page .emp-panel:has(.emp-working-week) { grid-column:1/-1 }
-.employee-profile-page .emp-panel-head,.employee-profile-page .emp-working-table-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px }
-.employee-profile-page .emp-toggle-row,.employee-profile-page .emp-check-label { display:flex;align-items:center;gap:10px }
-.employee-profile-page .emp-working-week-cards { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px }
-.employee-profile-page .emp-working-day-card { min-width:0;padding:13px;border:1px solid #dfe4e9;border-radius:12px;background:#fff }
-.employee-profile-page .emp-working-day-card.is-off { opacity:.68;background:#f7f8fa }
-.employee-profile-page .emp-working-day-card__head { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px;font-weight:900 }
-.employee-profile-page .emp-working-day-card__times { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px }
-.employee-profile-page .emp-stats-stack { display:flex;flex-direction:column;gap:16px }
-.employee-profile-page :where(.staff-payroll-box,.staff-leave-box) { padding:17px;border:1px solid #e0e5ea;border-radius:14px;background:#fff }
-.employee-profile-page :where(.staff-payroll-head,.staff-leave-head) { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px }
-.employee-profile-page :where(.staff-payroll-form,.staff-leave-settings-grid,.staff-leave-controls) { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px }
-.employee-profile-page .staff-leave-settings-wide { grid-column:1/-1 }
-.employee-profile-page :where(.staff-payroll-preview-grid,.emp-kpi-strip) { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 }
-.employee-profile-page :where(.staff-payroll-chip,.emp-kpi-card) { padding:13px;border:1px solid #e1e5ea;border-radius:11px;background:#f8fafb }
-.employee-profile-page .leave-log-list { margin-top:16px;overflow-x:auto;border:1px solid #e1e5ea;border-radius:12px }
-.employee-profile-page :where(.leave-log-head,.leave-log-row) { display:grid;grid-template-columns:100px 80px 90px 90px 110px minmax(180px,1fr) 44px;gap:8px;align-items:center;min-width:760px;padding:11px 13px;border-top:1px solid #edf0f3 }
-.employee-profile-page .employee-profile-actions { display:flex; justify-content:space-between; gap:12px; margin-top:16px; padding:16px; border:1px solid #e0e5eb; border-radius:14px; background:#fff; }
-.employee-profile-page .employee-profile-actions > div { display:flex; gap:10px; }
-.employee-profile-page .employee-profile-actions button { min-height:44px; padding:0 15px; border:1px solid #dfe3e9; border-radius:10px; background:#fff; font-weight:900; }
-.employee-profile-page .employee-profile-actions .is-primary { color:#fff; border-color:#40010d; background:#40010d; }
-.employee-profile-page .employee-profile-actions .is-danger { color:#b4233c; border-color:#f0cbd2; background:#fff4f6; }
-@media(max-width:1024px){.employee-profile-page .employee-profile-workspace{grid-template-columns:1fr}.employee-profile-page .employee-profile-sidebar{position:static;min-width:0;flex-direction:row;overflow-x:auto}.employee-profile-page .employee-profile-sidebar button{flex:0 0 auto;width:auto;min-width:145px}}
-@media(max-width:1100px){.employee-profile-page .emp-services-workspace{grid-template-columns:1fr}.employee-profile-page .emp-services-selected-panel{position:static}.employee-profile-page .emp-services-selected-list{max-height:360px}.employee-profile-page .emp-services-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.employee-profile-page .emp-services-view-switch{grid-column:1/-1;width:max-content}.employee-profile-page :where(.staff-payroll-form,.staff-leave-settings-grid,.staff-leave-controls){grid-template-columns:1fr}}
-@media(max-width:600px){.employee-profile-page{padding:10px}.employee-profile-page .employee-profile-header{align-items:flex-start;flex-wrap:wrap;padding:14px}.employee-profile-page .employee-profile-back{width:auto}.employee-profile-page :where(.emp-basic-layout,.emp-basic-choice-grid,.emp-schedule-kpi-grid,.emp-form-grid){grid-template-columns:1fr}.employee-profile-page .employee-profile-actions{flex-direction:column}.employee-profile-page .employee-profile-actions>div{display:grid;grid-template-columns:1fr}.employee-profile-page .employee-profile-actions button{width:100%}}
-@media(max-width:700px){.employee-profile-page .emp-section-header,.employee-profile-page .emp-services-bulkbar{flex-direction:column}.employee-profile-page .emp-services-toolbar,.employee-profile-page .emp-services-grid,.employee-profile-page .emp-working-week-cards,.employee-profile-page :where(.staff-payroll-preview-grid,.emp-kpi-strip){grid-template-columns:1fr}.employee-profile-page .emp-services-view-switch{grid-column:auto}.employee-profile-page .emp-services-bulkbar__actions{width:100%}.employee-profile-page .emp-services-bulkbar__actions>*{flex:1}.employee-profile-page .emp-working-day-card__times{grid-template-columns:1fr}.employee-profile-page .employee-profile-content>:not(.employee-profile-actions){padding:14px}}
+/* Standalone employee profile page. Everything is scoped to avoid legacy modal collisions. */
+.emp-page-wrapper.is-profile-route,
+.emp-page-wrapper.is-profile-route .employee-profile-route-container,
+.emp-page-wrapper.is-profile-route .employee-profile-route-host {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.emp-page-wrapper.is-profile-route {
+  min-height: 100%;
+  background: #f3f5f8;
+}
+
+.emp-page-wrapper.is-profile-route :where(.emp-page-hero-sticky, .emp-summary-strip) {
+  display: none !important;
+}
+
+.employee-profile-page {
+  --profile-primary: #5a0718;
+  --profile-primary-strong: #430411;
+  --profile-primary-soft: #fff1f4;
+  --profile-gold: #c99200;
+  --profile-text: #172033;
+  --profile-muted: #6f7b8e;
+  --profile-line: #dfe4ea;
+  --profile-canvas: #f3f5f8;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 100%;
+  padding: clamp(14px, 2vw, 28px);
+  box-sizing: border-box;
+  color: var(--profile-text);
+  background: var(--profile-canvas);
+  direction: rtl;
+}
+
+.employee-profile-page *,
+.employee-profile-page *::before,
+.employee-profile-page *::after {
+  box-sizing: border-box;
+}
+
+.employee-profile-page button,
+.employee-profile-page input,
+.employee-profile-page select,
+.employee-profile-page textarea {
+  font: inherit;
+}
+
+.employee-profile-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0 0 12px;
+  color: #7d8797;
+  font-size: 13px;
+}
+
+.employee-profile-breadcrumb button {
+  border: 0;
+  padding: 0;
+  color: var(--profile-primary);
+  background: transparent;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-profile-breadcrumb strong {
+  color: var(--profile-text);
+}
+
+.employee-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  min-width: 0;
+  min-height: 132px;
+  padding: 20px 22px;
+  border: 1px solid var(--profile-line);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(201, 146, 0, 0.08), transparent 28%),
+    #fff;
+  box-shadow: 0 12px 32px rgba(18, 31, 53, 0.06);
+}
+
+.employee-profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.employee-profile-avatar {
+  flex: 0 0 78px;
+  width: 78px !important;
+  height: 78px !important;
+  overflow: hidden;
+  border: 2px solid rgba(90, 7, 24, 0.12) !important;
+  border-radius: 18px !important;
+  object-fit: cover;
+  background: #f4e9ec !important;
+  box-shadow: 0 8px 20px rgba(39, 21, 28, 0.09);
+}
+
+.employee-profile-identity-copy {
+  min-width: 0;
+}
+
+.employee-profile-identity-copy > small {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--profile-gold);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.employee-profile-identity h1 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--profile-text);
+  font-size: clamp(23px, 2vw, 31px);
+  font-weight: 950;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-identity p {
+  margin: 5px 0 0;
+  color: var(--profile-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.employee-profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.employee-profile-chips > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid #e0e5eb;
+  border-radius: 999px;
+  color: #526075;
+  background: #f8fafb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.employee-profile-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: max-content;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid rgba(90, 7, 24, 0.2);
+  border-radius: 12px;
+  color: var(--profile-primary);
+  background: #fff;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.employee-profile-back:hover {
+  border-color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+}
+
+.employee-profile-workspace {
+  display: grid;
+  grid-template-columns: minmax(230px, 270px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  margin-top: 20px;
+}
+
+.employee-profile-navigation {
+  position: sticky;
+  top: 18px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--profile-line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(18, 31, 53, 0.05);
+}
+
+.employee-profile-navigation-title {
+  display: grid;
+  gap: 3px;
+  padding: 5px 7px 12px;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.employee-profile-navigation-title span {
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.employee-profile-navigation-title small {
+  color: var(--profile-muted);
+  font-size: 11px;
+}
+
+.employee-profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 9px;
+}
+
+.employee-profile-sidebar button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #637086;
+  background: transparent;
+  text-align: right;
+  cursor: pointer;
+}
+
+.employee-profile-sidebar button:hover {
+  color: var(--profile-text);
+  background: #f7f8fa;
+}
+
+.employee-profile-sidebar button.is-active {
+  border-color: rgba(90, 7, 24, 0.14);
+  color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+  box-shadow: inset -3px 0 0 var(--profile-primary);
+}
+
+.employee-profile-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: #8793a6;
+  background: #f3f5f8;
+}
+
+.employee-profile-sidebar button.is-active .employee-profile-tab-icon {
+  color: #fff;
+  background: var(--profile-primary);
+}
+
+.employee-profile-tab-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.employee-profile-tab-copy b {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-tab-copy small {
+  overflow: hidden;
+  color: #8a95a6;
+  font-size: 10px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-content {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.employee-profile-section-heading,
+.employee-profile-section-body,
+.employee-profile-actions {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--profile-line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(18, 31, 53, 0.045);
+}
+
+.employee-profile-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px 20px;
+}
+
+.employee-profile-section-heading > div {
+  min-width: 0;
+}
+
+.employee-profile-section-heading span {
+  color: var(--profile-gold);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.employee-profile-section-heading h2 {
+  margin: 2px 0 0;
+  color: var(--profile-text);
+  font-size: clamp(20px, 2vw, 27px);
+  font-weight: 950;
+}
+
+.employee-profile-section-heading p {
+  max-width: 52%;
+  margin: 0;
+  color: var(--profile-muted);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: left;
+}
+
+.employee-profile-section-body {
+  padding: clamp(14px, 1.6vw, 22px);
+  overflow: visible;
+}
+
+.employee-profile-section-body > :first-child {
+  margin-top: 0 !important;
+}
+
+.employee-profile-section-body > :last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Shared section structure */
+.employee-profile-page .emp-modal-section,
+.employee-profile-page .emp-modal-live-summary,
+.employee-profile-page .emp-attendance-edit-panel {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.employee-profile-page .emp-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 18px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid #e9edf1;
+}
+
+.employee-profile-page .emp-section-header__main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.employee-profile-page .emp-modal-section-title {
+  margin: 0;
+  color: var(--profile-text);
+  font-size: clamp(20px, 2vw, 27px);
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.employee-profile-page .emp-section-lead {
+  margin: 0;
+  color: var(--profile-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.employee-profile-page :where(.emp-basic-eyebrow, .emp-profile-eyebrow, .emp-services-eyebrow) {
+  color: var(--profile-gold);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #334055;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.employee-profile-page .dash-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.employee-profile-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, .dash-input, .dash-select, .dash-textarea) {
+  width: 100%;
+  max-width: 100%;
+  min-height: 46px;
+  padding: 10px 13px;
+  border: 1px solid #d9e0e7;
+  border-radius: 11px;
+  color: var(--profile-text);
+  background: #fff;
+  outline: none;
+}
+
+.employee-profile-page textarea,
+.employee-profile-page .dash-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.employee-profile-page :where(input, select, textarea):focus {
+  border-color: rgba(90, 7, 24, 0.72);
+  box-shadow: 0 0 0 3px rgba(90, 7, 24, 0.08);
+}
+
+.employee-profile-page input[type="checkbox"],
+.employee-profile-page input[type="radio"] {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  accent-color: var(--profile-primary);
+}
+
+.employee-profile-page .exp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid #d9e0e7;
+  border-radius: 10px;
+  color: #344157;
+  background: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.employee-profile-page .exp-btn.primary {
+  border-color: var(--profile-primary);
+  color: #fff;
+  background: var(--profile-primary);
+}
+
+.employee-profile-page .exp-btn:disabled,
+.employee-profile-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Basic information */
+.employee-profile-page .emp-basic-header {
+  align-items: center;
+}
+
+.employee-profile-page .emp-basic-summary {
+  display: flex;
+  max-width: 55%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.employee-profile-page .emp-basic-summary__item,
+.employee-profile-page .emp-services-header__summary,
+.employee-profile-page .emp-profile-header__summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #dce2e8;
+  border-radius: 999px;
+  color: #667287;
+  background: #f5f7f9;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.employee-profile-page .emp-basic-summary__item.is-positive {
+  border-color: #b8e4d1;
+  color: #137050;
+  background: #eaf8f1;
+}
+
+.employee-profile-page .emp-basic-summary__item.is-warning {
+  border-color: #ead18e;
+  color: #896100;
+  background: #fff7dc;
+}
+
+.employee-profile-page .emp-basic-summary__item.is-muted {
+  color: #6d7889;
+  background: #eef1f4;
+}
+
+.employee-profile-page .emp-basic-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-basic-layout__main,
+.employee-profile-page .emp-basic-layout__side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-basic-card,
+.employee-profile-page .emp-profile-card,
+.employee-profile-page .emp-panel,
+.employee-profile-page :where(.staff-payroll-box, .staff-leave-box) {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #e0e5ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.employee-profile-page .emp-basic-card--identity {
+  background: linear-gradient(135deg, #fff, #fffaf0);
+}
+
+.employee-profile-page .emp-basic-card__head,
+.employee-profile-page .emp-profile-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.employee-profile-page :where(.emp-basic-card__head, .emp-profile-card__head) > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.employee-profile-page :where(.emp-basic-card__number, .emp-profile-card-number) {
+  display: grid;
+  flex: 0 0 34px;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--profile-primary);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.employee-profile-page :where(.emp-basic-card__head, .emp-profile-card__head) h4 {
+  margin: 0;
+  color: var(--profile-text);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.employee-profile-page :where(.emp-basic-card__head, .emp-profile-card__head) p {
+  max-width: 46%;
+  margin: 0;
+  color: var(--profile-muted);
+  font-size: 11px;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.employee-profile-page .emp-basic-field-help,
+.employee-profile-page .emp-profile-field-help,
+.employee-profile-page .emp-field-note {
+  margin-top: 7px;
+  color: #7c8798;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.employee-profile-page .emp-basic-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-basic-choice-grid--stack {
+  grid-template-columns: 1fr;
+}
+
+.employee-profile-page .emp-basic-choice {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 78px;
+  margin: 0;
+  padding: 13px;
+  border: 1px solid #dfe4ea;
+  border-radius: 13px;
+  color: #526076;
+  background: #fafbfc;
+  text-align: right;
+  cursor: pointer;
+}
+
+.employee-profile-page .emp-basic-choice:hover {
+  border-color: #c5ced8;
+  background: #fff;
+}
+
+.employee-profile-page .emp-basic-choice.is-selected {
+  border-color: rgba(90, 7, 24, 0.45);
+  color: var(--profile-primary-strong);
+  background: var(--profile-primary-soft);
+  box-shadow: 0 0 0 3px rgba(90, 7, 24, 0.05);
+}
+
+.employee-profile-page .emp-basic-choice.is-selected.is-positive {
+  border-color: #68bd99;
+  color: #116b4b;
+  background: #ecf9f2;
+}
+
+.employee-profile-page .emp-basic-choice.is-selected.is-warning {
+  border-color: #dfb74b;
+  color: #805b00;
+  background: #fff7dc;
+}
+
+.employee-profile-page .emp-basic-choice__indicator {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #c9d1da;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.employee-profile-page .emp-basic-choice.is-selected .emp-basic-choice__indicator {
+  border-color: currentColor;
+}
+
+.employee-profile-page .emp-basic-choice.is-selected .emp-basic-choice__indicator::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.employee-profile-page .emp-basic-choice__copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.employee-profile-page .emp-basic-choice__copy strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-basic-choice__copy small {
+  color: #7a8698;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.employee-profile-page .emp-basic-weekly-off {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px dashed #d3dae2;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+
+.employee-profile-page .emp-basic-weekly-off span,
+.employee-profile-page .emp-basic-weekly-off small {
+  color: var(--profile-muted);
+  font-size: 11px;
+}
+
+/* Profile and image section */
+.employee-profile-page .emp-profile-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-profile-sidebar,
+.employee-profile-page .emp-profile-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-profile-preview-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #e0e5ea;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff, #fff8ed);
+  text-align: center;
+}
+
+.employee-profile-page .emp-profile-preview-card img,
+.employee-profile-page .emp-profile-preview-card .employee-avatar {
+  width: 112px !important;
+  height: 112px !important;
+  border-radius: 22px !important;
+  object-fit: cover;
+}
+
+.employee-profile-page .emp-profile-preview-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.employee-profile-page .emp-profile-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.employee-profile-page .emp-profile-image-option {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid #dfe4ea;
+  border-radius: 12px;
+  color: #4f5c70;
+  background: #fff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.employee-profile-page .emp-profile-image-option.is-selected {
+  border-color: var(--profile-primary);
+  color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+}
+
+.employee-profile-page .emp-profile-image-option__preview,
+.employee-profile-page .emp-profile-image-option__empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #f3f5f8;
+}
+
+.employee-profile-page .emp-profile-image-option__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.employee-profile-page .emp-profile-image-option strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-page .emp-profile-rating-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Services */
+.employee-profile-page .emp-services-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 0.65fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.employee-profile-page .emp-services-view-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #dfe4ea;
+  border-radius: 10px;
+  background: #f6f8fa;
+}
+
+.employee-profile-page .emp-services-view-switch button {
+  min-width: 38px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.employee-profile-page .emp-services-view-switch button.is-active {
+  color: #fff;
+  background: var(--profile-primary);
+}
+
+.employee-profile-page .emp-services-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid #e2e6eb;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+
+.employee-profile-page .emp-services-bulkbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.employee-profile-page .emp-services-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.employee-profile-page :where(.emp-services-catalog, .emp-services-selected-panel) {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e1e5ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.employee-profile-page :where(.emp-services-catalog__head, .emp-services-selected-panel__head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+
+.employee-profile-page .emp-services-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.employee-profile-page .emp-service-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 13px;
+  border: 1px solid #dfe4e9;
+  border-radius: 12px;
+  color: #1f2a40;
+  background: #fff;
+  text-align: right;
+}
+
+.employee-profile-page .emp-service-card.is-selected {
+  border-color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+}
+
+.employee-profile-page .emp-service-card__check {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border: 1px solid #ccd4dd;
+  border-radius: 6px;
+}
+
+.employee-profile-page .emp-service-card__body {
+  min-width: 0;
+}
+
+.employee-profile-page .emp-service-card__body strong {
+  display: block;
+  margin-bottom: 7px;
+  line-height: 1.45;
+}
+
+.employee-profile-page .emp-service-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #778397;
+  font-size: 11px;
+}
+
+.employee-profile-page .emp-services-selected-panel {
+  position: sticky;
+  top: 18px;
+}
+
+.employee-profile-page .emp-services-selected-list {
+  display: flex;
+  max-height: 560px;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.employee-profile-page .emp-services-selected-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #e1e5ea;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+
+/* Schedule, booking and stats */
+.employee-profile-page .emp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-panel:has(.emp-working-week) {
+  grid-column: 1 / -1;
+}
+
+.employee-profile-page .emp-panel-head,
+.employee-profile-page .emp-working-table-toolbar,
+.employee-profile-page :where(.staff-payroll-head, .staff-leave-head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.employee-profile-page .emp-panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-toggle-row,
+.employee-profile-page .emp-check-label,
+.employee-profile-page .emp-inline-actions,
+.employee-profile-page .emp-tags-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.employee-profile-page .emp-working-week-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.employee-profile-page .emp-working-day-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dfe4e9;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.employee-profile-page .emp-working-day-card.is-off {
+  opacity: 0.72;
+  background: #f7f8fa;
+}
+
+.employee-profile-page .emp-working-day-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+  font-weight: 900;
+}
+
+.employee-profile-page .emp-working-day-card__times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.employee-profile-page .emp-stats-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.employee-profile-page :where(.staff-payroll-form, .staff-leave-settings-grid, .staff-leave-controls) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.employee-profile-page .staff-leave-settings-wide {
+  grid-column: 1 / -1;
+}
+
+.employee-profile-page :where(.staff-payroll-preview-grid, .emp-kpi-strip, .emp-schedule-kpi-grid) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.employee-profile-page :where(.staff-payroll-chip, .emp-kpi-card, .emp-schedule-kpi) {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e1e5ea;
+  border-radius: 11px;
+  background: #f8fafb;
+}
+
+.employee-profile-page .emp-schedule-card--refined {
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid #e0e5ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.employee-profile-page .emp-schedule-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  color: #fff;
+  background: linear-gradient(135deg, #111a35, #28344f);
+}
+
+.employee-profile-page .emp-schedule-hero h4,
+.employee-profile-page .emp-schedule-hero p {
+  margin: 0;
+  color: inherit;
+}
+
+.employee-profile-page .emp-schedule-hero__copy {
+  display: grid;
+  gap: 3px;
+}
+
+.employee-profile-page .emp-schedule-hero__copy > span {
+  color: #ffd56a;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.employee-profile-page .emp-schedule-state-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.employee-profile-page .emp-schedule-card--refined > :not(.emp-schedule-hero) {
+  margin-inline: 14px;
+}
+
+.employee-profile-page .emp-schedule-card--refined > :last-child {
+  margin-bottom: 14px;
+}
+
+.employee-profile-page .leave-log-list {
+  margin-top: 16px;
+  overflow-x: auto;
+  border: 1px solid #e1e5ea;
+  border-radius: 12px;
+}
+
+.employee-profile-page :where(.leave-log-head, .leave-log-row) {
+  display: grid;
+  grid-template-columns: 100px 80px 90px 90px 110px minmax(180px, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+  min-width: 760px;
+  padding: 11px 13px;
+  border-top: 1px solid #edf0f3;
+}
+
+/* Attendance section should use the page width, not modal dimensions. */
+.employee-profile-page .employee-attendance-admin {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.employee-profile-page .employee-attendance-admin :where(.emp-attendance-layout, .attendance-layout) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+/* Actions */
+.employee-profile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.employee-profile-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.employee-profile-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 15px;
+  border: 1px solid #dfe3e9;
+  border-radius: 10px;
+  color: #344157;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-profile-actions .is-primary {
+  border-color: var(--profile-primary);
+  color: #fff;
+  background: var(--profile-primary);
+}
+
+.employee-profile-actions .is-primary:hover {
+  background: var(--profile-primary-strong);
+}
+
+.employee-profile-actions .is-danger {
+  border-color: #efc8d0;
+  color: #b4233c;
+  background: #fff4f6;
+}
+
+/* Keep text and grid children from forcing overflow. */
+.employee-profile-page :where(h1, h2, h3, h4, p, span, strong, small, label, article, section, div, aside, main) {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 1180px) {
+  .employee-profile-page .emp-basic-layout,
+  .employee-profile-page .emp-profile-workspace,
+  .employee-profile-page .emp-services-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-page .emp-services-selected-panel {
+    position: static;
+  }
+
+  .employee-profile-page .emp-services-selected-list {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .employee-profile-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-navigation {
+    position: static;
+    padding: 10px;
+  }
+
+  .employee-profile-navigation-title {
+    display: none;
+  }
+
+  .employee-profile-sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 0 3px;
+    scrollbar-width: thin;
+  }
+
+  .employee-profile-sidebar button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 155px;
+  }
+
+  .employee-profile-tab-copy small {
+    display: none;
+  }
+
+  .employee-profile-page .emp-services-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .employee-profile-page .emp-services-view-switch {
+    grid-column: 1 / -1;
+    width: max-content;
+  }
+
+  .employee-profile-page :where(.staff-payroll-form, .staff-leave-settings-grid, .staff-leave-controls) {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .employee-profile-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+
+  .employee-profile-back {
+    width: 100%;
+  }
+
+  .employee-profile-section-heading,
+  .employee-profile-page .emp-section-header,
+  .employee-profile-page .emp-basic-card__head,
+  .employee-profile-page .emp-profile-card__head,
+  .employee-profile-page .emp-services-bulkbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .employee-profile-section-heading p,
+  .employee-profile-page :where(.emp-basic-card__head, .emp-profile-card__head) p,
+  .employee-profile-page .emp-basic-summary {
+    max-width: 100%;
+    text-align: right;
+  }
+
+  .employee-profile-page .emp-basic-choice-grid,
+  .employee-profile-page .emp-profile-rating-grid,
+  .employee-profile-page .emp-services-toolbar,
+  .employee-profile-page .emp-services-grid,
+  .employee-profile-page .emp-form-grid,
+  .employee-profile-page .emp-working-week-cards,
+  .employee-profile-page :where(.staff-payroll-preview-grid, .emp-kpi-strip, .emp-schedule-kpi-grid) {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-page .emp-profile-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .employee-profile-page .emp-services-view-switch {
+    grid-column: auto;
+  }
+
+  .employee-profile-page .emp-working-day-card__times {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .employee-profile-actions > div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .employee-profile-page {
+    padding: 10px;
+  }
+
+  .employee-profile-breadcrumb {
+    font-size: 11px;
+  }
+
+  .employee-profile-identity {
+    align-items: flex-start;
+  }
+
+  .employee-profile-avatar {
+    flex-basis: 62px;
+    width: 62px !important;
+    height: 62px !important;
+    border-radius: 14px !important;
+  }
+
+  .employee-profile-identity p {
+    font-size: 11px;
+  }
+
+  .employee-profile-sidebar button {
+    min-width: 132px;
+  }
+
+  .employee-profile-section-body {
+    padding: 12px;
+  }
+
+  .employee-profile-page :where(.emp-basic-card, .emp-profile-card, .emp-panel, .staff-payroll-box, .staff-leave-box) {
+    padding: 13px;
+  }
+}

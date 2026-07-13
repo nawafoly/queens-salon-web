@@ -4496,7 +4496,7 @@ export default function DashboardEmployees() {
   if (!authUser) {
     return (
       <div className="emp-page-wrapper">
-        <div className="container">
+        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
           <div className="dash-card">
             <h3>غير مصرح</h3>
             <p>سجّل دخول ثم جرّب.</p>
@@ -4509,7 +4509,7 @@ export default function DashboardEmployees() {
   if (!canAccessEmployeesDashboard) {
     return (
       <div className="emp-page-wrapper">
-        <div className="container">
+        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
             <p>هذه الصفحة للإدارة فقط.</p>
@@ -4644,7 +4644,7 @@ export default function DashboardEmployees() {
   return (
     <div className={`emp-page-wrapper ${isEmployeeProfileRoute ? "is-profile-route" : ""}`}>
       {!isEmployeeProfileRoute ? <style>{EMPLOYEE_PAGE_FORCE_SKIN}</style> : null}
-      <div className="container">
+      <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
         <div className="dash-topbar emp-page-hero-sticky">
           <div className="dash-topbar-title">
             <p className="emp-topbar-kicker">Human Resources</p>
@@ -4719,7 +4719,7 @@ export default function DashboardEmployees() {
           </div>
         )}
 
-        <div className="emp-directory-shell mt-3">
+        <div className={isEmployeeProfileRoute ? "employee-profile-route-host" : "emp-directory-shell mt-3"}>
             {!isEmployeeProfileRoute ? <EmployeeListPanel
               qText={qText}
               onlyActive={onlyActive}
