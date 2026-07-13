@@ -1136,10 +1136,17 @@ export default function DashboardEmployees() {
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
-    setModalExceptionalLeaveWeekdays(resolveStaffWeeklyOffDays(x));
+    const initialUseCustomWorkingHours = !!(x as any).useCustomWorkingHours;
+    const initialCustomWorkingHours = normalizeWorkingHours((x as any).customWorkingHours);
+    const initialWeeklyOffDays = initialUseCustomWorkingHours
+      ? WEEKDAY_OPTIONS.filter(
+          (day) => initialCustomWorkingHours[day.key]?.enabled === false
+        ).map((day) => day.key)
+      : resolveStaffWeeklyOffDays(x);
+    setModalExceptionalLeaveWeekdays(initialWeeklyOffDays);
     setModalLeaveWeekdayDraft("");
-    setModalUseCustomWorkingHours(!!(x as any).useCustomWorkingHours);
-    setModalCustomWorkingHours(normalizeWorkingHours((x as any).customWorkingHours));
+    setModalUseCustomWorkingHours(initialUseCustomWorkingHours);
+    setModalCustomWorkingHours(initialCustomWorkingHours);
     setModalCustomHourOverrides(
       normalizeWorkingHourOverrides((x as any).customWorkingHourOverrides)
     );
@@ -1873,10 +1880,12 @@ export default function DashboardEmployees() {
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
-    const normalizedExceptionalWeekdays = normalizeExceptionalLeaveWeekdays(
-      modalExceptionalLeaveWeekdays
-    );
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
+    const normalizedExceptionalWeekdays = modalUseCustomWorkingHours
+      ? WEEKDAY_OPTIONS.filter(
+          (day) => normalizedCustomWorkingHours[day.key]?.enabled === false
+        ).map((day) => day.key)
+      : normalizeExceptionalLeaveWeekdays(modalExceptionalLeaveWeekdays);
     const normalizedExceptionalDates = editId
       ? normalizeExceptionalLeaveDates((editingStaff as any)?.exceptionalLeaveDates)
       : [];
@@ -3233,6 +3242,14 @@ export default function DashboardEmployees() {
         ...patch,
       },
     }));
+
+    if (typeof patch.enabled === "boolean") {
+      setModalExceptionalLeaveWeekdays((prev) =>
+        patch.enabled
+          ? prev.filter((item) => item !== day)
+          : normalizeExceptionalLeaveWeekdays([...prev, day])
+      );
+    }
   };
   const copyModalWorkingDayToAll = (sourceDay: WeekdayKey) => {
     setModalCustomWorkingHours((prev) => {
@@ -3248,6 +3265,11 @@ export default function DashboardEmployees() {
       });
       return next;
     });
+    setModalExceptionalLeaveWeekdays(
+      sourceDay && modalCustomWorkingHours[sourceDay]?.enabled === false
+        ? WEEKDAY_OPTIONS.map((day) => day.key)
+        : []
+    );
   };
 
   const toggleModalHourOverrideWeekday = (day: WeekdayKey) => {

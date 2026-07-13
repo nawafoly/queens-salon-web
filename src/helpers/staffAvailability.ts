@@ -175,25 +175,59 @@ function normalizeAndSortWindows(
   });
 }
 
+function hasEnabledWorkingOverrideForDate(
+  staff: StaffAvailabilityLike,
+  dateISO: string
+) {
+  const overrides = Array.isArray(staff?.customWorkingHourOverrides)
+    ? staff.customWorkingHourOverrides
+    : [];
+  const matched = overrides.filter(
+    (row) => normalizeISODate((row as any)?.date) === dateISO
+  );
+  if (!matched.length) return false;
+  return matched.some((row) => (row as any)?.enabled !== false);
+}
+
+function hasExplicitEnabledWorkingDayForDate(
+  staff: StaffAvailabilityLike,
+  dateISO: string
+) {
+  if (!staff?.useCustomWorkingHours) return false;
+  const weekday = weekdayFromISO(dateISO);
+  if (!weekday) return false;
+  const row = ((staff?.customWorkingHours || {}) as any)?.[weekday];
+  return !!row && typeof row === "object" && row.enabled !== false;
+}
+
 function isLeaveActiveForDate(staff: StaffAvailabilityLike, dateISO?: string) {
   const target = normalizeISODate(dateISO) || todayISO();
   const exceptional = Array.isArray(staff?.exceptionalLeaveDates)
     ? staff.exceptionalLeaveDates.map((d) => normalizeISODate(d)).filter(Boolean)
     : [];
+
+  // A date-specific leave is always authoritative.
   if (exceptional.includes(target)) return true;
+
+  // A current leave period is also authoritative.
+  if (staff?.onLeave) {
+    const until = normalizeISODate(staff.leaveUntil);
+    if (!until || target <= until) return true;
+  }
 
   const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
     ? staff.exceptionalLeaveWeekdays.map((d) => String(d || "").trim().toLowerCase()).filter(Boolean)
     : [];
   const targetWeekday = weekdayFromISO(target);
-  if (targetWeekday && exceptionalWeekdays.includes(targetWeekday)) return true;
+  if (!targetWeekday || !exceptionalWeekdays.includes(targetWeekday)) return false;
 
-  if (!staff?.onLeave) return false;
+  // Legacy weekly-off values can remain in Firestore after the employee schedule
+  // is changed. An explicit enabled override or enabled custom working day is the
+  // newer, more precise source and must win over that stale recurring value.
+  if (hasEnabledWorkingOverrideForDate(staff, target)) return false;
+  if (hasExplicitEnabledWorkingDayForDate(staff, target)) return false;
 
-  const until = normalizeISODate(staff.leaveUntil);
-  if (!until) return true;
-
-  return target <= until;
+  return true;
 }
 
 export function isStaffAvailableForDate(
