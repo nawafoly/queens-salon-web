@@ -10,7 +10,6 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-import { httpsCallable } from "firebase/functions";
 import { initializeApp, getApps } from "firebase/app";
 import {
   collection,
@@ -21,7 +20,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-import { auth, db, functions } from "../../services/firebase";
+import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
 import {
   APP_PERMISSION_CATALOG,
@@ -117,6 +116,12 @@ type UserRow = {
   deleted?: boolean;
   removedFromStaff?: boolean;
   employmentStatus?: string;
+  accountStatus?: string;
+  authStatus?: string;
+  disabledAt?: unknown;
+  disabledBy?: unknown;
+  archivedAt?: unknown;
+  archivedBy?: unknown;
   employeeName?: string;
   department?: string;
   jobTitle?: string;
@@ -448,6 +453,20 @@ export default function SettingsUsers({
   function isAccountArchived(row: Pick<UserRow, "archived" | "removedFromStaff" | "employmentStatus">) {
     const employmentStatus = cleanText(row.employmentStatus).toLowerCase();
     return row.archived === true || row.removedFromStaff === true || employmentStatus === "archived";
+  }
+
+  function hadFirebaseAuthDisabledMarker(row: Pick<UserRow, "accountStatus" | "authStatus" | "disabledAt">) {
+    const accountStatus = cleanText(row.accountStatus).toLowerCase();
+    const authStatus = cleanText(row.authStatus).toLowerCase();
+    return (
+      Boolean(row.disabledAt) ||
+      accountStatus === "disabled" ||
+      accountStatus === "auth_disabled" ||
+      accountStatus === "firebase_disabled" ||
+      authStatus === "disabled" ||
+      authStatus === "auth_disabled" ||
+      authStatus === "firebase_disabled"
+    );
   }
 
   function getUserState(row: UserRow): AccountState {
@@ -823,12 +842,18 @@ export default function SettingsUsers({
           deleted: x?.deleted === true,
           removedFromStaff: x?.removedFromStaff === true,
           employmentStatus: String(x?.employmentStatus || ""),
+          accountStatus: String(x?.accountStatus || ""),
+          authStatus: String(x?.authStatus || ""),
           notes: String(x?.notes || x?.memo || ""),
           linkedEmployeeDocId: String(x?.linkedEmployeeDocId || ""),
           employeeId: String(x?.employeeId || ""),
           permissions,
           permissionOverrides,
           permissionVersion: Number(x?.permissionVersion || 0) || undefined,
+          disabledAt: x?.disabledAt,
+          disabledBy: x?.disabledBy,
+          archivedAt: x?.archivedAt,
+          archivedBy: x?.archivedBy,
           deletedAt: x?.deletedAt,
           deletedBy: x?.deletedBy,
           createdAt: x?.createdAt,
@@ -1858,29 +1883,6 @@ export default function SettingsUsers({
     }
   };
 
-  const restoreFirebaseAuthAccount = async (args: {
-    uid: string;
-    role: UiRole;
-    employeeId: string;
-    email?: string;
-    displayName?: string;
-  }) => {
-    const call = httpsCallable<
-      { uid: string; role: string; employeeId: string; email?: string; displayName?: string },
-      { ok?: boolean; uid?: string; role?: string; employeeId?: string; authUpdated?: boolean }
-    >(functions, "adminRestoreStaffAccount");
-
-    const result = await call({
-      uid: args.uid,
-      role: toFirestoreRole(args.role),
-      employeeId: args.employeeId,
-      email: cleanEmail(args.email || ""),
-      displayName: cleanText(args.displayName || ""),
-    });
-
-    return result.data;
-  };
-
   const restoreUserAccount = async (uid: string) => {
     if (!canManageUsers) return;
 
@@ -1915,23 +1917,7 @@ export default function SettingsUsers({
         row.role === restoredRole && row.permissionOverrides
           ? row.permissionOverrides
           : buildPermissionOverrides(restoredRole as any, restoredPermissions);
-      let authRestoreWarning = "";
-
-      try {
-        const authRestore = await restoreFirebaseAuthAccount({
-          uid,
-          role: restoredRole,
-          employeeId: restoredEmployeeId,
-          email: row.email,
-          displayName,
-        });
-        restoredEmployeeId = cleanText(authRestore?.employeeId) || restoredEmployeeId;
-      } catch (authError) {
-        console.error("restoreFirebaseAuthAccount error:", authError);
-        const code = cleanText((authError as any)?.code);
-        const message = cleanText((authError as any)?.message);
-        authRestoreWarning = message || code || "تعذر تأكيد حالة Firebase Auth من الخادم.";
-      }
+      const authDisabledNeedsManualAction = hadFirebaseAuthDisabledMarker(row);
 
       const restorePatch = {
         uid,
@@ -1950,7 +1936,7 @@ export default function SettingsUsers({
         employmentStatus: "active",
         status: "active",
         accountStatus: "active",
-        authStatus: authRestoreWarning ? "firestore_active_auth_unconfirmed" : "active",
+        authStatus: "active",
         employeeProfileEnabled: true,
         linkedEmployeeDocId: restoredEmployeeId,
         employeeId: restoredEmployeeId,
@@ -2005,9 +1991,15 @@ export default function SettingsUsers({
                 deleted: false,
                 removedFromStaff: false,
                 employmentStatus: "active",
+                accountStatus: "active",
+                authStatus: "active",
                 employeeProfileEnabled: true,
                 linkedEmployeeDocId: finalEmployeeId,
                 employeeId: finalEmployeeId,
+                disabledAt: null,
+                disabledBy: null,
+                archivedAt: null,
+                archivedBy: null,
                 deletedAt: null,
                 deletedBy: null,
               }
@@ -2035,7 +2027,7 @@ export default function SettingsUsers({
           active: true,
           staffFileChanged: Boolean(finalEmployeeId),
           restoredStaffId: finalEmployeeId || null,
-          authRestoreWarning: authRestoreWarning || null,
+          authManualActionRequired: authDisabledNeedsManualAction || null,
         },
       });
 
@@ -2043,10 +2035,10 @@ export default function SettingsUsers({
       window.dispatchEvent(new Event("queens:staff-updated"));
 
       toastMsg(
-        authRestoreWarning
-          ? `⚠️ تمت استعادة Firestore وملف الموظفة، لكن Firebase Auth يحتاج تحقق: ${authRestoreWarning}`
+        authDisabledNeedsManualAction
+          ? "تمت استعادة ملف الموظفة، لكن حساب الدخول معطل في Firebase Authentication ويحتاج تفعيله يدويًا."
           : "✅ تمت استعادة الحساب وملف الموظفة بالكامل",
-        authRestoreWarning ? 5200 : 2200
+        authDisabledNeedsManualAction ? 5200 : 2200
       );
     } catch (e) {
       console.error("restoreUserAccount error:", e);
