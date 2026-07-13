@@ -2046,13 +2046,21 @@ export default function DashboardEmployees() {
               ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
               : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
             route: leaveChanged ? "/employee/leave" : "/employee/profile",
-          }).catch(() => {});
+          }).catch((notificationError) => {
+            console.warn("createEmployeeNotification after employee save failed:", notificationError);
+          });
         }
       }
 
       await load();
       window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (e) {
+      console.error("save employee profile failed", {
+        staffPublicPath: `salons/${SALON_ID}/staff_public/${targetEmployeeId}`,
+        employeePath: `salons/${SALON_ID}/employees/${targetEmployeeId}`,
+        editingSource: (editingStaff as any)?.source || null,
+        linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
+      }, e);
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
     } finally {
       setSaving(false);

@@ -224,7 +224,7 @@ type BasicSlot = { value24: string; minutes: number };
 function safeKey(s: string) {
   return String(s || "")
     .trim()
-    .replaceAll("/", "-")
+    .replace(/\//g, "-")
     .replace(/\s+/g, "_");
 }
 
@@ -512,6 +512,54 @@ function isBootstrapEmail(email: string) {
   );
 }
 
+async function getEffectiveCallerRole(uid: string): Promise<UiRole | "guest"> {
+  const authUser = await admin.auth().getUser(uid);
+  const claimRole = normalizeRole((authUser.customClaims as any)?.role);
+  if (claimRole !== "guest") return claimRole;
+
+  const [userSnap, adminSnap] = await Promise.all([
+    db.collection("salons").doc(SALON_ID).collection("users").doc(uid).get(),
+    db.collection("salons").doc(SALON_ID).collection("admin_users").doc(uid).get(),
+  ]);
+
+  const userRole = normalizeRole((userSnap.data() as any)?.role);
+  if (userRole !== "guest") return userRole;
+  return normalizeRole((adminSnap.data() as any)?.role);
+}
+
+function cleanRestoreText(value: any) {
+  return String(value || "").trim();
+}
+
+function cleanRestoreEmail(value: any) {
+  return cleanRestoreText(value).toLowerCase();
+}
+
+function normalizeRestoreRole(value: any): UiRole {
+  const role = normalizeRole(value);
+  if (role === "guest" || role === "client") return "staff";
+  return role;
+}
+
+function canRestoreRole(callerRole: UiRole | "guest", targetRole: UiRole) {
+  if (callerRole === "owner") return true;
+  if (callerRole === "admin") return targetRole !== "owner";
+  if (callerRole === "hr") return targetRole === "staff" || targetRole === "reception";
+  return false;
+}
+
+function uniqueRestoreTexts(values: any[]) {
+  return Array.from(new Set(values.map(cleanRestoreText).filter(Boolean)));
+}
+
+function pickRestoreText(...values: any[]) {
+  for (const value of values) {
+    const text = cleanRestoreText(value);
+    if (text && text !== "undefined" && text !== "null") return text;
+  }
+  return "";
+}
+
 /**
  * ===========================
  * ✅ Callable: setUserRole
@@ -649,6 +697,260 @@ export const setUserRole = onCall({ region: "us-central1" }, async (request) => 
   }
 
   return { ok: true, uid, role };
+});
+
+/**
+ * ✅ Callable: adminRestoreStaffAccount
+ */
+export const adminRestoreStaffAccount = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "لازم تسجل دخول.");
+
+  const callerUid = auth.uid;
+  const callerUser = await admin.auth().getUser(callerUid);
+  const callerEmail = cleanRestoreEmail(callerUser.email);
+  const callerRole = await getEffectiveCallerRole(callerUid);
+  const isBootstrap = isBootstrapEmail(callerEmail);
+
+  const data: any = request.data || {};
+  const uid = cleanRestoreText(data.uid);
+  if (!uid) throw new HttpsError("invalid-argument", "uid مطلوب.");
+
+  const targetUser = await admin.auth().getUser(uid);
+  const userRef = db.collection("salons").doc(SALON_ID).collection("users").doc(uid);
+  const adminRef = db.collection("salons").doc(SALON_ID).collection("admin_users").doc(uid);
+  const [userSnap, adminSnap] = await Promise.all([userRef.get(), adminRef.get()]);
+  const userData: any = userSnap.data() || {};
+  const adminData: any = adminSnap.data() || {};
+
+  const role = normalizeRestoreRole(data.role || userData.role || adminData.role || targetUser.customClaims?.role);
+  if (!isBootstrap && !canRestoreRole(callerRole, role)) {
+    throw new HttpsError("permission-denied", "غير مصرح باستعادة هذا الحساب.");
+  }
+
+  const targetEmail = cleanRestoreEmail(
+    data.email || targetUser.email || userData.email || adminData.email
+  );
+  const displayName =
+    pickRestoreText(
+      data.displayName,
+      targetUser.displayName,
+      userData.displayName,
+      userData.name,
+      adminData.displayName,
+      adminData.name,
+      targetEmail,
+      uid
+    ) || "موظفة";
+
+  const salonRef = db.collection("salons").doc(SALON_ID);
+  const staffPublicCol = salonRef.collection("staff_public");
+  const employeesCol = salonRef.collection("employees");
+
+  const employeeIdCandidates = uniqueRestoreTexts([
+    data.employeeId,
+    userData.linkedEmployeeDocId,
+    userData.employeeId,
+    adminData.linkedEmployeeDocId,
+    adminData.employeeId,
+    uid,
+  ]);
+
+  let employeeId = employeeIdCandidates[0] || uid;
+  let staffPublicData: any = null;
+  let employeesData: any = null;
+
+  for (const candidate of employeeIdCandidates) {
+    const [staffSnap, employeeSnap] = await Promise.all([
+      staffPublicCol.doc(candidate).get(),
+      employeesCol.doc(candidate).get(),
+    ]);
+    if (staffSnap.exists || employeeSnap.exists) {
+      employeeId = candidate;
+      staffPublicData = staffSnap.exists ? staffSnap.data() || {} : null;
+      employeesData = employeeSnap.exists ? employeeSnap.data() || {} : null;
+      break;
+    }
+  }
+
+  const uidFields = ["linkedUid", "uid", "linkedUserId", "employeeUid", "authUid", "userId"];
+  if (!staffPublicData && !employeesData) {
+    for (const field of uidFields) {
+      const [staffQuery, employeeQuery] = await Promise.all([
+        staffPublicCol.where(field, "==", uid).limit(1).get(),
+        employeesCol.where(field, "==", uid).limit(1).get(),
+      ]);
+      const staffDoc = staffQuery.docs[0];
+      const employeeDoc = employeeQuery.docs[0];
+      if (staffDoc || employeeDoc) {
+        employeeId = (staffDoc || employeeDoc).id;
+        staffPublicData = staffDoc?.data() || null;
+        employeesData = employeeDoc?.data() || null;
+        break;
+      }
+    }
+  }
+
+  if (!staffPublicData && !employeesData && targetEmail) {
+    for (const field of ["email", "userEmail"]) {
+      const [staffQuery, employeeQuery] = await Promise.all([
+        staffPublicCol.where(field, "==", targetEmail).limit(1).get(),
+        employeesCol.where(field, "==", targetEmail).limit(1).get(),
+      ]);
+      const staffDoc = staffQuery.docs[0];
+      const employeeDoc = employeeQuery.docs[0];
+      if (staffDoc || employeeDoc) {
+        employeeId = (staffDoc || employeeDoc).id;
+        staffPublicData = staffDoc?.data() || null;
+        employeesData = employeeDoc?.data() || null;
+        break;
+      }
+    }
+  }
+
+  await admin.auth().updateUser(uid, {
+    disabled: false,
+    ...(displayName ? { displayName } : {}),
+  });
+  await admin.auth().setCustomUserClaims(uid, { role });
+
+  const activePatch = {
+    active: true,
+    isActive: true,
+    archived: false,
+    deleted: false,
+    removedFromStaff: false,
+    employmentStatus: "active",
+    status: "active",
+    accountStatus: "active",
+    authStatus: "active",
+    employeeProfileEnabled: true,
+    includeInEmployeeManagement: true,
+    disabledAt: null,
+    disabledBy: null,
+    archivedAt: null,
+    archivedBy: null,
+    deletedAt: null,
+    deletedBy: null,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  const identityPatch = {
+    uid,
+    linkedUid: uid,
+    linkedUserId: uid,
+    authUid: uid,
+    userId: uid,
+    employeeUid: uid,
+    employeeId,
+    employeeDocId: employeeId,
+    linkedEmployeeDocId: employeeId,
+  };
+  const sharedProfile = {
+    ...identityPatch,
+    email: targetEmail,
+    userEmail: targetEmail,
+    name: displayName,
+    displayName,
+    phone: pickRestoreText(userData.phone, adminData.phone, staffPublicData?.phone, employeesData?.phone),
+    role,
+  };
+  const sourceForMissingDoc = staffPublicData || employeesData || {};
+  const preserveWhenRecreating: Record<string, any> = {};
+  [
+    "specialties",
+    "bio",
+    "avatarUrl",
+    "cvUrl",
+    "department",
+    "title",
+    "employment",
+    "employeeProfile",
+    "customWorkingHours",
+    "customWorkingHourOverrides",
+    "exceptionalLeaveDates",
+    "exceptionalLeaveWeekdays",
+    "monthlySalary",
+    "overtimeMethod",
+    "overtimeDaysPerMonth",
+    "overtimeBaseHoursPerDay",
+    "overtimeSeasonBaseHoursPerDay",
+    "overtimeHoursBasis",
+    "overtimePercent",
+    "overtimeInvoicePercent",
+    "leaveBalanceDays",
+    "leaveEntitlementDate",
+    "leaveEntries",
+  ].forEach((key) => {
+    if (sourceForMissingDoc[key] !== undefined) preserveWhenRecreating[key] = sourceForMissingDoc[key];
+  });
+
+  const isPublicStaff = role === "staff";
+  const showOnBooking =
+    isPublicStaff &&
+    (staffPublicData?.showOnBooking === true || employeesData?.showOnBooking === true);
+  const showOnAbout =
+    isPublicStaff &&
+    (staffPublicData?.showOnAbout !== false && employeesData?.showOnAbout !== false);
+  const permissions = userData.permissions || adminData.permissions || [];
+  const permissionOverrides = userData.permissionOverrides || adminData.permissionOverrides || null;
+
+  await Promise.all([
+    userRef.set(
+      {
+        ...sharedProfile,
+        ...activePatch,
+        permissions,
+        permissionOverrides,
+      },
+      { merge: true }
+    ),
+    adminRef.set(
+      {
+        ...sharedProfile,
+        ...activePatch,
+        permissions,
+        permissionOverrides,
+      },
+      { merge: true }
+    ),
+    staffPublicCol.doc(employeeId).set(
+      {
+        ...preserveWhenRecreating,
+        ...sharedProfile,
+        ...activePatch,
+        showOnAbout,
+        showOnBooking,
+      },
+      { merge: true }
+    ),
+    employeesCol.doc(employeeId).set(
+      {
+        ...preserveWhenRecreating,
+        ...sharedProfile,
+        ...activePatch,
+        showOnAbout,
+        showOnBooking,
+      },
+      { merge: true }
+    ),
+  ]);
+
+  logger.info("[adminRestoreStaffAccount] restored", {
+    callerUid,
+    uid,
+    employeeId,
+    role,
+    authUpdated: true,
+  });
+
+  return {
+    ok: true,
+    uid,
+    role,
+    employeeId,
+    authUpdated: true,
+    restoredCollections: ["users", "admin_users", "staff_public", "employees"],
+  };
 });
 
 /**
@@ -1611,7 +1913,7 @@ export const adminRepairLegacyBookings = onCall(
     let candidates: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
     if (bookingIds.length > 0) {
-      const refs = bookingIds.map((id) => bookingsCol.doc(id));
+      const refs = bookingIds.map((id: string) => bookingsCol.doc(id));
       const snaps = await db.getAll(...refs);
       candidates = snaps.filter((s) => s.exists) as FirebaseFirestore.QueryDocumentSnapshot[];
     } else {

@@ -10,6 +10,7 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
+import { httpsCallable } from "firebase/functions";
 import { initializeApp, getApps } from "firebase/app";
 import {
   collection,
@@ -20,7 +21,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-import { auth, db } from "../../services/firebase";
+import { auth, db, functions } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
 import {
   APP_PERMISSION_CATALOG,
@@ -36,6 +37,7 @@ import {
 } from "../../helpers/permissions";
 import {
   findStaffMatchesForUser,
+  listEmployeeLinkRows,
   listStaffLinkRows,
   repairLegacyStaffUserLinks,
   type AccountUserLinkRow,
@@ -391,6 +393,37 @@ export default function SettingsUsers({
     );
   }
 
+  function sourceDocId(source?: Record<string, unknown>) {
+    if (!source) return "";
+    return firstText(
+      source["id"],
+      source["employeeDocId"],
+      source["linkedEmployeeDocId"],
+      source["employeeId"]
+    );
+  }
+
+  function roleFromEmployeeSource(source?: Record<string, unknown>): UiRole | null {
+    if (!source) return null;
+    const role = mapFirestoreRoleToUi(cleanText(source["role"]));
+    return isEmployeeRole(role) ? role : null;
+  }
+
+  function resolveRestoredEmployeeRole(row: UserRow): UiRole {
+    if (isEmployeeRole(row.role)) return row.role;
+    return roleFromEmployeeSource(row.staffSource) || roleFromEmployeeSource(row.employeeSource) || "staff";
+  }
+
+  function resolveLinkedEmployeeDocId(row: UserRow) {
+    return firstText(
+      row.linkedEmployeeDocId,
+      row.employeeId,
+      sourceDocId(row.staffSource),
+      sourceDocId(row.employeeSource),
+      row.uid
+    );
+  }
+
   function isIncompleteAccount(row: UserRow) {
     return !cleanText(row.displayName) || !cleanText(row.email) || !hasLinkedEmployee(row);
   }
@@ -572,8 +605,14 @@ export default function SettingsUsers({
       return cleanText(userRow.linkedEmployeeDocId) || cleanText(userRow.employeeId) || null;
     }
 
-    const staffRows = await listStaffLinkRows();
-    const matches = findStaffMatchesForUser(userRow, staffRows);
+    const [staffRows, employeeRows] = await Promise.all([
+      listStaffLinkRows(),
+      listEmployeeLinkRows().catch((error) => {
+        console.error("syncLinkedStaffFromUser employee rows load error:", error);
+        return [];
+      }),
+    ]);
+    const matches = findStaffMatchesForUser(userRow, [...staffRows, ...employeeRows]);
     const existing = matches[0] as any;
     const fallbackDocId =
       cleanText(userRow.linkedEmployeeDocId) || cleanText(userRow.employeeId) || cleanText(userRow.uid);
@@ -595,25 +634,59 @@ export default function SettingsUsers({
       permissionOverrides: args.permissionOverrides || buildPermissionOverrides(args.role, effectivePermissions),
       permissionVersion: PERMISSION_SCHEMA_VERSION,
     };
+    const activeStatus = isEmployeeRole && args.active ? "active" : "inactive";
+    const restoredStatePatch = {
+      active: isEmployeeRole ? args.active : false,
+      isActive: isEmployeeRole ? args.active : false,
+      archived: false,
+      deleted: false,
+      removedFromStaff: false,
+      employmentStatus: activeStatus,
+      status: activeStatus,
+      accountStatus: activeStatus,
+      authStatus: "active",
+      employeeProfileEnabled: isEmployeeRole,
+      includeInEmployeeManagement: isEmployeeRole,
+      disabledAt: null,
+      disabledBy: null,
+      archivedAt: null,
+      archivedBy: null,
+      deletedAt: null,
+      deletedBy: null,
+      updatedAt: serverTimestamp(),
+    };
+    const identityPatch = {
+      uid: userRow.uid,
+      linkedUid: userRow.uid,
+      linkedUserId: userRow.uid,
+      authUid: userRow.uid,
+      userId: userRow.uid,
+      employeeUid: userRow.uid,
+      employeeId: staffId,
+      employeeDocId: staffId,
+      linkedEmployeeDocId: staffId,
+    };
+    const preservedStaffFields = {
+      ...(Array.isArray(existing?.specialties) ? { specialties: existing.specialties } : {}),
+      ...(cleanText(existing?.bio) ? { bio: cleanText(existing?.bio) } : {}),
+      ...(cleanText(existing?.avatarUrl) ? { avatarUrl: cleanText(existing?.avatarUrl) } : {}),
+      ...(cleanText(existing?.cvUrl) ? { cvUrl: cleanText(existing?.cvUrl) } : {}),
+      ...(cleanText(existing?.department) ? { department: cleanText(existing?.department) } : {}),
+      ...(cleanText(existing?.title) ? { title: cleanText(existing?.title) } : {}),
+    };
 
     await setDoc(
       doc(db, ...STAFF_PUBLIC_COLLECTION, staffId),
       {
-        uid: userRow.uid,
-        linkedUid: userRow.uid,
-        linkedUserId: userRow.uid,
+        ...identityPatch,
         ...(email ? { userEmail: email } : {}),
         ...(!cleanText(existing?.email) && email ? { email } : {}),
         name: displayName,
         role: nextRole,
-        active: isEmployeeRole ? args.active : false,
         showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
         showOnBooking: isPublicStaffRole ? existing?.showOnBooking === true : false,
-        removedFromStaff: false,
-        employmentStatus: isEmployeeRole ? (args.active ? "active" : "inactive") : "inactive",
-        deletedAt: null,
-        deletedBy: null,
-        updatedAt: serverTimestamp(),
+        ...preservedStaffFields,
+        ...restoredStatePatch,
       },
       { merge: true }
     );
@@ -621,21 +694,15 @@ export default function SettingsUsers({
     await setDoc(
       doc(db, ...EMPLOYEES_COLLECTION, staffId),
       {
-        uid: userRow.uid,
-        linkedUid: userRow.uid,
-        linkedUserId: userRow.uid,
+        ...identityPatch,
         ...(email ? { userEmail: email, email } : {}),
         name: displayName,
         role: nextRole,
         ...permissionPayload,
-        isActive: isEmployeeRole ? args.active : false,
-        active: isEmployeeRole ? args.active : false,
         showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
-        removedFromStaff: false,
-        employmentStatus: isEmployeeRole ? (args.active ? "active" : "inactive") : "inactive",
-        deletedAt: null,
-        deletedBy: null,
-        updatedAt: serverTimestamp(),
+        showOnBooking: isPublicStaffRole ? existing?.showOnBooking === true : false,
+        ...preservedStaffFields,
+        ...restoredStatePatch,
       },
       { merge: true }
     );
@@ -651,7 +718,17 @@ export default function SettingsUsers({
           role: nextRole,
           ...permissionPayload,
           active: args.active,
+          isActive: args.active,
+          accountStatus: "active",
+          authStatus: "active",
           employeeId: staffId,
+          linkedEmployeeDocId: staffId,
+          disabledAt: null,
+          disabledBy: null,
+          archivedAt: null,
+          archivedBy: null,
+          deletedAt: null,
+          deletedBy: null,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -663,6 +740,14 @@ export default function SettingsUsers({
       {
         linkedEmployeeDocId: staffId,
         employeeId: staffId,
+        accountStatus: "active",
+        authStatus: "active",
+        disabledAt: null,
+        disabledBy: null,
+        archivedAt: null,
+        archivedBy: null,
+        deletedAt: null,
+        deletedBy: null,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -750,14 +835,17 @@ export default function SettingsUsers({
           updatedAt: x?.updatedAt,
         };
         const linkedStaff = findStaffMatchesForUser(toAccountUserLinkRow(baseRow), staffRows)[0] as Record<string, unknown> | undefined;
+        const directLinkedEmployee =
+          employeesByUid.get(baseRow.uid) ||
+          employeesByEmail.get(cleanEmail(baseRow.email));
         const linkedEmployeeId =
           cleanText(baseRow.linkedEmployeeDocId) ||
           cleanText(baseRow.employeeId) ||
-          cleanText(linkedStaff?.id);
+          cleanText(linkedStaff?.id) ||
+          sourceDocId(directLinkedEmployee);
         const linkedEmployee =
           employeesById.get(linkedEmployeeId) ||
-          employeesByUid.get(baseRow.uid) ||
-          employeesByEmail.get(cleanEmail(baseRow.email));
+          directLinkedEmployee;
         const employeeProfile = nestedRecord(linkedEmployee, "employeeProfile");
         const employeeEmployment = nestedRecord(linkedEmployee, "employment");
         const staffEmployment = nestedRecord(linkedStaff, "employment");
@@ -1770,6 +1858,29 @@ export default function SettingsUsers({
     }
   };
 
+  const restoreFirebaseAuthAccount = async (args: {
+    uid: string;
+    role: UiRole;
+    employeeId: string;
+    email?: string;
+    displayName?: string;
+  }) => {
+    const call = httpsCallable<
+      { uid: string; role: string; employeeId: string; email?: string; displayName?: string },
+      { ok?: boolean; uid?: string; role?: string; employeeId?: string; authUpdated?: boolean }
+    >(functions, "adminRestoreStaffAccount");
+
+    const result = await call({
+      uid: args.uid,
+      role: toFirestoreRole(args.role),
+      employeeId: args.employeeId,
+      email: cleanEmail(args.email || ""),
+      displayName: cleanText(args.displayName || ""),
+    });
+
+    return result.data;
+  };
+
   const restoreUserAccount = async (uid: string) => {
     if (!canManageUsers) return;
 
@@ -1793,13 +1904,60 @@ export default function SettingsUsers({
 
     try {
       setUsersLoading(true);
+      const restoredRole = resolveRestoredEmployeeRole(row);
+      let restoredEmployeeId = resolveLinkedEmployeeDocId(row);
+      const displayName = firstText(row.displayName, row.employeeName, row.email, "موظفة");
+      const restoredPermissions =
+        row.role === restoredRole
+          ? getUserPermissions(row)
+          : getRoleAppPermissions(restoredRole as any);
+      const restoredPermissionOverrides =
+        row.role === restoredRole && row.permissionOverrides
+          ? row.permissionOverrides
+          : buildPermissionOverrides(restoredRole as any, restoredPermissions);
+      let authRestoreWarning = "";
+
+      try {
+        const authRestore = await restoreFirebaseAuthAccount({
+          uid,
+          role: restoredRole,
+          employeeId: restoredEmployeeId,
+          email: row.email,
+          displayName,
+        });
+        restoredEmployeeId = cleanText(authRestore?.employeeId) || restoredEmployeeId;
+      } catch (authError) {
+        console.error("restoreFirebaseAuthAccount error:", authError);
+        const code = cleanText((authError as any)?.code);
+        const message = cleanText((authError as any)?.message);
+        authRestoreWarning = message || code || "تعذر تأكيد حالة Firebase Auth من الخادم.";
+      }
+
       const restorePatch = {
+        uid,
+        email: cleanEmail(row.email || ""),
+        displayName,
+        name: displayName,
+        role: toFirestoreRole(restoredRole),
+        permissions: restoredPermissions,
+        permissionOverrides: restoredPermissionOverrides,
+        permissionVersion: PERMISSION_SCHEMA_VERSION,
         active: true,
         isActive: true,
         archived: false,
         deleted: false,
         removedFromStaff: false,
         employmentStatus: "active",
+        status: "active",
+        accountStatus: "active",
+        authStatus: authRestoreWarning ? "firestore_active_auth_unconfirmed" : "active",
+        employeeProfileEnabled: true,
+        linkedEmployeeDocId: restoredEmployeeId,
+        employeeId: restoredEmployeeId,
+        disabledAt: null,
+        disabledBy: null,
+        archivedAt: null,
+        archivedBy: null,
         deletedAt: null,
         deletedBy: null,
         updatedAt: serverTimestamp(),
@@ -1810,17 +1968,46 @@ export default function SettingsUsers({
         setDoc(doc(db, "salons", SALON_ID, "admin_users", uid), restorePatch, { merge: true }),
       ]);
 
+      const restoredStaffId = await syncLinkedStaffFromUser({
+        user: {
+          uid: row.uid,
+          email: row.email,
+          phone: row.phone || "",
+          displayName,
+          role: restoredRole,
+          active: true,
+          permissions: restoredPermissions,
+          permissionOverrides: restoredPermissionOverrides,
+          linkedEmployeeDocId: restoredEmployeeId,
+          employeeId: restoredEmployeeId,
+        },
+        role: restoredRole,
+        active: true,
+        displayName,
+        permissions: restoredPermissions,
+        permissionOverrides: restoredPermissionOverrides,
+        createIfMissing: true,
+        writeStaff: true,
+      });
+      const finalEmployeeId = restoredStaffId || restoredEmployeeId;
+
       setUsers((prev) =>
         prev.map((u) =>
           u.uid === uid
             ? {
                 ...u,
+                role: restoredRole,
+                permissions: restoredPermissions,
+                permissionOverrides: restoredPermissionOverrides,
                 active: true,
                 isActive: true,
                 archived: false,
                 deleted: false,
                 removedFromStaff: false,
                 employmentStatus: "active",
+                employeeProfileEnabled: true,
+                linkedEmployeeDocId: finalEmployeeId,
+                employeeId: finalEmployeeId,
                 deletedAt: null,
                 deletedBy: null,
               }
@@ -1841,15 +2028,26 @@ export default function SettingsUsers({
           archived: row.archived === true,
           deleted: row.deleted === true || Boolean(row.deletedAt),
           employmentStatus: row.employmentStatus || null,
+          linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || null,
         },
         after: {
-          role: row.role,
+          role: restoredRole,
           active: true,
-          staffFileChanged: false,
+          staffFileChanged: Boolean(finalEmployeeId),
+          restoredStaffId: finalEmployeeId || null,
+          authRestoreWarning: authRestoreWarning || null,
         },
       });
 
-      toastMsg("✅ تمت استعادة الحساب", 1800);
+      await loadUsers();
+      window.dispatchEvent(new Event("queens:staff-updated"));
+
+      toastMsg(
+        authRestoreWarning
+          ? `⚠️ تمت استعادة Firestore وملف الموظفة، لكن Firebase Auth يحتاج تحقق: ${authRestoreWarning}`
+          : "✅ تمت استعادة الحساب وملف الموظفة بالكامل",
+        authRestoreWarning ? 5200 : 2200
+      );
     } catch (e) {
       console.error("restoreUserAccount error:", e);
       toastMsg("❌ تعذر استعادة الحساب", 2600);

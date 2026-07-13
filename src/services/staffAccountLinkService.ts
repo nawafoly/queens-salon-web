@@ -34,6 +34,12 @@ export type StaffAccountLinkRow = {
   uid?: string;
   linkedUid?: string;
   linkedUserId?: string;
+  employeeUid?: string;
+  authUid?: string;
+  userId?: string;
+  employeeId?: string;
+  employeeDocId?: string;
+  linkedEmployeeDocId?: string;
   email?: string;
   userEmail?: string;
   phone?: string;
@@ -42,9 +48,12 @@ export type StaffAccountLinkRow = {
   fullName?: string;
   role?: string;
   active?: boolean;
+  archived?: boolean;
+  deleted?: boolean;
   deletedAt?: unknown;
   removedFromStaff?: boolean;
   employmentStatus?: string;
+  source?: "staff_public" | "employees";
   [key: string]: unknown;
 };
 
@@ -114,7 +123,14 @@ function getStaffUidCandidates(user: AccountUserLinkRow): string[] {
 function getUserUidCandidates(staff: StaffAccountLinkRow): string[] {
   return Array.from(
     new Set(
-      [staff.linkedUid, staff.uid, staff.linkedUserId]
+      [
+        staff.linkedUid,
+        staff.uid,
+        staff.linkedUserId,
+        staff.employeeUid,
+        staff.authUid,
+        staff.userId,
+      ]
         .map((value) => cleanText(value))
         .filter(Boolean)
     )
@@ -175,7 +191,20 @@ export async function listStaffLinkRows(): Promise<StaffAccountLinkRow[]> {
 
   return snap.docs.map((staffDoc) => ({
     id: staffDoc.id,
+    source: "staff_public",
+    employeeId: cleanText((staffDoc.data() as Record<string, unknown>)?.employeeId) || staffDoc.id,
     ...(staffDoc.data() as Record<string, unknown>),
+  })) as StaffAccountLinkRow[];
+}
+
+export async function listEmployeeLinkRows(): Promise<StaffAccountLinkRow[]> {
+  const snap = await getDocs(collection(db, ...EMPLOYEES_COLLECTION));
+
+  return snap.docs.map((employeeDoc) => ({
+    id: employeeDoc.id,
+    source: "employees",
+    employeeId: cleanText((employeeDoc.data() as Record<string, unknown>)?.employeeId) || employeeDoc.id,
+    ...(employeeDoc.data() as Record<string, unknown>),
   })) as StaffAccountLinkRow[];
 }
 
@@ -486,7 +515,7 @@ export async function repairLegacyStaffUserLinks() {
 
   for (const user of activeUsers) {
     const directMatches = findStaffMatchesForUser(user, candidateStaff).filter(
-      (staff) => !usedUserUids.has(cleanText(user.uid))
+      () => !usedUserUids.has(cleanText(user.uid))
     );
 
     if (!directMatches.length) continue;
