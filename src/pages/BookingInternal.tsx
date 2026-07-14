@@ -382,6 +382,35 @@ function allocateBreakdownAcrossTargets(
 }
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
+const BOOKING_SESSION_DRAFT_STORAGE_KEYS = [
+  "bookingDraft",
+  "bookingInternalDraft",
+  "internalBookingDraft",
+  "internal_booking_draft",
+  "booking_internal_draft",
+];
+
+function createEmptyBookingFormData(): BookingFormData {
+  return {
+    name: "",
+    phone: "",
+    note: "",
+    items: [],
+  };
+}
+
+function createEmptyAppliedOffer(): AppliedOfferResult {
+  return {
+    discountType: null,
+    discountValue: 0,
+    title: "",
+    discountAmount: 0,
+    finalPrice: 0,
+    offerId: null,
+    couponCode: "",
+    applicableItemIndexes: [],
+  };
+}
 
 let availabilityDaysBackfillStartedThisSession = false;
 const TAKEN_TIMES_CACHE_TTL_MS = 20_000;
@@ -722,12 +751,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [isOwner, setIsOwner] = useState(false);
   const [uploadingGuide, setUploadingGuide] = useState(false);
 
-  const [formData, setFormData] = useState<BookingFormData>({
-    name: "",
-    phone: "",
-    note: "",
-    items: [],
-  });
+  const [formData, setFormData] = useState<BookingFormData>(() => createEmptyBookingFormData());
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -738,16 +762,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   const [offersLoadMsg, setOffersLoadMsg] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [discountMsg, setDiscountMsg] = useState("");
-  const [applied, setApplied] = useState<AppliedOfferResult>({
-    discountType: null,
-    discountValue: 0,
-    title: "",
-    discountAmount: 0,
-    finalPrice: 0,
-    offerId: null,
-    couponCode: "",
-    applicableItemIndexes: [],
-  });
+  const [applied, setApplied] = useState<AppliedOfferResult>(() => createEmptyAppliedOffer());
 
   const [busyByItem, setBusyByItem] = useState<Record<string, BusyState>>({});
   const busyQueryKeyByItemRef = useRef<Record<string, string>>({});
@@ -4985,6 +5000,91 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     setDiscountMsg(warningMessage);
   }, [basePrice, discountApplicableIdx, discountBasePrice, formData.items, manualDiscountType, manualDiscountValue, selectedOffer]);
 
+  function resetBookingSessionAfterSuccessfulPayment() {
+    for (const key of BOOKING_SESSION_DRAFT_STORAGE_KEYS) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // ignore storage failures
+      }
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        // ignore storage failures
+      }
+    }
+
+    const nextDate = todayISO();
+    setFormData(createEmptyBookingFormData());
+    setBookingDate(nextDate);
+    setBookingDateCalendar("gregory");
+    setHijriPickerOpen(false);
+    setHijriViewMonthISO(findHijriMonthStartISO(nextDate));
+
+    setSelectedClient(null);
+    setClientSearch("");
+    setClientSearching(false);
+    setClientSearchMsg("");
+    setClientSearchResults([]);
+    setQuickClientQuery("");
+
+    setSelectedSectionId("");
+    setSelectedCategory("");
+    setServicePicker("");
+    setPickerScope("services");
+    setPriceLookupQuery("");
+    setPriceLookupLoading(false);
+    setPriceLookupServices([]);
+    setPriceLookupImageModal({ open: false, name: "", imageUrl: "" });
+    setMobilePriceListOpen(false);
+
+    setManualDiscountType("");
+    setManualDiscountValue("");
+    setSelectedOfferId("");
+    setDiscountMsg("");
+    setApplied(createEmptyAppliedOffer());
+
+    setBusyByItem({});
+    busyQueryKeyByItemRef.current = {};
+    takenTimesCacheRef.current = {};
+    takenTimesInFlightRef.current = {};
+    bookedMetaCacheRef.current = {};
+    bookedMetaInFlightRef.current = {};
+    setExpandedConfirmedCartItems({});
+    setExpandedPreviewRows({});
+
+    setFutureAnyStaff(true);
+    setFutureSelectedEmployeeKey("");
+    setFutureStaffNameQuery("");
+    setFutureLoading(false);
+    setFutureServiceId("");
+    setFutureTargetItemId("");
+    setFutureResult([]);
+    setFutureMsg("");
+    autoFutureSearchKeyRef.current = "";
+
+    setInternalPaymentModalOpen(false);
+    setInternalPaymentMethodDraft("");
+    setInternalPaymentTypeDraft("full");
+    setInternalPaymentPaidAmountDraft("");
+    setInternalPaymentBreakdownDraft({ ...PAYMENT_BREAKDOWN_DRAFT_EMPTY });
+    setInternalPaymentError("");
+    internalPaymentMethodRef.current = null;
+    internalPaymentTypeRef.current = null;
+    internalPaidAmountRef.current = null;
+    internalPaymentBreakdownRef.current = null;
+    internalSubmitModeRef.current = "payment";
+
+    setBookingSearch("");
+    setBookingSearching(false);
+    setBookingSearchMsg("");
+    setFoundBookings([]);
+    setSelectedExistingBooking(null);
+    setBookingNameChoices([]);
+    setSelectedBookingNameKey("");
+    bookingSearchCacheRef.current = {};
+  }
+
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
     const employeeIdFallback = String(it.employeeId || "").trim();
@@ -6077,11 +6177,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         createdBookings,
         shouldSaveAsPending ? "internal_pending_booking_created" : "internal_booking_created_and_paid"
       );
-      localStorage.removeItem("bookingDraft");
-      internalPaymentMethodRef.current = null;
-      internalPaymentTypeRef.current = null;
-      internalPaidAmountRef.current = null;
-      internalPaymentBreakdownRef.current = null;
+      resetBookingSessionAfterSuccessfulPayment();
 
       if (shouldSaveAsPending) {
         const successNav = buildSuccessNavigationPayload(createdBookings, "created");
