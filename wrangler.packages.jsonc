@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "queens-salon-packages-api",
+  "main": "workers/packages/index.js",
+  "compatibility_date": "2026-06-24",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
+    "SALON_ID": "main",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5174,https://queens-salon-web.vercel.app"
+  }
+}

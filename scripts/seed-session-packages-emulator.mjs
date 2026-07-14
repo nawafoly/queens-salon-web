@@ -46,6 +46,7 @@ async function cleanupTestRun() {
     deleteQuery(await salon.collection("client_package_transactions").where("clientId", "==", clientId).get()),
     deleteQuery(await salon.collection("bookings").where("clientId", "==", clientId).get()),
     deleteQuery(await salon.collection("booking_tracks").where("clientId", "==", clientId).get()),
+    deleteQuery(await salon.collection("booking_slots").where("clientId", "==", clientId).get()),
     deleteQuery(await salon.collection("invoices").where("clientId", "==", clientId).get()),
     deleteQuery(await salon.collection("income").where("clientPhone", "==", clientPhone).get()),
   ]);

@@ -1,5 +1,4 @@
-import { httpsCallable } from "firebase/functions";
-import { functions } from "./firebase";
+import { auth } from "./firebase";
 
 export type PackagePurchaseResult = {
   ok: boolean;
@@ -25,9 +24,25 @@ function operationId(prefix: string) {
   return `${prefix}_${random}`.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
+function packageWorkerBaseUrl() {
+  const env = (import.meta as any).env || {};
+  return String(env.VITE_PACKAGES_WORKER_URL || env.VITE_PARTNERS_WORKER_URL || "").replace(/\/+$/, "");
+}
+
 function callableErrorAr(error: any) {
   const code = String(error?.code || "");
   const message = String(error?.message || "");
+  const status = Number(error?.status || 0);
+  if (status === 401) return "يجب تسجيل الدخول مرة أخرى.";
+  if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
+  if (status === 409) {
+    if (message.includes("slot")) return "الموعد محجوز بالفعل. اختاري وقتًا آخر.";
+    if (message.includes("included")) return "الخدمة غير مشمولة في الباقة.";
+    if (message.includes("balance") || message.includes("exhaust")) return "لا يوجد رصيد باقة صالح لهذه الخدمة.";
+    return "تعذر تنفيذ العملية بسبب تعارض في البيانات. حدّثي الصفحة وحاولي مجددًا.";
+  }
+  if (status === 422 || status === 400) return "بعض البيانات غير صحيحة. تحققي من الحقول وحاولي مجددًا.";
+  if (status >= 500) return "الخدمة غير متاحة مؤقتًا. حاولي مجددًا بعد قليل.";
   if (code.includes("unauthenticated")) return "يجب تسجيل الدخول أولًا.";
   if (code.includes("permission-denied")) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
   if (code.includes("not-found")) return "تعذر العثور على العميلة أو الباقة أو الخدمة.";
@@ -43,10 +58,43 @@ function callableErrorAr(error: any) {
   return "تعذر تنفيذ العملية. تحققي من البيانات وحاولي مجددًا.";
 }
 
-async function invoke<T>(name: string, payload: Record<string, unknown>): Promise<T> {
+async function invoke<T>(path: string, payload: Record<string, unknown> = {}, method: "GET" | "POST" = "POST"): Promise<T> {
   try {
-    const result = await httpsCallable<Record<string, unknown>, T>(functions, name)(payload);
-    return result.data;
+    const baseUrl = packageWorkerBaseUrl();
+    if (!baseUrl) throw Object.assign(new Error("packages_worker:not_configured"), { code: "failed-precondition" });
+    const user = auth.currentUser;
+    if (!user) throw Object.assign(new Error("Authentication is required"), { code: "unauthenticated" });
+    const requestOnce = async (forceRefresh = false) => {
+      const token = await user.getIdToken(forceRefresh);
+      const url = new URL(`${baseUrl}${path}`);
+      if (method === "GET") {
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+        });
+      }
+      const response = await fetch(url.toString(), {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(method === "POST" ? { body: JSON.stringify(payload) } : {}),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.ok === false) {
+        const err: any = new Error(body?.message || body?.error || `HTTP ${response.status}`);
+        err.code = body?.error || `http-${response.status}`;
+        err.status = response.status;
+        throw err;
+      }
+      return (body?.data ?? body) as T;
+    };
+    try {
+      return await requestOnce(false);
+    } catch (error: any) {
+      if (Number(error?.status || 0) === 401) return await requestOnce(true);
+      throw error;
+    }
   } catch (error) {
     throw new Error(callableErrorAr(error));
   }
@@ -61,7 +109,7 @@ export const PackageOperationsService = {
       packages: any[];
       transactions: any[];
       services: Record<string, string>;
-    }>("getMyPackageWallet", { salonId: "main" });
+    }>("/api/packages/my-wallet", { salonId: "main" }, "GET");
   },
   purchase(args: {
     clientId: string;
@@ -69,7 +117,7 @@ export const PackageOperationsService = {
     paymentMethod: "cash" | "card" | "transfer";
     invoiceId?: string;
   }) {
-    return invoke<PackagePurchaseResult>("purchaseClientPackage", {
+    return invoke<PackagePurchaseResult>("/api/packages/purchase", {
       salonId: "main",
       ...args,
       invoiceId: args.invoiceId || operationId("package_sale"),
@@ -84,33 +132,33 @@ export const PackageOperationsService = {
     time: string;
     operationId?: string;
   }) {
-    return invoke<PackageRedemptionResult>("createPackageRedemptionBooking", {
+    return invoke<PackageRedemptionResult>("/api/packages/redemption/create", {
       salonId: "main",
       ...args,
       operationId: args.operationId || operationId("package_booking"),
     });
   },
   adjust(clientPackageId: string, sessionsDelta: number, reason: string) {
-    return invoke("adjustClientPackageBalance", {
+    return invoke("/api/packages/adjust", {
       salonId: "main", clientPackageId, sessionsDelta, reason,
       operationId: operationId("package_adjust"),
     });
   },
   cancel(clientPackageId: string, reason: string) {
-    return invoke("cancelClientPackage", { salonId: "main", clientPackageId, reason });
+    return invoke("/api/packages/cancel", { salonId: "main", clientPackageId, reason });
   },
   restoreConsumed(bookingId: string, reason: string) {
-    return invoke("adminRestoreConsumedPackageSession", {
+    return invoke("/api/packages/redemption/restore", {
       salonId: "main", bookingId, reason, operationId: operationId("package_restore"),
     });
   },
   consumeReserved(bookingId: string) {
-    return invoke("consumeReservedPackageSession", { salonId: "main", bookingId });
+    return invoke("/api/packages/redemption/consume", { salonId: "main", bookingId });
   },
   restoreReserved(bookingId: string, reason: string) {
-    return invoke("restoreReservedPackageSession", { salonId: "main", bookingId, reason });
+    return invoke("/api/packages/redemption/restore", { salonId: "main", bookingId, reason });
   },
   cancelRedemptionBooking(bookingId: string, reason: string) {
-    return invoke("cancelPackageRedemptionBooking", { salonId: "main", bookingId, reason });
+    return invoke("/api/packages/redemption/cancel", { salonId: "main", bookingId, reason });
   },
 };
