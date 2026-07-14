@@ -11,6 +11,8 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { buildPackageSubscriptionHandlers } from "./packageSubscriptionFunctions.js";
+import { expireClientPackagesInBatches } from "./packageExpiration.js";
 import * as functions from "firebase-functions"; // ✅ فقط لـ functions.config()
 
 /**
@@ -498,8 +500,87 @@ function normalizeRole(x: any): UiRole | "guest" {
 
 async function getCallerRole(uid: string): Promise<UiRole | "guest"> {
   const u = await admin.auth().getUser(uid);
-  return normalizeRole((u.customClaims as any)?.role);
+  const claimed = normalizeRole((u.customClaims as any)?.role);
+  if (claimed !== "guest") return claimed;
+  const profile = await db.collection("salons").doc(SALON_ID).collection("users").doc(uid).get();
+  return profile.exists ? normalizeRole(profile.data()?.role) : "guest";
 }
+
+const packageSubscriptionHandlers = buildPackageSubscriptionHandlers({
+  db,
+  resolveCallerRole: getCallerRole,
+  defaultSalonId: SALON_ID,
+});
+
+export const purchaseClientPackage = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.purchaseClientPackage
+);
+
+export const getMyPackageWallet = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.getMyPackageWallet
+);
+
+export const reservePackageSession = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.reservePackageSession
+);
+
+export const createPackageRedemptionBooking = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.createPackageRedemptionBooking
+);
+
+export const consumeReservedPackageSession = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.consumeReservedPackageSession
+);
+
+export const restoreReservedPackageSession = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.restoreReservedPackageSession
+);
+
+export const cancelPackageRedemptionBooking = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.cancelPackageRedemptionBooking
+);
+
+export const markPackageRedemptionNoShow = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.markPackageRedemptionNoShow
+);
+
+export const adminRestoreConsumedPackageSession = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.adminRestoreConsumedPackageSession
+);
+
+export const cancelClientPackage = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.cancelClientPackage
+);
+
+export const adjustClientPackageBalance = onCall(
+  { region: "us-central1" },
+  packageSubscriptionHandlers.adjustClientPackageBalance
+);
+
+export const expireClientPackages = onSchedule(
+  { schedule: "every 60 minutes", region: "us-central1", timeZone: "Asia/Riyadh" },
+  async () => {
+    const result = await expireClientPackagesInBatches({
+      db,
+      salonId: SALON_ID,
+      onBatchError: (error, attempted) => logger.error("[expireClientPackages] batch failed", {
+        attempted,
+        error: error instanceof Error ? error.message : "unknown",
+      }),
+    });
+    logger.info("[expireClientPackages] completed", result);
+  }
+);
 
 /**
  * ✅ helper: check bootstrap emails

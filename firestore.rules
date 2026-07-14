@@ -17,7 +17,9 @@ service cloud.firestore {
     }
 
     function isBootstrapAdmin() {
-      return signedIn() && (
+      return signedIn()
+        && request.auth.token.email is string
+        && (
         request.auth.token.email == "nawafaaa0@gmail.com" ||
         request.auth.token.email == "alolayan3@gmail.com"
       );
@@ -220,6 +222,23 @@ service cloud.firestore {
 
     function canEditBookings() {
       return isAdminPower() || isReception();
+    }
+
+    function isPackageBookingData(d) {
+      return d.get("fromSessionPackage", false) == true
+        || d.get("lineType", "") == "package_redemption"
+        || ("clientPackageId" in d)
+        || ("packageTransactionId" in d);
+    }
+
+    function isPackageSlotData(d) {
+      return d.bookingId is string && d.bookingId.matches('^pkg_.*');
+    }
+
+    function isPackageTrackData(d) {
+      return d.get("lineType", "") == "package_redemption"
+        || ("clientPackageId" in d)
+        || ("packageRedemptionState" in d);
     }
 
     function isHrLeaveBalanceUpdateForSalon(salonId) {
@@ -823,6 +842,41 @@ service cloud.firestore {
     }
 
     /* =========================
+       Session package catalog and balances
+       Sensitive balance mutations are Cloud Functions/Admin SDK only.
+    ========================= */
+    match /salons/{salonId}/packages_catalog/{packageId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "reception"]
+      );
+      allow create, update: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin"]
+      );
+      allow delete: if false;
+    }
+
+    match /salons/{salonId}/client_packages/{clientPackageId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "reception", "accountant"]
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /salons/{salonId}/client_package_transactions/{transactionId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "reception", "accountant"]
+      );
+      allow create, update, delete: if false;
+    }
+
+    match /salons/{salonId}/invoices/{invoiceId} {
+      allow read: if signedIn() && (
+        isBootstrapAdmin() || roleForSalon(salonId) in ["owner", "admin", "reception", "accountant"]
+      );
+      allow create, update, delete: if false;
+    }
+
+    /* =========================
        bookings (ROOT legacy)
     ========================= */
     match /bookings/{id} {
@@ -867,10 +921,11 @@ service cloud.firestore {
         )
       );
 
-      allow create: if
+      allow create: if !isPackageBookingData(request.resource.data) && (
         isGuestClientBookingCreate()
         || isSignedInClientBookingCreate()
-        || (signedIn() && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]));
+        || (signedIn() && (isBootstrapAdmin() || roleForSalon(salonId) in ["owner","admin","reception"]))
+      );
 
       allow update: if signedIn() && (
         isBootstrapAdmin()
@@ -917,12 +972,21 @@ service cloud.firestore {
             )
           )
         )
+      ) && (
+        !isPackageBookingData(resource.data)
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "confirmedAt", "confirmedByUid",
+          "completedAt", "completedByUid",
+          "staffAck", "staffAckAt", "staffAckByUid",
+          "updatedAt"
+        ])
       );
 
       // Permanent booking delete is restricted to owner only (and bootstrap admin).
       allow delete: if signedIn() && (
         isBootstrapAdmin() || roleForSalon(salonId) == "owner"
-      );
+      ) && !isPackageBookingData(resource.data);
     }
 
     match /salons/{salonId}/booking_logs/{bookingId}/events/{eventId} {
@@ -972,13 +1036,17 @@ service cloud.firestore {
     match /salons/{salonId}/booking_slots/{slotId} {
       allow read: if true;
 
-      allow create: if canManageBookingSlots(salonId)
+      allow create: if !isPackageSlotData(request.resource.data) && (
+        canManageBookingSlots(salonId)
         || isSignedInClientSlotLockCreate(salonId, slotId)
-        || isGuestSlotLockCreate(slotId);
+        || isGuestSlotLockCreate(slotId)
+      );
 
       // Existing slot documents may only be reused by authorized administrators.
       // createdAt is immutable; operational changes use updatedAt.
-      allow update: if canManageBookingSlots(salonId)
+      allow update: if !isPackageSlotData(resource.data)
+        && !isPackageSlotData(request.resource.data)
+        && canManageBookingSlots(salonId)
         // Legacy slot documents may not contain createdAt. In both cases it must remain unchanged.
         && request.resource.data.get("createdAt", null) == resource.data.get("createdAt", null)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -996,7 +1064,7 @@ service cloud.firestore {
           "updatedAt"
         ]);
 
-      allow delete: if canManageBookingSlots(salonId);
+      allow delete: if !isPackageSlotData(resource.data) && canManageBookingSlots(salonId);
     }
 
     /* =========================
@@ -1066,6 +1134,7 @@ service cloud.firestore {
       allow read: if true;
 
       allow create: if signedIn()
+        && !isPackageTrackData(request.resource.data)
         && (request.resource.data.bookingId is string)
         && request.resource.data.bookingId == id
         && (
@@ -1082,10 +1151,17 @@ service cloud.firestore {
         && (request.resource.data.status in ["pending", "confirmed", "completed", "cancelled"])
         && (!("userId" in request.resource.data) || request.resource.data.userId == request.auth.uid);
 
-      allow write: if signedIn() && (
+      allow update: if signedIn() && (
         isBootstrapAdmin()
         || roleForSalon(salonId) in ["owner","admin","reception","staff"]
+      ) && (
+        !isPackageTrackData(resource.data)
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "confirmedAt", "completedAt", "staffAck", "updatedAt"
+        ])
       );
+
+      allow delete: if false;
     }
 
     match /salons/{salonId}/expenses/{id} {
@@ -1275,6 +1351,10 @@ service cloud.firestore {
         && colName != "notifications"
         && colName != "weekly_reports"
         && colName != "job_applications"
+        && colName != "packages_catalog"
+        && colName != "client_packages"
+        && colName != "client_package_transactions"
+        && colName != "invoices"
         && colName != "partners"
         && colName != "rental_resources"
         && colName != "partner_contracts"

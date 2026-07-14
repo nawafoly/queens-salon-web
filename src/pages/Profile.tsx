@@ -33,6 +33,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
+import MyPackagesPanel from "../components/packages/MyPackagesPanel";
 
 // =======================
 // دعم واتساب
@@ -1041,6 +1042,7 @@ const Profile: React.FC = () => {
               )}
             </div>
           </section>
+          <MyPackagesPanel enabled={profileMode === "firebase" && !!firebaseUser} />
         </>
         ) : null}
 

@@ -99,9 +99,11 @@ type ServiceRow = {
 type PackageRow = {
   id: string;
   name: string;
+  description?: string;
   serviceIds: string[];
   sessionsCount: number;
   price: number;
+  validityDays?: number;
   active: boolean;
   createdAt?: any;
   updatedAt?: any;
@@ -116,7 +118,7 @@ type FilterStatus = "all" | "active" | "inactive";
 type ComposerMode = null | "section" | "service";
 type ServiceComposerSpot = "pricing" | "variants";
 
-const DEFAULT_PACKAGE_SESSIONS = 10;
+const DEFAULT_PACKAGE_SESSIONS = 1;
 
 function CatalogModalPortal(props: { active: boolean; children: ReactNode }) {
   const { active, children } = props;
@@ -152,16 +154,20 @@ function CatalogModalPortal(props: { active: boolean; children: ReactNode }) {
 
 function resetPackageFormState(setters: {
   setPackageName: (value: string) => void;
+  setPackageDescription: (value: string) => void;
   setPackageServiceIds: (value: string[]) => void;
   setPackageSessionsCount: (value: number) => void;
   setPackagePrice: (value: number) => void;
+  setPackageValidityDays: (value: string) => void;
   setPackageActive: (value: boolean) => void;
   setEditingPackageId: (value: string | null) => void;
 }) {
   setters.setPackageName("");
+  setters.setPackageDescription("");
   setters.setPackageServiceIds([]);
   setters.setPackageSessionsCount(DEFAULT_PACKAGE_SESSIONS);
   setters.setPackagePrice(0);
+  setters.setPackageValidityDays("");
   setters.setPackageActive(true);
   setters.setEditingPackageId(null);
 }
@@ -182,10 +188,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const [packages, setPackages] = useState<PackageRow[]>([]);
 
   const [packageName, setPackageName] = useState("");
+  const [packageDescription, setPackageDescription] = useState("");
   const [packageServiceIds, setPackageServiceIds] = useState<string[]>([]);
   const [packageSessionsCount, setPackageSessionsCount] =
     useState<number>(DEFAULT_PACKAGE_SESSIONS);
   const [packagePrice, setPackagePrice] = useState<number>(0);
+  const [packageValidityDays, setPackageValidityDays] = useState("");
   const [packageActive, setPackageActive] = useState(true);
   const [packageSaving, setPackageSaving] = useState(false);
   const [packageServiceSearch, setPackageServiceSearch] = useState("");
@@ -691,6 +699,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           .map((pkg) => ({
             id: String(pkg.id || "").trim(),
             name: String(pkg.name || ""),
+            description: String(pkg.description || "").trim() || undefined,
             serviceIds: normalizePackageServiceIds([
               ...(Array.isArray(pkg.allowedServiceIds)
                 ? pkg.allowedServiceIds
@@ -699,6 +708,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             ]),
             sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
             price: Math.max(0, Number(pkg.price || 0)),
+            validityDays:
+              pkg.validityDays === undefined || pkg.validityDays === null
+                ? undefined
+                : Math.max(1, Math.floor(Number(pkg.validityDays || 1))),
             active: pkg.active !== false,
             createdAt: pkg.createdAt,
             updatedAt: pkg.updatedAt,
@@ -721,6 +734,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     const serviceIds = normalizePackageServiceIds(packageServiceIds);
     const sessionsCount = Math.max(1, Number(packageSessionsCount || 0));
     const price = Math.max(0, Number(packagePrice || 0));
+    const description = String(packageDescription || "").trim();
+    const validityDays = packageValidityDays.trim()
+      ? Math.max(1, Math.floor(Number(packageValidityDays)))
+      : undefined;
 
     if (!name) return showMsg("اسم الباقة مطلوب", 2200);
     if (!serviceIds.length) {
@@ -734,10 +751,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     try {
       const payload = {
         name,
+        description,
         serviceIds,
         allowedServiceIds: serviceIds,
         sessionsCount,
         price,
+        validityDays,
         active: packageActive !== false,
       };
 
@@ -763,60 +782,16 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     } finally {
       setPackageSaving(false);
     }
-
-    {
-    const name = String(packageName || "").trim();
-    const serviceIds = packageServiceIds.filter(Boolean);
-    const sessionsCount = Math.max(1, Number(packageSessionsCount || 0));
-    const price = Math.max(0, Number(packagePrice || 0));
-
-    if (!name) {
-      alert("اكتب اسم الباقة");
-      return;
-    }
-
-    if (!serviceIds.length) {
-      alert("اختر خدمة واحدة على الأقل");
-      return;
-    }
-
-    if (sessionsCount <= 0) {
-      alert("عدد الجلسات لازم يكون أكبر من صفر");
-      return;
-    }
-
-    setPackageSaving(true);
-    try {
-      await PackageService.add({
-        name,
-        serviceIds,
-        sessionsCount,
-        price,
-        active: packageActive !== false,
-      });
-
-      setPackageName("");
-      setPackageServiceIds([]);
-      setPackageSessionsCount(10);
-      setPackagePrice(0);
-      setPackageActive(true);
-
-      await loadCatalog();
-    } catch (error) {
-      console.error("createPackage_failed", error);
-      alert("صار خطأ أثناء إنشاء الباقة");
-    } finally {
-      setPackageSaving(false);
-    }
-    }
   };
 
   const resetPackageForm = () => {
     resetPackageFormState({
       setPackageName,
+      setPackageDescription,
       setPackageServiceIds,
       setPackageSessionsCount,
       setPackagePrice,
+      setPackageValidityDays,
       setPackageActive,
       setEditingPackageId,
     });
@@ -828,9 +803,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const startPackageEdit = (pkg: PackageRow) => {
     setEditingPackageId(pkg.id);
     setPackageName(String(pkg.name || "").trim());
+    setPackageDescription(String(pkg.description || "").trim());
     setPackageServiceIds(normalizePackageServiceIds(pkg.serviceIds));
     setPackageSessionsCount(Math.max(1, Number(pkg.sessionsCount || 1)));
     setPackagePrice(Math.max(0, Number(pkg.price || 0)));
+    setPackageValidityDays(pkg.validityDays ? String(pkg.validityDays) : "");
     setPackageActive(pkg.active !== false);
     setPackageServiceSearch("");
     setPackageServiceSectionFilter("all");
@@ -887,52 +864,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   };
 
   const savePackage = async () => {
-    return createPackage();
-
-    const name = String(packageName || "").trim();
-    const serviceIds = normalizePackageServiceIds(packageServiceIds);
-    const sessionsCount = Math.max(1, Number(packageSessionsCount || 0));
-    const price = Math.max(0, Number(packagePrice || 0));
-
-    if (!name) return showMsg("اسم الباقة مطلوب", 2200);
-    if (!serviceIds.length) {
-      return showMsg("اختاري خدمة واحدة على الأقل داخل الباقة", 2200);
-    }
-    if (sessionsCount <= 0) {
-      return showMsg("عدد الجلسات يجب أن يكون أكبر من صفر", 2200);
-    }
-
-    setPackageSaving(true);
-    try {
-      const payload = {
-        name,
-        serviceIds,
-        allowedServiceIds: serviceIds,
-        sessionsCount,
-        price,
-        active: packageActive !== false,
-      };
-
-      const editingTargetId = String(editingPackageId || "").trim();
-      if (editingTargetId) {
-        await PackageService.update(editingTargetId, payload);
-        showMsg("تم تحديث الباقة");
-      } else {
-        await PackageService.add(payload);
-        showMsg("تم إنشاء الباقة");
-      }
-
-      await loadCatalog();
-      resetPackageForm();
-    } catch (error) {
-      console.error("savePackage_failed", error);
-      showMsg(
-        editingPackageId ? "تعذر تحديث الباقة" : "تعذر إنشاء الباقة",
-        2800
-      );
-    } finally {
-      setPackageSaving(false);
-    }
+    await createPackage();
   };
 
   const togglePackageActive = async (pkg: PackageRow) => {
@@ -948,27 +880,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     } catch (error) {
       console.error("togglePackageActive_failed", error);
       showMsg("تعذر تحديث حالة الباقة", 2500);
-    } finally {
-      setPkgLoading(false);
-    }
-  };
-
-  const deletePackage = async (pkg: PackageRow) => {
-    const packageId = String(pkg.id || "").trim();
-    if (!packageId) return;
-    if (!window.confirm(`هل أنت متأكد من حذف الباقة "${pkg.name}"؟`)) return;
-
-    try {
-      setPkgLoading(true);
-      await PackageService.remove(packageId);
-      showMsg("تم حذف الباقة");
-      await loadCatalog();
-      if (editingPackageId === packageId) {
-        resetPackageForm();
-      }
-    } catch (error) {
-      console.error("deletePackage_failed", error);
-      showMsg("تعذر حذف الباقة", 2500);
     } finally {
       setPkgLoading(false);
     }
@@ -1833,6 +1744,17 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           />
         </div>
 
+        <div className="settings-field scatalog-package-details__name">
+          <label>الوصف</label>
+          <textarea
+            className="settings-input"
+            rows={3}
+            placeholder="وصف مختصر لما تتضمنه الباقة"
+            value={packageDescription}
+            onChange={(e) => setPackageDescription(e.target.value)}
+          />
+        </div>
+
         <div className="settings-field">
           <label>عدد الجلسات</label>
           <input
@@ -1854,6 +1776,18 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
             min={0}
             value={packagePrice}
             onChange={(e) => setPackagePrice(Number(e.target.value))}
+          />
+        </div>
+
+        <div className="settings-field">
+          <label>مدة الصلاحية بالأيام</label>
+          <input
+            className="settings-input"
+            type="number"
+            min={1}
+            placeholder="بدون انتهاء"
+            value={packageValidityDays}
+            onChange={(e) => setPackageValidityDays(e.target.value)}
           />
         </div>
 
@@ -2086,6 +2020,7 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 <div>
                   <b>{pkg.name}</b>
                   <span>ID: {pkg.id}</span>
+                  {pkg.description ? <span>{pkg.description}</span> : null}
                   <span>الخدمات: {linkedNames.join("، ")}</span>
                 </div>
                 <div
@@ -2098,6 +2033,11 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 >
                   <span>{pkg.sessionsCount} جلسات</span>
                   <span>{money(pkg.price)} ر.س</span>
+                  <span>
+                    {pkg.validityDays
+                      ? `صالحة ${pkg.validityDays} يومًا`
+                      : "بدون تاريخ انتهاء"}
+                  </span>
                   <span>{linkedNames.length} خدمة</span>
                   <span
                     className={`scatalog-ref__pill ${
@@ -2119,13 +2059,6 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     onClick={() => void togglePackageActive(pkg)}
                   >
                     {pkg.active ? "تعطيل" : "تفعيل"}
-                  </button>
-                  <button
-                    className="dash-btn"
-                    type="button"
-                    onClick={() => void deletePackage(pkg)}
-                  >
-                    حذف
                   </button>
                 </div>
               </div>

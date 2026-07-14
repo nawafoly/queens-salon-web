@@ -1,0 +1,20 @@
+.session-packages { direction: rtl; display: grid; gap: 14px; }
+.session-packages__card { background: #fff; border: 1px solid rgba(31,41,55,.12); border-radius: 18px; padding: 16px; box-shadow: 0 8px 28px rgba(15,23,42,.05); }
+.session-packages__head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.session-packages__stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
+.session-packages__stat { background:#f8fafc; border-radius:12px; padding:10px; }
+.session-packages__stat small,.session-packages__muted { color:#64748b; display:block; }
+.session-packages__choices { display:grid; gap:10px; margin-top:12px; }
+.session-packages__choice { border:1px solid #dbe3ec; border-radius:14px; padding:12px; cursor:pointer; background:#fff; text-align:right; width:100%; }
+.session-packages__choice.is-selected { border-color:#8b5cf6; background:#f5f3ff; }
+.session-packages__actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.session-packages__button { border:0; border-radius:12px; min-height:44px; padding:0 18px; font-weight:800; background:#6d28d9; color:#fff; }
+.session-packages__button.secondary { background:#eef2ff; color:#4338ca; }
+.session-packages__button.danger { background:#fee2e2; color:#991b1b; }
+.session-packages__button:disabled { opacity:.55; cursor:not-allowed; }
+.session-packages__field { display:grid; gap:6px; }
+.session-packages__field input,.session-packages__field select,.session-packages__field textarea { border:1px solid #cbd5e1; border-radius:11px; min-height:44px; padding:9px 12px; width:100%; }
+.session-packages__grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.session-packages__error { color:#b91c1c; background:#fef2f2; padding:10px; border-radius:10px; }
+.session-packages__success { color:#166534; background:#f0fdf4; padding:12px; border-radius:10px; }
+@media(max-width:700px){.session-packages__stats,.session-packages__grid{grid-template-columns:1fr}.session-packages__button{width:100%}.session-packages__card{padding:13px}}

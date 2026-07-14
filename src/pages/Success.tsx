@@ -21,6 +21,7 @@ import {
 import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import { readBookingTotalAmount } from "../helpers/bookingPaymentUtils";
+import { printPackageDocument } from "../components/packages/packageFormat";
 
 // Firestore
 import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
@@ -106,6 +107,11 @@ type SuccessLocationState = {
   allBookings?: LocalBookingSnapshot[];
   bookingRefs?: LocalBookingRef[];
   allBookingRefs?: LocalBookingRef[];
+  packageReceipt?: boolean;
+  settlementLabel?: string;
+  packageName?: string;
+  packageBalanceBefore?: number;
+  packageBalanceAfter?: number;
 };
 
 const BOOKING_KEY = "currentBooking";
@@ -1642,6 +1648,8 @@ export default function Success() {
   const totalLabel = views.length > 1 ? "إجمالي الحجوزات" : "الإجمالي";
   const firstMk = summary.bookingIds[0] || String(first?.publicId || "").trim() || "—";
   const canTrack = firstMk !== "—";
+  const successState = (location.state || {}) as SuccessLocationState;
+  const isPackageReceipt = successState.packageReceipt === true;
 
   if (loading) {
     return <LoadingBrand text="جاري تحميل البيانات..." />;
@@ -1783,8 +1791,20 @@ export default function Success() {
 
             <div className="total-row">
               <FontAwesomeIcon icon={faMoneyBill} />
-              <span>{`${totalLabel}: ${summary.total ? `${formatNumberEn(summary.total)} ريال` : "—"}`}</span>
+              <span>{isPackageReceipt ? "القيمة المدفوعة: صفر — تمت التسوية من رصيد الباقة" : `${totalLabel}: ${summary.total ? `${formatNumberEn(summary.total)} ريال` : "—"}`}</span>
             </div>
+            {isPackageReceipt ? (
+              <button
+                type="button"
+                className="success-copy-btn"
+                onClick={() => printPackageDocument(
+                  `إيصال ${firstMk}`,
+                  `<b>الخدمة:</b> ${summary.serviceNames[0] || "—"}<br><b>الموظفة:</b> ${summary.employeeNames[0] || "—"}<br><b>الموعد:</b> ${summary.dateValues[0] || "—"} ${summary.timeValues[0] || ""}<br><b>الباقة:</b> ${successState.packageName || "باقة جلسات"}<br><b>الرصيد قبل:</b> ${successState.packageBalanceBefore ?? "—"}<br><b>الرصيد بعد:</b> ${successState.packageBalanceAfter ?? "—"}<br><b>القيمة المدفوعة:</b> صفر<br>تمت التسوية من رصيد الباقة`
+                )}
+              >
+                طباعة الإيصال الصفري
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -1805,8 +1825,8 @@ export default function Success() {
             سيتم التأكد من السعر النهائي بعد معاينة الشعر، وقد تكون هناك زيادة إذا كانت الأطوال مختلفة.
           </p>
           <p className="success-policy-note-line">يرجى الحضور قبل الموعد بـ 10 دقائق.</p>
-          <p className="success-policy-note-line">نرجو منكم إتمام عملية الدفع لتأكيد حجزكم.</p>
-          <p className="success-policy-iban-label">رقم آيبان البنك الأهلي:</p>
+          {!isPackageReceipt ? <p className="success-policy-note-line">نرجو منكم إتمام عملية الدفع لتأكيد حجزكم.</p> : null}
+          {!isPackageReceipt ? <><p className="success-policy-iban-label">رقم آيبان البنك الأهلي:</p>
           <div className="success-policy-iban-inline" dir="ltr">
             <p className="success-policy-iban-value">{SALON_IBAN}</p>
             <button
@@ -1818,7 +1838,7 @@ export default function Success() {
             >
               <FontAwesomeIcon icon={faCopy} />
             </button>
-          </div>
+          </div></> : null}
         </div>
 
         {/* ✅ أكشنز */}

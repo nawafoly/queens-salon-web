@@ -129,6 +129,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ✅ انتبه: لازم firebase.ts يصدّر storage
 import { db, storage } from "../services/firebase";
+import { PackageOperationsService } from "../services/PackageOperationsService";
 
 // ✅ Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -417,6 +418,8 @@ type SessionPackageOption = {
   priceText: string;
   sessionsCount: number;
   allowedServiceIds: string[];
+  expiresAt?: any;
+  remainingSessions?: number;
 };
 
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
@@ -1259,6 +1262,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!signedUid) {
+      setSessionPackageOptions([]);
+      return;
+    }
+    void loadSessionPackagesFromFirestore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedUid]);
+
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -1801,29 +1813,31 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const loadSessionPackagesFromFirestore = async () => {
     try {
-      const snap = await getDocs(
-        query(
-          collection(db, "salons", SALON_ID, "packages_catalog"),
-          orderBy("name", "asc"),
-          limit(100)
-        )
-      );
-
-      const rows: SessionPackageOption[] = snap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      const currentUser = getAuth().currentUser;
+      if (!currentUser || (currentUser as any).isAnonymous) {
+        setSessionPackageOptions([]);
+        return;
+      }
+      const wallet = await PackageOperationsService.myWallet();
+      const now = Date.now();
+      const rows: SessionPackageOption[] = (wallet.packages || [])
         .map((x: any) => ({
           id: `spkg:${String(x.id || "").trim()}`,
-          title: String(x.name || "").trim(),
-          price: Math.max(0, Number(x.price || 0)),
-          priceText: `${Math.max(0, Number(x.price || 0))} ريال`,
-          sessionsCount: Math.max(1, Number(x.sessionsCount || 1)),
-          allowedServiceIds: Array.isArray(x.allowedServiceIds)
-            ? x.allowedServiceIds.map((v: any) => String(v || "").trim()).filter(Boolean)
-            : Array.isArray(x.serviceIds)
-              ? x.serviceIds.map((v: any) => String(v || "").trim()).filter(Boolean)
-              : [],
+          title: String(x.packageNameSnapshot || "").trim(),
+          price: 0,
+          priceText: "التسوية من الرصيد",
+          sessionsCount: Math.max(0, Number(x.remainingSessions || 0)),
+          remainingSessions: Math.max(0, Number(x.remainingSessions || 0)),
+          expiresAt: x.expiresAt,
+          allowedServiceIds: Array.isArray(x.allowedServiceIdsSnapshot)
+            ? x.allowedServiceIdsSnapshot.map((v: any) => String(v || "").trim()).filter(Boolean)
+            : [],
         }))
-        .filter((x) => x.title && x.allowedServiceIds.length > 0);
+        .filter((x: any) => {
+          const source = (wallet.packages || []).find((p: any) => `spkg:${p.id}` === x.id);
+          const expiry = Number(source?.expiresAt?.seconds || source?.expiresAt?._seconds || 0) * 1000;
+          return x.title && x.allowedServiceIds.length > 0 && source?.status === "active" && x.remainingSessions > 0 && (!expiry || expiry >= now);
+        });
 
       setSessionPackageOptions(rows);
     } catch (e) {
@@ -6553,6 +6567,72 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
+    const sessionPackageItems = items.filter((item) => isSessionPackageCartItem(item));
+    if (sessionPackageItems.length) {
+      if (!signedUid) {
+        openModal({ title: "التحقق مطلوب", message: "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك.", variant: "danger", confirmText: "حسنًا" });
+        return;
+      }
+      if (items.length !== 1 || sessionPackageItems.length !== 1) {
+        openModal({ title: "حجز جلسة واحدة", message: "استخدام رصيد الباقة يتم لخدمة واحدة في كل عملية لضمان خصم الجلسة وحجز الموعد معًا بأمان.", variant: "danger", confirmText: "حسنًا" });
+        return;
+      }
+      const item = sessionPackageItems[0];
+      const walletOption = sessionPackageOptions.find((p) => p.id === `spkg:${String(item.sessionPackageId || item.packageId || "").trim()}`);
+      const packageBalanceBefore = Math.max(0, Number(walletOption?.remainingSessions || walletOption?.sessionsCount || 0));
+      setIsLoading(true);
+      try {
+        const result = await PackageOperationsService.redeem({
+          clientId: "",
+          clientPackageId: String(item.sessionPackageId || item.packageId || "").trim(),
+          serviceId: String(item.serviceId || "").trim(),
+          employeeId: String(item.employeeId || "").trim(),
+          date: String(item.date || bookingDate || "").trim(),
+          time: String(item.time || "").trim(),
+        });
+        const created = {
+          id: result.bookingId,
+          bookingId: result.bookingId,
+          trackId: result.bookingId,
+          publicId: result.publicId,
+          bookingPublicId: result.publicId,
+          clientPackageId: result.clientPackageId,
+          clientName: customerName,
+          clientPhone: phone,
+          serviceId: item.serviceId,
+          serviceName: item.serviceName,
+          employeeId: item.employeeId,
+          employeeName: item.employeeName,
+          date: item.date || bookingDate,
+          time: item.time,
+          total: 0,
+          finalPrice: 0,
+          paidAmount: 0,
+          paymentType: "none",
+          lineType: "package_redemption",
+          packageRedemptionState: "reserved",
+          packageName: item.sessionPackageName,
+          packageBalanceBefore,
+          packageBalanceAfter: Math.max(0, packageBalanceBefore - 1),
+          status: "confirmed",
+        };
+        localStorage.setItem("allBookings", JSON.stringify([created]));
+        localStorage.setItem("currentBooking", JSON.stringify(created));
+        localStorage.setItem("booking_success_mode", "created");
+        localStorage.removeItem("bookingDraft");
+        setFormData((prev) => ({ ...prev, items: [] }));
+        setSessionPackageOptions((prev) => prev.map((p) => p.id === `spkg:${result.clientPackageId}` ? { ...p, remainingSessions: Math.max(0, Number(p.remainingSessions || 0) - 1), sessionsCount: Math.max(0, Number(p.sessionsCount || 0) - 1) } : p));
+        resetSessionPackageSelection();
+        const successNav = buildSuccessNavigationPayload([created], "created");
+        navigate(successNav.to, { state: { ...successNav.state, packageReceipt: true, settlementLabel: "تمت التسوية من رصيد الباقة", packageName: item.sessionPackageName, packageBalanceBefore, packageBalanceAfter: Math.max(0, packageBalanceBefore - 1) } });
+      } catch (error: any) {
+        openModal({ title: "تعذر استخدام رصيد الباقة", message: String(error?.message || "تعذر إنشاء الحجز."), variant: "danger", confirmText: "حسنًا" });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
 
     setIsLoading(true);
 
@@ -8557,10 +8637,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           ) : (
                             <div className="booking-empty-choice">
                               <span className="booking-empty-choice__icon" aria-hidden="true">
-                                <FiGift />
+                              <FiGift />
                               </span>
-                              <strong>لا توجد باقات حاليًا</strong>
-                              <span>الباقات غير متاحة للحجز الآن.</span>
+                              <strong>{isSignedClient ? "لا يوجد رصيد باقة صالح" : "رصيد الباقات يتطلب التحقق"}</strong>
+                              <span>{isSignedClient ? "لا توجد باقات فعالة مرتبطة بحسابك." : "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك. يمكنك متابعة الحجز العادي المدفوع."}</span>
                             </div>
                           )}
 
@@ -8581,9 +8661,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                         className={`booking-choice-card booking-choice-card--service${isSelected ? " is-selected" : ""}`}
                                         onClick={() =>
                                           setSessionPackageServicePicker((prev) =>
-                                            prev.includes(serviceId)
-                                              ? prev.filter((id) => id !== serviceId)
-                                              : [...prev, serviceId]
+                                            prev.includes(serviceId) ? [] : [serviceId]
                                           )
                                         }
                                         aria-pressed={isSelected}
@@ -8611,8 +8689,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               )}
                               <div className="booking-choice-note">
                                 {sessionPackageServicePicker.length > 0
-                                  ? `${sessionPackageServicePicker.length} محددة من باقة ${selectedSessionPackage.title}.`
-                                  : `اختاري خدمة أو أكثر من باقة ${selectedSessionPackage.title}.`}
+                                  ? `خدمة محددة من ${selectedSessionPackage.title}. المتبقي بعد الحجز: ${Math.max(0, Number(selectedSessionPackage.remainingSessions || 0) - 1)}.`
+                                  : `اختاري خدمة واحدة مشمولة في ${selectedSessionPackage.title}.`}
                               </div>
                               {sessionPackageServicesError ? (
                                 <div className="booking-choice-note is-error">{sessionPackageServicesError}</div>

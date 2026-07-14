@@ -7,6 +7,7 @@ import logo from "../assets/images/ssunnamed2.png";
 import hairGuideImg from "../assets/images/hair-length-guide.png";
 import HairLengthGuideDrawer from "../components/bookingInternal/HairLengthGuideDrawer";
 import PriceListPanel from "../components/bookingInternal/PriceListPanel";
+import AdminPackageFlow from "../components/packages/AdminPackageFlow";
 import "../styles/BookingInternalPriceList.css";
 
 import {
@@ -1079,9 +1080,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const qNameNeedle = normalizeSearchText(qRaw);
 
     const profileCollections = [
-      collection(db, "salons", SALON_ID, "clients"),
-      collection(db, "salons", SALON_ID, "users"),
-      collection(db, "users"),
+      { col: collection(db, "salons", SALON_ID, "clients"), source: "client_profile" },
+      { col: collection(db, "salons", SALON_ID, "users"), source: "user_profile" },
+      { col: collection(db, "users"), source: "root_user" },
     ];
     const out: any[] = [];
     const seen = new Set<string>();
@@ -1132,11 +1133,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const runProfileEq = async (field: string, value: string, take = 20) => {
       const val = String(value || "").trim();
       if (!val) return;
-      for (const col of profileCollections) {
+      for (const { col, source } of profileCollections) {
         try {
           const snap = await getDocs(query(col, where(field, "==", val), limit(take)));
           snap.docs.forEach((d) =>
-            pushCandidate({ id: d.id, ...(d.data() as any), source: "profile" })
+            pushCandidate({ id: d.id, ...(d.data() as any), source })
           );
         } catch {
           // ignore
@@ -1147,7 +1148,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const runProfilePrefix = async (field: string, prefix: string, take = 25) => {
       const val = String(prefix || "").trim();
       if (!val) return;
-      for (const col of profileCollections) {
+      for (const { col, source } of profileCollections) {
         try {
           const snap = await getDocs(
             query(
@@ -1159,7 +1160,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             )
           );
           snap.docs.forEach((d) =>
-            pushCandidate({ id: d.id, ...(d.data() as any), source: "profile" })
+            pushCandidate({ id: d.id, ...(d.data() as any), source })
           );
         } catch {
           // ignore
@@ -1171,7 +1172,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const val = normalizeSearchText(needle);
       if (!val) return;
 
-      for (const col of profileCollections) {
+      for (const { col, source } of profileCollections) {
         try {
           const snap = await getDocs(query(col, limit(take)));
           snap.docs.forEach((d) => {
@@ -1181,7 +1182,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             ).trim();
             if (!candidateName) return;
             if (normalizeSearchText(candidateName).includes(val)) {
-              pushCandidate({ id: d.id, ...data, source: "profile" });
+              pushCandidate({ id: d.id, ...data, source });
             }
           });
         } catch {
@@ -7056,6 +7057,21 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             <FontAwesomeIcon icon={faTimesCircle} />
           </button>
         </div>
+
+        <AdminPackageFlow
+          client={selectedClient}
+          bookingItem={formData.items.length === 1 ? formData.items[0] : null}
+          onClientCreated={(client) => applyClientSelection(client)}
+          onRedeemed={() => {
+            setFormData((prev) => ({ ...prev, items: [] }));
+            setServicePicker("");
+            setFutureServiceId("");
+            ["bookingDraft", "internal_booking_draft", "booking_internal_draft"].forEach((key) => {
+              localStorage.removeItem(key);
+              sessionStorage.removeItem(key);
+            });
+          }}
+        />
 
         {/* =========================
             Form

@@ -20,6 +20,7 @@ import * as XLSX from "xlsx";
  * - ثم ستايل الصفحة الخاص
  */
 import Modal from "../components/Modal";
+import ClientPackagesPanel from "../components/packages/ClientPackagesPanel";
 
 // ✅ Firestore Bookings
 import {
@@ -77,6 +78,8 @@ function loadSettings(): AppSettings {
 
 type ClientRow = {
   key: string; // identifier
+  clientId?: string;
+  legacyClientDocId?: string;
   name: string;
   phone: string;
   bookingsCount: number;
@@ -89,7 +92,9 @@ type ClientRow = {
 };
 
 type ImportedClientDoc = {
-  id: string; // phoneDigits (recommended)
+  id: string;
+  clientId?: string;
+  legacyClientDocId?: string;
   name?: string;
   phone?: string; // normalized phone string
   vip?: boolean;
@@ -484,6 +489,8 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
           const x = d.data() as any;
           next[d.id] = {
             id: d.id,
+            clientId: String(x?.clientId || "").trim() || undefined,
+            legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
             name: String(x?.name || "").trim() || undefined,
             phone: String(x?.phone || "").trim() || undefined,
             vip: !!x?.vip,
@@ -523,7 +530,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
     // 1) جمع العملاء من الحجوزات
     const map = new Map<
       string,
-      { name: string; phone: string; list: BookingDocWithId[] }
+      { name: string; phone: string; list: BookingDocWithId[]; clientId?: string }
     >();
 
     bookings.forEach((b) => {
@@ -533,8 +540,9 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
       const phone = norm.phone || phoneRaw;
       const key = makeClientKey(name, phone);
 
-      if (!map.has(key)) map.set(key, { name, phone, list: [] });
+      if (!map.has(key)) map.set(key, { name, phone, list: [], clientId: String((b as any).clientId || "").trim() || undefined });
       map.get(key)!.list.push(b);
+      if (!map.get(key)!.clientId && (b as any).clientId) map.get(key)!.clientId = String((b as any).clientId).trim();
     });
 
     // 2) تحويل إلى rows من الحجوزات
@@ -553,10 +561,14 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
 
       // match imported by phone digits if possible
       const pd = key.startsWith("p:") ? key.slice(2) : "";
-      const imported = pd ? importedMap[pd] : undefined;
+      const imported = pd
+        ? importedMap[pd] || Object.values(importedMap).find((row) => normalizeSaudiPhone(row.phone).digits === pd)
+        : undefined;
 
       rowsFromBookings.push({
         key,
+        clientId: v.clientId || imported?.clientId,
+        legacyClientDocId: imported?.legacyClientDocId || imported?.id,
         name: v.name,
         phone: v.phone || "—",
         bookingsCount: v.list.length,
@@ -584,6 +596,8 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
 
       rows.push({
         key,
+        clientId: imp.clientId,
+        legacyClientDocId: imp.legacyClientDocId || imp.id,
         name,
         phone: phone || "—",
         bookingsCount: 0,
@@ -800,12 +814,26 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
 
       // ✅ Batch merge (no overwrite destructive)
       const batch = writeBatch(db);
+      const existingByPhone = new Map(
+        Object.values(importedMap).map((client) => [
+          phoneDigits(String(client.phone || "")),
+          client,
+        ])
+      );
 
       preview.forEach((r) => {
-        const ref = doc(db, ...CLIENTS_COLLECTION, r.digits);
+        const existing = existingByPhone.get(phoneDigits(r.phone));
+        const stableClientId = String((existing as any)?.clientId || "").trim() ||
+          (existing && !/^\d+$/.test(existing.id) ? existing.id : crypto.randomUUID());
+        const legacyClientDocId = existing && existing.id !== stableClientId ? existing.id : undefined;
+        const ref = existing
+          ? doc(db, ...CLIENTS_COLLECTION, existing.id)
+          : doc(db, ...CLIENTS_COLLECTION, stableClientId);
         batch.set(
           ref,
           {
+            clientId: stableClientId,
+            ...(legacyClientDocId ? { legacyClientDocId } : {}),
             name: r.name || "",
             phone: r.phone || "",
             vip: !!r.vip,
@@ -828,6 +856,8 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
         const x = d.data() as any;
         next[d.id] = {
           id: d.id,
+          clientId: String(x?.clientId || "").trim() || undefined,
+          legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
           name: String(x?.name || "").trim() || undefined,
           phone: String(x?.phone || "").trim() || undefined,
           vip: !!x?.vip,
@@ -1272,6 +1302,10 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
               })()}
 
               <div className="clients-table-card">
+                <ClientPackagesPanel
+                  clientId={selectedClient.clientId || selectedClient.legacyClientDocId}
+                  canManage={uiRole === "owner" || uiRole === "admin"}
+                />
                 {!isMobileViewport ? (
                 <div className="cl-table-wrap">
                   <div className="table-responsive">

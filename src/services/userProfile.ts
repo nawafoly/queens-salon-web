@@ -44,6 +44,7 @@ export type UserProfile = {
   city: string;
   birthdate: string;
   avatarUrl?: string;
+  clientId?: string;
 
   role: UiRole;
 
@@ -267,6 +268,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       city: safeStr(data?.city),
       birthdate: safeStr(data?.birthdate),
       avatarUrl: safeStr(data?.avatarUrl),
+      clientId: safeStr(data?.clientId) || undefined,
       role,
       active,
       permissions,

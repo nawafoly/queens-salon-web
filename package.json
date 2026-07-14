@@ -17,6 +17,7 @@
     "build:web": "tsc -b && vite build --mode web",
     "build:customer": "tsc -b && vite build --mode customer",
     "build:staff": "tsc -b && vite build --mode staff",
+    "test:packages:emulator": "npm --prefix functions run build && firebase emulators:exec --project waves-hotel-dashboard --only auth,firestore,functions \"npm --prefix functions run test:emulator\"",
     "cap:sync:customer": "npm run build:customer && cross-env CAP_APP_VARIANT=customer cap sync android",
     "cap:open:customer": "cross-env CAP_APP_VARIANT=customer cap open android",
     "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android",

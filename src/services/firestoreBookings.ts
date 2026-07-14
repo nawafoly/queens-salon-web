@@ -31,6 +31,7 @@ import { getAuth } from "firebase/auth";
 import { writeAuditLog, type LogSource } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
 import { normalizeBookedSlotsMap } from "./firestoreAvailabilityDays";
+import { PackageOperationsService } from "./PackageOperationsService";
 
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -42,6 +43,12 @@ export type BookingPaymentBreakdown = {
   card?: number;
   transfer?: number;
 };
+
+function hasReservedPackageRedemption(raw: any) {
+  const clientPackageId = String(raw?.clientPackageId || "").trim();
+  const state = String(raw?.packageRedemptionState || "").trim();
+  return Boolean(clientPackageId) && state === "reserved";
+}
 
 // ✅ NEW: Snapshot ثابت للعرض وعدم تأثر الحجوزات بتغيير الأسعار لاحقًا
 export type ServiceSnapshot = {
@@ -2873,6 +2880,32 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
   // ✅ ثابت: نخلي income docId = bookingId (يعطيك uniqueness تلقائي)
   const incomeRef = doc(db, ...INCOME_COL, bookingId);
 
+  if (status === "cancelled") {
+    const preSnap = await getDoc(bookingRef);
+    if (!preSnap.exists()) throw new Error("BOOKING_NOT_FOUND");
+    const preRaw: any = preSnap.data() || {};
+    if (hasReservedPackageRedemption(preRaw)) {
+      const actorSnapshot = resolveActorSnapshot({ booking: normalizeBooking(preRaw) });
+      await PackageOperationsService.cancelRedemptionBooking(bookingId, "cancelled_from_booking_status");
+      await writeBookingLog({
+        bookingId,
+        type: "status_changed",
+        note: `طھط؛ظٹظٹط± ط§ظ„ط­ط§ظ„ط© ط¥ظ„ظ‰: ${status}`,
+        actor: actorSnapshot,
+        booking: normalizeBooking({ ...preRaw, status }) as BookingDoc,
+        source: resolveBookingLogSource(normalizeBooking(preRaw).channel),
+        patch: {
+          status,
+          at: nowMs,
+          byUid: actorSnapshot.uid || null,
+          byEmail: actorSnapshot.email || null,
+          byName: actorSnapshot.displayName || null,
+        },
+      });
+      return;
+    }
+  }
+
   // ✅ 1) Transaction: booking + track فقط
   const txResult = await runTransaction(db, async (tx) => {
     const snap = await tx.get(bookingRef);
@@ -2978,6 +3011,8 @@ export async function updateBookingStatus(bookingId: string, status: BookingStat
         updatedByName: actorSnapshot.displayName || null,
         ...statusAuditPatch,
       } as BookingDoc,
+      shouldConsumeReservedPackageSession:
+        status === "completed" && hasReservedPackageRedemption(bookingRaw),
       resolvedPaymentMethod,
       actorSnapshot,
       source: resolveBookingLogSource(booking.channel),
@@ -3020,6 +3055,10 @@ if (status === "confirmed" || status === "completed") {
   }
 }
 
+
+  if (txResult.shouldConsumeReservedPackageSession) {
+    await PackageOperationsService.consumeReserved(bookingId);
+  }
 
   // ✅ 2) Best-effort: income خارج الترانزاكشن (ما يمنع تعديل الحجز)
   try {

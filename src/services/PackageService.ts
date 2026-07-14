@@ -1,7 +1,7 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
+  deleteField,
   doc,
   getDocs,
   orderBy,
@@ -17,10 +17,12 @@ const COL_PATH = ["salons", SALON_ID, "packages_catalog"] as const;
 export type Package = {
   id?: string;
   name: string;
+  description?: string;
   serviceIds: string[];
   allowedServiceIds?: string[];
   sessionsCount: number;
   price: number;
+  validityDays?: number;
   active: boolean;
   createdAt?: any;
   updatedAt?: any;
@@ -55,10 +57,15 @@ function normalizePackage(raw: any, fallbackId?: string): Package {
   return {
     id: String(raw?.id || fallbackId || "").trim() || undefined,
     name: String(raw?.name || "").trim(),
+    description: String(raw?.description || "").trim() || undefined,
     serviceIds,
     allowedServiceIds: serviceIds,
     sessionsCount: Math.max(1, Number(raw?.sessionsCount || 1)),
     price: Math.max(0, Number(raw?.price || 0)),
+    validityDays:
+      raw?.validityDays === undefined || raw?.validityDays === null || raw?.validityDays === ""
+        ? undefined
+        : Math.max(1, Math.floor(Number(raw.validityDays || 1))),
     active: raw?.active !== false,
     createdAt: raw?.createdAt,
     updatedAt: raw?.updatedAt,
@@ -91,10 +98,12 @@ export const PackageService = {
     const normalized = normalizePackage(item);
     await addDoc(collection(db, ...COL_PATH), {
       name: normalized.name,
+      ...(normalized.description ? { description: normalized.description } : {}),
       serviceIds: normalized.serviceIds,
       allowedServiceIds: normalized.serviceIds,
       sessionsCount: normalized.sessionsCount,
       price: normalized.price,
+      ...(normalized.validityDays ? { validityDays: normalized.validityDays } : {}),
       active: normalized.active !== false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -108,6 +117,10 @@ export const PackageService = {
 
     if (Object.prototype.hasOwnProperty.call(patch, "name")) {
       payload.name = String(patch.name || "").trim();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+      payload.description = String(patch.description || "").trim();
     }
 
     if (
@@ -127,6 +140,14 @@ export const PackageService = {
       payload.price = Math.max(0, Number(patch.price || 0));
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, "validityDays")) {
+      const raw = patch.validityDays;
+      payload.validityDays =
+        raw === undefined || raw === null
+          ? deleteField()
+          : Math.max(1, Math.floor(Number(raw || 1)));
+    }
+
     if (Object.prototype.hasOwnProperty.call(patch, "active")) {
       payload.active = patch.active !== false;
     }
@@ -134,7 +155,4 @@ export const PackageService = {
     await updateDoc(doc(db, ...COL_PATH, id), payload);
   },
 
-  async remove(id: string) {
-    await deleteDoc(doc(db, ...COL_PATH, id));
-  },
 };
