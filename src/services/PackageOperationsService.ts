@@ -113,6 +113,20 @@ export const PackageOperationsService = {
   },
   purchase(args: {
     clientId: string;
+    clientLookup?: {
+      id?: string;
+      docId?: string;
+      uid?: string;
+      clientId?: string;
+      customerId?: string;
+      authUid?: string;
+      userId?: string;
+      firebaseUid?: string;
+      phone?: string;
+      mobile?: string;
+      clientPhone?: string;
+      phoneNumber?: string;
+    };
     packageCatalogId: string;
     paymentMethod: "cash" | "card" | "transfer";
     invoiceId?: string;
@@ -125,6 +139,20 @@ export const PackageOperationsService = {
   },
   redeem(args: {
     clientId: string;
+    clientLookup?: {
+      id?: string;
+      docId?: string;
+      uid?: string;
+      clientId?: string;
+      customerId?: string;
+      authUid?: string;
+      userId?: string;
+      firebaseUid?: string;
+      phone?: string;
+      mobile?: string;
+      clientPhone?: string;
+      phoneNumber?: string;
+    };
     clientPackageId?: string;
     serviceId: string;
     employeeId: string;

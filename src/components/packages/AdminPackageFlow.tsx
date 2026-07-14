@@ -37,13 +37,38 @@ function stableClientId(client: any) {
 
   const id = cleanText(client?.id);
   const source = cleanText(client?.source);
-  if (id && (source === "client_profile" || source === "booking_internal")) return id;
+  if (
+    id &&
+    (source === "client_profile" ||
+      source === "booking_internal" ||
+      source === "user_profile" ||
+      source === "root_user")
+  ) {
+    return id;
+  }
 
   return "";
 }
 
 function money(value: any) {
   return `${Number(value || 0).toFixed(2)} ر.س`;
+}
+
+function clientLookupPayload(client: any, fallbackPhone: string) {
+  const id = cleanText(client?.id);
+  const uid = cleanText(client?.uid || client?.authUid || client?.firebaseUid);
+  const clientId = cleanText(client?.clientId);
+  const customerId = cleanText(client?.customerId);
+  const authUid = cleanText(client?.authUid || client?.uid || client?.firebaseUid);
+  const phone = cleanText(client?.phone || client?.mobile || client?.clientPhone || fallbackPhone);
+  return {
+    ...(id ? { id, docId: id } : {}),
+    ...(uid ? { uid, userId: uid, firebaseUid: uid } : {}),
+    ...(clientId ? { clientId } : {}),
+    ...(customerId ? { customerId } : {}),
+    ...(authUid ? { authUid } : {}),
+    ...(phone ? { phone, mobile: phone, clientPhone: phone, phoneNumber: phone } : {}),
+  };
 }
 
 export default function AdminPackageFlow(props: {
@@ -161,11 +186,24 @@ export default function AdminPackageFlow(props: {
     try {
       const result = await PackageOperationsService.purchase({
         clientId,
+        clientLookup: clientLookupPayload(props.client, clientPhone),
         packageCatalogId: selectedCatalog.id,
         paymentMethod,
       });
+      const canonicalClientId = cleanText(result.clientId) || clientId;
+      if (canonicalClientId !== clientId) {
+        props.onClientCreated?.({
+          ...props.client,
+          clientId: canonicalClientId,
+          legacyClientDocId: clientId,
+          name: clientName,
+          fullName: clientName,
+          phone: clientPhone,
+          mobile: clientPhone,
+        });
+      }
       await refresh();
-      const purchased = (await ClientPackageService.getByClient(clientId)).find(
+      const purchased = (await ClientPackageService.getByClient(canonicalClientId)).find(
         (p) => p.id === result.clientPackageId
       );
       setReceipt({
@@ -240,6 +278,7 @@ export default function AdminPackageFlow(props: {
     try {
       const result = await PackageOperationsService.redeem({
         clientId,
+        clientLookup: clientLookupPayload(props.client, clientPhone),
         clientPackageId: selectedWallet.id,
         serviceId: item.serviceId,
         employeeId: item.employeeId,

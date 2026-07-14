@@ -29,6 +29,7 @@ import {
   restoreOneUsedSession,
   salonPath,
   selectNearestExpiringPackage,
+  sha256Hex,
   shouldConsumeCancelledReservation,
   stableLegacyClientId,
   statusPatch,
@@ -38,27 +39,171 @@ import {
   transactionId,
 } from './validation.js';
 
-export async function resolveClientIdentity(tx, salonId, requestedId) {
-  const directPath = salonPath(salonId, "clients", requestedId);
-  const direct = await tx.get(directPath);
-  let snap = direct;
-  if (!direct.exists) {
-    const matches = await tx.query(salonPath(salonId), "clients", [["clientId", "EQUAL", requestedId]], 2);
-    if (!matches.length) throw new AppError(404, "packages_client:not_found", "Client was not found");
-    if (matches.length > 1) throw new AppError(409, "packages_client:duplicate_identity");
-    snap = matches[0];
+const CLIENT_LOOKUP_ID_FIELDS = ["clientId", "customerId", "authUid", "uid", "userId", "firebaseUid"];
+const CLIENT_LOOKUP_PHONE_FIELDS = ["phone", "mobile", "clientPhone", "phoneNumber"];
+
+function isSafeDocumentId(value) {
+  const normalized = cleanText(value);
+  return (
+    !!normalized &&
+    normalized.length <= 128 &&
+    !normalized.includes("/") &&
+    normalized !== "." &&
+    normalized !== ".."
+  );
+}
+
+function looksLikePhone(value) {
+  return cleanText(value).replace(/\D/g, "").length >= 7;
+}
+
+function collectClientLookupCandidates(requestedId, lookup) {
+  const raw = lookup && typeof lookup === "object" ? lookup : {};
+  const out = [];
+  const seen = new Set();
+
+  const add = (inputField, value, kind = "id") => {
+    const normalized = cleanText(value);
+    if (!normalized) return;
+    if (kind !== "phone" && normalized.length > 256) return;
+    if (kind === "phone" && normalized.replace(/\D/g, "").length < 7) return;
+    const key = `${kind}:${inputField}:${normalized}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ inputField, value: normalized, kind });
+  };
+
+  add("requestedClientId", requestedId, "id");
+  if (looksLikePhone(requestedId)) add("requestedClientPhone", requestedId, "phone");
+  add("id", raw.id);
+  add("docId", raw.docId);
+  add("uid", raw.uid);
+  add("clientId", raw.clientId);
+  add("customerId", raw.customerId);
+  add("authUid", raw.authUid);
+  add("userId", raw.userId);
+  add("firebaseUid", raw.firebaseUid);
+  add("phone", raw.phone, "phone");
+  add("mobile", raw.mobile, "phone");
+  add("clientPhone", raw.clientPhone, "phone");
+  add("phoneNumber", raw.phoneNumber, "phone");
+
+  return out;
+}
+
+async function safeLookupLog(event, salonId, candidates, extra = {}) {
+  try {
+    const identifiers = await Promise.all(
+      candidates.map(async (candidate) => ({
+        inputField: candidate.inputField,
+        kind: candidate.kind,
+        length: cleanText(candidate.value).length,
+        hash: (await sha256Hex(cleanText(candidate.value))).slice(0, 12),
+      }))
+    );
+    console.info("packages_client_lookup", {
+      event,
+      salonId,
+      inputFields: [...new Set(candidates.map((candidate) => candidate.inputField))],
+      lookupFields: extra.lookupFields || [],
+      identifiers,
+      ...(extra.matchCount !== undefined ? { matchCount: extra.matchCount } : {}),
+      ...(extra.matchedBy ? { matchedBy: extra.matchedBy } : {}),
+    });
+  } catch {
+    console.info("packages_client_lookup", { event, salonId });
   }
+}
+
+function materializeClientIdentity(snap) {
   const raw = snap.data || {};
   const existingStableId = cleanText(raw.clientId);
+  return { raw, existingStableId };
+}
+
+async function buildClientIdentityResult(salonId, snap) {
+  const { raw, existingStableId } = materializeClientIdentity(snap);
   const clientId = existingStableId || await stableLegacyClientId(salonId, snap.id);
   return {
     snap,
     clientId,
     legacyClientDocId: snap.id === clientId ? undefined : snap.id,
-    phoneSnapshot: optionalText(raw.phone || raw.mobile),
-    nameSnapshot: optionalText(raw.name || raw.fullName),
+    phoneSnapshot: optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber),
+    nameSnapshot: optionalText(raw.name || raw.fullName || raw.clientName),
     needsLink: !existingStableId,
   };
+}
+
+export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}) {
+  const directPath = salonPath(salonId, "clients", requestedId);
+  const direct = await tx.get(directPath);
+  if (direct.exists) return buildClientIdentityResult(salonId, direct);
+
+  const primaryMatches = await tx.query(salonPath(salonId), "clients", [["clientId", "EQUAL", requestedId]], 2);
+  if (primaryMatches.length === 1) return buildClientIdentityResult(salonId, primaryMatches[0]);
+  if (primaryMatches.length > 1) throw new AppError(409, "packages_client:duplicate_identity");
+
+  const candidates = collectClientLookupCandidates(requestedId, lookup);
+  const matches = new Map();
+  const matchedBy = new Map();
+  const lookupFields = new Set(["documentId", "clientId"]);
+
+  const addMatch = (snap, by) => {
+    if (!snap?.exists) return;
+    matches.set(snap.path, snap);
+    const list = matchedBy.get(snap.path) || [];
+    list.push(by);
+    matchedBy.set(snap.path, list);
+  };
+
+  for (const candidate of candidates.filter((item) => item.kind === "id")) {
+    if (!isSafeDocumentId(candidate.value) || candidate.value === requestedId) continue;
+    const altDirect = await tx.get(salonPath(salonId, "clients", candidate.value));
+    addMatch(altDirect, `documentId:${candidate.inputField}`);
+  }
+
+  for (const candidate of candidates.filter((item) => item.kind === "id")) {
+    for (const field of CLIENT_LOOKUP_ID_FIELDS) {
+      lookupFields.add(field);
+      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", candidate.value]], 3);
+      rows.forEach((row) => addMatch(row, `${field}:${candidate.inputField}`));
+    }
+  }
+
+  const phoneValues = new Set();
+  for (const candidate of candidates.filter((item) => item.kind === "phone")) {
+    phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
+  }
+  for (const phone of phoneValues) {
+    for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
+      lookupFields.add(field);
+      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 3);
+      rows.forEach((row) => addMatch(row, `${field}:phone`));
+    }
+  }
+
+  if (matches.size === 1) {
+    const [snap] = matches.values();
+    await safeLookupLog("fallback_match", salonId, candidates, {
+      lookupFields: [...lookupFields],
+      matchCount: 1,
+      matchedBy: matchedBy.get(snap.path) || [],
+    });
+    return buildClientIdentityResult(salonId, snap);
+  }
+  if (matches.size > 1) {
+    await safeLookupLog("duplicate_identity", salonId, candidates, {
+      lookupFields: [...lookupFields],
+      matchCount: matches.size,
+    });
+    throw new AppError(409, "packages_client:duplicate_identity");
+  }
+
+  await safeLookupLog("not_found", salonId, candidates, {
+    lookupFields: [...lookupFields],
+    matchCount: 0,
+  });
+  throw new AppError(404, "packages_client:not_found", "Client was not found");
 }
 
 export async function resolveAuthenticatedClientIdentity(db, salonId, identity) {
@@ -150,7 +295,7 @@ export async function purchasePackage(ctx, data) {
         clientId: cleanText(existing.clientId),
       };
     }
-    const client = await resolveClientIdentity(tx, ctx.salonId, clientId);
+    const client = await resolveClientIdentity(tx, ctx.salonId, clientId, data.clientLookup);
     if (!catalogSnap.exists) throw new AppError(404, "packages_catalog:not_found");
     if (invoiceSnap.exists) throw new AppError(409, "packages_invoice:duplicate_id");
     const catalog = catalogSnap.data || {};
@@ -301,7 +446,7 @@ export async function createRedemptionBooking(ctx, data) {
       };
     }
 
-    const client = await resolveClientIdentity(tx, ctx.salonId, requestedClientId);
+    const client = await resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup);
     const servicePath = salonPath(ctx.salonId, "services", serviceId);
     const employeePath = salonPath(ctx.salonId, "staff_public", employeeId);
     const settingsPath = salonPath(ctx.salonId, "settings", "app");

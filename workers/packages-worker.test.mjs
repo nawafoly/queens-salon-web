@@ -290,6 +290,43 @@ test("sells package idempotently and writes invoice, ledger and balance", async 
   assert.equal(fake.paths("salons/main/client_packages/").length, 1);
 }));
 
+test("purchase resolves client when document id differs from auth uid", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/client-doc-not-uid", {
+    clientId: "client-canonical-c",
+    authUid: "firebase-uid-c",
+    customerId: "customer-c",
+    name: "Client C",
+    phone: "0500000003",
+  });
+
+  const response = await worker.fetch(request("/api/packages/purchase", {
+    body: {
+      salonId: "main",
+      clientId: "firebase-uid-c",
+      clientLookup: {
+        id: "firebase-uid-c",
+        uid: "firebase-uid-c",
+        authUid: "firebase-uid-c",
+        customerId: "customer-c",
+        phone: "0500000003",
+      },
+      packageCatalogId: "blowdry-10",
+      paymentMethod: "cash",
+      invoiceId: "sale-doc-id-diff-uid",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.clientId, "client-canonical-c");
+  const clientPackage = fake.data(`salons/main/client_packages/${body.data.clientPackageId}`);
+  assert.equal(clientPackage.clientId, "client-canonical-c");
+  assert.equal(clientPackage.legacyClientDocId, "client-doc-not-uid");
+  const ledgerPath = fake.paths("salons/main/client_package_transactions/purchase:")[0];
+  const ledger = fake.data(ledgerPath);
+  assert.equal(ledger.requestedClientId, "firebase-uid-c");
+  assert.equal(ledger.clientId, "client-canonical-c");
+}));
+
 test("creates package redemption, prevents slot conflict, consumes and cancels reservation", async () => withFakeFirestore(async (fake) => {
   const sale = await purchase(fake, "sale-flow-1");
   const first = await redeem(sale.clientPackageId, "op-flow-1", "10:00");
