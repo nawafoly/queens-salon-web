@@ -3523,6 +3523,55 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     return serviceByIdMap.get(key) || null;
   }
 
+  const adminPackageClient = useMemo(() => {
+    const selected =
+      selectedClient && typeof selectedClient === "object" ? selectedClient : null;
+    const name = String(
+      selected?.name ||
+        selected?.fullName ||
+        selected?.clientName ||
+        formData.name ||
+        ""
+    ).trim();
+    const phone = phone10Digits(
+      selected?.phone ||
+        selected?.mobile ||
+        selected?.clientPhone ||
+        formData.phone ||
+        ""
+    );
+
+    if (!selected && !name && !phone) return null;
+
+    return {
+      ...(selected || {}),
+      name,
+      fullName: name,
+      clientName: name,
+      phone,
+      mobile: phone,
+      clientPhone: phone,
+      source: String(selected?.source || (selected ? "client_profile" : "manual_form")).trim(),
+    };
+  }, [selectedClient, formData.name, formData.phone]);
+
+  const adminPackageBookingItem = useMemo(() => {
+    const cartItems = formData.items || [];
+    if (cartItems.length === 1) return cartItems[0];
+    if (cartItems.length > 1) return null;
+
+    const picked = String(servicePicker || "").trim();
+    if (!picked || pickerScope !== "services") return null;
+    const service = serviceByIdMap.get(picked);
+    if (!service || service.kind !== "service") return null;
+
+    return {
+      serviceId: picked,
+      serviceName: toArabicCatalogLabel(String(service.name || picked)),
+      date: bookingDate,
+    };
+  }, [formData.items, servicePicker, pickerScope, serviceByIdMap, bookingDate]);
+
   async function getAllActiveStaffCached() {
     const fresh = Date.now() - staffAllCacheLoadedAtRef.current < 15_000;
     if (fresh && Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
@@ -7058,21 +7107,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           </button>
         </div>
 
-        <AdminPackageFlow
-          client={selectedClient}
-          bookingItem={formData.items.length === 1 ? formData.items[0] : null}
-          onClientCreated={(client) => applyClientSelection(client)}
-          onRedeemed={() => {
-            setFormData((prev) => ({ ...prev, items: [] }));
-            setServicePicker("");
-            setFutureServiceId("");
-            ["bookingDraft", "internal_booking_draft", "booking_internal_draft"].forEach((key) => {
-              localStorage.removeItem(key);
-              sessionStorage.removeItem(key);
-            });
-          }}
-        />
-
         {/* =========================
             Form
         ========================= */}
@@ -7088,6 +7122,131 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                   </div>
 
                 </div>
+
+                <div className="bk-client-search-block">
+                  <div className="row g-2 align-items-end">
+                    <div className="col-12 col-lg-6">
+                      <label className="form-label">اختيار العميلة</label>
+                      <div className="bk-existing-search-row">
+                        <input
+                          className="form-control bk-existing-search-input"
+                          value={clientSearch}
+                          onChange={(e) => {
+                            setClientSearch(String(e.target.value || ""));
+                            setClientSearchResults([]);
+                            setClientSearchMsg("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            e.preventDefault();
+                            if (!clientSearching) void handleSearchClient();
+                          }}
+                          placeholder="ابحثي بالاسم أو رقم الجوال"
+                        />
+                        <button
+                          type="button"
+                          className="btn bk-existing-search-btn"
+                          onClick={handleSearchClient}
+                          disabled={clientSearching}
+                        >
+                          <FontAwesomeIcon icon={faSearch} className="me-2" />
+                          {clientSearching ? "جاري البحث..." : "بحث"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="col-12 col-lg-6">
+                      <label className="form-label">عميلات مستخدمات مؤخرًا</label>
+                      <input
+                        className="form-control"
+                        value={quickClientQuery}
+                        onChange={(e) => setQuickClientQuery(String(e.target.value || ""))}
+                        placeholder="فلترة سريعة بالاسم أو الجوال"
+                      />
+                    </div>
+
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">اسم العميلة</label>
+                      <input
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        className="form-control"
+                        placeholder="مثال: ريفال"
+                        required
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">رقم الجوال</label>
+                      <input
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        className="form-control"
+                        placeholder="05xxxxxxxx"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {clientSearchMsg ? (
+                    <div className="alert alert-secondary mb-0 mt-2 py-2" style={{ borderRadius: 12 }}>
+                      {clientSearchMsg}
+                    </div>
+                  ) : null}
+
+                  {selectedClient ? (
+                    <div className="bk-existing-hint-panel mt-2">
+                      <div className="bk-existing-hint-title">العميلة المحددة</div>
+                      <div className="bk-existing-hint-body">
+                        {String(selectedClient?.name || selectedClient?.fullName || formData.name || "—")}
+                        {phone10Digits(selectedClient?.phone || selectedClient?.mobile || formData.phone)
+                          ? ` · ${phone10Digits(selectedClient?.phone || selectedClient?.mobile || formData.phone)}`
+                          : ""}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {clientSearchResults.length > 1 ? (
+                    <div className="d-flex flex-wrap gap-2 mt-2">
+                      {clientSearchResults.map((client) => {
+                        const key = String(client?.id || client?.clientId || `${client?.name}-${client?.phone}`);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className="btn btn-sm bk-name-choice-chip"
+                            onClick={() => applyClientSelection(client)}
+                          >
+                            {String(client?.name || client?.fullName || "بدون اسم")}
+                            {phone10Digits(client?.phone || client?.mobile || client?.clientPhone)
+                              ? ` - ${phone10Digits(client?.phone || client?.mobile || client?.clientPhone)}`
+                              : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {!selectedClient && filteredQuickClientOptions.length ? (
+                    <div className="d-flex flex-wrap gap-2 mt-2">
+                      {filteredQuickClientOptions.slice(0, 8).map((client) => (
+                        <button
+                          key={String(client?.quickKey || client?.id || `${client?.name}-${client?.phone}`)}
+                          type="button"
+                          className="btn btn-sm bk-name-choice-chip"
+                          onClick={() => applyClientSelection(client)}
+                        >
+                          {String(client?.name || client?.fullName || "بدون اسم")}
+                          {phone10Digits(client?.phone || client?.mobile || client?.clientPhone)
+                            ? ` - ${phone10Digits(client?.phone || client?.mobile || client?.clientPhone)}`
+                            : ""}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="mt-4 pt-3 bk-existing-booking-block">
                   <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2 bk-existing-search-head">
                     <div className="bk-existing-search-title">بحث حجز موجود (تأكيد + طباعة)</div>
@@ -7475,6 +7634,22 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
               </div>
             </div>
+            <div className="col-12 bk-package-flow-slot">
+              <AdminPackageFlow
+                client={adminPackageClient}
+                bookingItem={adminPackageBookingItem}
+                onClientCreated={(client) => applyClientSelection(client)}
+                onRedeemed={() => {
+                  setFormData((prev) => ({ ...prev, items: [] }));
+                  setServicePicker("");
+                  setFutureServiceId("");
+                  ["bookingDraft", "internal_booking_draft", "booking_internal_draft"].forEach((key) => {
+                    localStorage.removeItem(key);
+                    sessionStorage.removeItem(key);
+                  });
+                }}
+              />
+            </div>
             <div className="col-12">
               <div className="booking-service-workspace">
             {/* اختيار الخدمة */}
@@ -7495,32 +7670,6 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                 </div>
 
                 <div className="booking-form-body">
-
-                <div className="row g-2 mb-3 bk-service-client-fields">
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">اسم العميلة</label>
-                    <input
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      className="form-control"
-                      placeholder="مثال: ريفال"
-                      required
-                    />
-                  </div>
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">رقم الجوال</label>
-                    <input
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      className="form-control"
-                      placeholder="05xxxxxxxx"
-                      required
-                    />
-                  </div>
-                </div>
-
                 <div className="mb-3 pb-3 bk-client-search-block bk-service-date-block">
                   <div className="row g-2 align-items-end">
                     <div className="col-12">
