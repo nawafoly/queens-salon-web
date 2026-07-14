@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { collection, doc, getDoc, getDocs, limit, query as firestoreQuery, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { PackageService, type Package } from "../../services/PackageService";
-import { ClientPackageService, type ClientPackage } from "../../services/ClientPackageService";
+import type { ClientPackage } from "../../services/ClientPackageService";
 import {
   PackageOperationsService,
+  type PackageClientWalletResult,
   type PackagePurchaseResult,
   type PackageRedemptionResult,
 } from "../../services/PackageOperationsService";
@@ -66,6 +67,17 @@ function normalizePhone(value: any) {
   return "";
 }
 
+function phoneLookupValues(value: any) {
+  const normalized = normalizePhone(value);
+  if (!normalized) return [];
+  const values = new Set([normalized]);
+  if (/^05\d{8}$/.test(normalized)) {
+    values.add(`966${normalized.slice(1)}`);
+    values.add(`+966${normalized.slice(1)}`);
+  }
+  return [...values];
+}
+
 function clientLookupPayload(client: any, fallbackPhone: string) {
   const id = cleanText(client?.id);
   const uid = cleanText(client?.uid || client?.authUid || client?.firebaseUid);
@@ -112,23 +124,55 @@ export default function AdminPackageFlow(props: {
   } | null>(null);
   const [selectedWalletId, setSelectedWalletId] = useState("");
   const [redeemResult, setRedeemResult] = useState<PackageRedemptionResult | null>(null);
+  const [walletSummary, setWalletSummary] = useState<PackageClientWalletResult | null>(null);
+  const onClientCreatedRef = useRef(props.onClientCreated);
 
-  const refresh = useCallback(async () => {
+  useEffect(() => {
+    onClientCreatedRef.current = props.onClientCreated;
+  }, [props.onClientCreated]);
+
+  const refresh = useCallback(async (): Promise<PackageClientWalletResult | null> => {
     if (!clientId) {
       setWallet([]);
-      return;
+      setWalletSummary(null);
+      return null;
     }
 
     setLoading(true);
     setError("");
     try {
-      setWallet(await ClientPackageService.getByClient(clientId));
+      const summary = await PackageOperationsService.clientWallet({
+        clientId,
+        clientLookup: clientLookupPayload(props.client, clientPhone),
+      });
+      const canonicalClientId = cleanText(summary.canonicalClientId || summary.clientId);
+      if (canonicalClientId && canonicalClientId !== clientId) {
+        onClientCreatedRef.current?.({
+          ...props.client,
+          clientId: canonicalClientId,
+          canonicalClientId,
+          legacyClientDocId: clientId,
+          name: clientName,
+          fullName: clientName,
+          phone: clientPhone,
+          mobile: clientPhone,
+        });
+      }
+      setWallet((summary.packages || []) as ClientPackage[]);
+      setWalletSummary(summary);
+      if (summary.warnings?.length) {
+        setError(`تم تحميل الرصيد مع تحذيرات: ${summary.warnings.map((w) => w.reason || w.packageId).filter(Boolean).join("، ")}`);
+      }
+      return summary;
     } catch {
-      setError("تعذر تحميل باقات العميلة.");
+      setWallet([]);
+      setWalletSummary(null);
+      setError("تعذر تحميل باقات العميلة. تحققي من هوية العميلة أو افتحي تقرير تدقيق الهويات.");
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, props.client, clientPhone, clientName]);
 
   useEffect(() => {
     void refresh();
@@ -181,13 +225,15 @@ export default function AdminPackageFlow(props: {
 
   const selectedCatalog = catalog.find((p) => p.id === selectedCatalogId);
   const selectedWallet = eligible.find((p) => p.id === selectedWalletId);
-  const totalRemaining = active.reduce((sum, p) => sum + Number(p.remainingSessions || 0), 0);
-  const totalReserved = active.reduce((sum, p) => sum + Number(p.reservedSessions || 0), 0);
-  const totalUsed = active.reduce((sum, p) => sum + Number(p.usedSessions || 0), 0);
-  const nearestExpiry = active
-    .map((p) => millis(p.expiresAt))
-    .filter(Boolean)
-    .sort((a, b) => a - b)[0];
+  const totalRemaining = Number(walletSummary?.totalRemainingSessions ?? active.reduce((sum, p) => sum + Number(p.remainingSessions || 0), 0));
+  const totalReserved = Number(walletSummary?.totalReservedSessions ?? active.reduce((sum, p) => sum + Number(p.reservedSessions || 0), 0));
+  const totalUsed = Number(walletSummary?.totalUsedSessions ?? active.reduce((sum, p) => sum + Number(p.usedSessions || 0), 0));
+  const nearestExpiry = walletSummary?.nearestExpiryAt
+    ? millis(walletSummary.nearestExpiryAt)
+    : active
+        .map((p) => millis(p.expiresAt))
+        .filter(Boolean)
+        .sort((a, b) => a - b)[0];
   const taxAmount =
     selectedCatalog && taxRate > 0
       ? Math.round((selectedCatalog.price - selectedCatalog.price / (1 + taxRate / 100)) * 100) / 100
@@ -206,7 +252,7 @@ export default function AdminPackageFlow(props: {
       });
       const canonicalClientId = cleanText(result.clientId) || clientId;
       if (canonicalClientId !== clientId) {
-        props.onClientCreated?.({
+        onClientCreatedRef.current?.({
           ...props.client,
           clientId: canonicalClientId,
           legacyClientDocId: clientId,
@@ -216,8 +262,8 @@ export default function AdminPackageFlow(props: {
           mobile: clientPhone,
         });
       }
-      await refresh();
-      const purchased = (await ClientPackageService.getByClient(canonicalClientId)).find(
+      const refreshed = await refresh();
+      const purchased = ((refreshed?.packages || []) as ClientPackage[]).find(
         (p) => p.id === result.clientPackageId
       );
       setReceipt({
@@ -243,14 +289,55 @@ export default function AdminPackageFlow(props: {
       return;
     }
 
+    const normalizedPhone = normalizePhone(clientPhone);
+    if (!normalizedPhone) {
+      setError("رقم الجوال غير صالح، ولا يمكن إنشاء ملف عميلة بدون رقم حقيقي.");
+      return;
+    }
+
     const id = globalThis.crypto?.randomUUID?.() || `client_${Date.now()}`;
     setLoading(true);
     setError("");
     try {
+      const phoneMatches = new Map<string, { id: string; data: any }>();
+      const values = phoneLookupValues(clientPhone);
+      for (const field of ["phone", "mobile", "clientPhone", "phoneNumber"]) {
+        for (const value of values) {
+          const snap = await getDocs(
+            firestoreQuery(collection(db, "salons", "main", "clients"), where(field, "==", value), limit(3))
+          );
+          snap.docs.forEach((row) => phoneMatches.set(row.ref.path, { id: row.id, data: row.data() || {} }));
+        }
+      }
+
+      if (phoneMatches.size > 1) {
+        setError("يوجد أكثر من ملف عميلة بنفس رقم الجوال. أوقفت إنشاء ملف جديد لتجنب التكرار، افتحي تقرير تدقيق الهويات أولًا.");
+        return;
+      }
+
+      if (phoneMatches.size === 1) {
+        const existing = [...phoneMatches.values()][0];
+        const existingClientId = cleanText(existing.data.clientId || existing.id);
+        props.onClientCreated?.({
+          ...props.client,
+          id: existing.id,
+          clientId: existingClientId,
+          canonicalClientId: existingClientId,
+          name: cleanText(existing.data.name || existing.data.fullName || clientName),
+          fullName: cleanText(existing.data.fullName || existing.data.name || clientName),
+          phone: cleanText(existing.data.phone || existing.data.mobile || normalizedPhone),
+          mobile: cleanText(existing.data.mobile || existing.data.phone || normalizedPhone),
+          source: "client_profile",
+        });
+        await refresh();
+        return;
+      }
+
       await setDoc(doc(db, "salons", "main", "clients", id), {
         clientId: id,
         name: clientName,
-        phone: clientPhone,
+        phone: normalizedPhone,
+        mobile: normalizedPhone,
         source: "booking_internal",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -261,8 +348,8 @@ export default function AdminPackageFlow(props: {
         clientId: id,
         name: clientName,
         fullName: clientName,
-        phone: clientPhone,
-        mobile: clientPhone,
+        phone: normalizedPhone,
+        mobile: normalizedPhone,
         source: "client_profile",
       });
     } catch {
@@ -347,7 +434,7 @@ export default function AdminPackageFlow(props: {
           <div className="session-packages__stats">
             <div className="session-packages__stat">
               <small>الباقات الفعالة</small>
-              <strong>{active.length}</strong>
+              <strong>{Number(walletSummary?.activePackages ?? active.length)}</strong>
             </div>
             <div className="session-packages__stat">
               <small>الجلسات المتبقية</small>

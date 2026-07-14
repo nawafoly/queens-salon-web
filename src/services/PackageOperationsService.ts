@@ -19,6 +19,38 @@ export type PackageRedemptionResult = {
   packageTransactionId: string;
 };
 
+export type PackageClientLookup = {
+  id?: string;
+  docId?: string;
+  uid?: string;
+  clientId?: string;
+  customerId?: string;
+  authUid?: string;
+  userId?: string;
+  firebaseUid?: string;
+  phone?: string;
+  mobile?: string;
+  clientPhone?: string;
+  phoneNumber?: string;
+};
+
+export type PackageClientWalletResult = {
+  ok: boolean;
+  clientId: string;
+  canonicalClientId: string;
+  legacyClientDocId?: string;
+  aliasClientIds?: string[];
+  packages: any[];
+  transactions: any[];
+  services: Record<string, string>;
+  activePackages: number;
+  totalRemainingSessions: number;
+  totalUsedSessions: number;
+  totalReservedSessions: number;
+  nearestExpiryAt?: string | null;
+  warnings?: Array<{ packageId?: string; reason?: string }>;
+};
+
 function operationId(prefix: string) {
   const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   return `${prefix}_${random}`.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -103,30 +135,17 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
 export const PackageOperationsService = {
   newOperationId: operationId,
   myWallet() {
-    return invoke<{
-      ok: boolean;
-      clientId: string;
-      packages: any[];
-      transactions: any[];
-      services: Record<string, string>;
-    }>("/api/packages/my-wallet", { salonId: "main" }, "GET");
+    return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");
+  },
+  clientWallet(args: { clientId: string; clientLookup?: PackageClientLookup }) {
+    return invoke<PackageClientWalletResult>("/api/packages/client-wallet", {
+      salonId: "main",
+      ...args,
+    });
   },
   purchase(args: {
     clientId: string;
-    clientLookup?: {
-      id?: string;
-      docId?: string;
-      uid?: string;
-      clientId?: string;
-      customerId?: string;
-      authUid?: string;
-      userId?: string;
-      firebaseUid?: string;
-      phone?: string;
-      mobile?: string;
-      clientPhone?: string;
-      phoneNumber?: string;
-    };
+    clientLookup?: PackageClientLookup;
     packageCatalogId: string;
     paymentMethod: "cash" | "card" | "transfer";
     invoiceId?: string;
@@ -139,20 +158,7 @@ export const PackageOperationsService = {
   },
   redeem(args: {
     clientId: string;
-    clientLookup?: {
-      id?: string;
-      docId?: string;
-      uid?: string;
-      clientId?: string;
-      customerId?: string;
-      authUid?: string;
-      userId?: string;
-      firebaseUid?: string;
-      phone?: string;
-      mobile?: string;
-      clientPhone?: string;
-      phoneNumber?: string;
-    };
+    clientLookup?: PackageClientLookup;
     clientPackageId?: string;
     serviceId: string;
     employeeId: string;

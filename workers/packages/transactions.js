@@ -5,6 +5,7 @@ import {
   SALES_ROLES,
   adjustRemainingBalance,
   appointmentTimestampMs,
+  balancesFromDoc,
   boundedInteger,
   boundedText,
   buildBookingSlotId,
@@ -19,6 +20,7 @@ import {
   normalizeStringArray,
   optionalDocumentId,
   optionalText,
+  packageCandidateFromDoc,
   phoneCandidates,
   requiredDocumentId,
   requiredExternalId,
@@ -139,23 +141,61 @@ function materializeClientIdentity(snap) {
   return { raw, existingStableId };
 }
 
+function clientAliasIds(raw, snapId, clientId, extra = []) {
+  const values = [
+    clientId,
+    snapId,
+    raw.clientId,
+    raw.legacyClientDocId,
+    raw.customerId,
+    raw.authUid,
+    raw.uid,
+    raw.userId,
+    raw.firebaseUid,
+    ...extra,
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    const normalized = cleanText(value);
+    if (!normalized || normalized.length > 256 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
 async function buildClientIdentityResult(salonId, snap) {
   const { raw, existingStableId } = materializeClientIdentity(snap);
   const clientId = existingStableId || await stableLegacyClientId(salonId, snap.id);
   return {
     snap,
     clientId,
+    canonicalClientId: clientId,
     legacyClientDocId: snap.id === clientId ? undefined : snap.id,
     phoneSnapshot: optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber),
     nameSnapshot: optionalText(raw.name || raw.fullName || raw.clientName),
+    aliasClientIds: clientAliasIds(raw, snap.id, clientId),
     needsLink: !existingStableId,
+  };
+}
+
+async function buildClientIdentityResultWithAliases(salonId, snap, extraAliases = []) {
+  const result = await buildClientIdentityResult(salonId, snap);
+  const raw = snap.data || {};
+  return {
+    ...result,
+    aliasClientIds: clientAliasIds(raw, snap.id, result.clientId, [
+      ...(result.aliasClientIds || []),
+      ...extraAliases,
+    ]),
   };
 }
 
 export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}) {
   const directPath = salonPath(salonId, "clients", requestedId);
   const direct = await tx.get(directPath);
-  if (direct.exists) return buildClientIdentityResult(salonId, direct);
+  if (direct.exists) return buildClientIdentityResultWithAliases(salonId, direct, [requestedId]);
 
   const idCandidates = collectClientLookupCandidates(requestedId, lookup, "id");
   const strongMatches = new Map();
@@ -190,7 +230,7 @@ export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {
       matchCount: 1,
       matchedBy: strongMatchedBy.get(snap.path) || [],
     });
-    return buildClientIdentityResult(salonId, snap);
+    return buildClientIdentityResultWithAliases(salonId, snap, idCandidates.map((candidate) => candidate.value));
   }
   if (strongMatches.size > 1) {
     await safeLookupLog("duplicate_identity", salonId, idCandidates, {
@@ -230,7 +270,7 @@ export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {
       matchCount: 1,
       matchedBy: phoneMatchedBy.get(snap.path) || [],
     });
-    return buildClientIdentityResult(salonId, snap);
+    return buildClientIdentityResultWithAliases(salonId, snap);
   }
   if (phoneMatches.size > 1) {
     await safeLookupLog("duplicate_identity", salonId, phoneCandidatesFromPayload, {
@@ -524,14 +564,27 @@ export async function createRedemptionBooking(ctx, data) {
     const slotPaths = lockedSlotIds.map((id) => salonPath(ctx.salonId, "booking_slots", id));
     const availabilityPath = salonPath(ctx.salonId, "availability_days", date, "employees", employeeId);
 
+    const clientAliases = new Set(clientAliasIds({}, "", client.clientId, client.aliasClientIds || []));
     let packageSnap;
     if (requestedClientPackageId) {
       packageSnap = await tx.get(salonPath(ctx.salonId, "client_packages", requestedClientPackageId));
       if (!packageSnap.exists) throw new AppError(404, "packages_client_package:not_found");
     } else {
-      const packageRows = await tx.query(salonPath(ctx.salonId), "client_packages", [["clientId", "EQUAL", client.clientId]]);
+      const packageRowsByPath = new Map();
+      for (const alias of clientAliases) {
+        const rows = await tx.query(salonPath(ctx.salonId), "client_packages", [["clientId", "EQUAL", alias]]);
+        rows.forEach((doc) => packageRowsByPath.set(doc.path, doc));
+      }
+      const packageRows = [...packageRowsByPath.values()];
       const candidates = packageRows.flatMap((doc) => {
-        try { return [packageCandidateFromDoc(doc, nowMs)]; } catch { return []; }
+        try {
+          const candidate = packageCandidateFromDoc(doc, nowMs);
+          if (clientAliases.has(candidate.clientId)) candidate.clientId = client.clientId;
+          return [candidate];
+        } catch (error) {
+          console.warn("packages_redemption_excluded_package", { packageId: doc.id, reason: cleanText(error?.code || error?.message || "invalid_package") });
+          return [];
+        }
       });
       const selected = selectNearestExpiringPackage(candidates, client.clientId, serviceId, nowMs, appointmentAtMs);
       if (!selected) throw new AppError(409, "packages_client_package:no_eligible_balance");
@@ -543,7 +596,8 @@ export async function createRedemptionBooking(ctx, data) {
     if (slotSnaps.some((snap) => snap.exists)) throw new AppError(409, "packages_booking:slot_conflict");
 
     const clientPackage = packageSnap.data || {};
-    if (cleanText(clientPackage.clientId) !== client.clientId) throw new AppError(403, "packages_client_package:not_owner");
+    const storedPackageClientId = cleanText(clientPackage.clientId);
+    if (!clientAliases.has(storedPackageClientId)) throw new AppError(403, "packages_client_package:not_owner");
     const allowedServices = normalizeStringArray(clientPackage.allowedServiceIdsSnapshot);
     if (!allowedServices.length) throw new AppError(409, "packages_client_package:legacy_review_required");
     if (!allowedServices.includes(serviceId)) throw new AppError(409, "packages_client_package:service_not_included");
@@ -557,7 +611,10 @@ export async function createRedemptionBooking(ctx, data) {
     const employeeName = cleanText(employee.name || employee.displayName || employeeId);
     const appointmentAt = timestampFromMs(appointmentAtMs);
 
-    tx.update(packageSnap.path, statusPatch(transition.after, nowIso));
+    tx.update(packageSnap.path, {
+      ...statusPatch(transition.after, nowIso),
+      ...(storedPackageClientId !== client.clientId ? { clientId: client.clientId, legacyClientId: storedPackageClientId } : {}),
+    });
     tx.create(ledgerPath, {
       ...ledgerPayload({
         clientPackageId: packageSnap.id,
@@ -1036,33 +1093,70 @@ export async function adjustClientPackage(ctx, data) {
   });
 }
 
-export async function myWallet(ctx) {
-  if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
-  const identity = await resolveAuthenticatedClientIdentity(ctx.db, ctx.salonId, ctx.identity);
-  const packageSnap = await ctx.db.query(salonPath(ctx.salonId), "client_packages", [["clientId", "EQUAL", identity.clientId]]);
-  const transactionSnap = await ctx.db.query(salonPath(ctx.salonId), "client_package_transactions", [["clientId", "EQUAL", identity.clientId]]);
-  const serviceIds = [...new Set(packageSnap.flatMap((p) => normalizeStringArray(p.data?.allowedServiceIdsSnapshot)))];
-  const serviceDocs = await Promise.all(serviceIds.map((id) => ctx.db.getDoc(salonPath(ctx.salonId, "services", id))));
+async function queryByClientAliases(db, salonId, collectionId, aliases) {
+  const rowsByPath = new Map();
+  for (const alias of aliases || []) {
+    const clientId = cleanText(alias);
+    if (!clientId) continue;
+    const rows = await db.query(salonPath(salonId), collectionId, [["clientId", "EQUAL", clientId]]);
+    rows.forEach((row) => rowsByPath.set(row.path, row));
+  }
+  return [...rowsByPath.values()];
+}
+
+function walletPackageFromDoc(doc, nowMs, canonicalClientId) {
+  const raw = doc.data || {};
+  const balances = balancesFromDoc(raw, nowMs);
+  const storedClientId = cleanText(raw.clientId);
   return {
-    ok: true,
-    clientId: identity.clientId,
-    packages: packageSnap.map((p) => ({
-      id: p.id,
-      packageNameSnapshot: p.data?.packageNameSnapshot,
-      packageDescriptionSnapshot: p.data?.packageDescriptionSnapshot,
-      allowedServiceIdsSnapshot: p.data?.allowedServiceIdsSnapshot,
-      totalSessions: p.data?.totalSessions,
-      remainingSessions: p.data?.remainingSessions,
-      reservedSessions: p.data?.reservedSessions,
-      usedSessions: p.data?.usedSessions,
-      purchasedAt: p.data?.purchasedAt,
-      expiresAt: p.data?.expiresAt,
-      status: p.data?.status,
-      invoiceId: p.data?.invoiceId,
-    })),
-    transactions: transactionSnap.map((t) => ({
+    id: doc.id,
+    packageNameSnapshot: raw.packageNameSnapshot,
+    packageDescriptionSnapshot: raw.packageDescriptionSnapshot,
+    allowedServiceIdsSnapshot: normalizeStringArray(raw.allowedServiceIdsSnapshot || raw.serviceIds),
+    totalSessions: balances.totalSessions,
+    remainingSessions: balances.remainingSessions,
+    reservedSessions: balances.reservedSessions,
+    usedSessions: balances.usedSessions,
+    purchasedAt: raw.purchasedAt,
+    expiresAt: raw.expiresAt,
+    status: balances.status,
+    invoiceId: raw.invoiceId,
+    invoiceDocumentId: raw.invoiceDocumentId,
+    invoiceNumber: raw.invoiceNumber,
+    clientId: storedClientId,
+    canonicalClientId,
+    ...(storedClientId && storedClientId !== canonicalClientId ? { legacyClientId: storedClientId } : {}),
+  };
+}
+
+async function walletSummaryForIdentity(ctx, identity) {
+  const canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
+  const aliases = clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []);
+  const nowMs = Date.now();
+  const packageSnap = await queryByClientAliases(ctx.db, ctx.salonId, "client_packages", aliases);
+  const transactionSnap = await queryByClientAliases(ctx.db, ctx.salonId, "client_package_transactions", aliases);
+  const warnings = [];
+  const packages = [];
+
+  for (const doc of packageSnap) {
+    try {
+      packages.push(walletPackageFromDoc(doc, nowMs, canonicalClientId));
+    } catch (error) {
+      const warning = {
+        packageId: doc.id,
+        reason: cleanText(error?.code || error?.message || "invalid_package"),
+      };
+      warnings.push(warning);
+      console.warn("packages_wallet_excluded_package", warning);
+    }
+  }
+
+  packages.sort((a, b) => (timestampMs(b.purchasedAt) || 0) - (timestampMs(a.purchasedAt) || 0));
+  const transactions = transactionSnap
+    .map((t) => ({
       id: t.id,
       clientPackageId: t.data?.clientPackageId,
+      clientId: t.data?.clientId,
       type: t.data?.type,
       bookingId: t.data?.bookingId,
       serviceId: t.data?.serviceId,
@@ -1074,7 +1168,57 @@ export async function myWallet(ctx) {
       usedBefore: t.data?.usedBefore,
       usedAfter: t.data?.usedAfter,
       createdAt: t.data?.createdAt,
-    })),
-    services: Object.fromEntries(serviceDocs.map((doc, index) => [serviceIds[index], doc.exists ? cleanText(doc.data?.name || serviceIds[index]) : serviceIds[index]])),
+    }))
+    .sort((a, b) => (timestampMs(b.createdAt) || 0) - (timestampMs(a.createdAt) || 0));
+
+  const serviceIds = [...new Set(packages.flatMap((p) => normalizeStringArray(p.allowedServiceIdsSnapshot)))];
+  const serviceDocs = await Promise.all(serviceIds.map((id) => ctx.db.getDoc(salonPath(ctx.salonId, "services", id))));
+  const services = Object.fromEntries(
+    serviceDocs.map((doc, index) => [
+      serviceIds[index],
+      doc.exists ? cleanText(doc.data?.name || doc.data?.title || serviceIds[index]) : serviceIds[index],
+    ])
+  );
+  const activePackageRows = packages.filter((p) => p.status === "active");
+  const nearestExpiryMs = activePackageRows
+    .map((p) => timestampMs(p.expiresAt))
+    .filter((value) => value !== undefined)
+    .sort((a, b) => a - b)[0];
+
+  return {
+    ok: true,
+    clientId: canonicalClientId,
+    canonicalClientId,
+    legacyClientDocId: identity.legacyClientDocId,
+    aliasClientIds: aliases,
+    packages,
+    transactions,
+    services,
+    activePackages: activePackageRows.length,
+    totalRemainingSessions: activePackageRows.reduce((sum, p) => sum + Number(p.remainingSessions || 0), 0),
+    totalUsedSessions: activePackageRows.reduce((sum, p) => sum + Number(p.usedSessions || 0), 0),
+    totalReservedSessions: activePackageRows.reduce((sum, p) => sum + Number(p.reservedSessions || 0), 0),
+    nearestExpiryAt: nearestExpiryMs ? timestampFromMs(nearestExpiryMs) : null,
+    warnings,
   };
+}
+
+export async function clientWallet(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const requestedClientId = requiredDocumentId(data.clientId, "clientId");
+  const identity = await ctx.db.runTransaction((tx) =>
+    resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup)
+  );
+  return walletSummaryForIdentity(ctx, identity);
+}
+
+export async function myWallet(ctx) {
+  if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
+  const identity = await resolveAuthenticatedClientIdentity(ctx.db, ctx.salonId, ctx.identity);
+  return walletSummaryForIdentity(ctx, {
+    clientId: identity.clientId,
+    canonicalClientId: identity.clientId,
+    clientSnap: identity.clientSnap,
+    aliasClientIds: clientAliasIds(identity.clientSnap?.data || {}, identity.clientSnap?.id || "", identity.clientId),
+  });
 }

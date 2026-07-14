@@ -436,6 +436,91 @@ test("purchase returns duplicate identity when phone-only lookup matches two cli
   assert.equal(body.error, "packages_client:duplicate_identity");
 }));
 
+test("client wallet resolves canonical identity and includes package linked to legacy client id", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/canonical-wallet-client", {
+    clientId: "canonical-wallet-client",
+    legacyClientDocId: "legacy-wallet-client",
+    authUid: "wallet-auth-uid",
+    name: "Wallet Client",
+    phone: "0500000088",
+  });
+  fake.seed("salons/main/client_packages/legacy-linked-package", {
+    clientId: "legacy-wallet-client",
+    packageNameSnapshot: "Legacy Linked Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 10,
+    remainingSessions: 10,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "wallet-auth-uid",
+      clientLookup: { authUid: "wallet-auth-uid" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "canonical-wallet-client");
+  assert.equal(body.data.activePackages, 1);
+  assert.equal(body.data.totalRemainingSessions, 10);
+  assert.equal(body.data.totalUsedSessions, 0);
+  assert.equal(body.data.totalReservedSessions, 0);
+  assert.deepEqual(body.data.packages.map((p) => p.id), ["legacy-linked-package"]);
+  assert.equal(body.data.packages[0].legacyClientId, "legacy-wallet-client");
+}));
+
+test("redemption uses canonical client id and relinks legacy package id", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/canonical-redeem-client", {
+    clientId: "canonical-redeem-client",
+    legacyClientDocId: "legacy-redeem-client",
+    authUid: "redeem-auth-uid",
+    name: "Redeem Client",
+    phone: "0500000089",
+  });
+  fake.seed("salons/main/client_packages/legacy-redeem-package", {
+    clientId: "legacy-redeem-client",
+    packageNameSnapshot: "Legacy Redeem Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 1,
+    remainingSessions: 1,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/redemption/create", {
+    body: {
+      salonId: "main",
+      clientId: "redeem-auth-uid",
+      clientLookup: { authUid: "redeem-auth-uid" },
+      serviceId: "svc-a",
+      employeeId: "staff-a",
+      date: "2027-05-16",
+      time: "12:00",
+      operationId: "legacy-redeem-op",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.clientId, "canonical-redeem-client");
+  assert.equal(body.data.clientPackageId, "legacy-redeem-package");
+  const packageDoc = fake.data("salons/main/client_packages/legacy-redeem-package");
+  assert.equal(packageDoc.clientId, "canonical-redeem-client");
+  assert.equal(packageDoc.legacyClientId, "legacy-redeem-client");
+  assert.equal(packageDoc.remainingSessions, 0);
+  assert.equal(packageDoc.reservedSessions, 1);
+  const booking = fake.data(`salons/main/bookings/${body.data.bookingId}`);
+  assert.equal(booking.clientId, "canonical-redeem-client");
+}));
+
 test("creates package redemption, prevents slot conflict, consumes and cancels reservation", async () => withFakeFirestore(async (fake) => {
   const sale = await purchase(fake, "sale-flow-1");
   const first = await redeem(sale.clientPackageId, "op-flow-1", "10:00");

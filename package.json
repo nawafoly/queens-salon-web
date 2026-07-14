@@ -9,6 +9,8 @@
     "dev:vite": "vite",
     "dev:partners": "wrangler dev --config wrangler.partners.jsonc --local --port 8787 --show-interactive-dev-session=false",
     "dev:packages": "wrangler dev --config wrangler.packages.jsonc --local --port 8797 --show-interactive-dev-session=false",
+    "audit:client-identities": "node scripts/audit-client-identities.mjs",
+    "repair:client-identities": "node scripts/repair-client-identities.mjs",
     "test:packages:worker": "node --test workers/packages-worker.test.mjs",
     "test:packages:worker:integration": "node scripts/verify-packages-worker-integration.mjs",
     "build": "tsc -b && vite build --mode web",
