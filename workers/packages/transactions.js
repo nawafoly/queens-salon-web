@@ -53,40 +53,58 @@ function isSafeDocumentId(value) {
   );
 }
 
-function looksLikePhone(value) {
-  return cleanText(value).replace(/\D/g, "").length >= 7;
+function normalizeLookupPhone(value) {
+  const raw = cleanText(value);
+  if (!raw || /[A-Za-z]/.test(raw)) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
+  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
+  if (/^05\d{8}$/.test(digits)) return digits;
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
+  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
+  return "";
 }
 
-function collectClientLookupCandidates(requestedId, lookup) {
+function collectClientLookupCandidates(requestedId, lookup, kind) {
   const raw = lookup && typeof lookup === "object" ? lookup : {};
   const out = [];
   const seen = new Set();
 
-  const add = (inputField, value, kind = "id") => {
+  const addId = (inputField, value) => {
     const normalized = cleanText(value);
     if (!normalized) return;
-    if (kind !== "phone" && normalized.length > 256) return;
-    if (kind === "phone" && normalized.replace(/\D/g, "").length < 7) return;
-    const key = `${kind}:${inputField}:${normalized}`;
+    if (normalized.length > 256) return;
+    const key = `id:${inputField}:${normalized}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ inputField, value: normalized, kind });
+    out.push({ inputField, value: normalized, kind: "id" });
   };
 
-  add("requestedClientId", requestedId, "id");
-  if (looksLikePhone(requestedId)) add("requestedClientPhone", requestedId, "phone");
-  add("id", raw.id);
-  add("docId", raw.docId);
-  add("uid", raw.uid);
-  add("clientId", raw.clientId);
-  add("customerId", raw.customerId);
-  add("authUid", raw.authUid);
-  add("userId", raw.userId);
-  add("firebaseUid", raw.firebaseUid);
-  add("phone", raw.phone, "phone");
-  add("mobile", raw.mobile, "phone");
-  add("clientPhone", raw.clientPhone, "phone");
-  add("phoneNumber", raw.phoneNumber, "phone");
+  const addPhone = (inputField, value) => {
+    const normalized = normalizeLookupPhone(value);
+    if (!normalized) return;
+    const key = `phone:${inputField}:${normalized}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ inputField, value: normalized, kind: "phone" });
+  };
+
+  if (kind === "id") {
+    addId("requestedClientId", requestedId);
+    addId("id", raw.id);
+    addId("docId", raw.docId);
+    addId("clientId", raw.clientId);
+    addId("customerId", raw.customerId);
+    addId("authUid", raw.authUid);
+    addId("uid", raw.uid);
+    addId("userId", raw.userId);
+    addId("firebaseUid", raw.firebaseUid);
+  } else {
+    addPhone("phone", raw.phone);
+    addPhone("mobile", raw.mobile);
+    addPhone("clientPhone", raw.clientPhone);
+    addPhone("phoneNumber", raw.phoneNumber);
+  }
 
   return out;
 }
@@ -139,68 +157,91 @@ export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {
   const direct = await tx.get(directPath);
   if (direct.exists) return buildClientIdentityResult(salonId, direct);
 
-  const primaryMatches = await tx.query(salonPath(salonId), "clients", [["clientId", "EQUAL", requestedId]], 2);
-  if (primaryMatches.length === 1) return buildClientIdentityResult(salonId, primaryMatches[0]);
-  if (primaryMatches.length > 1) throw new AppError(409, "packages_client:duplicate_identity");
+  const idCandidates = collectClientLookupCandidates(requestedId, lookup, "id");
+  const strongMatches = new Map();
+  const strongMatchedBy = new Map();
+  const strongLookupFields = new Set(["documentId", ...CLIENT_LOOKUP_ID_FIELDS]);
 
-  const candidates = collectClientLookupCandidates(requestedId, lookup);
-  const matches = new Map();
-  const matchedBy = new Map();
-  const lookupFields = new Set(["documentId", "clientId"]);
-
-  const addMatch = (snap, by) => {
+  const addStrongMatch = (snap, by) => {
     if (!snap?.exists) return;
-    matches.set(snap.path, snap);
-    const list = matchedBy.get(snap.path) || [];
+    strongMatches.set(snap.path, snap);
+    const list = strongMatchedBy.get(snap.path) || [];
     list.push(by);
-    matchedBy.set(snap.path, list);
+    strongMatchedBy.set(snap.path, list);
   };
 
-  for (const candidate of candidates.filter((item) => item.kind === "id")) {
+  for (const candidate of idCandidates) {
     if (!isSafeDocumentId(candidate.value) || candidate.value === requestedId) continue;
     const altDirect = await tx.get(salonPath(salonId, "clients", candidate.value));
-    addMatch(altDirect, `documentId:${candidate.inputField}`);
+    addStrongMatch(altDirect, `documentId:${candidate.inputField}`);
   }
 
-  for (const candidate of candidates.filter((item) => item.kind === "id")) {
+  for (const candidate of idCandidates) {
     for (const field of CLIENT_LOOKUP_ID_FIELDS) {
-      lookupFields.add(field);
       const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", candidate.value]], 3);
-      rows.forEach((row) => addMatch(row, `${field}:${candidate.inputField}`));
+      rows.forEach((row) => addStrongMatch(row, `${field}:${candidate.inputField}`));
     }
   }
 
-  const phoneValues = new Set();
-  for (const candidate of candidates.filter((item) => item.kind === "phone")) {
-    phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
-  }
-  for (const phone of phoneValues) {
-    for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
-      lookupFields.add(field);
-      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 3);
-      rows.forEach((row) => addMatch(row, `${field}:phone`));
-    }
-  }
-
-  if (matches.size === 1) {
-    const [snap] = matches.values();
-    await safeLookupLog("fallback_match", salonId, candidates, {
-      lookupFields: [...lookupFields],
+  if (strongMatches.size === 1) {
+    const [snap] = strongMatches.values();
+    await safeLookupLog("strong_match", salonId, idCandidates, {
+      lookupFields: [...strongLookupFields],
       matchCount: 1,
-      matchedBy: matchedBy.get(snap.path) || [],
+      matchedBy: strongMatchedBy.get(snap.path) || [],
     });
     return buildClientIdentityResult(salonId, snap);
   }
-  if (matches.size > 1) {
-    await safeLookupLog("duplicate_identity", salonId, candidates, {
-      lookupFields: [...lookupFields],
-      matchCount: matches.size,
+  if (strongMatches.size > 1) {
+    await safeLookupLog("duplicate_identity", salonId, idCandidates, {
+      lookupFields: [...strongLookupFields],
+      matchCount: strongMatches.size,
     });
     throw new AppError(409, "packages_client:duplicate_identity");
   }
 
-  await safeLookupLog("not_found", salonId, candidates, {
-    lookupFields: [...lookupFields],
+  const phoneCandidatesFromPayload = collectClientLookupCandidates(requestedId, lookup, "phone");
+  const phoneMatches = new Map();
+  const phoneMatchedBy = new Map();
+  const phoneLookupFields = new Set(CLIENT_LOOKUP_PHONE_FIELDS);
+  const addPhoneMatch = (snap, by) => {
+    if (!snap?.exists) return;
+    phoneMatches.set(snap.path, snap);
+    const list = phoneMatchedBy.get(snap.path) || [];
+    list.push(by);
+    phoneMatchedBy.set(snap.path, list);
+  };
+
+  const phoneValues = new Set();
+  for (const candidate of phoneCandidatesFromPayload) {
+    phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
+  }
+  for (const phone of phoneValues) {
+    for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
+      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 3);
+      rows.forEach((row) => addPhoneMatch(row, `${field}:phone`));
+    }
+  }
+
+  if (phoneMatches.size === 1) {
+    const [snap] = phoneMatches.values();
+    await safeLookupLog("phone_match", salonId, phoneCandidatesFromPayload, {
+      lookupFields: [...phoneLookupFields],
+      matchCount: 1,
+      matchedBy: phoneMatchedBy.get(snap.path) || [],
+    });
+    return buildClientIdentityResult(salonId, snap);
+  }
+  if (phoneMatches.size > 1) {
+    await safeLookupLog("duplicate_identity", salonId, phoneCandidatesFromPayload, {
+      lookupFields: [...phoneLookupFields],
+      matchCount: phoneMatches.size,
+    });
+    throw new AppError(409, "packages_client:duplicate_identity");
+  }
+
+  await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+    lookupFields: [...new Set([...strongLookupFields, ...phoneLookupFields])],
     matchCount: 0,
   });
   throw new AppError(404, "packages_client:not_found", "Client was not found");

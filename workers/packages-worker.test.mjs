@@ -327,6 +327,115 @@ test("purchase resolves client when document id differs from auth uid", async ()
   assert.equal(ledger.clientId, "client-canonical-c");
 }));
 
+test("purchase prefers direct document id over duplicate phone matches", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/direct-doc-client", {
+    clientId: "direct-canonical",
+    name: "Direct Client",
+    phone: "0500000099",
+  });
+  fake.seed("salons/main/clients/other-same-phone-client", {
+    clientId: "other-same-phone",
+    name: "Other Same Phone",
+    phone: "0500000099",
+  });
+
+  const response = await worker.fetch(request("/api/packages/purchase", {
+    body: {
+      salonId: "main",
+      clientId: "direct-doc-client",
+      clientLookup: { phone: "0500000099" },
+      packageCatalogId: "blowdry-10",
+      paymentMethod: "cash",
+      invoiceId: "sale-direct-doc-priority",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.clientId, "direct-canonical");
+}));
+
+test("purchase ignores document id value sent inside phone lookup fields", async () => withFakeFirestore(async (fake) => {
+  const idLikeValue = "AbCdEfGhIjKlMnOpQrSt";
+  fake.seed("salons/main/clients/id-like-phone-doc", {
+    clientId: "id-like-canonical",
+    authUid: idLikeValue,
+    name: "ID Like Client",
+    phone: "0500000061",
+  });
+
+  const response = await worker.fetch(request("/api/packages/purchase", {
+    body: {
+      salonId: "main",
+      clientId: idLikeValue,
+      clientLookup: {
+        authUid: idLikeValue,
+        clientPhone: idLikeValue,
+        phoneNumber: idLikeValue,
+      },
+      packageCatalogId: "blowdry-10",
+      paymentMethod: "cash",
+      invoiceId: "sale-ignore-id-as-phone",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.clientId, "id-like-canonical");
+}));
+
+test("purchase counts same document matched by uid and clientId once", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/multi-field-client", {
+    clientId: "multi-canonical",
+    uid: "multi-uid",
+    authUid: "multi-uid",
+    name: "Multi Field Client",
+    phone: "0500000062",
+  });
+
+  const response = await worker.fetch(request("/api/packages/purchase", {
+    body: {
+      salonId: "main",
+      clientId: "missing-strong-id",
+      clientLookup: {
+        clientId: "multi-canonical",
+        uid: "multi-uid",
+      },
+      packageCatalogId: "blowdry-10",
+      paymentMethod: "cash",
+      invoiceId: "sale-same-doc-multi-fields",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.clientId, "multi-canonical");
+}));
+
+test("purchase returns duplicate identity when phone-only lookup matches two clients", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/phone-duplicate-a", {
+    clientId: "phone-duplicate-a",
+    name: "Phone Duplicate A",
+    phone: "0500000077",
+  });
+  fake.seed("salons/main/clients/phone-duplicate-b", {
+    clientId: "phone-duplicate-b",
+    name: "Phone Duplicate B",
+    phone: "0500000077",
+  });
+
+  const response = await worker.fetch(request("/api/packages/purchase", {
+    body: {
+      salonId: "main",
+      clientId: "missing-phone-only",
+      clientLookup: { phone: "0500000077" },
+      packageCatalogId: "blowdry-10",
+      paymentMethod: "cash",
+      invoiceId: "sale-phone-duplicate",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "packages_client:duplicate_identity");
+}));
+
 test("creates package redemption, prevents slot conflict, consumes and cancels reservation", async () => withFakeFirestore(async (fake) => {
   const sale = await purchase(fake, "sale-flow-1");
   const first = await redeem(sale.clientPackageId, "op-flow-1", "10:00");

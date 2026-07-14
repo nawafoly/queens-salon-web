@@ -54,13 +54,27 @@ function money(value: any) {
   return `${Number(value || 0).toFixed(2)} ر.س`;
 }
 
+function normalizePhone(value: any) {
+  const raw = cleanText(value);
+  if (!raw || /[A-Za-z]/.test(raw)) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
+  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
+  if (/^05\d{8}$/.test(digits)) return digits;
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
+  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
+  return "";
+}
+
 function clientLookupPayload(client: any, fallbackPhone: string) {
   const id = cleanText(client?.id);
   const uid = cleanText(client?.uid || client?.authUid || client?.firebaseUid);
   const clientId = cleanText(client?.clientId);
   const customerId = cleanText(client?.customerId);
   const authUid = cleanText(client?.authUid || client?.uid || client?.firebaseUid);
-  const phone = cleanText(client?.phone || client?.mobile || client?.clientPhone || fallbackPhone);
+  const phone = normalizePhone(
+    client?.phone ?? client?.mobile ?? client?.clientPhone ?? client?.phoneNumber ?? fallbackPhone
+  );
   return {
     ...(id ? { id, docId: id } : {}),
     ...(uid ? { uid, userId: uid, firebaseUid: uid } : {}),
