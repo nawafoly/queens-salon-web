@@ -1,4 +1,4 @@
-/* Standalone employee profile page. Everything is scoped to avoid legacy modal collisions. */
+﻿/* Standalone employee profile page. Everything is scoped to avoid legacy modal collisions. */
 .emp-page-wrapper.is-profile-route,
 .emp-page-wrapper.is-profile-route .employee-profile-route-container,
 .emp-page-wrapper.is-profile-route .employee-profile-route-host {
@@ -3693,74 +3693,3 @@
 
 /* EMPLOYEE WORKING HOURS REDESIGN V6 END */
 
-/* EMPLOYEE WORKING HOURS HOTFIX V7 START */
-
-/* The overrides editor is a direct child of the two-column profile grid. */
-.employee-profile-page .emp-form-grid > .emp-working-override-block {
-  grid-column: 1 / -1;
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  box-sizing: border-box;
-  justify-self: stretch;
-}
-
-.employee-profile-page .emp-working-override-block,
-.employee-profile-page .emp-working-override-block .emp-working-override-grid,
-.employee-profile-page .emp-working-override-block .emp-working-override-form,
-.employee-profile-page .emp-working-override-block .emp-override-editor-head {
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-/* Avoid Unicode glyphs in generated CSS content so Windows PowerShell cannot corrupt them. */
-.employee-profile-page .emp-hours-status {
-  width: 84px;
-}
-
-.employee-profile-page .emp-hours-status span {
-  width: 84px;
-  padding-inline-start: 31px;
-  padding-inline-end: 10px;
-}
-
-.employee-profile-page .emp-hours-status span::before {
-  content: "";
-  inset-inline-start: 5px;
-  background:
-    linear-gradient(45deg, transparent 43%, #fff 43%, #fff 57%, transparent 57%),
-    linear-gradient(-45deg, transparent 43%, #fff 43%, #fff 57%, transparent 57%),
-    #9aa5b4;
-}
-
-.employee-profile-page .emp-hours-status span::after {
-  content: "";
-  position: absolute;
-  top: 8px;
-  inset-inline-start: 13px;
-  width: 6px;
-  height: 11px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  opacity: 0;
-  transform: rotate(45deg);
-}
-
-.employee-profile-page .emp-hours-status input:checked + span::before {
-  content: "";
-  background: #16986c;
-}
-
-.employee-profile-page .emp-hours-status input:checked + span::after {
-  opacity: 1;
-}
-
-@media (max-width: 760px) {
-  .employee-profile-page .emp-form-grid > .emp-working-override-block {
-    grid-column: 1;
-  }
-}
-
-/* EMPLOYEE WORKING HOURS HOTFIX V7 END */

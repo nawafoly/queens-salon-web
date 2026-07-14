@@ -224,6 +224,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     computation: attendanceComputation,
     todayDateKey: attendanceDate,
     weeklyOffDays: profile.weeklyOffDays || profile.offDays || null,
+    approvedLeaveDateKeys,
   });
 
   const loadAttendance = async () => {

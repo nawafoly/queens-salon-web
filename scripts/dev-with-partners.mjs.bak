@@ -1,4 +1,4 @@
-﻿import { spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 
 const isWindows = process.platform === "win32";
 const npx = isWindows ? "npx.cmd" : "npx";
@@ -39,61 +39,10 @@ function buildSpawnArgs(item) {
   };
 }
 
-function stripAnsi(value) {
-  return value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
-}
-
-function shouldHideLine(name, line) {
-  const cleanLine = stripAnsi(line).trim();
-
-  if (!cleanLine) return true;
-  if (name !== "partners-api") return false;
-
-  return [
-    /wrangler\s+\d/i,
-    /^[─━═-]{5,}$/,
-    /update available/i,
-    /Using secrets defined/i,
-    /Your Worker has access/i,
-    /^Binding\b/i,
-    /^Resource\b/i,
-    /^Mode\b/i,
-    /^env\./i,
-    /Starting local server/i,
-  ].some((pattern) => pattern.test(cleanLine));
-}
-
-function attachOutput(stream, name, target) {
-  if (!stream) return;
-
-  stream.setEncoding("utf8");
-
-  let buffer = "";
-
-  stream.on("data", (chunk) => {
-    buffer += chunk;
-
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (shouldHideLine(name, line)) continue;
-      target.write(`[${name}] ${line}\n`);
-    }
-  });
-
-  stream.on("end", () => {
-    if (!buffer || shouldHideLine(name, buffer)) return;
-    target.write(`[${name}] ${buffer}\n`);
-  });
-}
-
 function stopAll(signal = "SIGTERM") {
   shuttingDown = true;
-
   for (const child of children) {
     if (child.killed) continue;
-
     if (isWindows && child.pid) {
       spawn("taskkill.exe", ["/pid", String(child.pid), "/T", "/F"], {
         stdio: "ignore",
@@ -106,7 +55,6 @@ function stopAll(signal = "SIGTERM") {
 
 for (const item of processes) {
   const spawnArgs = buildSpawnArgs(item);
-
   const child = spawn(spawnArgs.command, spawnArgs.args, {
     cwd: process.cwd(),
     env: process.env,
@@ -116,15 +64,18 @@ for (const item of processes) {
 
   children.push(child);
 
-  attachOutput(child.stdout, item.name, process.stdout);
-  attachOutput(child.stderr, item.name, process.stderr);
+  child.stdout?.on("data", (chunk) => {
+    process.stdout.write(`[${item.name}] ${chunk}`);
+  });
+
+  child.stderr?.on("data", (chunk) => {
+    process.stderr.write(`[${item.name}] ${chunk}`);
+  });
 
   child.on("exit", (code, signal) => {
     if (shuttingDown) return;
-
     shuttingDown = true;
     stopAll();
-
     const exitCode = typeof code === "number" ? code : signal ? 1 : 0;
     process.exit(exitCode);
   });

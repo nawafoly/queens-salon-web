@@ -19418,6 +19418,31 @@ textarea.form-control {
   font-weight: 950;
 }
 
+.attendance-month__state-action {
+  position: relative;
+  z-index: 1;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.attendance-month__state-action.is-danger {
+  border-color: #efb0ba;
+  color: #b3263b;
+  background: #fff5f6;
+}
+
+.attendance-month__state-action:hover {
+  filter: brightness(0.98);
+}
+
 .attendance-month__state-card.is-off-day {
   border-color: #8ddfd8;
   color: #08736e;

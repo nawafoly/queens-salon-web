@@ -37,11 +37,6 @@ function parseTimeMinutes(value?: string): number | null {
   return hours * 60 + minutes;
 }
 
-function getWeekdayBadge(label: string): string {
-  const withoutArticle = label.replace(/^ال/, "");
-  return Array.from(withoutArticle)[0] || Array.from(label)[0] || "";
-}
-
 function getShiftDurationLabel(day: StaffWorkingDay): string {
   if (day.enabled === false) return "إجازة";
 
@@ -240,7 +235,7 @@ export default function BookingSettingsSection({
                       return (
                         <article key={`work_${day.key}`} className={`emp-hours-row ${isOff ? "is-off" : ""}`}>
                           <div className="emp-hours-row__day">
-                            <span>{getWeekdayBadge(day.label)}</span>
+                            <span>{day.label.slice(0, 1)}</span>
                             <div>
                               <strong>{day.label}</strong>
                               <small>{isOff ? "يوم إجازة" : "يوم عمل"}</small>

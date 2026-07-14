@@ -258,7 +258,6 @@ export default function ServicesSection({
                     role="checkbox"
                     aria-checked={selected}
                     className={`emp-svc-card${selected ? " is-selected" : ""}`}
-                    title={service.label}
                     onClick={() => onToggleSpecialty(service.id)}
                   >
                     <span className="emp-svc-card__check" aria-hidden="true">
@@ -319,17 +318,9 @@ export default function ServicesSection({
 
           {selectedServices.length ? (
             filteredSelectedServices.length ? (
-              <div
-                className="emp-svc-selected-list"
-                tabIndex={0}
-                aria-label="قائمة الخدمات المختارة القابلة للتمرير"
-              >
+              <div className="emp-svc-selected-list">
                 {filteredSelectedServices.map((service) => (
-                  <div
-                    key={service.id}
-                    className="emp-svc-selected-item"
-                    title={service.label}
-                  >
+                  <div key={service.id} className="emp-svc-selected-item">
                     <div>
                       <strong dir="auto">{service.label}</strong>
                       <span>

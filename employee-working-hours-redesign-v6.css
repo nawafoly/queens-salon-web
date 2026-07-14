@@ -1,0 +1,749 @@
+/* EMPLOYEE WORKING HOURS REDESIGN V6 START */
+
+.employee-profile-page .emp-hours-panel {
+  grid-column: 1 / -1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #dfe4ea;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(18, 31, 53, 0.055);
+}
+
+.employee-profile-page .emp-hours-shell {
+  display: grid;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-hours-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px 17px;
+  border-bottom: 1px solid #edf0f3;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(201, 146, 0, 0.11), transparent 31%),
+    linear-gradient(135deg, #fff 0%, #fffdf8 100%);
+}
+
+.employee-profile-page .emp-hours-intro__copy {
+  min-width: 0;
+}
+
+.employee-profile-page .emp-hours-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--profile-gold);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.01em;
+}
+
+.employee-profile-page .emp-hours-intro h4 {
+  margin: 0;
+  color: var(--profile-text);
+  font-size: 21px;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.employee-profile-page .emp-hours-intro p {
+  max-width: 680px;
+  margin: 5px 0 0;
+  color: var(--profile-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.employee-profile-page .emp-hours-intro__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.employee-profile-page .emp-hours-intro__stats > span {
+  display: grid;
+  min-height: 58px;
+  align-content: center;
+  justify-items: center;
+  padding: 7px 12px;
+  border: 1px solid #e3e7ec;
+  border-radius: 13px;
+  color: #657187;
+  background: rgba(255, 255, 255, 0.86);
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.employee-profile-page .emp-hours-intro__stats b {
+  color: var(--profile-primary);
+  font-size: 19px;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+.employee-profile-page .emp-hours-master-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 17px 22px;
+  padding: 13px 15px;
+  border: 1px solid #e2e6eb;
+  border-radius: 14px;
+  background: #f8fafb;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.employee-profile-page .emp-hours-master-toggle:hover {
+  border-color: rgba(90, 7, 24, 0.26);
+  background: #fffafb;
+}
+
+.employee-profile-page .emp-hours-master-toggle:has(input:focus-visible) {
+  border-color: rgba(90, 7, 24, 0.44);
+  box-shadow: 0 0 0 3px rgba(90, 7, 24, 0.08);
+}
+
+.employee-profile-page .emp-hours-master-toggle__control {
+  position: relative;
+  display: inline-flex;
+  width: 45px;
+  height: 26px;
+  align-items: center;
+  flex: 0 0 45px;
+}
+
+.employee-profile-page .emp-hours-master-toggle__control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.employee-profile-page .emp-hours-master-toggle__control i {
+  position: relative;
+  display: block;
+  width: 45px;
+  height: 26px;
+  border: 1px solid #cbd3dd;
+  border-radius: 999px;
+  background: #dde3ea;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.employee-profile-page .emp-hours-master-toggle__control i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(23, 32, 51, 0.22);
+  transition: transform 150ms ease;
+}
+
+.employee-profile-page .emp-hours-master-toggle__control input:checked + i {
+  border-color: var(--profile-primary);
+  background: var(--profile-primary);
+}
+
+.employee-profile-page .emp-hours-master-toggle__control input:checked + i::after {
+  transform: translateX(-19px);
+}
+
+.employee-profile-page .emp-hours-master-toggle__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.employee-profile-page .emp-hours-master-toggle__copy strong {
+  color: #263247;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-hours-master-toggle__copy small {
+  color: #758095;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.employee-profile-page .emp-hours-master-toggle__state {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1px solid #dce2e8;
+  border-radius: 999px;
+  color: #6d7889;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.employee-profile-page .emp-hours-master-toggle__state.is-on {
+  border-color: #bfe5d5;
+  color: #11704f;
+  background: #eaf8f1;
+}
+
+.employee-profile-page .emp-hours-board {
+  display: grid;
+  gap: 12px;
+  padding: 0 22px 22px;
+}
+
+.employee-profile-page .emp-hours-board__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 2px;
+}
+
+.employee-profile-page .emp-hours-board__toolbar > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.employee-profile-page .emp-hours-board__toolbar strong {
+  color: #253147;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-hours-board__toolbar span {
+  color: #7b8698;
+  font-size: 10px;
+}
+
+.employee-profile-page .emp-hours-copy-all {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid rgba(90, 7, 24, 0.2);
+  border-radius: 10px;
+  color: var(--profile-primary);
+  background: #fff8fa;
+  font-size: 11px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.employee-profile-page .emp-hours-copy-all:hover:not(:disabled) {
+  border-color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+}
+
+.employee-profile-page .emp-hours-copy-all > span {
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.employee-profile-page .emp-hours-copy-all:disabled,
+.employee-profile-page .emp-hours-copy-day:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.employee-profile-page .emp-hours-table {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dfe4ea;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.employee-profile-page .emp-hours-table__head,
+.employee-profile-page .emp-hours-row {
+  display: grid;
+  grid-template-columns:
+    minmax(122px, 0.95fr)
+    minmax(84px, 0.6fr)
+    minmax(126px, 0.9fr)
+    minmax(126px, 0.9fr)
+    minmax(86px, 0.62fr)
+    52px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-hours-table__head {
+  min-height: 38px;
+  padding: 0 13px;
+  border-bottom: 1px solid #e3e7ec;
+  color: #778397;
+  background: #f6f8fa;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.employee-profile-page .emp-hours-table__head > span:last-child {
+  text-align: center;
+}
+
+.employee-profile-page .emp-hours-table__body {
+  display: grid;
+}
+
+.employee-profile-page .emp-hours-row {
+  position: relative;
+  min-height: 68px;
+  padding: 9px 13px;
+  border-bottom: 1px solid #edf0f3;
+  background: #fff;
+  transition: background-color 150ms ease;
+}
+
+.employee-profile-page .emp-hours-row:last-child {
+  border-bottom: 0;
+}
+
+.employee-profile-page .emp-hours-row:hover {
+  background: #fffafb;
+}
+
+.employee-profile-page .emp-hours-row::before {
+  content: "";
+  position: absolute;
+  inset-block: 12px;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--profile-primary);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.employee-profile-page .emp-hours-row:hover::before {
+  opacity: 1;
+}
+
+.employee-profile-page .emp-hours-row.is-off {
+  background: #fafbfc;
+}
+
+.employee-profile-page .emp-hours-row__day {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.employee-profile-page .emp-hours-row__day > span {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-hours-row.is-off .emp-hours-row__day > span {
+  color: #7f8998;
+  background: #edf0f3;
+}
+
+.employee-profile-page .emp-hours-row__day > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.employee-profile-page .emp-hours-row__day strong {
+  overflow: hidden;
+  color: #202b3f;
+  font-size: 13px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-page .emp-hours-row__day small {
+  color: #8791a1;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.employee-profile-page .emp-hours-status {
+  position: relative;
+  display: inline-flex;
+  width: 76px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.employee-profile-page .emp-hours-status input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.employee-profile-page .emp-hours-status span {
+  position: relative;
+  display: inline-flex;
+  width: 76px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 29px 5px 9px;
+  border: 1px solid #dce2e8;
+  border-radius: 999px;
+  color: #697589;
+  background: #f0f3f6;
+  font-size: 10px;
+  font-weight: 950;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+.employee-profile-page .emp-hours-status span::before {
+  content: "×";
+  position: absolute;
+  inset-inline-start: 4px;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #9aa5b4;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.employee-profile-page .emp-hours-status input:checked + span {
+  border-color: #bfe5d5;
+  color: #126d4f;
+  background: #eaf8f1;
+}
+
+.employee-profile-page .emp-hours-status input:checked + span::before {
+  content: "✓";
+  background: #16986c;
+}
+
+.employee-profile-page .emp-hours-status input:focus-visible + span {
+  outline: 3px solid rgba(90, 7, 24, 0.1);
+  outline-offset: 2px;
+}
+
+.employee-profile-page .emp-hours-time-field {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+}
+
+.employee-profile-page .emp-hours-time-field > span {
+  display: none;
+}
+
+.employee-profile-page .emp-hours-time-field input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 6px 9px;
+  border: 1px solid #d9e0e8;
+  border-radius: 10px;
+  color: #243047;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 850;
+  direction: ltr;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.employee-profile-page .emp-hours-time-field input:focus {
+  border-color: rgba(90, 7, 24, 0.55);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(90, 7, 24, 0.07);
+}
+
+.employee-profile-page .emp-hours-time-field input:disabled {
+  color: #a1a9b5;
+  background: #f0f2f5;
+  cursor: not-allowed;
+}
+
+.employee-profile-page .emp-hours-duration {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.employee-profile-page .emp-hours-duration > span {
+  display: none;
+  color: #8993a2;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.employee-profile-page .emp-hours-duration strong {
+  overflow: hidden;
+  color: #4d596d;
+  font-size: 11px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-profile-page .emp-hours-row.is-off .emp-hours-duration strong {
+  color: #8a94a3;
+}
+
+.employee-profile-page .emp-hours-copy-day {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  justify-self: center;
+  padding: 0;
+  border: 1px solid #dce2e8;
+  border-radius: 10px;
+  color: #59667a;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+.employee-profile-page .emp-hours-copy-day:hover:not(:disabled) {
+  border-color: rgba(90, 7, 24, 0.35);
+  color: var(--profile-primary);
+  background: var(--profile-primary-soft);
+}
+
+.employee-profile-page .emp-hours-copy-day > span {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.employee-profile-page .emp-hours-copy-day > b {
+  display: none;
+}
+
+.employee-profile-page .emp-hours-inherited-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 22px 22px;
+  padding: 13px 15px;
+  border: 1px solid #dce7e1;
+  border-radius: 13px;
+  background: #f5fbf8;
+}
+
+.employee-profile-page .emp-hours-inherited-note > span {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #178b65;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-hours-inherited-note > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.employee-profile-page .emp-hours-inherited-note strong {
+  color: #24634e;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.employee-profile-page .emp-hours-inherited-note p {
+  margin: 0;
+  color: #668276;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .employee-profile-page .emp-hours-table__head {
+    display: none;
+  }
+
+  .employee-profile-page .emp-hours-table {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .employee-profile-page .emp-hours-table__body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .employee-profile-page .emp-hours-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "day status"
+      "start end"
+      "duration copy";
+    gap: 10px;
+    min-height: 0;
+    padding: 13px;
+    border: 1px solid #dfe4ea;
+    border-radius: 13px;
+  }
+
+  .employee-profile-page .emp-hours-row:last-child {
+    border-bottom: 1px solid #dfe4ea;
+  }
+
+  .employee-profile-page .emp-hours-row__day {
+    grid-area: day;
+  }
+
+  .employee-profile-page .emp-hours-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .employee-profile-page .emp-hours-time-field--start {
+    grid-area: start;
+  }
+
+  .employee-profile-page .emp-hours-time-field--end {
+    grid-area: end;
+  }
+
+  .employee-profile-page .emp-hours-time-field > span,
+  .employee-profile-page .emp-hours-duration > span {
+    display: block;
+    margin-bottom: 4px;
+    color: #7d8797;
+    font-size: 9px;
+    font-weight: 900;
+  }
+
+  .employee-profile-page .emp-hours-duration {
+    grid-area: duration;
+    align-self: center;
+  }
+
+  .employee-profile-page .emp-hours-copy-day {
+    grid-area: copy;
+    width: auto;
+    min-width: 78px;
+    height: 36px;
+    grid-auto-flow: column;
+    gap: 6px;
+    padding: 0 10px;
+    justify-self: end;
+  }
+
+  .employee-profile-page .emp-hours-copy-day > b {
+    display: inline;
+    font-size: 10px;
+    font-weight: 950;
+  }
+}
+
+@media (max-width: 720px) {
+  .employee-profile-page .emp-hours-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .employee-profile-page .emp-hours-intro__stats {
+    width: 100%;
+  }
+
+  .employee-profile-page .emp-hours-master-toggle {
+    grid-template-columns: auto minmax(0, 1fr);
+    margin: 14px 16px;
+    padding: 12px;
+  }
+
+  .employee-profile-page .emp-hours-master-toggle__state {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .employee-profile-page .emp-hours-board {
+    padding: 0 16px 16px;
+  }
+
+  .employee-profile-page .emp-hours-board__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .employee-profile-page .emp-hours-copy-all {
+    width: 100%;
+  }
+
+  .employee-profile-page .emp-hours-table__body {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-profile-page .emp-hours-inherited-note {
+    margin: 0 16px 16px;
+  }
+}
+
+@media (max-width: 430px) {
+  .employee-profile-page .emp-hours-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "day"
+      "status"
+      "start"
+      "end"
+      "duration"
+      "copy";
+  }
+
+  .employee-profile-page .emp-hours-status,
+  .employee-profile-page .emp-hours-status span,
+  .employee-profile-page .emp-hours-copy-day {
+    width: 100%;
+  }
+
+  .employee-profile-page .emp-hours-status {
+    justify-self: stretch;
+  }
+
+  .employee-profile-page .emp-hours-copy-day {
+    justify-self: stretch;
+  }
+
+  .employee-profile-page .emp-hours-time-field input {
+    font-size: 16px;
+  }
+}
+
+/* EMPLOYEE WORKING HOURS REDESIGN V6 END */

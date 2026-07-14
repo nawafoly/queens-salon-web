@@ -2913,3 +2913,469 @@ html body
     transform: none;
   }
 }
+
+/* Route-scoped attendance layout for /admin/employees. */
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile {
+  gap: 16px;
+  overflow-x: hidden;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 230px);
+  grid-template-areas:
+    "copy selected"
+    "tools selected";
+  align-items: center;
+  gap: 12px 16px;
+  min-width: 0;
+  padding: 16px !important;
+  direction: rtl;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 22px !important;
+  color: #f8fafc !important;
+  background:
+    radial-gradient(circle at 94% -28%, rgba(242, 183, 5, 0.24), transparent 34%),
+    radial-gradient(circle at 4% 120%, rgba(148, 163, 184, 0.2), transparent 32%),
+    linear-gradient(135deg, #030640 0%, #111827 54%, #223128 100%) !important;
+  box-shadow: 0 18px 44px -30px rgba(3, 6, 64, 0.78) !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-copy {
+  grid-area: copy;
+  min-width: 0;
+  text-align: right;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-copy h3 {
+  margin: 0;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+  font-size: clamp(18px, 2vw, 22px);
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-copy p {
+  max-width: 38rem;
+  margin: 6px 0 0;
+  color: rgba(226, 232, 240, 0.86) !important;
+  -webkit-text-fill-color: rgba(226, 232, 240, 0.86);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-tools {
+  grid-area: tools;
+  display: grid;
+  grid-template-columns: 230px 172px;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile :where(.attendance-month__month-input, .attendance-month__primary) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  border-radius: 13px !important;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0 !important;
+  padding: 0 12px;
+  direction: rtl;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  color: #f8fafc !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input svg,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input span {
+  flex: 0 0 auto;
+  color: rgba(248, 250, 252, 0.9) !important;
+  -webkit-text-fill-color: currentColor;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input {
+  flex: 0 0 132px;
+  width: 132px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  direction: ltr;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a;
+  background: #ffffff !important;
+  font: inherit;
+  text-align: center;
+  unicode-bidi: plaintext;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.86;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit-fields-wrapper,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit-text,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit-month-field,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit-year-field {
+  color: #0f172a !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0 !important;
+  padding: 0 13px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  color: #071022 !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 26px -20px rgba(255, 255, 255, 0.62) !important;
+  white-space: nowrap;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__primary svg {
+  flex: 0 0 auto;
+  color: #030640 !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-empty {
+  grid-area: selected;
+  align-self: stretch;
+  min-height: 0;
+  padding: 12px 14px !important;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.68) !important;
+  border-radius: 18px !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155;
+  background: rgba(255, 255, 255, 0.94) !important;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.7;
+  text-align: center;
+  box-shadow: 0 16px 32px -28px rgba(15, 23, 42, 0.5);
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-shell {
+  padding: 16px 18px 18px;
+  overflow: hidden;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+  display: grid;
+  grid-template-columns: minmax(74px, 1fr) auto minmax(74px, 1fr);
+  grid-template-areas: "prev title actions";
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-bottom: 18px;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__arrow--prev {
+  grid-area: prev;
+  justify-self: start;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__title {
+  grid-area: title;
+  min-width: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__title h3 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(20px, 2.1vw, 25px);
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-actions {
+  grid-area: actions;
+  display: inline-flex;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__arrow {
+  position: static !important;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  border-radius: 11px !important;
+  color: #475569 !important;
+  background: #ffffff !important;
+  font-size: 14px;
+  box-shadow: 0 10px 22px -20px rgba(15, 23, 42, 0.55) !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__today-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.42) !important;
+  border-radius: 999px;
+  color: #334155 !important;
+  background: #ffffff !important;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.5) !important;
+  white-space: nowrap;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile :where(.attendance-month__arrow, .attendance-month__today-button):hover {
+  border-color: rgba(90, 7, 24, 0.28) !important;
+  color: #5a0718 !important;
+  background: #fff7f8 !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__weekdays span {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary {
+    grid-template-columns: minmax(0, 1fr) minmax(168px, 210px);
+    gap: 12px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-tools {
+    grid-template-columns: 224px 164px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "copy"
+      "tools"
+      "selected";
+    align-items: stretch;
+    padding: 14px !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-tools {
+    grid-template-columns: minmax(0, 1fr) minmax(132px, 0.72fr);
+    justify-content: stretch;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-empty {
+    min-height: 62px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-shell {
+    padding: 12px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__title h3 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 520px) {
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__arrow {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__today-button {
+    min-height: 30px;
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+}
+
+/* Final structure for the attendance summary card on /admin/employees. */
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-areas: "main details";
+  gap: 20px;
+  align-items: stretch;
+  min-height: unset !important;
+  padding: 20px 22px !important;
+  direction: rtl;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 22px !important;
+  color: #ffffff !important;
+  background:
+    linear-gradient(
+      115deg,
+      #080d35 0%,
+      #11182d 58%,
+      #202917 100%
+    ) !important;
+  box-shadow: 0 18px 42px -30px rgba(8, 13, 53, 0.82) !important;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__header-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  min-width: 0;
+  text-align: right;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__heading {
+  min-width: 0;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__heading h2 {
+  margin: 0;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: clamp(19px, 2vw, 24px);
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__heading p {
+  max-width: 42rem;
+  margin: 7px 0 0;
+  color: rgba(255, 255, 255, 0.68) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.68) !important;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__month-input,
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__primary {
+  width: auto;
+  min-height: 42px;
+  border-radius: 13px !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__month-input {
+  flex: 0 1 236px;
+  min-width: 220px !important;
+  max-width: 100%;
+  padding: 0 12px;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__month-input input {
+  flex: 0 0 134px;
+  width: 134px;
+  height: 34px;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__primary {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__day-panel {
+  grid-area: details;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 220px;
+  min-height: 110px;
+  padding: 18px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  border-radius: 18px !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155;
+  background: rgba(255, 255, 255, 0.93) !important;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.65;
+  text-align: center;
+  box-shadow: none !important;
+}
+
+@media (max-width: 768px) {
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__summary {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "details";
+    gap: 14px;
+    padding: 18px !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__header-main {
+    gap: 14px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__month-input,
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__primary {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__controls .attendance-month__month-input input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__day-panel {
+    max-width: none;
+    min-height: 96px;
+  }
+}

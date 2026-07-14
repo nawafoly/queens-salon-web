@@ -74,6 +74,7 @@ import {
   buildDateKeysInRange,
   buildWorkDateKeysInRange,
 } from "../helpers/hr/workSchedule";
+import { buildApprovedLeaveDateKeys } from "../helpers/hr/attendanceCalendarData";
 import {
   buildEmployeePayrollMonthInput,
   computeEmployeePayroll,
@@ -94,6 +95,7 @@ type PayrollPreviewState = {
   baseSalary: number;
   requiredWorkDays: number;
   excludedWeeklyOffDays: number;
+  approvedLeaveDays: number;
   manualAbsenceDays: number;
   attendanceRecordedDays: number;
   daysWithoutAttendance: number;
@@ -668,6 +670,18 @@ function HrOverview({
         weeklyOffDays: schedule.weeklyOffDays,
       });
       const calculationDateKeys = buildDateKeysInRange(parsedMonth.monthStart, calculationEndDate);
+      const approvedLeaveDateKeySet = new Set(
+        buildApprovedLeaveDateKeys({
+          profile: selectedEmployee,
+          leaveRequests,
+          extraIds: [employeeUid, employeeId],
+          todayDateKey: today,
+        }).filter((date) => date >= parsedMonth.monthStart && date <= calculationEndDate)
+      );
+      const payableWorkDateKeys = workDateKeys.filter(
+        (date) => !approvedLeaveDateKeySet.has(date)
+      );
+      const payableWorkDateKeySet = new Set(payableWorkDateKeys);
 
       const [attendanceRows, absenceRows] = await Promise.all([
         listAttendanceByDateRangeForEmployeeFromWorker({
@@ -704,16 +718,19 @@ function HrOverview({
           attendanceDateKeys.add(row.date);
         }
       });
+      const attendanceRecordedWorkDateCount = Array.from(attendanceDateKeys)
+        .filter((date) => payableWorkDateKeySet.has(date)).length;
 
       const attendanceSummary = summarizeAttendanceForPayroll(attendanceRecords, schedule, {
-        workDateKeys,
+        workDateKeys: payableWorkDateKeys,
         todayDateKey: today,
+        approvedLeaveDateKeys: approvedLeaveDateKeySet,
       });
-      const expectedWorkHours = workDateKeys.length * getShiftExpectedHours(schedule);
+      const expectedWorkHours = payableWorkDateKeys.length * getShiftExpectedHours(schedule);
       const actualWorkedHours = attendanceSummary.actualHours;
       const computation = computeEmployeePayroll({
         baseSalary: Number(payrollForm.baseSalary || 0),
-        expectedWorkDays: workDateKeys.length,
+        expectedWorkDays: payableWorkDateKeys.length,
         expectedWorkHours,
         attendanceExpectedHours: expectedWorkHours,
         actualWorkedHours,
@@ -728,11 +745,12 @@ function HrOverview({
         toDate: calculationEndDate,
         isCurrentMonthPartial: parsedMonth.monthStart <= today && parsedMonth.monthEnd > today,
         baseSalary: computation.baseSalary,
-        requiredWorkDays: workDateKeys.length,
+        requiredWorkDays: payableWorkDateKeys.length,
         excludedWeeklyOffDays: Math.max(0, calculationDateKeys.length - workDateKeys.length),
+        approvedLeaveDays: Math.max(0, workDateKeys.length - payableWorkDateKeys.length),
         manualAbsenceDays: computation.absenceDays,
-        attendanceRecordedDays: attendanceDateKeys.size,
-        daysWithoutAttendance: Math.max(0, workDateKeys.length - attendanceDateKeys.size),
+        attendanceRecordedDays: attendanceRecordedWorkDateCount,
+        daysWithoutAttendance: Math.max(0, payableWorkDateKeys.length - attendanceRecordedWorkDateCount),
         expectedWorkHours,
         actualWorkedHours,
         missingHours: computation.missingHours,
@@ -1101,6 +1119,7 @@ function HrOverview({
                 <p>معاينة للموظفة {payrollPreview.employeeName} عن شهر {payrollPreview.payrollMonth}. لا يتم حفظ أي سجل راتب من هذه البطاقة.</p>
               </div>
               <div className="hr-mini-stats hr-mini-stats--payroll">
+                <div><span>أيام الإجازة المعتمدة</span><strong>{payrollPreview.approvedLeaveDays}</strong></div>
                 <div><span>فترة الحساب</span><strong>{payrollPreview.fromDate} - {payrollPreview.toDate}</strong></div>
                 <div><span>أيام العمل</span><strong>{payrollPreview.requiredWorkDays}</strong></div>
                 <div><span>أيام الحضور</span><strong>{payrollPreview.attendanceRecordedDays}</strong></div>

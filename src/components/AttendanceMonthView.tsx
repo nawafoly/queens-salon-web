@@ -47,11 +47,14 @@ type AttendanceMonthViewProps = {
   selectedDate: string;
   title?: string;
   subtitle?: string;
+  className?: string;
   emptySummaryText?: string;
   viewerMode?: AttendanceViewerMode;
   canEdit?: boolean;
   canDelete?: boolean;
   canReview?: boolean;
+  canCreateEmergencyLeave?: boolean;
+  canCancelLeave?: boolean;
   showAdminActions?: boolean;
   showSummaryTools?: boolean;
   schedule?: AttendanceScheduleInput | null;
@@ -62,6 +65,8 @@ type AttendanceMonthViewProps = {
   onEditPunch?: (dateKey: string) => void;
   onDeletePunch?: (dateKey: string) => void;
   onReviewDay?: (dateKey: string) => void;
+  onCreateEmergencyLeave?: (dateKey: string) => void;
+  onCancelLeave?: (dateKey: string) => void;
 };
 
 const WEEK_LABELS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
@@ -316,6 +321,7 @@ export default function AttendanceMonthView({
   loading = false,
   monthKey,
   selectedDate,
+  className,
   title = "سجل الحضور الشهري",
   subtitle = "اختر الشهر واليوم لعرض حالة الحضور وتفاصيل السجل.",
   emptySummaryText = "اختر يومًا من التقويم لعرض تفاصيل الحضور.",
@@ -323,6 +329,8 @@ export default function AttendanceMonthView({
   canEdit,
   canDelete,
   canReview,
+  canCreateEmergencyLeave,
+  canCancelLeave,
   showAdminActions = false,
   showSummaryTools = true,
   schedule,
@@ -333,6 +341,8 @@ export default function AttendanceMonthView({
   onEditPunch,
   onDeletePunch,
   onReviewDay,
+  onCreateEmergencyLeave,
+  onCancelLeave,
 }: AttendanceMonthViewProps) {
   const safeMonthKey = normalizeMonthKey(monthKey);
   const todayKey = getTodayAttendanceDateKey();
@@ -399,6 +409,12 @@ export default function AttendanceMonthView({
   const shouldShowEdit = canShowAdminControls && (canEdit ?? showAdminActions);
   const shouldShowDelete = canShowAdminControls && (canDelete ?? showAdminActions);
   const shouldShowReview = canShowAdminControls && (canReview ?? showAdminActions);
+  const shouldShowEmergencyLeave =
+    canShowAdminControls &&
+    Boolean(canCreateEmergencyLeave && onCreateEmergencyLeave);
+  const shouldShowCancelLeave =
+    canShowAdminControls &&
+    Boolean(canCancelLeave && onCancelLeave);
   const isRestDay =
     selectedStatus === "off_day";
 
@@ -437,40 +453,57 @@ export default function AttendanceMonthView({
   };
 
   return (
-    <section className="attendance-month" dir="rtl">
+    <section className={["attendance-month", className].filter(Boolean).join(" ")} dir="rtl">
       {showSummaryTools ? (
-        <div className="attendance-month__summary">
-          <div className="attendance-month__summary-copy">
-            <h3>{title}</h3>
-            <p>{subtitle}</p>
+        <div className="attendance-month__summary attendance-month__command-center">
+          <div className="attendance-month__command-intro">
+            <span className="attendance-month__command-icon" aria-hidden="true">
+              <FontAwesomeIcon icon={faFingerprint} />
+            </span>
+            <div className="attendance-month__command-copy">
+              <span className="attendance-month__eyebrow">إدارة الدوام</span>
+              <h2>{title}</h2>
+              <p>{subtitle}</p>
+            </div>
           </div>
-          <div className="attendance-month__summary-tools">
+
+          <div className="attendance-month__command-controls">
+            <label className="attendance-month__month-control">
+              <span className="attendance-month__control-label">الشهر المعروض</span>
+              <span className="attendance-month__control-field">
+                <FontAwesomeIcon icon={faCalendarDay} />
+                <input
+                  type="month"
+                  value={safeMonthKey}
+                  onChange={(event) => onMonthChange(normalizeMonthKey(event.target.value))}
+                />
+              </span>
+            </label>
             <button
               type="button"
-              className="attendance-month__primary"
+              className="attendance-month__refresh-button"
               onClick={onGenerateSummary}
               disabled={loading || !onGenerateSummary}
             >
               <FontAwesomeIcon icon={faRotate} spin={loading} />
-              {loading ? "جاري التحديث..." : "تحديث السجلات"}
+              <span>{loading ? "جاري التحديث..." : "تحديث السجلات"}</span>
             </button>
-            <label className="attendance-month__month-input">
-              <FontAwesomeIcon icon={faCalendarDay} />
-              <input
-                type="month"
-                value={safeMonthKey}
-                onChange={(event) => onMonthChange(normalizeMonthKey(event.target.value))}
-              />
-              <span>الشهر</span>
-            </label>
           </div>
-          <div className="attendance-month__summary-empty">
-            {loading ? "جاري تحميل سجلات الحضور..." : emptySummaryText}
+
+          <div className="attendance-month__selected-overview">
+            <div className="attendance-month__selected-overview-head">
+              <span>اليوم المحدد</span>
+              <span className={`attendance-month__selected-status is-${selectedTone}`}>
+                {loading ? "تحميل" : statusLabel(selectedStatus)}
+              </span>
+            </div>
+            <strong>{fullDateLabel(safeSelectedDate)}</strong>
+            <small>{emptySummaryText}</small>
           </div>
         </div>
       ) : null}
 
-      <div className="attendance-month__calendar-shell">
+      <div className="attendance-month__calendar-shell attendance-month__calendar-card">
         <div className="attendance-month__calendar-head">
           <button
             type="button"
@@ -481,11 +514,13 @@ export default function AttendanceMonthView({
             <FontAwesomeIcon icon={faChevronRight} />
           </button>
           <div className="attendance-month__title">
+            <span>تقويم الحضور</span>
             <h3>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</h3>
           </div>
           <div className="attendance-month__calendar-actions">
             <button type="button" className="attendance-month__today-button" onClick={goToToday}>
-              اليوم
+              <FontAwesomeIcon icon={faCalendarDay} />
+              <span>اليوم</span>
             </button>
             <button
               type="button"
@@ -557,6 +592,11 @@ export default function AttendanceMonthView({
                   <FontAwesomeIcon icon={faCheck} /> مراجعة
                 </button>
               ) : null}
+              {shouldShowEmergencyLeave && selectedDayRecords.length === 0 ? (
+                <button type="button" onClick={() => onCreateEmergencyLeave?.(safeSelectedDate)}>
+                  <FontAwesomeIcon icon={faCalendarDay} /> إجازة مفاجئة
+                </button>
+              ) : null}
               {shouldShowEdit ? (
                 <button type="button" onClick={() => onEditPunch?.(safeSelectedDate)} disabled={!onEditPunch}>
                   <FontAwesomeIcon icon={faPenToSquare} />
@@ -613,6 +653,15 @@ export default function AttendanceMonthView({
             </div>
 
             <strong>إجازة</strong>
+            {shouldShowCancelLeave ? (
+              <button
+                type="button"
+                className="attendance-month__state-action is-danger"
+                onClick={() => onCancelLeave?.(safeSelectedDate)}
+              >
+                إلغاء الإجازة
+              </button>
+            ) : null}
           </div>
         ) : isAbsentDay ? (
           <div className="attendance-month__state-card is-absent">

@@ -1,5 +1,7 @@
-Queens Salon icon package
+Working-hours hotfix V7
 
-1) Copy the android folder over the project root and allow replacement.
-2) Upload google-play/queens-salon-play-store-icon-512.png to Google Play Console as the app icon.
-3) Run npm run build, npx cap sync android, then rebuild the Android release.
+Fixes:
+- Removes the corrupted status/check glyph by drawing the icon with CSS only.
+- Makes the work-hour overrides section span the full profile grid width.
+- Uses distinct weekday initials instead of the same Arabic article letter.
+- Uses explicit UTF-8 reads/writes in the PowerShell installer.

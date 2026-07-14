@@ -55,8 +55,11 @@ import {
   listAttendanceByDateRangeForEmployeeFromWorker,
 } from "../services/attendanceWorkerService";
 import {
+  approveEmployeeLeaveRequest,
+  createLeaveRequest,
   createEmployeeNotification,
   listEmployeeLeaveRequests,
+  reviewLeaveRequest,
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
@@ -1049,6 +1052,212 @@ export default function DashboardEmployees() {
     list,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
+  ]);
+
+  const createEmergencyLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
+    if (!selectedEmployeeId) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
+      return;
+    }
+    if (!authUser?.uid) {
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      return;
+    }
+    if (!ensureCanManageLeaveBalance()) return;
+
+    const date = normalizeLeaveUntil(dateKey);
+    if (!date) {
+      setErrorMsg("اختر يومًا صحيحًا لتسجيل الإجازة.");
+      return;
+    }
+
+    const employeeProfile =
+      list.find((item) => item.id === selectedEmployeeId) ||
+      list.find((item) =>
+        employeeMatchesIdentity(
+          item,
+          selectedEmployeeIdentityRef.current
+        )
+      ) ||
+      { id: selectedEmployeeId };
+
+    const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+      employeeProfile,
+      selectedEmployeeId
+    );
+    const employeeUid = attendanceIdentity.employeeUid;
+    const employeeId = attendanceIdentity.employeeDocId || selectedEmployeeId;
+    if (!employeeUid || !employeeId) {
+      setErrorMsg("تعذر تحديد حساب الموظفة لتسجيل الإجازة.");
+      return;
+    }
+
+    const approvedLeaveDateKeys = buildApprovedLeaveDateKeys({
+      profile: employeeProfile,
+      leaveRequests: selectedEmployeeLeaveRequests,
+      extraIds: attendanceIdentity.allIds,
+      todayDateKey: todayIso(),
+    });
+    if (approvedLeaveDateKeys.includes(date)) {
+      setErrorMsg("هذا اليوم مسجل كإجازة معتمدة بالفعل.");
+      return;
+    }
+
+    const hasAttendanceRecord = employeeAttendanceRows.some(
+      (row) =>
+        row.date === date &&
+        Boolean(row.checkInAtClient || row.checkOutAtClient)
+    );
+    if (hasAttendanceRecord) {
+      setErrorMsg("لا يمكن تحويل يوم عليه بصمة إلى إجازة مفاجئة من هذا الإجراء.");
+      return;
+    }
+
+    const employeeName = cleanText(
+      (employeeProfile as any)?.name ||
+        (employeeProfile as any)?.displayName ||
+        selectedEmployeeId
+    );
+    const ok = confirm(
+      `سيتم تسجيل يوم ${date} كإجازة اضطرارية معتمدة للموظفة ${employeeName || selectedEmployeeId}. هل تريد المتابعة؟`
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      const requestRef = await createLeaveRequest({
+        employeeUid,
+        employeeId,
+        employeeName,
+        type: "emergency",
+        fromDate: date,
+        toDate: date,
+        days: 1,
+        note: "إجازة مفاجئة من سجل الحضور",
+        createdByUid: authUser.uid,
+        createdByName: authUser.displayName || authUser.email,
+      });
+
+      await approveEmployeeLeaveRequest({
+        requestId: requestRef.id,
+        reviewerUid: authUser.uid,
+        reviewerName: authUser.displayName || authUser.email,
+      });
+
+      void writeAuditLog({
+        action: "leave_approved",
+        entityType: "employee_leave",
+        entityId: requestRef.id,
+        source: "dashboard",
+        description: "تسجيل إجازة مفاجئة معتمدة من سجل الحضور",
+        after: {
+          date,
+          employeeUid,
+          employeeId,
+          leaveType: "emergency",
+          status: "approved",
+        },
+        meta: {
+          staffId: selectedEmployeeId,
+          staffName: employeeName,
+        },
+      });
+
+      await loadSelectedEmployeeAttendance();
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة المفاجئة."));
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    authUser?.displayName,
+    authUser?.email,
+    authUser?.uid,
+    employeeAttendanceRows,
+    ensureCanManageLeaveBalance,
+    list,
+    loadSelectedEmployeeAttendance,
+    selectedEmployeeId,
+    selectedEmployeeLeaveRequests,
+  ]);
+
+  const cancelLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
+    if (!selectedEmployeeId) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
+      return;
+    }
+    if (!authUser?.uid) {
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      return;
+    }
+    if (!ensureCanManageLeaveBalance()) return;
+
+    const date = normalizeLeaveUntil(dateKey);
+    if (!date) {
+      setErrorMsg("اختر يومًا صحيحًا لإلغاء الإجازة.");
+      return;
+    }
+
+    const leaveRequest = selectedEmployeeLeaveRequests.find((request) => {
+      if (cleanText(request.status).toLowerCase() !== "approved") return false;
+      const fromDate = normalizeLeaveUntil(request.fromDate);
+      const toDate = normalizeLeaveUntil(request.toDate) || fromDate;
+      return !!fromDate && date >= fromDate && date <= toDate;
+    });
+
+    if (!leaveRequest) {
+      setErrorMsg("لم يتم العثور على طلب إجازة معتمد لهذا اليوم.");
+      return;
+    }
+
+    const ok = confirm(`سيتم إلغاء الإجازة المعتمدة ليوم ${date}. هل تريد المتابعة؟`);
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      await reviewLeaveRequest({
+        requestId: leaveRequest.id,
+        status: "cancelled",
+        reviewerUid: authUser.uid,
+        reviewerName: authUser.displayName || authUser.email,
+      });
+
+      void writeAuditLog({
+        action: "leave_cancelled",
+        entityType: "employee_leave",
+        entityId: leaveRequest.id,
+        source: "dashboard",
+        description: "إلغاء إجازة معتمدة من سجل الحضور",
+        before: {
+          date,
+          status: "approved",
+          leaveType: leaveRequest.type,
+        },
+        after: {
+          date,
+          status: "cancelled",
+        },
+        meta: {
+          staffId: selectedEmployeeId,
+        },
+      });
+
+      await loadSelectedEmployeeAttendance();
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    authUser?.displayName,
+    authUser?.email,
+    authUser?.uid,
+    ensureCanManageLeaveBalance,
+    loadSelectedEmployeeAttendance,
+    selectedEmployeeId,
+    selectedEmployeeLeaveRequests,
   ]);
 
   const resetForm = () => {
@@ -4203,6 +4412,8 @@ export default function DashboardEmployees() {
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
                 canReview={canViewAttendance}
+                canCreateEmergencyLeave={canManageLeaveBalance}
+                canCancelLeave={canManageLeaveBalance}
                 onMonthChange={(monthKey) => {
                   setEmployeeAttendanceMonth(monthKey);
                   setEmployeeAttendanceSelectedDate((current) =>
@@ -4216,6 +4427,12 @@ export default function DashboardEmployees() {
                 onEditPunch={openAttendancePunchEditor}
                 onDeletePunch={(dateKey) => {
                   void deleteAttendancePunch(dateKey);
+                }}
+                onCreateEmergencyLeave={(dateKey) => {
+                  void createEmergencyLeaveForAttendanceDay(dateKey);
+                }}
+                onCancelLeave={(dateKey) => {
+                  void cancelLeaveForAttendanceDay(dateKey);
                 }}
               />
               {attendanceEditOpen && activeTab === "attendance" && (canCreateAttendance || canUpdateAttendance) ? (

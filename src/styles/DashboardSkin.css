@@ -17008,15 +17008,17 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 
 .attendance-month__detail {
   display: grid;
-  gap: 18px;
+  gap: 14px;
   padding: 0 18px 12px;
 }
 
 .attendance-month__detail-head {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: end;
-  min-height: 72px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 44px;
+  padding: 0 2px 4px;
 }
 
 .attendance-month__leave {
@@ -17027,20 +17029,24 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .attendance-month__records-tab {
-  justify-self: center;
-  min-width: 330px;
-  display: grid;
-  place-items: center;
-  gap: 16px;
+  width: max-content;
+  min-width: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
   color: #020617;
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .attendance-month__records-tab::after {
   content: "";
-  width: 100%;
-  height: 6px;
+  width: 44px;
+  height: 3px;
   border-radius: 999px;
   background: #020617;
 }
@@ -17437,7 +17443,7 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   }
 
   .attendance-month__records-tab {
-    min-width: 220px;
+    min-width: 0;
   }
 }
 
@@ -17474,7 +17480,12 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
     padding-inline: 0;
   }
 
-  .attendance-month__detail-head,
+  .attendance-month__detail-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .attendance-month__records-meta,
   .attendance-month__metrics,
   .attendance-month__wide-metrics {
@@ -17482,7 +17493,8 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   }
 
   .attendance-month__records-tab {
-    min-width: 100%;
+    width: max-content;
+    min-width: 0;
   }
 
   .attendance-month__actions,
