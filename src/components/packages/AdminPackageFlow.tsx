@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collection, doc, getDoc, getDocs, limit, query as firestoreQuery, serverTimestamp, setDoc, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query as firestoreQuery,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { PackageService, type Package } from "../../services/PackageService";
 import type { ClientPackage } from "../../services/ClientPackageService";
@@ -9,10 +19,16 @@ import {
   type PackagePurchaseResult,
   type PackageRedemptionResult,
 } from "../../services/PackageOperationsService";
-import { packageDate, printPackageDocument } from "./packageFormat";
+import {
+  buildPackageCartEligibility,
+  type PackageCartEligibility,
+} from "../../helpers/packageCartEligibility";
+import { packageWalletDisplayState } from "../../helpers/packageWalletDiagnostics";
+import { packageDate } from "./packageFormat";
 import "../../styles/SessionPackages.css";
 
 type BookingItem = {
+  id?: string;
   serviceId?: string;
   serviceName?: string;
   employeeId?: string;
@@ -20,22 +36,30 @@ type BookingItem = {
   date?: string;
   time?: string;
   locked?: boolean;
+  basePrice?: number;
+  serviceBasePrice?: number;
+  finalPrice?: number;
 };
 
-function cleanText(value: any) {
-  return String(value || "").trim();
+function cleanText(value: unknown) {
+  return String(value ?? "").trim();
 }
 
 function millis(value: any) {
   if (typeof value?.toMillis === "function") return value.toMillis();
   if (typeof value?.seconds === "number") return value.seconds * 1000;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
   return Number(value || 0);
 }
 
 function stableClientId(client: any) {
+  const canonical = cleanText(client?.canonicalClientId);
+  if (canonical) return canonical;
   const explicit = cleanText(client?.clientId);
   if (explicit) return explicit;
-
   const id = cleanText(client?.id);
   const source = cleanText(client?.source);
   if (
@@ -47,15 +71,14 @@ function stableClientId(client: any) {
   ) {
     return id;
   }
-
   return "";
 }
 
-function money(value: any) {
+function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ر.س`;
 }
 
-function normalizePhone(value: any) {
+function normalizePhone(value: unknown) {
   const raw = cleanText(value);
   if (!raw || /[A-Za-z]/.test(raw)) return "";
   let digits = raw.replace(/\D/g, "");
@@ -67,7 +90,7 @@ function normalizePhone(value: any) {
   return "";
 }
 
-function phoneLookupValues(value: any) {
+function phoneLookupValues(value: unknown) {
   const normalized = normalizePhone(value);
   if (!normalized) return [];
   const values = new Set([normalized]);
@@ -81,7 +104,7 @@ function phoneLookupValues(value: any) {
 function clientLookupPayload(client: any, fallbackPhone: string) {
   const id = cleanText(client?.id);
   const uid = cleanText(client?.uid || client?.authUid || client?.firebaseUid);
-  const clientId = cleanText(client?.clientId);
+  const clientId = cleanText(client?.clientId || client?.canonicalClientId);
   const customerId = cleanText(client?.customerId);
   const authUid = cleanText(client?.authUid || client?.uid || client?.firebaseUid);
   const phone = normalizePhone(
@@ -97,17 +120,35 @@ function clientLookupPayload(client: any, fallbackPhone: string) {
   };
 }
 
+function itemPrice(item: BookingItem) {
+  return Math.max(0, Number(item.finalPrice ?? item.basePrice ?? item.serviceBasePrice ?? 0) || 0);
+}
+
 export default function AdminPackageFlow(props: {
   client: any;
   bookingItem?: BookingItem | null;
+  bookingItems?: BookingItem[] | null;
   onRedeemed?: (result: PackageRedemptionResult) => void;
   onClientCreated?: (client: any) => void;
 }) {
   const clientId = stableClientId(props.client);
   const clientName = cleanText(props.client?.name || props.client?.fullName || props.client?.clientName);
   const clientPhone = cleanText(props.client?.phone || props.client?.mobile || props.client?.clientPhone);
+  const isDev = Boolean((import.meta as any).env?.DEV);
+  const buildId = cleanText(
+    (import.meta as any).env?.VITE_BUILD_ID ||
+      (import.meta as any).env?.VITE_VERCEL_GIT_COMMIT_SHA ||
+      (import.meta as any).env?.VITE_COMMIT_SHA ||
+      "dev"
+  );
 
   const [wallet, setWallet] = useState<ClientPackage[]>([]);
+  const [walletSummary, setWalletSummary] = useState<PackageClientWalletResult | null>(null);
+  const [walletStatus, setWalletStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [walletCanonicalClientId, setWalletCanonicalClientId] = useState("");
+  const [lastWalletRequestAt, setLastWalletRequestAt] = useState("");
+  const [selectedPackageByItemId, setSelectedPackageByItemId] = useState<Record<string, string>>({});
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [catalog, setCatalog] = useState<Package[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -122,30 +163,62 @@ export default function AdminPackageFlow(props: {
     paymentMethod: string;
     taxAmount: number;
   } | null>(null);
-  const [selectedWalletId, setSelectedWalletId] = useState("");
   const [redeemResult, setRedeemResult] = useState<PackageRedemptionResult | null>(null);
-  const [walletSummary, setWalletSummary] = useState<PackageClientWalletResult | null>(null);
   const onClientCreatedRef = useRef(props.onClientCreated);
 
   useEffect(() => {
     onClientCreatedRef.current = props.onClientCreated;
   }, [props.onClientCreated]);
 
+  const bookingItems = useMemo(() => {
+    const rows = props.bookingItems?.length ? props.bookingItems : props.bookingItem ? [props.bookingItem] : [];
+    return rows
+      .filter((item) => cleanText(item?.serviceId))
+      .map((item, index) => ({
+        ...item,
+        id: cleanText(item.id) || `draft_${index}_${cleanText(item.serviceId) || "service"}`,
+      }));
+  }, [props.bookingItems, props.bookingItem]);
+
   const refresh = useCallback(async (): Promise<PackageClientWalletResult | null> => {
     if (!clientId) {
       setWallet([]);
       setWalletSummary(null);
+      setWalletStatus("idle");
+      setWalletCanonicalClientId("");
+      setSelectedPackageByItemId({});
       return null;
     }
 
     setLoading(true);
     setError("");
+    setWallet([]);
+    setWalletSummary(null);
+    setWalletStatus("loading");
+    setWalletCanonicalClientId("");
+    setSelectedPackageByItemId({});
+    setRedeemResult(null);
+    const requestedAt = new Date().toISOString();
+    setLastWalletRequestAt(requestedAt);
     try {
       const summary = await PackageOperationsService.clientWallet({
         clientId,
         clientLookup: clientLookupPayload(props.client, clientPhone),
       });
       const canonicalClientId = cleanText(summary.canonicalClientId || summary.clientId);
+      setWalletCanonicalClientId(canonicalClientId);
+      setWalletStatus("success");
+      if (isDev) {
+        console.info("[packages:client-wallet]", {
+          origin: window.location.origin,
+          buildId,
+          selectedClientLocalId: clientId,
+          canonicalClientId,
+          walletRequestStatus: "success",
+          walletResponseWarnings: summary.warnings || [],
+          lastRequestAt: requestedAt,
+        });
+      }
       if (canonicalClientId && canonicalClientId !== clientId) {
         onClientCreatedRef.current?.({
           ...props.client,
@@ -161,18 +234,39 @@ export default function AdminPackageFlow(props: {
       setWallet((summary.packages || []) as ClientPackage[]);
       setWalletSummary(summary);
       if (summary.warnings?.length) {
-        setError(`تم تحميل الرصيد مع تحذيرات: ${summary.warnings.map((w) => w.reason || w.packageId).filter(Boolean).join("، ")}`);
+        setError(
+          `تم تحميل الرصيد مع تحذيرات: ${summary.warnings
+            .map((warning) => warning.reason || warning.packageId)
+            .filter(Boolean)
+            .join("، ")}`
+        );
       }
       return summary;
-    } catch {
+    } catch (e: any) {
       setWallet([]);
       setWalletSummary(null);
-      setError("تعذر تحميل باقات العميلة. تحققي من هوية العميلة أو افتحي تقرير تدقيق الهويات.");
+      setWalletStatus("error");
+      const message = cleanText(e?.message);
+      if (isDev) {
+        console.warn("[packages:client-wallet]", {
+          origin: window.location.origin,
+          buildId,
+          selectedClientLocalId: clientId,
+          canonicalClientId: "",
+          walletRequestStatus: "error",
+          walletResponseWarnings: [],
+          errorCode: cleanText(e?.code),
+          errorStatus: Number(e?.status || 0) || undefined,
+          errorMessage: message,
+          lastRequestAt: requestedAt,
+        });
+      }
+      setError(message ? `تعذر تحميل رصيد الباقات: ${message}` : "تعذر تحميل رصيد الباقات");
       return null;
     } finally {
       setLoading(false);
     }
-  }, [clientId, props.client, clientPhone, clientName]);
+  }, [clientId, props.client, clientPhone, clientName, isDev, buildId]);
 
   useEffect(() => {
     void refresh();
@@ -193,51 +287,76 @@ export default function AdminPackageFlow(props: {
 
   const active = useMemo(() => {
     const now = Date.now();
-    return wallet.filter(
-      (p) =>
-        p.status === "active" &&
-        p.remainingSessions > 0 &&
-        (!millis(p.expiresAt) || millis(p.expiresAt) >= now)
-    );
+    return wallet.filter((pkg) => {
+      const allowed = Array.isArray((pkg as any).allowedServiceIdsSnapshot)
+        ? (pkg as any).allowedServiceIdsSnapshot
+        : [];
+      return (
+        pkg.status === "active" &&
+        Number(pkg.remainingSessions || 0) > 0 &&
+        allowed.length > 0 &&
+        (!millis(pkg.expiresAt) || millis(pkg.expiresAt) >= now)
+      );
+    });
   }, [wallet]);
 
-  const eligible = useMemo(() => {
-    const serviceId = cleanText(props.bookingItem?.serviceId);
-    if (!serviceId) return [];
-    return active
-      .filter((p) => p.allowedServiceIdsSnapshot.includes(serviceId))
-      .sort(
-        (a, b) =>
-          (millis(a.expiresAt) || Number.MAX_SAFE_INTEGER) -
-          (millis(b.expiresAt) || Number.MAX_SAFE_INTEGER)
-      );
-  }, [active, props.bookingItem?.serviceId]);
+  const cartEligibility = useMemo(
+    () =>
+      buildPackageCartEligibility({
+        items: bookingItems.map((item) => ({ id: item.id, serviceId: item.serviceId })),
+        packages: active,
+        selectedPackageByItemId,
+      }),
+    [active, bookingItems, selectedPackageByItemId]
+  );
 
-  useEffect(() => {
-    if (!eligible.length) {
-      setSelectedWalletId("");
-      return;
-    }
-    if (!eligible.some((p) => p.id === selectedWalletId)) {
-      setSelectedWalletId(cleanText(eligible[0].id));
-    }
-  }, [eligible, selectedWalletId]);
+  const eligibilityByItemId = useMemo(() => {
+    const map = new Map<string, PackageCartEligibility>();
+    cartEligibility.forEach((entry) => map.set(entry.cartItemId, entry));
+    return map;
+  }, [cartEligibility]);
 
-  const selectedCatalog = catalog.find((p) => p.id === selectedCatalogId);
-  const selectedWallet = eligible.find((p) => p.id === selectedWalletId);
-  const totalRemaining = Number(walletSummary?.totalRemainingSessions ?? active.reduce((sum, p) => sum + Number(p.remainingSessions || 0), 0));
-  const totalReserved = Number(walletSummary?.totalReservedSessions ?? active.reduce((sum, p) => sum + Number(p.reservedSessions || 0), 0));
-  const totalUsed = Number(walletSummary?.totalUsedSessions ?? active.reduce((sum, p) => sum + Number(p.usedSessions || 0), 0));
+  const redeemableItems = cartEligibility.filter((item) => item.isPackageEligible);
+  const selectedCatalog = catalog.find((pkg) => pkg.id === selectedCatalogId);
+  const totalRemaining = Number(
+    walletSummary?.totalRemainingSessions ?? active.reduce((sum, pkg) => sum + Number(pkg.remainingSessions || 0), 0)
+  );
+  const totalReserved = Number(
+    walletSummary?.totalReservedSessions ?? active.reduce((sum, pkg) => sum + Number(pkg.reservedSessions || 0), 0)
+  );
+  const totalUsed = Number(
+    walletSummary?.totalUsedSessions ?? active.reduce((sum, pkg) => sum + Number(pkg.usedSessions || 0), 0)
+  );
   const nearestExpiry = walletSummary?.nearestExpiryAt
     ? millis(walletSummary.nearestExpiryAt)
-    : active
-        .map((p) => millis(p.expiresAt))
-        .filter(Boolean)
-        .sort((a, b) => a - b)[0];
+    : active.map((pkg) => millis(pkg.expiresAt)).filter(Boolean).sort((a, b) => a - b)[0];
   const taxAmount =
     selectedCatalog && taxRate > 0
       ? Math.round((selectedCatalog.price - selectedCatalog.price / (1 + taxRate / 100)) * 100) / 100
       : 0;
+  const walletLoadFailed = walletStatus === "error";
+  const walletLoading = walletStatus === "loading";
+  const walletDisplayState = packageWalletDisplayState({
+    status: walletStatus,
+    activePackages: Number(walletSummary?.activePackages ?? active.length),
+    totalRemainingSessions: totalRemaining,
+  });
+  const coveredCartTotal = bookingItems.reduce((sum, item) => {
+    const entry = eligibilityByItemId.get(cleanText(item.id));
+    return entry?.canRedeem ? sum + itemPrice(item) : sum;
+  }, 0);
+  const cartTotal = bookingItems.reduce((sum, item) => sum + itemPrice(item), 0);
+  const remainingCartTotal = Math.max(0, cartTotal - coveredCartTotal);
+  const diagnostics = {
+    origin: typeof window !== "undefined" ? window.location.origin : "",
+    buildId,
+    selectedClientLocalId: clientId,
+    canonicalClientId: walletCanonicalClientId || cleanText(walletSummary?.canonicalClientId),
+    walletStatus,
+    activePackages: active.length,
+    lastRequestAt: lastWalletRequestAt,
+  };
+  const hasAnyClientData = Boolean(props.client || clientName || clientPhone);
 
   async function purchase() {
     if (!clientId || !selectedCatalog?.id || !paymentMethod) return;
@@ -255,6 +374,7 @@ export default function AdminPackageFlow(props: {
         onClientCreatedRef.current?.({
           ...props.client,
           clientId: canonicalClientId,
+          canonicalClientId,
           legacyClientDocId: clientId,
           name: clientName,
           fullName: clientName,
@@ -264,7 +384,7 @@ export default function AdminPackageFlow(props: {
       }
       const refreshed = await refresh();
       const purchased = ((refreshed?.packages || []) as ClientPackage[]).find(
-        (p) => p.id === result.clientPackageId
+        (pkg) => pkg.id === result.clientPackageId
       );
       setReceipt({
         result,
@@ -288,10 +408,9 @@ export default function AdminPackageFlow(props: {
       setError("أدخلي اسم العميلة ورقم الجوال أولًا.");
       return;
     }
-
     const normalizedPhone = normalizePhone(clientPhone);
     if (!normalizedPhone) {
-      setError("رقم الجوال غير صالح، ولا يمكن إنشاء ملف عميلة بدون رقم حقيقي.");
+      setError("رقم الجوال غير صالح.");
       return;
     }
 
@@ -309,12 +428,10 @@ export default function AdminPackageFlow(props: {
           snap.docs.forEach((row) => phoneMatches.set(row.ref.path, { id: row.id, data: row.data() || {} }));
         }
       }
-
       if (phoneMatches.size > 1) {
-        setError("يوجد أكثر من ملف عميلة بنفس رقم الجوال. أوقفت إنشاء ملف جديد لتجنب التكرار، افتحي تقرير تدقيق الهويات أولًا.");
+        setError("يوجد أكثر من ملف عميلة بنفس رقم الجوال. افتحي تقرير تدقيق الهويات أولًا.");
         return;
       }
-
       if (phoneMatches.size === 1) {
         const existing = [...phoneMatches.values()][0];
         const existingClientId = cleanText(existing.data.clientId || existing.id);
@@ -346,6 +463,7 @@ export default function AdminPackageFlow(props: {
         ...props.client,
         id,
         clientId: id,
+        canonicalClientId: id,
         name: clientName,
         fullName: clientName,
         phone: normalizedPhone,
@@ -359,13 +477,15 @@ export default function AdminPackageFlow(props: {
     }
   }
 
-  async function redeem() {
-    const item = props.bookingItem;
-    if (!clientId) {
-      setError("تعذر تحديد clientId ثابت للعميلة. اختاري عميلة محفوظة أو أنشئي ملفًا لها أولًا.");
+  async function redeem(target: PackageCartEligibility) {
+    const item = bookingItems.find((entry) => cleanText(entry.id) === cleanText(target.cartItemId));
+    const clientIdForRedeem = cleanText(walletCanonicalClientId || walletSummary?.canonicalClientId || walletSummary?.clientId || clientId);
+    const selectedPackageId = cleanText(target.eligiblePackageId);
+    if (!clientIdForRedeem) {
+      setError("تعذر تحديد canonicalClientId للعميلة.");
       return;
     }
-    if (!selectedWallet?.id) {
+    if (!selectedPackageId || !target.canRedeem) {
       setError("لا يوجد رصيد باقة صالح لهذه الخدمة.");
       return;
     }
@@ -378,13 +498,14 @@ export default function AdminPackageFlow(props: {
     setError("");
     try {
       const result = await PackageOperationsService.redeem({
-        clientId,
+        clientId: clientIdForRedeem,
         clientLookup: clientLookupPayload(props.client, clientPhone),
-        clientPackageId: selectedWallet.id,
+        clientPackageId: selectedPackageId,
         serviceId: item.serviceId,
         employeeId: item.employeeId,
         date: item.date,
         time: item.time,
+        cartItemId: target.cartItemId,
       });
       setRedeemResult(result);
       await refresh();
@@ -395,8 +516,6 @@ export default function AdminPackageFlow(props: {
       setLoading(false);
     }
   }
-
-  const hasAnyClientData = Boolean(props.client || clientName || clientPhone);
 
   return (
     <section className="session-packages" aria-label="ملخص العميلة والباقات">
@@ -411,7 +530,7 @@ export default function AdminPackageFlow(props: {
             <button
               type="button"
               className="session-packages__button secondary"
-              onClick={() => setSaleOpen((v) => !v)}
+              onClick={() => setSaleOpen((value) => !value)}
               disabled={!clientId}
             >
               بيع باقة جلسات
@@ -419,9 +538,24 @@ export default function AdminPackageFlow(props: {
           ) : null}
         </div>
 
+        {isDev ? (
+          <div className="session-packages__actions">
+            <button
+              type="button"
+              className="session-packages__button secondary"
+              onClick={() => setDiagnosticsOpen((value) => !value)}
+            >
+              تشخيص الباقات
+            </button>
+            {diagnosticsOpen ? (
+              <pre className="session-packages__muted mb-0">{JSON.stringify(diagnostics, null, 2)}</pre>
+            ) : null}
+          </div>
+        ) : null}
+
         {!hasAnyClientData ? (
           <p className="session-packages__muted mb-0">
-            سيظهر زر بيع الباقة وملخص الرصيد مباشرة بعد اختيار العميلة أو إدخال اسمها ورقمها.
+            سيظهر ملخص الرصيد بعد اختيار العميلة أو إدخال اسمها ورقمها.
           </p>
         ) : !clientId ? (
           <div className="session-packages__error">
@@ -430,15 +564,17 @@ export default function AdminPackageFlow(props: {
               إنشاء ملف عميلة جديد
             </button>
           </div>
+        ) : walletLoadFailed ? (
+          <div className="session-packages__error">تعذر تحميل رصيد الباقات</div>
         ) : (
           <div className="session-packages__stats">
             <div className="session-packages__stat">
               <small>الباقات الفعالة</small>
-              <strong>{Number(walletSummary?.activePackages ?? active.length)}</strong>
+              <strong>{walletDisplayState.activePackages ?? Number(walletSummary?.activePackages ?? active.length)}</strong>
             </div>
             <div className="session-packages__stat">
               <small>الجلسات المتبقية</small>
-              <strong>{totalRemaining}</strong>
+              <strong>{walletDisplayState.totalRemainingSessions ?? totalRemaining}</strong>
             </div>
             <div className="session-packages__stat">
               <small>الجلسات المحجوزة</small>
@@ -450,12 +586,12 @@ export default function AdminPackageFlow(props: {
             </div>
             <div className="session-packages__stat">
               <small>أقرب انتهاء</small>
-              <strong>{nearestExpiry ? packageDate(nearestExpiry) : "—"}</strong>
+              <strong>{nearestExpiry ? packageDate(nearestExpiry) : "-"}</strong>
             </div>
           </div>
         )}
 
-        {!loading && clientId && !active.length ? (
+        {!loading && clientId && !active.length && !walletLoading && !walletLoadFailed ? (
           <div className="session-packages__empty">
             <span>لا توجد باقات فعالة لهذه العميلة</span>
             <button type="button" onClick={() => setSaleOpen(true)}>
@@ -470,19 +606,19 @@ export default function AdminPackageFlow(props: {
           <h3>بيع باقة جلسات</h3>
           {catalog.length ? (
             <div className="session-packages__choices">
-              {catalog.map((p) => (
+              {catalog.map((pkg) => (
                 <button
                   type="button"
-                  key={p.id}
-                  className={`session-packages__choice ${selectedCatalogId === p.id ? "is-selected" : ""}`}
-                  onClick={() => setSelectedCatalogId(cleanText(p.id))}
+                  key={pkg.id}
+                  className={`session-packages__choice ${selectedCatalogId === pkg.id ? "is-selected" : ""}`}
+                  onClick={() => setSelectedCatalogId(cleanText(pkg.id))}
                 >
-                  <strong>{p.name}</strong>
+                  <strong>{pkg.name}</strong>
                   <span className="session-packages__muted">
-                    {p.sessionsCount} جلسة · {money(p.price)} · {p.serviceIds.length} خدمات ·{" "}
-                    {p.validityDays ? `${p.validityDays} يومًا` : "بدون انتهاء"}
+                    {pkg.sessionsCount} جلسة · {money(pkg.price)} · {pkg.serviceIds.length} خدمات ·{" "}
+                    {pkg.validityDays ? `${pkg.validityDays} يوم` : "بدون انتهاء"}
                   </span>
-                  {p.description ? <span className="session-packages__muted">{p.description}</span> : null}
+                  {pkg.description ? <span className="session-packages__muted">{pkg.description}</span> : null}
                 </button>
               ))}
             </div>
@@ -506,7 +642,7 @@ export default function AdminPackageFlow(props: {
               </div>
               <label className="session-packages__field">
                 طريقة الدفع
-                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as any)}>
+                <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as any)}>
                   <option value="">اختاري</option>
                   <option value="cash">كاش</option>
                   <option value="card">شبكة</option>
@@ -529,85 +665,96 @@ export default function AdminPackageFlow(props: {
         </div>
       ) : null}
 
-      {props.bookingItem?.serviceId ? (
+      {bookingItems.length ? (
         <div className="session-packages__card">
           <h3>الدفع من رصيد الباقة</h3>
-          {eligible.length ? (
+          {walletLoading ? (
+            <p className="session-packages__muted mb-0">جاري تحميل رصيد الباقات...</p>
+          ) : walletLoadFailed ? (
+            <div className="session-packages__error">تعذر تحميل رصيد الباقات</div>
+          ) : redeemableItems.length ? (
             <>
-              <p className="session-packages__muted">
-                تم اختيار الباقة الأقرب انتهاءً تلقائيًا، ويمكن للموظفة تغييرها عند الحاجة.
-              </p>
-              <div className="session-packages__choices">
-                {eligible.map((p) => (
-                  <button
-                    type="button"
-                    key={p.id}
-                    className={`session-packages__choice ${selectedWalletId === p.id ? "is-selected" : ""}`}
-                    onClick={() => setSelectedWalletId(cleanText(p.id))}
-                  >
-                    <strong>{p.packageNameSnapshot}</strong>
-                    <span className="session-packages__muted">
-                      المتبقي الآن: {p.remainingSessions} · بعد هذا الحجز: {Math.max(0, p.remainingSessions - 1)}
-                      {" · "}المحجوز: {p.reservedSessions} · تنتهي: {packageDate(p.expiresAt)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              {selectedWallet ? (
-                <div className="session-packages__grid">
-                  <div className="session-packages__stat">
-                    <small>الخدمة</small>
-                    <strong>{props.bookingItem.serviceName || "—"}</strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>الباقة المستخدمة</small>
-                    <strong>{selectedWallet.packageNameSnapshot}</strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>الرصيد الحالي</small>
-                    <strong>{selectedWallet.remainingSessions}</strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>الرصيد بعد الحجز</small>
-                    <strong>{Math.max(0, selectedWallet.remainingSessions - 1)}</strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>الموظفة</small>
-                    <strong>{props.bookingItem.employeeName || "لم تحدد"}</strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>الموعد</small>
-                    <strong>
-                      {props.bookingItem.date || "—"} {props.bookingItem.time || ""}
-                    </strong>
-                  </div>
-                  <div className="session-packages__stat">
-                    <small>القيمة المستحقة</small>
-                    <strong>صفر · رصيد باقة</strong>
-                  </div>
+              <div className="session-packages__grid">
+                <div className="session-packages__stat">
+                  <small>مغطى بالجلسات</small>
+                  <strong>{money(coveredCartTotal)}</strong>
                 </div>
-              ) : null}
-
-              <div className="session-packages__actions">
-                <button
-                  type="button"
-                  className="session-packages__button"
-                  disabled={
-                    loading ||
-                    !props.bookingItem.employeeId ||
-                    !props.bookingItem.date ||
-                    !props.bookingItem.time
-                  }
-                  onClick={() => void redeem()}
-                >
-                  تأكيد الحجز من الرصيد
-                </button>
-                {!props.bookingItem.employeeId || !props.bookingItem.time ? (
-                  <span className="session-packages__muted">
-                    اختاري الموظفة والوقت من السلة قبل تأكيد خصم الجلسة.
-                  </span>
-                ) : null}
+                <div className="session-packages__stat">
+                  <small>متبقي للدفع العادي</small>
+                  <strong>{money(remainingCartTotal)}</strong>
+                </div>
+              </div>
+              <div className="session-packages__choices">
+                {redeemableItems.map((entry) => {
+                  const item = bookingItems.find((row) => cleanText(row.id) === cleanText(entry.cartItemId));
+                  const selectedPackage = active.find((pkg) => cleanText(pkg.id) === cleanText(entry.eligiblePackageId));
+                  const missingSlot = !item?.employeeId || !item.date || !item.time;
+                  return (
+                    <div className="session-packages__choice" key={entry.cartItemId}>
+                      <strong>{item?.serviceName || entry.serviceId}</strong>
+                      <span className="session-packages__muted">
+                        الباقة: {selectedPackage?.packageNameSnapshot || "-"} · المتبقي: {entry.remainingSessions}
+                        {" · "}بعد الخصم: {Math.max(0, entry.remainingSessions - 1)}
+                      </span>
+                      {entry.eligiblePackages.length > 1 ? (
+                        <div className="session-packages__choices">
+                          {entry.eligiblePackages.map((pkg) => {
+                            const packageId = cleanText(pkg.id);
+                            return (
+                              <button
+                                type="button"
+                                key={packageId}
+                                className={`session-packages__choice ${entry.eligiblePackageId === packageId ? "is-selected" : ""}`}
+                                onClick={() =>
+                                  setSelectedPackageByItemId((prev) => ({
+                                    ...prev,
+                                    [entry.cartItemId]: packageId,
+                                  }))
+                                }
+                              >
+                                <strong>{pkg.packageNameSnapshot}</strong>
+                                <span className="session-packages__muted">
+                                  {pkg.remainingSessions} جلسة · {packageDate(pkg.expiresAt)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="session-packages__grid">
+                        <div className="session-packages__stat">
+                          <small>الموظفة</small>
+                          <strong>{item?.employeeName || "لم تحدد"}</strong>
+                        </div>
+                        <div className="session-packages__stat">
+                          <small>الموعد</small>
+                          <strong>
+                            {item?.date || "-"} {item?.time || ""}
+                          </strong>
+                        </div>
+                        <div className="session-packages__stat">
+                          <small>طريقة الدفع</small>
+                          <strong>{entry.paymentMode}</strong>
+                        </div>
+                      </div>
+                      <div className="session-packages__actions">
+                        <button
+                          type="button"
+                          className="session-packages__button"
+                          disabled={loading || missingSlot || !entry.canRedeem}
+                          onClick={() => void redeem(entry)}
+                        >
+                          تأكيد الحجز من الرصيد
+                        </button>
+                        {missingSlot ? (
+                          <span className="session-packages__muted">
+                            اختاري الموظفة والوقت من السلة قبل تأكيد خصم الجلسة.
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </>
           ) : (
@@ -626,35 +773,14 @@ export default function AdminPackageFlow(props: {
       {receipt ? (
         <div className="session-packages__success">
           تم بيع {receipt.pkg.name}. الرصيد الجديد: {receipt.pkg.sessionsCount} جلسة. رقم الفاتورة:{" "}
-          {receipt.result.invoiceNumber}.
-          <button
-            type="button"
-            onClick={() =>
-              printPackageDocument(
-                `فاتورة ${receipt.result.invoiceNumber}`,
-                `<b>العميلة:</b> ${clientName}<br><b>الباقة:</b> ${receipt.pkg.name}<br><b>عدد الجلسات:</b> ${receipt.pkg.sessionsCount}<br><b>السعر:</b> ${money(receipt.pkg.price - receipt.taxAmount)}<br><b>الضريبة:</b> ${money(receipt.taxAmount)}<br><b>الإجمالي:</b> ${money(receipt.pkg.price)}<br><b>طريقة الدفع:</b> ${receipt.paymentMethod}<br><b>تاريخ الانتهاء:</b> ${packageDate(receipt.expiresAt)}`
-              )
-            }
-          >
-            طباعة الفاتورة
-          </button>
+          {receipt.result.invoiceNumber}. تاريخ الانتهاء: {packageDate(receipt.expiresAt)}
         </div>
       ) : null}
 
       {redeemResult ? (
         <div className="session-packages__success">
-          تم إنشاء الحجز {redeemResult.publicId} وتسويته من رصيد الباقة.
-          <button
-            type="button"
-            onClick={() =>
-              printPackageDocument(
-                `إيصال ${redeemResult.publicId}`,
-                `<b>العميلة:</b> ${clientName}<br><b>الخدمة:</b> ${props.bookingItem?.serviceName}<br><b>الموظفة:</b> ${props.bookingItem?.employeeName}<br><b>الموعد:</b> ${props.bookingItem?.date} ${props.bookingItem?.time}<br><b>الباقة:</b> ${selectedWallet?.packageNameSnapshot || "باقة جلسات"}<br><b>الرصيد قبل:</b> ${selectedWallet ? selectedWallet.remainingSessions + 1 : "—"}<br><b>الرصيد بعد:</b> ${selectedWallet?.remainingSessions ?? "—"}<br><b>القيمة المدفوعة:</b> صفر<br>تمت التسوية من رصيد الباقة`
-              )
-            }
-          >
-            طباعة الإيصال الصفري
-          </button>
+          تم إنشاء الحجز {redeemResult.publicId} وتسويته من رصيد الباقة. الرصيد:{" "}
+          {redeemResult.beforeRemaining ?? "-"} → {redeemResult.afterRemaining ?? "-"}
         </div>
       ) : null}
     </section>

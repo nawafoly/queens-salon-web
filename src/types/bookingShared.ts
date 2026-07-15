@@ -13,6 +13,11 @@ export type CartItem = {
   sessionPackageName?: string;
   allowedServiceIds?: string[];
   consumeOneSession?: boolean;
+  isPackageEligible?: boolean;
+  eligiblePackageId?: string;
+  remainingSessions?: number;
+  canRedeem?: boolean;
+  paymentMode?: "package" | "cash/card";
   packageId?: string;
   packageSnapshot?: {
     packageId: string;

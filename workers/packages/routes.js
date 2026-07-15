@@ -71,6 +71,7 @@ export async function withActor(request, env, body) {
 
 const routes = {
   "POST /api/packages/purchase": purchasePackage,
+  "POST /api/packages/redeem": createRedemptionBooking,
   "POST /api/packages/redemption/create": createRedemptionBooking,
   "POST /api/packages/redemption/consume": consumeReserved,
   "POST /api/packages/redemption/cancel": cancelRedemption,

@@ -192,7 +192,7 @@ async function buildClientIdentityResultWithAliases(salonId, snap, extraAliases 
   };
 }
 
-export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}) {
+export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}, options = {}) {
   const directPath = salonPath(salonId, "clients", requestedId);
   const direct = await tx.get(directPath);
   if (direct.exists) return buildClientIdentityResultWithAliases(salonId, direct, [requestedId]);
@@ -241,6 +241,14 @@ export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {
   }
 
   const phoneCandidatesFromPayload = collectClientLookupCandidates(requestedId, lookup, "phone");
+  if (options.allowPhoneMatch === false) {
+    await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...strongLookupFields],
+      matchCount: 0,
+    });
+    throw new AppError(404, "packages_client:not_found", "Client was not found");
+  }
+
   const phoneMatches = new Map();
   const phoneMatchedBy = new Map();
   const phoneLookupFields = new Set(CLIENT_LOOKUP_PHONE_FIELDS);
@@ -495,6 +503,7 @@ export async function createRedemptionBooking(ctx, data) {
   const time = requiredDocumentId(data.time, "time");
   const operationId = requiredExternalId(data.operationId, "operationId");
   const requestedClientPackageId = optionalDocumentId(data.clientPackageId, "clientPackageId");
+  const cartItemId = boundedText(data.cartItemId, "cartItemId", 128);
   const nowIso = timestampNow();
   const nowMs = Date.now();
   const appointmentAtMs = appointmentTimestampMs(date, time);
@@ -511,6 +520,7 @@ export async function createRedemptionBooking(ctx, data) {
         prior.idempotencySource !== operationId ||
         ![prior.requestedClientId, prior.clientId].includes(requestedClientId) ||
         (prior.requestedClientPackageId || undefined) !== requestedClientPackageId ||
+        (prior.cartItemId || undefined) !== cartItemId ||
         prior.serviceId !== serviceId ||
         prior.employeeId !== employeeId ||
         prior.appointmentAtMs !== appointmentAtMs
@@ -523,11 +533,17 @@ export async function createRedemptionBooking(ctx, data) {
         bookingId: cleanText(prior.bookingId),
         publicId: cleanText(prior.bookingPublicId),
         clientPackageId: cleanText(prior.clientPackageId),
+        packageDocumentId: cleanText(prior.clientPackageId),
         packageTransactionId: reserveTxId,
+        canonicalClientId: cleanText(prior.clientId),
+        beforeRemaining: Number(prior.remainingBefore ?? 0),
+        afterRemaining: Number(prior.remainingAfter ?? 0),
+        redeemedServiceId: cleanText(prior.serviceId),
+        ...(cleanText(prior.cartItemId) ? { cartItemId: cleanText(prior.cartItemId) } : {}),
       };
     }
 
-    const client = await resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup);
+    const client = await resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup, { allowPhoneMatch: false });
     const servicePath = salonPath(ctx.salonId, "services", serviceId);
     const employeePath = salonPath(ctx.salonId, "staff_public", employeeId);
     const settingsPath = salonPath(ctx.salonId, "settings", "app");
@@ -631,6 +647,7 @@ export async function createRedemptionBooking(ctx, data) {
       idempotencySource: operationId,
       requestedClientId,
       ...(requestedClientPackageId ? { requestedClientPackageId } : {}),
+      ...(cartItemId ? { cartItemId } : {}),
       bookingPublicId: publicId,
       employeeId,
       appointmentAt,
@@ -693,6 +710,7 @@ export async function createRedemptionBooking(ctx, data) {
       remainingAmount: 0,
       paymentType: "none",
       invoiceId: bookingId,
+      ...(cartItemId ? { cartItemId } : {}),
       createdAtMs: nowMs,
       confirmedAt: nowMs,
       createdAt: nowIso,
@@ -766,7 +784,21 @@ export async function createRedemptionBooking(ctx, data) {
         updatedAt: nowIso,
       });
     }
-    return { ok: true, idempotent: false, bookingId, publicId, clientPackageId: packageSnap.id, packageTransactionId: reserveTxId, clientId: client.clientId };
+    return {
+      ok: true,
+      idempotent: false,
+      bookingId,
+      publicId,
+      clientPackageId: packageSnap.id,
+      packageDocumentId: packageSnap.id,
+      packageTransactionId: reserveTxId,
+      clientId: client.clientId,
+      canonicalClientId: client.clientId,
+      beforeRemaining: transition.before.remainingSessions,
+      afterRemaining: transition.after.remainingSessions,
+      redeemedServiceId: serviceId,
+      ...(cartItemId ? { cartItemId } : {}),
+    };
   });
 }
 

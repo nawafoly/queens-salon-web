@@ -141,7 +141,7 @@ function env() {
     FIRESTORE_EMULATOR_HOST: "firestore.test",
     PACKAGES_AUTH_TEST_MODE: "true",
     SALON_ID: "main",
-    ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5174,https://queens-salon-web.vercel.app",
+    ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5174,https://queens-salon-web.vercel.app,https://queens-salon-web-gnxk.vercel.app",
   };
 }
 
@@ -237,7 +237,7 @@ async function purchase(fake, invoiceId = "invoice-1") {
 }
 
 async function redeem(clientPackageId, operationId = "booking-1", time = "10:00") {
-  const response = await worker.fetch(request("/api/packages/redemption/create", {
+  const response = await worker.fetch(request("/api/packages/redeem", {
     body: {
       salonId: "main",
       clientId: "client-a",
@@ -247,6 +247,7 @@ async function redeem(clientPackageId, operationId = "booking-1", time = "10:00"
       date: "2027-05-15",
       time,
       operationId,
+      cartItemId: `cart-${operationId}`,
     },
   }), env());
   const body = await json(response);
@@ -260,6 +261,17 @@ test("rejects missing and invalid tokens", async () => {
 
   const invalid = await worker.fetch(request("/api/packages/purchase", { token: "invalid-token", body: {} }), env());
   assert.equal(invalid.status, 401);
+});
+
+test("package worker allows both production dashboard origins", async () => {
+  for (const origin of ["https://queens-salon-web.vercel.app", "https://queens-salon-web-gnxk.vercel.app"]) {
+    const response = await worker.fetch(new Request("http://worker.test/api/packages/client-wallet", {
+      method: "OPTIONS",
+      headers: { Origin: origin },
+    }), env());
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
+  }
 });
 
 test("rejects unauthorized role before package sale", async () => withFakeFirestore(async () => {
@@ -496,7 +508,7 @@ test("redemption uses canonical client id and relinks legacy package id", async 
     expiresAt: "2027-12-31T00:00:00.000Z",
   });
 
-  const response = await worker.fetch(request("/api/packages/redemption/create", {
+  const response = await worker.fetch(request("/api/packages/redeem", {
     body: {
       salonId: "main",
       clientId: "redeem-auth-uid",
@@ -506,12 +518,19 @@ test("redemption uses canonical client id and relinks legacy package id", async 
       date: "2027-05-16",
       time: "12:00",
       operationId: "legacy-redeem-op",
+      cartItemId: "legacy-cart-item",
     },
   }), env());
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(body.data.clientId, "canonical-redeem-client");
+  assert.equal(body.data.canonicalClientId, "canonical-redeem-client");
   assert.equal(body.data.clientPackageId, "legacy-redeem-package");
+  assert.equal(body.data.packageDocumentId, "legacy-redeem-package");
+  assert.equal(body.data.beforeRemaining, 1);
+  assert.equal(body.data.afterRemaining, 0);
+  assert.equal(body.data.redeemedServiceId, "svc-a");
+  assert.equal(body.data.cartItemId, "legacy-cart-item");
   const packageDoc = fake.data("salons/main/client_packages/legacy-redeem-package");
   assert.equal(packageDoc.clientId, "canonical-redeem-client");
   assert.equal(packageDoc.legacyClientId, "legacy-redeem-client");
@@ -521,9 +540,51 @@ test("redemption uses canonical client id and relinks legacy package id", async 
   assert.equal(booking.clientId, "canonical-redeem-client");
 }));
 
+test("redemption rejects phone-only client lookup", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/client_packages/phone-only-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Phone Only Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 3,
+    remainingSessions: 3,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/redeem", {
+    body: {
+      salonId: "main",
+      clientId: "missing-client-id",
+      clientLookup: { phone: "0500000001" },
+      clientPackageId: "phone-only-package",
+      serviceId: "svc-a",
+      employeeId: "staff-a",
+      date: "2027-05-16",
+      time: "13:00",
+      operationId: "phone-only-redeem",
+      cartItemId: "phone-only-cart",
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 404, JSON.stringify(body));
+  assert.equal(body.error, "packages_client:not_found");
+  const packageDoc = fake.data("salons/main/client_packages/phone-only-package");
+  assert.equal(packageDoc.remainingSessions, 3);
+  assert.equal(packageDoc.reservedSessions, 0);
+}));
+
 test("creates package redemption, prevents slot conflict, consumes and cancels reservation", async () => withFakeFirestore(async (fake) => {
   const sale = await purchase(fake, "sale-flow-1");
   const first = await redeem(sale.clientPackageId, "op-flow-1", "10:00");
+  assert.equal(first.canonicalClientId, "client-a");
+  assert.equal(first.packageDocumentId, sale.clientPackageId);
+  assert.equal(first.beforeRemaining, 10);
+  assert.equal(first.afterRemaining, 9);
+  assert.equal(first.redeemedServiceId, "svc-a");
+  assert.equal(first.cartItemId, "cart-op-flow-1");
   assert.equal(fake.data(`salons/main/client_packages/${sale.clientPackageId}`).remainingSessions, 9);
   assert.equal(fake.data(`salons/main/client_packages/${sale.clientPackageId}`).reservedSessions, 1);
   assert.equal(fake.paths("salons/main/booking_slots/").length, 1);

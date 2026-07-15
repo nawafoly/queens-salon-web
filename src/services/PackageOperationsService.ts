@@ -16,7 +16,13 @@ export type PackageRedemptionResult = {
   bookingId: string;
   publicId: string;
   clientPackageId: string;
+  packageDocumentId?: string;
   packageTransactionId: string;
+  canonicalClientId?: string;
+  beforeRemaining?: number;
+  afterRemaining?: number;
+  redeemedServiceId?: string;
+  cartItemId?: string;
 };
 
 export type PackageClientLookup = {
@@ -56,9 +62,27 @@ function operationId(prefix: string) {
   return `${prefix}_${random}`.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
+const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-packages-api.maedin.workers.dev";
+
 function packageWorkerBaseUrl() {
   const env = (import.meta as any).env || {};
-  return String(env.VITE_PACKAGES_WORKER_URL || env.VITE_PARTNERS_WORKER_URL || "").replace(/\/+$/, "");
+  return String(env.VITE_PACKAGES_WORKER_URL || DEFAULT_PACKAGES_WORKER_URL).replace(/\/+$/, "");
+}
+
+function isDevRuntime() {
+  return Boolean((import.meta as any).env?.DEV);
+}
+
+function errorDebugSuffix(error: any) {
+  const code = String(error?.code || error?.error || "").trim();
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || "").trim();
+  const parts = [
+    code ? `code=${code}` : "",
+    status ? `status=${status}` : "",
+    message ? `message=${message}` : "",
+  ].filter(Boolean);
+  return parts.length ? ` [${parts.join(" ")}]` : "";
 }
 
 function callableErrorAr(error: any) {
@@ -127,8 +151,11 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
       if (Number(error?.status || 0) === 401) return await requestOnce(true);
       throw error;
     }
-  } catch (error) {
-    throw new Error(callableErrorAr(error));
+  } catch (error: any) {
+    const normalized = new Error(`${callableErrorAr(error)}${isDevRuntime() ? errorDebugSuffix(error) : ""}`);
+    (normalized as any).code = error?.code || error?.error;
+    (normalized as any).status = error?.status;
+    throw normalized;
   }
 }
 
@@ -165,8 +192,9 @@ export const PackageOperationsService = {
     date: string;
     time: string;
     operationId?: string;
+    cartItemId?: string;
   }) {
-    return invoke<PackageRedemptionResult>("/api/packages/redemption/create", {
+    return invoke<PackageRedemptionResult>("/api/packages/redeem", {
       salonId: "main",
       ...args,
       operationId: args.operationId || operationId("package_booking"),

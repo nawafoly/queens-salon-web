@@ -3555,22 +3555,24 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     };
   }, [selectedClient, formData.name, formData.phone]);
 
-  const adminPackageBookingItem = useMemo(() => {
+  const adminPackageBookingItems = useMemo(() => {
     const cartItems = formData.items || [];
-    if (cartItems.length === 1) return cartItems[0];
-    if (cartItems.length > 1) return null;
+    if (cartItems.length) return cartItems;
 
     const picked = String(servicePicker || "").trim();
-    if (!picked || pickerScope !== "services") return null;
+    if (!picked || pickerScope !== "services") return [];
     const service = serviceByIdMap.get(picked);
-    if (!service || service.kind !== "service") return null;
+    if (!service || service.kind !== "service") return [];
 
-    return {
+    return [{
+      id: `draft_${picked}`,
       serviceId: picked,
       serviceName: toArabicCatalogLabel(String(service.name || picked)),
       date: bookingDate,
-    };
+    }];
   }, [formData.items, servicePicker, pickerScope, serviceByIdMap, bookingDate]);
+
+  const adminPackageBookingItem = adminPackageBookingItems[0] || null;
 
   async function getAllActiveStaffCached() {
     const fresh = Date.now() - staffAllCacheLoadedAtRef.current < 15_000;
@@ -7638,15 +7640,28 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
               <AdminPackageFlow
                 client={adminPackageClient}
                 bookingItem={adminPackageBookingItem}
+                bookingItems={adminPackageBookingItems}
                 onClientCreated={(client) => applyClientSelection(client)}
-                onRedeemed={() => {
-                  setFormData((prev) => ({ ...prev, items: [] }));
-                  setServicePicker("");
-                  setFutureServiceId("");
-                  ["bookingDraft", "internal_booking_draft", "booking_internal_draft"].forEach((key) => {
-                    localStorage.removeItem(key);
-                    sessionStorage.removeItem(key);
-                  });
+                onRedeemed={(result) => {
+                  const cartItemId = String(result?.cartItemId || "").trim();
+                  const currentItems = formData.items || [];
+                  const nextItems = cartItemId
+                    ? currentItems.filter((item) => String(item.id || "").trim() !== cartItemId)
+                    : [];
+                  setFormData((prev) => ({
+                    ...prev,
+                    items: cartItemId
+                      ? (prev.items || []).filter((item) => String(item.id || "").trim() !== cartItemId)
+                      : [],
+                  }));
+                  if (!nextItems.length) {
+                    setServicePicker("");
+                    setFutureServiceId("");
+                    ["bookingDraft", "internal_booking_draft", "booking_internal_draft"].forEach((key) => {
+                      localStorage.removeItem(key);
+                      sessionStorage.removeItem(key);
+                    });
+                  }
                 }}
               />
             </div>
