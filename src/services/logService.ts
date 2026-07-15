@@ -1,4 +1,6 @@
 import { auth, db } from "./firebase";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreAuditService } from "./CoreAuditService";
 import {
   collection,
   doc,
@@ -395,6 +397,28 @@ export async function writeAuditLog(input: AuditLogInput) {
       userEmail ||
       ""
   ).trim();
+
+  if (getDataSourceFlags().useCoreD1) {
+    try {
+      const row = await CoreAuditService.record({
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        description: input.description,
+        source: input.source || "dashboard",
+        actorUid: userUid,
+        actorEmail: userEmail,
+        actorName: userName,
+        before: input.before,
+        after: input.after,
+        meta: input.meta,
+      });
+      return row.id;
+    } catch (error) {
+      console.warn("Core D1 audit write failed (ignored):", error);
+      return null;
+    }
+  }
 
   const beforeProvided = input.before !== undefined && input.before !== null;
   const before = safeJson(input.before);

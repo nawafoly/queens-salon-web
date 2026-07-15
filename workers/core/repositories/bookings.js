@@ -19,6 +19,8 @@ import {
   validTime,
 } from '../d1.js';
 import { getClient } from './clients.js';
+import { AppError } from '../errors.js';
+import { recordAudit } from './audit.js';
 import { getService, serviceIsActive } from './services.js';
 import {
   getStaff,
@@ -578,6 +580,18 @@ export async function patchBooking(db, salonId, id, data) {
       data.paymentStatus === undefined && data.payment_status === undefined
         ? undefined
         : cleanText(data.paymentStatus || data.payment_status),
+    subtotal_halalas:
+      data.subtotalHalalas === undefined && data.subtotal_halalas === undefined
+        ? undefined
+        : integer(data.subtotalHalalas ?? data.subtotal_halalas, "subtotalHalalas", { min: 0, max: 100_000_000 }),
+    discount_halalas:
+      data.discountHalalas === undefined && data.discount_halalas === undefined
+        ? undefined
+        : integer(data.discountHalalas ?? data.discount_halalas, "discountHalalas", { min: 0, max: 100_000_000 }),
+    total_halalas:
+      data.totalHalalas === undefined && data.total_halalas === undefined
+        ? undefined
+        : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", { min: 0, max: 100_000_000 }),
   });
 }
 
@@ -615,4 +629,41 @@ export async function cancelBooking(db, salonId, id, reason = "") {
   ]);
   if (!changes(results[0])) rowNotFound("booking");
   return getBooking(db, salonId, bookingId);
+}
+
+
+export async function deleteBooking(db, salonId, id, actor = {}) {
+  const bookingId = requiredId(id);
+  const booking = await getBooking(db, salonId, bookingId);
+  const payment = await dbFirst(
+    db,
+    "SELECT id FROM payments WHERE salon_id = ? AND booking_id = ? LIMIT 1",
+    [salonId, bookingId]
+  );
+  const refund = await dbFirst(
+    db,
+    "SELECT id FROM refunds WHERE salon_id = ? AND booking_id = ? LIMIT 1",
+    [salonId, bookingId]
+  );
+  if (payment || refund) {
+    throw new AppError(409, "core_booking:financial_records_exist", "Booking with payments or refunds cannot be deleted");
+  }
+
+  await dbBatch(db, [
+    { sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
+    { sql: "DELETE FROM booking_items WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
+    { sql: "DELETE FROM income_entries WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
+    { sql: "DELETE FROM invoices WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
+    { sql: "DELETE FROM bookings WHERE salon_id = ? AND id = ?", params: [salonId, bookingId] },
+  ]);
+  await recordAudit(db, salonId, {
+    action: "booking_deleted",
+    entityType: "booking",
+    entityId: bookingId,
+    description: "Booking deleted from Core D1",
+    before: booking,
+    after: null,
+    source: "dashboard",
+  }, actor);
+  return { id: bookingId, deleted: true };
 }

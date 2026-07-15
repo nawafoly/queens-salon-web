@@ -32,6 +32,11 @@ import { writeAuditLog, type LogSource } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
 import { normalizeBookedSlotsMap } from "./firestoreAvailabilityDays";
 import { PackageOperationsService } from "./PackageOperationsService";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { coreD1BookingDataSource } from "./bookingDataSources/coreD1BookingDataSource";
+import { CoreBookingService } from "./CoreBookingService";
+import { CoreAuditService } from "./CoreAuditService";
+import { coreBookingToLegacy } from "./coreBookingMappers";
 
 
 export type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -2524,6 +2529,10 @@ export async function createDashboardBooking(args: {
 ========================= */
 
 export async function getBookingById(id: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    try { return coreBookingToLegacy(await CoreBookingService.get(id)); }
+    catch { return null; }
+  }
   const snap = await getDoc(doc(db, ...BOOKINGS_COL, id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...normalizeBooking(snap.data()) };
@@ -2531,6 +2540,14 @@ export async function getBookingById(id: string) {
 
 export async function markBookingViewed(bookingId: string) {
   const id = String(bookingId || "").trim();
+  if (getDataSourceFlags().useCoreD1) {
+    if (!id) throw new Error("BOOKING_ID_REQUIRED");
+    await CoreAuditService.record({
+      action: "booking_viewed", entityType: "booking", entityId: id,
+      description: "Booking viewed from dashboard", source: "dashboard",
+    });
+    return;
+  }
   if (!id) throw new Error("BOOKING_ID_REQUIRED");
 
   const bookingRef = doc(db, ...BOOKINGS_COL, id);
@@ -2599,6 +2616,9 @@ export async function markBookingViewed(bookingId: string) {
 }
 
 export async function listAllBookings(): Promise<BookingDocWithId[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreBookingService.list()).map(coreBookingToLegacy);
+  }
   const snap = await getDocs(collection(db, ...BOOKINGS_COL));
   snap.docs.forEach((d) => {
     if (d?.ref?.path) {
@@ -2643,6 +2663,16 @@ function buildBookingsReadQuery(scope?: BookingReadScope) {
 }
 
 export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    const rows = (await CoreBookingService.list()).map(coreBookingToLegacy);
+    const statuses = new Set(scope?.statuses || []);
+    return rows.filter((row) => {
+      if (statuses.size && !statuses.has(row.status)) return false;
+      if (scope?.dateFrom && String(row.date || "") < scope.dateFrom) return false;
+      if (scope?.dateTo && String(row.date || "") > scope.dateTo) return false;
+      return true;
+    });
+  }
   const snap = await getDocs(buildBookingsReadQuery(scope));
   snap.docs.forEach((d) => {
     if (d?.ref?.path) {
@@ -2659,6 +2689,16 @@ export function watchAllBookings(
   onError?: (err: unknown) => void,
   scope?: BookingReadScope
 ) {
+  if (getDataSourceFlags().useCoreD1) {
+    let stopped = false;
+    const load = async () => {
+      try { if (!stopped) onData(await listBookings(scope)); }
+      catch (error) { if (!stopped) onError?.(error); }
+    };
+    void load();
+    const timer = globalThis.setInterval(load, 12_000);
+    return () => { stopped = true; globalThis.clearInterval(timer); };
+  }
   const q = buildBookingsReadQuery(scope);
   let first = true;
 
@@ -2684,6 +2724,9 @@ export function watchAllBookings(
 }
 
 export async function listUserBookings(userId: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreBookingService.list({ clientId: userId })).map(coreBookingToLegacy);
+  }
   const q = query(collection(db, ...BOOKINGS_COL), where("userId", "==", userId));
   const snap = await getDocs(q);
   snap.docs.forEach((d) => {
@@ -2713,6 +2756,9 @@ export async function listEmployeeBookings(
   employeeIdOrUid: string,
   employeeName?: string
 ): Promise<BookingDocWithId[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreBookingService.list({ staffId: employeeIdOrUid })).map(coreBookingToLegacy);
+  }
   const baseCol = collection(db, ...BOOKINGS_COL);
 
   // primary by employeeKey (uid or safeKey or staff_public id)
@@ -2768,6 +2814,16 @@ export function watchEmployeeBookings(
   onData: (rows: BookingDocWithId[]) => void,
   onError?: (err: unknown) => void
 ) {
+  if (getDataSourceFlags().useCoreD1) {
+    let stopped = false;
+    const load = async () => {
+      try { if (!stopped) onData(await listEmployeeBookings(employeeIdOrUid, employeeName)); }
+      catch (error) { if (!stopped) onError?.(error); }
+    };
+    void load();
+    const timer = globalThis.setInterval(load, 12_000);
+    return () => { stopped = true; globalThis.clearInterval(timer); };
+  }
   const baseCol = collection(db, ...BOOKINGS_COL);
 
   let rowsByKeyUid: BookingDocWithId[] = [];
@@ -2873,6 +2929,10 @@ export function watchEmployeeBookings(
  * 4) ✅ الدخل ما يتكرر: ننشئ income مرة وحدة فقط عند confirmed (وإذا موجود لا نعيد إنشاء)
  */
 export async function updateBookingStatus(bookingId: string, status: BookingStatus) {
+  if (getDataSourceFlags().useCoreD1) {
+    await coreD1BookingDataSource.updateBookingStatus(bookingId, status);
+    return;
+  }
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const nowMs = Date.now();
@@ -3348,6 +3408,12 @@ async function applyAvailabilityPatchMap(map: Map<string, AvailabilityPatchEntry
 }
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
+  if (getDataSourceFlags().useCoreD1) {
+    const unsupported = [patch.date, patch.time, patch.startTime, patch.employeeId, patch.employeeUid, patch.employeeKey, patch.employeeName, patch.durationMin].some((value) => value !== undefined);
+    if (unsupported) throw new Error("CORE_D1_BOOKING_RESCHEDULE_REQUIRES_PHASE6");
+    await coreD1BookingDataSource.updateBooking(bookingId, patch);
+    return;
+  }
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   let effectivePatch: Partial<BookingDoc> = { ...patch };
   const hasOperationalAssignmentPatch =
@@ -3859,6 +3925,9 @@ export async function updateBookingDetails(bookingId: string, patch: Partial<Boo
 ========================= */
 
 export async function getTrackById(id: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    try { return coreBookingToLegacy(await CoreBookingService.get(id)); } catch { return null; }
+  }
   const snap = await getDoc(doc(db, ...TRACKS_COL, id));
   if (!snap.exists()) return null;
   return snap.data();
@@ -3867,6 +3936,11 @@ export async function getTrackById(id: string) {
 // ✅ Track by publicId (MK-xxxxx)
 export async function getTrackByPublicId(publicId: string) {
   const code = String(publicId || "").trim();
+  if (getDataSourceFlags().useCoreD1) {
+    const rows = await CoreBookingService.list({ search: code });
+    const found = rows.find((row) => row.publicId === code || row.id === code);
+    return found ? coreBookingToLegacy(found) : null;
+  }
   if (!code) return null;
 
   const q1 = query(collection(db, ...TRACKS_COL), where("publicId", "==", code), limit(1));
@@ -4005,6 +4079,10 @@ export async function backfillServiceFields(opts?: { dryRun?: boolean; limit?: n
  * يقوم بحذف الحجز، التتبع، الدخل، وفك الأقفال (Slots)
  */
 export async function deleteBooking(bookingId: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    await CoreBookingService.remove(bookingId);
+    return;
+  }
   const bookingRef = doc(db, ...BOOKINGS_COL, bookingId);
   const trackRef = doc(db, ...TRACKS_COL, bookingId);
   const incomeRef = doc(db, ...INCOME_COL, bookingId);

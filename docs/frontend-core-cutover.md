@@ -43,12 +43,13 @@ booking items, invoice and `booking_slot_locks` in one D1 batch. Cancelling a
 booking removes its slot locks. Completing a booking keeps the locks because
 the completed appointment still occupied that historical time.
 
+## Phase 5 admin operations
+
+Clients, sections/categories, offers/coupons, income, expenses, refunds, audit logs and guarded booking deletion now have explicit Core D1 paths. Refunds use a dedicated ledger and are voided rather than hard-deleted.
+
 ## Temporary Firebase exceptions
 
-The following remain until later cutover phases: offers/coupons, app settings,
-uploads/Storage, refund compatibility, audit/income compatibility, manual
-legacy availability backfill and the legacy adapter selected explicitly while
-`VITE_USE_CORE_D1=false`.
+Firebase Authentication and role/profile lookup, HR/payroll/attendance/leave, app settings, uploads/Storage and remaining HR/settings-dependent reports stay for Phase 6. The legacy adapter is selected only when `VITE_USE_CORE_D1=false`. Core D1 booking rescheduling that changes staff/date/time/duration remains intentionally blocked until its dedicated endpoint is completed.
 
 Direct slot-availability reads from `Booking.tsx` and `BookingInternal.tsx` have
 been removed. The legacy Firestore implementation is isolated inside
@@ -68,7 +69,7 @@ Cross-database atomicity is not claimed.
 
 ## Cutover prerequisites
 
-1. Apply all Core D1 migrations through `0003_booking_availability.sql`.
+1. Apply all Core D1 migrations through `0004_admin_operations.sql`.
 2. Migrate and reconcile Core and Packages data.
 3. Deploy both Workers.
 4. Test against staging URLs.

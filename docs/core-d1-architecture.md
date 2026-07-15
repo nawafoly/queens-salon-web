@@ -18,7 +18,8 @@ D1 is the only operational source of truth for:
 - invoices
 - payments
 - income and expenses
-- discounts
+- discounts, service sections and category relationships
+- refunds and audit logs
 
 ## Booking availability model
 
@@ -67,7 +68,7 @@ Firestore, Firebase collections or Vercel functions.
 ## Cutover Plan
 
 1. Create `queens-salon-core`.
-2. Apply `migrations/core`, including `0003_booking_availability.sql`.
+2. Apply `migrations/core`, including `0004_admin_operations.sql`.
 3. Run migration dry-run with fixtures and then with production credentials when quota is healthy.
 4. Review counts and conflicts.
 5. Run migration with `--apply`.
@@ -78,5 +79,5 @@ Firestore, Firebase collections or Vercel functions.
 Before merging future Core changes, run:
 
 ```bash
-npm run verify:phase4
+npm run verify:phase5
 ```

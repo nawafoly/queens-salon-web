@@ -7,6 +7,8 @@ export type CoreClient = {
   firebaseUid?: string | null;
   status: string;
   notes?: string | null;
+  vip?: boolean;
+  legacyClientDocId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -161,6 +163,12 @@ export type CoreIncomeEntry = {
   amountHalalas: number;
   category?: string | null;
   description?: string | null;
+  method?: string | null;
+  paymentBreakdownJson?: string | null;
+  source?: string | null;
+  note?: string | null;
+  clientName?: string | null;
+  clientPhone?: string | null;
   occurredAt: string;
   createdAt: string;
 };
@@ -176,6 +184,16 @@ export type CoreExpenseEntry = {
   createdByUid?: string | null;
   createdAt: string;
   updatedAt: string;
+  title?: string | null;
+  note?: string | null;
+  addedBy?: string | null;
+  sourceKind?: string | null;
+  sourceRefId?: string | null;
+  sourceType?: string | null;
+  staffId?: string | null;
+  staffName?: string | null;
+  monthKey?: string | null;
+  payrollKind?: string | null;
 };
 
 export type CoreCreateBookingInput = {
@@ -249,4 +267,75 @@ export type CoreApiErrorResponse = {
   ok: false;
   error: string;
   message?: string;
+};
+
+export type CoreDiscount = {
+  id: string;
+  salonId: string;
+  code?: string | null;
+  codeKey?: string | null;
+  name: string;
+  type: "fixed" | "percent";
+  value: number;
+  active: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  usageLimit?: number | null;
+  usedCount: number;
+  appliesTo: "all" | "services";
+  serviceIds: string[];
+  sequenceSteps: Array<Record<string, unknown>>;
+  imageUrl?: string | null;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CoreCatalogRow = {
+  id: string;
+  salonId: string;
+  name: string;
+  sectionId?: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CoreRefund = {
+  id: string;
+  salonId: string;
+  paymentId?: string | null;
+  invoiceId?: string | null;
+  bookingId?: string | null;
+  clientId?: string | null;
+  amountHalalas: number;
+  method: string;
+  reason?: string | null;
+  status: string;
+  idempotencyKey?: string | null;
+  providerReference?: string | null;
+  createdByUid?: string | null;
+  refundedAt: string;
+  voidedAt?: string | null;
+  voidedByUid?: string | null;
+  createdAt: string;
+  idempotent?: boolean;
+};
+
+export type CoreAuditLog = {
+  id: string;
+  salonId: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  description?: string | null;
+  source?: string | null;
+  actorUid?: string | null;
+  actorEmail?: string | null;
+  actorName?: string | null;
+  beforeJson?: string | null;
+  afterJson?: string | null;
+  metaJson?: string | null;
+  createdAt: string;
 };

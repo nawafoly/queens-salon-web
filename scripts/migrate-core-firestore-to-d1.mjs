@@ -107,11 +107,25 @@ function number(value, fallback = 0) {
   return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
 }
 
-function halalas(value, fallback = 0) {
+function halalasFromRiyals(value, fallback = 0) {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Number.isInteger(parsed) && parsed > 1000 ? parsed : Math.round(parsed * 100);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : fallback;
+}
+
+function moneyHalalas(source, halalaKeys = [], riyalKeys = [], fallback = 0) {
+  for (const key of halalaKeys) {
+    const value = source?.[key];
+    if (value === undefined || value === null || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.round(parsed);
+  }
+  for (const key of riyalKeys) {
+    const value = source?.[key];
+    if (value === undefined || value === null || value === "") continue;
+    return halalasFromRiyals(value, fallback);
+  }
+  return fallback;
 }
 
 function stableId(prefix, value) {
@@ -240,6 +254,7 @@ async function readSourceFromFirestore(projectId, salonId) {
     "clients",
     "services",
     "service_categories",
+    "service_sections",
     "staff_public",
     "employees",
     "bookings",
@@ -248,6 +263,9 @@ async function readSourceFromFirestore(projectId, salonId) {
     "income",
     "expenses",
     "discounts",
+    "offers",
+    "refunds",
+    "audit_logs",
   ];
   const entries = await Promise.all(
     collections.map(async (collection) => [
@@ -322,10 +340,27 @@ function transform(input, salonId) {
       email: clean(row.email),
       firebase_uid: clean(pick(row, ["firebaseUid", "authUid", "uid", "userId"])),
       status: clean(row.status || "active"),
-      notes: clean(row.notes),
+      notes: clean(row.notes || row.note),
+      vip: row.vip === true ? 1 : 0,
+      legacy_client_doc_id: clean(row.legacyClientDocId || (/^\d+$/.test(clean(row.id)) ? row.id : "")),
       created_at: clean(row.createdAt || now),
       updated_at: now,
     });
+  }
+
+  const phoneOwners = new Map();
+  for (const client of clientMap.values()) {
+    if (!client.phone_normalized) continue;
+    const prior = phoneOwners.get(client.phone_normalized);
+    if (prior && prior !== client.id) {
+      conflicts.push({
+        type: "client_phone_conflict",
+        phone: client.phone_normalized,
+        clientIds: [prior, client.id],
+      });
+    } else {
+      phoneOwners.set(client.phone_normalized, client.id);
+    }
   }
 
   const clientAliases = [];
@@ -363,6 +398,19 @@ function transform(input, salonId) {
       id: clean(row.id),
       salon_id: salonId,
       name: clean(row.name || row.title || "Category"),
+      section_id: clean(row.sectionId || row.section_id),
+      active: row.active === false ? 0 : 1,
+      sort_order: number(row.sortOrder || row.order, 0),
+      created_at: clean(row.createdAt || now),
+      updated_at: now,
+    }))
+    .filter((row) => row.id && row.name);
+
+  const sections = rows(input, "service_sections", "sections")
+    .map((row) => ({
+      id: clean(row.id),
+      salon_id: salonId,
+      name: clean(row.name || row.title || row["الاسم"] || "Section"),
       active: row.active === false ? 0 : 1,
       sort_order: number(row.sortOrder || row.order, 0),
       created_at: clean(row.createdAt || now),
@@ -385,10 +433,7 @@ function transform(input, salonId) {
         1,
         number(row.durationMin ?? row.durationMinutes ?? row.duration_minutes ?? row["المدة"], 30)
       ),
-      price_halalas: halalas(
-        row.priceHalalas ?? row.price_halalas ?? row.price ?? row["السعر"],
-        0
-      ),
+      price_halalas: moneyHalalas(row, ["priceHalalas", "price_halalas"], ["price", "السعر"], 0),
       active: row.active === false ? 0 : 1,
       image_url: clean(row.imageUrl || row.image_url),
       sort_order: number(row.sortOrder || row.order, 0),
@@ -495,6 +540,8 @@ function transform(input, salonId) {
         firebase_uid: clean(row.userId),
         status: "active",
         notes: "Created during Core D1 migration from booking history",
+        vip: 0,
+        legacy_client_doc_id: "",
         created_at: clean(row.createdAt || now),
         updated_at: now,
       });
@@ -539,9 +586,11 @@ function transform(input, salonId) {
               30
             )
           ),
-          price_halalas: halalas(
-            item.price ?? item.finalPrice ?? row.finalPrice ?? row.total,
-            0
+          price_halalas: moneyHalalas(
+            item,
+            ["priceHalalas", "price_halalas", "unitPriceHalalas", "unit_price_halalas"],
+            ["price", "finalPrice"],
+            moneyHalalas(row, ["totalHalalas", "total_halalas"], ["finalPrice", "total"], 0)
           ),
           active: 0,
           image_url: "",
@@ -583,9 +632,11 @@ function transform(input, salonId) {
         });
       }
       const itemId = clean(item.id) || `${bookingId}_item_${index}`;
-      const price = halalas(
-        item.price ?? item.finalPrice ?? item.total ?? row.finalPrice ?? row.total,
-        service.price_halalas
+      const price = moneyHalalas(
+        item,
+        ["priceHalalas", "price_halalas", "unitPriceHalalas", "unit_price_halalas", "totalHalalas", "total_halalas"],
+        ["price", "finalPrice", "total"],
+        moneyHalalas(row, ["totalHalalas", "total_halalas"], ["finalPrice", "total"], service.price_halalas)
       );
       const bookingItem = {
         id: itemId,
@@ -672,9 +723,9 @@ function transform(input, salonId) {
       status: clean(row.status || "booked"),
       source: clean(row.channel || row.source || "migration"),
       notes: clean(row.note || row.notes),
-      subtotal_halalas: halalas(row.subtotalHalalas ?? row.subtotal, subtotal),
-      discount_halalas: halalas(row.discountHalalas ?? row.discountAmount ?? row.discount, 0),
-      total_halalas: halalas(row.totalHalalas ?? row.finalPrice ?? row.total, subtotal),
+      subtotal_halalas: moneyHalalas(row, ["subtotalHalalas", "subtotal_halalas"], ["subtotal"], subtotal),
+      discount_halalas: moneyHalalas(row, ["discountHalalas", "discount_halalas"], ["discountAmount", "discount"], 0),
+      total_halalas: moneyHalalas(row, ["totalHalalas", "total_halalas"], ["finalPrice", "total"], subtotal),
       payment_status: clean(
         row.paymentStatus ||
           (row.paymentType === "full" ? "paid" : row.paymentType === "partial" ? "partial" : "unpaid")
@@ -700,10 +751,10 @@ function transform(input, salonId) {
       booking_id: clean(row.bookingId),
       client_id: clean(row.clientId),
       invoice_number: clean(row.invoiceNumber || row.number),
-      subtotal_halalas: halalas(row.subtotalHalalas ?? row.subtotal, 0),
-      discount_halalas: halalas(row.discountHalalas ?? row.discount, 0),
-      total_halalas: halalas(row.totalHalalas ?? row.total, 0),
-      paid_halalas: halalas(row.paidHalalas ?? row.paid, 0),
+      subtotal_halalas: moneyHalalas(row, ["subtotalHalalas", "subtotal_halalas"], ["subtotal"], 0),
+      discount_halalas: moneyHalalas(row, ["discountHalalas", "discount_halalas"], ["discount"], 0),
+      total_halalas: moneyHalalas(row, ["totalHalalas", "total_halalas"], ["total"], 0),
+      paid_halalas: moneyHalalas(row, ["paidHalalas", "paid_halalas"], ["paid"], 0),
       status: clean(row.status || "unpaid"),
       issued_at: clean(row.issuedAt || row.createdAt || now),
       created_at: clean(row.createdAt || now),
@@ -719,7 +770,7 @@ function transform(input, salonId) {
       booking_id: clean(row.bookingId),
       client_id: clean(row.clientId),
       method: clean(row.method || row.paymentMethod || "cash"),
-      amount_halalas: halalas(row.amountHalalas ?? row.amount, 0),
+      amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
       status: clean(row.status || "paid"),
       provider: clean(row.provider),
       provider_reference: clean(row.providerReference),
@@ -736,9 +787,15 @@ function transform(input, salonId) {
       booking_id: clean(row.bookingId),
       invoice_id: clean(row.invoiceId),
       payment_id: clean(row.paymentId),
-      amount_halalas: halalas(row.amountHalalas ?? row.amount, 0),
+      amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
       category: clean(row.category),
       description: clean(row.description || row.note),
+      method: clean(row.method || row.paymentMethod),
+      payment_breakdown_json: JSON.stringify(row.paymentBreakdown || {}),
+      source: clean(row.source),
+      note: clean(row.note),
+      client_name: clean(row.clientName),
+      client_phone: normalizePhone(row.clientPhone),
       occurred_at: clean(row.occurredAt || row.date || row.createdAt || now),
       created_at: clean(row.createdAt || now),
     }))
@@ -748,35 +805,90 @@ function transform(input, salonId) {
     .map((row) => ({
       id: clean(row.id),
       salon_id: salonId,
-      amount_halalas: halalas(row.amountHalalas ?? row.amount, 0),
+      amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
       category: clean(row.category),
       description: clean(row.description || row.note),
       payment_method: clean(row.paymentMethod || "cash"),
       occurred_at: clean(row.occurredAt || row.date || row.createdAt || now),
-      created_by_uid: clean(row.createdBy || row.createdByUid),
+      created_by_uid: clean(row.createdByUid || row.createdBy),
       created_at: clean(row.createdAt || now),
       updated_at: now,
+      title: clean(row.title),
+      note: clean(row.note),
+      added_by: clean(row.addedBy || row.createdByName || row.createdBy),
+      source_kind: clean(row.sourceKind),
+      source_ref_id: clean(row.sourceRefId),
+      source_type: clean(row.sourceType),
+      staff_id: clean(row.staffId),
+      staff_name: clean(row.staffName),
+      month_key: clean(row.monthKey),
+      payroll_kind: clean(row.payrollKind),
     }))
     .filter((row) => row.id && row.amount_halalas > 0);
 
-  const discounts = rows(input, "discounts")
-    .map((row) => ({
-      id: clean(row.id),
-      salon_id: salonId,
-      code: clean(row.code),
-      name: clean(row.name || row.title || "Discount"),
-      type: clean(row.type || "fixed"),
-      value: number(row.value, 0),
-      active: row.active === false ? 0 : 1,
-      starts_at: clean(row.startsAt),
-      ends_at: clean(row.endsAt),
-      usage_limit:
-        row.usageLimit === undefined ? null : number(row.usageLimit, 0),
-      used_count: number(row.usedCount, 0),
-      created_at: clean(row.createdAt || now),
-      updated_at: now,
-    }))
+  const discountCodeOwners = new Map();
+  const discounts = mergeRowsById(rows(input, "discounts"), rows(input, "offers"))
+    .map((row) => {
+      const id = clean(row.id);
+      const code = clean(row.code).toUpperCase();
+      let codeKey = clean(row.codeKey || row.code).toUpperCase();
+      if (codeKey) {
+        const prior = discountCodeOwners.get(codeKey);
+        if (prior && prior !== id) {
+          conflicts.push({ type: "discount_code_conflict", code: codeKey, discountIds: [prior, id] });
+          codeKey = "";
+        } else {
+          discountCodeOwners.set(codeKey, id);
+        }
+      }
+      return {
+        id,
+        salon_id: salonId,
+        code,
+        code_key: codeKey,
+        name: clean(row.name || row.title || "Discount"),
+        type: clean(row.type || row.discountType || "fixed"),
+        value: number(row.value, 0),
+        active: row.active === false ? 0 : 1,
+        starts_at: clean(row.startsAt || row.startDate),
+        ends_at: clean(row.endsAt || row.endDate),
+        usage_limit: row.usageLimit === undefined ? null : number(row.usageLimit, 0),
+        used_count: number(row.usedCount ?? row.usageCount, 0),
+        applies_to: clean(row.appliesTo || "all"),
+        service_ids_json: JSON.stringify(Array.isArray(row.serviceIds) ? row.serviceIds : []),
+        sequence_steps_json: JSON.stringify(Array.isArray(row.sequenceSteps) ? row.sequenceSteps : []),
+        image_url: clean(row.imageUrl),
+        deleted_at: clean(row.deletedAt),
+        created_at: clean(row.createdAt || now),
+        updated_at: now,
+      };
+    })
     .filter((row) => row.id && row.name);
+
+  const refunds = rows(input, "refunds")
+    .map((row) => ({
+      id: clean(row.id), salon_id: salonId, payment_id: clean(row.paymentId),
+      invoice_id: clean(row.invoiceId), booking_id: clean(row.bookingId), client_id: clean(row.clientId),
+      amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
+      method: clean(row.method || row.paymentMethod || "cash"), reason: clean(row.reason),
+      status: clean(row.status || "completed"), idempotency_key: clean(row.idempotencyKey || row.id),
+      provider_reference: clean(row.providerReference), created_by_uid: clean(row.createdByUid),
+      refunded_at: clean(row.refundedAt || row.createdAt || now),
+      voided_at: clean(row.voidedAt), voided_by_uid: clean(row.voidedByUid),
+      created_at: clean(row.createdAt || now),
+    }))
+    .filter((row) => row.id && row.amount_halalas > 0);
+
+  const auditLogs = rows(input, "audit_logs", "logs")
+    .map((row) => ({
+      id: clean(row.id), salon_id: salonId, action: clean(row.action || "legacy_event"),
+      entity_type: clean(row.entityType || "unknown"), entity_id: clean(row.entityId),
+      description: clean(row.description), source: clean(row.source || "migration"),
+      actor_uid: clean(row.actorUid), actor_email: clean(row.actorEmail), actor_name: clean(row.actorName),
+      before_json: JSON.stringify(row.before ?? null), after_json: JSON.stringify(row.after ?? null),
+      meta_json: JSON.stringify(row.meta ?? {}), created_at: clean(row.createdAt || now),
+    }))
+    .filter((row) => row.id && row.action);
 
   return {
     conflicts,
@@ -784,6 +896,7 @@ function transform(input, salonId) {
       clients: [...clientMap.values()],
       client_aliases: clientAliases,
       service_categories: categories,
+      service_sections: sections,
       services: [...serviceMap.values()],
       staff: [...staffMap.values()],
       staff_services: staffServices,
@@ -796,6 +909,8 @@ function transform(input, salonId) {
       income_entries: income,
       expense_entries: expenses,
       discounts,
+      refunds,
+      audit_logs: auditLogs,
     },
   };
 }
@@ -805,6 +920,7 @@ function buildSql(tables) {
     "clients",
     "client_aliases",
     "service_categories",
+    "service_sections",
     "services",
     "staff",
     "staff_services",
@@ -817,6 +933,8 @@ function buildSql(tables) {
     "income_entries",
     "expense_entries",
     "discounts",
+    "refunds",
+    "audit_logs",
   ];
   return [
     "BEGIN TRANSACTION;",

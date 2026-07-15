@@ -21,7 +21,7 @@ export class CoreApiError extends Error {
 }
 
 type CoreApiRequestOptions = {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: Record<string, unknown>;
   query?: Record<string, string | number | boolean | null | undefined>;
   timeoutMs?: number;
@@ -73,9 +73,9 @@ async function requestOnce<T>(
       signal: controller.signal,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(method !== "GET" ? { "Content-Type": "application/json" } : {}),
+        ...(method !== "GET" && method !== "DELETE" ? { "Content-Type": "application/json" } : {}),
       },
-      ...(method !== "GET"
+      ...(method !== "GET" && method !== "DELETE"
         ? { body: JSON.stringify(options.body ?? {}) }
         : {}),
     });

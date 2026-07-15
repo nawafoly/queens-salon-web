@@ -1,6 +1,7 @@
 import { coreApiRequest } from "./coreApiClient";
 import { mapCoreService } from "./coreBookingMappers";
 import type { CoreService } from "../types/coreApi";
+import { CoreAdminCatalogService } from "./CoreAdminCatalogService";
 
 export const CoreCatalogService = {
   async listServices(
@@ -21,5 +22,13 @@ export const CoreCatalogService = {
       }
     );
     return rows.map(mapCoreService);
+  },
+
+  async listSections(activeOnly = true) {
+    return CoreAdminCatalogService.listSections(activeOnly ? true : undefined);
+  },
+
+  async listCategories(activeOnly = true) {
+    return CoreAdminCatalogService.listCategories(activeOnly ? true : undefined);
   },
 };

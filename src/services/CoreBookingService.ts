@@ -43,6 +43,13 @@ export const CoreBookingService = {
       status: string;
       notes: string;
       paymentStatus: string;
+      bookingDate: string;
+      startTime: string;
+      endTime: string;
+      staffId: string;
+      subtotalHalalas: number;
+      discountHalalas: number;
+      totalHalalas: number;
     }>
   ): Promise<CoreBooking> {
     const row = await coreApiRequest<Record<string, unknown>>(
@@ -58,6 +65,12 @@ export const CoreBookingService = {
       { method: "POST", body: {} }
     );
     return mapCoreBooking(row);
+  },
+
+  async remove(id: string): Promise<void> {
+    await coreApiRequest(`/api/core/bookings/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async cancel(id: string, reason = ""): Promise<CoreBooking> {

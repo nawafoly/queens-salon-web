@@ -4,14 +4,17 @@
       "id": "client-a",
       "name": "Client A",
       "phone": "0500000001",
-      "firebaseUid": "uid-client-a"
+      "firebaseUid": "uid-client-a",
+      "vip": true,
+      "notes": "VIP client"
     }
   ],
   "service_categories": [
     {
       "id": "cat-hair",
       "name": "Hair",
-      "sortOrder": 1
+      "sortOrder": 1,
+      "sectionId": "section-hair"
     }
   ],
   "services": [
@@ -21,7 +24,8 @@
       "categoryId": "cat-hair",
       "durationMinutes": 30,
       "priceHalalas": 7500,
-      "active": true
+      "active": true,
+      "sectionId": "section-hair"
     }
   ],
   "staff_public": [
@@ -89,7 +93,11 @@
       "id": "expense-a",
       "amountHalalas": 1200,
       "category": "supplies",
-      "description": "Towels"
+      "description": "Towels",
+      "title": "Supplies",
+      "note": "Towels",
+      "paymentMethod": "cash",
+      "sourceKind": "manual"
     }
   ],
   "discounts": [
@@ -99,6 +107,72 @@
       "name": "Welcome",
       "type": "percent",
       "value": 10
+    }
+  ],
+  "service_sections": [
+    {
+      "id": "section-hair",
+      "name": "Hair services",
+      "sortOrder": 1
+    }
+  ],
+  "income": [
+    {
+      "id": "income-a",
+      "bookingId": "booking-a",
+      "invoiceId": "invoice-a",
+      "paymentId": "payment-a",
+      "amountHalalas": 7500,
+      "category": "booking",
+      "description": "Booking income",
+      "method": "split",
+      "paymentBreakdown": {
+        "cash": 25,
+        "card": 50
+      },
+      "clientName": "Client A",
+      "clientPhone": "0500000001",
+      "occurredAt": "2027-01-10T10:30:00.000Z"
+    }
+  ],
+  "offers": [
+    {
+      "id": "offer-a",
+      "code": "SAVE10",
+      "title": "Save 10",
+      "discountType": "percent",
+      "value": 10,
+      "active": true,
+      "appliesTo": "services",
+      "serviceIds": [
+        "svc-a"
+      ],
+      "usageCount": 1
+    }
+  ],
+  "refunds": [
+    {
+      "id": "refund-a",
+      "paymentId": "payment-a",
+      "invoiceId": "invoice-a",
+      "bookingId": "booking-a",
+      "clientId": "client-a",
+      "amountHalalas": 500,
+      "method": "cash",
+      "reason": "test refund",
+      "status": "completed",
+      "idempotencyKey": "refund-a"
+    }
+  ],
+  "audit_logs": [
+    {
+      "id": "audit-a",
+      "action": "booking_created",
+      "entityType": "booking",
+      "entityId": "booking-a",
+      "description": "fixture",
+      "source": "migration-fixture",
+      "createdAt": "2027-01-10T10:00:00.000Z"
     }
   ]
 }

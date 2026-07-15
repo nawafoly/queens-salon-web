@@ -90,7 +90,9 @@ export async function createClient(db, salonId, data) {
     email: optionalText(data.email) || null,
     firebase_uid: firebaseUid,
     status: cleanText(data.status || "active"),
-    notes: optionalText(data.notes) || null,
+    notes: optionalText(data.notes || data.note) || null,
+    vip: activeFlag(data.vip, 0),
+    legacy_client_doc_id: optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
     created_at: now,
     updated_at: now,
   };
@@ -98,8 +100,8 @@ export async function createClient(db, salonId, data) {
   await dbRun(
     db,
     `INSERT INTO clients
-      (id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.salon_id,
@@ -109,6 +111,8 @@ export async function createClient(db, salonId, data) {
       row.firebase_uid,
       row.status,
       row.notes,
+      row.vip,
+      row.legacy_client_doc_id,
       row.created_at,
       row.updated_at,
     ]
@@ -139,9 +143,17 @@ export async function patchClient(db, salonId, id, data) {
         ? undefined
         : cleanText(data.status || "active"),
     notes:
-      data.notes === undefined
+      data.notes === undefined && data.note === undefined
         ? undefined
-        : optionalText(data.notes) || null,
+        : optionalText(data.notes || data.note) || null,
+    vip:
+      data.vip === undefined
+        ? undefined
+        : activeFlag(data.vip),
+    legacy_client_doc_id:
+      data.legacyClientDocId === undefined && data.legacy_client_doc_id === undefined
+        ? undefined
+        : optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
   });
 }
 

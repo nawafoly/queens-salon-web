@@ -159,12 +159,27 @@ export const coreD1BookingDataSource: BookingDataSource = {
     return services.map(coreServiceToLegacy);
   },
 
-  async getServiceCategories() {
-    // The current public booking UI treats categories as optional.
-    return [];
+  async getServiceCategories(sectionId = "") {
+    const categories = await CoreCatalogService.listCategories(true);
+    return categories.map((row) => ({
+      id: row.id,
+      الاسم: row.name,
+      sectionId: row.sectionId || sectionId || "",
+      active: row.active,
+      order: row.sortOrder,
+    }));
   },
 
   async getServiceSections() {
+    const rows = await CoreCatalogService.listSections(true);
+    if (rows.length) {
+      return rows.map((row) => ({
+        id: row.id,
+        الاسم: row.name,
+        active: row.active,
+        order: row.sortOrder,
+      }));
+    }
     return coreServicesToSections(
       await CoreCatalogService.listServices({ activeOnly: true })
     );

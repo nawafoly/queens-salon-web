@@ -22,6 +22,9 @@ class FakeD1 {
       "income_entries",
       "expense_entries",
       "discounts",
+      "service_sections",
+      "refunds",
+      "audit_logs",
     ].map((table) => [table, new Map()]));
   }
 
@@ -106,6 +109,10 @@ class FakeD1 {
       const [salonId, id] = params;
       return this.find("invoices", salonId, id) ? [this.find("invoices", salonId, id)] : [];
     }
+    if (normalized.startsWith("SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ?")) {
+      const [salonId, bookingId] = params;
+      return this.rows("invoices").filter((row) => row.salon_id === salonId && row.booking_id === bookingId).slice(0, 1);
+    }
     if (normalized.startsWith("SELECT * FROM invoices WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("invoices").filter((row) => row.salon_id === salonId);
@@ -130,6 +137,84 @@ class FakeD1 {
       const [salonId, id] = params;
       return this.find("expense_entries", salonId, id) ? [this.find("expense_entries", salonId, id)] : [];
     }
+    if (normalized.startsWith("SELECT * FROM income_entries WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("income_entries", salonId, id) ? [this.find("income_entries", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT canonical_client_id FROM client_aliases")) {
+      const [salonId, aliasId] = params;
+      return this.rows("client_aliases").filter((row) => row.salon_id === salonId && row.alias_id === aliasId).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM discounts WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("discounts", salonId, id) ? [this.find("discounts", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM discounts WHERE")) {
+      const salonId = params[0];
+      let rows = this.rows("discounts").filter((row) => row.salon_id === salonId);
+      if (normalized.includes("deleted_at IS NULL")) rows = rows.filter((row) => !row.deleted_at);
+      if (normalized.includes("active = ?")) {
+        const activeIndex = normalized.slice(0, normalized.indexOf("active = ?")).split("?").length - 1;
+        rows = rows.filter((row) => Number(row.active) === Number(params[activeIndex]));
+      }
+      if (normalized.includes("code_key = ?")) {
+        const codeIndex = normalized.slice(0, normalized.indexOf("code_key = ?")).split("?").length - 1;
+        rows = rows.filter((row) => row.code_key === params[codeIndex]);
+      }
+      return rows;
+    }
+    for (const table of ["service_sections", "service_categories"]) {
+      if (normalized.startsWith(`SELECT * FROM ${table} WHERE salon_id = ?`)) {
+        const [salonId] = params;
+        let rows = this.rows(table).filter((row) => row.salon_id === salonId);
+        if (normalized.includes("active = ?")) rows = rows.filter((row) => Number(row.active) === Number(params[1]));
+        return rows;
+      }
+    }
+    if (normalized.startsWith("SELECT * FROM refunds WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("refunds", salonId, id) ? [this.find("refunds", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM refunds WHERE salon_id = ? AND idempotency_key = ?")) {
+      const [salonId, key] = params;
+      return this.rows("refunds").filter((row) => row.salon_id === salonId && row.idempotency_key === key).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM refunds WHERE")) {
+      const salonId = params[0];
+      let rows = this.rows("refunds").filter((row) => row.salon_id === salonId);
+      let index = 1;
+      if (normalized.includes("booking_id = ?")) rows = rows.filter((row) => row.booking_id === params[index++]);
+      if (normalized.includes("payment_id = ?")) rows = rows.filter((row) => row.payment_id === params[index++]);
+      return rows;
+    }
+    if (normalized.startsWith("SELECT COALESCE(SUM(amount_halalas), 0) AS total FROM refunds")) {
+      const [salonId, paymentId, excludeId] = params;
+      const total = this.rows("refunds")
+        .filter((row) => row.salon_id === salonId && row.payment_id === paymentId && row.status === "completed" && (!excludeId || row.id !== excludeId))
+        .reduce((sum, row) => sum + Number(row.amount_halalas || 0), 0);
+      return [{ total }];
+    }
+    if (normalized.startsWith("SELECT * FROM payments WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("payments", salonId, id) ? [this.find("payments", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT id FROM payments WHERE salon_id = ? AND booking_id = ?")) {
+      const [salonId, bookingId] = params;
+      return this.rows("payments").filter((row) => row.salon_id === salonId && row.booking_id === bookingId).slice(0, 1).map((row) => ({ id: row.id }));
+    }
+    if (normalized.startsWith("SELECT id FROM refunds WHERE salon_id = ? AND booking_id = ?")) {
+      const [salonId, bookingId] = params;
+      return this.rows("refunds").filter((row) => row.salon_id === salonId && row.booking_id === bookingId).slice(0, 1).map((row) => ({ id: row.id }));
+    }
+    if (normalized.startsWith("SELECT * FROM audit_logs WHERE")) {
+      const salonId = params[0];
+      let rows = this.rows("audit_logs").filter((row) => row.salon_id === salonId);
+      let index = 1;
+      if (normalized.includes("entity_type = ?")) rows = rows.filter((row) => row.entity_type === params[index++]);
+      if (normalized.includes("entity_id = ?")) rows = rows.filter((row) => row.entity_id === params[index++]);
+      if (normalized.includes("action = ?")) rows = rows.filter((row) => row.action === params[index++]);
+      return rows.slice(0, Number(params[params.length - 1] || 200));
+    }
     throw new Error(`unhandled fake D1 all: ${normalized}`);
   }
 
@@ -147,6 +232,27 @@ class FakeD1 {
 
   async run(sql, params = []) {
     const normalized = sql.replace(/\s+/g, " ").trim();
+    const insertMatch = normalized.match(/^INSERT(?: OR REPLACE)? INTO ([a-z_]+) \((.+?)\) VALUES/i);
+    if (insertMatch && this.tables[insertMatch[1]]) {
+      const table = insertMatch[1];
+      const columns = insertMatch[2].split(",").map((value) => value.trim());
+      const row = {};
+      let paramIndex = 0;
+      const valuesSection = normalized.match(/VALUES \((.+)\)$/i)?.[1]?.split(",").map((value) => value.trim()) || [];
+      columns.forEach((column, index) => {
+        const token = valuesSection[index] || "?";
+        if (token === "?") row[column] = params[paramIndex++];
+        else if (/^'.*'$/.test(token)) row[column] = token.slice(1, -1);
+        else if (/^NULL$/i.test(token)) row[column] = null;
+        else row[column] = token;
+      });
+      if (table === "bookings") {
+        row.payment_status ??= "unpaid";
+        row.cancelled_at ??= null;
+        row.completed_at ??= null;
+      }
+      return this.insert(table, row);
+    }
     if (normalized.startsWith("INSERT INTO clients")) {
       const [id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at] = params;
       return this.insert("clients", { id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at });
@@ -179,7 +285,25 @@ class FakeD1 {
       const [id, salon_id, amount_halalas, category, description, payment_method, occurred_at, created_by_uid, created_at, updated_at] = params;
       return this.insert("expense_entries", { id, salon_id, amount_halalas, category, description, payment_method, occurred_at, created_by_uid, created_at, updated_at });
     }
+    if (normalized.startsWith("UPDATE income_entries SET")) return this.dynamicUpdate("income_entries", normalized, params);
     if (normalized.startsWith("UPDATE expense_entries SET")) return this.dynamicUpdate("expense_entries", normalized, params);
+    if (normalized.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
+      const [updatedAt, salonId, id] = params;
+      const row = this.find("discounts", salonId, id);
+      return this.update("discounts", salonId, id, { used_count: Number(row?.used_count || 0) + 1, updated_at: updatedAt });
+    }
+    if (normalized.startsWith("UPDATE discounts SET")) return this.dynamicUpdate("discounts", normalized, params);
+    if (normalized.startsWith("UPDATE service_sections SET")) return this.dynamicUpdate("service_sections", normalized, params);
+    if (normalized.startsWith("UPDATE service_categories SET")) return this.dynamicUpdate("service_categories", normalized, params);
+    const deleteMatch = normalized.match(/^DELETE FROM ([a-z_]+) WHERE salon_id = \? AND id = \?/i);
+    if (deleteMatch && this.tables[deleteMatch[1]]) {
+      const [salonId, id] = params;
+      const table = deleteMatch[1];
+      const row = this.find(table, salonId, id);
+      if (!row) return { meta: { changes: 0 } };
+      this.tables[table].delete(this.key(table, row));
+      return { meta: { changes: 1 } };
+    }
     throw new Error(`unhandled fake D1 run: ${normalized}`);
   }
 
@@ -227,6 +351,30 @@ class FakeD1 {
           }
         }
         results.push({ meta: { changes: removed } });
+      } else if (sql.startsWith("UPDATE refunds SET status = 'voided'")) {
+        const [voidedAt, voidedByUid, salonId, id] = params;
+        results.push(this.update("refunds", salonId, id, { status: "voided", voided_at: voidedAt, voided_by_uid: voidedByUid }));
+      } else if (sql.startsWith("DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund'")) {
+        const [salonId, sourceRefId] = params;
+        let removed = 0;
+        for (const [key, row] of this.tables.expense_entries.entries()) {
+          if (row.salon_id === salonId && row.source_kind === "refund" && row.source_ref_id === sourceRefId) {
+            this.tables.expense_entries.delete(key);
+            removed += 1;
+          }
+        }
+        results.push({ meta: { changes: removed } });
+      } else if (/^DELETE FROM (booking_items|income_entries|invoices) WHERE salon_id = \? AND booking_id = \?/.test(sql)) {
+        const table = sql.match(/^DELETE FROM ([a-z_]+)/)[1];
+        const [salonId, bookingId] = params;
+        let removed = 0;
+        for (const [key, row] of this.tables[table].entries()) {
+          if (row.salon_id === salonId && row.booking_id === bookingId) {
+            this.tables[table].delete(key);
+            removed += 1;
+          }
+        }
+        results.push({ meta: { changes: removed } });
       } else if (sql.startsWith("INSERT INTO invoices")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO payments")) {
@@ -234,9 +382,20 @@ class FakeD1 {
         results.push(this.insert("payments", { id, salon_id, invoice_id, booking_id, client_id, method, amount_halalas, status, provider, provider_reference, idempotency_key, paid_at, created_at }));
       } else if (sql.startsWith("INSERT INTO income_entries")) {
         results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("UPDATE refunds SET amount_halalas")) {
+        const [amountHalalas, method, reason, refundedAt, salonId, id] = params;
+        results.push(this.update("refunds", salonId, id, { amount_halalas: amountHalalas, method, reason, refunded_at: refundedAt }));
+      } else if (sql.startsWith("UPDATE expense_entries SET amount_halalas")) {
+        const [amountHalalas, description, paymentMethod, occurredAt, note, salonId, sourceRefId] = params;
+        const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
+        results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
       } else if (sql.startsWith("UPDATE invoices SET")) {
         const [paid_halalas, status, updated_at, salonId, id] = params;
         results.push(this.update("invoices", salonId, id, { paid_halalas, status, updated_at }));
+      } else if (sql.startsWith("DELETE FROM ")) {
+        results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("INSERT INTO refunds") || sql.startsWith("INSERT INTO expense_entries")) {
+        results.push(await this.run(statement.sql, params));
       } else {
         throw new Error(`unhandled fake D1 batch: ${sql}`);
       }
@@ -438,6 +597,145 @@ test("expense creation and patch use D1", async () => {
   }), env(fake));
   body = await json(response);
   assert.equal(body.data.description, "Towels");
+});
+
+test("offer CRUD, usage and audit use Core D1", async () => {
+  const fake = new FakeD1();
+  let response = await worker.fetch(request("/api/core/discounts", {
+    method: "POST",
+    body: { salonId: "main", id: "offer-a", name: "Summer", code: "save10", type: "percent", value: 10 },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.code_key, "SAVE10");
+
+  response = await worker.fetch(request("/api/core/discounts/offer-a", {
+    method: "PATCH",
+    body: { salonId: "main", active: false },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.active, 0);
+
+  response = await worker.fetch(request("/api/core/discounts/offer-a/use", {
+    method: "POST",
+    token: "",
+    body: { salonId: "main" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.used_count, 1);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "offer_used"));
+});
+
+test("catalog sections and categories use Core D1", async () => {
+  const fake = new FakeD1();
+  let response = await worker.fetch(request("/api/core/sections", {
+    method: "POST",
+    body: { salonId: "main", id: "section-a", name: "Hair", sortOrder: 1 },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.name, "Hair");
+
+  response = await worker.fetch(request("/api/core/categories", {
+    method: "POST",
+    body: { salonId: "main", id: "category-a", name: "Color" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  response = await worker.fetch(request("/api/core/sections", { token: "" }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.length, 1);
+});
+
+test("income supports patch and delete with D1 audit", async () => {
+  const fake = new FakeD1();
+  let response = await worker.fetch(request("/api/core/income", {
+    method: "POST",
+    body: { salonId: "main", id: "income-a", amountHalalas: 5000, method: "cash", clientName: "Client A" },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/income/income-a", {
+    method: "PATCH",
+    body: { salonId: "main", note: "updated" },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.note, "updated");
+
+  response = await worker.fetch(request("/api/core/income/income-a", { method: "DELETE" }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.deleted, true);
+  assert.equal(fake.rows("income_entries").length, 0);
+});
+
+test("refund is idempotent and adjusts invoice paid total", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("invoices", { id: "invoice-r", salon_id: "main", booking_id: "booking-r", client_id: "client-a", total_halalas: 10000, paid_halalas: 10000, status: "paid", updated_at: "2027-01-01T00:00:00.000Z" });
+  fake.seed("payments", { id: "payment-r", salon_id: "main", invoice_id: "invoice-r", booking_id: "booking-r", client_id: "client-a", method: "card", amount_halalas: 10000, status: "completed" });
+
+  const payload = { salonId: "main", id: "refund-a", paymentId: "payment-r", amountHalalas: 2500, idempotencyKey: "refund-key" };
+  let response = await worker.fetch(request("/api/core/refunds", { method: "POST", body: payload }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(fake.find("invoices", "main", "invoice-r").paid_halalas, 7500);
+  assert.equal(fake.find("invoices", "main", "invoice-r").status, "partial");
+
+  response = await worker.fetch(request("/api/core/refunds", { method: "POST", body: { ...payload, id: "refund-b" } }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.idempotent, true);
+  assert.equal(fake.rows("refunds").length, 1);
+
+  response = await worker.fetch(request("/api/core/refunds/refund-a", { method: "PATCH", body: { amountHalalas: 3000, reason: "updated" } }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.amount_halalas, 3000);
+  assert.equal(fake.find("invoices", "main", "invoice-r").paid_halalas, 7000);
+
+  response = await worker.fetch(request("/api/core/refunds/refund-a", { method: "DELETE" }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.status, "voided");
+  assert.equal(fake.find("invoices", "main", "invoice-r").paid_halalas, 10000);
+  assert.equal(fake.rows("expense_entries").filter((row) => row.source_ref_id === "refund-a").length, 0);
+});
+
+test("booking delete is blocked by financial records and audited when safe", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const booking = { id: "booking-delete", salon_id: "main", client_id: "client-a", staff_id: "staff-a", booking_date: "2027-01-10", start_time: "10:00", end_time: "10:30", status: "booked", source: "test", notes: null, subtotal_halalas: 7500, discount_halalas: 0, total_halalas: 7500, payment_status: "unpaid", package_sessions_used: 0, created_by_uid: "owner1", created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-01T00:00:00.000Z" };
+  fake.seed("bookings", booking);
+  fake.seed("booking_items", { id: "item-delete", salon_id: "main", booking_id: booking.id, service_id: "svc-a", service_name_snapshot: "Service A", created_at: booking.created_at });
+  fake.seed("payments", { id: "payment-delete", salon_id: "main", booking_id: booking.id, amount_halalas: 1000 });
+
+  let response = await worker.fetch(request(`/api/core/bookings/${booking.id}`, { method: "DELETE" }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:financial_records_exist");
+
+  fake.tables.payments.clear();
+  response = await worker.fetch(request(`/api/core/bookings/${booking.id}`, { method: "DELETE" }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(fake.find("bookings", "main", booking.id), null);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_deleted"));
+});
+
+test("audit endpoint lists Core D1 audit rows", async () => {
+  const fake = new FakeD1();
+  fake.seed("audit_logs", { id: "audit-a", salon_id: "main", action: "test_action", entity_type: "booking", entity_id: "booking-a", created_at: "2027-01-01T00:00:00.000Z" });
+  const response = await worker.fetch(request("/api/core/audit?entityType=booking"), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.length, 1);
+  assert.equal(body.data[0].action, "test_action");
 });
 
 test("core migration dry-run parses fixture and prints counts", () => {

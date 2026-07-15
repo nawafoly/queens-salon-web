@@ -40,6 +40,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../services/firebase";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreClientService } from "../services/CoreClientService";
 
 /** ✅ UiRole */
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
@@ -479,26 +481,44 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
     (async () => {
       try {
         setImportLoading(true);
-        const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
-        const snap = await getDocs(q);
-
-        if (!mounted) return;
-
         const next: Record<string, ImportedClientDoc> = {};
-        snap.docs.forEach((d) => {
-          const x = d.data() as any;
-          next[d.id] = {
-            id: d.id,
-            clientId: String(x?.clientId || "").trim() || undefined,
-            legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
-            name: String(x?.name || "").trim() || undefined,
-            phone: String(x?.phone || "").trim() || undefined,
-            vip: !!x?.vip,
-            note: String(x?.note || "").trim() || undefined,
-            createdAt: x?.createdAt,
-            updatedAt: x?.updatedAt,
-          };
-        });
+
+        if (getDataSourceFlags().useCoreD1) {
+          const rows = await CoreClientService.list();
+          if (!mounted) return;
+          rows.forEach((row) => {
+            const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
+            next[digits] = {
+              id: row.id,
+              clientId: row.id,
+              legacyClientDocId: row.legacyClientDocId || undefined,
+              name: row.name || undefined,
+              phone: row.phoneNormalized || undefined,
+              vip: Boolean(row.vip),
+              note: row.notes || undefined,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+            };
+          });
+        } else {
+          const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
+          const snap = await getDocs(q);
+          if (!mounted) return;
+          snap.docs.forEach((d) => {
+            const x = d.data() as any;
+            next[d.id] = {
+              id: d.id,
+              clientId: String(x?.clientId || "").trim() || undefined,
+              legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
+              name: String(x?.name || "").trim() || undefined,
+              phone: String(x?.phone || "").trim() || undefined,
+              vip: !!x?.vip,
+              note: String(x?.note || "").trim() || undefined,
+              createdAt: x?.createdAt,
+              updatedAt: x?.updatedAt,
+            };
+          });
+        }
 
         setImportedMap(next);
       } catch (e) {
@@ -812,8 +832,6 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
 
       setImporting(true);
 
-      // ✅ Batch merge (no overwrite destructive)
-      const batch = writeBatch(db);
       const existingByPhone = new Map(
         Object.values(importedMap).map((client) => [
           phoneDigits(String(client.phone || "")),
@@ -821,58 +839,80 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
         ])
       );
 
-      preview.forEach((r) => {
-        const existing = existingByPhone.get(phoneDigits(r.phone));
-        const stableClientId = String((existing as any)?.clientId || "").trim() ||
-          (existing && !/^\d+$/.test(existing.id) ? existing.id : crypto.randomUUID());
-        const legacyClientDocId = existing && existing.id !== stableClientId ? existing.id : undefined;
-        const ref = existing
-          ? doc(db, ...CLIENTS_COLLECTION, existing.id)
-          : doc(db, ...CLIENTS_COLLECTION, stableClientId);
-        batch.set(
-          ref,
-          {
+      if (getDataSourceFlags().useCoreD1) {
+        for (const r of preview) {
+          const existing = existingByPhone.get(phoneDigits(r.phone));
+          if (existing?.clientId || existing?.id) {
+            await CoreClientService.patch(String(existing.clientId || existing.id), {
+              name: r.name || "عميلة",
+              phone: r.phone || "",
+              vip: Boolean(r.vip),
+              notes: r.note || "",
+            });
+          } else {
+            await CoreClientService.create({
+              id: crypto.randomUUID(),
+              name: r.name || "عميلة",
+              phone: r.phone || "",
+              vip: Boolean(r.vip),
+              notes: r.note || "",
+            });
+          }
+        }
+        const rows = await CoreClientService.list();
+        const next: Record<string, ImportedClientDoc> = {};
+        rows.forEach((row) => {
+          const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
+          next[digits] = {
+            id: row.id, clientId: row.id,
+            legacyClientDocId: row.legacyClientDocId || undefined,
+            name: row.name || undefined, phone: row.phoneNormalized || undefined,
+            vip: Boolean(row.vip), note: row.notes || undefined,
+            createdAt: row.createdAt, updatedAt: row.updatedAt,
+          };
+        });
+        setImportedMap(next);
+      } else {
+        // Temporary legacy branch until production cutover is complete.
+        const batch = writeBatch(db);
+        preview.forEach((r) => {
+          const existing = existingByPhone.get(phoneDigits(r.phone));
+          const stableClientId = String((existing as any)?.clientId || "").trim() ||
+            (existing && !/^\d+$/.test(existing.id) ? existing.id : crypto.randomUUID());
+          const legacyClientDocId = existing && existing.id !== stableClientId ? existing.id : undefined;
+          const ref = existing
+            ? doc(db, ...CLIENTS_COLLECTION, existing.id)
+            : doc(db, ...CLIENTS_COLLECTION, stableClientId);
+          batch.set(ref, {
             clientId: stableClientId,
             ...(legacyClientDocId ? { legacyClientDocId } : {}),
-            name: r.name || "",
-            phone: r.phone || "",
-            vip: !!r.vip,
-            note: r.note || "",
-            updatedAt: serverTimestamp(),
-            // createdAt only if not exists? (batch can't check) so we keep both:
-            createdAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      });
-
-      await batch.commit();
-
-      // ✅ reload imported list
-      const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
-      const snap = await getDocs(q);
-      const next: Record<string, ImportedClientDoc> = {};
-      snap.docs.forEach((d) => {
-        const x = d.data() as any;
-        next[d.id] = {
-          id: d.id,
-          clientId: String(x?.clientId || "").trim() || undefined,
-          legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
-          name: String(x?.name || "").trim() || undefined,
-          phone: String(x?.phone || "").trim() || undefined,
-          vip: !!x?.vip,
-          note: String(x?.note || "").trim() || undefined,
-          createdAt: x?.createdAt,
-          updatedAt: x?.updatedAt,
-        };
-      });
-      setImportedMap(next);
+            name: r.name || "", phone: r.phone || "", vip: !!r.vip, note: r.note || "",
+            updatedAt: serverTimestamp(), createdAt: serverTimestamp(),
+          }, { merge: true });
+        });
+        await batch.commit();
+        const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
+        const snap = await getDocs(q);
+        const next: Record<string, ImportedClientDoc> = {};
+        snap.docs.forEach((d) => {
+          const x = d.data() as any;
+          next[d.id] = {
+            id: d.id, clientId: String(x?.clientId || "").trim() || undefined,
+            legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
+            name: String(x?.name || "").trim() || undefined,
+            phone: String(x?.phone || "").trim() || undefined,
+            vip: !!x?.vip, note: String(x?.note || "").trim() || undefined,
+            createdAt: x?.createdAt, updatedAt: x?.updatedAt,
+          };
+        });
+        setImportedMap(next);
+      }
 
       setImportOpen(false);
       setPreview([]);
     } catch (e) {
       console.error(e);
-      setImportErr("صار خطأ أثناء الحفظ. تأكد من Rules وصلاحيات Firestore ثم جرّب.");
+      setImportErr("صار خطأ أثناء حفظ بيانات العميلات. تحقق من الاتصال والصلاحيات ثم جرّب.");
     } finally {
       setImporting(false);
     }

@@ -26,6 +26,24 @@ export const CoreFinanceService = {
     return mapCoreIncome(row);
   },
 
+
+  async patchIncome(
+    id: string,
+    input: Record<string, unknown>
+  ): Promise<CoreIncomeEntry> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/income/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: input }
+    );
+    return mapCoreIncome(row);
+  },
+
+  async deleteIncome(id: string): Promise<void> {
+    await coreApiRequest(`/api/core/income/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
   async listExpenses(): Promise<CoreExpenseEntry[]> {
     const rows = await coreApiRequest<Record<string, unknown>[]>(
       "/api/core/expenses"
@@ -53,4 +71,10 @@ export const CoreFinanceService = {
     );
     return mapCoreExpense(row);
   },
+  async deleteExpense(id: string): Promise<void> {
+    await coreApiRequest(`/api/core/expenses/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
 };

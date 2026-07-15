@@ -28,6 +28,7 @@ import {
   cancelBooking,
   completeBooking,
   createBooking,
+  deleteBooking,
   getBooking,
   listBookings,
   patchBooking,
@@ -44,11 +45,29 @@ import {
 import {
   createExpense,
   createIncome,
+  deleteExpense,
+  deleteIncome,
   listExpenses,
   listIncome,
   patchExpense,
+  patchIncome,
 } from './repositories/finance.js';
 import { getStaffAvailability } from './repositories/availability.js';
+import {
+  createDiscount,
+  deleteDiscount,
+  incrementDiscountUsage,
+  listDiscounts,
+  patchDiscount,
+} from './repositories/discounts.js';
+import {
+  createCatalogRow,
+  deleteCatalogRow,
+  listCatalogRows,
+  patchCatalogRow,
+} from './repositories/catalog-admin.js';
+import { createRefund, listRefunds, patchRefund, voidRefund } from './repositories/refunds.js';
+import { listAudit, recordAudit } from './repositories/audit.js';
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
@@ -72,7 +91,7 @@ function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -111,9 +130,9 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "health"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "health"].includes(route.name)) ||
     (method === "POST" &&
-      ["clients", "bookings"].includes(route.name))
+      ["clients", "bookings", "discount:use"].includes(route.name))
   );
 }
 
@@ -195,12 +214,21 @@ function match(url, method) {
     ["staff", "/api/core/staff"],
     ["bookings", "/api/core/bookings"],
     ["invoices", "/api/core/invoices"],
+    ["income", "/api/core/income"],
     ["expenses", "/api/core/expenses"],
+    ["discounts", "/api/core/discounts"],
+    ["sections", "/api/core/sections"],
+    ["categories", "/api/core/categories"],
+    ["refunds", "/api/core/refunds"],
+    ["audit", "/api/core/audit"],
   ]) {
     const id = one(prefix);
     if (id) return { name, id };
     if (path === prefix) return { name };
   }
+
+  const discountUse = /^\/api\/core\/discounts\/([^/]+)\/use$/.exec(path);
+  if (discountUse && method === "POST") return { name: "discount:use", id: discountUse[1] };
 
   if (path === "/api/core/availability") return { name: "availability" };
   if (path === "/api/core/payments") return { name: "payments" };
@@ -212,6 +240,11 @@ function match(url, method) {
 async function dispatch(ctx, route, method, body, query) {
   const db = ctx.coreDb;
   if (!ctx.guestAccess) requireRole(ctx.role);
+  const actorInfo = {
+    uid: ctx.identity?.uid || "",
+    email: ctx.identity?.claims?.email || "",
+    name: ctx.identity?.claims?.name || "",
+  };
 
   switch (route.name) {
     case "health":
@@ -280,6 +313,9 @@ async function dispatch(ctx, route, method, body, query) {
       if (method === "PATCH" && route.id) {
         return patchBooking(db, ctx.salonId, route.id, body);
       }
+      if (method === "DELETE" && route.id) {
+        return deleteBooking(db, ctx.salonId, route.id, actorInfo);
+      }
       break;
 
     case "booking:complete":
@@ -319,7 +355,13 @@ async function dispatch(ctx, route, method, body, query) {
         return listIncome(db, ctx.salonId);
       }
       if (method === "POST") {
-        return createIncome(db, ctx.salonId, body);
+        return createIncome(db, ctx.salonId, body, actorInfo);
+      }
+      if (method === "PATCH" && route.id) {
+        return patchIncome(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      if (method === "DELETE" && route.id) {
+        return deleteIncome(db, ctx.salonId, route.id, actorInfo);
       }
       break;
 
@@ -332,12 +374,48 @@ async function dispatch(ctx, route, method, body, query) {
           db,
           ctx.salonId,
           body,
-          ctx.identity.uid
+          ctx.identity.uid,
+          actorInfo
         );
       }
       if (method === "PATCH" && route.id) {
-        return patchExpense(db, ctx.salonId, route.id, body);
+        return patchExpense(db, ctx.salonId, route.id, body, actorInfo);
       }
+      if (method === "DELETE" && route.id) {
+        return deleteExpense(db, ctx.salonId, route.id, actorInfo);
+      }
+      break;
+
+    case "discounts":
+      if (method === "GET") return listDiscounts(db, ctx.salonId, query);
+      if (method === "POST") return createDiscount(db, ctx.salonId, body, actorInfo);
+      if (method === "PATCH" && route.id) return patchDiscount(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "DELETE" && route.id) return deleteDiscount(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "discount:use":
+      return incrementDiscountUsage(db, ctx.salonId, route.id, actorInfo);
+
+    case "sections":
+    case "categories": {
+      const kind = route.name;
+      if (method === "GET") return listCatalogRows(db, ctx.salonId, kind, query);
+      if (method === "POST") return createCatalogRow(db, ctx.salonId, kind, body);
+      if (method === "PATCH" && route.id) return patchCatalogRow(db, ctx.salonId, kind, route.id, body);
+      if (method === "DELETE" && route.id) return deleteCatalogRow(db, ctx.salonId, kind, route.id);
+      break;
+    }
+
+    case "refunds":
+      if (method === "GET") return listRefunds(db, ctx.salonId, query);
+      if (method === "POST") return createRefund(db, ctx.salonId, body, actorInfo);
+      if (method === "PATCH" && route.id) return patchRefund(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "DELETE" && route.id) return voidRefund(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "audit":
+      if (method === "GET") return listAudit(db, ctx.salonId, query);
+      if (method === "POST") return recordAudit(db, ctx.salonId, body, actorInfo);
       break;
 
     default:
@@ -360,7 +438,7 @@ export async function handleRequest(request, env) {
   if (!route) throw new AppError(404, "core_api:not_found");
 
   const body =
-    request.method === "GET" ? {} : await readJson(request);
+    request.method === "GET" || request.method === "DELETE" ? {} : await readJson(request);
   const allowGuest = isPublicRoute(route, request.method);
   const ctx = await actor(request, env, body, allowGuest);
   const data = await dispatch(

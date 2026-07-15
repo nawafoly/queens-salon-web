@@ -19,6 +19,8 @@ import {
 import "../styles/AdminDashboardOffers.css";
 import { db } from "../services/firebase";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreCatalogService } from "../services/CoreCatalogService";
 
 // ✅ Firestore
 import { listOffers, upsertOffer, removeOffer } from "../services/firestoreOffers";
@@ -432,12 +434,19 @@ const DashboardOffers: React.FC = () => {
 
   const refresh = async () => {
     try {
-      const [offersData, packagesData, servicesSnap, sectionsSnap, categoriesSnap] = await Promise.all([
+      const useCoreD1 = getDataSourceFlags().useCoreD1;
+      const [offersData, packagesData, servicesSource, sectionsSource, categoriesSource] = await Promise.all([
         listOffers(SALON_ID),
         listAllPackages(SALON_ID),
-        getDocs(query(collection(db, "salons", SALON_ID, "services"), orderBy("name", "asc"))),
-        getDocs(collection(db, "salons", SALON_ID, "service_sections")),
-        getDocs(collection(db, "salons", SALON_ID, "service_categories")),
+        useCoreD1
+          ? CoreCatalogService.listServices({ activeOnly: false })
+          : getDocs(query(collection(db, "salons", SALON_ID, "services"), orderBy("name", "asc"))),
+        useCoreD1
+          ? CoreCatalogService.listSections(false)
+          : getDocs(collection(db, "salons", SALON_ID, "service_sections")),
+        useCoreD1
+          ? CoreCatalogService.listCategories(false)
+          : getDocs(collection(db, "salons", SALON_ID, "service_categories")),
       ]);
       const safePackagesRaw = Array.isArray(packagesData) ? packagesData : [];
       const expiredStillFlaggedActive = safePackagesRaw.filter(
@@ -466,34 +475,39 @@ const DashboardOffers: React.FC = () => {
       setOffers(filteredOffers);
       setPackagesCatalog(safePackages);
       const secMap: Record<string, string> = {};
-      sectionsSnap.docs.forEach((d) => {
-        const id = String(d.id || "").trim();
-        const label = pickDocLabel(d.data() as any, "");
+      const sectionRows = useCoreD1
+        ? (sectionsSource as Awaited<ReturnType<typeof CoreCatalogService.listSections>>).map((row) => ({ id: row.id, data: row }))
+        : (sectionsSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, data: d.data() as any }));
+      sectionRows.forEach(({ id, data }: any) => {
+        const label = useCoreD1 ? String(data.name || "").trim() : pickDocLabel(data, "");
         if (id && label) secMap[id] = label;
       });
       setSectionNameById(secMap);
+
       const catMap: Record<string, string> = {};
-      categoriesSnap.docs.forEach((d) => {
-        const id = String(d.id || "").trim();
-        const label = pickDocLabel(d.data() as any, "");
+      const categoryRows = useCoreD1
+        ? (categoriesSource as Awaited<ReturnType<typeof CoreCatalogService.listCategories>>).map((row) => ({ id: row.id, data: row }))
+        : (categoriesSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, data: d.data() as any }));
+      categoryRows.forEach(({ id, data }: any) => {
+        const label = useCoreD1 ? String(data.name || "").trim() : pickDocLabel(data, "");
         if (id && label) catMap[id] = label;
       });
       setCategoryNameById(catMap);
-      const srvRows: PackageServiceRow[] = servicesSnap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+
+      const serviceRowsRaw = useCoreD1
+        ? (servicesSource as Awaited<ReturnType<typeof CoreCatalogService.listServices>>).map((row) => ({
+            id: row.id, name: row.name, sectionId: row.sectionId, categoryId: row.categoryId,
+            durationMin: row.durationMinutes, price: Number(row.priceHalalas || 0) / 100, active: row.active,
+          }))
+        : (servicesSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const srvRows: PackageServiceRow[] = serviceRowsRaw
         .map((x: any) => ({
           id: String(x.id || "").trim(),
           name: String(x.name || "").trim(),
           sectionId: String(x.sectionId || "").trim(),
-          sectionTitle:
-            String(secMap[String(x.sectionId || "").trim()] || "").trim() ||
-            String(x.sectionTitle || "").trim() ||
-            String(x.sectionId || "").trim(),
+          sectionTitle: String(secMap[String(x.sectionId || "").trim()] || x.sectionTitle || x.sectionId || "").trim(),
           categoryId: String(x.categoryId || "").trim(),
-          categoryName:
-            String(catMap[String(x.categoryId || "").trim()] || "").trim() ||
-            String(x.categoryName || x.category || "").trim() ||
-            undefined,
+          categoryName: String(catMap[String(x.categoryId || "").trim()] || x.categoryName || x.category || "").trim() || undefined,
           durationMin: Math.max(0, Number(x.durationMin || 0)),
           price: Math.max(0, Number(x.price || 0)),
           active: x.active !== false,
@@ -843,7 +857,8 @@ const DashboardOffers: React.FC = () => {
   const unselectedPackageServices = useMemo(
     () => filteredPackageServices.filter((s) => !packageDraft.serviceIds.includes(s.id)),
     [filteredPackageServices, packageDraft.serviceIds]
-  );  const groupPackageServices = (rows: PackageServiceRow[]) => {
+  );
+  const groupPackageServices = (rows: PackageServiceRow[]) => {
     const groups = new Map<string, { title: string; services: PackageServiceRow[] }>();
     rows.forEach((s) => {
       const sectionTitle = normalizeGroupLabel(

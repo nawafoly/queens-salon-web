@@ -201,6 +201,8 @@ import {
 } from "../services/bookingDataSourceCompat";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreRefundService } from "../services/CoreRefundService";
+import { CoreAuditService } from "../services/CoreAuditService";
 
 // Catalog
 import type {
@@ -2307,7 +2309,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         entityType: "booking",
         entityId: id,
         description: "تم تأكيد الحجز وإصدار الفاتورة من الاستقبال",
-        source: "internal_booking",
+        source: "internal_booking" as const,
         after: {
           status: "confirmed",
           paymentMethod: nextPaymentMethod,
@@ -2468,39 +2470,54 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       const details = String(refundDetails || "").trim();
       const refundNote = details ? `${reason} | ${details}` : reason;
 
-      await updateDoc(doc(db, "salons", SALON_ID, "bookings", id), {
-        status: "cancelled",
-        cancelledAt: now,
-        cancelledByUid: staffUid,
-        refundedAt: now,
-        refundedByUid: staffUid,
-        refundReason: reason,
-        refundDetails: details || null,
-        refundAmount: amount,
-        updatedAt: now,
-      } as any);
-
-      await upsertIncomeFS(
-        {
+      if (getDataSourceFlags().useCoreD1) {
+        await CoreRefundService.create({
           id: `refund_${id}`,
-          date: todayISO(),
-          amount: -Math.abs(amount),
-          method,
-          source: "استرجاع",
           bookingId: id,
-          note: `استرجاع للحجز ${String(b?.publicId || id)} - ${refundNote}`,
-          createdAt: now,
-        } as any,
-        SALON_ID
-      );
+          invoiceId: String((b as any)?.invoiceId || (b as any)?.invoice_id || "") || undefined,
+          paymentId: String((b as any)?.paymentId || (b as any)?.payment_id || "") || undefined,
+          clientId: String((b as any)?.clientId || (b as any)?.client_id || "") || undefined,
+          amountHalalas: Math.max(1, Math.round(amount * 100)),
+          method,
+          reason: refundNote,
+          idempotencyKey: `booking-refund:${id}`,
+        });
+        await resolveBookingDataSource().updateBookingStatus(id, "cancelled");
+      } else {
+        await updateDoc(doc(db, "salons", SALON_ID, "bookings", id), {
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledByUid: staffUid,
+          refundedAt: now,
+          refundedByUid: staffUid,
+          refundReason: reason,
+          refundDetails: details || null,
+          refundAmount: amount,
+          updatedAt: now,
+        } as any);
 
-      void writeAuditLog({
+        await upsertIncomeFS(
+          {
+            id: `refund_${id}`,
+            date: todayISO(),
+            amount: -Math.abs(amount),
+            method,
+            source: "استرجاع",
+            bookingId: id,
+            note: `استرجاع للحجز ${String(b?.publicId || id)} - ${refundNote}`,
+            createdAt: now,
+          } as any,
+          SALON_ID
+        );
+      }
+
+      const auditPayload = {
         salonId: SALON_ID,
         action: "booking_cancelled",
         entityType: "booking",
         entityId: id,
         description: "تم استرجاع الحجز من شاشة الاستقبال",
-        source: "internal_booking",
+        source: "internal_booking" as const,
         after: {
           status: "cancelled",
           refundedAt: now,
@@ -2521,7 +2538,12 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
             bookingId: id,
           },
         },
-      });
+      };
+      if (getDataSourceFlags().useCoreD1) {
+        void CoreAuditService.record(auditPayload);
+      } else {
+        void writeAuditLog(auditPayload);
+      }
 
       const refreshed = {
         ...b,

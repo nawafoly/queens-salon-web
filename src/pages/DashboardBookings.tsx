@@ -41,6 +41,8 @@ import {
 } from "../services/firestoreBookings";
 import { listActiveStaffAll, type StaffPublicWithId } from "../services/firestoreStaffPublic";
 import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreRefundService } from "../services/CoreRefundService";
 import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
@@ -2425,6 +2427,28 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [mergedBookingSources]);
 
   const loadRefundState = useCallback(async () => {
+    if (getDataSourceFlags().useCoreD1) {
+      const refunds = await CoreRefundService.list();
+      const next: Record<string, RefundRecord> = {};
+      refunds.forEach((refund) => {
+        const bookingId = String(refund.bookingId || "").trim();
+        if (!bookingId || String(refund.status || "").toLowerCase() === "voided") return;
+        const reasonText = String(refund.reason || "").trim();
+        const [reason, ...detailParts] = reasonText.split("|").map((part) => part.trim());
+        next[bookingId] = {
+          incomeId: refund.id,
+          bookingId,
+          amount: Number(refund.amountHalalas || 0) / 100,
+          method: normalizeIncomePaymentMethod(refund.method),
+          reason: reason || reasonText,
+          details: detailParts.join(" | "),
+          date: String(refund.refundedAt || "").slice(0, 10),
+        };
+      });
+      setRefundMapByBookingId(next);
+      return;
+    }
+
     const refundQuery = fsQuery(
       collection(db, "salons", "main", "income"),
       where("amount", "<", 0)
@@ -3819,28 +3843,61 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundBusyId(bookingId);
       setRefundSaving(true);
       setRefundError("");
-      await upsertIncomeFS({
-        id: `refund_${bookingId}`,
-        date: refundDraft.date || todayISOLocal(),
-        amount: refundAmount,
-        method,
-        source: "استرجاع",
-        note: `استرجاع للحجز ${bookingRef(b)} - ${note}`,
-        bookingId,
-        createdAt: Date.now(),
-      });
-      setRefundMapByBookingId((prev) => ({
-        ...prev,
-        [bookingId]: {
-          incomeId: `refund_${bookingId}`,
+      const refundDate = refundDraft.date || todayISOLocal();
+      const refundId = `refund_${bookingId}`;
+      if (getDataSourceFlags().useCoreD1) {
+        const existingRefund = refundMapByBookingId[bookingId];
+        const payload = {
           bookingId,
-          amount: Math.abs(refundAmount),
+          clientId: String(b.userId || "").trim() || undefined,
+          amountHalalas: Math.round(Math.abs(amountInput) * 100),
           method,
-          reason,
-          details,
-          date: refundDraft.date || todayISOLocal(),
-        },
-      }));
+          reason: note,
+          refundedAt: `${refundDate}T12:00:00.000Z`,
+        };
+        const created = existingRefund?.incomeId
+          ? await CoreRefundService.patch(existingRefund.incomeId, payload)
+          : await CoreRefundService.create({
+              ...payload,
+              id: refundId,
+              idempotencyKey: `dashboard-refund:${bookingId}`,
+            });
+        setRefundMapByBookingId((prev) => ({
+          ...prev,
+          [bookingId]: {
+            incomeId: created.id,
+            bookingId,
+            amount: Number(created.amountHalalas || 0) / 100,
+            method: normalizeIncomePaymentMethod(created.method),
+            reason,
+            details,
+            date: String(created.refundedAt || refundDate).slice(0, 10),
+          },
+        }));
+      } else {
+        await upsertIncomeFS({
+          id: refundId,
+          date: refundDate,
+          amount: refundAmount,
+          method,
+          source: "استرجاع",
+          note: `استرجاع للحجز ${bookingRef(b)} - ${note}`,
+          bookingId,
+          createdAt: Date.now(),
+        });
+        setRefundMapByBookingId((prev) => ({
+          ...prev,
+          [bookingId]: {
+            incomeId: refundId,
+            bookingId,
+            amount: Math.abs(refundAmount),
+            method,
+            reason,
+            details,
+            date: refundDate,
+          },
+        }));
+      }
       setRefundTarget(null);
     } catch {
       setRefundError("تعذر تسجيل الاسترجاع.");
@@ -3860,7 +3917,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundBusyId(bookingId);
       setRefundSaving(true);
       setRefundError("");
-      await removeIncomeFS(existing.incomeId);
+      if (getDataSourceFlags().useCoreD1) {
+        await CoreRefundService.remove(existing.incomeId);
+      } else {
+        await removeIncomeFS(existing.incomeId);
+      }
       setRefundMapByBookingId((prev) => {
         const next = { ...prev };
         delete next[bookingId];

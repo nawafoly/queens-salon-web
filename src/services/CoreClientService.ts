@@ -19,10 +19,14 @@ export const CoreClientService = {
   },
 
   async create(input: {
+    id?: string;
     name: string;
     phone: string;
     email?: string;
     firebaseUid?: string;
+    notes?: string;
+    vip?: boolean;
+    legacyClientDocId?: string;
   }): Promise<CoreClient> {
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/clients",
@@ -40,6 +44,8 @@ export const CoreClientService = {
       firebaseUid: string;
       status: string;
       notes: string;
+      vip: boolean;
+      legacyClientDocId: string;
     }>
   ): Promise<CoreClient> {
     const row = await coreApiRequest<Record<string, unknown>>(

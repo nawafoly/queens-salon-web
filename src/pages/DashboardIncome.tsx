@@ -25,6 +25,8 @@ import {
   upsertIncomeFS,
 } from "../services/firestoreIncome";
 import { listAllBookings } from "../services/firestoreBookings";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreBookingService } from "../services/CoreBookingService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
 
@@ -890,41 +892,56 @@ export default function DashboardIncome() {
         const paidRounded = round2(Math.max(0, Math.min(totalAmount, paidAmount)));
         const remainingAmount = round2(Math.max(0, totalAmount - paidRounded));
 
-        await Promise.all([
-          upsertIncomeFS({
-            ...editTarget,
-            amount: paidRounded,
-            createdAt: Number(editTarget.createdAt) || Date.now(),
-          }),
-          setDoc(
-            doc(db, "salons", "main", "bookings", bookingId),
-            {
-              total: totalAmount,
-              finalPrice: totalAmount,
-              paymentType,
-              paidAmount: paidRounded,
-              remainingAmount,
-              updatedAt: serverTimestamp(),
-              amountEditedFromIncome: true,
-              amountEditedAt: serverTimestamp(),
-            },
-            { merge: true }
-          ),
-          setDoc(
-            doc(db, "salons", "main", "booking_tracks", bookingId),
-            {
-              total: totalAmount,
-              finalPrice: totalAmount,
-              paymentType,
-              paidAmount: paidRounded,
-              remainingAmount,
-              updatedAt: serverTimestamp(),
-              amountEditedFromIncome: true,
-              amountEditedAt: serverTimestamp(),
-            },
-            { merge: true }
-          ),
-        ]);
+        if (getDataSourceFlags().useCoreD1) {
+          await Promise.all([
+            upsertIncomeFS({
+              ...editTarget,
+              amount: paidRounded,
+              createdAt: Number(editTarget.createdAt) || Date.now(),
+            }),
+            CoreBookingService.patch(bookingId, {
+              subtotalHalalas: Math.round(totalAmount * 100),
+              totalHalalas: Math.round(totalAmount * 100),
+              paymentStatus: paymentType === "full" ? "paid" : "partial",
+            }),
+          ]);
+        } else {
+          await Promise.all([
+            upsertIncomeFS({
+              ...editTarget,
+              amount: paidRounded,
+              createdAt: Number(editTarget.createdAt) || Date.now(),
+            }),
+            setDoc(
+              doc(db, "salons", "main", "bookings", bookingId),
+              {
+                total: totalAmount,
+                finalPrice: totalAmount,
+                paymentType,
+                paidAmount: paidRounded,
+                remainingAmount,
+                updatedAt: serverTimestamp(),
+                amountEditedFromIncome: true,
+                amountEditedAt: serverTimestamp(),
+              },
+              { merge: true }
+            ),
+            setDoc(
+              doc(db, "salons", "main", "booking_tracks", bookingId),
+              {
+                total: totalAmount,
+                finalPrice: totalAmount,
+                paymentType,
+                paidAmount: paidRounded,
+                remainingAmount,
+                updatedAt: serverTimestamp(),
+                amountEditedFromIncome: true,
+                amountEditedAt: serverTimestamp(),
+              },
+              { merge: true }
+            ),
+          ]);
+        }
 
         await refresh();
         setModalMsg("تم تعديل طريقة الدفع وتحديث الإيراد");
@@ -966,6 +983,10 @@ export default function DashboardIncome() {
   const canFixPaymentMethods = uiRole === "owner" || uiRole === "admin";
 
   const fixPaymentMethods = async () => {
+    if (getDataSourceFlags().useCoreD1) {
+      setModalMsg("إصلاح طرق الدفع القديمة مخصص لمسار Firestore قبل النقل فقط؛ مدفوعات D1 محفوظة كسجلات مستقلة.");
+      return;
+    }
     if (!canFixPaymentMethods) {
       setModalMsg("هذه العملية تتطلب صلاحية Owner/Admin.");
       return;

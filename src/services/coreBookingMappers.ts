@@ -34,13 +34,15 @@ function renameKeys<T>(
 }
 
 export function mapCoreClient(row: Record<string, unknown>): CoreClient {
-  return renameKeys<CoreClient>(row, {
+  const mapped = renameKeys<CoreClient>(row, {
     salon_id: "salonId",
     phone_normalized: "phoneNormalized",
     firebase_uid: "firebaseUid",
+    legacy_client_doc_id: "legacyClientDocId",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
+  return { ...mapped, vip: Number(row.vip) === 1 || row.vip === true };
 }
 
 export function mapCoreService(row: Record<string, unknown>): CoreService {
@@ -217,6 +219,9 @@ export function mapCoreIncome(
     invoice_id: "invoiceId",
     payment_id: "paymentId",
     amount_halalas: "amountHalalas",
+    payment_breakdown_json: "paymentBreakdownJson",
+    client_name: "clientName",
+    client_phone: "clientPhone",
     occurred_at: "occurredAt",
     created_at: "createdAt",
   });
@@ -231,6 +236,14 @@ export function mapCoreExpense(
     payment_method: "paymentMethod",
     occurred_at: "occurredAt",
     created_by_uid: "createdByUid",
+    added_by: "addedBy",
+    source_kind: "sourceKind",
+    source_ref_id: "sourceRefId",
+    source_type: "sourceType",
+    staff_id: "staffId",
+    staff_name: "staffName",
+    month_key: "monthKey",
+    payroll_kind: "payrollKind",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });

@@ -18,6 +18,9 @@ import {
 import type { Expense } from "../types/finance";
 import { writeAuditLog } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreFinanceService } from "./CoreFinanceService";
+import { CoreApiError } from "./coreApiClient";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -143,12 +146,60 @@ function resolveExpenseActor() {
   return { uid, email, name };
 }
 
+function coreExpenseToLegacy(row: import("../types/coreApi").CoreExpenseEntry): Expense {
+  return {
+    id: row.id,
+    title: String(row.title || row.description || "مصروف"),
+    category: String(row.category || "أخرى"),
+    amount: Number(row.amountHalalas || 0) / 100,
+    date: String(row.occurredAt || "").slice(0, 10),
+    paymentMethod: (String(row.paymentMethod || "cash") as Expense["paymentMethod"]),
+    note: row.note || row.description || undefined,
+    createdAt: Date.parse(row.createdAt || row.occurredAt || "") || Date.now(),
+    addedBy: row.addedBy || undefined,
+    createdByUid: row.createdByUid || undefined,
+    sourceKind: row.sourceKind || undefined,
+    sourceRefId: row.sourceRefId || undefined,
+    sourceType: row.sourceType || undefined,
+    staffId: row.staffId || undefined,
+    staffName: row.staffName || undefined,
+    monthKey: row.monthKey || undefined,
+    payrollKind: row.payrollKind === "salary" || row.payrollKind === "overtime" ? row.payrollKind : undefined,
+  };
+}
+
+function legacyExpenseToCore(expense: Expense) {
+  const date = String(expense.date || "").trim();
+  return {
+    id: expense.id,
+    amountHalalas: Math.max(1, Math.round(Number(expense.amount || 0) * 100)),
+    category: expense.category,
+    description: expense.note || expense.title,
+    paymentMethod: expense.paymentMethod,
+    occurredAt: date ? `${date}T12:00:00.000Z` : new Date(expense.createdAt || Date.now()).toISOString(),
+    createdAt: new Date(expense.createdAt || Date.now()).toISOString(),
+    title: expense.title,
+    note: expense.note,
+    addedBy: expense.addedBy || expense.createdByName || expense.createdBy,
+    sourceKind: expense.sourceKind,
+    sourceRefId: expense.sourceRefId,
+    sourceType: expense.sourceType,
+    staffId: expense.staffId,
+    staffName: expense.staffName,
+    monthKey: expense.monthKey,
+    payrollKind: expense.payrollKind,
+  };
+}
+
 /**
  * ✅ جلب المصروفات
  * - يحاول orderBy(createdAt desc)
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
 export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreFinanceService.listExpenses()).map(coreExpenseToLegacy);
+  }
   const col = expensesCol(salonId || DEFAULT_SALON_ID);
 
   try {
@@ -181,6 +232,16 @@ export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
 
 /** ✅ إضافة/تحديث */
 export async function upsertExpenseFS(expense: Expense, salonId?: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    const payload = legacyExpenseToCore(expense);
+    try {
+      await CoreFinanceService.patchExpense(expense.id, payload);
+    } catch (error) {
+      if (!(error instanceof CoreApiError) || error.status !== 404) throw error;
+      await CoreFinanceService.createExpense(payload);
+    }
+    return;
+  }
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", expense.id);
   FirestoreReadStats.bump(ref.path, "firestoreExpenses.upsertExpenseFS", "getDoc");
@@ -254,6 +315,10 @@ export async function upsertExpenseFS(expense: Expense, salonId?: string) {
 
 /** ✅ حذف */
 export async function removeExpenseFS(id: string, salonId?: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    await CoreFinanceService.deleteExpense(id);
+    return;
+  }
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "expenses", id);
   FirestoreReadStats.bump(ref.path, "firestoreExpenses.removeExpenseFS", "getDoc");
@@ -288,6 +353,11 @@ export async function removeExpenseFS(id: string, salonId?: string) {
 export async function countMonthlyExpensesMissingNotesFS(
   salonId?: string
 ): Promise<number> {
+  if (getDataSourceFlags().useCoreD1) {
+    const rows = await CoreFinanceService.listExpenses();
+    const month = new Date().toISOString().slice(0, 7);
+    return rows.filter((row) => String(row.occurredAt || "").startsWith(month) && !String(row.note || row.description || "").trim()).length;
+  }
   const sid = salonId || DEFAULT_SALON_ID;
   const col = expensesCol(sid);
 

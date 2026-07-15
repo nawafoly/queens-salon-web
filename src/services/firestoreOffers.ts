@@ -16,6 +16,8 @@ import {
   increment,
 } from "firebase/firestore";
 import { writeAuditLog } from "./logService";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreOfferService } from "./CoreOfferService";
 
 export type DiscountType = "fixed" | "percent";
 export type OfferAppliesTo = "all" | "services";
@@ -176,8 +178,62 @@ function normalizeCode(codeRaw: any) {
   return String(codeRaw ?? "").trim().toUpperCase();
 }
 
+function coreDiscountToOffer(row: import("../types/coreApi").CoreDiscount): Offer {
+  return {
+    id: row.id,
+    title: row.name,
+    code: row.code || "",
+    codeKey: row.codeKey || row.code || "",
+    discountType: row.type,
+    value: row.value,
+    startDate: row.startsAt || undefined,
+    endDate: row.endsAt || undefined,
+    active: row.active,
+    isActive: row.active,
+    appliesTo: row.appliesTo,
+    serviceIds: row.serviceIds,
+    sequenceSteps: row.sequenceSteps.map((step) => ({
+      serviceId: String(step.serviceId || ""),
+      orderIndex: Number(step.orderIndex || 0),
+      gapAfterMin: Number(step.gapAfterMin || 0),
+      ...(step.titleSnapshot ? { titleSnapshot: String(step.titleSnapshot) } : {}),
+    })).filter((step) => step.serviceId),
+    usageCount: row.usedCount,
+    imageUrl: row.imageUrl || undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ...(row.deletedAt ? { deletedAt: row.deletedAt } : {}),
+  } as Offer;
+}
+
+function offerToCore(offer: Offer) {
+  return {
+    id: offer.id,
+    name: offer.title,
+    title: offer.title,
+    code: offer.code,
+    type: offer.discountType,
+    discountType: offer.discountType,
+    value: offer.value,
+    active: offer.active,
+    startsAt: offer.startDate,
+    endsAt: offer.endDate,
+    startDate: offer.startDate,
+    endDate: offer.endDate,
+    usedCount: offer.usageCount || 0,
+    appliesTo: offer.appliesTo || "all",
+    serviceIds: offer.serviceIds || [],
+    sequenceSteps: offer.sequenceSteps || [],
+    imageUrl: offer.imageUrl,
+    deletedAt: (offer as Offer & { deletedAt?: unknown }).deletedAt,
+  };
+}
+
 /** ✅ قائمة العروض */
 export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreOfferService.list({ includeDeleted: true })).map(coreDiscountToOffer);
+  }
   const q = query(offersCol(salonId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
@@ -195,6 +251,13 @@ export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
 
 /** ✅ إضافة/تحديث */
 export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
+  if (getDataSourceFlags().useCoreD1) {
+    const rows = await CoreOfferService.list({ includeDeleted: true });
+    const exists = rows.some((row) => row.id === offer.id);
+    if (exists) await CoreOfferService.patch(offer.id, offerToCore(offer));
+    else await CoreOfferService.create(offerToCore(offer));
+    return;
+  }
   const ref = doc(db, "salons", salonId, "offers", offer.id);
   const beforeSnap = await getDoc(ref);
   const before = beforeSnap.exists() ? beforeSnap.data() : null;
@@ -297,6 +360,10 @@ export async function upsertOffer(offer: Offer, salonId = DEFAULT_SALON_ID) {
  * - ممنوع إذا usageCount > 0 (عشان ما نكسر السجل/التقارير)
  */
 export async function removeOffer(id: string, salonId = DEFAULT_SALON_ID) {
+  if (getDataSourceFlags().useCoreD1) {
+    await CoreOfferService.remove(id);
+    return;
+  }
   const ref = doc(db, "salons", salonId, "offers", id);
   const beforeSnap = await getDoc(ref);
   const before = beforeSnap.exists() ? beforeSnap.data() : null;
@@ -347,6 +414,13 @@ export async function findActiveOfferByCode(
   const code = normalizeCode(codeRaw);
   if (!code) return null;
 
+  if (getDataSourceFlags().useCoreD1) {
+    const [row] = await CoreOfferService.list({ active: true, code });
+    if (!row) return null;
+    const offer = coreDiscountToOffer(row);
+    return isOfferActiveNow(offer) ? offer : null;
+  }
+
   const q = query(
     offersCol(salonId),
     where("codeKey", "==", code),
@@ -384,6 +458,11 @@ export async function incrementOfferUsage(
 ): Promise<void> {
   const sid = salonId || DEFAULT_SALON_ID;
   if (!offerId) return;
+
+  if (getDataSourceFlags().useCoreD1) {
+    await CoreOfferService.incrementUsage(offerId);
+    return;
+  }
 
   const ref = doc(db, "salons", sid, "offers", offerId);
 

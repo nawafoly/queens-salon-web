@@ -86,3 +86,46 @@ test("mixed package booking stores reservation references on Core booking items"
   assert.match(source, /bookingDate:/);
   assert.match(source, /startTime:/);
 });
+
+test("Phase 5 legacy facades use explicit Core D1 branches", () => {
+  const checks = [
+    ["src/services/firestoreIncome.ts", /CoreFinanceService/],
+    ["src/services/firestoreExpenses.ts", /CoreFinanceService/],
+    ["src/services/firestoreOffers.ts", /CoreOfferService/],
+    ["src/services/firestoreBookings.ts", /CoreBookingService/],
+    ["src/services/logService.ts", /CoreAuditService/],
+  ];
+  for (const [file, servicePattern] of checks) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /getDataSourceFlags\(\)\.useCoreD1/);
+    assert.match(source, servicePattern);
+  }
+});
+
+test("Phase 5 migration adds admin operations without forcing unique client phones", () => {
+  const migration = readFileSync("migrations/core/0004_admin_operations.sql", "utf8");
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS service_sections/i);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS refunds/i);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS audit_logs/i);
+  assert.match(migration, /voided_at/i);
+  assert.doesNotMatch(migration, /CREATE\s+UNIQUE\s+INDEX[^;]*clients[^;]*phone_normalized/is);
+});
+
+test("dashboard refund workflows use Core refunds in D1 mode", () => {
+  for (const file of ["src/pages/DashboardBookings.tsx", "src/pages/BookingInternal.tsx"]) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /CoreRefundService/);
+    assert.match(source, /getDataSourceFlags\(\)\.useCoreD1/);
+  }
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  assert.match(dashboard, /CoreRefundService\.create/);
+  assert.match(dashboard, /CoreRefundService\.remove/);
+  assert.match(dashboard, /idempotencyKey:\s*`dashboard-refund:/);
+});
+
+test("Core migration preserves explicit halala fields", () => {
+  const source = readFileSync("scripts/migrate-core-firestore-to-d1.mjs", "utf8");
+  assert.match(source, /function moneyHalalas/);
+  assert.match(source, /amountHalalas/);
+  assert.match(source, /totalHalalas/);
+});

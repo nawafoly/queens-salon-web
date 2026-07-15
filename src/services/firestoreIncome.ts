@@ -18,6 +18,9 @@ import {
 import type { IncomeItem, PaymentBreakdown, PaymentMethod } from "../types/finance";
 import { writeAuditLog } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreFinanceService } from "./CoreFinanceService";
+import { CoreApiError } from "./coreApiClient";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
 const DEFAULT_SALON_ID = "main";
@@ -117,12 +120,57 @@ function normalizeIncome(raw: any, id: string): IncomeItem {
   };
 }
 
+function coreIncomeToLegacy(row: import("../types/coreApi").CoreIncomeEntry): IncomeItem {
+  let paymentBreakdown: PaymentBreakdown | undefined;
+  try {
+    const parsed = JSON.parse(String(row.paymentBreakdownJson || "{}"));
+    if (parsed && typeof parsed === "object") paymentBreakdown = parsed as PaymentBreakdown;
+  } catch {
+    paymentBreakdown = undefined;
+  }
+  return {
+    id: row.id,
+    date: String(row.occurredAt || "").slice(0, 10),
+    amount: Number(row.amountHalalas || 0) / 100,
+    method: normalizePaymentMethod(row.method),
+    paymentBreakdown,
+    source: String(row.source || row.category || "دخل"),
+    note: row.note || row.description || undefined,
+    bookingId: row.bookingId || undefined,
+    clientName: row.clientName || undefined,
+    clientPhone: row.clientPhone || undefined,
+    createdAt: Date.parse(row.createdAt || row.occurredAt || "") || Date.now(),
+  };
+}
+
+function legacyIncomeToCore(item: IncomeItem) {
+  const date = String(item.date || "").trim();
+  return {
+    id: item.id,
+    bookingId: item.bookingId,
+    amountHalalas: Math.max(1, Math.round(Number(item.amount || 0) * 100)),
+    category: item.source || "income",
+    description: item.note || item.source || "Income",
+    method: item.method,
+    paymentBreakdown: item.paymentBreakdown || {},
+    source: item.source,
+    note: item.note,
+    clientName: item.clientName,
+    clientPhone: item.clientPhone,
+    occurredAt: date ? `${date}T12:00:00.000Z` : new Date(item.createdAt || Date.now()).toISOString(),
+    createdAt: new Date(item.createdAt || Date.now()).toISOString(),
+  };
+}
+
 /**
  * ✅ جلب الإيرادات
  * - يحاول orderBy(createdAt desc)
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
 export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    return (await CoreFinanceService.listIncome()).map(coreIncomeToLegacy);
+  }
   const col = incomeCol(salonId || DEFAULT_SALON_ID);
 
   try {
@@ -150,6 +198,16 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
 
 /** ✅ إضافة/تحديث */
 export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    const payload = legacyIncomeToCore(item);
+    try {
+      await CoreFinanceService.patchIncome(item.id, payload);
+    } catch (error) {
+      if (!(error instanceof CoreApiError) || error.status !== 404) throw error;
+      await CoreFinanceService.createIncome(payload);
+    }
+    return;
+  }
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", item.id);
   FirestoreReadStats.bump(ref.path, "firestoreIncome.upsertIncomeFS", "getDoc");
@@ -205,6 +263,10 @@ export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
 
 /** ✅ حذف */
 export async function removeIncomeFS(id: string, salonId?: string) {
+  if (getDataSourceFlags().useCoreD1) {
+    await CoreFinanceService.deleteIncome(id);
+    return;
+  }
   const sid = salonId || DEFAULT_SALON_ID;
   const ref = doc(db, "salons", sid, "income", id);
   FirestoreReadStats.bump(ref.path, "firestoreIncome.removeIncomeFS", "getDoc");
