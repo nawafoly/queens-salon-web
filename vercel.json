@@ -1,6 +1,20 @@
-{
+﻿{
   "version": 2,
   "routes": [
+    {
+      "src": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "queens-salon-web-gnxk.vercel.app"
+        }
+      ],
+      "status": 308,
+      "headers": {
+        "Location": "https://queens-salon-web.vercel.app/$1"
+      }
+    },
+
     { "handle": "filesystem" },
 
     { "src": "/api/(.*)", "dest": "/api/$1" },
