@@ -52,6 +52,7 @@ import DashboardPartners from "../pages/DashboardPartners";
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
 import BookingInternal from "../pages/BookingInternal";
+import BookingInternalV2 from "../features/internal-booking-v2/BookingInternalV2";
 
 import logo1 from "../assets/images/ssunnamed.png";
 
@@ -3053,6 +3054,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   element={
                     <PermissionRoute permission="bookings.create">
                       <BookingInternal internalMode />
+                    </PermissionRoute>
+                  }
+                />
+
+                <Route
+                  path="booking-internal-v2"
+                  element={
+                    <PermissionRoute permission="bookings.create">
+                      <BookingInternalV2 />
                     </PermissionRoute>
                   }
                 />
