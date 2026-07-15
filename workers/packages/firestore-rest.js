@@ -98,14 +98,18 @@ export class FirestoreRestClient {
   }
 
   async api(path, init = {}) {
-    const maxRetries = 2;
+    const { max429Retries = 1, ...requestInit } = init;
+    const operation = firestoreOperationName(path, requestInit.method);
     let lastBody = {};
     let lastStatus = 0;
-    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    for (let attempt = 0; attempt <= max429Retries; attempt += 1) {
       this.metrics.requestCount += 1;
+      if (operation === "get_document" || operation === "run_query") {
+        console.info("firestore_operation", { operation, attempt: attempt + 1 });
+      }
       const response = await fetch(`${this.base}${path}`, {
-        ...init,
-        headers: { ...(await this.headers()), ...(init.headers || {}) },
+        ...requestInit,
+        headers: { ...(await this.headers()), ...(requestInit.headers || {}) },
       });
       const body = await response.json().catch(() => ({}));
       if (response.ok) return body;
@@ -115,12 +119,12 @@ export class FirestoreRestClient {
         const firestoreStatus = cleanText(body.error?.status);
         const firestoreMessage = cleanText(body.error?.message);
         console.warn("packages_firestore_rate_limited", {
-          path,
+          operation,
           attempt: attempt + 1,
           firestoreStatus,
           firestoreMessage: firestoreMessage.slice(0, 180),
         });
-        if (attempt < maxRetries) {
+        if (attempt < max429Retries) {
           await sleep(retryDelayMs(response.headers.get("Retry-After"), attempt));
           continue;
         }
@@ -222,8 +226,24 @@ export class FirestoreRestClient {
   }
 
   async getDoc(path) {
-    const [doc] = await this.batchGet([path]);
-    return doc || { exists: false, id: docIdFromName(path), path, data: null };
+    const encoded = `/${path.split("/").map(encodeURIComponent).join("/")}`;
+    try {
+      const body = await this.api(encoded, { method: "GET" });
+      this.metrics.readOperations += 1;
+      return {
+        exists: true,
+        id: docIdFromName(body.name),
+        path: this.pathFromName(body.name),
+        name: body.name,
+        data: fromFirestoreFields(body.fields || {}),
+      };
+    } catch (error) {
+      if (error instanceof AppError && error.status === 404) {
+        this.metrics.readOperations += 1;
+        return { exists: false, id: docIdFromName(path), path, data: null };
+      }
+      throw error;
+    }
   }
 
   async get(path) {
@@ -260,6 +280,15 @@ function retryDelayMs(retryAfter, attempt) {
     if (Number.isFinite(dateMs)) return Math.min(2_000, Math.max(0, dateMs - Date.now()));
   }
   return Math.min(1_000, 100 * (2 ** attempt));
+}
+
+function firestoreOperationName(path, method = "POST") {
+  const normalizedPath = cleanText(path);
+  const normalizedMethod = cleanText(method).toUpperCase();
+  if (normalizedPath.endsWith(":runQuery")) return "run_query";
+  if (normalizedPath === ":batchGet") return "batch_get";
+  if (normalizedMethod === "GET") return "get_document";
+  return "write_or_transaction";
 }
 
 class FirestoreTx {

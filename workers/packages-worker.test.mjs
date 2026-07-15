@@ -19,6 +19,10 @@ class FakeFirestoreRest {
     this.queryCollectionCounts = new Map();
     this.fail429Remaining = 0;
     this.delayRunQueryMs = 0;
+    this.batchGetCount = 0;
+    this.getDocumentCount = 0;
+    this.runQueryCount = 0;
+    this.getDocumentPaths = [];
   }
 
   seed(path, data) {
@@ -130,11 +134,13 @@ class FakeFirestoreRest {
       return this.response({});
     }
     if (textUrl.endsWith(":batchGet")) {
+      this.batchGetCount += 1;
       const body = JSON.parse(init.body || "{}");
       this.readOperations += (body.documents || []).length;
       return this.response((body.documents || []).map((name) => this.docResponse(this.pathFromResource(name))));
     }
     if (textUrl.includes(":runQuery")) {
+      this.runQueryCount += 1;
       if (this.delayRunQueryMs) await new Promise((resolve) => setTimeout(resolve, this.delayRunQueryMs));
       const body = JSON.parse(init.body || "{}");
       const parentRaw = decodeURIComponent((new URL(textUrl).pathname.split("/documents/")[1] || "").replace(":runQuery", ""));
@@ -143,6 +149,17 @@ class FakeFirestoreRest {
       const rows = this.query(parentRaw, collectionId, body.structuredQuery || {});
       this.readOperations += rows.filter((row) => row.document).length;
       return this.response(rows);
+    }
+    if (String(init.method || "GET").toUpperCase() === "GET" && textUrl.includes("/documents/")) {
+      this.getDocumentCount += 1;
+      const path = this.pathFromResource(decodeURIComponent(new URL(textUrl).pathname));
+      this.getDocumentPaths.push(path);
+      const fields = this.docs.get(path);
+      this.readOperations += 1;
+      if (!fields) {
+        return this.response({ error: { status: "NOT_FOUND", message: "Document not found" } }, 404);
+      }
+      return this.response({ name: this.resource(path), fields });
     }
     if (textUrl.endsWith(":commit")) {
       if (this.failNextCommit) {
@@ -604,6 +621,9 @@ test("client wallet accepts empty clientId when phone lookup resolves canonical 
   assert.equal(body.data.activePackageCount, 1);
   assert.equal(body.data.totalRemainingSessions, 3);
   assert.deepEqual(body.data.packages.map((p) => p.id), ["phone-only-wallet-package"]);
+  assert.equal(fake.batchGetCount, 0);
+  assert.ok(fake.runQueryCount >= 1);
+  assert.equal(fake.queryCollectionCounts.get("clients"), 1);
 }));
 
 test("client wallet stays under firestore call budget and avoids heavy audit relations", async () => withFakeFirestore(async (fake) => {
@@ -633,7 +653,10 @@ test("client wallet stays under firestore call budget and avoids heavy audit rel
 
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(body.data.activePackageCount, 1);
+  assert.equal(body.data.activePackages.length, 1);
   assert.ok(firestoreCalls <= 5, `expected <= 5 Firestore calls, got ${firestoreCalls}`);
+  assert.equal(fake.batchGetCount, 0);
+  assert.ok(fake.getDocumentPaths.includes("salons/main/clients/client-a"));
   assert.equal(fake.queryCollectionCounts.get("client_packages"), 1);
   assert.equal(fake.queryCollectionCounts.get("client_package_transactions") || 0, 0);
   assert.equal(fake.queryCollectionCounts.get("bookings") || 0, 0);
@@ -669,6 +692,7 @@ test("repeated client wallet calls use cache after canonical id is known", async
   const secondDelta = fake.requestCount - afterFirst;
 
   assert.ok(secondDelta <= 1, `expected cached call to only resolve actor role, got ${secondDelta}`);
+  assert.equal(fake.batchGetCount, 0);
   assert.equal(fake.queryCollectionCounts.get("client_packages") || 0, packageQueriesAfterFirst);
 }));
 
@@ -698,12 +722,13 @@ test("concurrent client wallet calls are deduped for the same lookup", async () 
 
   assert.equal(first.status, 200, JSON.stringify(await json(first)));
   assert.equal(second.status, 200, JSON.stringify(await json(second)));
+  assert.equal(fake.batchGetCount, 0);
   assert.equal(fake.queryCollectionCounts.get("client_packages"), 1);
 }));
 
-test("firestore 429 retries twice then returns resource exhausted", async () => {
+test("firestore 429 retries once then returns resource exhausted", async () => {
   const fake = new FakeFirestoreRest();
-  fake.fail429Remaining = 3;
+  fake.fail429Remaining = 2;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fake.fetch;
   try {
@@ -716,7 +741,8 @@ test("firestore 429 retries twice then returns resource exhausted", async () => 
         return true;
       }
     );
-    assert.equal(fake.requestCount, 3);
+    assert.equal(fake.requestCount, 2);
+    assert.equal(fake.batchGetCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
