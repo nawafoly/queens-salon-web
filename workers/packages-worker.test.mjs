@@ -479,12 +479,69 @@ test("client wallet resolves canonical identity and includes package linked to l
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(body.data.canonicalClientId, "canonical-wallet-client");
-  assert.equal(body.data.activePackages, 1);
+  assert.equal(body.data.activePackageCount, 1);
+  assert.equal(body.data.activePackages.length, 1);
   assert.equal(body.data.totalRemainingSessions, 10);
   assert.equal(body.data.totalUsedSessions, 0);
   assert.equal(body.data.totalReservedSessions, 0);
   assert.deepEqual(body.data.packages.map((p) => p.id), ["legacy-linked-package"]);
   assert.equal(body.data.packages[0].legacyClientId, "legacy-wallet-client");
+}));
+
+test("client wallet phone match with no packages returns 200 and zero balances", async () => withFakeFirestore(async () => {
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-client-by-phone",
+      clientLookup: { phone: "0500000001" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "client-a");
+  assert.deepEqual(body.data.packages, []);
+  assert.deepEqual(body.data.activePackages, []);
+  assert.equal(body.data.activePackageCount, 0);
+  assert.equal(body.data.totalRemainingSessions, 0);
+  assert.equal(body.data.totalUsedSessions, 0);
+  assert.equal(body.data.totalReservedSessions, 0);
+}));
+
+test("client wallet phone match returns package linked to canonical alias", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/phone-wallet-client", {
+    clientId: "phone-wallet-canonical",
+    legacyClientDocId: "phone-wallet-legacy",
+    name: "Phone Wallet Client",
+    phone: "0500000091",
+  });
+  fake.seed("salons/main/client_packages/phone-wallet-package", {
+    clientId: "phone-wallet-legacy",
+    packageNameSnapshot: "Phone Wallet Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 4,
+    remainingSessions: 4,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-phone-wallet-client",
+      clientLookup: { phone: "0500000091" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "phone-wallet-canonical");
+  assert.equal(body.data.activePackageCount, 1);
+  assert.equal(body.data.activePackages.length, 1);
+  assert.equal(body.data.totalRemainingSessions, 4);
+  assert.deepEqual(body.data.packages.map((p) => p.id), ["phone-wallet-package"]);
+  assert.equal(body.data.packages[0].legacyClientId, "phone-wallet-legacy");
 }));
 
 test("redemption uses canonical client id and relinks legacy package id", async () => withFakeFirestore(async (fake) => {

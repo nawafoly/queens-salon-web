@@ -49,7 +49,8 @@ export type PackageClientWalletResult = {
   packages: any[];
   transactions: any[];
   services: Record<string, string>;
-  activePackages: number;
+  activePackages: any[];
+  activePackageCount?: number;
   totalRemainingSessions: number;
   totalUsedSessions: number;
   totalReservedSessions: number;

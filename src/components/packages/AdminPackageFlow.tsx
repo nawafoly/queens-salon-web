@@ -327,6 +327,10 @@ export default function AdminPackageFlow(props: {
   const totalUsed = Number(
     walletSummary?.totalUsedSessions ?? active.reduce((sum, pkg) => sum + Number(pkg.usedSessions || 0), 0)
   );
+  const activePackageCount = Number(
+    walletSummary?.activePackageCount ??
+      (Array.isArray(walletSummary?.activePackages) ? walletSummary.activePackages.length : active.length)
+  );
   const nearestExpiry = walletSummary?.nearestExpiryAt
     ? millis(walletSummary.nearestExpiryAt)
     : active.map((pkg) => millis(pkg.expiresAt)).filter(Boolean).sort((a, b) => a - b)[0];
@@ -338,7 +342,7 @@ export default function AdminPackageFlow(props: {
   const walletLoading = walletStatus === "loading";
   const walletDisplayState = packageWalletDisplayState({
     status: walletStatus,
-    activePackages: Number(walletSummary?.activePackages ?? active.length),
+    activePackages: activePackageCount,
     totalRemainingSessions: totalRemaining,
   });
   const coveredCartTotal = bookingItems.reduce((sum, item) => {
@@ -353,7 +357,7 @@ export default function AdminPackageFlow(props: {
     selectedClientLocalId: clientId,
     canonicalClientId: walletCanonicalClientId || cleanText(walletSummary?.canonicalClientId),
     walletStatus,
-    activePackages: active.length,
+    activePackages: activePackageCount,
     lastRequestAt: lastWalletRequestAt,
   };
   const hasAnyClientData = Boolean(props.client || clientName || clientPhone);
@@ -570,7 +574,7 @@ export default function AdminPackageFlow(props: {
           <div className="session-packages__stats">
             <div className="session-packages__stat">
               <small>الباقات الفعالة</small>
-              <strong>{walletDisplayState.activePackages ?? Number(walletSummary?.activePackages ?? active.length)}</strong>
+              <strong>{walletDisplayState.activePackages ?? activePackageCount}</strong>
             </div>
             <div className="session-packages__stat">
               <small>الجلسات المتبقية</small>

@@ -1136,6 +1136,50 @@ async function queryByClientAliases(db, salonId, collectionId, aliases) {
   return [...rowsByPath.values()];
 }
 
+const WALLET_FIRESTORE_TIMEOUT_MS = 10_000;
+
+async function safeClientHash(value) {
+  const text = cleanText(value);
+  if (!text) return "";
+  try {
+    return (await sha256Hex(text)).slice(0, 12);
+  } catch {
+    return "";
+  }
+}
+
+async function walletLog(event, data = {}) {
+  const payload = {
+    canonicalClientIdHash: data.canonicalClientIdHash || await safeClientHash(data.canonicalClientId),
+    aliasCount: Number(data.aliasCount || 0),
+    packageCount: Number(data.packageCount || 0),
+    durationMs: Number(data.durationMs || 0),
+    ...(data.errorCode ? { errorCode: cleanText(data.errorCode) } : {}),
+    ...(data.errorMessage ? { errorMessage: cleanText(data.errorMessage).slice(0, 180) } : {}),
+  };
+  if (event === "wallet_error") console.error(event, payload);
+  else console.info(event, payload);
+}
+
+function normalizeWalletError(error, fallbackCode = "packages_wallet:failed") {
+  if (error instanceof AppError) return error;
+  return new AppError(500, fallbackCode, cleanText(error?.message) || "Package wallet failed");
+}
+
+async function withWalletTimeout(promise, code, message, ms = WALLET_FIRESTORE_TIMEOUT_MS) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new AppError(504, code, message)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function queryAllDocs(db, salonId, collectionId, filters = []) {
   const pageSize = 500;
   const rows = [];
@@ -1145,6 +1189,19 @@ async function queryAllDocs(db, salonId, collectionId, filters = []) {
     if (page.length < pageSize) break;
   }
   return rows;
+}
+
+async function queryAllDocsWithTimeout(db, salonId, collectionId, timeoutCode) {
+  return withWalletTimeout(
+    queryAllDocs(db, salonId, collectionId),
+    timeoutCode,
+    `${collectionId} query timed out`
+  );
+}
+
+function docsForClientAliases(docs, aliases) {
+  const aliasSet = new Set((aliases || []).map(cleanText).filter(Boolean));
+  return (docs || []).filter((doc) => aliasSet.has(cleanText(doc.data?.clientId)));
 }
 
 function identityDisplayName(raw) {
@@ -1333,11 +1390,48 @@ function walletPackageFromDoc(doc, nowMs, canonicalClientId) {
 }
 
 async function walletSummaryForIdentity(ctx, identity) {
+  const startedAt = Date.now();
   const canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
   const aliases = clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []);
+  const aliasCount = aliases.length;
+  const canonicalClientIdHash = await safeClientHash(canonicalClientId);
+  await walletLog("wallet_aliases_resolved", {
+    canonicalClientIdHash,
+    aliasCount,
+    packageCount: 0,
+    durationMs: Date.now() - startedAt,
+  });
   const nowMs = Date.now();
-  const packageSnap = await queryByClientAliases(ctx.db, ctx.salonId, "client_packages", aliases);
-  const transactionSnap = await queryByClientAliases(ctx.db, ctx.salonId, "client_package_transactions", aliases);
+  await walletLog("wallet_packages_query_start", {
+    canonicalClientIdHash,
+    aliasCount,
+    packageCount: 0,
+    durationMs: Date.now() - startedAt,
+  });
+  const allPackageDocs = await queryAllDocsWithTimeout(
+    ctx.db,
+    ctx.salonId,
+    "client_packages",
+    "packages_wallet:client_packages_timeout"
+  );
+  const packageSnap = docsForClientAliases(allPackageDocs, aliases);
+  await walletLog("wallet_packages_query_complete", {
+    canonicalClientIdHash,
+    aliasCount,
+    packageCount: packageSnap.length,
+    durationMs: Date.now() - startedAt,
+  });
+  const transactionSnap = packageSnap.length
+    ? docsForClientAliases(
+        await queryAllDocsWithTimeout(
+          ctx.db,
+          ctx.salonId,
+          "client_package_transactions",
+          "packages_wallet:transactions_timeout"
+        ),
+        aliases
+      )
+    : [];
   const warnings = [];
   const packages = [];
 
@@ -1350,7 +1444,14 @@ async function walletSummaryForIdentity(ctx, identity) {
         reason: cleanText(error?.code || error?.message || "invalid_package"),
       };
       warnings.push(warning);
-      console.warn("packages_wallet_excluded_package", warning);
+      console.warn("packages_wallet_excluded_package", {
+        canonicalClientIdHash,
+        aliasCount,
+        packageCount: packageSnap.length,
+        durationMs: Date.now() - startedAt,
+        errorCode: cleanText(error?.code || "invalid_package"),
+        errorMessage: cleanText(error?.message || "invalid_package").slice(0, 180),
+      });
     }
   }
 
@@ -1388,7 +1489,7 @@ async function walletSummaryForIdentity(ctx, identity) {
     .filter((value) => value !== undefined)
     .sort((a, b) => a - b)[0];
 
-  return {
+  const response = {
     ok: true,
     clientId: canonicalClientId,
     canonicalClientId,
@@ -1397,22 +1498,60 @@ async function walletSummaryForIdentity(ctx, identity) {
     packages,
     transactions,
     services,
-    activePackages: activePackageRows.length,
+    activePackages: activePackageRows,
+    activePackageCount: activePackageRows.length,
     totalRemainingSessions: activePackageRows.reduce((sum, p) => sum + Number(p.remainingSessions || 0), 0),
     totalUsedSessions: activePackageRows.reduce((sum, p) => sum + Number(p.usedSessions || 0), 0),
     totalReservedSessions: activePackageRows.reduce((sum, p) => sum + Number(p.reservedSessions || 0), 0),
     nearestExpiryAt: nearestExpiryMs ? timestampFromMs(nearestExpiryMs) : null,
     warnings,
   };
+  JSON.stringify(response);
+  await walletLog("wallet_response_ready", {
+    canonicalClientIdHash,
+    aliasCount,
+    packageCount: activePackageRows.length,
+    durationMs: Date.now() - startedAt,
+  });
+  return response;
 }
 
 export async function clientWallet(ctx, data) {
-  requireRole(ctx.role, SALES_ROLES);
-  const requestedClientId = requiredDocumentId(data.clientId, "clientId");
-  const identity = await ctx.db.runTransaction((tx) =>
-    resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup)
-  );
-  return walletSummaryForIdentity(ctx, identity);
+  const startedAt = Date.now();
+  let canonicalClientId = "";
+  let aliasCount = 0;
+  let packageCount = 0;
+  try {
+    requireRole(ctx.role, SALES_ROLES);
+    const requestedClientId = requiredDocumentId(data.clientId, "clientId");
+    const identity = await ctx.db.runTransaction((tx) =>
+      resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup)
+    );
+    canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
+    aliasCount = clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []).length;
+    await walletLog("wallet_identity_resolved", {
+      canonicalClientId,
+      aliasCount,
+      packageCount: 0,
+      durationMs: Date.now() - startedAt,
+    });
+    const response = await walletSummaryForIdentity(ctx, identity);
+    packageCount = Array.isArray(response.activePackages)
+      ? response.activePackages.length
+      : Number(response.activePackages || 0);
+    return response;
+  } catch (error) {
+    const normalized = normalizeWalletError(error);
+    await walletLog("wallet_error", {
+      canonicalClientId,
+      aliasCount,
+      packageCount,
+      durationMs: Date.now() - startedAt,
+      errorCode: normalized.code,
+      errorMessage: normalized.message,
+    });
+    throw normalized;
+  }
 }
 
 export async function myWallet(ctx) {
