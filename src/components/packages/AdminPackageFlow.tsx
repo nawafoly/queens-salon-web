@@ -24,6 +24,11 @@ import {
   type PackageCartEligibility,
 } from "../../helpers/packageCartEligibility";
 import { packageWalletDisplayState } from "../../helpers/packageWalletDiagnostics";
+import {
+  adminPackageWalletRefreshKey,
+  buildAdminPackageWalletRequest,
+  normalizeAdminPackagePhone,
+} from "../../helpers/adminPackageWalletRequest";
 import { packageDate } from "./packageFormat";
 import "../../styles/SessionPackages.css";
 
@@ -55,39 +60,12 @@ function millis(value: any) {
   return Number(value || 0);
 }
 
-function stableClientId(client: any) {
-  const canonical = cleanText(client?.canonicalClientId);
-  if (canonical) return canonical;
-  const explicit = cleanText(client?.clientId);
-  if (explicit) return explicit;
-  const id = cleanText(client?.id);
-  const source = cleanText(client?.source);
-  if (
-    id &&
-    (source === "client_profile" ||
-      source === "booking_internal" ||
-      source === "user_profile" ||
-      source === "root_user")
-  ) {
-    return id;
-  }
-  return "";
-}
-
 function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ر.س`;
 }
 
 function normalizePhone(value: unknown) {
-  const raw = cleanText(value);
-  if (!raw || /[A-Za-z]/.test(raw)) return "";
-  let digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
-  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
-  if (/^05\d{8}$/.test(digits)) return digits;
-  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
-  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
-  return "";
+  return normalizeAdminPackagePhone(value);
 }
 
 function phoneLookupValues(value: unknown) {
@@ -131,9 +109,46 @@ export default function AdminPackageFlow(props: {
   onRedeemed?: (result: PackageRedemptionResult) => void;
   onClientCreated?: (client: any) => void;
 }) {
-  const clientId = stableClientId(props.client);
   const clientName = cleanText(props.client?.name || props.client?.fullName || props.client?.clientName);
-  const clientPhone = cleanText(props.client?.phone || props.client?.mobile || props.client?.clientPhone);
+  const clientPhone = cleanText(
+    props.client?.phone || props.client?.mobile || props.client?.clientPhone || props.client?.phoneNumber
+  );
+  const walletRequest = useMemo(
+    () =>
+      buildAdminPackageWalletRequest({
+        canonicalClientId: props.client?.canonicalClientId,
+        clientId: props.client?.clientId,
+        id: props.client?.id,
+        docId: props.client?.docId,
+        customerId: props.client?.customerId,
+        uid: props.client?.uid,
+        authUid: props.client?.authUid,
+        firebaseUid: props.client?.firebaseUid,
+        userId: props.client?.userId,
+        name: clientName,
+        phone: clientPhone,
+      }),
+    [
+      props.client?.canonicalClientId,
+      props.client?.clientId,
+      props.client?.id,
+      props.client?.docId,
+      props.client?.customerId,
+      props.client?.uid,
+      props.client?.authUid,
+      props.client?.firebaseUid,
+      props.client?.userId,
+      clientName,
+      clientPhone,
+    ]
+  );
+  const walletRefreshKey = adminPackageWalletRefreshKey(walletRequest);
+  const clientId = walletRequest.strongClientId;
+  const lookupId = walletRequest.lookupId;
+  const normalizedPhone = walletRequest.normalizedPhone;
+  const uid = walletRequest.uid;
+  const customerId = walletRequest.customerId;
+  const hasWalletIdentifier = walletRequest.hasValidIdentifier;
   const isDev = Boolean((import.meta as any).env?.DEV);
   const buildId = cleanText(
     (import.meta as any).env?.VITE_BUILD_ID ||
@@ -165,10 +180,15 @@ export default function AdminPackageFlow(props: {
   } | null>(null);
   const [redeemResult, setRedeemResult] = useState<PackageRedemptionResult | null>(null);
   const onClientCreatedRef = useRef(props.onClientCreated);
+  const clientRef = useRef(props.client);
 
   useEffect(() => {
     onClientCreatedRef.current = props.onClientCreated;
   }, [props.onClientCreated]);
+
+  useEffect(() => {
+    clientRef.current = props.client;
+  }, [props.client]);
 
   const bookingItems = useMemo(() => {
     const rows = props.bookingItems?.length ? props.bookingItems : props.bookingItem ? [props.bookingItem] : [];
@@ -181,7 +201,7 @@ export default function AdminPackageFlow(props: {
   }, [props.bookingItems, props.bookingItem]);
 
   const refresh = useCallback(async (): Promise<PackageClientWalletResult | null> => {
-    if (!clientId) {
+    if (!hasWalletIdentifier) {
       setWallet([]);
       setWalletSummary(null);
       setWalletStatus("idle");
@@ -202,8 +222,8 @@ export default function AdminPackageFlow(props: {
     setLastWalletRequestAt(requestedAt);
     try {
       const summary = await PackageOperationsService.clientWallet({
-        clientId,
-        clientLookup: clientLookupPayload(props.client, clientPhone),
+        clientId: walletRequest.requestClientId,
+        clientLookup: walletRequest.clientLookup,
       });
       const canonicalClientId = cleanText(summary.canonicalClientId || summary.clientId);
       setWalletCanonicalClientId(canonicalClientId);
@@ -212,23 +232,25 @@ export default function AdminPackageFlow(props: {
         console.info("[packages:client-wallet]", {
           origin: window.location.origin,
           buildId,
-          selectedClientLocalId: clientId,
+          selectedClientLocalId: lookupId,
           canonicalClientId,
           walletRequestStatus: "success",
           walletResponseWarnings: summary.warnings || [],
           lastRequestAt: requestedAt,
         });
       }
-      if (canonicalClientId && canonicalClientId !== clientId) {
+      const currentClient = clientRef.current || {};
+      const currentCanonicalClientId = cleanText(currentClient.canonicalClientId || currentClient.clientId);
+      if (canonicalClientId && canonicalClientId !== currentCanonicalClientId) {
         onClientCreatedRef.current?.({
-          ...props.client,
+          ...currentClient,
           clientId: canonicalClientId,
           canonicalClientId,
-          legacyClientDocId: clientId,
+          ...(clientId ? { legacyClientDocId: clientId } : {}),
           name: clientName,
           fullName: clientName,
-          phone: clientPhone,
-          mobile: clientPhone,
+          phone: normalizedPhone,
+          mobile: normalizedPhone,
         });
       }
       setWallet((summary.packages || []) as ClientPackage[]);
@@ -251,7 +273,7 @@ export default function AdminPackageFlow(props: {
         console.warn("[packages:client-wallet]", {
           origin: window.location.origin,
           buildId,
-          selectedClientLocalId: clientId,
+          selectedClientLocalId: lookupId,
           canonicalClientId: "",
           walletRequestStatus: "error",
           walletResponseWarnings: [],
@@ -266,7 +288,19 @@ export default function AdminPackageFlow(props: {
     } finally {
       setLoading(false);
     }
-  }, [clientId, props.client, clientPhone, clientName, isDev, buildId]);
+  }, [
+    walletRefreshKey,
+    hasWalletIdentifier,
+    walletRequest.requestClientId,
+    clientId,
+    lookupId,
+    normalizedPhone,
+    clientName,
+    uid,
+    customerId,
+    isDev,
+    buildId,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -354,36 +388,38 @@ export default function AdminPackageFlow(props: {
   const diagnostics = {
     origin: typeof window !== "undefined" ? window.location.origin : "",
     buildId,
-    selectedClientLocalId: clientId,
+    selectedClientLocalId: lookupId,
     canonicalClientId: walletCanonicalClientId || cleanText(walletSummary?.canonicalClientId),
     walletStatus,
     activePackages: activePackageCount,
     lastRequestAt: lastWalletRequestAt,
   };
   const hasAnyClientData = Boolean(props.client || clientName || clientPhone);
+  const purchaseClientId = cleanText(walletCanonicalClientId || walletSummary?.canonicalClientId || clientId);
 
   async function purchase() {
-    if (!clientId || !selectedCatalog?.id || !paymentMethod) return;
+    if (!purchaseClientId || !selectedCatalog?.id || !paymentMethod) return;
     setLoading(true);
     setError("");
     try {
       const result = await PackageOperationsService.purchase({
-        clientId,
-        clientLookup: clientLookupPayload(props.client, clientPhone),
+        clientId: purchaseClientId,
+        clientLookup: clientLookupPayload(clientRef.current, normalizedPhone || clientPhone),
         packageCatalogId: selectedCatalog.id,
         paymentMethod,
       });
-      const canonicalClientId = cleanText(result.clientId) || clientId;
-      if (canonicalClientId !== clientId) {
+      const canonicalClientId = cleanText(result.clientId) || purchaseClientId;
+      if (canonicalClientId !== purchaseClientId) {
+        const currentClient = clientRef.current || {};
         onClientCreatedRef.current?.({
-          ...props.client,
+          ...currentClient,
           clientId: canonicalClientId,
           canonicalClientId,
-          legacyClientDocId: clientId,
+          ...(purchaseClientId ? { legacyClientDocId: purchaseClientId } : {}),
           name: clientName,
           fullName: clientName,
-          phone: clientPhone,
-          mobile: clientPhone,
+          phone: normalizedPhone || clientPhone,
+          mobile: normalizedPhone || clientPhone,
         });
       }
       const refreshed = await refresh();
@@ -503,7 +539,7 @@ export default function AdminPackageFlow(props: {
     try {
       const result = await PackageOperationsService.redeem({
         clientId: clientIdForRedeem,
-        clientLookup: clientLookupPayload(props.client, clientPhone),
+        clientLookup: clientLookupPayload(clientRef.current, normalizedPhone || clientPhone),
         clientPackageId: selectedPackageId,
         serviceId: item.serviceId,
         employeeId: item.employeeId,
@@ -535,7 +571,7 @@ export default function AdminPackageFlow(props: {
               type="button"
               className="session-packages__button secondary"
               onClick={() => setSaleOpen((value) => !value)}
-              disabled={!clientId}
+              disabled={!purchaseClientId}
             >
               بيع باقة جلسات
             </button>
@@ -561,9 +597,9 @@ export default function AdminPackageFlow(props: {
           <p className="session-packages__muted mb-0">
             سيظهر ملخص الرصيد بعد اختيار العميلة أو إدخال اسمها ورقمها.
           </p>
-        ) : !clientId ? (
+        ) : !hasWalletIdentifier ? (
           <div className="session-packages__error">
-            لا يوجد clientId ثابت لهذه العميلة حتى الآن.
+            لا يوجد معرف أو رقم جوال صالح لهذه العميلة.
             <button type="button" onClick={() => void createClientProfile()} disabled={loading}>
               إنشاء ملف عميلة جديد
             </button>
@@ -595,7 +631,7 @@ export default function AdminPackageFlow(props: {
           </div>
         )}
 
-        {!loading && clientId && !active.length && !walletLoading && !walletLoadFailed ? (
+        {!loading && hasWalletIdentifier && !active.length && !walletLoading && !walletLoadFailed ? (
           <div className="session-packages__empty">
             <span>لا توجد باقات فعالة لهذه العميلة</span>
             <button type="button" onClick={() => setSaleOpen(true)}>
@@ -660,7 +696,7 @@ export default function AdminPackageFlow(props: {
             <button
               type="button"
               className="session-packages__button"
-              disabled={loading || !selectedCatalog || !paymentMethod || !clientId}
+              disabled={loading || !selectedCatalog || !paymentMethod || !purchaseClientId}
               onClick={() => void purchase()}
             >
               {loading ? "جاري التنفيذ..." : "تأكيد بيع الباقة"}

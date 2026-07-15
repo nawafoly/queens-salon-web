@@ -165,7 +165,7 @@ export const PackageOperationsService = {
   myWallet() {
     return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");
   },
-  clientWallet(args: { clientId: string; clientLookup?: PackageClientLookup }) {
+  clientWallet(args: { clientId?: string; clientLookup?: PackageClientLookup }) {
     return invoke<PackageClientWalletResult>("/api/packages/client-wallet", {
       salonId: "main",
       ...args,

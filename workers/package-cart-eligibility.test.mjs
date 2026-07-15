@@ -6,6 +6,10 @@ import {
   packageWalletDisplayState,
   shouldDiscardCachedWallet,
 } from "../src/helpers/packageWalletDiagnostics.ts";
+import {
+  adminPackageWalletRefreshKey,
+  buildAdminPackageWalletRequest,
+} from "../src/helpers/adminPackageWalletRequest.ts";
 
 const nowMs = Date.parse("2027-01-01T00:00:00.000Z");
 
@@ -186,4 +190,31 @@ test("both production domains are treated as the same packages worker surface", 
     origin: "https://queens-salon-web-gnxk.vercel.app",
     allowedOrigins,
   }), true);
+});
+
+test("admin package wallet request uses phone lookup when client id is missing", () => {
+  const request = buildAdminPackageWalletRequest({
+    name: "Phone Only Client",
+    phone: "+966 50 111 2233",
+  });
+
+  assert.equal(request.lookupId, "0501112233");
+  assert.equal(request.requestClientId, "");
+  assert.equal(request.hasStrongIdentifier, false);
+  assert.equal(request.hasValidIdentifier, true);
+  assert.equal(request.clientLookup.phone, "0501112233");
+});
+
+test("admin package wallet refresh key is stable for rerenders with same primitives", () => {
+  const first = buildAdminPackageWalletRequest({
+    name: "Stable Client",
+    phone: "0501112244",
+  });
+  const second = buildAdminPackageWalletRequest({
+    name: "Stable Client",
+    phone: "+966501112244",
+  });
+
+  assert.equal(adminPackageWalletRefreshKey(first), adminPackageWalletRefreshKey(second));
+  assert.deepEqual(first.clientLookup, second.clientLookup);
 });

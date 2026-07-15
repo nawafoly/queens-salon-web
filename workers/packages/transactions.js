@@ -1962,7 +1962,16 @@ export async function clientWallet(ctx, data) {
   let packageCount = 0;
   try {
     requireRole(ctx.role, SALES_ROLES);
-    const requestedClientId = requiredDocumentId(data.clientId, "clientId");
+    const requestedClientId = optionalDocumentId(data.clientId, "clientId") || "";
+    const lookupIdCandidates = collectClientLookupCandidates(requestedClientId, data.clientLookup, "id");
+    const lookupPhoneCandidates = collectClientLookupCandidates("", data.clientLookup, "phone");
+    if (!requestedClientId && !lookupIdCandidates.length && !lookupPhoneCandidates.length) {
+      throw new AppError(
+        400,
+        "packages_client:missing_identifier",
+        "clientId or clientLookup phone/uid is required"
+      );
+    }
     const identity = await ctx.db.runTransaction((tx) =>
       resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup)
     );

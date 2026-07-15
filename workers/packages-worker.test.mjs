@@ -544,6 +544,40 @@ test("client wallet phone match returns package linked to canonical alias", asyn
   assert.equal(body.data.packages[0].legacyClientId, "phone-wallet-legacy");
 }));
 
+test("client wallet accepts empty clientId when phone lookup resolves canonical package", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/phone-only-wallet-client", {
+    clientId: "phone-only-wallet-canonical",
+    name: "Phone Only Wallet Client",
+    phone: "0500000092",
+  });
+  fake.seed("salons/main/client_packages/phone-only-wallet-package", {
+    clientId: "phone-only-wallet-canonical",
+    packageNameSnapshot: "Phone Only Wallet Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 3,
+    remainingSessions: 3,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "",
+      clientLookup: { phone: "0500000092" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "phone-only-wallet-canonical");
+  assert.equal(body.data.activePackageCount, 1);
+  assert.equal(body.data.totalRemainingSessions, 3);
+  assert.deepEqual(body.data.packages.map((p) => p.id), ["phone-only-wallet-package"]);
+}));
+
 test("identity ranking handles three client documents and package linked to second candidate", async () => withFakeFirestore(async (fake) => {
   fake.seed("salons/main/clients/rank-doc-a", {
     clientId: "rank-canonical-a",
