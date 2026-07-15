@@ -1,22 +1,17 @@
 ﻿{
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "queens-salon-packages-api",
-  "main": "workers/packages/index.js",
+  "name": "queens-salon-core-api",
+  "main": "workers/core/index.js",
   "compatibility_date": "2026-06-24",
   "observability": {
     "enabled": true
   },
-  "triggers": {
-    "crons": [
-      "0 * * * *"
-    ]
-  },
   "d1_databases": [
     {
-      "binding": "PACKAGES_DB",
-      "database_name": "queens-salon-packages",
-      "database_id": "43355998-5b66-4004-9483-7f2ca946a208",
-      "migrations_dir": "migrations/packages"
+      "binding": "CORE_DB",
+      "database_name": "queens-salon-core",
+      "database_id": "d0565103-0b29-490d-8c10-c955e8d65c4a",
+      "migrations_dir": "migrations/core"
     }
   ],
   "vars": {
@@ -25,4 +20,5 @@
     "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5174,https://queens-salon-web.vercel.app,https://queens-salon-web-gnxk.vercel.app"
   }
 }
+
 

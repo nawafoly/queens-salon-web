@@ -1,3 +1,10 @@
+// IMPORTANT:
+// Session packages use Cloudflare D1 as the only operational database.
+// Do not reintroduce Firestore reads or writes into package wallet,
+// purchase, redeem, reserve, release, or admin package reports.
+// Firebase is used only for authentication token verification.
+// Any Firestore migration code must remain isolated in one-time migration scripts.
+
 import { auth } from "./firebase";
 
 export type PackagePurchaseResult = {

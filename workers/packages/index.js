@@ -1,19 +1,14 @@
+// IMPORTANT:
+// Session packages use Cloudflare D1 as the only operational database.
+// Do not reintroduce Firestore reads or writes into package wallet,
+// purchase, redeem, reserve, release, or admin package reports.
+// Firebase is used only for authentication token verification.
+// Any Firestore migration code must remain isolated in one-time migration scripts.
+
 import { normalizeError, AppError } from './errors.js';
-import { FirestoreRestClient, fromFirestoreFields, toFirestoreFields } from './firestore-rest.js';
 import { verifyFirebaseIdToken } from './auth.js';
-import { expireClientPackages } from './cron.js';
 import { handleRequest, jsonResponse } from './routes.js';
-import {
-  adjustRemainingBalance,
-  balancesFromDoc,
-  buildPurchasedPackageSnapshot,
-  cancelPackageBalance,
-  consumeOneReservedSession,
-  reserveOneSession,
-  restoreOneReservedSession,
-  transactionId,
-} from './validation.js';
-import { clearWalletRuntimeCaches as clearPackageWalletRuntimeCaches } from './transactions.js';
+import { __testD1, expireClientPackagesD1 } from './d1.js';
 
 export default {
   async fetch(request, env) {
@@ -29,25 +24,13 @@ export default {
     }
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(expireClientPackages(env));
+    ctx.waitUntil(expireClientPackagesD1(env));
   },
 };
 
 export const __test = {
   AppError,
-  FirestoreRestClient,
-  balancesFromDoc,
-  reserveOneSession,
-  consumeOneReservedSession,
-  restoreOneReservedSession,
-  adjustRemainingBalance,
-  cancelPackageBalance,
-  buildPurchasedPackageSnapshot,
-  transactionId,
   verifyFirebaseIdToken,
   handleRequest,
-  expireClientPackages,
-  clearPackageWalletRuntimeCaches,
-  toFirestoreFields,
-  fromFirestoreFields,
+  __testD1,
 };

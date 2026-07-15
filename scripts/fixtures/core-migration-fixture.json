@@ -1,0 +1,92 @@
+{
+  "clients": [
+    {
+      "id": "client-a",
+      "name": "Client A",
+      "phone": "0500000001",
+      "firebaseUid": "uid-client-a"
+    }
+  ],
+  "service_categories": [
+    {
+      "id": "cat-hair",
+      "name": "Hair",
+      "sortOrder": 1
+    }
+  ],
+  "services": [
+    {
+      "id": "svc-a",
+      "name": "Blowdry",
+      "categoryId": "cat-hair",
+      "durationMinutes": 30,
+      "priceHalalas": 7500,
+      "active": true
+    }
+  ],
+  "staff_public": [
+    {
+      "id": "staff-a",
+      "name": "Staff A",
+      "serviceIds": ["svc-a"],
+      "active": true
+    }
+  ],
+  "bookings": [
+    {
+      "id": "booking-a",
+      "clientId": "client-a",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "10:00",
+      "status": "booked",
+      "totalHalalas": 7500
+    }
+  ],
+  "invoices": [
+    {
+      "id": "invoice-a",
+      "bookingId": "booking-a",
+      "clientId": "client-a",
+      "totalHalalas": 7500,
+      "status": "partial"
+    }
+  ],
+  "payments": [
+    {
+      "id": "payment-a",
+      "invoiceId": "invoice-a",
+      "bookingId": "booking-a",
+      "clientId": "client-a",
+      "method": "cash",
+      "amountHalalas": 2500,
+      "idempotencyKey": "payment-a"
+    },
+    {
+      "id": "payment-b",
+      "invoiceId": "invoice-a",
+      "bookingId": "booking-a",
+      "clientId": "client-a",
+      "method": "card",
+      "amountHalalas": 5000,
+      "idempotencyKey": "payment-b"
+    }
+  ],
+  "expenses": [
+    {
+      "id": "expense-a",
+      "amountHalalas": 1200,
+      "category": "supplies",
+      "description": "Towels"
+    }
+  ],
+  "discounts": [
+    {
+      "id": "discount-a",
+      "code": "WELCOME",
+      "name": "Welcome",
+      "type": "percent",
+      "value": 10
+    }
+  ]
+}

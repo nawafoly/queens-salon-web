@@ -1,25 +1,30 @@
+// IMPORTANT:
+// Session packages use Cloudflare D1 as the only operational database.
+// Do not reintroduce Firestore reads or writes into package wallet,
+// purchase, redeem, reserve, release, or admin package reports.
+// Firebase is used only for authentication token verification.
+// Any Firestore migration code must remain isolated in one-time migration scripts.
+
 import { AppError } from './errors.js';
-import { authenticateRequest, resolveRole } from './auth.js';
-import { FirestoreRestClient } from './firestore-rest.js';
+import { authenticateRequest } from './auth.js';
 import {
   DEFAULT_ALLOWED_ORIGINS,
   cleanText,
   requiredDocumentId,
 } from './validation.js';
 import {
-  adjustClientPackage,
-  auditClientIdentitiesAdmin,
-  clearWalletRuntimeCaches,
-  clientWallet,
-  cancelClientPackage,
-  cancelRedemption,
-  consumeReserved,
-  createRedemptionBooking,
-  listClientPackagesAdmin,
-  myWallet,
-  purchasePackage,
-  restoreRedemption,
-} from './transactions.js';
+  auditClientIdentitiesAdminD1,
+  clearD1WalletRuntimeCaches,
+  clientWalletD1,
+  consumeReservedD1,
+  listClientPackagesAdminD1,
+  myWalletD1,
+  packagesHealthD1,
+  purchasePackageD1,
+  redeemPackageD1,
+  releasePackageD1,
+  reservePackageD1,
+} from './d1.js';
 
 export function allowedOrigins(env) {
   const configured = cleanText(env.ALLOWED_ORIGINS);
@@ -65,38 +70,69 @@ export function getSalonId(data, env) {
 
 export async function withActor(request, env, body) {
   const identity = await authenticateRequest(request, env);
-  const db = new FirestoreRestClient(env, cleanText(env.FIREBASE_PROJECT_ID));
   const salonId = getSalonId(body || {}, env);
-  const role = await resolveRole(db, salonId, identity);
-  return { identity, db, salonId, role };
+  if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
+  const claimedRole = cleanText(identity.claims?.role || identity.claims?.packagesRole).toLowerCase();
+  const role = ["owner", "admin", "hr", "reception", "staff", "client"].includes(claimedRole)
+    ? claimedRole
+    : "guest";
+  return { identity, packagesDb: env.PACKAGES_DB, salonId, role };
+}
+
+function endpointNotMigratedToD1() {
+  throw new AppError(501, "packages_d1:endpoint_not_migrated", "This package endpoint has no D1 implementation yet");
 }
 
 const routes = {
-  "POST /api/packages/purchase": purchasePackage,
-  "POST /api/packages/redeem": createRedemptionBooking,
-  "POST /api/packages/redemption/create": createRedemptionBooking,
-  "POST /api/packages/redemption/consume": consumeReserved,
-  "POST /api/packages/redemption/cancel": cancelRedemption,
-  "POST /api/packages/redemption/restore": restoreRedemption,
-  "POST /api/packages/cancel": cancelClientPackage,
-  "POST /api/packages/adjust": adjustClientPackage,
-  "POST /api/packages/client-wallet": clientWallet,
-  "GET /api/packages/admin/audit-client-identities": auditClientIdentitiesAdmin,
-  "GET /api/packages/admin/list-client-packages": listClientPackagesAdmin,
-  "GET /api/packages/my-wallet": myWallet,
+  // D1 ONLY — do not add Firestore fallback.
+  "GET /api/packages/health": { d1: packagesHealthD1, public: true },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/purchase": { d1: purchasePackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/redeem": { d1: redeemPackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/reserve": { d1: reservePackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/release": { d1: releasePackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/redemption/create": { d1: reservePackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/redemption/consume": { d1: consumeReservedD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/redemption/cancel": { d1: endpointNotMigratedToD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/redemption/restore": { d1: releasePackageD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/cancel": { d1: endpointNotMigratedToD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/adjust": { d1: endpointNotMigratedToD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "POST /api/packages/client-wallet": { d1: clientWalletD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "GET /api/packages/admin/audit-client-identities": { d1: auditClientIdentitiesAdminD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
+  // D1 ONLY — do not add Firestore fallback.
+  "GET /api/packages/my-wallet": { d1: myWalletD1 },
 };
 
 export async function handleRequest(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
   const url = new URL(request.url);
   const key = `${request.method} ${url.pathname}`;
-  const handler = routes[key];
-  if (!handler) throw new AppError(404, "packages_api:not_found");
+  const route = routes[key];
+  if (!route) throw new AppError(404, "packages_api:not_found");
   const body = request.method === "GET" ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
-  const ctx = await withActor(request, env, body);
+  const routeRecord = typeof route === "function" ? { d1: route } : route;
+  const handler = routeRecord.d1;
+  if (!handler) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
+  if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
+  const ctx = routeRecord.public
+    ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null }
+    : await withActor(request, env, body);
   const data = await handler(ctx, body);
   if (request.method === "POST" && url.pathname !== "/api/packages/client-wallet") {
-    clearWalletRuntimeCaches();
+    clearD1WalletRuntimeCaches();
   }
   return jsonResponse(request, env, 200, { ok: true, data });
 }
