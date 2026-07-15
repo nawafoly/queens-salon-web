@@ -174,5 +174,133 @@
       "source": "migration-fixture",
       "createdAt": "2027-01-10T10:00:00.000Z"
     }
+  ],
+  "employees": [
+    {
+      "id": "staff-a",
+      "firebaseUid": "uid-staff-a",
+      "name": "Staff A",
+      "email": "staff@example.com",
+      "phone": "0500000002",
+      "employment": {
+        "title": "Stylist",
+        "department": "Hair",
+        "baseSalary": 4500,
+        "expectedWorkHours": 176,
+        "leaveBalance": 21,
+        "weeklyOffDays": [
+          "friday"
+        ],
+        "allowedZoneIds": [
+          "main"
+        ]
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "uid-admin",
+      "uid": "uid-admin",
+      "email": "admin@example.com",
+      "displayName": "Admin",
+      "role": "admin",
+      "active": true
+    }
+  ],
+  "admin_users": [
+    {
+      "id": "uid-admin",
+      "uid": "uid-admin",
+      "username": "admin",
+      "email": "admin@example.com",
+      "displayName": "Admin",
+      "role": "admin",
+      "active": true
+    }
+  ],
+  "attendance_records": [
+    {
+      "id": "att-in",
+      "employeeId": "staff-a",
+      "employeeUid": "uid-staff-a",
+      "date": "2027-01-10",
+      "type": "check_in",
+      "recordedAt": "2027-01-10T09:00:00.000Z",
+      "location": {
+        "lat": 24.4,
+        "lng": 39.6,
+        "accuracy": 12
+      },
+      "zoneId": "main"
+    }
+  ],
+  "employee_leave_requests": [
+    {
+      "id": "leave-a",
+      "employeeId": "staff-a",
+      "employeeUid": "uid-staff-a",
+      "status": "approved",
+      "leaveType": "annual",
+      "startDate": "2027-02-01",
+      "endDate": "2027-02-02",
+      "daysCount": 2,
+      "employeeNote": "Vacation"
+    }
+  ],
+  "employee_absences": [
+    {
+      "id": "absence-a",
+      "employeeId": "staff-a",
+      "employeeUid": "uid-staff-a",
+      "date": "2027-01-11",
+      "type": "half_day",
+      "createdByUid": "uid-admin"
+    }
+  ],
+  "employee_payroll_records": [
+    {
+      "id": "staff-a__2027-01",
+      "employeeId": "staff-a",
+      "employeeUid": "uid-staff-a",
+      "payrollMonth": "2027-01",
+      "monthStart": "2027-01-01",
+      "monthEnd": "2027-01-31",
+      "baseSalary": 4500,
+      "allowances": 500,
+      "finalSalary": 4800,
+      "createdByUid": "uid-admin"
+    }
+  ],
+  "settings": [
+    {
+      "id": "app",
+      "salonName": "MALIKAT SALON",
+      "booking": {
+        "slotStepMin": 5
+      },
+      "visibility": "public"
+    }
+  ],
+  "employee_files": [
+    {
+      "id": "file-a",
+      "employeeId": "staff-a",
+      "category": "contract",
+      "fileName": "contract.pdf",
+      "storageKey": "main/staff-a/contract.pdf",
+      "contentType": "application/pdf",
+      "fileSize": 1000,
+      "status": "active"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notification-a",
+      "targetUid": "uid-staff-a",
+      "title": "Test",
+      "body": "Hello",
+      "type": "system",
+      "isRead": false
+    }
   ]
 }

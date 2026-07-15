@@ -59,6 +59,17 @@ export const CoreBookingService = {
     return mapCoreBooking(row);
   },
 
+
+  async reschedule(
+    id: string,
+    input: Record<string, unknown>
+  ): Promise<CoreBooking> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/bookings/${encodeURIComponent(id)}/reschedule`,
+      { method: "POST", body: input }
+    );
+    return mapCoreBooking(row);
+  },
   async complete(id: string): Promise<CoreBooking> {
     const row = await coreApiRequest<Record<string, unknown>>(
       `/api/core/bookings/${encodeURIComponent(id)}/complete`,

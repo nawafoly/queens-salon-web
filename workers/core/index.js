@@ -2,6 +2,7 @@
 
 import { verifyFirebaseIdToken } from '../packages/auth.js';
 import {
+  ADMIN_ROLES,
   cleanText,
   requireDb,
   requireRole,
@@ -32,6 +33,7 @@ import {
   getBooking,
   listBookings,
   patchBooking,
+  rescheduleBooking,
 } from './repositories/bookings.js';
 import {
   createInvoice,
@@ -69,6 +71,39 @@ import {
 import { createRefund, listRefunds, patchRefund, voidRefund } from './repositories/refunds.js';
 import { listAudit, recordAudit } from './repositories/audit.js';
 
+import {
+  getHrEmployee,
+  listHrEmployees,
+  replaceHrSchedules,
+  upsertHrEmployee,
+} from './repositories/hr-employees.js';
+import {
+  getAttendanceState,
+  listAttendance,
+  recordAttendance,
+} from './repositories/attendance.js';
+import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
+import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
+import {
+  listPayrollEntries,
+  listPayrollPeriods,
+  upsertPayrollEntry,
+  upsertPayrollPeriod,
+} from './repositories/payroll.js';
+import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
+import {
+  listAdminProfiles,
+  resolveAssignedRole,
+  upsertAdminProfile,
+} from './repositories/admin-profiles.js';
+import {
+  createFileMetadata,
+  getFileContent,
+  getFileMetadata,
+  listFileMetadata,
+  putFileContent,
+} from './repositories/files.js';
+
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5174",
@@ -91,7 +126,7 @@ function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -130,7 +165,7 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "discounts", "sections", "categories", "health"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health"].includes(route.name)) ||
     (method === "POST" &&
       ["clients", "bookings", "discount:use"].includes(route.name))
   );
@@ -170,7 +205,7 @@ async function actor(request, env, data, allowGuest) {
       identity.claims?.coreRole ||
       "guest"
   ).toLowerCase();
-  const role = [
+  const claimRole = [
     "owner",
     "admin",
     "reception",
@@ -179,6 +214,7 @@ async function actor(request, env, data, allowGuest) {
   ].includes(requestedRole)
     ? requestedRole
     : "guest";
+  const role = await resolveAssignedRole(db, sid, identity.uid, claimRole);
 
   return {
     identity,
@@ -198,7 +234,7 @@ function match(url, method) {
   };
 
   const bookingAction =
-    /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel)$/.exec(
+    /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
       path
     );
   if (bookingAction && method === "POST") {
@@ -207,6 +243,18 @@ function match(url, method) {
       id: bookingAction[1],
     };
   }
+
+
+  const attendanceState = /^\/api\/core\/hr\/attendance\/state\/([^/]+)$/.exec(path);
+  if (attendanceState && method === "GET") return { name: "attendance:state", id: attendanceState[1] };
+  if (path === "/api/core/hr/attendance/check-in" && method === "POST") return { name: "attendance:check-in" };
+  if (path === "/api/core/hr/attendance/check-out" && method === "POST") return { name: "attendance:check-out" };
+  const leaveDecision = /^\/api\/core\/hr\/leaves\/([^/]+)\/(approve|reject)$/.exec(path);
+  if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
+  const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
+  if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+  const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
+  if (fileContent && ["GET", "PUT"].includes(method)) return { name: "file:content", id: fileContent[1] };
 
   for (const [name, prefix] of [
     ["clients", "/api/core/clients"],
@@ -221,6 +269,15 @@ function match(url, method) {
     ["categories", "/api/core/categories"],
     ["refunds", "/api/core/refunds"],
     ["audit", "/api/core/audit"],
+    ["hr-employees", "/api/core/hr/employees"],
+    ["attendance", "/api/core/hr/attendance"],
+    ["leaves", "/api/core/hr/leaves"],
+    ["absences", "/api/core/hr/absences"],
+    ["payroll-periods", "/api/core/hr/payroll-periods"],
+    ["payroll-entries", "/api/core/hr/payroll-entries"],
+    ["settings", "/api/core/settings"],
+    ["admin-profiles", "/api/core/admin-profiles"],
+    ["files", "/api/core/files"],
   ]) {
     const id = one(prefix);
     if (id) return { name, id };
@@ -329,6 +386,9 @@ async function dispatch(ctx, route, method, body, query) {
         body.reason
       );
 
+    case "booking:reschedule":
+      return rescheduleBooking(db, ctx.salonId, route.id, body);
+
     case "invoices":
       if (method === "GET" && route.id) {
         return getInvoice(db, ctx.salonId, route.id);
@@ -418,6 +478,91 @@ async function dispatch(ctx, route, method, body, query) {
       if (method === "POST") return recordAudit(db, ctx.salonId, body, actorInfo);
       break;
 
+    case "hr-employees":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET" && route.id) return getHrEmployee(db, ctx.salonId, route.id);
+      if (method === "GET") return listHrEmployees(db, ctx.salonId, query);
+      if (method === "POST") return upsertHrEmployee(db, ctx.salonId, body, actorInfo);
+      if (method === "PATCH" && route.id) return upsertHrEmployee(db, ctx.salonId, { ...body, id: route.id }, actorInfo);
+      break;
+
+    case "hr-employee:schedules":
+      requireRole(ctx.role, ADMIN_ROLES);
+      return replaceHrSchedules(db, ctx.salonId, route.id, body.schedules || []);
+
+    case "attendance":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listAttendance(db, ctx.salonId, query);
+      break;
+
+    case "attendance:state":
+      return getAttendanceState(db, ctx.salonId, route.id);
+
+    case "attendance:check-in":
+      return recordAttendance(db, ctx.salonId, { ...body, type: "check_in" }, actorInfo);
+
+    case "attendance:check-out":
+      return recordAttendance(db, ctx.salonId, { ...body, type: "check_out" }, actorInfo);
+
+    case "leaves":
+      if (method === "GET") return listLeaves(db, ctx.salonId, query);
+      if (method === "POST") return createLeave(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "leave:approve":
+      requireRole(ctx.role, ADMIN_ROLES);
+      return decideLeave(db, ctx.salonId, route.id, { ...body, status: "approved" }, actorInfo);
+
+    case "leave:reject":
+      requireRole(ctx.role, ADMIN_ROLES);
+      return decideLeave(db, ctx.salonId, route.id, { ...body, status: "rejected" }, actorInfo);
+
+    case "absences":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listAbsences(db, ctx.salonId, query);
+      if (method === "POST") return createAbsence(db, ctx.salonId, body, actorInfo);
+      if (method === "DELETE" && route.id) return deleteAbsence(db, ctx.salonId, route.id);
+      break;
+
+    case "payroll-periods":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listPayrollPeriods(db, ctx.salonId);
+      if (method === "POST") return upsertPayrollPeriod(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "payroll-entries":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listPayrollEntries(db, ctx.salonId, query);
+      if (method === "POST") return upsertPayrollEntry(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "settings": {
+      if (method === "GET" && route.id) {
+        const setting = await getSetting(db, ctx.salonId, route.id);
+        if (ctx.guestAccess && setting && setting.visibility !== "public") throw new AppError(404, "core_settings:not_found");
+        return setting;
+      }
+      if (method === "GET") {
+        const settings = await listSettings(db, ctx.salonId, query);
+        return ctx.guestAccess ? settings.filter((row) => row.visibility === "public") : settings;
+      }
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (["POST", "PATCH"].includes(method)) return upsertSetting(db, ctx.salonId, route.id || body.settingKey || body.setting_key, body, actorInfo);
+      break;
+    }
+
+    case "admin-profiles":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listAdminProfiles(db, ctx.salonId);
+      if (["POST", "PATCH"].includes(method)) return upsertAdminProfile(db, ctx.salonId, route.id ? { ...body, firebaseUid: route.id } : body, actorInfo);
+      break;
+
+    case "files":
+      if (method === "GET" && route.id) return getFileMetadata(db, ctx.salonId, route.id);
+      if (method === "GET") return listFileMetadata(db, ctx.salonId, query);
+      if (method === "POST") return createFileMetadata(db, ctx.salonId, body, actorInfo);
+      break;
+
     default:
       break;
   }
@@ -437,10 +582,22 @@ export async function handleRequest(request, env) {
   const route = match(url, request.method);
   if (!route) throw new AppError(404, "core_api:not_found");
 
+  const rawContentRoute = route.name === "file:content";
   const body =
-    request.method === "GET" || request.method === "DELETE" ? {} : await readJson(request);
+    request.method === "GET" || request.method === "DELETE" || rawContentRoute ? {} : await readJson(request);
   const allowGuest = isPublicRoute(route, request.method);
   const ctx = await actor(request, env, body, allowGuest);
+  if (rawContentRoute) {
+    const response = request.method === "PUT"
+      ? await putFileContent(ctx.coreDb, ctx.salonId, route.id, request, env)
+      : await getFileContent(ctx.coreDb, ctx.salonId, route.id, env);
+    if (response instanceof Response) {
+      const headers = new Headers(response.headers);
+      for (const [key, value] of Object.entries(corsHeaders(request, env))) headers.set(key, value);
+      return new Response(response.body, { status: response.status, headers });
+    }
+    return jsonResponse(request, env, 200, { ok: true, data: response });
+  }
   const data = await dispatch(
     ctx,
     route,

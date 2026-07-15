@@ -565,6 +565,165 @@ export async function createBooking(db, salonId, data, actorUid = "") {
   return getBooking(db, salonId, bookingId);
 }
 
+
+export async function rescheduleBooking(db, salonId, idValue, data) {
+  const bookingId = requiredId(idValue);
+  const booking = await getBooking(db, salonId, bookingId);
+  const currentStatus = cleanText(booking.status).toLowerCase();
+  if (CANCELLED_STATUSES.has(currentStatus) || currentStatus === "completed") {
+    throw new AppError(409, "core_booking:reschedule_status_blocked");
+  }
+
+  const slotStepMin = integer(
+    data.slotStepMin ?? data.slot_step_min ?? booking.slot_step_min,
+    "slotStepMin",
+    { min: 5, max: 120, fallback: 10 }
+  );
+  const bufferMin = integer(
+    data.bufferMin ?? data.buffer_min ?? booking.buffer_min,
+    "bufferMin",
+    { min: 0, max: 240, fallback: 0 }
+  );
+  const requestedItems = Array.isArray(data.items) ? data.items : [];
+  const requestedById = new Map(
+    requestedItems
+      .filter((item) => item && (item.id || item.bookingItemId || item.booking_item_id))
+      .map((item) => [cleanText(item.id || item.bookingItemId || item.booking_item_id), item])
+  );
+  const defaultDate = optionalText(data.bookingDate || data.booking_date || data.date);
+  const defaultStart = optionalText(data.startTime || data.start_time || data.time);
+  const defaultStaff = data.staffId === null || data.staff_id === null
+    ? null
+    : optionalText(data.staffId || data.staff_id);
+
+  const nextItems = [];
+  const lockRows = [];
+  const localLocks = new Set();
+  let cursorDate = defaultDate || booking.booking_date;
+  let cursorTime = defaultStart || booking.start_time;
+
+  for (let index = 0; index < booking.items.length; index += 1) {
+    const current = booking.items[index];
+    const patch = requestedById.get(current.id) || requestedItems[index] || {};
+    const service = await getService(db, salonId, patch.serviceId || patch.service_id || current.service_id);
+    if (!serviceIsActive(service)) {
+      throw new AppError(409, "core_booking:service_inactive");
+    }
+    const quantity = integer(patch.quantity ?? current.quantity, "quantity", { min: 1, max: 20, fallback: 1 });
+    const durationMinutes = integer(
+      patch.durationMinutes ?? patch.duration_minutes ?? current.duration_minutes ?? Number(service.duration_minutes || 0) * quantity,
+      "durationMinutes",
+      { min: 1, max: 24 * 60 }
+    );
+    const bookingDate = validDate(
+      patch.bookingDate || patch.booking_date || patch.date || (index === 0 ? defaultDate : "") || current.booking_date || cursorDate,
+      `items[${index}].bookingDate`
+    );
+    const startTime = validTime(
+      patch.startTime || patch.start_time || patch.time || (index === 0 ? defaultStart : "") ||
+        (defaultStart && bookingDate === cursorDate ? cursorTime : "") || current.start_time,
+      `items[${index}].startTime`
+    );
+    const endTime = validTime(
+      patch.endTime || patch.end_time || addMinutes(startTime, durationMinutes),
+      `items[${index}].endTime`
+    );
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      throw new AppError(400, "core_booking:invalid_time_range");
+    }
+    if (timeToMinutes(startTime) % slotStepMin !== 0) {
+      throw new AppError(400, "core_booking:invalid_slot_alignment");
+    }
+    const staffId = patch.staffId === null || patch.staff_id === null
+      ? null
+      : optionalText(patch.staffId || patch.staff_id) || defaultStaff || current.staff_id || booking.staff_id || null;
+    await assertStaffRangeAvailable(
+      db,
+      salonId,
+      staffId,
+      bookingDate,
+      startTime,
+      addMinutes(endTime, bufferMin),
+      bookingId
+    );
+
+    if (staffId) {
+      for (const slotTime of occupiedSlotTimes(startTime, endTime, LOCK_GRANULARITY_MIN, bufferMin)) {
+        const lockKey = `${staffId}\u0000${bookingDate}\u0000${slotTime}`;
+        if (localLocks.has(lockKey)) throw conflictError();
+        localLocks.add(lockKey);
+        lockRows.push({
+          salon_id: salonId,
+          staff_id: staffId,
+          booking_date: bookingDate,
+          slot_time: slotTime,
+          booking_id: bookingId,
+          booking_item_id: current.id,
+          created_at: nowIso(),
+        });
+      }
+    }
+
+    nextItems.push({
+      id: current.id,
+      service_id: service.id,
+      service_name_snapshot: service.name,
+      staff_id: staffId,
+      quantity,
+      duration_minutes: durationMinutes,
+      booking_date: bookingDate,
+      start_time: startTime,
+      end_time: endTime,
+    });
+    cursorDate = bookingDate;
+    cursorTime = endTime;
+  }
+
+  const ordered = [...nextItems].sort((left, right) =>
+    compareDateTime(left.booking_date, left.start_time, right.booking_date, right.start_time)
+  );
+  const first = ordered[0];
+  const parentEnd = ordered
+    .filter((item) => item.booking_date === first.booking_date)
+    .reduce((latest, item) => item.end_time > latest ? item.end_time : latest, first.end_time);
+  const parentStaffId = new Set(nextItems.map((item) => item.staff_id).filter(Boolean)).size === 1
+    ? nextItems.find((item) => item.staff_id)?.staff_id || null
+    : null;
+  const now = nowIso();
+  const statements = [
+    { sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
+    ...nextItems.map((item) => ({
+      sql: `UPDATE booking_items
+               SET service_id = ?, service_name_snapshot = ?, staff_id = ?, quantity = ?, duration_minutes = ?,
+                   booking_date = ?, start_time = ?, end_time = ?
+             WHERE salon_id = ? AND booking_id = ? AND id = ?`,
+      params: [item.service_id, item.service_name_snapshot, item.staff_id, item.quantity, item.duration_minutes,
+        item.booking_date, item.start_time, item.end_time, salonId, bookingId, item.id],
+    })),
+    {
+      sql: `UPDATE bookings
+               SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?, slot_step_min = ?, buffer_min = ?,
+                   notes = COALESCE(?, notes), updated_at = ?
+             WHERE salon_id = ? AND id = ?`,
+      params: [parentStaffId, first.booking_date, first.start_time, parentEnd, slotStepMin, bufferMin,
+        optionalText(data.notes) || null, now, salonId, bookingId],
+    },
+    ...lockRows.map((row) => ({
+      sql: `INSERT INTO booking_slot_locks
+        (salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [row.salon_id, row.staff_id, row.booking_date, row.slot_time, row.booking_id, row.booking_item_id, row.created_at],
+    })),
+  ];
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) throw conflictError();
+    throw error;
+  }
+  return getBooking(db, salonId, bookingId);
+}
+
 export async function patchBooking(db, salonId, id, data) {
   if (cleanText(data.status).toLowerCase() === "cancelled") {
     return cancelBooking(db, salonId, id, data.reason || data.notes || "");

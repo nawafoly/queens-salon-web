@@ -4,6 +4,8 @@ import { writeAuditLog } from "./logService";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { STRICT_FIREBASE } from "../config/strictFirebase";
 import { isSeasonEnabledForDate, pickEffectivePrice } from "../helpers/seasonPricing";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreSettingsService } from "./CoreSettingsService";
 
 
 export type SectionKey =
@@ -526,6 +528,15 @@ export const AppSettingsService = {
   },
 
   async fetchRemote(): Promise<AppSettings> {
+    if (getDataSourceFlags().useSettingsD1) {
+      const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
+      if (!setting) {
+        throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app was not migrated to Core D1.");
+      }
+      const remote = sanitize(setting.value);
+      cacheWrite(remote);
+      return remote;
+    }
     const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     const snap = await getDoc(ref);
@@ -545,6 +556,26 @@ export const AppSettingsService = {
   },
 
   subscribe(cb: (settings: AppSettings) => void) {
+    if (getDataSourceFlags().useSettingsD1) {
+      let active = true;
+      const load = async () => {
+        try {
+          const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
+          if (!setting) throw new Error("SETTINGS_D1_NOT_FOUND");
+          const remote = sanitize(setting.value);
+          cacheWrite(remote);
+          if (active) cb(remote);
+        } catch (error) {
+          console.error("Core D1 settings subscription error:", error);
+        }
+      };
+      void load();
+      const timer = globalThis.setInterval(load, 60_000);
+      return () => {
+        active = false;
+        globalThis.clearInterval(timer);
+      };
+    }
     const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     const unsub = onSnapshot(
@@ -583,16 +614,20 @@ export const AppSettingsService = {
   },
 
   async saveRemote(settings: AppSettings) {
+    const payload: AppSettings = sanitize({
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    });
+    if (getDataSourceFlags().useSettingsD1) {
+      await CoreSettingsService.save(DOC_PATH.id, payload, "public");
+      cacheWrite(payload);
+      return payload;
+    }
     const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
 
     // ✅ NEW: before snapshot (للتتبع)
     const beforeSnap = await getDoc(ref);
     const before = beforeSnap.exists() ? beforeSnap.data() : null;
-
-    const payload: AppSettings = sanitize({
-      ...settings,
-      updatedAt: new Date().toISOString(),
-    });
 
     await setDoc(ref, payload, { merge: true });
     cacheWrite(payload);

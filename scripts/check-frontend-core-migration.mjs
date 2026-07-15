@@ -51,6 +51,26 @@ const requiredChecks = [
     file: "src/pages/BookingInternal.tsx",
     required: [/CoreRefundService/, /CoreAuditService/],
   },
+  {
+    file: "src/services/CoreBookingService.ts",
+    required: [/async\s+reschedule\s*\(/, /\/reschedule/],
+  },
+  {
+    file: "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    required: [/CoreBookingService\.reschedule/, /CoreAvailabilityService\.invalidate/],
+  },
+  {
+    file: "src/services/AppSettingsService.ts",
+    required: [/getDataSourceFlags\(\)\.useSettingsD1/, /CoreSettingsService/],
+  },
+  {
+    file: "src/services/CoreHrService.ts",
+    required: [/\/api\/core\/hr\/employees/, /\/api\/core\/hr\/attendance/],
+  },
+  {
+    file: "src/services/CoreFilesService.ts",
+    required: [/getDataSourceFlags\(\)\.useR2Files/, /\/api\/core\/files/],
+  },
 ];
 
 const failures = [];
@@ -68,11 +88,12 @@ for (const check of requiredChecks) {
 }
 
 const documentedExceptions = [
-  "Firebase Authentication and role/profile lookup remain temporary until the authentication migration phase.",
-  "HR, payroll, attendance, leave, settings, uploads/storage and staff file workflows remain Phase 6 Firebase exceptions.",
-  "Booking rescheduling that changes staff, date, time or duration is intentionally blocked in Core D1 mode until the dedicated reschedule endpoint is completed.",
-  "The public booking UI still reads offers/settings/uploads through explicitly selected legacy adapters where Phase 5 has not cut them over.",
-  "Legacy Firestore branches remain available only when VITE_USE_CORE_D1=false; D1 failures never trigger automatic Firestore fallback.",
+  "Firebase Authentication remains temporary; Core and Packages Workers only verify the Firebase ID token.",
+  "Phase 6 adds Core D1 HR, attendance, leave, absence, payroll and schedule APIs, while legacy HR UI branches remain explicitly selected when VITE_USE_HR_D1=false.",
+  "Salon settings have an explicit D1 adapter and files have an explicit R2 adapter; their Firebase branches remain available only while the corresponding flags are false.",
+  "Booking rescheduling now uses the dedicated Core D1 reschedule endpoint and replaces slot locks atomically.",
+  "Messages, recruitment, weekly-report and notification UI workflows still require a later explicit cutover where they currently use legacy Firebase services.",
+  "D1/R2 failures never trigger an automatic Firestore or Firebase Storage fallback.",
 ];
 
 if (failures.length) {

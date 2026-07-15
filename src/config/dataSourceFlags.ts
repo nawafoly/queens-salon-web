@@ -4,6 +4,9 @@ export type PackagesDataSourceKind = "legacy-worker" | "d1";
 export type DataSourceFlags = {
   useCoreD1: boolean;
   usePackagesD1: boolean;
+  useHrD1: boolean;
+  useSettingsD1: boolean;
+  useR2Files: boolean;
   coreWorkerUrl: string;
   packagesWorkerUrl: string;
   coreWorkerUrlConfigured: boolean;
@@ -15,6 +18,9 @@ export type DataSourceDiagnostics = {
   packagesSource: PackagesDataSourceKind;
   coreWorkerUrlConfigured: boolean;
   packagesWorkerUrlConfigured: boolean;
+  hrSource: BookingDataSourceKind;
+  settingsSource: BookingDataSourceKind;
+  filesSource: "firebase" | "r2";
 };
 
 function envValue(name: string): string {
@@ -37,6 +43,9 @@ export function getDataSourceFlags(): DataSourceFlags {
   return {
     useCoreD1: envFlag("VITE_USE_CORE_D1"),
     usePackagesD1: envFlag("VITE_USE_PACKAGES_D1"),
+    useHrD1: envFlag("VITE_USE_HR_D1"),
+    useSettingsD1: envFlag("VITE_USE_SETTINGS_D1"),
+    useR2Files: envFlag("VITE_USE_R2_FILES"),
     coreWorkerUrl,
     packagesWorkerUrl,
     coreWorkerUrlConfigured: Boolean(coreWorkerUrl),
@@ -71,5 +80,8 @@ export function getDataSourceDiagnostics(): DataSourceDiagnostics {
     packagesSource: flags.usePackagesD1 ? "d1" : "legacy-worker",
     coreWorkerUrlConfigured: flags.coreWorkerUrlConfigured,
     packagesWorkerUrlConfigured: flags.packagesWorkerUrlConfigured,
+    hrSource: flags.useHrD1 ? "d1" : "firestore",
+    settingsSource: flags.useSettingsD1 ? "d1" : "firestore",
+    filesSource: flags.useR2Files ? "r2" : "firebase",
   };
 }

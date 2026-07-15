@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-core-api",
   "main": "workers/core/index.js",
@@ -14,6 +14,10 @@
       "migrations_dir": "migrations/core"
     }
   ],
+  // Phase 6 R2 binding. Uncomment only after creating the bucket:
+  // "r2_buckets": [
+  //   { "binding": "FILES_BUCKET", "bucket_name": "queens-salon-files" }
+  // ],
   "vars": {
     "FIREBASE_PROJECT_ID": "waves-hotel-dashboard",
     "SALON_ID": "main",

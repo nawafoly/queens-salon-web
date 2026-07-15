@@ -257,6 +257,8 @@ async function readSourceFromFirestore(projectId, salonId) {
     "service_sections",
     "staff_public",
     "employees",
+    "users",
+    "admin_users",
     "bookings",
     "invoices",
     "payments",
@@ -266,6 +268,15 @@ async function readSourceFromFirestore(projectId, salonId) {
     "offers",
     "refunds",
     "audit_logs",
+    "attendance_records",
+    "attendance",
+    "employee_leave_requests",
+    "employee_absences",
+    "employee_payroll_records",
+    "work_schedules",
+    "settings",
+    "employee_files",
+    "notifications",
   ];
   const entries = await Promise.all(
     collections.map(async (collection) => [
@@ -890,6 +901,235 @@ function transform(input, salonId) {
     }))
     .filter((row) => row.id && row.action);
 
+
+  const employeeProfiles = [];
+  const employeeEmployment = [];
+  const hrWorkSchedules = [];
+  for (const row of staffSources) {
+    const id = clean(row.id);
+    if (!id) continue;
+    const personal = row.personal && typeof row.personal === "object" ? row.personal : {};
+    const employment = row.employment && typeof row.employment === "object" ? row.employment : {};
+    employeeProfiles.push({
+      id,
+      salon_id: salonId,
+      firebase_uid: clean(row.firebaseUid || row.authUid || row.uid || row.linkedUid || personal.uid),
+      name: clean(personal.name || row.name || row.displayName || "Employee"),
+      email: clean(personal.email || row.email),
+      phone_normalized: normalizePhone(personal.phone || row.phone || row.mobile),
+      avatar_file_id: clean(row.avatarFileId || personal.avatar?.id),
+      status: clean(employment.status || employment.employmentStatus || row.employmentStatus || (row.active === false ? "inactive" : "active")),
+      created_at: clean(row.createdAt || now),
+      updated_at: now,
+    });
+    employeeEmployment.push({
+      salon_id: salonId,
+      employee_id: id,
+      title: clean(employment.title || row.title),
+      job_title: clean(employment.jobTitle || row.jobTitle),
+      department: clean(employment.department || row.department),
+      employment_source: clean(employment.employmentSource || row.employmentSource || "salon"),
+      partner_id: clean(employment.partnerId || row.partnerId),
+      partner_member_id: clean(employment.partnerMemberId || row.partnerMemberId),
+      contract_id: clean(employment.contractId || row.contractId),
+      start_date: clean(employment.startDate || row.startDate),
+      leave_balance: Number(employment.leaveBalance ?? row.leaveBalance ?? 0) || 0,
+      base_salary_halalas: moneyHalalas(employment, ["baseSalaryHalalas", "base_salary_halalas"], ["baseSalary"], 0),
+      housing_allowance_halalas: moneyHalalas(employment, ["housingAllowanceHalalas", "housing_allowance_halalas"], ["housingAllowance"], 0),
+      transportation_allowance_halalas: moneyHalalas(employment, ["transportationAllowanceHalalas", "transportation_allowance_halalas"], ["transportationAllowance"], 0),
+      other_allowances_halalas: moneyHalalas(employment, ["otherAllowancesHalalas", "other_allowances_halalas"], ["otherAllowances", "allowances"], 0),
+      expected_work_days: employment.expectedWorkDays ?? row.expectedWorkDays ?? null,
+      expected_work_hours: employment.expectedWorkHours ?? row.expectedWorkHours ?? null,
+      shift_start_time: normalizeTime(employment.shiftStartTime || row.shiftStartTime),
+      shift_end_time: normalizeTime(employment.shiftEndTime || row.shiftEndTime),
+      weekly_off_days_json: JSON.stringify(Array.isArray(employment.workSchedule?.weeklyOffDays) ? employment.workSchedule.weeklyOffDays : Array.isArray(row.weeklyOffDays) ? row.weeklyOffDays : []),
+      allowed_zone_ids_json: JSON.stringify(Array.isArray(employment.allowedZoneIds) ? employment.allowedZoneIds : Array.isArray(row.allowedZoneIds) ? row.allowedZoneIds : []),
+      employment_status: clean(employment.employmentStatus || employment.status || row.employmentStatus || "active"),
+      employee_code: clean(employment.employeeCode || row.employeeCode),
+      fingerprint_number: clean(employment.fingerprintNumber || row.fingerprintNumber),
+      admin_notes: clean(employment.adminNotes || row.adminNotes),
+      updated_by_uid: clean(employment.updatedByUid || row.updatedByUid),
+      updated_by_email: clean(employment.updatedByEmail || row.updatedByEmail),
+      created_at: clean(row.createdAt || now),
+      updated_at: now,
+    });
+  }
+  for (const schedule of staffSchedules) {
+    hrWorkSchedules.push({
+      id: `hr_${schedule.id}`,
+      salon_id: salonId,
+      employee_id: schedule.staff_id,
+      weekday: schedule.weekday,
+      start_time: schedule.start_time,
+      end_time: schedule.end_time,
+      active: schedule.active,
+      effective_from: "",
+      effective_to: "",
+      created_at: schedule.created_at,
+      updated_at: now,
+    });
+  }
+  for (const row of rows(input, "work_schedules")) {
+    const employeeId = clean(row.employeeId || row.staffId || row.id);
+    if (!employeeId) continue;
+    const weekday = Number(row.weekday ?? row.dayIndex);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue;
+    hrWorkSchedules.push({
+      id: clean(row.id) || stableId("hr_schedule", `${employeeId}:${weekday}:${row.startTime}:${row.endTime}`),
+      salon_id: salonId,
+      employee_id: employeeId,
+      weekday,
+      start_time: normalizeTime(row.startTime || row.start),
+      end_time: normalizeTime(row.endTime || row.end),
+      active: row.active === false ? 0 : 1,
+      effective_from: clean(row.effectiveFrom),
+      effective_to: clean(row.effectiveTo),
+      created_at: clean(row.createdAt || now),
+      updated_at: now,
+    });
+  }
+
+  const attendanceRecords = mergeRowsById(rows(input, "attendance_records"), rows(input, "attendance"))
+    .map((row) => {
+      const employeeId = clean(row.employeeId || row.employeeDocId || row.staffId || row.employeeUid);
+      const recordedAt = clean(row.recordedAt || row.serverTime || row.time || row.createdAt || now);
+      return {
+        id: clean(row.id), salon_id: salonId, employee_id: employeeId,
+        employee_uid: clean(row.employeeUid || row.uid),
+        date_key: clean(row.dateKey || row.date || recordedAt.slice(0, 10)),
+        record_type: clean(row.recordType || row.type || "check_in"), recorded_at: recordedAt,
+        latitude: row.latitude ?? row.location?.lat ?? null,
+        longitude: row.longitude ?? row.location?.lng ?? null,
+        accuracy_meters: row.accuracyMeters ?? row.location?.accuracy ?? null,
+        zone_id: clean(row.zoneId), device_id: clean(row.deviceId || row.deviceInfo?.deviceId),
+        source: clean(row.source || "migration"), note: clean(row.note),
+        idempotency_key: clean(row.idempotencyKey || row.id), created_at: clean(row.createdAt || now),
+      };
+    }).filter((row) => row.id && row.employee_id && row.date_key);
+  const attendanceStateMap = new Map();
+  for (const row of [...attendanceRecords].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))) {
+    attendanceStateMap.set(row.employee_id, {
+      salon_id: salonId, employee_id: row.employee_id, last_type: row.record_type,
+      last_record_id: row.id, last_time: row.recorded_at, last_latitude: row.latitude,
+      last_longitude: row.longitude, last_accuracy_meters: row.accuracy_meters,
+      last_zone_id: row.zone_id, updated_at: now,
+    });
+  }
+
+  const employeeLeaves = rows(input, "employee_leave_requests")
+    .map((row) => ({
+      id: clean(row.id), salon_id: salonId,
+      employee_id: clean(row.employeeId || row.employeeDocId || row.employeeUid),
+      employee_uid: clean(row.employeeUid || row.userId), employee_name: clean(row.employeeName),
+      employee_email: clean(row.employeeEmail), status: clean(row.status || "pending"),
+      leave_type: clean(row.leaveType || row.type || "annual"),
+      start_date: clean(row.startDate || row.fromDate), end_date: clean(row.endDate || row.toDate),
+      days_count: Number(row.daysCount ?? row.days ?? 0) || 0,
+      employee_note: clean(row.employeeNote || row.note), hr_note: clean(row.hrNote),
+      decided_at: clean(row.decidedAt || row.reviewedAt),
+      decided_by_uid: clean(row.decidedBy || row.reviewedBy || row.reviewerUid),
+      decided_by_email: clean(row.decidedByEmail || row.reviewedByEmail),
+      decided_by_name: clean(row.decidedByName || row.reviewedByName || row.reviewerName),
+      created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+    })).filter((row) => row.id && row.employee_id && row.start_date && row.end_date);
+
+  const employeeAbsences = rows(input, "employee_absences")
+    .map((row) => ({
+      id: clean(row.id), salon_id: salonId,
+      employee_id: clean(row.employeeId || row.employeeDocId || row.employeeUid),
+      employee_uid: clean(row.employeeUid), date_key: clean(row.date || row.dateKey),
+      absence_type: clean(row.type || row.absenceType || "full_day"), note: clean(row.note),
+      created_by_uid: clean(row.createdByUid), created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+    })).filter((row) => row.id && row.employee_id && row.date_key);
+
+  const payrollPeriodsMap = new Map();
+  const payrollEntries = rows(input, "employee_payroll_records")
+    .map((row) => {
+      const employeeId = clean(row.employeeId || row.employeeUid);
+      const payrollMonth = clean(row.payrollMonth || row.monthKey);
+      if (!employeeId || !/^\d{4}-\d{2}$/.test(payrollMonth)) return null;
+      const monthStart = clean(row.monthStart || `${payrollMonth}-01`);
+      const monthEnd = clean(row.monthEnd || row.calculationEndDate || monthStart);
+      if (!payrollPeriodsMap.has(payrollMonth)) payrollPeriodsMap.set(payrollMonth, {
+        id: `payroll_period_${payrollMonth}`, salon_id: salonId, payroll_month: payrollMonth,
+        month_start: monthStart, month_end: monthEnd, status: "open",
+        created_by_uid: clean(row.createdByUid), closed_by_uid: "", closed_at: "",
+        created_at: clean(row.createdAt || now), updated_at: now,
+      });
+      return {
+        id: clean(row.id) || `${employeeId}__${payrollMonth}`, salon_id: salonId,
+        period_id: `payroll_period_${payrollMonth}`, employee_id: employeeId, payroll_month: payrollMonth,
+        base_salary_halalas: moneyHalalas(row, ["baseSalaryHalalas"], ["baseSalary"], 0),
+        allowances_halalas: moneyHalalas(row, ["allowancesHalalas"], ["allowances", "housingAllowance", "transportationAllowance", "otherAllowances"], 0),
+        absence_days: Number(row.absenceDays || 0),
+        absence_deduction_halalas: moneyHalalas(row, ["absenceDeductionHalalas"], ["absenceDeduction", "absencePenalties"], 0),
+        expected_work_hours: row.expectedWorkHours ?? null, actual_worked_hours: row.actualWorkedHours ?? null,
+        missing_hours: row.attendanceMissingHours ?? row.missingHours ?? null,
+        overtime_hours: row.attendanceOvertimeHours ?? row.overtimeHours ?? null,
+        overtime_bonus_halalas: moneyHalalas(row, ["overtimeBonusHalalas"], ["overtimeBonus", "overtime"], 0),
+        delay_deduction_halalas: moneyHalalas(row, ["delayDeductionHalalas"], ["delayDeduction", "delay"], 0),
+        insurance_deduction_halalas: moneyHalalas(row, ["insuranceDeductionHalalas"], ["insuranceDeduction", "insurance"], 0),
+        other_deductions_halalas: moneyHalalas(row, ["otherDeductionsHalalas"], ["totalSalaryDeductions", "deductions"], 0),
+        gross_salary_halalas: moneyHalalas(row, ["grossSalaryHalalas"], ["grossSalary"], 0),
+        final_salary_halalas: moneyHalalas(row, ["finalSalaryHalalas"], ["finalSalary", "total", "salary"], 0),
+        schedule_snapshot_json: JSON.stringify(row.scheduleSnapshot || null),
+        absence_entries_json: JSON.stringify(row.absenceEntries || []),
+        deductions_json: JSON.stringify(row.salaryDeductions || []),
+        mudad_file_id: clean(row.mudadDocument?.id || row.mudadFileId),
+        created_by_uid: clean(row.createdByUid), created_by_email: clean(row.createdByEmail),
+        created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+      };
+    }).filter(Boolean);
+
+  const salonSettings = rows(input, "settings").map((row) => ({
+    salon_id: salonId, setting_key: clean(row.id || row.key || "app"),
+    value_json: JSON.stringify(Object.fromEntries(Object.entries(row).filter(([key]) => key !== "id"))),
+    visibility: clean(row.visibility || (clean(row.id) === "app" ? "public" : "private")),
+    updated_by_uid: clean(row.updatedByUid), updated_at: clean(row.updatedAt || now),
+  })).filter((row) => row.setting_key);
+
+  const adminProfiles = [];
+  const roleAssignments = [];
+  for (const row of mergeRowsById(rows(input, "users"), rows(input, "admin_users"))) {
+    const uid = clean(row.uid || row.firebaseUid || row.id);
+    if (!uid) continue;
+    const role = clean(row.role || "client").toLowerCase();
+    adminProfiles.push({
+      salon_id: salonId, firebase_uid: uid, username: clean(row.username),
+      display_name: clean(row.displayName || row.name), email: clean(row.email),
+      employee_id: clean(row.employeeId || row.linkedEmployeeDocId),
+      active: row.active === false || row.disabled === true ? 0 : 1,
+      created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+    });
+    roleAssignments.push({
+      salon_id: salonId, firebase_uid: uid, role, scope: "salon",
+      active: row.active === false || row.disabled === true ? 0 : 1,
+      assigned_by_uid: clean(row.updatedByUid || row.createdByUid),
+      created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+    });
+  }
+
+  const fileMetadata = rows(input, "employee_files").map((row) => ({
+    id: clean(row.id), salon_id: salonId,
+    employee_id: clean(row.employeeId || row.employeeUid), category: clean(row.category || row.fileType || "general"),
+    title: clean(row.title), description: clean(row.description || row.notes),
+    file_name: clean(row.fileName || row.name || "file"),
+    storage_key: clean(row.storageKey || row.filePath), bucket_name: clean(row.bucketName),
+    content_type: clean(row.contentType || row.mimeType), size_bytes: row.fileSize ?? row.sizeBytes ?? null,
+    status: clean(row.status || "active"), visibility: clean(row.visibility || "private"),
+    uploaded_by_uid: clean(row.uploadedBy || row.createdByUid),
+    replaced_by_file_id: clean(row.replacedByFileId), replaces_file_id: clean(row.replacesFileId),
+    created_at: clean(row.createdAt || row.uploadedAt || now), updated_at: clean(row.updatedAt || now),
+  })).filter((row) => row.id && row.storage_key);
+
+  const notificationRecords = rows(input, "notifications").map((row) => ({
+    id: clean(row.id), salon_id: salonId, target_uid: clean(row.targetUid || row.userId || row.uid),
+    title: clean(row.title), body: clean(row.body || row.message),
+    notification_type: clean(row.type || "system"), related_type: clean(row.relatedTo || row.relatedType),
+    related_id: clean(row.relatedId), is_read: row.isRead === true ? 1 : 0,
+    read_at: clean(row.readAt), created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
+  })).filter((row) => row.id && row.target_uid && row.title);
+
   return {
     conflicts,
     tables: {
@@ -911,6 +1151,20 @@ function transform(input, salonId) {
       discounts,
       refunds,
       audit_logs: auditLogs,
+      employee_profiles: employeeProfiles,
+      employee_employment: employeeEmployment,
+      hr_work_schedules: hrWorkSchedules,
+      attendance_records: attendanceRecords,
+      attendance_state: [...attendanceStateMap.values()],
+      employee_leaves: employeeLeaves,
+      employee_absences: employeeAbsences,
+      payroll_periods: [...payrollPeriodsMap.values()],
+      payroll_entries: payrollEntries,
+      salon_settings: salonSettings,
+      admin_profiles: adminProfiles,
+      role_assignments: roleAssignments,
+      file_metadata: fileMetadata,
+      notification_records: notificationRecords,
     },
   };
 }
@@ -935,6 +1189,20 @@ function buildSql(tables) {
     "discounts",
     "refunds",
     "audit_logs",
+    "employee_profiles",
+    "employee_employment",
+    "hr_work_schedules",
+    "attendance_records",
+    "attendance_state",
+    "employee_leaves",
+    "employee_absences",
+    "payroll_periods",
+    "payroll_entries",
+    "salon_settings",
+    "admin_profiles",
+    "role_assignments",
+    "file_metadata",
+    "notification_records",
   ];
   return [
     "BEGIN TRANSACTION;",

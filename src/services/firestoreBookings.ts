@@ -147,6 +147,7 @@ export type BookingDoc = {
   date: string;
   time: string;
   startTime?: string;
+  endTime?: string;
 
   // ✅ stored start-slotId (for debugging & tracking)
   slotId?: string;

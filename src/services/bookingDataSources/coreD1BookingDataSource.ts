@@ -386,6 +386,21 @@ export const coreD1BookingDataSource: BookingDataSource = {
   },
 
   async updateBooking(id, patch) {
+    const scheduleChanged = Boolean(
+      patch.date || patch.time || patch.startTime || patch.endTime || patch.employeeId
+    );
+    if (scheduleChanged) {
+      const current = await CoreBookingService.get(id);
+      const updated = await CoreBookingService.reschedule(id, {
+        bookingDate: patch.date,
+        startTime: patch.time || patch.startTime,
+        endTime: patch.endTime,
+        staffId: patch.employeeId,
+        notes: patch.note,
+      });
+      invalidateCoreAvailability(current);
+      invalidateCoreAvailability(updated);
+    }
     await CoreBookingService.patch(id, {
       status:
         patch.status === "confirmed" ? "booked" : patch.status,
