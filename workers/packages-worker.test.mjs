@@ -584,6 +584,97 @@ test("client wallet is derived from token identity and ignores requested clientI
   assert.deepEqual(body.data.packages.map((p) => p.id), [sale.clientPackageId]);
 }));
 
+test("admin client package list is restricted to owner and admin roles", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/users/admin1", { role: "admin", active: true });
+
+  const client = await worker.fetch(request("/api/packages/admin/list-client-packages?salonId=main", {
+    method: "GET",
+    token: "test:client1:client",
+  }), env());
+  assert.equal(client.status, 403);
+
+  const admin = await worker.fetch(request("/api/packages/admin/list-client-packages?salonId=main", {
+    method: "GET",
+    token: "test:admin1:admin",
+  }), env());
+  const body = await json(admin);
+  assert.equal(admin.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data, []);
+}));
+
+test("admin client package list returns only safe active package fields", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/legacy-client-doc", {
+    clientId: "canonical-legacy-client",
+    legacyClientDocId: "legacy-client-id",
+    name: "Legacy Client",
+    phone: "0500000090",
+    refreshToken: "do-not-return",
+  });
+  fake.seed("salons/main/client_packages/visible-package", {
+    clientId: "legacy-client-id",
+    packageNameSnapshot: "VIP Sessions",
+    totalSessions: 5,
+    remainingSessions: 3,
+    reservedSessions: 1,
+    usedSessions: 1,
+    status: "active",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    token: "do-not-return",
+  });
+  fake.seed("salons/main/client_packages/expired-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Expired Sessions",
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    expiresAt: "2024-01-01T00:00:00.000Z",
+  });
+  fake.seed("salons/main/client_packages/cancelled-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Cancelled Sessions",
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "cancelled",
+  });
+  const before = JSON.stringify([...fake.docs.entries()]);
+
+  const response = await worker.fetch(request("/api/packages/admin/list-client-packages?salonId=main", {
+    method: "GET",
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data, [{
+    clientName: "Legacy Client",
+    phone: "0500000090",
+    canonicalClientId: "canonical-legacy-client",
+    packageName: "VIP Sessions",
+    totalSessions: 5,
+    remainingSessions: 3,
+    usedSessions: 1,
+    reservedSessions: 1,
+    status: "active",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  }]);
+  assert.deepEqual(Object.keys(body.data[0]), [
+    "clientName",
+    "phone",
+    "canonicalClientId",
+    "packageName",
+    "totalSessions",
+    "remainingSessions",
+    "usedSessions",
+    "reservedSessions",
+    "status",
+    "expiresAt",
+  ]);
+  assert.equal(JSON.stringify([...fake.docs.entries()]), before);
+}));
+
 test("failed Firestore commit does not leave partial purchase docs in fake store", async () => withFakeFirestore(async (fake) => {
   fake.failNextCommit = true;
   const response = await worker.fetch(request("/api/packages/purchase", {

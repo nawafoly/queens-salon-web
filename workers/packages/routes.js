@@ -13,6 +13,7 @@ import {
   cancelRedemption,
   consumeReserved,
   createRedemptionBooking,
+  listClientPackagesAdmin,
   myWallet,
   purchasePackage,
   restoreRedemption,
@@ -77,6 +78,7 @@ const routes = {
   "POST /api/packages/cancel": cancelClientPackage,
   "POST /api/packages/adjust": adjustClientPackage,
   "POST /api/packages/client-wallet": clientWallet,
+  "GET /api/packages/admin/list-client-packages": listClientPackagesAdmin,
   "GET /api/packages/my-wallet": myWallet,
 };
 

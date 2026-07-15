@@ -1104,6 +1104,177 @@ async function queryByClientAliases(db, salonId, collectionId, aliases) {
   return [...rowsByPath.values()];
 }
 
+async function queryAllDocs(db, salonId, collectionId, filters = []) {
+  const pageSize = 500;
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await db.query(salonPath(salonId), collectionId, filters, pageSize, offset);
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+function identityDisplayName(raw) {
+  return optionalText(raw.name || raw.fullName || raw.clientName || raw.displayName);
+}
+
+function identityPhone(raw) {
+  return optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber || raw.phoneSnapshot);
+}
+
+function mergeIdentity(existing, next) {
+  if (!existing) return next;
+  return {
+    canonicalClientId: existing.canonicalClientId || next.canonicalClientId,
+    clientName: existing.clientName || next.clientName,
+    phone: existing.phone || next.phone,
+    priority: Math.max(existing.priority || 0, next.priority || 0),
+  };
+}
+
+function upsertIdentity(index, aliases, identity) {
+  for (const alias of aliases) {
+    const key = cleanText(alias);
+    if (!key) continue;
+    const existing = index.get(key);
+    if (!existing || (identity.priority || 0) > (existing.priority || 0)) {
+      index.set(key, mergeIdentity(existing, identity));
+    } else {
+      index.set(key, mergeIdentity(existing, identity));
+    }
+  }
+}
+
+async function buildClientIdentityIndex(salonId, clientDocs, userDocs) {
+  const index = new Map();
+  await Promise.all(clientDocs.map(async (doc) => {
+    const raw = doc.data || {};
+    const canonicalClientId = cleanText(raw.clientId) || await stableLegacyClientId(salonId, doc.id);
+    upsertIdentity(index, [
+      doc.id,
+      canonicalClientId,
+      raw.clientId,
+      raw.legacyClientDocId,
+      raw.customerId,
+      raw.authUid,
+      raw.uid,
+      raw.userId,
+      raw.firebaseUid,
+    ], {
+      canonicalClientId,
+      clientName: identityDisplayName(raw),
+      phone: identityPhone(raw),
+      priority: 2,
+    });
+  }));
+
+  for (const doc of userDocs) {
+    const raw = doc.data || {};
+    const canonicalClientId = cleanText(raw.clientId || raw.canonicalClientId || raw.customerId || doc.id);
+    upsertIdentity(index, [
+      doc.id,
+      canonicalClientId,
+      raw.clientId,
+      raw.canonicalClientId,
+      raw.customerId,
+      raw.authUid,
+      raw.uid,
+      raw.userId,
+      raw.firebaseUid,
+    ], {
+      canonicalClientId,
+      clientName: identityDisplayName(raw),
+      phone: identityPhone(raw),
+      priority: 1,
+    });
+  }
+  return index;
+}
+
+function integerOrZero(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.trunc(number));
+}
+
+function fallbackPackageBalances(raw, nowMs) {
+  const totalSessions = integerOrZero(raw.totalSessions ?? raw.sessionsCount ?? raw.initialSessions);
+  const remainingSessions = integerOrZero(raw.remainingSessions ?? raw.sessionsRemaining ?? raw.balance);
+  const reservedSessions = integerOrZero(raw.reservedSessions);
+  const usedSessions = raw.usedSessions === undefined && raw.sessionsUsed === undefined
+    ? Math.max(0, totalSessions - remainingSessions - reservedSessions)
+    : integerOrZero(raw.usedSessions ?? raw.sessionsUsed);
+  const rawStatus = cleanText(raw.status).toLowerCase();
+  const expiresAtMs = timestampMs(raw.expiresAt || raw.expiryAt || raw.expirationDate);
+  let status = ["active", "exhausted", "expired", "cancelled"].includes(rawStatus)
+    ? rawStatus
+    : raw.active === false ? "cancelled" : "active";
+  if (status !== "cancelled" && expiresAtMs !== undefined && expiresAtMs < nowMs) status = "expired";
+  if (status === "active" && remainingSessions === 0 && reservedSessions === 0) status = "exhausted";
+  return { totalSessions, remainingSessions, usedSessions, reservedSessions, status };
+}
+
+function packageBalancesForAdminList(doc, nowMs) {
+  try {
+    return balancesFromDoc(doc.data || {}, nowMs);
+  } catch (error) {
+    console.warn("packages_admin_list_balance_fallback", {
+      packageId: doc.id,
+      reason: cleanText(error?.code || error?.message || "invalid_balance"),
+    });
+    return fallbackPackageBalances(doc.data || {}, nowMs);
+  }
+}
+
+function packageNameForAdminList(raw) {
+  return optionalText(raw.packageNameSnapshot || raw.packageName || raw.packageTitle || raw.name || raw.packageCatalogId) || "";
+}
+
+function clientIdForAdminList(raw) {
+  return cleanText(raw.clientId || raw.canonicalClientId || raw.customerId || raw.authUid || raw.uid || raw.userId || raw.firebaseUid);
+}
+
+function packageRowForAdminList(doc, identityIndex, nowMs) {
+  const raw = doc.data || {};
+  const balances = packageBalancesForAdminList(doc, nowMs);
+  if (balances.status !== "active") return null;
+  const storedClientId = clientIdForAdminList(raw);
+  const identity = identityIndex.get(storedClientId);
+  return {
+    clientName: identity?.clientName || optionalText(raw.clientNameSnapshot || raw.clientName || raw.nameSnapshot) || "",
+    phone: identity?.phone || optionalText(raw.phoneSnapshot || raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber) || "",
+    canonicalClientId: identity?.canonicalClientId || cleanText(raw.canonicalClientId || raw.clientId || storedClientId),
+    packageName: packageNameForAdminList(raw),
+    totalSessions: balances.totalSessions,
+    remainingSessions: balances.remainingSessions,
+    usedSessions: balances.usedSessions,
+    reservedSessions: balances.reservedSessions,
+    status: balances.status,
+    expiresAt: raw.expiresAt || raw.expiryAt || raw.expirationDate || "",
+  };
+}
+
+export async function listClientPackagesAdmin(ctx) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const [packageDocs, clientDocs, userDocs] = await Promise.all([
+    queryAllDocs(ctx.db, ctx.salonId, "client_packages"),
+    queryAllDocs(ctx.db, ctx.salonId, "clients"),
+    queryAllDocs(ctx.db, ctx.salonId, "users"),
+  ]);
+  const identityIndex = await buildClientIdentityIndex(ctx.salonId, clientDocs, userDocs);
+  const nowMs = Date.now();
+  return packageDocs
+    .map((doc) => packageRowForAdminList(doc, identityIndex, nowMs))
+    .filter(Boolean)
+    .sort((a, b) => (
+      `${a.clientName}\u0000${a.phone}\u0000${a.packageName}`.localeCompare(
+        `${b.clientName}\u0000${b.phone}\u0000${b.packageName}`,
+        "ar"
+      )
+    ));
+}
+
 function walletPackageFromDoc(doc, nowMs, canonicalClientId) {
   const raw = doc.data || {};
   const balances = balancesFromDoc(raw, nowMs);
