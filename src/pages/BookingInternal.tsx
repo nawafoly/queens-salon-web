@@ -154,8 +154,6 @@ import {
 } from "../helpers/seasonPricing";
 
 import { AppSettingsService } from "../services/AppSettingsService";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
-import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 import { backfillAvailabilityDaysFromBookingSlots } from "../services/firestoreAvailabilityBackfill";
 import Modal from "../components/Modal";
 import BookingDropdown, {
@@ -199,6 +197,7 @@ import {
   createBookingGroup,
   updateBookingStatus,
   updateBookingDetails as updateBookingFields,
+  getStaffAvailability,
 } from "../services/bookingDataSourceCompat";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
@@ -2649,6 +2648,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
   // - Never auto-runs on BookingInternal load
   // =========================
   useEffect(() => {
+    if (getDataSourceFlags().useCoreD1) return;
     if (!isOwner) return;
     if (availabilityDaysBackfillStartedThisSession) return;
 
@@ -4023,6 +4023,7 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
       employeeUidFallback,
       employeeNameFallback,
     });
+    const staffId = String(employeeIdFallback || lookup.primaryEmployeeIdKeys[0] || employeeKey || "").trim();
     const cacheKey = `${String(salonId || "").trim()}__${String(dateISO || "").trim()}__${lookup.slotKeys.join("|")}`;
     const now = Date.now();
 
@@ -4039,91 +4040,28 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
 
     const pending = (async () => {
-      const takenFs = new Set<string>();
-
-      // ✅ Preferred: 1 doc read per employee/day (availability_days), trusted only when `complete=true`.
-      const empId = String(employeeIdFallback || "").trim();
-      if (empId) {
-        const aRef = doc(db, "salons", salonId, "availability_days", dateISO, "employees", empId);
-        FirestoreReadStats.bump(
-          aRef.path,
-          "BookingInternal.collectTakenTimesForEmployeeDay",
-          "getDoc"
-        );
-        const aSnap = await getDoc(aRef);
-        if (aSnap.exists()) {
-          const a: any = aSnap.data() || {};
-          if (a.complete === true) {
-            const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
-            Object.keys(bookedSlots).forEach((t) => {
-              const k = String(t || "").trim();
-              if (k) takenFs.add(k);
-            });
-            takenTimesCacheRef.current[cacheKey] = {
-              ts: Date.now(),
-              values: Array.from(takenFs),
-            };
-            return takenFs;
-          }
-        }
-      }
-
-      const colSlots = collection(db, "salons", salonId, "booking_slots");
-
-      const primaryReads: Promise<any>[] = [
-        ...lookup.primaryEmployeeKeyKeys.map((k) =>
-          getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
-        ),
-        ...lookup.primaryEmployeeIdKeys.map((k) =>
-          getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
-        ),
-      ];
-
-      const primarySnaps = await Promise.all(primaryReads);
-      primarySnaps.forEach((snap) => {
-        snap.docs.forEach((d: any) => {
-          if (d?.ref?.path) {
-            FirestoreReadStats.bump(
-              d.ref.path,
-              "BookingInternal.collectTakenTimesForEmployeeDay",
-              "getDocs"
-            );
-          }
-          const t = String((d.data() as any)?.time || "").trim();
-          if (t) takenFs.add(t);
-        });
+      const availability = await getStaffAvailability({
+        staffId,
+        employeeKey: String(employeeKey || "").trim(),
+        employeeUid: String(employeeUidFallback || "").trim(),
+        employeeName: String(employeeNameFallback || "").trim(),
+        date: dateISO,
+        slotStepMin,
+        bufferMin,
+        forceFresh,
       });
-
-      const fallbackReads: Promise<any>[] = [
-        ...lookup.fallbackEmployeeKeyKeys.map((k) =>
-          getDocs(query(colSlots, where("employeeKey", "==", k), where("date", "==", dateISO)))
-        ),
-        ...lookup.fallbackEmployeeIdKeys.map((k) =>
-          getDocs(query(colSlots, where("employeeId", "==", k), where("date", "==", dateISO)))
-        ),
-      ];
-      if (fallbackReads.length) {
-        const snaps = await Promise.all(fallbackReads);
-        snaps.forEach((snap) => {
-          snap.docs.forEach((d: any) => {
-            if (d?.ref?.path) {
-              FirestoreReadStats.bump(
-                d.ref.path,
-                "BookingInternal.collectTakenTimesForEmployeeDay",
-                "getDocs"
-              );
-            }
-            const t = String((d.data() as any)?.time || "").trim();
-            if (t) takenFs.add(t);
-          });
-        });
-      }
-
+      const rows = Array.from(
+        new Set(
+          (availability.takenTimes || [])
+            .map((time) => String(time || "").trim())
+            .filter(Boolean)
+        )
+      );
       takenTimesCacheRef.current[cacheKey] = {
         ts: Date.now(),
-        values: Array.from(takenFs),
+        values: rows,
       };
-      return takenFs;
+      return new Set<string>(rows);
     })();
 
     takenTimesInFlightRef.current[cacheKey] = pending;
@@ -4169,61 +4107,26 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     }
 
     const pending = (async () => {
+      const availability = await getStaffAvailability({
+        staffId: empId || empKey,
+        employeeKey: empKey,
+        date: dateISO,
+        slotStepMin,
+        bufferMin,
+        forceFresh,
+      });
       const out: Record<string, string> = {};
-      try {
-        const colBookings = collection(db, "salons", salonId, "bookings");
-        let bSnap;
-
-        if (empKey) {
-          bSnap = await getDocs(
-            query(
-              colBookings,
-              where("employeeKey", "==", empKey),
-              where("date", "==", dateISO),
-              limit(250)
-            )
-          );
-        } else {
-          bSnap = await getDocs(
-            query(
-              colBookings,
-              where("employeeId", "==", empId),
-              where("date", "==", dateISO),
-              limit(250)
-            )
-          );
-        }
-
-        if (bSnap.empty && empId) {
-          bSnap = await getDocs(
-            query(
-              colBookings,
-              where("employeeId", "==", empId),
-              where("date", "==", dateISO),
-              limit(250)
-            )
-          );
-        }
-
-        bSnap.docs.forEach((d) => {
-          const data = d.data() as any;
-          const t = String(data?.time || "").trim();
-          const status = String(data?.status || "").toLowerCase();
-          if (!t) return;
-          if (["cancelled", "canceled", "rejected"].includes(status)) return;
-
-          const clientName = String(data?.clientName || data?.name || "").trim();
-          const clientPhone = phone10Digits(data?.clientPhone || data?.phone || "");
-          const channel = String(data?.channel || data?.source || "").trim();
-          const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
-            .filter(Boolean)
-            .join(" ");
-          const ch = channel ? ` - ${channel}` : "";
-          out[t] = `ظ…ط­ط¬ظˆط² - ${who}${ch}`;
-        });
-      } catch {
-        // ignore
-      }
+      Object.entries(availability.bookedSlots || {}).forEach(([time, raw]) => {
+        const slot = raw as any;
+        const clientName = String(slot?.clientName || "").trim();
+        const clientPhone = phone10Digits(slot?.clientPhone || "");
+        const source = String(slot?.source || "").trim();
+        const who = [clientName || "بدون اسم", clientPhone ? `(${clientPhone})` : ""]
+          .filter(Boolean)
+          .join(" ");
+        const channel = source ? ` - ${source}` : "";
+        out[String(time || "").trim()] = `محجوز - ${who}${channel}`;
+      });
 
       bookedMetaCacheRef.current[cacheKey] = {
         ts: Date.now(),

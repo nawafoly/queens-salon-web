@@ -13,6 +13,7 @@ import type {
   CoreClient,
   CoreInvoice,
   CorePayment,
+  CoreStaffAvailability,
 } from "../types/coreApi";
 import {
   getDataSourceFlags,
@@ -26,6 +27,17 @@ export type BookingClientCandidate = CoreClient & {
   mobile?: string;
   fullName?: string;
   source?: string;
+};
+
+export type BookingStaffAvailabilityQuery = {
+  staffId: string;
+  date: string;
+  slotStepMin?: number;
+  bufferMin?: number;
+  employeeKey?: string;
+  employeeUid?: string;
+  employeeName?: string;
+  forceFresh?: boolean;
 };
 
 export type BookingSearchQuery = {
@@ -45,6 +57,9 @@ export interface BookingDataSource {
   getServiceCategories(sectionId?: string): Promise<CategoryDoc[]>;
   getServiceSections(): Promise<SectionDoc[]>;
   getActiveStaff(serviceId?: string): Promise<StaffPublicWithId[]>;
+  getStaffAvailability(
+    query: BookingStaffAvailabilityQuery
+  ): Promise<CoreStaffAvailability>;
   searchClients(search: string): Promise<BookingClientCandidate[]>;
   getClient(id: string): Promise<BookingClientCandidate | null>;
   createClient(input: {

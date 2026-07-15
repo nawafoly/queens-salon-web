@@ -4,10 +4,12 @@ import { CoreClientService } from "../CoreClientService";
 import { CoreInvoiceService } from "../CoreInvoiceService";
 import { CorePaymentService } from "../CorePaymentService";
 import { CoreStaffService } from "../CoreStaffService";
+import { CoreAvailabilityService } from "../CoreAvailabilityService";
 import { PackageOperationsService } from "../PackageOperationsService";
 import {
   createBookingWithPackageSaga,
   type PackageSagaItem,
+  type PackageSagaReservation,
 } from "../packageBookingSaga";
 import { getDataSourceFlags } from "../../config/dataSourceFlags";
 import {
@@ -109,13 +111,28 @@ function packageSagaItem(
   };
 }
 
+
+function invalidateCoreAvailability(booking: Awaited<ReturnType<typeof CoreBookingService.get>>) {
+  const seen = new Set<string>();
+  for (const item of booking.items || []) {
+    const staffId = String(item.staffId || booking.staffId || "").trim();
+    const date = String(item.bookingDate || booking.bookingDate || "").trim();
+    const key = `${staffId}|${date}`;
+    if (!staffId || !date || seen.has(key)) continue;
+    seen.add(key);
+    CoreAvailabilityService.invalidate(staffId, date);
+  }
+  if (!seen.size && booking.staffId && booking.bookingDate) {
+    CoreAvailabilityService.invalidate(booking.staffId, booking.bookingDate);
+  }
+}
 async function createCoreBookingWithOptionalPackageSaga(
   bookingId: string,
   clientId: string,
   packageItems: PackageSagaItem[],
-  createCoreBooking: () => ReturnType<typeof CoreBookingService.create>
+  createCoreBooking: (reservations: PackageSagaReservation[]) => ReturnType<typeof CoreBookingService.create>
 ) {
-  if (!packageItems.length) return createCoreBooking();
+  if (!packageItems.length) return createCoreBooking([]);
 
   if (!getDataSourceFlags().usePackagesD1) {
     throw new Error(
@@ -159,6 +176,16 @@ export const coreD1BookingDataSource: BookingDataSource = {
       serviceId,
     });
     return staff.map(coreStaffToLegacy);
+  },
+
+  getStaffAvailability(query) {
+    return CoreAvailabilityService.getStaffDay({
+      staffId: query.staffId,
+      date: query.date,
+      slotStepMin: query.slotStepMin,
+      bufferMin: query.bufferMin,
+      forceFresh: query.forceFresh,
+    });
   },
 
   async searchClients(search) {
@@ -233,9 +260,21 @@ export const coreD1BookingDataSource: BookingDataSource = {
         bookingId,
         clientId,
         packageItems,
-        () => CoreBookingService.create(coreInput)
+        (reservations) => {
+          const reservation = reservations[0];
+          return CoreBookingService.create({
+            ...coreInput,
+            items: coreInput.items.map((item, index) => ({
+              ...item,
+              cartItemId: reservation?.item.cartItemId || `item_${index}`,
+              packageReservationId:
+                reservation?.result.packageTransactionId || undefined,
+            })),
+          });
+        }
       );
 
+    invalidateCoreAvailability(created);
     return {
       id: created.id,
       publicId: created.publicId || created.id,
@@ -266,7 +305,9 @@ export const coreD1BookingDataSource: BookingDataSource = {
         firstItem.time,
       notes: group.parent.note,
       source: group.parent.channel || "client",
-      items: group.items.map((item) => ({
+      slotStepMin: Number(group.parent.slotStepMinAtBooking || firstItem.slotStepMinAtBooking || 10),
+      bufferMin: Number(group.parent.bufferMinAtBooking || firstItem.bufferMinAtBooking || 0),
+      items: group.items.map((item, index) => ({
         serviceId: String(
           item.serviceId || item.serviceName || ""
         ).trim(),
@@ -280,6 +321,10 @@ export const coreD1BookingDataSource: BookingDataSource = {
         ),
         packageCovered: isPackageCovered(item),
         clientPackageId: item.sessionPackageId,
+        bookingDate: String(item.date || group.parent.date || "").trim(),
+        startTime: String(item.time || item.startTime || group.parent.time || "").trim(),
+        cartItemId:
+          String((item as BookingDoc & { cartItemId?: string }).cartItemId || `item_${index}`).trim() || `item_${index}`,
       })),
     };
 
@@ -298,9 +343,26 @@ export const coreD1BookingDataSource: BookingDataSource = {
         bookingId,
         clientId,
         packageItems,
-        () => CoreBookingService.create(coreInput)
+        (reservations) => {
+          const byCartItem = new Map(
+            reservations.map((reservation) => [
+              reservation.item.cartItemId,
+              reservation.result.packageTransactionId,
+            ])
+          );
+          return CoreBookingService.create({
+            ...coreInput,
+            items: coreInput.items.map((item, index) => ({
+              ...item,
+              cartItemId: item.cartItemId || `item_${index}`,
+              packageReservationId:
+                byCartItem.get(item.cartItemId || `item_${index}`) || undefined,
+            })),
+          });
+        }
       );
 
+    invalidateCoreAvailability(created);
     return {
       parentId: created.id,
       parentPublicId: created.publicId || created.id,
@@ -335,7 +397,8 @@ export const coreD1BookingDataSource: BookingDataSource = {
     );
 
     if (status === "completed") {
-      await CoreBookingService.complete(id);
+      const updated = await CoreBookingService.complete(id);
+      invalidateCoreAvailability(updated);
       if (hasPackageReservation) {
         await PackageOperationsService.consumeReserved(id);
       }
@@ -343,7 +406,8 @@ export const coreD1BookingDataSource: BookingDataSource = {
     }
 
     if (status === "cancelled") {
-      await CoreBookingService.cancel(id);
+      const updated = await CoreBookingService.cancel(id);
+      invalidateCoreAvailability(updated);
       if (hasPackageReservation) {
         await PackageOperationsService.restoreReserved(
           id,
@@ -353,9 +417,10 @@ export const coreD1BookingDataSource: BookingDataSource = {
       return;
     }
 
-    await CoreBookingService.patch(id, {
+    const updated = await CoreBookingService.patch(id, {
       status: status === "confirmed" ? "booked" : status,
     });
+    invalidateCoreAvailability(updated);
   },
 
   createInvoice: CoreInvoiceService.create,

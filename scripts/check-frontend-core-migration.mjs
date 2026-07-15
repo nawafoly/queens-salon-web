@@ -7,6 +7,8 @@ const checks = [
     forbidden: [
       /from\s+["']\.\.\/services\/firestoreBookings["']/,
       /import\s+\*\s+as\s+firestoreBookings/,
+      /collection\([^\n]*["']booking_slots["']/,
+      /doc\([^\n]*["']availability_days["']/,
     ],
   },
   {
@@ -14,6 +16,8 @@ const checks = [
     forbidden: [
       /from\s+["']\.\.\/services\/firestoreBookings["']/,
       /import\s+\*\s+as\s+firestoreBookings/,
+      /collection\([^\n]*["']booking_slots["']/,
+      /doc\([^\n]*["']availability_days["']/,
     ],
   },
 ];
@@ -22,15 +26,14 @@ const failures = [];
 for (const check of checks) {
   const source = readFileSync(check.file, "utf8");
   for (const pattern of check.forbidden) {
-    if (pattern.test(source)) {
-      failures.push(`${check.file}: ${pattern}`);
-    }
+    if (pattern.test(source)) failures.push(`${check.file}: ${pattern}`);
   }
 }
 
 const documentedExceptions = [
-  "Booking.tsx: Firestore remains temporarily for slot availability, offers, settings, uploads and the legacy source selected when VITE_USE_CORE_D1=false.",
-  "BookingInternal.tsx: Firestore remains temporarily for availability metadata, refunds, audit/income compatibility, offers, settings and legacy reads outside the migrated operations.",
+  "Booking.tsx: offers, settings, uploads and the explicitly selected legacy adapter still use Firebase during cutover.",
+  "BookingInternal.tsx: refunds, audit/income compatibility, offers, settings, uploads and the manual legacy backfill remain temporary Firebase exceptions.",
+  "Slot availability and booked-slot metadata are now selected through bookingDataSource; D1 mode performs no automatic Firebase fallback.",
 ];
 
 if (failures.length) {

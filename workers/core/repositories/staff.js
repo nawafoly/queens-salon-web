@@ -136,6 +136,20 @@ export async function patchStaff(db, salonId, id, data) {
               ? data.specialties
               : []
           ),
+    leave_start_date:
+      data.leaveStartDate === undefined &&
+      data.leave_start_date === undefined
+        ? undefined
+        : optionalText(data.leaveStartDate || data.leave_start_date) || null,
+    leave_end_date:
+      data.leaveEndDate === undefined &&
+      data.leave_end_date === undefined
+        ? undefined
+        : optionalText(data.leaveEndDate || data.leave_end_date) || null,
+    leave_note:
+      data.leaveNote === undefined && data.leave_note === undefined
+        ? undefined
+        : optionalText(data.leaveNote || data.leave_note) || null,
   });
 }
 
@@ -143,6 +157,41 @@ export function staffIsActive(row) {
   return (
     Number(row?.active) === 1 &&
     cleanText(row?.employment_status || "active") !== "terminated"
+  );
+}
+
+function timeInsideWindow(time, start, end) {
+  const value = cleanText(time);
+  const from = cleanText(start);
+  const to = cleanText(end);
+  return Boolean(value && from && to && value >= from && value <= to);
+}
+
+export function staffIsAvailableForDate(row, date, startTime = "", endTime = "") {
+  if (!staffIsActive(row)) return false;
+  const day = cleanText(date);
+  const leaveStart = cleanText(row?.leave_start_date);
+  const leaveEnd = cleanText(row?.leave_end_date);
+  if (day && (leaveStart || leaveEnd)) {
+    const afterStart = !leaveStart || day >= leaveStart;
+    const beforeEnd = !leaveEnd || day <= leaveEnd;
+    if (afterStart && beforeEnd) return false;
+  }
+
+  const schedules = Array.isArray(row?.schedules) ? row.schedules : [];
+  if (!schedules.length || !day) return true;
+  const weekday = new Date(`${day}T12:00:00.000Z`).getUTCDay();
+  const daySchedules = schedules.filter(
+    (schedule) =>
+      Number(schedule.weekday) === weekday &&
+      Number(schedule.active) === 1
+  );
+  if (!daySchedules.length) return false;
+  if (!startTime || !endTime) return true;
+  return daySchedules.some(
+    (schedule) =>
+      timeInsideWindow(startTime, schedule.start_time, schedule.end_time) &&
+      timeInsideWindow(endTime, schedule.start_time, schedule.end_time)
   );
 }
 

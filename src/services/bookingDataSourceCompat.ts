@@ -9,6 +9,7 @@ import type {
 } from "./firestoreCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
 import { resolveBookingDataSource } from "./bookingDataSource";
+import type { BookingStaffAvailabilityQuery } from "./bookingDataSource";
 
 export function listActiveSections(
   _salonId = "main"
@@ -37,6 +38,12 @@ export function listActiveStaffAll(
   _salonId = "main"
 ): Promise<StaffPublicWithId[]> {
   return resolveBookingDataSource().getActiveStaff();
+}
+
+export function getStaffAvailability(
+  query: BookingStaffAvailabilityQuery
+) {
+  return resolveBookingDataSource().getStaffAvailability(query);
 }
 
 export function createBooking(booking: BookingDoc) {

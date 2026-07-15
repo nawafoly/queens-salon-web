@@ -48,6 +48,7 @@ import {
   listIncome,
   patchExpense,
 } from './repositories/finance.js';
+import { getStaffAvailability } from './repositories/availability.js';
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
@@ -110,7 +111,7 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "health"].includes(route.name)) ||
+      ["services", "staff", "availability", "health"].includes(route.name)) ||
     (method === "POST" &&
       ["clients", "bookings"].includes(route.name))
   );
@@ -201,6 +202,7 @@ function match(url, method) {
     if (path === prefix) return { name };
   }
 
+  if (path === "/api/core/availability") return { name: "availability" };
   if (path === "/api/core/payments") return { name: "payments" };
   if (path === "/api/core/income") return { name: "income" };
   if (path === "/api/core/health") return { name: "health" };
@@ -251,6 +253,12 @@ async function dispatch(ctx, route, method, body, query) {
       }
       if (method === "PATCH" && route.id) {
         return patchStaff(db, ctx.salonId, route.id, body);
+      }
+      break;
+
+    case "availability":
+      if (method === "GET") {
+        return getStaffAvailability(db, ctx.salonId, query);
       }
       break;
 

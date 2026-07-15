@@ -81,6 +81,9 @@ export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
     avatar_url: "avatarUrl",
     show_on_booking: "showOnBooking",
     specialties_json: "specialtiesJson",
+    leave_start_date: "leaveStartDate",
+    leave_end_date: "leaveEndDate",
+    leave_note: "leaveNote",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
@@ -125,6 +128,11 @@ function mapCoreBookingItem(
     package_covered: "packageCovered",
     client_package_id: "clientPackageId",
     duration_minutes: "durationMinutes",
+    booking_date: "bookingDate",
+    start_time: "startTime",
+    end_time: "endTime",
+    cart_item_id: "cartItemId",
+    package_reservation_id: "packageReservationId",
     created_at: "createdAt",
   });
   return { ...mapped, packageCovered: Number(row.package_covered) === 1 };
@@ -154,6 +162,8 @@ export function mapCoreBooking(
     updated_at: "updatedAt",
     cancelled_at: "cancelledAt",
     completed_at: "completedAt",
+    slot_step_min: "slotStepMin",
+    buffer_min: "bufferMin",
   });
 
   return {
@@ -296,6 +306,9 @@ export function coreStaffToLegacy(
     showOnBooking: staff.showOnBooking !== false,
     useCustomWorkingHours: Boolean(staff.schedules?.length),
     customWorkingHours,
+    onLeave: Boolean(staff.leaveStartDate || staff.leaveEndDate),
+    leaveUntil: staff.leaveEndDate || undefined,
+    leaveNote: staff.leaveNote || undefined,
   };
 }
 
@@ -383,6 +396,8 @@ export function legacyBookingToCoreInput(
     notes: booking.note,
     packageSessionsUsed:
       booking.consumeOneSession || booking.fromSessionPackage ? 1 : 0,
+    slotStepMin: Number(booking.slotStepMinAtBooking || 10),
+    bufferMin: Number(booking.bufferMinAtBooking || 0),
     items: [
       {
         serviceId: text(booking.serviceId || booking.serviceName),
@@ -392,6 +407,9 @@ export function legacyBookingToCoreInput(
           booking.consumeOneSession || booking.fromSessionPackage
         ),
         clientPackageId: booking.sessionPackageId,
+        bookingDate: text(booking.date),
+        startTime: text(booking.time || booking.startTime),
+        cartItemId: text((booking as BookingDoc & { cartItemId?: string }).cartItemId) || "item_0",
       },
     ],
   };

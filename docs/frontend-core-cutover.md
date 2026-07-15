@@ -22,31 +22,53 @@ automatic Firestore fallback.
 
 ## Migrated frontend operations
 
-- Public booking: services, sections, active staff, booking creation and grouped booking creation.
-- Internal booking: the same catalog/staff/write operations, client search,
-  booking search, update, complete and cancel through the data-source adapter.
+- Public booking: services, sections, active staff, staff/day availability,
+  booked-slot metadata, booking creation and grouped booking creation.
+- Internal booking: the same catalog, staff and availability operations,
+  client search, booking search, update, complete and cancel through the
+  selected data-source adapter.
 - Package wallet and package mutations remain isolated in the Packages Worker.
+- D1 mode stores the package reservation transaction reference on the matching
+  Core booking item.
 
-## Temporary Firestore exceptions
+## Availability and slot locking
 
-The following remain until later cutover phases: slot availability metadata,
-offers/coupons, app settings, uploads/Storage, refund compatibility,
-audit/income compatibility and legacy reads selected explicitly while the flag
-is `false`.
+`GET /api/core/availability` is the D1 source for a staff member's day state.
+It returns schedule windows, leave status, taken start times and booked-slot
+metadata.
+
+Booking creation validates the staff record, leave dates, schedule window,
+slot-step alignment and overlapping time ranges. It then writes the booking,
+booking items, invoice and `booking_slot_locks` in one D1 batch. Cancelling a
+booking removes its slot locks. Completing a booking keeps the locks because
+the completed appointment still occupied that historical time.
+
+## Temporary Firebase exceptions
+
+The following remain until later cutover phases: offers/coupons, app settings,
+uploads/Storage, refund compatibility, audit/income compatibility, manual
+legacy availability backfill and the legacy adapter selected explicitly while
+`VITE_USE_CORE_D1=false`.
+
+Direct slot-availability reads from `Booking.tsx` and `BookingInternal.tsx` have
+been removed. The legacy Firestore implementation is isolated inside
+`firestoreBookingDataSource.ts` and is never used as an automatic fallback from
+D1 mode.
 
 ## Package booking saga
 
 Cross-database atomicity is not claimed.
 
 1. Reserve package sessions with a deterministic idempotency key.
-2. Create the Core booking.
+2. Create the Core booking and store each reservation transaction reference on
+   its booking item.
 3. Release all successful reservations if booking creation fails.
 4. Consume the reservation when the booking is completed.
 5. Release the reservation when the booking is cancelled before consumption.
 
 ## Cutover prerequisites
 
-1. Apply all D1 migrations, including `0002_frontend_cutover.sql`.
+1. Apply all Core D1 migrations through `0003_booking_availability.sql`.
 2. Migrate and reconcile Core and Packages data.
 3. Deploy both Workers.
 4. Test against staging URLs.

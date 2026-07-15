@@ -109,8 +109,6 @@ import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
 } from "../helpers/seasonPricing";
 import { AppSettingsService } from "../services/AppSettingsService";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
-import { normalizeBookedSlotsMap } from "../services/firestoreAvailabilityDays";
 
 // ✅ Firestore slot availability check
 import {
@@ -155,6 +153,7 @@ import {
   listActiveServices,
   createBooking,
   createBookingGroup,
+  getStaffAvailability,
 } from "../services/bookingDataSourceCompat";
 
 // ✅ Catalog from Firestore (Sections/Categories/Services)
@@ -5074,13 +5073,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     forceFresh?: boolean;
     source?: string;
   }) {
-    const { salonId, employeeKey, employeeIdFallback, dateISO, forceFresh, source } = args;
+    const { salonId, employeeKey, employeeIdFallback, dateISO, forceFresh } = args;
     const key = String(employeeKey || "").trim();
     const fallbackId = String(employeeIdFallback || "").trim();
     const cacheKey = `${String(salonId || "").trim()}__${String(dateISO || "").trim()}__${key}__${fallbackId}`;
     const now = Date.now();
-    const logSource =
-      String(source || "").trim() || "Booking.collectTakenTimesForEmployeeDay";
 
     if (!forceFresh) {
       const cached = takenTimesCacheRef.current[cacheKey];
@@ -5095,72 +5092,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
 
     const pending = (async () => {
-      const takenFs = new Set<string>();
-
-      // ✅ Preferred: 1 doc read per employee/day (availability_days), trusted only when `complete=true`.
-      if (fallbackId) {
-        const aRef = doc(db, "salons", salonId, "availability_days", dateISO, "employees", fallbackId);
-        FirestoreReadStats.bump(aRef.path, logSource, "getDoc");
-        const aSnap = await getDoc(aRef);
-        if (aSnap.exists()) {
-          const a: any = aSnap.data() || {};
-          if (a.complete === true) {
-            const bookedSlots = normalizeBookedSlotsMap(a.bookedSlots);
-            Object.keys(bookedSlots).forEach((t) => {
-              const k = String(t || "").trim();
-              if (k) takenFs.add(k);
-            });
-            takenTimesCacheRef.current[cacheKey] = {
-              ts: Date.now(),
-              values: Array.from(takenFs),
-            };
-            return Array.from(takenFs);
-          }
-        }
-      }
-
-      const colSlots = collection(db, "salons", salonId, "booking_slots");
-
-      // Canonical: employeeId (staff_public doc id). Avoid doing both queries unless necessary,
-      // otherwise the same `booking_slots` docs are read twice (hotspot).
-      const snaps: any[] = [];
-      if (fallbackId) {
-        snaps.push(
-          await getDocs(
-            query(colSlots, where("employeeId", "==", fallbackId), where("date", "==", dateISO))
-          )
-        );
-      } else if (key) {
-        snaps.push(
-          await getDocs(
-            query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO))
-          )
-        );
-      }
-
-      // Fallback to employeeKey only if employeeId path returned nothing (legacy/inconsistent data).
-      if (key && fallbackId && key !== fallbackId && snaps.length && Number(snaps[0]?.size || 0) === 0) {
-        snaps.push(
-          await getDocs(
-            query(colSlots, where("employeeKey", "==", key), where("date", "==", dateISO))
-          )
-        );
-      }
-
-      snaps.forEach((snap) => {
-        snap.docs.forEach((d: any) => {
-          if (d?.ref?.path) {
-            FirestoreReadStats.bump(d.ref.path, logSource, "getDocs");
-          }
-          const t = String((d.data() as any)?.time || "").trim();
-          if (t) takenFs.add(t);
-        });
+      const availability = await getStaffAvailability({
+        staffId: fallbackId || key,
+        employeeKey: key,
+        date: dateISO,
+        slotStepMin,
+        bufferMin,
+        forceFresh,
       });
+      const rows = Array.from(
+        new Set(
+          (availability.takenTimes || [])
+            .map((time) => String(time || "").trim())
+            .filter(Boolean)
+        )
+      );
       takenTimesCacheRef.current[cacheKey] = {
         ts: Date.now(),
-        values: Array.from(takenFs),
+        values: rows,
       };
-      return Array.from(takenFs);
+      return rows;
     })();
 
     takenTimesInFlightRef.current[cacheKey] = pending;

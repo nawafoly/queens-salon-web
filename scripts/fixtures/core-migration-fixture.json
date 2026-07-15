@@ -28,8 +28,17 @@
     {
       "id": "staff-a",
       "name": "Staff A",
-      "serviceIds": ["svc-a"],
-      "active": true
+      "serviceIds": [
+        "svc-a"
+      ],
+      "active": true,
+      "customWorkingHours": {
+        "sun": {
+          "enabled": true,
+          "start": "09:00",
+          "end": "18:00"
+        }
+      }
     }
   ],
   "bookings": [
@@ -40,7 +49,10 @@
       "date": "2027-01-10",
       "time": "10:00",
       "status": "booked",
-      "totalHalalas": 7500
+      "totalHalalas": 7500,
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30
     }
   ],
   "invoices": [

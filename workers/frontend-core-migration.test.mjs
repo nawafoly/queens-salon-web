@@ -51,3 +51,38 @@ test("package saga uses deterministic operation keys and release compensation", 
   assert.match(source, /PackageOperationsService\.release/);
   assert.match(source, /Promise\.allSettled/);
 });
+
+test("booking pages route slot availability through the selected data source", () => {
+  for (const file of ["src/pages/Booking.tsx", "src/pages/BookingInternal.tsx"]) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /getStaffAvailability/);
+    assert.doesNotMatch(source, /collection\([^\n]*["']booking_slots["']/);
+    assert.doesNotMatch(source, /doc\([^\n]*["']availability_days["']/);
+  }
+});
+
+test("Core availability service caches per staff day and supports invalidation", () => {
+  const source = readFileSync(
+    "src/services/CoreAvailabilityService.ts",
+    "utf8"
+  );
+  assert.match(source, /\/api\/core\/availability/);
+  assert.match(source, /CACHE_TTL_MS/);
+  assert.match(source, /invalidate\(/);
+});
+
+test("mixed package booking stores reservation references on Core booking items", () => {
+  const saga = readFileSync(
+    "src/services/packageBookingSaga.ts",
+    "utf8"
+  );
+  const source = readFileSync(
+    "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    "utf8"
+  );
+  assert.match(saga, /PackageSagaReservation/);
+  assert.match(source, /packageReservationId/);
+  assert.match(source, /packageTransactionId/);
+  assert.match(source, /bookingDate:/);
+  assert.match(source, /startTime:/);
+});

@@ -16,6 +16,7 @@ class FakeD1 {
       "staff_schedules",
       "bookings",
       "booking_items",
+      "booking_slot_locks",
       "invoices",
       "payments",
       "income_entries",
@@ -27,6 +28,7 @@ class FakeD1 {
   key(table, row) {
     if (table === "client_aliases") return `${row.salon_id}\u0000${row.alias_id}`;
     if (table === "staff_services") return `${row.salon_id}\u0000${row.staff_id}\u0000${row.service_id}`;
+    if (table === "booking_slot_locks") return `${row.salon_id}\u0000${row.staff_id}\u0000${row.booking_date}\u0000${row.slot_time}`;
     return row.id;
   }
 
@@ -198,17 +200,33 @@ class FakeD1 {
       const sql = statement.sql.replace(/\s+/g, " ").trim();
       const params = statement.params || [];
       if (sql.startsWith("INSERT INTO bookings")) {
-        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at] = params;
-        const conflict = this.rows("bookings").some((row) => row.salon_id === salon_id && row.staff_id === staff_id && row.booking_date === booking_date && row.start_time === start_time && row.status !== "cancelled");
-        if (conflict) throw new Error("UNIQUE constraint failed: bookings slot");
+        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at, slot_step_min, buffer_min] = params;
         results.push(this.insert("bookings", {
           id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
-          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null,
+          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min,
         }));
       } else if (sql.startsWith("INSERT INTO booking_items")) {
-        const [id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at] = params;
-        results.push(this.insert("booking_items", { id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at }));
+        const [id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id] = params;
+        results.push(this.insert("booking_items", { id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id }));
+      } else if (sql.startsWith("INSERT INTO booking_slot_locks")) {
+        const [salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at] = params;
+        const key = `${salon_id}\u0000${staff_id}\u0000${booking_date}\u0000${slot_time}`;
+        if (this.tables.booking_slot_locks.has(key)) throw new Error("UNIQUE constraint failed: booking_slot_locks");
+        results.push(this.insert("booking_slot_locks", { salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at }));
+      } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'")) {
+        const [cancelled_at, notes, updated_at, salonId, id] = params;
+        results.push(this.update("bookings", salonId, id, { status: "cancelled", cancelled_at, notes, updated_at }));
+      } else if (sql.startsWith("DELETE FROM booking_slot_locks")) {
+        const [salonId, bookingId] = params;
+        let removed = 0;
+        for (const [key, row] of this.tables.booking_slot_locks.entries()) {
+          if (row.salon_id === salonId && row.booking_id === bookingId) {
+            this.tables.booking_slot_locks.delete(key);
+            removed += 1;
+          }
+        }
+        results.push({ meta: { changes: removed } });
       } else if (sql.startsWith("INSERT INTO invoices")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO payments")) {
@@ -434,4 +452,297 @@ test("core migration dry-run parses fixture and prints counts", () => {
   assert.match(result.stdout, /dry-run only/);
   assert.match(result.stdout, /clients/);
   assert.match(result.stdout, /payments/);
+});
+
+test("availability endpoint returns D1 slot locks and booking metadata", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("staff_schedules", {
+    id: "schedule-a",
+    salon_id: "main",
+    staff_id: "staff-a",
+    weekday: 0,
+    start_time: "09:00",
+    end_time: "18:00",
+    active: 1,
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  const created = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-availability",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      slotStepMin: 10,
+      items: [{ id: "item-availability", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(created.status, 200, JSON.stringify(await json(created)));
+
+  const response = await worker.fetch(request(
+    "/api/core/availability?staffId=staff-a&date=2027-01-10&slotStepMin=10"
+  ), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.takenTimes, ["10:00", "10:10", "10:20"]);
+  assert.equal(body.data.bookedSlots["10:00"].bookingId, "booking-availability");
+  assert.equal(body.data.scheduleWindows[0].startTime, "09:00");
+  assert.equal(body.data.availableForDate, true);
+});
+
+
+test("availability projects five-minute locks onto the requested UI slot grid", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const created = await worker.fetch(
+    request("/api/core/bookings", {
+      method: "POST",
+      body: {
+        salonId: "main",
+        id: "booking-five-minute-grid",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-01-10",
+        startTime: "10:05",
+        slotStepMin: 5,
+        items: [{ serviceId: "svc-a" }],
+      },
+    }),
+    env(fake)
+  );
+  assert.equal(created.status, 200, JSON.stringify(await json(created)));
+  assert.equal(fake.rows("booking_slot_locks").length, 6);
+
+  const availability = await worker.fetch(
+    request("/api/core/availability?staffId=staff-a&date=2027-01-10&slotStepMin=10"),
+    env(fake)
+  );
+  const body = await json(availability);
+  assert.equal(availability.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.takenTimes, ["10:10", "10:20", "10:30"]);
+});
+
+test("overlapping ranges are rejected while adjacent ranges are allowed", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const first = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-range-a",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      items: [{ serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+
+  const overlap = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-range-overlap",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:20",
+      items: [{ serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  const overlapBody = await json(overlap);
+  assert.equal(overlap.status, 409, JSON.stringify(overlapBody));
+  assert.equal(overlapBody.error, "core_booking:staff_slot_conflict");
+
+  const adjacent = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-range-adjacent",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:30",
+      items: [{ serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(adjacent.status, 200, JSON.stringify(await json(adjacent)));
+});
+
+test("cancelling a booking releases D1 slot locks", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  let response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-release-a",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "11:00",
+      items: [{ serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  assert.equal(fake.rows("booking_slot_locks").length, 6);
+
+  response = await worker.fetch(request("/api/core/bookings/booking-release-a/cancel", {
+    method: "POST",
+    body: { salonId: "main", reason: "client request" },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  assert.equal(fake.rows("booking_slot_locks").length, 0);
+
+  response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-release-b",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "11:00",
+      items: [{ serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+});
+
+test("multi-item booking preserves each item date and time", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-group-a",
+      clientId: "client-a",
+      bookingDate: "2027-01-10",
+      startTime: "12:00",
+      slotStepMin: 10,
+      items: [
+        {
+          id: "group-item-a",
+          cartItemId: "cart-a",
+          serviceId: "svc-a",
+          staffId: "staff-a",
+          bookingDate: "2027-01-10",
+          startTime: "12:00",
+        },
+        {
+          id: "group-item-b",
+          cartItemId: "cart-b",
+          serviceId: "svc-a",
+          staffId: "staff-a",
+          bookingDate: "2027-01-11",
+          startTime: "14:00",
+        },
+      ],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.items.length, 2);
+  assert.equal(body.data.items[0].booking_date, "2027-01-10");
+  assert.equal(body.data.items[0].start_time, "12:00");
+  assert.equal(body.data.items[1].booking_date, "2027-01-11");
+  assert.equal(body.data.items[1].start_time, "14:00");
+  assert.equal(body.data.items[1].cart_item_id, "cart-b");
+});
+
+test("booking creation is idempotent when the same booking id is retried", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const payload = {
+    salonId: "main",
+    id: "booking-idempotent",
+    clientId: "client-a",
+    staffId: "staff-a",
+    bookingDate: "2027-01-10",
+    startTime: "15:00",
+    items: [{ id: "item-idempotent", serviceId: "svc-a" }],
+  };
+  const first = await worker.fetch(
+    request("/api/core/bookings", { method: "POST", body: payload }),
+    env(fake)
+  );
+  const second = await worker.fetch(
+    request("/api/core/bookings", { method: "POST", body: payload }),
+    env(fake)
+  );
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+  assert.equal(second.status, 200, JSON.stringify(await json(second)));
+  assert.equal(fake.rows("bookings").length, 1);
+  assert.equal(fake.rows("booking_slot_locks").length, 6);
+});
+
+test("booking creation rejects starts that are not aligned to the configured slot step", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(
+    request("/api/core/bookings", {
+      method: "POST",
+      body: {
+        salonId: "main",
+        id: "booking-misaligned",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-01-10",
+        startTime: "10:05",
+        slotStepMin: 10,
+        items: [{ serviceId: "svc-a" }],
+      },
+    }),
+    env(fake)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:invalid_slot_alignment");
+});
+
+test("staff leave blocks booking and is exposed by availability", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("staff", {
+    ...fake.find("staff", "main", "staff-a"),
+    leave_start_date: "2027-01-09",
+    leave_end_date: "2027-01-11",
+    leave_note: "annual leave",
+    show_on_booking: 1,
+  });
+
+  const availability = await worker.fetch(
+    request("/api/core/availability?staffId=staff-a&date=2027-01-10"),
+    env(fake)
+  );
+  const availabilityBody = await json(availability);
+  assert.equal(availability.status, 200, JSON.stringify(availabilityBody));
+  assert.equal(availabilityBody.data.onLeave, true);
+  assert.equal(availabilityBody.data.availableForDate, false);
+
+  const response = await worker.fetch(
+    request("/api/core/bookings", {
+      method: "POST",
+      body: {
+        salonId: "main",
+        id: "booking-leave",
+        clientId: "client-a",
+        staffId: "staff-a",
+        bookingDate: "2027-01-10",
+        startTime: "16:00",
+        items: [{ serviceId: "svc-a" }],
+      },
+    }),
+    env(fake)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:staff_unavailable");
 });

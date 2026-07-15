@@ -33,7 +33,8 @@
     "dev:core": "wrangler dev --config wrangler.core.jsonc --local --port 8807 --show-interactive-dev-session=false",
     "dev:all": "node scripts/dev-all.mjs",
     "check:frontend-core-migration": "node scripts/check-frontend-core-migration.mjs",
-    "test:frontend:core": "node --test workers/frontend-core-migration.test.mjs"
+    "test:frontend:core": "node --test workers/frontend-core-migration.test.mjs",
+    "verify:phase4": "npm run check:packages:d1-only && npm run check:core:d1-only && npm run check:frontend-core-migration && npm run test:packages:worker && npm run test:core:worker && npm run test:frontend:core && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

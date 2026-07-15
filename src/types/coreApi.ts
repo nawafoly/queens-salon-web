@@ -61,6 +61,9 @@ export type CoreStaff = {
   showOnBooking?: boolean;
   specialties?: string[];
   schedules?: CoreStaffSchedule[];
+  leaveStartDate?: string | null;
+  leaveEndDate?: string | null;
+  leaveNote?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -78,6 +81,11 @@ export type CoreBookingItem = {
   packageCovered: boolean;
   clientPackageId?: string | null;
   durationMinutes?: number | null;
+  bookingDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  cartItemId?: string | null;
+  packageReservationId?: string | null;
   createdAt: string;
 };
 
@@ -106,6 +114,8 @@ export type CoreBooking = {
   updatedAt: string;
   cancelledAt?: string | null;
   completedAt?: string | null;
+  slotStepMin?: number;
+  bufferMin?: number;
   items: CoreBookingItem[];
 };
 
@@ -189,7 +199,45 @@ export type CoreCreateBookingInput = {
     unitPriceHalalas?: number;
     packageCovered?: boolean;
     clientPackageId?: string;
+    bookingDate?: string;
+    startTime?: string;
+    endTime?: string;
+    cartItemId?: string;
+    packageReservationId?: string;
   }>;
+  slotStepMin?: number;
+  bufferMin?: number;
+};
+
+export type CoreAvailabilityBookingSlot = {
+  bookingId: string;
+  publicId: string;
+  bookingItemId: string;
+  serviceName: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  source: string;
+  status: string;
+  startTime: string;
+  endTime: string;
+};
+
+export type CoreStaffAvailability = {
+  salonId: string;
+  date: string;
+  weekday: number;
+  staffId: string;
+  staffName: string;
+  active: boolean;
+  showOnBooking: boolean;
+  onLeave: boolean;
+  leaveNote: string;
+  availableForDate: boolean;
+  scheduleWindows: Array<{ id: string; startTime: string; endTime: string }>;
+  takenTimes: string[];
+  bookedSlots: Record<string, CoreAvailabilityBookingSlot>;
+  bookings: Array<Record<string, unknown>>;
 };
 
 export type CoreApiListResponse<T> = {

@@ -1,4 +1,5 @@
 import { PackageOperationsService } from "./PackageOperationsService";
+import type { PackageRedemptionResult } from "./PackageOperationsService";
 
 export function packageSagaOperationId(
   operation: "reserve" | "release" | "redeem",
@@ -21,16 +22,23 @@ export type PackageSagaItem = {
   time: string;
 };
 
+export type PackageSagaReservation = {
+  item: PackageSagaItem;
+  result: PackageRedemptionResult;
+};
+
 export async function createBookingWithPackageSaga<T>(input: {
   bookingId: string;
   packageItems: PackageSagaItem[];
-  createCoreBooking: () => Promise<T>;
+  createCoreBooking: (
+    reservations: PackageSagaReservation[]
+  ) => Promise<T>;
 }): Promise<T> {
-  const reserved: PackageSagaItem[] = [];
+  const reserved: PackageSagaReservation[] = [];
 
   try {
     for (const item of input.packageItems) {
-      await PackageOperationsService.reserve({
+      const result = await PackageOperationsService.reserve({
         ...item,
         bookingId: input.bookingId,
         operationId: packageSagaOperationId(
@@ -39,13 +47,13 @@ export async function createBookingWithPackageSaga<T>(input: {
           item.cartItemId
         ),
       });
-      reserved.push(item);
+      reserved.push({ item, result });
     }
 
-    return await input.createCoreBooking();
+    return await input.createCoreBooking(reserved);
   } catch (error) {
     await Promise.allSettled(
-      reserved.map((item) =>
+      reserved.map(({ item }) =>
         PackageOperationsService.release({
           bookingId: input.bookingId,
           clientPackageId: item.clientPackageId,
