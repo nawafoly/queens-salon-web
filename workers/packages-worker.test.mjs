@@ -421,7 +421,7 @@ test("purchase counts same document matched by uid and clientId once", async () 
   assert.equal(body.data.clientId, "multi-canonical");
 }));
 
-test("purchase returns duplicate identity when phone-only lookup matches two clients", async () => withFakeFirestore(async (fake) => {
+test("purchase returns ambiguous identity when phone-only lookup matches two clients", async () => withFakeFirestore(async (fake) => {
   fake.seed("salons/main/clients/phone-duplicate-a", {
     clientId: "phone-duplicate-a",
     name: "Phone Duplicate A",
@@ -445,7 +445,7 @@ test("purchase returns duplicate identity when phone-only lookup matches two cli
   }), env());
   const body = await json(response);
   assert.equal(response.status, 409, JSON.stringify(body));
-  assert.equal(body.error, "packages_client:duplicate_identity");
+  assert.equal(body.error, "packages_client:ambiguous_identity");
 }));
 
 test("client wallet resolves canonical identity and includes package linked to legacy client id", async () => withFakeFirestore(async (fake) => {
@@ -542,6 +542,236 @@ test("client wallet phone match returns package linked to canonical alias", asyn
   assert.equal(body.data.totalRemainingSessions, 4);
   assert.deepEqual(body.data.packages.map((p) => p.id), ["phone-wallet-package"]);
   assert.equal(body.data.packages[0].legacyClientId, "phone-wallet-legacy");
+}));
+
+test("identity ranking handles three client documents and package linked to second candidate", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/rank-doc-a", {
+    clientId: "rank-canonical-a",
+    name: "Ranked Client",
+    phone: "0500000101",
+  });
+  fake.seed("salons/main/clients/rank-doc-b", {
+    clientId: "rank-canonical-b",
+    customerId: "rank-customer-b",
+    name: "Ranked Client",
+    phone: "0500000101",
+  });
+  fake.seed("salons/main/clients/rank-doc-c", {
+    clientId: "rank-canonical-c",
+    authUid: "rank-auth-c",
+    name: "Ranked Client",
+    phone: "0500000101",
+  });
+  fake.seed("salons/main/client_packages/rank-package-b", {
+    clientId: "rank-canonical-b",
+    packageNameSnapshot: "Rank Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 6,
+    remainingSessions: 6,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-ranked-client",
+      clientLookup: { phone: "0500000101" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "rank-canonical-b");
+  assert.equal(body.data.activePackageCount, 1);
+  assert.deepEqual(body.data.packages.map((p) => p.id), ["rank-package-b"]);
+  for (const alias of ["rank-doc-a", "rank-canonical-a", "rank-doc-b", "rank-canonical-b", "rank-customer-b", "rank-doc-c", "rank-canonical-c", "rank-auth-c"]) {
+    assert.equal(body.data.aliasClientIds.includes(alias), true, alias);
+  }
+  assert.equal(new Set(body.data.aliasClientIds).size, body.data.aliasClientIds.length);
+}));
+
+test("identity ranking prefers UUID document over legacy phone document when otherwise equal", async () => withFakeFirestore(async (fake) => {
+  const uuid = "11111111-2222-4333-8444-555555555555";
+  fake.seed("salons/main/clients/legacy-phone-doc", {
+    clientId: "phone-0500000102",
+    name: "UUID Client",
+    phone: "0500000102",
+  });
+  fake.seed(`salons/main/clients/${uuid}`, {
+    clientId: uuid,
+    name: "UUID Client",
+    phone: "0500000102",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-uuid-client",
+      clientLookup: { phone: "0500000102" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, uuid);
+}));
+
+test("identity ranking resolves same uid in multiple records without duplicating a document", async () => withFakeFirestore(async (fake) => {
+  const uuid = "22222222-3333-4444-8555-666666666666";
+  fake.seed("salons/main/clients/same-uid-legacy", {
+    clientId: "same-uid-legacy",
+    authUid: "shared-auth-uid",
+    name: "Same UID Client",
+    phone: "0500000103",
+  });
+  fake.seed(`salons/main/clients/${uuid}`, {
+    clientId: uuid,
+    uid: "shared-auth-uid",
+    authUid: "shared-auth-uid",
+    name: "Same UID Client",
+    phone: "0500000103",
+  });
+  fake.seed("salons/main/client_packages/same-uid-package", {
+    clientId: "same-uid-legacy",
+    packageNameSnapshot: "Same UID Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "shared-auth-uid",
+      clientLookup: { uid: "shared-auth-uid", authUid: "shared-auth-uid" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "same-uid-legacy");
+  assert.equal(body.data.activePackageCount, 1);
+  assert.equal(body.data.aliasClientIds.filter((alias) => alias === "shared-auth-uid").length, 1);
+}));
+
+test("identity ranking rejects same phone for different people with different roles", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/role-owner-phone", {
+    clientId: "role-owner-phone",
+    name: "Role Owner",
+    phone: "0500000104",
+    role: "owner",
+  });
+  fake.seed("salons/main/clients/role-client-phone", {
+    clientId: "role-client-phone",
+    name: "Role Client",
+    phone: "0500000104",
+    role: "client",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-role-phone",
+      clientLookup: { phone: "0500000104" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "packages_client:ambiguous_identity");
+}));
+
+test("identity ranking chooses candidate linked to bookings when no packages exist", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/booking-rank-a", {
+    clientId: "booking-rank-a",
+    name: "Booking Rank",
+    phone: "0500000105",
+  });
+  fake.seed("salons/main/clients/booking-rank-b", {
+    clientId: "booking-rank-b",
+    name: "Booking Rank",
+    phone: "0500000105",
+  });
+  fake.seed("salons/main/bookings/booking-rank-existing", {
+    clientId: "booking-rank-b",
+    serviceId: "svc-a",
+    status: "completed",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-booking-rank",
+      clientLookup: { phone: "0500000105" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.canonicalClientId, "booking-rank-b");
+  assert.equal(body.data.activePackageCount, 0);
+}));
+
+test("identity ranking returns ambiguous_identity when candidates tie without enough evidence", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/tie-doc-a", {
+    clientId: "tie-canonical-a",
+    name: "Tie Client",
+    phone: "0500000106",
+  });
+  fake.seed("salons/main/clients/tie-doc-b", {
+    clientId: "tie-canonical-b",
+    name: "Tie Client",
+    phone: "0500000106",
+  });
+
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "missing-tie-client",
+      clientLookup: { phone: "0500000106" },
+    },
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "packages_client:ambiguous_identity");
+}));
+
+test("identity audit returns proposed canonical, aliases, scores and relations without writes", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/clients/audit-doc-a", {
+    clientId: "audit-canonical-a",
+    name: "Audit Client",
+    phone: "0500000107",
+  });
+  fake.seed("salons/main/clients/audit-doc-b", {
+    clientId: "audit-canonical-b",
+    name: "Audit Client",
+    phone: "0500000107",
+  });
+  fake.seed("salons/main/client_packages/audit-package-b", {
+    clientId: "audit-canonical-b",
+    packageNameSnapshot: "Audit Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 1,
+    remainingSessions: 1,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+  const before = JSON.stringify([...fake.docs.entries()]);
+
+  const response = await worker.fetch(request("/api/packages/admin/audit-client-identities?salonId=main", {
+    method: "GET",
+  }), env());
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const group = body.data.identityGroups.find((row) => row.aliases.includes("audit-canonical-b"));
+  assert.equal(group.canonicalSuggested, "audit-canonical-b");
+  assert.equal(group.scores.some((row) => row.relations.activePackageCount === 1), true);
+  assert.equal(JSON.stringify([...fake.docs.entries()]), before);
 }));
 
 test("redemption uses canonical client id and relinks legacy package id", async () => withFakeFirestore(async (fake) => {

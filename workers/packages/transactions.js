@@ -192,107 +192,450 @@ async function buildClientIdentityResultWithAliases(salonId, snap, extraAliases 
   };
 }
 
-export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}, options = {}) {
-  const directPath = salonPath(salonId, "clients", requestedId);
-  const direct = await tx.get(directPath);
-  if (direct.exists) return buildClientIdentityResultWithAliases(salonId, direct, [requestedId]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ADMIN_ROLE_VALUES = new Set(["owner", "admin", "manager", "super_admin"]);
 
-  const idCandidates = collectClientLookupCandidates(requestedId, lookup, "id");
-  const strongMatches = new Map();
-  const strongMatchedBy = new Map();
-  const strongLookupFields = new Set(["documentId", ...CLIENT_LOOKUP_ID_FIELDS]);
+function addUnique(out, seen, value) {
+  const normalized = cleanText(value);
+  if (!normalized || normalized.length > 256 || seen.has(normalized)) return;
+  seen.add(normalized);
+  out.push(normalized);
+}
 
-  const addStrongMatch = (snap, by) => {
-    if (!snap?.exists) return;
-    strongMatches.set(snap.path, snap);
-    const list = strongMatchedBy.get(snap.path) || [];
-    list.push(by);
-    strongMatchedBy.set(snap.path, list);
+function normalizedName(value) {
+  return cleanText(value).toLowerCase().replace(/\s+/g, " ");
+}
+
+function candidateDisplayName(raw) {
+  return optionalText(raw.name || raw.fullName || raw.clientName || raw.displayName);
+}
+
+function candidateRole(raw, relations) {
+  const rawRole = cleanText(raw.role || raw.userRole || raw.accountRole || raw.type).toLowerCase();
+  if (rawRole) return rawRole;
+  const roles = Array.isArray(relations?.userRoles) ? relations.userRoles.map((role) => cleanText(role).toLowerCase()).filter(Boolean) : [];
+  return roles[0] || "";
+}
+
+function identifierAliasesForCandidate(raw, snapId, canonicalClientId) {
+  const seen = new Set();
+  const aliases = [];
+  [
+    canonicalClientId,
+    snapId,
+    raw.clientId,
+    raw.id,
+    raw.docId,
+    raw.legacyClientDocId,
+    raw.customerId,
+    raw.authUid,
+    raw.uid,
+    raw.userId,
+    raw.firebaseUid,
+  ].forEach((value) => addUnique(aliases, seen, value));
+  for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
+    const normalized = normalizeLookupPhone(raw[field]);
+    if (!normalized) continue;
+    phoneCandidates(normalized).forEach((phone) => addUnique(aliases, seen, phone));
+  }
+  return aliases;
+}
+
+function nonPhoneAliasesForCandidate(raw, snapId, canonicalClientId) {
+  const seen = new Set();
+  const aliases = [];
+  [
+    canonicalClientId,
+    snapId,
+    raw.clientId,
+    raw.id,
+    raw.docId,
+    raw.legacyClientDocId,
+    raw.customerId,
+    raw.authUid,
+    raw.uid,
+    raw.userId,
+    raw.firebaseUid,
+  ].forEach((value) => addUnique(aliases, seen, value));
+  return aliases;
+}
+
+async function identityCandidateFromSnap(salonId, snap, matchedBy = [], matchKinds = []) {
+  const raw = snap.data || {};
+  const canonicalClientId = cleanText(raw.clientId) || await stableLegacyClientId(salonId, snap.id);
+  const aliases = identifierAliasesForCandidate(raw, snap.id, canonicalClientId);
+  const idAliases = nonPhoneAliasesForCandidate(raw, snap.id, canonicalClientId);
+  return {
+    snap,
+    snapId: snap.id,
+    path: snap.path,
+    raw,
+    canonicalClientId,
+    aliases,
+    idAliases,
+    name: candidateDisplayName(raw),
+    normalizedName: normalizedName(candidateDisplayName(raw)),
+    role: candidateRole(raw),
+    matchedBy: [...new Set(matchedBy.map(cleanText).filter(Boolean))],
+    matchKinds: [...new Set(matchKinds.map(cleanText).filter(Boolean))],
   };
+}
+
+function mergeIdentityCandidate(existing, next) {
+  const merged = {
+    ...existing,
+    matchedBy: [...new Set([...(existing.matchedBy || []), ...(next.matchedBy || [])])],
+    matchKinds: [...new Set([...(existing.matchKinds || []), ...(next.matchKinds || [])])],
+  };
+  return merged;
+}
+
+async function addIdentityCandidate(index, salonId, snap, matchedBy, matchKind) {
+  if (!snap?.exists) return;
+  const next = await identityCandidateFromSnap(salonId, snap, [matchedBy], [matchKind]);
+  const existing = index.get(snap.path);
+  index.set(snap.path, existing ? mergeIdentityCandidate(existing, next) : next);
+}
+
+function shareNonPhoneIdentifier(a, b) {
+  const ids = new Set(a.idAliases || []);
+  return (b.idAliases || []).some((alias) => ids.has(alias));
+}
+
+function rolesCompatible(a, b, relations = new Map()) {
+  const roleA = candidateRole(a.raw || {}, relations.get(a.path));
+  const roleB = candidateRole(b.raw || {}, relations.get(b.path));
+  if (!roleA || !roleB || roleA === roleB) return true;
+  if (ADMIN_ROLE_VALUES.has(roleA) || ADMIN_ROLE_VALUES.has(roleB)) return false;
+  return false;
+}
+
+function namesCompatible(a, b) {
+  if (!a.normalizedName || !b.normalizedName) return true;
+  return a.normalizedName === b.normalizedName;
+}
+
+function candidatesCompatible(a, b, relations = new Map()) {
+  if (shareNonPhoneIdentifier(a, b)) return true;
+  return namesCompatible(a, b) && rolesCompatible(a, b, relations);
+}
+
+function relationDocsForAliases(docs, aliases) {
+  const aliasSet = new Set((aliases || []).map(cleanText).filter(Boolean));
+  return (docs || []).filter((doc) => aliasSet.has(cleanText(doc.data?.clientId)));
+}
+
+function userDocsForAliases(docs, aliases) {
+  const aliasSet = new Set((aliases || []).map(cleanText).filter(Boolean));
+  return (docs || []).filter((doc) => {
+    const raw = doc.data || {};
+    return [
+      doc.id,
+      raw.clientId,
+      raw.canonicalClientId,
+      raw.customerId,
+      raw.authUid,
+      raw.uid,
+      raw.userId,
+      raw.firebaseUid,
+    ].some((value) => aliasSet.has(cleanText(value)));
+  });
+}
+
+function activeRelationPackageCount(docs, nowMs) {
+  let count = 0;
+  for (const doc of docs || []) {
+    try {
+      if (balancesFromDoc(doc.data || {}, nowMs).status === "active") count += 1;
+    } catch {
+      if (fallbackPackageBalances(doc.data || {}, nowMs).status === "active") count += 1;
+    }
+  }
+  return count;
+}
+
+async function buildCandidateRelations(dbOrTx, salonId, candidates) {
+  const nowMs = Date.now();
+  const [
+    packageDocs,
+    transactionDocs,
+    bookingDocs,
+    invoiceDocs,
+    incomeDocs,
+    paymentDocs,
+    userDocs,
+  ] = await Promise.all([
+    queryAllDocs(dbOrTx, salonId, "client_packages"),
+    queryAllDocs(dbOrTx, salonId, "client_package_transactions"),
+    queryAllDocs(dbOrTx, salonId, "bookings"),
+    queryAllDocs(dbOrTx, salonId, "invoices"),
+    queryAllDocs(dbOrTx, salonId, "income"),
+    queryAllDocs(dbOrTx, salonId, "payments"),
+    queryAllDocs(dbOrTx, salonId, "users"),
+  ]);
+  const relations = new Map();
+  for (const candidate of candidates) {
+    const packages = relationDocsForAliases(packageDocs, candidate.aliases);
+    const transactions = relationDocsForAliases(transactionDocs, candidate.aliases);
+    const bookings = relationDocsForAliases(bookingDocs, candidate.aliases);
+    const invoices = relationDocsForAliases(invoiceDocs, candidate.aliases);
+    const income = relationDocsForAliases(incomeDocs, candidate.aliases);
+    const payments = relationDocsForAliases(paymentDocs, candidate.aliases);
+    const users = userDocsForAliases(userDocs, candidate.aliases);
+    relations.set(candidate.path, {
+      activePackageCount: activeRelationPackageCount(packages, nowMs),
+      packageCount: packages.length,
+      transactionCount: transactions.length,
+      bookingCount: bookings.length,
+      invoiceCount: invoices.length,
+      paymentCount: income.length + payments.length,
+      userRoles: users.map((doc) => doc.data?.role).filter(Boolean),
+    });
+  }
+  return relations;
+}
+
+function candidateCompleteness(raw) {
+  return [
+    candidateDisplayName(raw),
+    raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber,
+    raw.clientId,
+    raw.authUid || raw.uid || raw.userId || raw.firebaseUid,
+    raw.customerId,
+  ].filter((value) => cleanText(value)).length;
+}
+
+function candidateUpdatedAt(raw) {
+  return Math.max(
+    timestampMs(raw.updatedAt) || 0,
+    timestampMs(raw.createdAt) || 0,
+    timestampMs(raw.lastBookingAt) || 0
+  );
+}
+
+export function rankCanonicalClientCandidates(candidates, relations = new Map()) {
+  const ranked = (candidates || []).map((candidate) => {
+    const rel = relations.get(candidate.path) || {};
+    const reasons = [];
+    let score = 0;
+    if (rel.activePackageCount) {
+      score += rel.activePackageCount * 10_000;
+      reasons.push("active_package");
+    }
+    if (rel.transactionCount) {
+      score += rel.transactionCount * 3_000;
+      reasons.push("package_transactions");
+    }
+    if (rel.bookingCount) {
+      score += rel.bookingCount * 1_000;
+      reasons.push("bookings");
+    }
+    if (rel.invoiceCount || rel.paymentCount) {
+      score += (rel.invoiceCount + rel.paymentCount) * 500;
+      reasons.push("invoices_or_payments");
+    }
+    if (cleanText(candidate.raw?.clientId) && cleanText(candidate.raw?.clientId) === candidate.snapId) {
+      score += 120;
+      reasons.push("client_id_matches_document_id");
+    }
+    if (UUID_RE.test(candidate.canonicalClientId)) {
+      score += 80;
+      reasons.push("uuid_canonical_id");
+    }
+    const completeness = candidateCompleteness(candidate.raw || {});
+    if (completeness) {
+      score += completeness * 10;
+      reasons.push("profile_completeness");
+    }
+    return {
+      candidate,
+      score,
+      reasons,
+      relations: {
+        activePackageCount: Number(rel.activePackageCount || 0),
+        packageCount: Number(rel.packageCount || 0),
+        transactionCount: Number(rel.transactionCount || 0),
+        bookingCount: Number(rel.bookingCount || 0),
+        invoiceCount: Number(rel.invoiceCount || 0),
+        paymentCount: Number(rel.paymentCount || 0),
+      },
+      updatedAtMs: candidateUpdatedAt(candidate.raw || {}),
+    };
+  }).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.updatedAtMs !== a.updatedAtMs) return b.updatedAtMs - a.updatedAtMs;
+    return cleanText(a.candidate.canonicalClientId).localeCompare(cleanText(b.candidate.canonicalClientId));
+  });
+
+  const top = ranked[0];
+  const second = ranked[1];
+  const ambiguous = Boolean(top && second && top.score === second.score && top.updatedAtMs === second.updatedAtMs);
+  return {
+    selected: ambiguous ? null : top?.candidate || null,
+    selectedScore: top?.score || 0,
+    selectedReasons: top?.reasons || [],
+    ambiguous,
+    candidateCount: ranked.length,
+    ranked,
+  };
+}
+
+function unionCandidateAliases(candidates, extraAliases = []) {
+  const seen = new Set();
+  const aliases = [];
+  for (const candidate of candidates || []) {
+    (candidate.aliases || []).forEach((value) => addUnique(aliases, seen, value));
+  }
+  (extraAliases || []).forEach((value) => addUnique(aliases, seen, value));
+  return aliases;
+}
+
+function buildRankedIdentityResult(selected, candidates, extraAliases = []) {
+  const raw = selected.raw || {};
+  const canonicalClientId = cleanText(selected.canonicalClientId);
+  return {
+    snap: selected.snap,
+    clientId: canonicalClientId,
+    canonicalClientId,
+    legacyClientDocId: selected.snap.id === canonicalClientId ? undefined : selected.snap.id,
+    phoneSnapshot: optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber),
+    nameSnapshot: candidateDisplayName(raw),
+    aliasClientIds: unionCandidateAliases(candidates, extraAliases),
+    needsLink: !cleanText(raw.clientId),
+  };
+}
+
+function filterCompatibleCandidates(candidates, relations = new Map()) {
+  const strong = candidates.filter((candidate) => candidate.matchKinds.some((kind) => kind === "direct" || kind === "strong"));
+  if (!strong.length) return candidates;
+  return candidates.filter((candidate) => {
+    if (candidate.matchKinds.some((kind) => kind === "direct" || kind === "strong")) return true;
+    return strong.some((anchor) => candidatesCompatible(anchor, candidate, relations));
+  });
+}
+
+function hasIncompatiblePhoneOnlyCandidates(candidates, relations = new Map()) {
+  const hasStrong = candidates.some((candidate) => candidate.matchKinds.some((kind) => kind === "direct" || kind === "strong"));
+  if (hasStrong || candidates.length < 2) return false;
+  for (let i = 0; i < candidates.length; i += 1) {
+    for (let j = i + 1; j < candidates.length; j += 1) {
+      if (!candidatesCompatible(candidates[i], candidates[j], relations)) return true;
+    }
+  }
+  return false;
+}
+
+export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}, options = {}) {
+  const idCandidates = collectClientLookupCandidates(requestedId, lookup, "id");
+  const phoneCandidatesFromPayload = collectClientLookupCandidates(requestedId, lookup, "phone");
+  const candidateIndex = new Map();
+  const strongLookupFields = new Set(["documentId", ...CLIENT_LOOKUP_ID_FIELDS]);
+  const phoneLookupFields = new Set(CLIENT_LOOKUP_PHONE_FIELDS);
+
+  if (isSafeDocumentId(requestedId)) {
+    const direct = await tx.get(salonPath(salonId, "clients", requestedId));
+    await addIdentityCandidate(candidateIndex, salonId, direct, "documentId:requestedClientId", "direct");
+  }
 
   for (const candidate of idCandidates) {
     if (!isSafeDocumentId(candidate.value) || candidate.value === requestedId) continue;
     const altDirect = await tx.get(salonPath(salonId, "clients", candidate.value));
-    addStrongMatch(altDirect, `documentId:${candidate.inputField}`);
+    await addIdentityCandidate(candidateIndex, salonId, altDirect, `documentId:${candidate.inputField}`, "strong");
   }
 
   for (const candidate of idCandidates) {
     for (const field of CLIENT_LOOKUP_ID_FIELDS) {
-      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", candidate.value]], 3);
-      rows.forEach((row) => addStrongMatch(row, `${field}:${candidate.inputField}`));
+      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", candidate.value]], 10);
+      for (const row of rows) {
+        await addIdentityCandidate(candidateIndex, salonId, row, `${field}:${candidate.inputField}`, "strong");
+      }
     }
   }
 
-  if (strongMatches.size === 1) {
-    const [snap] = strongMatches.values();
-    await safeLookupLog("strong_match", salonId, idCandidates, {
-      lookupFields: [...strongLookupFields],
-      matchCount: 1,
-      matchedBy: strongMatchedBy.get(snap.path) || [],
-    });
-    return buildClientIdentityResultWithAliases(salonId, snap, idCandidates.map((candidate) => candidate.value));
-  }
-  if (strongMatches.size > 1) {
-    await safeLookupLog("duplicate_identity", salonId, idCandidates, {
-      lookupFields: [...strongLookupFields],
-      matchCount: strongMatches.size,
-    });
-    throw new AppError(409, "packages_client:duplicate_identity");
+  if (options.allowPhoneMatch === false) {
+    const strongCandidates = [...candidateIndex.values()].filter((candidate) =>
+      candidate.matchKinds.some((kind) => kind === "direct" || kind === "strong")
+    );
+    if (!strongCandidates.length) {
+      await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+        lookupFields: [...strongLookupFields],
+        matchCount: 0,
+      });
+      throw new AppError(404, "packages_client:not_found", "Client was not found");
+    }
   }
 
-  const phoneCandidatesFromPayload = collectClientLookupCandidates(requestedId, lookup, "phone");
-  if (options.allowPhoneMatch === false) {
+  if (options.allowPhoneMatch !== false) {
+    const phoneValues = new Set();
+    for (const candidate of phoneCandidatesFromPayload) {
+      phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
+    }
+    for (const identityCandidate of candidateIndex.values()) {
+      for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
+        const normalized = normalizeLookupPhone(identityCandidate.raw?.[field]);
+        if (normalized) phoneCandidates(normalized).forEach((phone) => phoneValues.add(phone));
+      }
+    }
+    for (const phone of phoneValues) {
+      for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
+        const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 10);
+        for (const row of rows) {
+          await addIdentityCandidate(candidateIndex, salonId, row, `${field}:phone`, "phone");
+        }
+      }
+    }
+  }
+
+  const candidates = [...candidateIndex.values()];
+  if (!candidates.length) {
     await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
-      lookupFields: [...strongLookupFields],
+      lookupFields: [...new Set([...strongLookupFields, ...phoneLookupFields])],
       matchCount: 0,
     });
     throw new AppError(404, "packages_client:not_found", "Client was not found");
   }
 
-  const phoneMatches = new Map();
-  const phoneMatchedBy = new Map();
-  const phoneLookupFields = new Set(CLIENT_LOOKUP_PHONE_FIELDS);
-  const addPhoneMatch = (snap, by) => {
-    if (!snap?.exists) return;
-    phoneMatches.set(snap.path, snap);
-    const list = phoneMatchedBy.get(snap.path) || [];
-    list.push(by);
-    phoneMatchedBy.set(snap.path, list);
-  };
-
-  const phoneValues = new Set();
-  for (const candidate of phoneCandidatesFromPayload) {
-    phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
-  }
-  for (const phone of phoneValues) {
-    for (const field of CLIENT_LOOKUP_PHONE_FIELDS) {
-      const rows = await tx.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 3);
-      rows.forEach((row) => addPhoneMatch(row, `${field}:phone`));
-    }
-  }
-
-  if (phoneMatches.size === 1) {
-    const [snap] = phoneMatches.values();
-    await safeLookupLog("phone_match", salonId, phoneCandidatesFromPayload, {
+  const initialRelations = candidates.length > 1 ? await buildCandidateRelations(tx, salonId, candidates) : new Map();
+  if (hasIncompatiblePhoneOnlyCandidates(candidates, initialRelations)) {
+    await safeLookupLog("ambiguous_identity", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
       lookupFields: [...phoneLookupFields],
-      matchCount: 1,
-      matchedBy: phoneMatchedBy.get(snap.path) || [],
+      matchCount: candidates.length,
     });
-    return buildClientIdentityResultWithAliases(salonId, snap);
-  }
-  if (phoneMatches.size > 1) {
-    await safeLookupLog("duplicate_identity", salonId, phoneCandidatesFromPayload, {
-      lookupFields: [...phoneLookupFields],
-      matchCount: phoneMatches.size,
+    throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
+      candidateCount: candidates.length,
     });
-    throw new AppError(409, "packages_client:duplicate_identity");
   }
 
-  await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+  const compatibleCandidates = filterCompatibleCandidates(candidates, initialRelations);
+  const relations = compatibleCandidates.length === candidates.length
+    ? initialRelations
+    : compatibleCandidates.length > 1
+      ? await buildCandidateRelations(tx, salonId, compatibleCandidates)
+      : new Map();
+  const ranking = rankCanonicalClientCandidates(compatibleCandidates, relations);
+  if (!ranking.selected || ranking.ambiguous) {
+    await safeLookupLog("ambiguous_identity", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...new Set([...strongLookupFields, ...phoneLookupFields])],
+      matchCount: compatibleCandidates.length,
+    });
+    throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
+      candidateCount: compatibleCandidates.length,
+    });
+  }
+
+  const event = ranking.selected.matchKinds.some((kind) => kind === "direct" || kind === "strong")
+    ? "strong_match"
+    : "phone_match";
+  await safeLookupLog(event, salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
     lookupFields: [...new Set([...strongLookupFields, ...phoneLookupFields])],
-    matchCount: 0,
+    matchCount: compatibleCandidates.length,
+    matchedBy: ranking.selected.matchedBy,
   });
-  throw new AppError(404, "packages_client:not_found", "Client was not found");
+  return buildRankedIdentityResult(
+    ranking.selected,
+    compatibleCandidates,
+    idCandidates.map((candidate) => candidate.value)
+  );
 }
 
 export async function resolveAuthenticatedClientIdentity(db, salonId, identity) {
@@ -1362,6 +1705,102 @@ export async function listClientPackagesAdmin(ctx) {
         "ar"
       )
     ));
+}
+
+class IdentityDisjointSet {
+  constructor() {
+    this.parent = new Map();
+  }
+  find(value) {
+    const key = cleanText(value);
+    if (!this.parent.has(key)) this.parent.set(key, key);
+    const parent = this.parent.get(key);
+    if (parent === key) return key;
+    const root = this.find(parent);
+    this.parent.set(key, root);
+    return root;
+  }
+  union(a, b) {
+    const rootA = this.find(a);
+    const rootB = this.find(b);
+    if (rootA !== rootB) this.parent.set(rootB, rootA);
+  }
+}
+
+async function auditAlias(value) {
+  const normalizedPhone = normalizeLookupPhone(value);
+  if (normalizedPhone) return `phone:${await safeClientHash(normalizedPhone)}`;
+  return cleanText(value);
+}
+
+async function auditAliases(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values || []) {
+    const alias = await auditAlias(value);
+    if (!alias || seen.has(alias)) continue;
+    seen.add(alias);
+    out.push(alias);
+  }
+  return out;
+}
+
+async function auditIdentityGroup(candidates, relations) {
+  const ambiguousByIdentity = hasIncompatiblePhoneOnlyCandidates(candidates, relations);
+  const ranking = ambiguousByIdentity
+    ? { selected: null, selectedReasons: ["ambiguous_identity"], ranked: rankCanonicalClientCandidates(candidates, relations).ranked }
+    : rankCanonicalClientCandidates(candidates, relations);
+  const aliases = await auditAliases(unionCandidateAliases(candidates));
+  const candidateRows = await Promise.all((ranking.ranked || []).map(async (row) => ({
+    documentId: row.candidate.snapId,
+    canonicalClientId: row.candidate.canonicalClientId,
+    documentHash: await safeClientHash(row.candidate.snapId),
+    canonicalHash: await safeClientHash(row.candidate.canonicalClientId),
+    score: row.score,
+    reasons: row.reasons,
+    relations: row.relations,
+  })));
+  return {
+    candidateCount: candidates.length,
+    canonicalSuggested: ranking.selected?.canonicalClientId || null,
+    canonicalHash: ranking.selected ? await safeClientHash(ranking.selected.canonicalClientId) : "",
+    aliases,
+    reason: ranking.selectedReasons || [],
+    warning: ranking.selected ? undefined : "packages_client:ambiguous_identity",
+    scores: candidateRows,
+  };
+}
+
+export async function auditClientIdentitiesAdmin(ctx) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const clientDocs = await queryAllDocs(ctx.db, ctx.salonId, "clients");
+  const candidates = await Promise.all(clientDocs.map((doc) => identityCandidateFromSnap(ctx.salonId, doc, ["audit"], ["audit"])));
+  const relations = candidates.length ? await buildCandidateRelations(ctx.db, ctx.salonId, candidates) : new Map();
+  const dsu = new IdentityDisjointSet();
+  const aliasOwner = new Map();
+  for (const candidate of candidates) {
+    dsu.find(candidate.path);
+    for (const alias of candidate.aliases || []) {
+      const key = cleanText(alias);
+      if (!key) continue;
+      if (aliasOwner.has(key)) dsu.union(candidate.path, aliasOwner.get(key));
+      else aliasOwner.set(key, candidate.path);
+    }
+  }
+  const groupsByRoot = new Map();
+  for (const candidate of candidates) {
+    const root = dsu.find(candidate.path);
+    const rows = groupsByRoot.get(root) || [];
+    rows.push(candidate);
+    groupsByRoot.set(root, rows);
+  }
+  const identityGroups = await Promise.all([...groupsByRoot.values()].map((group) => auditIdentityGroup(group, relations)));
+  identityGroups.sort((a, b) => b.candidateCount - a.candidateCount || cleanText(a.canonicalSuggested).localeCompare(cleanText(b.canonicalSuggested)));
+  return {
+    ok: true,
+    identityGroups,
+    groupCount: identityGroups.length,
+  };
 }
 
 function walletPackageFromDoc(doc, nowMs, canonicalClientId) {

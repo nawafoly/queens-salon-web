@@ -8,6 +8,7 @@ import {
 } from './validation.js';
 import {
   adjustClientPackage,
+  auditClientIdentitiesAdmin,
   clientWallet,
   cancelClientPackage,
   cancelRedemption,
@@ -79,6 +80,7 @@ const routes = {
   "POST /api/packages/cancel": cancelClientPackage,
   "POST /api/packages/adjust": adjustClientPackage,
   "POST /api/packages/client-wallet": clientWallet,
+  "GET /api/packages/admin/audit-client-identities": auditClientIdentitiesAdmin,
   "GET /api/packages/admin/list-client-packages": listClientPackagesAdmin,
   "GET /api/packages/my-wallet": myWallet,
 };
