@@ -173,6 +173,7 @@ async function buildClientIdentityResult(salonId, snap) {
     clientId,
     canonicalClientId: clientId,
     legacyClientDocId: snap.id === clientId ? undefined : snap.id,
+    packageAliasClientIds: clientAliasIds(raw, snap.id, clientId).filter((alias) => !normalizeLookupPhone(alias)),
     phoneSnapshot: optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber),
     nameSnapshot: optionalText(raw.name || raw.fullName || raw.clientName),
     aliasClientIds: clientAliasIds(raw, snap.id, clientId),
@@ -493,11 +494,15 @@ function unionCandidateAliases(candidates, extraAliases = []) {
 function buildRankedIdentityResult(selected, candidates, extraAliases = []) {
   const raw = selected.raw || {};
   const canonicalClientId = cleanText(selected.canonicalClientId);
+  const packageAliasClientIds = [];
+  const packageAliasSeen = new Set();
+  [canonicalClientId, raw.legacyClientDocId, selected.snap.id].forEach((value) => addUnique(packageAliasClientIds, packageAliasSeen, value));
   return {
     snap: selected.snap,
     clientId: canonicalClientId,
     canonicalClientId,
     legacyClientDocId: selected.snap.id === canonicalClientId ? undefined : selected.snap.id,
+    packageAliasClientIds,
     phoneSnapshot: optionalText(raw.phone || raw.mobile || raw.clientPhone || raw.phoneNumber),
     nameSnapshot: candidateDisplayName(raw),
     aliasClientIds: unionCandidateAliases(candidates, extraAliases),
@@ -523,6 +528,146 @@ function hasIncompatiblePhoneOnlyCandidates(candidates, relations = new Map()) {
     }
   }
   return false;
+}
+
+function lightIdentityRanking(candidates) {
+  return rankCanonicalClientCandidates(candidates, new Map());
+}
+
+async function resolveClientIdentityLight(db, salonId, requestedId, lookup = {}) {
+  const idCandidates = collectClientLookupCandidates(requestedId, lookup, "id");
+  const phoneCandidatesFromPayload = collectClientLookupCandidates("", lookup, "phone");
+  const candidateIndex = new Map();
+  const strongLookupFields = new Set(["documentId", ...CLIENT_LOOKUP_ID_FIELDS]);
+  const phoneLookupFields = new Set(["phone", "mobile"]);
+
+  if (isSafeDocumentId(requestedId)) {
+    const direct = await db.get(salonPath(salonId, "clients", requestedId));
+    await addIdentityCandidate(candidateIndex, salonId, direct, "documentId:requestedClientId", "direct");
+    const directCandidates = [...candidateIndex.values()];
+    if (directCandidates.length === 1) {
+      await safeLookupLog("strong_match", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+        lookupFields: ["documentId"],
+        matchCount: 1,
+        matchedBy: directCandidates[0].matchedBy,
+      });
+      return buildRankedIdentityResult(
+        directCandidates[0],
+        directCandidates,
+        idCandidates.map((candidate) => candidate.value)
+      );
+    }
+  }
+
+  const strongQueries = [];
+  const seenStrongQueries = new Set();
+  const addStrongQuery = (field, value, inputField) => {
+    const normalized = cleanText(value);
+    if (!CLIENT_LOOKUP_ID_FIELDS.includes(field) || !normalized) return;
+    const key = `${field}\u0000${normalized}`;
+    if (seenStrongQueries.has(key)) return;
+    seenStrongQueries.add(key);
+    strongQueries.push({ field, value: normalized, inputField });
+  };
+
+  for (const candidate of idCandidates) {
+    if (CLIENT_LOOKUP_ID_FIELDS.includes(candidate.inputField)) {
+      addStrongQuery(candidate.inputField, candidate.value, candidate.inputField);
+    }
+  }
+  if (requestedId) addStrongQuery("clientId", requestedId, "requestedClientId");
+  for (const candidate of idCandidates) {
+    if (candidate.inputField === "id" || candidate.inputField === "docId") {
+      addStrongQuery("clientId", candidate.value, candidate.inputField);
+    }
+  }
+
+  for (const query of strongQueries) {
+    const rows = await db.query(salonPath(salonId), "clients", [[query.field, "EQUAL", query.value]], 2);
+    for (const row of rows) {
+      await addIdentityCandidate(candidateIndex, salonId, row, `${query.field}:${query.inputField}`, "strong");
+    }
+    if (candidateIndex.size) break;
+  }
+
+  const strongCandidates = [...candidateIndex.values()].filter((candidate) =>
+    candidate.matchKinds.some((kind) => kind === "direct" || kind === "strong")
+  );
+  if (strongCandidates.length) {
+    const ranking = lightIdentityRanking(strongCandidates);
+    if (!ranking.selected || ranking.ambiguous) {
+      await safeLookupLog("ambiguous_identity", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+        lookupFields: [...strongLookupFields],
+        matchCount: strongCandidates.length,
+      });
+      throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
+        candidateCount: strongCandidates.length,
+      });
+    }
+    await safeLookupLog("strong_match", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...strongLookupFields],
+      matchCount: strongCandidates.length,
+      matchedBy: ranking.selected.matchedBy,
+    });
+    return buildRankedIdentityResult(
+      ranking.selected,
+      strongCandidates,
+      idCandidates.map((candidate) => candidate.value)
+    );
+  }
+
+  const phoneValues = new Set();
+  for (const candidate of phoneCandidatesFromPayload) {
+    phoneCandidates(candidate.value).forEach((phone) => phoneValues.add(phone));
+  }
+  for (const phone of phoneValues) {
+    for (const field of ["phone", "mobile"]) {
+      const rows = await db.query(salonPath(salonId), "clients", [[field, "EQUAL", phone]], 2);
+      for (const row of rows) {
+        await addIdentityCandidate(candidateIndex, salonId, row, `${field}:phone`, "phone");
+      }
+      if (candidateIndex.size) break;
+    }
+    if (candidateIndex.size) break;
+  }
+
+  const phoneCandidatesResolved = [...candidateIndex.values()];
+  if (!phoneCandidatesResolved.length) {
+    await safeLookupLog("not_found", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...new Set([...strongLookupFields, ...phoneLookupFields])],
+      matchCount: 0,
+    });
+    throw new AppError(404, "packages_client:not_found", "Client was not found");
+  }
+  if (hasIncompatiblePhoneOnlyCandidates(phoneCandidatesResolved, new Map())) {
+    await safeLookupLog("ambiguous_identity", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...phoneLookupFields],
+      matchCount: phoneCandidatesResolved.length,
+    });
+    throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
+      candidateCount: phoneCandidatesResolved.length,
+    });
+  }
+  const ranking = lightIdentityRanking(phoneCandidatesResolved);
+  if (!ranking.selected || ranking.ambiguous) {
+    await safeLookupLog("ambiguous_identity", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+      lookupFields: [...phoneLookupFields],
+      matchCount: phoneCandidatesResolved.length,
+    });
+    throw new AppError(409, "packages_client:ambiguous_identity", "packages_client:ambiguous_identity", {
+      candidateCount: phoneCandidatesResolved.length,
+    });
+  }
+  await safeLookupLog("phone_match", salonId, [...idCandidates, ...phoneCandidatesFromPayload], {
+    lookupFields: [...phoneLookupFields],
+    matchCount: phoneCandidatesResolved.length,
+    matchedBy: ranking.selected.matchedBy,
+  });
+  return buildRankedIdentityResult(
+    ranking.selected,
+    phoneCandidatesResolved,
+    idCandidates.map((candidate) => candidate.value)
+  );
 }
 
 export async function resolveClientIdentity(tx, salonId, requestedId, lookup = {}, options = {}) {
@@ -1468,18 +1613,91 @@ export async function adjustClientPackage(ctx, data) {
   });
 }
 
-async function queryByClientAliases(db, salonId, collectionId, aliases) {
+async function queryByClientAliases(db, salonId, collectionId, aliases, options = {}) {
+  const {
+    limitPerAlias = 50,
+    timeoutCode = `packages_wallet:${collectionId}_timeout`,
+  } = options;
   const rowsByPath = new Map();
-  for (const alias of aliases || []) {
-    const clientId = cleanText(alias);
-    if (!clientId) continue;
-    const rows = await db.query(salonPath(salonId), collectionId, [["clientId", "EQUAL", clientId]]);
-    rows.forEach((row) => rowsByPath.set(row.path, row));
+  const queries = (aliases || [])
+    .map(cleanText)
+    .filter(Boolean)
+    .map((clientId) => withWalletTimeout(
+      db.query(salonPath(salonId), collectionId, [["clientId", "EQUAL", clientId]], limitPerAlias),
+      timeoutCode,
+      `${collectionId} query timed out`
+    ));
+  const pages = await Promise.all(queries);
+  for (const rows of pages) {
+    for (const row of rows) rowsByPath.set(row.path, row);
   }
   return [...rowsByPath.values()];
 }
 
+function limitedWalletAliases(aliases, limit = 2) {
+  const out = [];
+  const seen = new Set();
+  for (const alias of aliases || []) {
+    const clientId = cleanText(alias);
+    if (!clientId || seen.has(clientId)) continue;
+    seen.add(clientId);
+    out.push(clientId);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 const WALLET_FIRESTORE_TIMEOUT_MS = 10_000;
+const WALLET_CACHE_TTL_MS = 45_000;
+const walletResponseCache = new Map();
+const pendingWalletRequests = new Map();
+
+export function clearWalletRuntimeCaches() {
+  walletResponseCache.clear();
+  pendingWalletRequests.clear();
+}
+
+function cloneWalletResponse(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function walletCacheKey(salonId, canonicalClientId) {
+  return `${cleanText(salonId)}\u0000${cleanText(canonicalClientId)}`;
+}
+
+function getCachedWalletResponse(salonId, canonicalClientId) {
+  const key = walletCacheKey(salonId, canonicalClientId);
+  const entry = walletResponseCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= Date.now()) {
+    walletResponseCache.delete(key);
+    return null;
+  }
+  return cloneWalletResponse(entry.response);
+}
+
+function setCachedWalletResponse(salonId, canonicalClientId, response) {
+  if (!canonicalClientId || !response) return;
+  walletResponseCache.set(walletCacheKey(salonId, canonicalClientId), {
+    expiresAtMs: Date.now() + WALLET_CACHE_TTL_MS,
+    response: cloneWalletResponse(response),
+  });
+}
+
+function walletLookupDedupeKey(salonId, requestedClientId, lookup = {}) {
+  const idCandidates = collectClientLookupCandidates(requestedClientId, lookup, "id")
+    .map((candidate) => `${candidate.inputField}:${candidate.value}`)
+    .sort();
+  const phoneCandidatesForKey = collectClientLookupCandidates("", lookup, "phone")
+    .map((candidate) => `${candidate.inputField}:${candidate.value}`)
+    .sort();
+  return [
+    cleanText(salonId),
+    cleanText(requestedClientId),
+    ...idCandidates,
+    ...phoneCandidatesForKey,
+  ].join("\u0000");
+}
 
 async function safeClientHash(value) {
   const text = cleanText(value);
@@ -1497,11 +1715,21 @@ async function walletLog(event, data = {}) {
     aliasCount: Number(data.aliasCount || 0),
     packageCount: Number(data.packageCount || 0),
     durationMs: Number(data.durationMs || 0),
+    ...(data.firestoreRequestCount !== undefined ? { firestoreRequestCount: Number(data.firestoreRequestCount || 0) } : {}),
+    ...(data.firestoreReadOperations !== undefined ? { firestoreReadOperations: Number(data.firestoreReadOperations || 0) } : {}),
     ...(data.errorCode ? { errorCode: cleanText(data.errorCode) } : {}),
     ...(data.errorMessage ? { errorMessage: cleanText(data.errorMessage).slice(0, 180) } : {}),
   };
   if (event === "wallet_error") console.error(event, payload);
   else console.info(event, payload);
+}
+
+function firestoreMetrics(ctx) {
+  const metrics = typeof ctx.db?.snapshotMetrics === "function" ? ctx.db.snapshotMetrics() : {};
+  return {
+    firestoreRequestCount: Number(metrics.requestCount || 0),
+    firestoreReadOperations: Number(metrics.readOperations || 0),
+  };
 }
 
 function normalizeWalletError(error, fallbackCode = "packages_wallet:failed") {
@@ -1828,10 +2056,21 @@ function walletPackageFromDoc(doc, nowMs, canonicalClientId) {
   };
 }
 
-async function walletSummaryForIdentity(ctx, identity) {
+function walletPackageAliases(identity, canonicalClientId, maxPackageAliases) {
+  const source = Array.isArray(identity.packageAliasClientIds) && identity.packageAliasClientIds.length
+    ? identity.packageAliasClientIds
+    : clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []).filter((alias) => !normalizeLookupPhone(alias));
+  return limitedWalletAliases(source, maxPackageAliases);
+}
+
+async function walletSummaryForIdentity(ctx, identity, options = {}) {
+  const {
+    includeTransactions = true,
+    maxPackageAliases = 4,
+  } = options;
   const startedAt = Date.now();
   const canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
-  const aliases = clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []);
+  const aliases = walletPackageAliases(identity, canonicalClientId, maxPackageAliases);
   const aliasCount = aliases.length;
   const canonicalClientIdHash = await safeClientHash(canonicalClientId);
   await walletLog("wallet_aliases_resolved", {
@@ -1839,6 +2078,7 @@ async function walletSummaryForIdentity(ctx, identity) {
     aliasCount,
     packageCount: 0,
     durationMs: Date.now() - startedAt,
+    ...firestoreMetrics(ctx),
   });
   const nowMs = Date.now();
   await walletLog("wallet_packages_query_start", {
@@ -1846,29 +2086,35 @@ async function walletSummaryForIdentity(ctx, identity) {
     aliasCount,
     packageCount: 0,
     durationMs: Date.now() - startedAt,
+    ...firestoreMetrics(ctx),
   });
-  const allPackageDocs = await queryAllDocsWithTimeout(
+  const packageSnap = await queryByClientAliases(
     ctx.db,
     ctx.salonId,
     "client_packages",
-    "packages_wallet:client_packages_timeout"
+    aliases,
+    {
+      limitPerAlias: 50,
+      timeoutCode: "packages_wallet:client_packages_timeout",
+    }
   );
-  const packageSnap = docsForClientAliases(allPackageDocs, aliases);
   await walletLog("wallet_packages_query_complete", {
     canonicalClientIdHash,
     aliasCount,
     packageCount: packageSnap.length,
     durationMs: Date.now() - startedAt,
+    ...firestoreMetrics(ctx),
   });
-  const transactionSnap = packageSnap.length
-    ? docsForClientAliases(
-        await queryAllDocsWithTimeout(
-          ctx.db,
-          ctx.salonId,
-          "client_package_transactions",
-          "packages_wallet:transactions_timeout"
-        ),
-        aliases
+  const transactionSnap = includeTransactions && packageSnap.length
+    ? await queryByClientAliases(
+        ctx.db,
+        ctx.salonId,
+        "client_package_transactions",
+        aliases,
+        {
+          limitPerAlias: 100,
+          timeoutCode: "packages_wallet:transactions_timeout",
+        }
       )
     : [];
   const warnings = [];
@@ -1951,6 +2197,7 @@ async function walletSummaryForIdentity(ctx, identity) {
     aliasCount,
     packageCount: activePackageRows.length,
     durationMs: Date.now() - startedAt,
+    ...firestoreMetrics(ctx),
   });
   return response;
 }
@@ -1972,22 +2219,83 @@ export async function clientWallet(ctx, data) {
         "clientId or clientLookup phone/uid is required"
       );
     }
-    const identity = await ctx.db.runTransaction((tx) =>
-      resolveClientIdentity(tx, ctx.salonId, requestedClientId, data.clientLookup)
-    );
-    canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
-    aliasCount = clientAliasIds({}, "", canonicalClientId, identity.aliasClientIds || []).length;
-    await walletLog("wallet_identity_resolved", {
-      canonicalClientId,
-      aliasCount,
-      packageCount: 0,
-      durationMs: Date.now() - startedAt,
-    });
-    const response = await walletSummaryForIdentity(ctx, identity);
-    packageCount = Array.isArray(response.activePackages)
-      ? response.activePackages.length
-      : Number(response.activePackages || 0);
-    return response;
+    const requestedCacheHit = requestedClientId ? getCachedWalletResponse(ctx.salonId, requestedClientId) : null;
+    if (requestedCacheHit) {
+      canonicalClientId = cleanText(requestedCacheHit.canonicalClientId || requestedCacheHit.clientId);
+      aliasCount = Array.isArray(requestedCacheHit.aliasClientIds) ? requestedCacheHit.aliasClientIds.length : 0;
+      packageCount = Array.isArray(requestedCacheHit.activePackages)
+        ? requestedCacheHit.activePackages.length
+        : Number(requestedCacheHit.activePackageCount || 0);
+      await walletLog("wallet_cache_hit", {
+        canonicalClientId,
+        aliasCount,
+        packageCount,
+        durationMs: Date.now() - startedAt,
+        ...firestoreMetrics(ctx),
+      });
+      return requestedCacheHit;
+    }
+
+    const dedupeKey = walletLookupDedupeKey(ctx.salonId, requestedClientId, data.clientLookup);
+    if (pendingWalletRequests.has(dedupeKey)) {
+      const response = await pendingWalletRequests.get(dedupeKey);
+      canonicalClientId = cleanText(response.canonicalClientId || response.clientId);
+      aliasCount = Array.isArray(response.aliasClientIds) ? response.aliasClientIds.length : 0;
+      packageCount = Array.isArray(response.activePackages)
+        ? response.activePackages.length
+        : Number(response.activePackageCount || 0);
+      await walletLog("wallet_dedupe_hit", {
+        canonicalClientId,
+        aliasCount,
+        packageCount,
+        durationMs: Date.now() - startedAt,
+        ...firestoreMetrics(ctx),
+      });
+      return cloneWalletResponse(response);
+    }
+
+    const work = (async () => {
+      const identity = await resolveClientIdentityLight(ctx.db, ctx.salonId, requestedClientId, data.clientLookup);
+      canonicalClientId = cleanText(identity.canonicalClientId || identity.clientId);
+      aliasCount = walletPackageAliases(identity, canonicalClientId, 2).length;
+      await walletLog("wallet_identity_resolved", {
+        canonicalClientId,
+        aliasCount,
+        packageCount: 0,
+        durationMs: Date.now() - startedAt,
+        ...firestoreMetrics(ctx),
+      });
+      const cached = getCachedWalletResponse(ctx.salonId, canonicalClientId);
+      if (cached) {
+        packageCount = Array.isArray(cached.activePackages)
+          ? cached.activePackages.length
+          : Number(cached.activePackageCount || 0);
+        await walletLog("wallet_cache_hit", {
+          canonicalClientId,
+          aliasCount,
+          packageCount,
+          durationMs: Date.now() - startedAt,
+          ...firestoreMetrics(ctx),
+        });
+        return cached;
+      }
+      const response = await walletSummaryForIdentity(ctx, identity, {
+        includeTransactions: false,
+        maxPackageAliases: 2,
+      });
+      packageCount = Array.isArray(response.activePackages)
+        ? response.activePackages.length
+        : Number(response.activePackageCount || 0);
+      setCachedWalletResponse(ctx.salonId, canonicalClientId, response);
+      return response;
+    })();
+
+    pendingWalletRequests.set(dedupeKey, work);
+    try {
+      return cloneWalletResponse(await work);
+    } finally {
+      pendingWalletRequests.delete(dedupeKey);
+    }
   } catch (error) {
     const normalized = normalizeWalletError(error);
     await walletLog("wallet_error", {
@@ -1995,6 +2303,7 @@ export async function clientWallet(ctx, data) {
       aliasCount,
       packageCount,
       durationMs: Date.now() - startedAt,
+      ...firestoreMetrics(ctx),
       errorCode: normalized.code,
       errorMessage: normalized.message,
     });
@@ -2009,6 +2318,7 @@ export async function myWallet(ctx) {
     clientId: identity.clientId,
     canonicalClientId: identity.clientId,
     clientSnap: identity.clientSnap,
+    packageAliasClientIds: clientAliasIds(identity.clientSnap?.data || {}, identity.clientSnap?.id || "", identity.clientId).filter((alias) => !normalizeLookupPhone(alias)),
     aliasClientIds: clientAliasIds(identity.clientSnap?.data || {}, identity.clientSnap?.id || "", identity.clientId),
   });
 }

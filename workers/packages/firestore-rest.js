@@ -73,6 +73,10 @@ export class FirestoreRestClient {
     this.base = this.emulatorHost
       ? `http://${this.emulatorHost}/v1/projects/${projectId}/databases/${this.database}/documents`
       : `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${this.database}/documents`;
+    this.metrics = {
+      requestCount: 0,
+      readOperations: 0,
+    };
   }
 
   docName(path) {
@@ -89,16 +93,46 @@ export class FirestoreRestClient {
     return headers;
   }
 
+  snapshotMetrics() {
+    return { ...this.metrics };
+  }
+
   async api(path, init = {}) {
-    const response = await fetch(`${this.base}${path}`, {
-      ...init,
-      headers: { ...(await this.headers()), ...(init.headers || {}) },
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
+    const maxRetries = 2;
+    let lastBody = {};
+    let lastStatus = 0;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      this.metrics.requestCount += 1;
+      const response = await fetch(`${this.base}${path}`, {
+        ...init,
+        headers: { ...(await this.headers()), ...(init.headers || {}) },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) return body;
+      lastBody = body;
+      lastStatus = response.status;
+      if (response.status === 429) {
+        const firestoreStatus = cleanText(body.error?.status);
+        const firestoreMessage = cleanText(body.error?.message);
+        console.warn("packages_firestore_rate_limited", {
+          path,
+          attempt: attempt + 1,
+          firestoreStatus,
+          firestoreMessage: firestoreMessage.slice(0, 180),
+        });
+        if (attempt < maxRetries) {
+          await sleep(retryDelayMs(response.headers.get("Retry-After"), attempt));
+          continue;
+        }
+        throw new AppError(503, "packages_firestore:resource_exhausted", "Firestore resource exhausted", {
+          firestoreStatus,
+          firestoreMessage,
+          status: response.status,
+        });
+      }
       throw new AppError(response.status, "packages_firestore:request_failed", body.error?.message || "Firestore request failed", body);
     }
-    return body;
+    throw new AppError(lastStatus || 503, "packages_firestore:request_failed", lastBody.error?.message || "Firestore request failed", lastBody);
   }
 
   async beginTransaction() {
@@ -124,6 +158,7 @@ export class FirestoreRestClient {
       method: "POST",
       body: JSON.stringify({ documents: paths.map((path) => this.docName(path)), transaction }),
     });
+    this.metrics.readOperations += paths.length;
     return body.map((row) => {
       if (!row.found) return { exists: false, id: docIdFromName(row.missing), path: this.pathFromName(row.missing), data: null };
       return {
@@ -154,7 +189,7 @@ export class FirestoreRestClient {
       method: "POST",
       body: JSON.stringify({ structuredQuery, transaction }),
     });
-    return body
+    const rows = body
       .filter((row) => row.document)
       .map((row) => ({
         exists: true,
@@ -163,6 +198,8 @@ export class FirestoreRestClient {
         name: row.document.name,
         data: fromFirestoreFields(row.document.fields || {}),
       }));
+    this.metrics.readOperations += rows.length;
+    return rows;
   }
 
   async runTransaction(callback, attempts = 8) {
@@ -189,6 +226,10 @@ export class FirestoreRestClient {
     return doc || { exists: false, id: docIdFromName(path), path, data: null };
   }
 
+  async get(path) {
+    return this.getDoc(path);
+  }
+
   async query(parentPath, collectionId, filters = [], limitValue, offsetValue = 0) {
     return this.runQuery(parentPath, collectionId, filters, undefined, limitValue, offsetValue);
   }
@@ -208,6 +249,17 @@ function isRetryableTransactionError(error) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(retryAfter, attempt) {
+  const header = cleanText(retryAfter);
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(2_000, seconds * 1000);
+    const dateMs = Date.parse(header);
+    if (Number.isFinite(dateMs)) return Math.min(2_000, Math.max(0, dateMs - Date.now()));
+  }
+  return Math.min(1_000, 100 * (2 ** attempt));
 }
 
 class FirestoreTx {

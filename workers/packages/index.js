@@ -13,6 +13,7 @@ import {
   restoreOneReservedSession,
   transactionId,
 } from './validation.js';
+import { clearWalletRuntimeCaches as clearPackageWalletRuntimeCaches } from './transactions.js';
 
 export default {
   async fetch(request, env) {
@@ -46,6 +47,7 @@ export const __test = {
   verifyFirebaseIdToken,
   handleRequest,
   expireClientPackages,
+  clearPackageWalletRuntimeCaches,
   toFirestoreFields,
   fromFirestoreFields,
 };

@@ -2,12 +2,23 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import worker, { __test } from "./packages/index.js";
 
-const { toFirestoreFields, fromFirestoreFields, expireClientPackages } = __test;
+const {
+  FirestoreRestClient,
+  toFirestoreFields,
+  fromFirestoreFields,
+  expireClientPackages,
+  clearPackageWalletRuntimeCaches,
+} = __test;
 
 class FakeFirestoreRest {
   constructor() {
     this.docs = new Map();
     this.failNextCommit = false;
+    this.requestCount = 0;
+    this.readOperations = 0;
+    this.queryCollectionCounts = new Map();
+    this.fail429Remaining = 0;
+    this.delayRunQueryMs = 0;
   }
 
   seed(path, data) {
@@ -27,10 +38,10 @@ class FakeFirestoreRest {
     return [...this.docs.keys()].filter((path) => path.startsWith(prefix));
   }
 
-  response(body, status = 200) {
+  response(body, status = 200, headers = {}) {
     return new Response(JSON.stringify(body), {
       status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
     });
   }
 
@@ -101,6 +112,16 @@ class FakeFirestoreRest {
   }
 
   fetch = async (url, init = {}) => {
+    this.requestCount += 1;
+    if (this.fail429Remaining > 0) {
+      this.fail429Remaining -= 1;
+      return this.response({
+        error: {
+          status: "RESOURCE_EXHAUSTED",
+          message: "Quota exceeded in fake Firestore",
+        },
+      }, 429, { "Retry-After": "0" });
+    }
     const textUrl = String(url);
     if (textUrl.endsWith(":beginTransaction")) {
       return this.response({ transaction: "fake-transaction" });
@@ -110,13 +131,18 @@ class FakeFirestoreRest {
     }
     if (textUrl.endsWith(":batchGet")) {
       const body = JSON.parse(init.body || "{}");
+      this.readOperations += (body.documents || []).length;
       return this.response((body.documents || []).map((name) => this.docResponse(this.pathFromResource(name))));
     }
     if (textUrl.includes(":runQuery")) {
+      if (this.delayRunQueryMs) await new Promise((resolve) => setTimeout(resolve, this.delayRunQueryMs));
       const body = JSON.parse(init.body || "{}");
       const parentRaw = decodeURIComponent((new URL(textUrl).pathname.split("/documents/")[1] || "").replace(":runQuery", ""));
       const collectionId = body.structuredQuery?.from?.[0]?.collectionId;
-      return this.response(this.query(parentRaw, collectionId, body.structuredQuery || {}));
+      this.queryCollectionCounts.set(collectionId, (this.queryCollectionCounts.get(collectionId) || 0) + 1);
+      const rows = this.query(parentRaw, collectionId, body.structuredQuery || {});
+      this.readOperations += rows.filter((row) => row.document).length;
+      return this.response(rows);
     }
     if (textUrl.endsWith(":commit")) {
       if (this.failNextCommit) {
@@ -207,12 +233,14 @@ function seedBase(fake) {
 async function withFakeFirestore(fn) {
   const fake = new FakeFirestoreRest();
   seedBase(fake);
+  clearPackageWalletRuntimeCaches();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fake.fetch;
   try {
     return await fn(fake);
   } finally {
     globalThis.fetch = originalFetch;
+    clearPackageWalletRuntimeCaches();
   }
 }
 
@@ -578,6 +606,122 @@ test("client wallet accepts empty clientId when phone lookup resolves canonical 
   assert.deepEqual(body.data.packages.map((p) => p.id), ["phone-only-wallet-package"]);
 }));
 
+test("client wallet stays under firestore call budget and avoids heavy audit relations", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/client_packages/budget-wallet-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Budget Wallet Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const before = fake.requestCount;
+  const response = await worker.fetch(request("/api/packages/client-wallet", {
+    body: {
+      salonId: "main",
+      clientId: "client-a",
+      clientLookup: { clientId: "client-a" },
+    },
+  }), env());
+  const body = await json(response);
+  const firestoreCalls = fake.requestCount - before;
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.activePackageCount, 1);
+  assert.ok(firestoreCalls <= 5, `expected <= 5 Firestore calls, got ${firestoreCalls}`);
+  assert.equal(fake.queryCollectionCounts.get("client_packages"), 1);
+  assert.equal(fake.queryCollectionCounts.get("client_package_transactions") || 0, 0);
+  assert.equal(fake.queryCollectionCounts.get("bookings") || 0, 0);
+  assert.equal(fake.queryCollectionCounts.get("invoices") || 0, 0);
+  assert.equal(fake.queryCollectionCounts.get("payments") || 0, 0);
+}));
+
+test("repeated client wallet calls use cache after canonical id is known", async () => withFakeFirestore(async (fake) => {
+  fake.seed("salons/main/client_packages/cache-wallet-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Cache Wallet Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const first = await worker.fetch(request("/api/packages/client-wallet", {
+    body: { salonId: "main", clientId: "client-a", clientLookup: { clientId: "client-a" } },
+  }), env());
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+  const afterFirst = fake.requestCount;
+  const packageQueriesAfterFirst = fake.queryCollectionCounts.get("client_packages") || 0;
+
+  const second = await worker.fetch(request("/api/packages/client-wallet", {
+    body: { salonId: "main", clientId: "client-a", clientLookup: { clientId: "client-a" } },
+  }), env());
+  assert.equal(second.status, 200, JSON.stringify(await json(second)));
+  const secondDelta = fake.requestCount - afterFirst;
+
+  assert.ok(secondDelta <= 1, `expected cached call to only resolve actor role, got ${secondDelta}`);
+  assert.equal(fake.queryCollectionCounts.get("client_packages") || 0, packageQueriesAfterFirst);
+}));
+
+test("concurrent client wallet calls are deduped for the same lookup", async () => withFakeFirestore(async (fake) => {
+  fake.delayRunQueryMs = 15;
+  fake.seed("salons/main/client_packages/dedupe-wallet-package", {
+    clientId: "client-a",
+    packageNameSnapshot: "Dedupe Wallet Package",
+    allowedServiceIdsSnapshot: ["svc-a"],
+    totalSessions: 2,
+    remainingSessions: 2,
+    reservedSessions: 0,
+    usedSessions: 0,
+    status: "active",
+    purchasedAt: "2027-01-01T00:00:00.000Z",
+    expiresAt: "2027-12-31T00:00:00.000Z",
+  });
+
+  const [first, second] = await Promise.all([
+    worker.fetch(request("/api/packages/client-wallet", {
+      body: { salonId: "main", clientId: "client-a", clientLookup: { clientId: "client-a" } },
+    }), env()),
+    worker.fetch(request("/api/packages/client-wallet", {
+      body: { salonId: "main", clientId: "client-a", clientLookup: { clientId: "client-a" } },
+    }), env()),
+  ]);
+
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+  assert.equal(second.status, 200, JSON.stringify(await json(second)));
+  assert.equal(fake.queryCollectionCounts.get("client_packages"), 1);
+}));
+
+test("firestore 429 retries twice then returns resource exhausted", async () => {
+  const fake = new FakeFirestoreRest();
+  fake.fail429Remaining = 3;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fake.fetch;
+  try {
+    const client = new FirestoreRestClient(env(), "waves-hotel-dashboard");
+    await assert.rejects(
+      () => client.getDoc("salons/main/users/owner1"),
+      (error) => {
+        assert.equal(error.status, 503);
+        assert.equal(error.code, "packages_firestore:resource_exhausted");
+        return true;
+      }
+    );
+    assert.equal(fake.requestCount, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("identity ranking handles three client documents and package linked to second candidate", async () => withFakeFirestore(async (fake) => {
   fake.seed("salons/main/clients/rank-doc-a", {
     clientId: "rank-canonical-a",
@@ -609,22 +753,19 @@ test("identity ranking handles three client documents and package linked to seco
     expiresAt: "2027-12-31T00:00:00.000Z",
   });
 
-  const response = await worker.fetch(request("/api/packages/client-wallet", {
-    body: {
-      salonId: "main",
-      clientId: "missing-ranked-client",
-      clientLookup: { phone: "0500000101" },
-    },
+  const response = await worker.fetch(request("/api/packages/admin/audit-client-identities?salonId=main", {
+    method: "GET",
   }), env());
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
-  assert.equal(body.data.canonicalClientId, "rank-canonical-b");
-  assert.equal(body.data.activePackageCount, 1);
-  assert.deepEqual(body.data.packages.map((p) => p.id), ["rank-package-b"]);
+  const group = body.data.identityGroups.find((entry) => entry.canonicalSuggested === "rank-canonical-b");
+  assert.ok(group, JSON.stringify(body.data.identityGroups));
+  assert.equal(group.candidateCount, 3);
   for (const alias of ["rank-doc-a", "rank-canonical-a", "rank-doc-b", "rank-canonical-b", "rank-customer-b", "rank-doc-c", "rank-canonical-c", "rank-auth-c"]) {
-    assert.equal(body.data.aliasClientIds.includes(alias), true, alias);
+    assert.equal(group.aliases.includes(alias), true, alias);
   }
-  assert.equal(new Set(body.data.aliasClientIds).size, body.data.aliasClientIds.length);
+  assert.equal(new Set(group.aliases).size, group.aliases.length);
+  assert.equal(group.scores[0].relations.activePackageCount, 1);
 }));
 
 test("identity ranking prefers UUID document over legacy phone document when otherwise equal", async () => withFakeFirestore(async (fake) => {
@@ -679,18 +820,15 @@ test("identity ranking resolves same uid in multiple records without duplicating
     expiresAt: "2027-12-31T00:00:00.000Z",
   });
 
-  const response = await worker.fetch(request("/api/packages/client-wallet", {
-    body: {
-      salonId: "main",
-      clientId: "shared-auth-uid",
-      clientLookup: { uid: "shared-auth-uid", authUid: "shared-auth-uid" },
-    },
+  const response = await worker.fetch(request("/api/packages/admin/audit-client-identities?salonId=main", {
+    method: "GET",
   }), env());
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
-  assert.equal(body.data.canonicalClientId, "same-uid-legacy");
-  assert.equal(body.data.activePackageCount, 1);
-  assert.equal(body.data.aliasClientIds.filter((alias) => alias === "shared-auth-uid").length, 1);
+  const group = body.data.identityGroups.find((entry) => entry.canonicalSuggested === "same-uid-legacy");
+  assert.ok(group, JSON.stringify(body.data.identityGroups));
+  assert.equal(group.scores[0].relations.activePackageCount, 1);
+  assert.equal(group.aliases.filter((alias) => alias === "shared-auth-uid").length, 1);
 }));
 
 test("identity ranking rejects same phone for different people with different roles", async () => withFakeFirestore(async (fake) => {
@@ -736,17 +874,14 @@ test("identity ranking chooses candidate linked to bookings when no packages exi
     status: "completed",
   });
 
-  const response = await worker.fetch(request("/api/packages/client-wallet", {
-    body: {
-      salonId: "main",
-      clientId: "missing-booking-rank",
-      clientLookup: { phone: "0500000105" },
-    },
+  const response = await worker.fetch(request("/api/packages/admin/audit-client-identities?salonId=main", {
+    method: "GET",
   }), env());
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
-  assert.equal(body.data.canonicalClientId, "booking-rank-b");
-  assert.equal(body.data.activePackageCount, 0);
+  const group = body.data.identityGroups.find((entry) => entry.canonicalSuggested === "booking-rank-b");
+  assert.ok(group, JSON.stringify(body.data.identityGroups));
+  assert.equal(group.scores[0].relations.bookingCount, 1);
 }));
 
 test("identity ranking returns ambiguous_identity when candidates tie without enough evidence", async () => withFakeFirestore(async (fake) => {

@@ -9,6 +9,7 @@ import {
 import {
   adjustClientPackage,
   auditClientIdentitiesAdmin,
+  clearWalletRuntimeCaches,
   clientWallet,
   cancelClientPackage,
   cancelRedemption,
@@ -94,5 +95,8 @@ export async function handleRequest(request, env) {
   const body = request.method === "GET" ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
   const ctx = await withActor(request, env, body);
   const data = await handler(ctx, body);
+  if (request.method === "POST" && url.pathname !== "/api/packages/client-wallet") {
+    clearWalletRuntimeCaches();
+  }
   return jsonResponse(request, env, 200, { ok: true, data });
 }
