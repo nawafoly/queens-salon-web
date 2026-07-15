@@ -190,6 +190,7 @@ function transform(input, salonId) {
     id: clean(row.id),
     salon_id: salonId,
     name: clean(row.name || row.title || "Service"),
+    section_id: clean(row.sectionId || row.section_id),
     category_id: clean(row.categoryId || row.category_id),
     description: clean(row.description),
     duration_minutes: number(row.durationMin ?? row.durationMinutes ?? row.duration_minutes, 30),
@@ -209,6 +210,15 @@ function transform(input, salonId) {
     phone_normalized: normalizePhone(row.phone || row.mobile),
     active: row.active === false || row.isActive === false ? 0 : 1,
     employment_status: clean(row.employmentStatus || "active"),
+    avatar_url: clean(row.avatarUrl || row.avatarURL || row.photoURL || row.imageUrl),
+    show_on_booking: row.showOnBooking === false ? 0 : 1,
+    specialties_json: JSON.stringify(
+      Array.isArray(row.specialties)
+        ? row.specialties
+        : Array.isArray(row.serviceIds)
+          ? row.serviceIds
+          : []
+    ),
     created_at: clean(row.createdAt || now),
     updated_at: now,
   })).filter((row) => row.id && row.name);
@@ -227,6 +237,7 @@ function transform(input, salonId) {
 
   const bookings = rows(input, "bookings").map((row) => ({
     id: clean(row.id),
+    public_id: clean(row.publicId || row.trackPublicId || row.mk || row.id),
     salon_id: salonId,
     client_id: clean(row.clientId || row.client_id),
     staff_id: clean(row.staffId || row.employeeId || row.staff_id),

@@ -150,8 +150,8 @@ class FakeD1 {
       return this.insert("clients", { id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at });
     }
     if (normalized.startsWith("INSERT INTO services")) {
-      const [id, salon_id, name, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at] = params;
-      return this.insert("services", { id, salon_id, name, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at });
+      const [id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at] = params;
+      return this.insert("services", { id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at });
     }
     if (normalized.startsWith("UPDATE clients SET")) return this.dynamicUpdate("clients", normalized, params);
     if (normalized.startsWith("UPDATE services SET")) return this.dynamicUpdate("services", normalized, params);
@@ -198,11 +198,11 @@ class FakeD1 {
       const sql = statement.sql.replace(/\s+/g, " ").trim();
       const params = statement.params || [];
       if (sql.startsWith("INSERT INTO bookings")) {
-        const [id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at] = params;
+        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at] = params;
         const conflict = this.rows("bookings").some((row) => row.salon_id === salon_id && row.staff_id === staff_id && row.booking_date === booking_date && row.start_time === start_time && row.status !== "cancelled");
         if (conflict) throw new Error("UNIQUE constraint failed: bookings slot");
         results.push(this.insert("bookings", {
-          id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
+          id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
           created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null,
         }));

@@ -130,6 +130,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // ✅ انتبه: لازم firebase.ts يصدّر storage
 import { db, storage } from "../services/firebase";
 import { PackageOperationsService } from "../services/PackageOperationsService";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
 
 // ✅ Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -146,17 +147,21 @@ import {
 } from "../services/firestoreOffers";
 
 // ✅ Staff Public (Firestore)
+import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
 import {
   listActiveStaffAll,
-  type StaffPublicWithId,
-} from "../services/firestoreStaffPublic";
+  listActiveSections,
+  listActiveCategoriesBySection,
+  listActiveServices,
+  createBooking,
+  createBookingGroup,
+} from "../services/bookingDataSourceCompat";
 
 // ✅ Catalog from Firestore (Sections/Categories/Services)
-import {
-  listActiveSections,
-  type SectionDoc,
-  type CategoryDoc,
-  type ServiceDoc,
+import type {
+  SectionDoc,
+  CategoryDoc,
+  ServiceDoc,
 } from "../services/firestoreCatalog";
 import {
   listActivePackages,
@@ -166,26 +171,13 @@ import {
 } from "../services/firestorePackages";
 import { pricingSections } from "./Pricing";
 
-// ✅ Create booking (Firestore)
-import { createBooking } from "../services/firestoreBookings";
-import * as firestoreBookings from "../services/firestoreBookings";
-
+// Booking writes are selected explicitly by the Phase 3 data-source flag.
 import { createOrLoadUserProfile } from "../services/userProfile";
 
 // ✅ Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
 import Modal from "../components/Modal";
 import type { BookingFormData, CartItem } from "../types/bookingShared";
-
-const createBookingGroup = (
-  firestoreBookings as {
-    createBookingGroup?: (data: any) => Promise<{
-      parentId: string;
-      parentPublicId: string;
-      itemIds: string[];
-    }>;
-  }
-).createBookingGroup;
 
 function isServicePackageAvailableForBooking(pkg: ServicePackageDoc | any) {
   if (!pkg || pkg.active === false) return false;
@@ -6568,7 +6560,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
 
     const sessionPackageItems = items.filter((item) => isSessionPackageCartItem(item));
-    if (sessionPackageItems.length) {
+    const dataSourceFlags = getDataSourceFlags();
+    const useDualD1PackageSaga =
+      dataSourceFlags.useCoreD1 && dataSourceFlags.usePackagesD1;
+    if (sessionPackageItems.length && !useDualD1PackageSaga) {
       if (!signedUid) {
         openModal({ title: "التحقق مطلوب", message: "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك.", variant: "danger", confirmText: "حسنًا" });
         return;

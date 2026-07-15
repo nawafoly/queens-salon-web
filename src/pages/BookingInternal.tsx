@@ -189,17 +189,25 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { pricingSections } from "./Pricing";
 
 // Staff
+import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
 import {
   listActiveStaffAll,
-  type StaffPublicWithId,
-} from "../services/firestoreStaffPublic";
+  listActiveSections,
+  listActiveCategoriesBySection,
+  listActiveServices,
+  createBooking,
+  createBookingGroup,
+  updateBookingStatus,
+  updateBookingDetails as updateBookingFields,
+} from "../services/bookingDataSourceCompat";
+import { resolveBookingDataSource } from "../services/bookingDataSource";
+import { getDataSourceFlags } from "../config/dataSourceFlags";
 
 // Catalog
-import {
-  listActiveSections,
-  type SectionDoc,
-  type CategoryDoc,
-  type ServiceDoc,
+import type {
+  SectionDoc,
+  CategoryDoc,
+  ServiceDoc,
 } from "../services/firestoreCatalog";
 import {
   listActivePackages,
@@ -215,14 +223,7 @@ import {
   type Offer,
 } from "../services/firestoreOffers";
 
-// Create booking
-import {
-  createBooking,
-  updateBookingStatus,
-  updateBookingDetails as updateBookingFields,
-} from "../services/firestoreBookings";
-import * as firestoreBookings from "../services/firestoreBookings";
-
+// Booking operations are selected explicitly by the Phase 3 data-source flag.
 // Profile loader (للعميلة لما تكون مسجلة دخول بالصفحات العامة)
 // ✅ ملاحظة: intentionally unused هنا (الاستقبال)
 // import { createOrLoadUserProfile } from "../services/userProfile";
@@ -230,16 +231,6 @@ import * as firestoreBookings from "../services/firestoreBookings";
 	// Modal
 	import ConfirmModal from "../components/ConfirmModal";
 	import type { BookingFormData, CartItem } from "../types/bookingShared";
-
-const createBookingGroup = (
-  firestoreBookings as {
-    createBookingGroup?: (data: any) => Promise<{
-      parentId: string;
-      parentPublicId: string;
-      itemIds: string[];
-    }>;
-  }
-).createBookingGroup;
 
 
 /* =========================
@@ -1075,6 +1066,10 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
   async function tryFindClientByPhoneOrName(raw: string) {
     const qRaw = String(raw || "").trim();
+
+    if (getDataSourceFlags().useCoreD1) {
+      return resolveBookingDataSource().searchClients(qRaw);
+    }
     const parsed = classifySearchKey(qRaw);
     const qDigits = parsed.kind === "phone" ? parsed.value : "";
     const qNameNeedle = normalizeSearchText(qRaw);
@@ -1407,6 +1402,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
     const q0 = normalizeSearchKey(raw);
     const q = classifySearchKey(q0);
     if (q.kind === "empty") return [];
+
+    if (getDataSourceFlags().useCoreD1) {
+      return resolveBookingDataSource().searchBookings({ search: q0 });
+    }
+
     const cacheKey = `${q.kind}:${q0}`;
     const cached = bookingSearchCacheRef.current[cacheKey];
     if (cached && Date.now() - Number(cached.ts || 0) <= BOOKING_SEARCH_CACHE_TTL_MS) {

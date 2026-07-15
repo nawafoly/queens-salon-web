@@ -46,17 +46,80 @@ async function assertNoStaffConflict(db, salonId, staffId, bookingDate, startTim
 
 export async function listBookings(db, salonId, query = {}) {
   const date = cleanText(query.date || query.bookingDate);
-  if (date) {
-    return dbAll(db, "SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ? ORDER BY start_time LIMIT 500", [salonId, date]);
-  }
-  return dbAll(db, "SELECT * FROM bookings WHERE salon_id = ? ORDER BY booking_date DESC, start_time DESC LIMIT 500", [salonId]);
+  const rows = date
+    ? await dbAll(
+        db,
+        "SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ? ORDER BY start_time LIMIT 500",
+        [salonId, date]
+      )
+    : await dbAll(
+        db,
+        "SELECT * FROM bookings WHERE salon_id = ? ORDER BY booking_date DESC, start_time DESC LIMIT 500",
+        [salonId]
+      );
+
+  const enriched = await Promise.all(
+    rows.map((row) => getBooking(db, salonId, row.id))
+  );
+  const search = cleanText(query.search || query.q).toLowerCase();
+  const clientId = cleanText(query.clientId || query.client_id);
+  const staffId = cleanText(query.staffId || query.staff_id);
+  const status = cleanText(query.status);
+
+  return enriched.filter((row) => {
+    if (clientId && cleanText(row.client_id) !== clientId) return false;
+    if (staffId && cleanText(row.staff_id) !== staffId) return false;
+    if (status && cleanText(row.status) !== status) return false;
+    if (!search) return true;
+    return [
+      row.id,
+      row.public_id,
+      row.client_id,
+      row.client_name,
+      row.client_phone,
+      row.staff_name,
+      ...(row.items || []).map((item) => item.service_name_snapshot),
+    ].some((value) =>
+      cleanText(value).toLowerCase().includes(search)
+    );
+  });
 }
 
 export async function getBooking(db, salonId, id) {
-  const booking = await dbFirst(db, "SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1", [salonId, requiredId(id)]);
+  const booking = await dbFirst(
+    db,
+    "SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1",
+    [salonId, requiredId(id)]
+  );
   if (!booking) rowNotFound("booking");
-  const items = await dbAll(db, "SELECT * FROM booking_items WHERE booking_id = ? ORDER BY created_at, id", [booking.id]);
-  return { ...booking, items };
+
+  const [items, client, staff] = await Promise.all([
+    dbAll(
+      db,
+      "SELECT * FROM booking_items WHERE booking_id = ? ORDER BY created_at, id",
+      [booking.id]
+    ),
+    dbFirst(
+      db,
+      "SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1",
+      [salonId, booking.client_id]
+    ),
+    booking.staff_id
+      ? dbFirst(
+          db,
+          "SELECT * FROM staff WHERE salon_id = ? AND id = ? LIMIT 1",
+          [salonId, booking.staff_id]
+        )
+      : null,
+  ]);
+
+  return {
+    ...booking,
+    client_name: client?.name || null,
+    client_phone: client?.phone_normalized || null,
+    staff_name: staff?.name || null,
+    items,
+  };
 }
 
 export async function createBooking(db, salonId, data, actorUid = "") {
@@ -108,18 +171,20 @@ export async function createBooking(db, salonId, data, actorUid = "") {
   const discount = integer(data.discountHalalas ?? data.discount_halalas, "discountHalalas", { min: 0, max: subtotal, fallback: 0 });
   const total = Math.max(0, subtotal - discount);
   const bookingId = requiredId(data.id || generatedId("booking"));
+  const publicId = optionalText(data.publicId || data.public_id) || bookingId;
   const invoiceId = data.createInvoice === false ? "" : requiredId(data.invoiceId || generatedId("invoice"));
   const invoiceNumber = optionalText(data.invoiceNumber || data.invoice_number) || invoiceId || null;
   const endTime = optionalText(data.endTime || data.end_time) || addMinutes(startTime, duration);
   const statements = [
     {
       sql: `INSERT INTO bookings
-        (id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
+        (id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
          subtotal_halalas, discount_halalas, total_halalas, payment_status, package_sessions_used,
          created_by_uid, created_at, updated_at, cancelled_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL)`,
       params: [
         bookingId,
+        publicId,
         salonId,
         clientId,
         staffId,

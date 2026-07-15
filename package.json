@@ -13,7 +13,7 @@
     "repair:client-identities": "node scripts/repair-client-identities.mjs",
     "check:packages:d1-only": "node scripts/check-packages-d1-only.mjs",
     "check:core:d1-only": "node scripts/check-core-d1-only.mjs",
-    "test:packages:worker": "node --test workers/packages-d1-worker.test.mjs workers/package-cart-eligibility.test.mjs",
+    "test:packages:worker": "node --experimental-strip-types --test workers/packages-d1-worker.test.mjs workers/package-cart-eligibility.test.mjs",
     "test:core:worker": "node --test workers/core-worker.test.mjs",
     "test:packages:worker:integration": "node scripts/verify-packages-worker-integration.mjs",
     "build": "tsc -b && vite build --mode web",
@@ -29,7 +29,11 @@
     "cap:sync:customer": "npm run build:customer && cross-env CAP_APP_VARIANT=customer cap sync android",
     "cap:open:customer": "cross-env CAP_APP_VARIANT=customer cap open android",
     "cap:sync:staff": "npm run build:staff && cross-env CAP_APP_VARIANT=staff cap sync android",
-    "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android"
+    "cap:open:staff": "cross-env CAP_APP_VARIANT=staff cap open android",
+    "dev:core": "wrangler dev --config wrangler.core.jsonc --local --port 8807 --show-interactive-dev-session=false",
+    "dev:all": "node scripts/dev-all.mjs",
+    "check:frontend-core-migration": "node scripts/check-frontend-core-migration.mjs",
+    "test:frontend:core": "node --test workers/frontend-core-migration.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

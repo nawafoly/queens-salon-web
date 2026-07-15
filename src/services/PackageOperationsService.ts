@@ -6,6 +6,7 @@
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { auth } from "./firebase";
+import { getDataSourceFlags, requirePackagesWorkerUrl } from "../config/dataSourceFlags";
 
 export type PackagePurchaseResult = {
   ok: boolean;
@@ -73,8 +74,11 @@ function operationId(prefix: string) {
 const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-packages-api.maedin.workers.dev";
 
 function packageWorkerBaseUrl() {
-  const env = (import.meta as any).env || {};
-  return String(env.VITE_PACKAGES_WORKER_URL || DEFAULT_PACKAGES_WORKER_URL).replace(/\/+$/, "");
+  const flags = getDataSourceFlags();
+  if (flags.usePackagesD1) return requirePackagesWorkerUrl();
+  // Explicit transition mode: keep the currently deployed package Worker.
+  // Never silently fall back after a D1 request failure.
+  return String(flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL).replace(/\/+$/, "");
 }
 
 function isDevRuntime() {
@@ -189,6 +193,41 @@ export const PackageOperationsService = {
       salonId: "main",
       ...args,
       invoiceId: args.invoiceId || operationId("package_sale"),
+    });
+  },
+  reserve(args: {
+    clientId: string;
+    clientLookup?: PackageClientLookup;
+    clientPackageId?: string;
+    serviceId: string;
+    employeeId: string;
+    date: string;
+    time: string;
+    bookingId: string;
+    cartItemId: string;
+    operationId?: string;
+  }) {
+    return invoke<PackageRedemptionResult>("/api/packages/reserve", {
+      salonId: "main",
+      ...args,
+      operationId:
+        args.operationId ||
+        `reserve_${args.bookingId}_${args.cartItemId}`,
+    });
+  },
+  release(args: {
+    bookingId: string;
+    clientPackageId?: string;
+    cartItemId?: string;
+    reason?: string;
+    operationId?: string;
+  }) {
+    return invoke("/api/packages/release", {
+      salonId: "main",
+      ...args,
+      operationId:
+        args.operationId ||
+        `release_${args.bookingId}_${args.cartItemId || "item"}`,
     });
   },
   redeem(args: {
