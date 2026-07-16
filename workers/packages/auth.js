@@ -8,6 +8,7 @@ const FIREBASE_CERTS_URL =
 const VALID_ROLES = new Set(["owner", "admin", "hr", "reception", "staff", "client"]);
 const DEFAULT_BOOTSTRAP_OWNER_EMAILS = new Set([
   "nawafaaa0@gmail.com",
+  "nawafaaa6@gmail.com",
   "alolayan3@gmail.com",
 ]);
 const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -109,10 +110,15 @@ export async function resolveActorRole(env, salonId, identity) {
   const cached = actorRoleCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.role;
 
+  // Match the project's Firestore security model: the signed-in user may read
+  // their root users/{uid} document and their root admin_users/{email} document.
+  // Salon-scoped paths remain compatibility fallbacks for older data.
   const paths = [
+    `users/${uid}`,
+    ...(email ? [`admin_users/${email}`] : []),
     salonPath(salonId, "users", uid),
     salonPath(salonId, "admin_users", uid),
-    `users/${uid}`,
+    ...(email ? [salonPath(salonId, "admin_users", email)] : []),
   ];
 
   for (const path of paths) {
@@ -122,7 +128,7 @@ export async function resolveActorRole(env, salonId, identity) {
       actorRoleCache.set(cacheKey, { role: "guest", expiresAt: Date.now() + ROLE_CACHE_GUEST_TTL_MS });
       return "guest";
     }
-    const role = normalizeRole(data.role || data.userRole || data.accountRole || data.type);
+    const role = normalizeRole(data.role || data.roleKey || data.userRole || data.accountRole || data.type);
     if (role) {
       actorRoleCache.set(cacheKey, { role, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
       return role;

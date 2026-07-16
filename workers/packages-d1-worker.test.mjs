@@ -320,7 +320,7 @@ test("actor role falls back to the signed-in user's own profile when token has n
     );
     assert.equal(role, "owner");
     assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /salons%2F|salons\/main\/users\/owner-no-claim/);
+    assert.match(calls[0].url, /documents\/users\/owner-no-claim/);
     assert.equal(calls[0].authorization, "Bearer verified-id-token");
   } finally {
     globalThis.fetch = originalFetch;
@@ -344,6 +344,76 @@ test("verified bootstrap owner email is authorized without a custom role claim",
     );
     assert.equal(role, "owner");
     assert.equal(called, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __test.clearActorRoleCache();
+  }
+});
+
+
+
+
+
+test("all Queens bootstrap owner emails bypass Firestore role lookup", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    throw new Error("profile lookup should not run for a Queens bootstrap owner");
+  };
+  try {
+    for (const email of ["nawafaaa0@gmail.com", "nawafaaa6@gmail.com", "alolayan3@gmail.com"]) {
+      const role = await __test.resolveActorRole(
+        { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
+        "main",
+        { uid: `bootstrap-${email}`, email, claims: { role: "client" }, idToken: "verified-id-token" }
+      );
+      assert.equal(role, "owner");
+    }
+    assert.equal(called, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __test.clearActorRoleCache();
+  }
+});
+
+test("actor role reads root admin_users email document and roleKey", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    calls.push({ url: href, authorization: init?.headers?.Authorization || "" });
+    if (href.includes("/documents/users/owner-from-admin-doc")) {
+      return new Response(JSON.stringify({ error: { message: "not found" } }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (href.includes("/documents/admin_users/owner%40example.com")) {
+      return new Response(JSON.stringify({
+        fields: {
+          roleKey: { stringValue: "owner" },
+          active: { booleanValue: true },
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ error: { message: "forbidden" } }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const role = await __test.resolveActorRole(
+      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
+      "main",
+      { uid: "owner-from-admin-doc", email: "owner@example.com", claims: { role: "client" }, idToken: "verified-id-token" }
+    );
+    assert.equal(role, "owner");
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].url, /documents\/admin_users\/owner%40example.com/);
+    assert.equal(calls[1].authorization, "Bearer verified-id-token");
   } finally {
     globalThis.fetch = originalFetch;
     __test.clearActorRoleCache();
