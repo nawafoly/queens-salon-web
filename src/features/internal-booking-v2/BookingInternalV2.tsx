@@ -16,7 +16,16 @@ import { formatTime12 } from "../../helpers/timeDisplay";
 import { filterStaffForResolverTarget, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
 import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isStaffAvailableForDate } from "../../helpers/staffAvailability";
 import { AppSettingsService } from "../../services/AppSettingsService";
+import { findActiveOfferByCode, isOfferActiveNow, listOffers, type Offer } from "../../services/firestoreOffers";
 import { todayISO } from "../../helpers/bookingDateUtils";
+import {
+  buildDiscountSnapshot,
+  halalasToSar,
+  normalizeDiscountCode,
+  toHalalas,
+  type DiscountSnapshot,
+  type DiscountSnapshotSource,
+} from "../../helpers/bookingDiscountSnapshot";
 import { getAuth } from "firebase/auth";
 
 type Step = 1 | 2 | 3 | 4;
@@ -38,6 +47,7 @@ type StaffRow = Record<string, any> & { id: string };
 type ScheduleSelection = { staffId: string; staffName: string; time: string };
 type PaymentMethod = "cash" | "card" | "transfer" | "mixed";
 type PaymentType = "full" | "partial" | "none";
+type DiscountMode = "none" | "fixed" | "percent" | "offer" | "coupon";
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
@@ -169,14 +179,23 @@ function buildInternalV2InvoiceRows(args: {
   cardAmount: string;
   transferAmount: string;
   selectedSectionId: string;
+  discountSnapshot?: DiscountSnapshot | null;
 }) {
   const bookingIds = Array.isArray(args.createdBookingIds) ? args.createdBookingIds : [];
   const parentId = String(bookingIds[0] || "").trim();
   if (!parentId || !args.selectedClient || !args.cart.length) return [];
 
-  const rowPrices = args.cart.map((service) => Math.max(0, servicePrice(service)));
-  const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowPrices);
-  const remainingParts = splitAmountByWeights(args.remainingAmount, rowPrices);
+  const rowOriginalPrices = args.cart.map((service) => Math.max(0, servicePrice(service)));
+  const allocationByItem = new Map(
+    (args.discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
+  );
+  const rowFinalPrices = args.cart.map((service, index) => {
+    const key = `item_${index}`;
+    const allocation = allocationByItem.get(key) || allocationByItem.get(String(service.id || "").trim());
+    return allocation ? halalasToSar(allocation.finalAmountHalalas) : rowOriginalPrices[index] || 0;
+  });
+  const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowFinalPrices);
+  const remainingParts = splitAmountByWeights(args.remainingAmount, rowFinalPrices);
   const paymentBreakdown =
     args.paymentType === "none"
       ? { cash: 0, card: 0, transfer: 0 }
@@ -191,16 +210,19 @@ function buildInternalV2InvoiceRows(args: {
             card: args.paymentMethod === "card" ? args.effectivePaidAmount : 0,
             transfer: args.paymentMethod === "transfer" ? args.effectivePaidAmount : 0,
           };
-  const cashParts = splitAmountByWeights(paymentBreakdown.cash, rowPrices);
-  const cardParts = splitAmountByWeights(paymentBreakdown.card, rowPrices);
-  const transferParts = splitAmountByWeights(paymentBreakdown.transfer, rowPrices);
+  const cashParts = splitAmountByWeights(paymentBreakdown.cash, rowFinalPrices);
+  const cardParts = splitAmountByWeights(paymentBreakdown.card, rowFinalPrices);
+  const transferParts = splitAmountByWeights(paymentBreakdown.transfer, rowFinalPrices);
   const createdAt = Date.now();
 
   return args.cart.map((service, index) => {
     const serviceKey = String(service.id || "");
     const schedule = (args.scheduleByService[serviceKey] || {}) as Partial<ScheduleSelection>;
     const rowId = String(bookingIds[index + 1] || parentId || `${serviceKey}_${index}`).trim();
-    const total = rowPrices[index] || 0;
+    const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(serviceKey);
+    const originalTotal = rowOriginalPrices[index] || 0;
+    const discountAmount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
+    const total = rowFinalPrices[index] || 0;
     const serviceName = serviceTitle(service);
     const sectionTitle = String(service?.sectionTitle || service?.sectionName || service?.sectionLabel || args.selectedSectionId || "").trim();
     const categoryTitle = String(service?.categoryTitle || service?.categoryName || service?.categoryLabel || service?.categoryId || "").trim();
@@ -226,6 +248,9 @@ function buildInternalV2InvoiceRows(args: {
       date: args.bookingDate,
       time: String(schedule.time || "").trim(),
       durationMin: serviceDuration(service) || 30,
+      originalAmount: originalTotal,
+      discountAmount,
+      discountSnapshot: args.discountSnapshot || undefined,
       total,
       finalPrice: total,
       paymentMethod: args.paymentType === "none" ? undefined : args.paymentMethod,
@@ -260,6 +285,28 @@ function staffName(staff: any) {
 
 function staffId(staff: any) {
   return String(staff?.id || staff?.employeeId || staff?.uid || "").trim();
+}
+
+function offerValueLabel(offer: Offer) {
+  const type = String((offer as any)?.discountType || (offer as any)?.type || "").trim();
+  const value = Number((offer as any)?.value || 0);
+  if (type === "percent") return `${value}%`;
+  return `${value.toLocaleString("ar-SA")} ر.س`;
+}
+
+function discountReasonText(reason: string) {
+  const map: Record<string, string> = {
+    discount_inactive: "الخصم غير نشط.",
+    discount_expired_or_not_started: "الخصم خارج فترة الصلاحية.",
+    discount_usage_limit_reached: "تم تجاوز حد استخدام الخصم.",
+    discount_no_eligible_services: "لا توجد خدمات مؤهلة لهذا الخصم.",
+    discount_minimum_not_met: "لم يتحقق الحد الأدنى للخصم.",
+    discount_invalid_type: "نوع الخصم غير صحيح.",
+    discount_invalid_value: "قيمة الخصم غير صحيحة.",
+    discount_percent_over_100: "النسبة لا يمكن أن تتجاوز 100%.",
+    discount_zero: "الخصم الناتج يساوي صفر.",
+  };
+  return map[reason] || reason || "";
 }
 
 const steps = [
@@ -312,6 +359,19 @@ export default function BookingInternalV2() {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountMode, setDiscountMode] = useState<DiscountMode>("none");
+  const [manualFixedDiscount, setManualFixedDiscount] = useState("");
+  const [manualPercentDiscount, setManualPercentDiscount] = useState("");
+  const [manualMaxDiscount, setManualMaxDiscount] = useState("");
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [offersMessage, setOffersMessage] = useState("");
+  const [selectedOfferId, setSelectedOfferId] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [couponOffer, setCouponOffer] = useState<Offer | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponMessage, setCouponMessage] = useState("");
 
 
   const createNewClient = useCallback(async () => {
@@ -460,6 +520,34 @@ export default function BookingInternalV2() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadDiscountOffers() {
+      setOffersLoading(true);
+      setOffersMessage("");
+      try {
+        const rows = await listOffers(SALON_ID);
+        if (cancelled) return;
+        const activeRows = (Array.isArray(rows) ? rows : [])
+          .filter((offer: any) => !offer?.deletedAt)
+          .filter((offer) => isOfferActiveNow(offer))
+          .sort((a: any, b: any) => String(a.title || "").localeCompare(String(b.title || ""), "ar"));
+        setOffers(activeRows);
+        if (!activeRows.length) setOffersMessage("لا توجد عروض نشطة حالياً.");
+      } catch (error) {
+        console.error("[BookingInternalV2] offers load failed", error);
+        if (!cancelled) {
+          setOffers([]);
+          setOffersMessage("تعذر جلب العروض النشطة.");
+        }
+      } finally {
+        if (!cancelled) setOffersLoading(false);
+      }
+    }
+    void loadDiscountOffers();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadSections() {
       setCatalogLoading(true);
       setCatalogMessage("");
@@ -526,6 +614,60 @@ export default function BookingInternalV2() {
   }, [services, selectedCategoryId, serviceQuery]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, service) => sum + servicePrice(service), 0), [cart]);
+  const selectedOffer = useMemo(() => {
+    const id = String(selectedOfferId || "").trim();
+    if (!id) return null;
+    return offers.find((offer) => String((offer as any)?.id || "").trim() === id) || null;
+  }, [offers, selectedOfferId]);
+  const discountItems = useMemo(() => cart.map((service, index) => ({
+    bookingItemId: `item_${index}`,
+    serviceId: String(service.id || "").trim(),
+    categoryId: String(service?.categoryId || service?.category || "").trim() || undefined,
+    originalAmountHalalas: toHalalas(servicePrice(service)),
+  })), [cart]);
+  const discountRequest = useMemo(() => {
+    if (discountMode === "fixed") {
+      return {
+        source: "manual" as DiscountSnapshotSource,
+        type: "fixed" as const,
+        title: "خصم مبلغ ثابت",
+        value: Math.max(0, Number(manualFixedDiscount || 0)),
+        maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
+      };
+    }
+    if (discountMode === "percent") {
+      return {
+        source: "manual" as DiscountSnapshotSource,
+        type: "percent" as const,
+        title: "خصم نسبة",
+        percentage: Math.max(0, Number(manualPercentDiscount || 0)),
+        maxDiscountHalalas: manualMaxDiscount ? toHalalas(manualMaxDiscount) : null,
+      };
+    }
+    if (discountMode === "offer" && selectedOffer) {
+      return {
+        source: "offer" as DiscountSnapshotSource,
+        sourceId: String((selectedOffer as any)?.id || ""),
+        code: String((selectedOffer as any)?.code || ""),
+        title: String((selectedOffer as any)?.title || ""),
+        offer: selectedOffer,
+      };
+    }
+    if (discountMode === "coupon" && couponOffer) {
+      return {
+        source: "coupon" as DiscountSnapshotSource,
+        sourceId: String((couponOffer as any)?.id || ""),
+        code: normalizeDiscountCode(couponInput || (couponOffer as any)?.code),
+        title: String((couponOffer as any)?.title || ""),
+        offer: couponOffer,
+      };
+    }
+    return { source: "none" as DiscountSnapshotSource };
+  }, [discountMode, manualFixedDiscount, manualMaxDiscount, manualPercentDiscount, selectedOffer, couponOffer, couponInput]);
+  const discountResult = useMemo(() => buildDiscountSnapshot(discountItems, discountRequest), [discountItems, discountRequest]);
+  const discountSnapshot = discountResult.snapshot;
+  const discountAmount = halalasToSar(discountResult.discountHalalas);
+  const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
   const canContinue = Boolean(selectedClient);
   const bookingConfig = appSettings?.booking || AppSettingsService.getDefaults().booking!;
   const dayHours = bookingConfig.businessHours?.[weekdayKey(bookingDate)] || { enabled: true, start: "12:00", end: "22:00" };
@@ -662,7 +804,7 @@ export default function BookingInternalV2() {
     return Boolean(row?.staffId && row?.time && !conflictKeys.has(key));
   });
 
-  const finalTotal = cartTotal;
+  const finalTotal = halalasToSar(discountResult.totalHalalas);
   const effectivePaidAmount = paymentType === "none"
     ? 0
     : paymentType === "full"
@@ -671,12 +813,57 @@ export default function BookingInternalV2() {
   const remainingAmount = Math.max(0, finalTotal - effectivePaidAmount);
   const mixedTotal = Math.max(0, Number(cashAmount || 0)) + Math.max(0, Number(cardAmount || 0)) + Math.max(0, Number(transferAmount || 0));
 
+  const verifyCoupon = useCallback(async () => {
+    const code = normalizeDiscountCode(couponInput);
+    setCouponMessage("");
+    setCouponOffer(null);
+    if (!code) {
+      setCouponMessage("أدخلي كود الكوبون أولاً.");
+      return;
+    }
+    setCouponChecking(true);
+    try {
+      const offer = await findActiveOfferByCode(SALON_ID, code);
+      if (!offer) {
+        setCouponMessage("الكوبون غير صحيح أو منتهي أو غير نشط.");
+        return;
+      }
+      const preview = buildDiscountSnapshot(discountItems, {
+        source: "coupon",
+        sourceId: String((offer as any)?.id || ""),
+        code,
+        title: String((offer as any)?.title || ""),
+        offer,
+      });
+      if (!preview.ok || !preview.snapshot) {
+        setCouponMessage(discountReasonText(preview.reason) || "الكوبون لا ينطبق على الخدمات المختارة.");
+        return;
+      }
+      setCouponOffer(offer);
+      setDiscountMode("coupon");
+      setCouponMessage(`تم التحقق من الكوبون. الخصم المتوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA")} ر.س.`);
+    } catch (error) {
+      console.error("[BookingInternalV2] coupon verify failed", error);
+      setCouponMessage("تعذر التحقق من الكوبون الآن.");
+    } finally {
+      setCouponChecking(false);
+    }
+  }, [couponInput, discountItems]);
+
   const submitBooking = useCallback(async () => {
     setSubmitError("");
     setCreatedBookingIds([]);
     if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
     if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
     if (!allScheduled) { setSubmitError("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."); setStep(3); return; }
+    if (discountMode !== "none" && !discountResult.ok) {
+      setSubmitError(discountMessage || "الخصم المحدد غير صالح.");
+      return;
+    }
+    if (discountMode === "coupon" && !couponOffer) {
+      setSubmitError("تحققي من الكوبون قبل حفظ الحجز.");
+      return;
+    }
     if (paymentType === "partial" && (effectivePaidAmount <= 0 || effectivePaidAmount >= finalTotal)) {
       setSubmitError("قيمة العربون يجب أن تكون أكبر من صفر وأقل من إجمالي الحجز."); return;
     }
@@ -690,11 +877,20 @@ export default function BookingInternalV2() {
       const userId = String(authUser?.uid || "internal_staff");
       const status = paymentType === "none" ? "pending" : "confirmed";
       const total = Math.max(0, finalTotal);
+      const allocationByItem = new Map(
+        (discountSnapshot?.allocations || []).map((row) => [String(row.bookingItemId || row.serviceId || "").trim(), row])
+      );
+      const finalDiscountSnapshot = discountSnapshot
+        ? { ...discountSnapshot, appliedBy: userId, appliedAt: new Date().toISOString() }
+        : null;
 
       const itemRows = cart.map((service, index) => {
         const key = String(service.id);
         const schedule = scheduleByService[key];
-        const itemTotal = Math.max(0, servicePrice(service));
+        const itemOriginal = Math.max(0, servicePrice(service));
+        const allocation = allocationByItem.get(`item_${index}`) || allocationByItem.get(key);
+        const itemDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
+        const itemTotal = allocation ? halalasToSar(allocation.finalAmountHalalas) : itemOriginal;
         const proportionalPaid = total > 0
           ? Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100
           : 0;
@@ -710,6 +906,7 @@ export default function BookingInternalV2() {
           serviceSnapshot: {
             serviceNameAtBooking: serviceTitle(service),
             priceAtBooking: itemTotal,
+            priceBeforeDiscountAtBooking: itemOriginal,
             durationAtBooking: serviceDuration(service) || 30,
             sectionIdAtBooking: String(service?.sectionId || selectedSectionId || "") || undefined,
             categoryIdAtBooking: String(service?.categoryId || service?.category || "") || undefined,
@@ -719,6 +916,9 @@ export default function BookingInternalV2() {
           employeeName: schedule.staffName,
           date: bookingDate,
           time: schedule.time,
+          originalAmount: itemOriginal,
+          discountAmount: itemDiscount,
+          discountSnapshot: finalDiscountSnapshot || undefined,
           total: itemTotal,
           finalPrice: itemTotal,
           status,
@@ -743,6 +943,9 @@ export default function BookingInternalV2() {
         employeeId: undefined,
         employeeUid: null,
         employeeName: "عدة موظفات",
+        originalAmount: cartTotal,
+        discountAmount,
+        discountSnapshot: finalDiscountSnapshot || undefined,
         total,
         finalPrice: total,
         paymentMethod: paymentType === "none" ? undefined : paymentMethod,
@@ -803,7 +1006,7 @@ export default function BookingInternalV2() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedClient, cart, allScheduled, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
+  }, [selectedClient, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({
@@ -820,6 +1023,7 @@ export default function BookingInternalV2() {
       cardAmount,
       transferAmount,
       selectedSectionId,
+      discountSnapshot,
     });
     if (!rows.length) {
       setSubmitError("لا توجد بيانات فاتورة جاهزة للطباعة.");
@@ -854,6 +1058,7 @@ export default function BookingInternalV2() {
     cardAmount,
     transferAmount,
     selectedSectionId,
+    discountSnapshot,
   ]);
 
   const resetCompletedBooking = useCallback(() => {
@@ -861,6 +1066,8 @@ export default function BookingInternalV2() {
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
     setCreatedBookingIds([]); setSubmitError("");
+    setDiscountOpen(false); setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
+    setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
 
   return (
@@ -1133,8 +1340,115 @@ export default function BookingInternalV2() {
                       <div className="bk2-review-list">
                         {cart.map((service, index) => {
                           const schedule = scheduleByService[String(service.id)];
-                          return <article key={service.id}><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small></div><b>{servicePrice(service).toLocaleString("ar-SA")} ر.س</b></article>;
+                          const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id));
+                          const originalAmount = servicePrice(service);
+                          const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
+                          const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount;
+                          return (
+                            <article key={service.id}>
+                              <span>{index + 1}</span>
+                              <div>
+                                <strong>{serviceTitle(service)}</strong>
+                                <small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>
+                                {rowDiscount > 0 ? <small>خصم هذه الخدمة: {rowDiscount.toLocaleString("ar-SA")} ر.س</small> : null}
+                              </div>
+                              <b>
+                                {rowDiscount > 0 ? <small className="bk2-price-before">{originalAmount.toLocaleString("ar-SA")} ر.س</small> : null}
+                                {rowFinal.toLocaleString("ar-SA")} ر.س
+                              </b>
+                            </article>
+                          );
                         })}
+                      </div>
+
+                      <div className="bk2-payment-block bk2-discount-block">
+                        <h3>إضافة خصم أو كوبون</h3>
+                        <button type="button" className="bk2-discount-toggle" onClick={() => setDiscountOpen((open) => !open)}>
+                          {discountOpen ? "إخفاء خيارات الخصم" : "+ إضافة خصم أو كوبون"}
+                        </button>
+                        {discountOpen || discountMode !== "none" ? (
+                          <>
+                            <div className="bk2-choice-grid five">
+                              <button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>بدون خصم</button>
+                              <button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>مبلغ ثابت</button>
+                              <button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>نسبة</button>
+                              <button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>عرض محفوظ</button>
+                              <button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>كوبون</button>
+                            </div>
+
+                            {discountMode === "fixed" ? (
+                              <label className="bk2-payment-input">
+                                <span>قيمة الخصم</span>
+                                <input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" />
+                                <em>ر.س</em>
+                              </label>
+                            ) : null}
+
+                            {discountMode === "percent" ? (
+                              <div className="bk2-discount-grid">
+                                <label>
+                                  <span>النسبة</span>
+                                  <input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" />
+                                </label>
+                                <label>
+                                  <span>حد أقصى اختياري</span>
+                                  <input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="بدون حد" />
+                                </label>
+                              </div>
+                            ) : null}
+
+                            {discountMode === "offer" ? (
+                              <div className="bk2-offers-list">
+                                {offersLoading ? <p>جاري تحميل العروض...</p> : null}
+                                {!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}
+                                {!offersLoading && offers.map((offer) => {
+                                  const preview = buildDiscountSnapshot(discountItems, {
+                                    source: "offer",
+                                    sourceId: String((offer as any)?.id || ""),
+                                    code: String((offer as any)?.code || ""),
+                                    title: String((offer as any)?.title || ""),
+                                    offer,
+                                  });
+                                  const selected = selectedOfferId === String((offer as any)?.id || "");
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={offer.id}
+                                      className={selected ? "is-active" : ""}
+                                      onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}
+                                    >
+                                      <strong>{offer.title}</strong>
+                                      <span>{offerValueLabel(offer)} · {preview.ok ? `خصم متوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA")} ر.س` : discountReasonText(preview.reason)}</span>
+                                      {Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>خدمات محددة: {offer.serviceIds.length}</small> : null}
+                                      {Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>تصنيفات محددة: {(offer as any).categoryIds.length}</small> : null}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+
+                            {discountMode === "coupon" ? (
+                              <div className="bk2-coupon-row">
+                                <label>
+                                  <span>كود الكوبون</span>
+                                  <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" />
+                                </label>
+                                <button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>
+                                  {couponChecking ? "جاري التحقق..." : "تحقق"}
+                                </button>
+                              </div>
+                            ) : null}
+
+                            {couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}
+                            {discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}
+                            {discountSnapshot ? (
+                              <div className="bk2-discount-preview">
+                                <span>الإجمالي المؤهل: {halalasToSar(discountSnapshot.eligibleSubtotalHalalas).toLocaleString("ar-SA")} ر.س</span>
+                                <strong>الخصم: {discountAmount.toLocaleString("ar-SA")} ر.س</strong>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
                       </div>
 
                       <div className="bk2-payment-block">
@@ -1164,7 +1478,13 @@ export default function BookingInternalV2() {
                       </div> : null}
 
                       <label className="bk2-note-field"><span>ملاحظة الحجز (اختياري)</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder="أي تفاصيل مهمة للموظفة أو الاستقبال..." /></label>
-                      <div className="bk2-payment-summary"><div><span>الإجمالي</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div><div><span>المدفوع الآن</span><strong>{effectivePaidAmount.toLocaleString("ar-SA")} ر.س</strong></div><div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA")} ر.س</strong></div></div>
+                      <div className="bk2-payment-summary">
+                        <div><span>الإجمالي قبل الخصم</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div>
+                        <div><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div>
+                        <div><span>الإجمالي بعد الخصم</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div>
+                        <div><span>المدفوع الآن</span><strong>{effectivePaidAmount.toLocaleString("ar-SA")} ر.س</strong></div>
+                        <div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA")} ر.س</strong></div>
+                      </div>
                       {submitError ? <p className="bk2-inline-warning">{submitError}</p> : null}
                       <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>العودة للموعد</button><button type="button" className="is-primary" onClick={() => void submitBooking()} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س` : `حفظ الحجز وتحصيل ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س`}</button></div>
                     </>
@@ -1206,8 +1526,8 @@ export default function BookingInternalV2() {
 
               <div className="bk2-totals">
                 <div><span>الإجمالي الفرعي</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div>
-                <div className="is-discount"><span>الخصم</span><strong>0 ر.س</strong></div>
-                <div className="is-total"><span>الإجمالي</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div>
+                <div className="is-discount"><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div>
+                <div className="is-total"><span>الإجمالي</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div>
               </div>
 
               <button

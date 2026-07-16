@@ -107,6 +107,17 @@ class FakeD1 {
       const [salonId, date] = params;
       return this.rows("bookings").filter((row) => row.salon_id === salonId && row.booking_date === date);
     }
+    if (normalized.startsWith("SELECT COUNT(*) AS count FROM bookings WHERE salon_id = ? AND client_id = ?")) {
+      const [salonId, clientId, needle] = params;
+      const normalizedNeedle = String(needle || "").replace(/^%|%$/g, "");
+      return [{
+        count: this.rows("bookings").filter((row) =>
+          row.salon_id === salonId &&
+          row.client_id === clientId &&
+          String(row.discount_snapshot_json || "").includes(normalizedNeedle)
+        ).length,
+      }];
+    }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("bookings").filter((row) => row.salon_id === salonId);
@@ -345,15 +356,15 @@ class FakeD1 {
         throw new Error("simulated fake D1 batch failure");
       }
       if (sql.startsWith("INSERT INTO bookings")) {
-        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at, slot_step_min, buffer_min] = params;
+        const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at, slot_step_min, buffer_min, discount_snapshot_json] = params;
         results.push(this.insert("bookings", {
           id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
           subtotal_halalas, discount_halalas, total_halalas, payment_status: "unpaid", package_sessions_used,
-          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min,
+          created_by_uid, created_at, updated_at, cancelled_at: null, completed_at: null, slot_step_min, buffer_min, discount_snapshot_json,
         }));
       } else if (sql.startsWith("INSERT INTO booking_items")) {
-        const [id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id] = params;
-        results.push(this.insert("booking_items", { id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id }));
+        const [id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas = 0, final_total_halalas = total_halalas] = params;
+        results.push(this.insert("booking_items", { id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity, unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at, booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas, final_total_halalas }));
       } else if (sql.startsWith("INSERT INTO booking_slot_locks")) {
         const [salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at] = params;
         const key = `${salon_id}\u0000${staff_id}\u0000${booking_date}\u0000${slot_time}`;
@@ -406,6 +417,8 @@ class FakeD1 {
       } else if (sql.startsWith("INSERT INTO income_entries")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO audit_logs")) {
+        results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE refunds SET amount_halalas")) {
         const [amountHalalas, method, reason, refundedAt, salonId, id] = params;
@@ -559,6 +572,38 @@ function seedCore(fake) {
   fake.seed("staff", { id: "staff-a", salon_id: "main", firebase_uid: "staff1", name: "Staff A", phone_normalized: null, active: 1, employment_status: "active", created_at: now, updated_at: now });
 }
 
+function seedDiscount(fake, overrides = {}) {
+  const now = "2027-01-01T00:00:00.000Z";
+  const code = String(overrides.code || overrides.code_key || "SAVE10").toUpperCase();
+  const row = {
+    id: overrides.id || "discount-a",
+    salon_id: "main",
+    code,
+    code_key: code,
+    name: overrides.name || "Discount A",
+    type: overrides.type || "fixed",
+    value: overrides.value ?? 10,
+    active: overrides.active ?? 1,
+    starts_at: overrides.starts_at ?? null,
+    ends_at: overrides.ends_at ?? null,
+    usage_limit: overrides.usage_limit ?? null,
+    used_count: overrides.used_count ?? 0,
+    min_order_halalas: overrides.min_order_halalas ?? null,
+    max_discount_halalas: overrides.max_discount_halalas ?? null,
+    per_client_limit: overrides.per_client_limit ?? null,
+    applies_to: overrides.applies_to || "all",
+    service_ids_json: overrides.service_ids_json || "[]",
+    category_ids_json: overrides.category_ids_json || "[]",
+    sequence_steps_json: overrides.sequence_steps_json || "[]",
+    image_url: overrides.image_url || null,
+    deleted_at: overrides.deleted_at || null,
+    created_at: overrides.created_at || now,
+    updated_at: overrides.updated_at || now,
+  };
+  fake.seed("discounts", row);
+  return row;
+}
+
 async function createCoreBooking(fake, overrides = {}) {
   const id = overrides.id || "booking-a";
   const response = await worker.fetch(request("/api/core/bookings", {
@@ -664,6 +709,254 @@ test("booking creation creates booking items and invoice", async () => {
   assert.equal(fake.rows("payments").length, 0);
   assert.equal(fake.rows("income_entries").length, 0);
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_created" && row.entity_id === "booking-a"));
+});
+
+test("booking manual fixed discount is verified, capped and snapshotted by Core", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-fixed-discount",
+      invoiceId: "invoice-fixed-discount",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      discountSnapshot: { source: "manual", type: "fixed", value: 10, title: "Manual 10" },
+      items: [{ id: "item-fixed-discount", cartItemId: "cart-fixed", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.subtotal_halalas, 7500);
+  assert.equal(body.data.discount_halalas, 1000);
+  assert.equal(body.data.total_halalas, 6500);
+  assert.equal(body.data.items[0].discount_halalas, 1000);
+  assert.equal(body.data.items[0].final_total_halalas, 6500);
+  assert.equal(fake.find("invoices", "main", "invoice-fixed-discount").discount_halalas, 1000);
+  assert.equal(JSON.parse(fake.find("bookings", "main", "booking-fixed-discount").discount_snapshot_json).source, "manual");
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "discount_applied"));
+
+  response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-fixed-cap",
+      invoiceId: "invoice-fixed-cap",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "11:00",
+      discountSnapshot: { source: "manual", type: "fixed", value: 9999, title: "Too large" },
+      items: [{ id: "item-fixed-cap", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.discount_halalas, 7500);
+  assert.equal(body.data.total_halalas, 0);
+});
+
+test("booking manual percent discount supports 100 percent and rejects values over 100", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  let response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-percent-100",
+      invoiceId: "invoice-percent-100",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      discountSnapshot: { source: "manual", type: "percent", percentage: 100 },
+      items: [{ id: "item-percent-100", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.discount_halalas, 7500);
+  assert.equal(body.data.total_halalas, 0);
+
+  response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-percent-over",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "11:00",
+      discountSnapshot: { source: "manual", type: "percent", percentage: 101 },
+      items: [{ id: "item-percent-over", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_discount:percent_over_100");
+});
+
+test("booking offer discount applies only to eligible services and rounds allocations", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const now = "2027-01-01T00:00:00.000Z";
+  fake.seed("services", { id: "svc-b", salon_id: "main", name: "Service B", category_id: "cat-b", description: null, duration_minutes: 30, price_halalas: 2500, active: 1, image_url: null, sort_order: 1, created_at: now, updated_at: now });
+  seedDiscount(fake, {
+    id: "offer-service-a",
+    code: "SVC50",
+    name: "Service A 50%",
+    type: "percent",
+    value: 50,
+    applies_to: "services",
+    service_ids_json: JSON.stringify(["svc-a"]),
+  });
+
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-offer-service",
+      invoiceId: "invoice-offer-service",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      discountSnapshot: { source: "offer", sourceId: "offer-service-a", code: "SVC50" },
+      items: [
+        { id: "offer-item-a", cartItemId: "cart-a", serviceId: "svc-a" },
+        { id: "offer-item-b", cartItemId: "cart-b", serviceId: "svc-b" },
+      ],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.subtotal_halalas, 10000);
+  assert.equal(body.data.discount_halalas, 3750);
+  assert.equal(body.data.total_halalas, 6250);
+  assert.equal(body.data.items.find((row) => row.id === "offer-item-a").discount_halalas, 3750);
+  assert.equal(body.data.items.find((row) => row.id === "offer-item-b").discount_halalas, 0);
+  assert.equal(fake.find("discounts", "main", "offer-service-a").used_count, 1);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "offer_applied"));
+});
+
+test("coupon validation rejects expired inactive minimum and usage-limit violations", async () => {
+  const cases = [
+    ["coupon-expired", { id: "coupon-expired", code: "EXPIRED", ends_at: "2000-01-01" }, "core_discount:expired"],
+    ["coupon-inactive", { id: "coupon-inactive", code: "INACTIVE", active: 0 }, "core_discount:inactive"],
+    ["coupon-minimum", { id: "coupon-minimum", code: "MINIMUM", min_order_halalas: 10000 }, "core_discount:minimum_not_met"],
+    ["coupon-usage", { id: "coupon-usage", code: "USAGE", usage_limit: 1, used_count: 1 }, "core_discount:usage_limit_reached"],
+  ];
+
+  for (const [id, discount, expectedError] of cases) {
+    const fake = new FakeD1();
+    seedCore(fake);
+    seedDiscount(fake, { type: "fixed", value: 10, ...discount });
+    const response = await worker.fetch(request("/api/core/bookings", {
+      method: "POST",
+      body: {
+        salonId: "main",
+        id: `booking-${id}`,
+        clientId: "client-a",
+        staffId: "staff-a",
+        source: "client",
+        bookingDate: "2027-01-10",
+        startTime: "10:00",
+        discountSnapshot: { source: "coupon", code: discount.code },
+        items: [{ id: `item-${id}`, serviceId: "svc-a" }],
+      },
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error, expectedError);
+  }
+});
+
+test("valid coupon is idempotent for same booking id and does not double count usage", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  seedDiscount(fake, { id: "coupon-valid", code: "VALID10", type: "fixed", value: 10 });
+  const payload = {
+    salonId: "main",
+    id: "booking-coupon-idempotent",
+    invoiceId: "invoice-coupon-idempotent",
+    clientId: "client-a",
+    staffId: "staff-a",
+    source: "client",
+    bookingDate: "2027-01-10",
+    startTime: "10:00",
+    discountSnapshot: { source: "coupon", code: "VALID10" },
+    items: [{ id: "item-coupon-idempotent", serviceId: "svc-a" }],
+  };
+
+  const first = await worker.fetch(request("/api/core/bookings", { method: "POST", body: payload }), env(fake));
+  const second = await worker.fetch(request("/api/core/bookings", { method: "POST", body: payload }), env(fake));
+  assert.equal(first.status, 200, JSON.stringify(await json(first)));
+  assert.equal(second.status, 200, JSON.stringify(await json(second)));
+  assert.equal(fake.find("discounts", "main", "coupon-valid").used_count, 1);
+  assert.equal(fake.rows("bookings").length, 1);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "coupon_applied"));
+});
+
+test("discounted booking payments use the final amount for full partial and mixed payments", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const createDiscounted = async (id, startTime) => {
+    await createCoreBooking(fake, {
+      id,
+      invoiceId: `invoice-${id}`,
+      body: {
+        source: "internal",
+        startTime,
+        discountSnapshot: { source: "manual", type: "fixed", value: 10 },
+        items: [{ id: `item-${id}`, serviceId: "svc-a" }],
+      },
+    });
+    assert.equal(fake.find("bookings", "main", id).total_halalas, 6500);
+  };
+
+  await createDiscounted("booking-discount-none", "10:00");
+  assert.equal(fake.rows("payments").length, 0);
+  assert.equal(fake.rows("income_entries").length, 0);
+
+  await createDiscounted("booking-discount-full", "11:00");
+  let response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: { salonId: "main", bookingId: "booking-discount-full", method: "cash", amountHalalas: 6500, idempotencyKey: "discount-full" },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  assert.equal(fake.find("invoices", "main", "invoice-booking-discount-full").paid_halalas, 6500);
+  assert.equal(fake.find("bookings", "main", "booking-discount-full").payment_status, "paid");
+
+  await createDiscounted("booking-discount-partial", "12:00");
+  response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: { salonId: "main", bookingId: "booking-discount-partial", method: "card", amountHalalas: 2000, idempotencyKey: "discount-partial" },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  assert.equal(fake.find("invoices", "main", "invoice-booking-discount-partial").paid_halalas, 2000);
+  assert.equal(fake.find("bookings", "main", "booking-discount-partial").payment_status, "partial");
+
+  await createDiscounted("booking-discount-mixed", "13:00");
+  for (const [method, amount] of [["cash", 2500], ["card", 4000]]) {
+    response = await worker.fetch(request("/api/core/payments", {
+      method: "POST",
+      body: { salonId: "main", bookingId: "booking-discount-mixed", method, amountHalalas: amount, idempotencyKey: `discount-mixed-${method}` },
+    }), env(fake));
+    assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  }
+  assert.equal(fake.find("invoices", "main", "invoice-booking-discount-mixed").paid_halalas, 6500);
+  assert.equal(fake.find("bookings", "main", "booking-discount-mixed").payment_status, "paid");
+  assert.equal(fake.rows("income_entries").reduce((sum, row) => sum + Number(row.amount_halalas || 0), 0), 15000);
 });
 
 test("invoice lookup by booking id returns the Core invoice", async () => {

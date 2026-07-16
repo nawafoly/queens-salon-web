@@ -127,6 +127,8 @@ function mapCoreBookingItem(
     staff_id: "staffId",
     unit_price_halalas: "unitPriceHalalas",
     total_halalas: "totalHalalas",
+    discount_halalas: "discountHalalas",
+    final_total_halalas: "finalTotalHalalas",
     package_covered: "packageCovered",
     client_package_id: "clientPackageId",
     duration_minutes: "durationMinutes",
@@ -157,6 +159,7 @@ export function mapCoreBooking(
     subtotal_halalas: "subtotalHalalas",
     discount_halalas: "discountHalalas",
     total_halalas: "totalHalalas",
+    discount_snapshot_json: "discountSnapshotJson",
     payment_status: "paymentStatus",
     package_sessions_used: "packageSessionsUsed",
     created_by_uid: "createdByUid",
@@ -187,6 +190,7 @@ export function mapCoreInvoice(
     subtotal_halalas: "subtotalHalalas",
     discount_halalas: "discountHalalas",
     total_halalas: "totalHalalas",
+    discount_snapshot_json: "discountSnapshotJson",
     paid_halalas: "paidHalalas",
     issued_at: "issuedAt",
     created_at: "createdAt",
@@ -343,8 +347,17 @@ export function coreBookingToLegacy(
 ): BookingDocWithId {
   const firstItem = booking.items[0];
   const total = sarFromHalalas(booking.totalHalalas);
+  const discountAmount = sarFromHalalas(booking.discountHalalas);
   const isPaid = booking.paymentStatus === "paid";
   const isPartial = booking.paymentStatus === "partial";
+  let discountSnapshot: unknown = undefined;
+  try {
+    discountSnapshot = booking.discountSnapshotJson
+      ? JSON.parse(String(booking.discountSnapshotJson))
+      : undefined;
+  } catch {
+    discountSnapshot = undefined;
+  }
 
   return {
     id: booking.id,
@@ -375,6 +388,8 @@ export function coreBookingToLegacy(
     startTime: booking.startTime,
     total,
     finalPrice: total,
+    discountAmount,
+    discountSnapshot,
     paymentType: isPaid ? "full" : isPartial ? "partial" : "none",
     paidAmount: isPaid ? total : 0,
     remainingAmount: isPaid ? 0 : total,
@@ -389,11 +404,22 @@ export function legacyBookingToCoreInput(
   booking: BookingDoc,
   clientId: string
 ) {
-  const total = Number(
+  const finalTotal = Number(
     booking.finalPrice ??
       booking.total ??
       booking.serviceSnapshot?.priceAtBooking ??
       0
+  );
+  const discountAmount = Number((booking as any).discountAmount || 0);
+  const originalTotal = Math.max(
+    0,
+    Number(
+      (booking as any).originalAmount ??
+        (booking as any).subtotal ??
+        (booking.serviceSnapshot as any)?.originalAmountAtBooking ??
+        (booking.serviceSnapshot as any)?.priceBeforeDiscountAtBooking ??
+        finalTotal + discountAmount
+    )
   );
 
   return {
@@ -407,6 +433,7 @@ export function legacyBookingToCoreInput(
     status: booking.status === "confirmed" ? "booked" : booking.status,
     source: booking.channel || "client",
     notes: booking.note,
+    discountSnapshot: (booking as any).discountSnapshot || undefined,
     packageSessionsUsed:
       booking.consumeOneSession || booking.fromSessionPackage ? 1 : 0,
     slotStepMin: Number(booking.slotStepMinAtBooking || 10),
@@ -415,7 +442,9 @@ export function legacyBookingToCoreInput(
       {
         serviceId: text(booking.serviceId || booking.serviceName),
         staffId: text(booking.employeeId) || undefined,
-        unitPriceHalalas: Math.max(0, Math.round(total * 100)),
+        unitPriceHalalas: Math.max(0, Math.round(originalTotal * 100)),
+        discountHalalas: Math.max(0, Math.round(discountAmount * 100)),
+        finalTotalHalalas: Math.max(0, Math.round(finalTotal * 100)),
         packageCovered: Boolean(
           booking.consumeOneSession || booking.fromSessionPackage
         ),

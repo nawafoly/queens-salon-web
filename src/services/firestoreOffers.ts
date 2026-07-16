@@ -20,7 +20,7 @@ import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreOfferService } from "./CoreOfferService";
 
 export type DiscountType = "fixed" | "percent";
-export type OfferAppliesTo = "all" | "services";
+export type OfferAppliesTo = "all" | "services" | "categories";
 export type OfferSequenceStep = {
   serviceId: string;
   orderIndex: number;
@@ -51,6 +51,11 @@ export type Offer = {
   sequenceSteps?: OfferSequenceStep[];
 
   usageCount?: number;
+  usageLimit?: number | null;
+  minOrderHalalas?: number | null;
+  maxDiscountHalalas?: number | null;
+  perClientLimit?: number | null;
+  categoryIds?: string[];
   imageUrl?: string;
 
   createdAt?: Timestamp | any;
@@ -154,6 +159,7 @@ export function isOfferActiveNow(offerLike: {
 export function offerAppliesToService(offer: Offer, serviceId: string) {
   const mode: OfferAppliesTo = (offer.appliesTo as any) || "all";
   if (mode === "all") return true;
+  if (mode === "categories") return false;
 
   const list = Array.isArray(offer.serviceIds) ? offer.serviceIds : [];
   return list.includes(serviceId);
@@ -199,6 +205,11 @@ function coreDiscountToOffer(row: import("../types/coreApi").CoreDiscount): Offe
       ...(step.titleSnapshot ? { titleSnapshot: String(step.titleSnapshot) } : {}),
     })).filter((step) => step.serviceId),
     usageCount: row.usedCount,
+    usageLimit: row.usageLimit ?? null,
+    minOrderHalalas: row.minOrderHalalas ?? null,
+    maxDiscountHalalas: row.maxDiscountHalalas ?? null,
+    perClientLimit: row.perClientLimit ?? null,
+    categoryIds: row.categoryIds || [],
     imageUrl: row.imageUrl || undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -221,8 +232,13 @@ function offerToCore(offer: Offer) {
     startDate: offer.startDate,
     endDate: offer.endDate,
     usedCount: offer.usageCount || 0,
+    usageLimit: offer.usageLimit ?? undefined,
+    minOrderHalalas: offer.minOrderHalalas ?? undefined,
+    maxDiscountHalalas: offer.maxDiscountHalalas ?? undefined,
+    perClientLimit: offer.perClientLimit ?? undefined,
     appliesTo: offer.appliesTo || "all",
     serviceIds: offer.serviceIds || [],
+    categoryIds: offer.categoryIds || [],
     sequenceSteps: offer.sequenceSteps || [],
     imageUrl: offer.imageUrl,
     deletedAt: (offer as Offer & { deletedAt?: unknown }).deletedAt,

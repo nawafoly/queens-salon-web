@@ -27,6 +27,7 @@ import {
   staffIsActive,
   staffIsAvailableForDate,
 } from './staff.js';
+import { resolveBookingDiscount } from './discount-application.js';
 
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 const LOCK_GRANULARITY_MIN = 5;
@@ -388,6 +389,7 @@ export async function createBooking(db, salonId, data, actor = "") {
     rows.push({
       id: itemId,
       service_id: service.id,
+      category_id: service.category_id || null,
       service_name_snapshot: service.name,
       staff_id: staffId,
       quantity,
@@ -411,12 +413,17 @@ export async function createBooking(db, salonId, data, actor = "") {
     cursorTime = endTime;
   }
 
-  const discount = integer(
-    data.discountHalalas ?? data.discount_halalas,
-    "discountHalalas",
-    { min: 0, max: subtotal, fallback: 0 }
+  const discountApplication = await resolveBookingDiscount(
+    db,
+    salonId,
+    clientId,
+    data.source || data.channel || "dashboard",
+    rows,
+    data,
+    actor
   );
-  const total = Math.max(0, subtotal - discount);
+  const discount = discountApplication.discountHalalas;
+  const total = discountApplication.totalHalalas;
   const bookingId = requiredId(requestedBookingId || generatedId("booking"));
   const publicId = optionalText(data.publicId || data.public_id) || bookingId;
   const invoiceId =
@@ -454,8 +461,9 @@ export async function createBooking(db, salonId, data, actor = "") {
       sql: `INSERT INTO bookings
         (id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes,
          subtotal_halalas, discount_halalas, total_halalas, payment_status, package_sessions_used,
-         created_by_uid, created_at, updated_at, cancelled_at, completed_at, slot_step_min, buffer_min)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+         created_by_uid, created_at, updated_at, cancelled_at, completed_at, slot_step_min, buffer_min,
+         discount_snapshot_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
       params: [
         bookingId,
         publicId,
@@ -481,14 +489,15 @@ export async function createBooking(db, salonId, data, actor = "") {
         now,
         slotStepMin,
         bufferMin,
+        discountApplication.discountSnapshotJson,
       ],
     },
     ...rows.map((row) => ({
       sql: `INSERT INTO booking_items
         (id, booking_id, salon_id, service_id, service_name_snapshot, staff_id, quantity,
          unit_price_halalas, total_halalas, package_covered, client_package_id, duration_minutes, created_at,
-         booking_date, start_time, end_time, cart_item_id, package_reservation_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         booking_date, start_time, end_time, cart_item_id, package_reservation_id, discount_halalas, final_total_halalas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         row.id,
         bookingId,
@@ -508,6 +517,8 @@ export async function createBooking(db, salonId, data, actor = "") {
         row.end_time,
         row.cart_item_id,
         row.package_reservation_id,
+        discountApplication.allocationsByCartItem.get(row.cart_item_id)?.discountAmountHalalas || 0,
+        discountApplication.allocationsByCartItem.get(row.cart_item_id)?.finalAmountHalalas ?? row.total_halalas,
       ],
     })),
     ...lockRows.map((row) => ({
@@ -530,8 +541,8 @@ export async function createBooking(db, salonId, data, actor = "") {
     statements.push({
       sql: `INSERT INTO invoices
         (id, salon_id, booking_id, client_id, invoice_number, subtotal_halalas, discount_halalas,
-         total_halalas, paid_halalas, status, issued_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'unpaid', ?, ?, ?)`,
+         total_halalas, paid_halalas, status, issued_at, created_at, updated_at, discount_snapshot_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'unpaid', ?, ?, ?, ?)`,
       params: [
         invoiceId,
         salonId,
@@ -544,7 +555,15 @@ export async function createBooking(db, salonId, data, actor = "") {
         now,
         now,
         now,
+        discountApplication.discountSnapshotJson,
       ],
+    });
+  }
+
+  if (discountApplication.discountId) {
+    statements.push({
+      sql: "UPDATE discounts SET used_count = used_count + 1, updated_at = ? WHERE salon_id = ? AND id = ?",
+      params: [now, salonId, discountApplication.discountId],
     });
   }
 
@@ -567,6 +586,24 @@ export async function createBooking(db, salonId, data, actor = "") {
       itemCount: rows.length,
     },
   }, actor).statement);
+
+  for (const action of discountApplication.auditActions || []) {
+    statements.push(auditInsertStatement(salonId, {
+      action,
+      entityType: "booking",
+      entityId: bookingId,
+      description: "Booking discount verified and applied by Core D1",
+      source: "core-booking",
+      after: {
+        bookingId,
+        discountHalalas: discount,
+        totalHalalas: total,
+      },
+      meta: {
+        discountSnapshotJson: discountApplication.discountSnapshotJson,
+      },
+    }, actor).statement);
+  }
 
   try {
     await dbBatch(db, statements);

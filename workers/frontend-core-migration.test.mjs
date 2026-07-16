@@ -197,3 +197,27 @@ test("Core invoice printing is not Firestore-only and supports success reprint r
   assert.match(v2Source, /paymentType === "none"/);
   assert.doesNotMatch(v2Source, /CoreAuditService/);
 });
+
+test("internal booking V2 uses shared discount snapshot flow instead of hardcoded zero discounts", () => {
+  const v2Source = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  const coreDataSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
+  const helper = readFileSync("src/helpers/bookingDiscountSnapshot.ts", "utf8");
+  const migration = readFileSync("migrations/core/0006_booking_discount_snapshots.sql", "utf8");
+
+  assert.match(v2Source, /buildDiscountSnapshot/);
+  assert.match(v2Source, /listOffers/);
+  assert.match(v2Source, /findActiveOfferByCode/);
+  assert.match(v2Source, /discountSnapshot/);
+  assert.match(v2Source, /discountMode === "offer"/);
+  assert.match(v2Source, /discountMode === "coupon"/);
+  assert.match(v2Source, /setDiscountMode\("fixed"\)/);
+  assert.match(v2Source, /setDiscountMode\("percent"\)/);
+  assert.doesNotMatch(v2Source, /className="is-discount"[\s\S]{0,120}<strong>0 ر\.س<\/strong>/);
+  assert.match(coreDataSource, /discountSnapshot/);
+  assert.match(coreDataSource, /discountHalalasForBooking/);
+  assert.match(coreDataSource, /finalHalalasForBooking/);
+  assert.match(helper, /eligibleSubtotalHalalas/);
+  assert.match(helper, /usageCount/);
+  assert.match(migration, /discount_snapshot_json/);
+  assert.match(migration, /final_total_halalas/);
+});

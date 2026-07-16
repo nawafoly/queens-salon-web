@@ -93,8 +93,18 @@ export async function createDiscount(db, salonId, data, actor = {}) {
       ? null
       : integer(data.usageLimit ?? data.usage_limit, 'usageLimit', { min: 0, max: 10_000_000 }),
     used_count: integer(data.usedCount ?? data.used_count, 'usedCount', { min: 0, max: 10_000_000, fallback: 0 }),
+    min_order_halalas: data.minOrderHalalas === undefined && data.min_order_halalas === undefined
+      ? null
+      : integer(data.minOrderHalalas ?? data.min_order_halalas, 'minOrderHalalas', { min: 0, max: 100_000_000 }),
+    max_discount_halalas: data.maxDiscountHalalas === undefined && data.max_discount_halalas === undefined
+      ? null
+      : integer(data.maxDiscountHalalas ?? data.max_discount_halalas, 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
+    per_client_limit: data.perClientLimit === undefined && data.per_client_limit === undefined
+      ? null
+      : integer(data.perClientLimit ?? data.per_client_limit, 'perClientLimit', { min: 0, max: 10_000_000 }),
     applies_to: cleanText(data.appliesTo || data.applies_to || 'all'),
     service_ids_json: jsonArray(data.serviceIds || data.service_ids_json),
+    category_ids_json: jsonArray(data.categoryIds || data.category_ids_json),
     sequence_steps_json: jsonArray(data.sequenceSteps || data.sequence_steps_json),
     image_url: optionalText(data.imageUrl || data.image_url) || null,
     deleted_at: null,
@@ -106,13 +116,15 @@ export async function createDiscount(db, salonId, data, actor = {}) {
     db,
     `INSERT INTO discounts
       (id, salon_id, code, code_key, name, type, value, active, starts_at, ends_at,
-       usage_limit, used_count, applies_to, service_ids_json, sequence_steps_json,
+       usage_limit, used_count, min_order_halalas, max_discount_halalas, per_client_limit,
+       applies_to, service_ids_json, category_ids_json, sequence_steps_json,
        image_url, deleted_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id, row.salon_id, row.code, row.code_key, row.name, row.type, row.value,
       row.active, row.starts_at, row.ends_at, row.usage_limit, row.used_count,
-      row.applies_to, row.service_ids_json, row.sequence_steps_json, row.image_url,
+      row.min_order_halalas, row.max_discount_halalas, row.per_client_limit,
+      row.applies_to, row.service_ids_json, row.category_ids_json, row.sequence_steps_json, row.image_url,
       row.deleted_at, row.created_at, row.updated_at,
     ]
   );
@@ -155,12 +167,24 @@ export async function patchDiscount(db, salonId, id, data, actor = {}) {
     used_count: data.usedCount === undefined && data.used_count === undefined
       ? undefined
       : integer(data.usedCount ?? data.used_count, 'usedCount', { min: 0, max: 10_000_000 }),
+    min_order_halalas: data.minOrderHalalas === undefined && data.min_order_halalas === undefined
+      ? undefined
+      : integer(data.minOrderHalalas ?? data.min_order_halalas, 'minOrderHalalas', { min: 0, max: 100_000_000 }),
+    max_discount_halalas: data.maxDiscountHalalas === undefined && data.max_discount_halalas === undefined
+      ? undefined
+      : integer(data.maxDiscountHalalas ?? data.max_discount_halalas, 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
+    per_client_limit: data.perClientLimit === undefined && data.per_client_limit === undefined
+      ? undefined
+      : integer(data.perClientLimit ?? data.per_client_limit, 'perClientLimit', { min: 0, max: 10_000_000 }),
     applies_to: data.appliesTo === undefined && data.applies_to === undefined
       ? undefined
       : cleanText(data.appliesTo || data.applies_to || 'all'),
     service_ids_json: data.serviceIds === undefined && data.service_ids_json === undefined
       ? undefined
       : jsonArray(data.serviceIds || data.service_ids_json),
+    category_ids_json: data.categoryIds === undefined && data.category_ids_json === undefined
+      ? undefined
+      : jsonArray(data.categoryIds || data.category_ids_json),
     sequence_steps_json: data.sequenceSteps === undefined && data.sequence_steps_json === undefined
       ? undefined
       : jsonArray(data.sequenceSteps || data.sequence_steps_json),

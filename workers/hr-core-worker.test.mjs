@@ -27,6 +27,7 @@ async function setup() {
     '0003_booking_availability.sql',
     '0004_admin_operations.sql',
     '0005_hr_settings_files.sql',
+    '0006_booking_discount_snapshots.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')

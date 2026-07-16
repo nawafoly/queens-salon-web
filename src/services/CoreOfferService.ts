@@ -25,8 +25,16 @@ function mapDiscount(row: Record<string, unknown>): CoreDiscount {
     endsAt: row.ends_at == null ? null : String(row.ends_at),
     usageLimit: row.usage_limit == null ? null : Number(row.usage_limit),
     usedCount: Number(row.used_count || 0),
-    appliesTo: String(row.applies_to || "all") === "services" ? "services" : "all",
+    minOrderHalalas: row.min_order_halalas == null ? null : Number(row.min_order_halalas),
+    maxDiscountHalalas: row.max_discount_halalas == null ? null : Number(row.max_discount_halalas),
+    perClientLimit: row.per_client_limit == null ? null : Number(row.per_client_limit),
+    appliesTo: String(row.applies_to || "all") === "services"
+      ? "services"
+      : String(row.applies_to || "all") === "categories"
+        ? "categories"
+        : "all",
     serviceIds: parseArray(row.service_ids_json).map(String),
+    categoryIds: parseArray(row.category_ids_json).map(String),
     sequenceSteps: parseArray(row.sequence_steps_json).filter((x): x is Record<string, unknown> => Boolean(x && typeof x === "object")),
     imageUrl: row.image_url == null ? null : String(row.image_url),
     deletedAt: row.deleted_at == null ? null : String(row.deleted_at),

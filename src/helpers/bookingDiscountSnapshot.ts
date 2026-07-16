@@ -27,6 +27,7 @@ export type DiscountOfferLike = {
   endsAt?: string | null;
   usageLimit?: number | null;
   usedCount?: number;
+  usageCount?: number;
   minOrderHalalas?: number | null;
   minimumOrderHalalas?: number | null;
   minimumSubtotalHalalas?: number | null;
@@ -229,7 +230,7 @@ export function buildDiscountSnapshot(
     const active = offer.active === true || offer.isActive === true;
     if (!active) return invalid("discount_inactive", subtotalHalalas, items);
     if (!isDateActive(offer, now)) return invalid("discount_expired_or_not_started", subtotalHalalas, items);
-    if (offer.usageLimit != null && Number(offer.usedCount || 0) >= Number(offer.usageLimit)) {
+    if (offer.usageLimit != null && Number(offer.usedCount ?? offer.usageCount ?? 0) >= Number(offer.usageLimit)) {
       return invalid("discount_usage_limit_reached", subtotalHalalas, items);
     }
   }

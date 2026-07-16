@@ -80,6 +80,8 @@ export type CoreBookingItem = {
   quantity: number;
   unitPriceHalalas: number;
   totalHalalas: number;
+  discountHalalas?: number;
+  finalTotalHalalas?: number | null;
   packageCovered: boolean;
   clientPackageId?: string | null;
   durationMinutes?: number | null;
@@ -109,6 +111,7 @@ export type CoreBooking = {
   subtotalHalalas: number;
   discountHalalas: number;
   totalHalalas: number;
+  discountSnapshotJson?: string | null;
   paymentStatus: string;
   packageSessionsUsed: number;
   createdByUid?: string | null;
@@ -130,6 +133,7 @@ export type CoreInvoice = {
   subtotalHalalas: number;
   discountHalalas: number;
   totalHalalas: number;
+  discountSnapshotJson?: string | null;
   paidHalalas: number;
   status: string;
   issuedAt: string;
@@ -173,6 +177,32 @@ export type CoreIncomeEntry = {
   createdAt: string;
 };
 
+export type CoreDiscount = {
+  id: string;
+  salonId: string;
+  code?: string | null;
+  codeKey?: string | null;
+  name: string;
+  type: "fixed" | "percent";
+  value: number;
+  active: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  usageLimit?: number | null;
+  usedCount: number;
+  minOrderHalalas?: number | null;
+  maxDiscountHalalas?: number | null;
+  perClientLimit?: number | null;
+  appliesTo: "all" | "services" | "categories";
+  serviceIds: string[];
+  categoryIds?: string[];
+  sequenceSteps: Record<string, unknown>[];
+  imageUrl?: string | null;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CoreExpenseEntry = {
   id: string;
   salonId: string;
@@ -207,6 +237,8 @@ export type CoreCreateBookingInput = {
   source?: string;
   notes?: string;
   discountHalalas?: number;
+  discountSnapshot?: Record<string, unknown>;
+  discount_snapshot?: Record<string, unknown>;
   packageSessionsUsed?: number;
   createInvoice?: boolean;
   items: Array<{
@@ -215,6 +247,8 @@ export type CoreCreateBookingInput = {
     staffId?: string;
     quantity?: number;
     unitPriceHalalas?: number;
+    discountHalalas?: number;
+    finalTotalHalalas?: number;
     packageCovered?: boolean;
     clientPackageId?: string;
     bookingDate?: string;
@@ -267,28 +301,6 @@ export type CoreApiErrorResponse = {
   ok: false;
   error: string;
   message?: string;
-};
-
-export type CoreDiscount = {
-  id: string;
-  salonId: string;
-  code?: string | null;
-  codeKey?: string | null;
-  name: string;
-  type: "fixed" | "percent";
-  value: number;
-  active: boolean;
-  startsAt?: string | null;
-  endsAt?: string | null;
-  usageLimit?: number | null;
-  usedCount: number;
-  appliesTo: "all" | "services";
-  serviceIds: string[];
-  sequenceSteps: Array<Record<string, unknown>>;
-  imageUrl?: string | null;
-  deletedAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type CoreCatalogRow = {

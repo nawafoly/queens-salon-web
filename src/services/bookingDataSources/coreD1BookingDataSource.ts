@@ -87,6 +87,33 @@ function isPackageCovered(booking: BookingDoc): boolean {
   );
 }
 
+function readBookingDiscountSnapshot(booking: BookingDoc): Record<string, unknown> | undefined {
+  const snapshot = (booking as BookingDoc & { discountSnapshot?: unknown }).discountSnapshot;
+  return snapshot && typeof snapshot === "object" ? snapshot as Record<string, unknown> : undefined;
+}
+
+function originalHalalasForBooking(booking: BookingDoc): number {
+  const finalAmount = Number(booking.finalPrice ?? booking.total ?? booking.serviceSnapshot?.priceAtBooking ?? 0);
+  const discountAmount = Number((booking as BookingDoc & { discountAmount?: number }).discountAmount || 0);
+  const explicit = Number(
+    (booking as BookingDoc & { originalAmount?: number; subtotal?: number }).originalAmount ??
+      (booking as BookingDoc & { originalAmount?: number; subtotal?: number }).subtotal ??
+      (booking.serviceSnapshot as Record<string, unknown> | undefined)?.originalAmountAtBooking ??
+      (booking.serviceSnapshot as Record<string, unknown> | undefined)?.priceBeforeDiscountAtBooking ??
+      finalAmount + discountAmount
+  );
+  return Math.max(0, Math.round((Number.isFinite(explicit) ? explicit : finalAmount + discountAmount) * 100));
+}
+
+function discountHalalasForBooking(booking: BookingDoc): number {
+  return Math.max(0, Math.round(Number((booking as BookingDoc & { discountAmount?: number }).discountAmount || 0) * 100));
+}
+
+function finalHalalasForBooking(booking: BookingDoc): number {
+  const finalAmount = Number(booking.finalPrice ?? booking.total ?? booking.serviceSnapshot?.priceAtBooking ?? 0);
+  return Math.max(0, Math.round((Number.isFinite(finalAmount) ? finalAmount : 0) * 100));
+}
+
 function packageSagaItem(
   booking: BookingDoc,
   clientId: string,
@@ -322,18 +349,16 @@ export const coreD1BookingDataSource: BookingDataSource = {
       source: group.parent.channel || "client",
       slotStepMin: Number(group.parent.slotStepMinAtBooking || firstItem.slotStepMinAtBooking || 10),
       bufferMin: Number(group.parent.bufferMinAtBooking || firstItem.bufferMinAtBooking || 0),
+      discountSnapshot: readBookingDiscountSnapshot(group.parent) || readBookingDiscountSnapshot(firstItem),
       items: group.items.map((item, index) => ({
         serviceId: String(
           item.serviceId || item.serviceName || ""
         ).trim(),
         staffId:
           String(item.employeeId || "").trim() || undefined,
-        unitPriceHalalas: Math.max(
-          0,
-          Math.round(
-            Number(item.finalPrice ?? item.total ?? 0) * 100
-          )
-        ),
+        unitPriceHalalas: originalHalalasForBooking(item),
+        discountHalalas: discountHalalasForBooking(item),
+        finalTotalHalalas: finalHalalasForBooking(item),
         packageCovered: isPackageCovered(item),
         clientPackageId: item.sessionPackageId,
         bookingDate: String(item.date || group.parent.date || "").trim(),

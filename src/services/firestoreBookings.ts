@@ -154,6 +154,8 @@ export type BookingDoc = {
 
   total?: number;
   finalPrice?: number;
+  discountAmount?: number;
+  discountSnapshot?: any;
   paymentMethod?: BookingPaymentMethod;
   paymentBreakdown?: BookingPaymentBreakdown;
   paymentType?: BookingPaymentType;
@@ -482,6 +484,8 @@ function normalizeBooking(raw: any): BookingDoc {
 
     total: paymentState.totalAmount,
     finalPrice: Number(raw?.finalPrice ?? paymentState.totalAmount),
+    discountAmount: Number(raw?.discountAmount || 0) || undefined,
+    discountSnapshot: raw?.discountSnapshot || undefined,
     paymentMethod: normalizePaymentMethod(raw?.paymentMethod) ?? undefined,
     paymentBreakdown: normalizePaymentBreakdown(raw?.paymentBreakdown),
     paymentType: paymentState.paymentType,
