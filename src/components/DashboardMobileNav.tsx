@@ -119,6 +119,13 @@ export default function DashboardMobileNav({
       },
       { to: "/dashboard/offers", label: "العروض والكوبونات", icon: faPercent, permission: "offers.manage" },
       { to: "/dashboard/logs", label: "سجل الحركات", icon: faClockRotateLeft, permission: "logs.view" },
+      {
+        to: "/dashboard/attendance",
+        label: "سجل البصمة والأجهزة",
+        description: "متابعة البصمات والأجهزة والتنبيهات",
+        icon: faFingerprint,
+        permission: "attendance.view",
+      },
       { to: "/dashboard/loyalty", label: "الولاء VIP", icon: faChartPie, permission: "clients.loyalty.manage" },
       { to: "/dashboard/admin-profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.dashboard.view" },
       { to: "/dashboard/settings", label: "الإعدادات الأساسية", icon: faCog, permission: "settings.general.manage" },
@@ -126,7 +133,7 @@ export default function DashboardMobileNav({
       { to: "/dashboard/settings/catalog", label: "إدارة الكتالوج", icon: faPercent, permission: "catalog.manage" },
       { to: "/dashboard/settings/users", label: "إدارة الحسابات", icon: faUserShield, permission: "admin_accounts.view" },
       { to: "/dashboard/settings/contact", label: "محتوى الموقع", icon: faHouse, permission: "settings.content.manage" },
-      { to: "/dashboard/settings/attendance", label: "الحضور والبصمة", icon: faFingerprint, permission: "attendance.settings.manage" },
+      { to: "/dashboard/settings/attendance", label: "إعدادات البصمة والنطاقات", icon: faCog, permission: "attendance.settings.manage" },
     ];
 
     return items

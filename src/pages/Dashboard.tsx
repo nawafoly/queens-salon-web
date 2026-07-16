@@ -48,6 +48,7 @@ import DashboardQueueTv from "../pages/DashboardQueueTv";
 import DashboardDayAudit from "../pages/DashboardDayAudit";
 import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 import DashboardPartners from "../pages/DashboardPartners";
+import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -1385,6 +1386,7 @@ function getDashboardHeaderTitle(pathname: string) {
     staff: "بوابة الموظفات",
     bookings: "الحجوزات",
     "booking-internal": "الحجز الإداري",
+    attendance: "سجل البصمة والأجهزة",
     "tv-queue": "شاشة نداء الحجوزات",
     "day-audit": "إغلاق اليوم / الشفت",
     clients: "العملاء",
@@ -2165,6 +2167,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       "admin_accounts.view",
       "admin_accounts.manage",
       "settings.content.manage",
+      "attendance.view",
       "attendance.settings.manage",
     ]);
 
@@ -2278,6 +2281,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const isTvQueuePage = location.pathname.startsWith("/dashboard/tv-queue");
   const isBookingInternalPage = location.pathname.startsWith("/dashboard/booking-internal");
+  const isAttendanceSecurityPage = location.pathname.startsWith("/dashboard/attendance");
+  const isModernWorkspacePage = isBookingInternalPage || isAttendanceSecurityPage;
   useEffect(() => {
     if (!isTvQueuePage) return;
     setTopbarNowMs(Date.now());
@@ -2323,7 +2328,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
   return (
-    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isBookingInternalPage ? " is-booking-internal-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isModernWorkspacePage ? " is-booking-internal-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -2965,11 +2970,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {hasPermission("attendance.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/attendance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faFingerprint} />
+                      سجل البصمة والأجهزة
+                    </NavLink>
+                  </li>
+                ) : null}
+
                 {hasPermission("attendance.settings.manage") ? (
                   <li>
                     <NavLink to="/dashboard/settings/attendance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
-                      <FontAwesomeIcon icon={faFingerprint} />
-                      الحضور والبصمة
+                      <FontAwesomeIcon icon={faCog} />
+                      إعدادات البصمة والنطاقات
                     </NavLink>
                   </li>
                 ) : null}
@@ -2979,7 +2993,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Main Content */}
-          <div className={`col-md-9 col-lg-10 dashboard-main${isBookingInternalPage ? " has-single-scroll" : ""}`}>
+          <div className={`col-md-9 col-lg-10 dashboard-main${isModernWorkspacePage ? " has-single-scroll" : ""}`}>
             <DashboardHeader
               theme="dashboard"
               title={dashboardHeaderTitle}
@@ -3094,6 +3108,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports /></PermissionRoute>} />
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
+                <Route
+                  path="attendance"
+                  element={
+                    <PermissionRoute permission="attendance.view">
+                      <DashboardAttendanceSecurity />
+                    </PermissionRoute>
+                  }
+                />
 
                 <Route
                   path="settings/*"

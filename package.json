@@ -40,7 +40,8 @@
     "check:settings:d1-only": "node scripts/check-settings-d1-only.mjs",
     "check:files:r2-only": "node scripts/check-files-r2-only.mjs",
     "test:hr:worker": "node --test workers/hr-core-worker.test.mjs",
-    "verify:phase6": "npm run check:packages:d1-only && npm run check:core:d1-only && npm run check:frontend-core-migration && npm run check:hr:d1-only && npm run check:settings:d1-only && npm run check:files:r2-only && npm run test:packages:worker && npm run test:core:worker && npm run test:frontend:core && npm run test:hr:worker && npm run build"
+    "verify:phase6": "npm run check:packages:d1-only && npm run check:core:d1-only && npm run check:frontend-core-migration && npm run check:hr:d1-only && npm run check:settings:d1-only && npm run check:files:r2-only && npm run test:packages:worker && npm run test:core:worker && npm run test:frontend:core && npm run test:hr:worker && npm run build",
+    "test:attendance:worker": "node --test workers/attendance-security.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

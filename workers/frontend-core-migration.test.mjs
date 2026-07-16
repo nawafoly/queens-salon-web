@@ -384,3 +384,32 @@ test("internal booking exposes packages and sessions management from Packages D1
   assert.match(d1, /subscribedClients/);
   assert.doesNotMatch(panel, /firebase\/firestore/);
 });
+
+test("dashboard exposes standalone attendance device security center in the V2 visual language", () => {
+  const dashboard = readFileSync("src/pages/Dashboard.tsx", "utf8");
+  const mobileNav = readFileSync("src/components/DashboardMobileNav.tsx", "utf8");
+  const page = readFileSync("src/pages/DashboardAttendanceSecurity.tsx", "utf8");
+  const service = readFileSync("src/services/attendanceWorkerService.ts", "utf8");
+  const worker = readFileSync("workers/attendance-worker.js", "utf8");
+  const migration = readFileSync(
+    "workers/attendance-migrations/0005_create_attendance_device_security.sql",
+    "utf8"
+  );
+
+  assert.match(dashboard, /path="attendance"/);
+  assert.match(dashboard, /سجل البصمة والأجهزة/);
+  assert.match(dashboard, /isModernWorkspacePage/);
+  assert.match(mobileNav, /\/dashboard\/attendance/);
+  assert.match(page, /Attendance D1/);
+  assert.match(page, /سجل البصمات/);
+  assert.match(page, /الأجهزة/);
+  assert.match(page, /التنبيهات/);
+  assert.match(page, /updateAttendanceDeviceStatus/);
+  assert.match(service, /\/attendance\/admin\/dashboard/);
+  assert.match(worker, /attendance_security_events/);
+  assert.match(worker, /blocked_device_attempt/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS attendance_devices/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS attendance_device_assignments/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS attendance_security_events/);
+  assert.doesNotMatch(page, /firebase\/firestore/);
+});

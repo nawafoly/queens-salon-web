@@ -247,6 +247,16 @@ export async function deleteWorkZoneFromAttendanceWorker(id: string) {
 }
 
 function getDeviceInfo() {
+  const standalone =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function"
+      ? window.matchMedia("(display-mode: standalone)").matches
+      : false;
+  const screenSize =
+    typeof window !== "undefined" && window.screen
+      ? `${window.screen.width}x${window.screen.height}`
+      : "";
+
   return {
     deviceId: getAttendanceDeviceId(),
     userAgent:
@@ -266,6 +276,14 @@ function getDeviceInfo() {
         ? Intl.DateTimeFormat().resolvedOptions()
             .timeZone || ""
         : "",
+    appVariant: cleanText((import.meta as any).env?.VITE_APP_VARIANT || "web"),
+    appVersion: cleanText((import.meta as any).env?.VITE_APP_VERSION),
+    screenSize,
+    standalone,
+    touchPoints:
+      typeof navigator !== "undefined"
+        ? Number(navigator.maxTouchPoints || 0)
+        : 0,
   };
 }
 
@@ -1066,4 +1084,186 @@ export function getAttendanceWorkerMessage(
     default:
       return "تعذر قبول عملية الحضور الآن.";
   }
+}
+
+export type AttendanceSecuritySummary = {
+  date: string;
+  punchesToday: number;
+  checkInsToday: number;
+  checkOutsToday: number;
+  rejectedToday: number;
+  checkedInNow: number;
+  newDevicesToday: number;
+  sharedDevices: number;
+  openAlerts: number;
+  averageAccuracy: number | null;
+};
+
+export type AttendanceDeviceAssignment = {
+  employeeUid: string;
+  employeeDocId?: string | null;
+  employeeName?: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  recordsCount: number;
+  allowedCount: number;
+  rejectedCount: number;
+  isPrimary: boolean;
+};
+
+export type AttendanceSecurityDevice = {
+  deviceId: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  firstSeenEmployeeUid?: string | null;
+  lastSeenEmployeeUid?: string | null;
+  platform?: string | null;
+  userAgent?: string | null;
+  language?: string | null;
+  timeZone?: string | null;
+  appVariant?: string | null;
+  appVersion?: string | null;
+  screenSize?: string | null;
+  standalone?: boolean;
+  totalRecords: number;
+  allowedRecords: number;
+  rejectedRecords: number;
+  trustStatus: "new" | "trusted" | "blocked";
+  notes?: string | null;
+  trustedByUid?: string | null;
+  trustedAt?: string | null;
+  blockedByUid?: string | null;
+  blockedAt?: string | null;
+  assignments: AttendanceDeviceAssignment[];
+};
+
+export type AttendanceSecurityEvent = {
+  id: string;
+  eventType:
+    | "new_device"
+    | "device_changed"
+    | "shared_device"
+    | "blocked_device_attempt"
+    | "rejected_punch"
+    | "poor_accuracy";
+  severity: "info" | "warning" | "critical";
+  employeeUid: string;
+  employeeDocId?: string | null;
+  employeeName?: string | null;
+  deviceId?: string | null;
+  recordId?: string | null;
+  title: string;
+  detail?: string | null;
+  metadata?: Record<string, unknown>;
+  status: "open" | "resolved" | "ignored";
+  resolvedByUid?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AttendanceSecurityDashboard = {
+  summary: AttendanceSecuritySummary;
+  records: AttendanceWorkerRecord[];
+  devices: AttendanceSecurityDevice[];
+  alerts: AttendanceSecurityEvent[];
+  zones: WorkZone[];
+};
+
+export async function fetchAttendanceSecurityDashboard(input: {
+  employeeUid?: string;
+  fromDate?: string;
+  toDate?: string;
+  result?: AttendanceWorkerResult;
+  type?: AttendanceWorkerType;
+  deviceId?: string;
+  alertStatus?: "open" | "resolved" | "ignored";
+  limit?: number;
+} = {}): Promise<AttendanceSecurityDashboard> {
+  const payload = await requestAttendanceWorker<{
+    ok?: boolean;
+    summary?: AttendanceSecuritySummary;
+    records?: AttendanceWorkerRecord[];
+    devices?: AttendanceSecurityDevice[];
+    alerts?: AttendanceSecurityEvent[];
+    zones?: unknown[];
+    message?: string;
+    detail?: string;
+  }>(
+    "/attendance/admin/dashboard",
+    { method: "GET" },
+    {
+      employeeUid: cleanText(input.employeeUid),
+      fromDate: cleanText(input.fromDate),
+      toDate: cleanText(input.toDate),
+      result: input.result,
+      type: input.type,
+      deviceId: cleanText(input.deviceId),
+      alertStatus: input.alertStatus || "open",
+      limit: String(Math.min(200, Math.max(1, Number(input.limit || 100)))),
+    }
+  );
+
+  if (payload.ok !== true || !payload.summary) {
+    throw new Error(
+      cleanText(payload.message || payload.detail) ||
+        "تعذر تحميل مركز متابعة البصمة."
+    );
+  }
+
+  return {
+    summary: payload.summary,
+    records: Array.isArray(payload.records) ? payload.records : [],
+    devices: Array.isArray(payload.devices) ? payload.devices : [],
+    alerts: Array.isArray(payload.alerts) ? payload.alerts : [],
+    zones: Array.isArray(payload.zones)
+      ? payload.zones.map((raw: any) => ({
+          id: cleanText(raw?.id),
+          name: cleanText(raw?.name || raw?.title || raw?.id),
+          lat: Number(raw?.lat ?? raw?.center?.lat ?? raw?.center_lat ?? 0),
+          lng: Number(raw?.lng ?? raw?.center?.lng ?? raw?.center_lng ?? 0),
+          radiusMeters: Math.max(0, Number(raw?.radiusMeters ?? raw?.radius_meters ?? 0)),
+          active: raw?.active !== false && Number(raw?.active ?? 1) !== 0,
+          createdAt: raw?.createdAt ?? raw?.created_at,
+          updatedAt: raw?.updatedAt ?? raw?.updated_at,
+        }))
+      : [],
+  };
+}
+
+export async function updateAttendanceDeviceStatus(input: {
+  deviceId: string;
+  trustStatus: "new" | "trusted" | "blocked";
+  notes?: string;
+}) {
+  const deviceId = cleanText(input.deviceId);
+  if (!deviceId) throw new Error("معرف الجهاز غير موجود.");
+  return requestAttendanceWorker<{
+    ok: boolean;
+    deviceId: string;
+    trustStatus: "new" | "trusted" | "blocked";
+    notes?: string | null;
+  }>(`/attendance/admin/devices/${encodeURIComponent(deviceId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      trustStatus: input.trustStatus,
+      notes: cleanText(input.notes),
+    }),
+  });
+}
+
+export async function updateAttendanceSecurityEventStatus(input: {
+  eventId: string;
+  status: "open" | "resolved" | "ignored";
+}) {
+  const eventId = cleanText(input.eventId);
+  if (!eventId) throw new Error("معرف التنبيه غير موجود.");
+  return requestAttendanceWorker<{
+    ok: boolean;
+    id: string;
+    status: "open" | "resolved" | "ignored";
+  }>(`/attendance/admin/security-events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: input.status }),
+  });
 }

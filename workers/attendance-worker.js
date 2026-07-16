@@ -27,6 +27,8 @@ export async function handleAttendanceRequest({
 }) {
   const pathname = url.pathname;
   const zoneMatch = pathname.match(/^\/attendance\/work-zones\/([^/]+)$/);
+  const deviceMatch = pathname.match(/^\/attendance\/admin\/devices\/([^/]+)$/);
+  const securityEventMatch = pathname.match(/^\/attendance\/admin\/security-events\/([^/]+)$/);
 
   if (pathname === "/attendance/record" && request.method !== "POST") {
     return methodNotAllowed(["POST"]);
@@ -53,6 +55,18 @@ export async function handleAttendanceRequest({
     return methodNotAllowed(["GET"]);
   }
   if (
+    pathname === "/attendance/admin/dashboard" &&
+    request.method !== "GET"
+  ) {
+    return methodNotAllowed(["GET"]);
+  }
+  if (deviceMatch && request.method !== "PATCH") {
+    return methodNotAllowed(["PATCH"]);
+  }
+  if (securityEventMatch && request.method !== "PATCH") {
+    return methodNotAllowed(["PATCH"]);
+  }
+  if (
     pathname === "/attendance/work-zones" &&
     !["GET", "POST"].includes(request.method)
   ) {
@@ -67,8 +81,11 @@ export async function handleAttendanceRequest({
     pathname !== "/attendance/monthly-summary/generate" &&
     pathname !== "/attendance/monthly-summaries" &&
     pathname !== "/attendance/records" &&
+    pathname !== "/attendance/admin/dashboard" &&
     pathname !== "/attendance/work-zones" &&
-    !zoneMatch
+    !zoneMatch &&
+    !deviceMatch &&
+    !securityEventMatch
   ) {
     return json(404, { ok: false, message: "not_found" });
   }
@@ -78,6 +95,43 @@ export async function handleAttendanceRequest({
 
   if (!requester.runtime?.isActive) {
     return json(403, { ok: false, message: "inactive_account" });
+  }
+
+
+  if (pathname === "/attendance/admin/dashboard" && request.method === "GET") {
+    if (!hasRuntimePermission(requester.runtime, "attendance.view")) {
+      return forbidden("attendance.view");
+    }
+    return getAttendanceSecurityDashboard(url, db, directoryDb);
+  }
+
+  if (deviceMatch && request.method === "PATCH") {
+    if (!hasRuntimePermission(requester.runtime, "attendance.settings.manage")) {
+      return forbidden("attendance.settings.manage");
+    }
+    return updateAttendanceDevice(
+      request,
+      db,
+      requester,
+      decodeURIComponent(deviceMatch[1])
+    );
+  }
+
+  if (securityEventMatch && request.method === "PATCH") {
+    if (
+      !hasAnyRuntimePermission(requester.runtime, [
+        "attendance.records.update",
+        "attendance.settings.manage",
+      ])
+    ) {
+      return forbidden("attendance.records.update|attendance.settings.manage");
+    }
+    return updateAttendanceSecurityEvent(
+      request,
+      db,
+      requester,
+      decodeURIComponent(securityEventMatch[1])
+    );
   }
 
   if (pathname === "/attendance/work-zones" && request.method === "GET") {
@@ -275,6 +329,355 @@ async function listWorkZones(db) {
   } catch (error) {
     return serverError("work_zones_query_failed", error);
   }
+}
+
+
+export function classifyAttendanceDeviceSecurity(input = {}) {
+  const deviceId = normalizeText(input.deviceId);
+  const previousDeviceId = normalizeText(input.previousDeviceId);
+  const trustStatus = normalizeAttendanceDeviceStatus(input.trustStatus);
+  const assignmentCount = Math.max(0, Number(input.assignmentCount || 0));
+  const assignedToEmployee = Boolean(input.assignedToEmployee);
+  const result = normalizeText(input.result);
+  const rejectionReason = normalizeText(input.rejectionReason);
+  const accuracy = Number(input.accuracy);
+
+  const flags = {
+    hasDevice: Boolean(deviceId),
+    isNewDevice: Boolean(deviceId && !input.deviceExists),
+    isNewForEmployee: Boolean(deviceId && !assignedToEmployee),
+    deviceChanged: Boolean(
+      deviceId && previousDeviceId && previousDeviceId !== deviceId
+    ),
+    sharedDevice: Boolean(deviceId && assignmentCount > (assignedToEmployee ? 1 : 0)),
+    blockedDevice: trustStatus === "blocked",
+    rejectedPunch: result === "rejected",
+    poorAccuracy: Number.isFinite(accuracy) && accuracy > ATTENDANCE_BASE_MAX_ACCURACY_METERS,
+  };
+
+  const eventTypes = [];
+  if (flags.isNewDevice) eventTypes.push("new_device");
+  if (flags.deviceChanged) eventTypes.push("device_changed");
+  if (flags.sharedDevice) eventTypes.push("shared_device");
+  if (flags.blockedDevice) eventTypes.push("blocked_device_attempt");
+  if (flags.rejectedPunch && rejectionReason !== "blocked_device") {
+    eventTypes.push("rejected_punch");
+  }
+  if (flags.poorAccuracy && rejectionReason === "poor_accuracy") {
+    eventTypes.push("poor_accuracy");
+  }
+
+  return {
+    ...flags,
+    trustStatus,
+    eventTypes: Array.from(new Set(eventTypes)),
+  };
+}
+
+function normalizeAttendanceDeviceStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return new Set(["new", "trusted", "blocked"]).has(status) ? status : "new";
+}
+
+function normalizeAttendanceSecurityEventStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return new Set(["open", "resolved", "ignored"]).has(status) ? status : "open";
+}
+
+async function getAttendanceSecurityDashboard(url, db, directoryDb) {
+  const params = url.searchParams;
+  const limit = Math.min(200, Math.max(1, Number(params.get("limit") || 100)));
+  const employeeUid = normalizeText(params.get("employeeUid"));
+  const result = normalizeText(params.get("result"));
+  const type = normalizeText(params.get("type"));
+  const deviceId = normalizeText(params.get("deviceId"));
+  const alertStatus = normalizeAttendanceSecurityEventStatus(params.get("alertStatus") || "open");
+  const fromDate = normalizeText(params.get("fromDate"));
+  const toDate = normalizeText(params.get("toDate"));
+  const filters = [];
+  const bindings = [];
+
+  if (employeeUid) {
+    filters.push("employee_uid = ?");
+    bindings.push(employeeUid);
+  }
+  if (result) {
+    if (!ATTENDANCE_RESULTS.has(result)) return invalidRecordsQuery("result");
+    filters.push("result = ?");
+    bindings.push(result);
+  }
+  if (type) {
+    if (!ATTENDANCE_TYPES.has(type)) return invalidRecordsQuery("type");
+    filters.push("type = ?");
+    bindings.push(type);
+  }
+  if (deviceId) {
+    filters.push("trim(json_extract(device_info, '$.deviceId')) = ?");
+    bindings.push(deviceId);
+  }
+  if (fromDate) {
+    const boundary = parseRiyadhDateBoundary(fromDate, false);
+    if (!boundary) return invalidRecordsQuery("fromDate");
+    filters.push("server_time >= ?");
+    bindings.push(boundary);
+  }
+  if (toDate) {
+    const boundary = parseRiyadhDateBoundary(toDate, true);
+    if (!boundary) return invalidRecordsQuery("toDate");
+    filters.push("server_time < ?");
+    bindings.push(boundary);
+  }
+
+  const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const today = getRiyadhDayBounds();
+
+  try {
+    const results = await db.batch([
+      db.prepare(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN type = 'check_in' THEN 1 ELSE 0 END) AS check_ins,
+          SUM(CASE WHEN type = 'check_out' THEN 1 ELSE 0 END) AS check_outs,
+          SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+          AVG(CASE WHEN location_accuracy > 0 THEN location_accuracy ELSE NULL END) AS average_accuracy
+        FROM attendance_records
+        WHERE server_time >= ? AND server_time < ?
+      `).bind(today.start, today.end),
+      db.prepare(`SELECT COUNT(*) AS checked_in FROM attendance_state WHERE status = 'checked_in'`),
+      db.prepare(`SELECT COUNT(*) AS new_devices FROM attendance_devices WHERE first_seen_at >= ? AND first_seen_at < ?`).bind(today.start, today.end),
+      db.prepare(`
+        SELECT COUNT(*) AS shared_devices FROM (
+          SELECT device_id FROM attendance_device_assignments
+          GROUP BY device_id HAVING COUNT(DISTINCT employee_uid) > 1
+        )
+      `),
+      db.prepare(`SELECT COUNT(*) AS open_alerts FROM attendance_security_events WHERE status = 'open'`),
+      db.prepare(`
+        SELECT
+          id, employee_uid, employee_doc_id, type, server_time, client_time,
+          location_lat, location_lng, location_accuracy,
+          zone_id, zone_name, zone_type, allowed_zone_ids, distance_meters,
+          result, rejection_reason, accuracy_accepted, device_info,
+          created_by_email, created_by_role
+        FROM attendance_records
+        ${whereSql}
+        ORDER BY server_time DESC, id DESC
+        LIMIT ?
+      `).bind(...bindings, limit),
+      db.prepare(`
+        SELECT
+          device_id, first_seen_at, last_seen_at,
+          first_seen_employee_uid, last_seen_employee_uid,
+          platform, user_agent, language, time_zone,
+          app_variant, app_version, screen_size, standalone,
+          total_records, allowed_records, rejected_records,
+          trust_status, notes, trusted_by_uid, trusted_at,
+          blocked_by_uid, blocked_at, created_at, updated_at
+        FROM attendance_devices
+        ORDER BY
+          CASE trust_status WHEN 'blocked' THEN 0 WHEN 'new' THEN 1 ELSE 2 END,
+          last_seen_at DESC
+        LIMIT 200
+      `),
+      db.prepare(`
+        SELECT
+          id, event_type, severity, employee_uid, employee_doc_id,
+          device_id, record_id, title, detail, metadata_json,
+          status, resolved_by_uid, resolved_at, created_at, updated_at
+        FROM attendance_security_events
+        WHERE status = ?
+        ORDER BY
+          CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+          created_at DESC
+        LIMIT 200
+      `).bind(alertStatus),
+      db.prepare(`
+        SELECT id, name, type, center_lat, center_lng, radius_meters, active,
+               office_ip, created_at, updated_at
+        FROM work_zones
+        ORDER BY active DESC, name COLLATE NOCASE ASC
+      `),
+    ]);
+
+    const recordRows = results[5]?.results || [];
+    const deviceRows = results[6]?.results || [];
+    const deviceIds = deviceRows.map(row => normalizeText(row.device_id)).filter(Boolean);
+    const assignmentRows = deviceIds.length
+      ? (await db.prepare(`
+          SELECT device_id, employee_uid, employee_doc_id,
+                 first_seen_at, last_seen_at, records_count,
+                 allowed_count, rejected_count, is_primary
+          FROM attendance_device_assignments
+          WHERE device_id IN (${deviceIds.map(() => "?").join(",")})
+          ORDER BY device_id ASC, last_seen_at DESC
+        `).bind(...deviceIds).all()).results || []
+      : [];
+    const employeeNames = await loadAttendanceEmployeeNames(
+      directoryDb,
+      Array.from(new Set([
+        ...recordRows.map(row => row.employee_uid),
+        ...assignmentRows.map(row => row.employee_uid),
+        ...(results[7]?.results || []).map(row => row.employee_uid),
+      ]))
+    );
+    const sharedUsage = await loadSharedDeviceUsage(
+      db,
+      directoryDb,
+      recordRows.map(row => safeJsonObject(row.device_info)?.deviceId)
+    );
+    const assignmentsByDevice = new Map();
+    for (const row of assignmentRows) {
+      const current = assignmentsByDevice.get(row.device_id) || [];
+      current.push({
+        employeeUid: row.employee_uid,
+        employeeDocId: row.employee_doc_id || null,
+        employeeName: employeeNames.get(row.employee_uid) || null,
+        firstSeenAt: row.first_seen_at,
+        lastSeenAt: row.last_seen_at,
+        recordsCount: Number(row.records_count || 0),
+        allowedCount: Number(row.allowed_count || 0),
+        rejectedCount: Number(row.rejected_count || 0),
+        isPrimary: Number(row.is_primary) === 1,
+      });
+      assignmentsByDevice.set(row.device_id, current);
+    }
+
+    const todaySummary = results[0]?.results?.[0] || {};
+    return json(200, {
+      ok: true,
+      summary: {
+        date: today.date,
+        punchesToday: Number(todaySummary.total || 0),
+        checkInsToday: Number(todaySummary.check_ins || 0),
+        checkOutsToday: Number(todaySummary.check_outs || 0),
+        rejectedToday: Number(todaySummary.rejected || 0),
+        checkedInNow: Number(results[1]?.results?.[0]?.checked_in || 0),
+        newDevicesToday: Number(results[2]?.results?.[0]?.new_devices || 0),
+        sharedDevices: Number(results[3]?.results?.[0]?.shared_devices || 0),
+        openAlerts: Number(results[4]?.results?.[0]?.open_alerts || 0),
+        averageAccuracy: todaySummary.average_accuracy == null ? null : Number(todaySummary.average_accuracy),
+      },
+      records: recordRows.map(row =>
+        mapAttendanceRecordRow(
+          row,
+          employeeNames.get(row.employee_uid),
+          sharedUsage.get(normalizeText(safeJsonObject(row.device_info)?.deviceId))
+        )
+      ),
+      devices: deviceRows.map(row => ({
+        deviceId: row.device_id,
+        firstSeenAt: row.first_seen_at,
+        lastSeenAt: row.last_seen_at,
+        firstSeenEmployeeUid: row.first_seen_employee_uid || null,
+        lastSeenEmployeeUid: row.last_seen_employee_uid || null,
+        platform: row.platform || null,
+        userAgent: row.user_agent || null,
+        language: row.language || null,
+        timeZone: row.time_zone || null,
+        appVariant: row.app_variant || null,
+        appVersion: row.app_version || null,
+        screenSize: row.screen_size || null,
+        standalone: Number(row.standalone) === 1,
+        totalRecords: Number(row.total_records || 0),
+        allowedRecords: Number(row.allowed_records || 0),
+        rejectedRecords: Number(row.rejected_records || 0),
+        trustStatus: normalizeAttendanceDeviceStatus(row.trust_status),
+        notes: row.notes || null,
+        trustedByUid: row.trusted_by_uid || null,
+        trustedAt: row.trusted_at || null,
+        blockedByUid: row.blocked_by_uid || null,
+        blockedAt: row.blocked_at || null,
+        assignments: assignmentsByDevice.get(row.device_id) || [],
+      })),
+      alerts: (results[7]?.results || []).map(row => ({
+        id: row.id,
+        eventType: row.event_type,
+        severity: row.severity,
+        employeeUid: row.employee_uid,
+        employeeDocId: row.employee_doc_id || null,
+        employeeName: employeeNames.get(row.employee_uid) || null,
+        deviceId: row.device_id || null,
+        recordId: row.record_id || null,
+        title: row.title,
+        detail: row.detail || null,
+        metadata: safeJsonObject(row.metadata_json),
+        status: row.status,
+        resolvedByUid: row.resolved_by_uid || null,
+        resolvedAt: row.resolved_at || null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })),
+      zones: (results[8]?.results || []).map(mapWorkZoneRow),
+    });
+  } catch (error) {
+    return serverError("attendance_security_dashboard_query_failed", error);
+  }
+}
+
+async function updateAttendanceDevice(request, db, requester, rawDeviceId) {
+  const deviceId = normalizeText(rawDeviceId);
+  const input = await readJsonBody(request);
+  if (!input.ok) return input.response;
+  const trustStatus = normalizeAttendanceDeviceStatus(input.data?.trustStatus);
+  const notes = clampText(input.data?.notes, 500) || null;
+  if (!deviceId) return json(400, { ok: false, message: "invalid_device_id" });
+  if (!new Set(["new", "trusted", "blocked"]).has(normalizeText(input.data?.trustStatus))) {
+    return json(400, { ok: false, message: "invalid_device_status" });
+  }
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(`
+    UPDATE attendance_devices
+    SET trust_status = ?, notes = ?,
+        trusted_by_uid = CASE WHEN ? = 'trusted' THEN ? ELSE NULL END,
+        trusted_at = CASE WHEN ? = 'trusted' THEN ? ELSE NULL END,
+        blocked_by_uid = CASE WHEN ? = 'blocked' THEN ? ELSE NULL END,
+        blocked_at = CASE WHEN ? = 'blocked' THEN ? ELSE NULL END,
+        updated_at = ?
+    WHERE device_id = ?
+  `).bind(
+    trustStatus,
+    notes,
+    trustStatus,
+    requester.uid,
+    trustStatus,
+    now,
+    trustStatus,
+    requester.uid,
+    trustStatus,
+    now,
+    now,
+    deviceId
+  ).run();
+
+  if (!Number(result.meta?.changes || 0)) {
+    return json(404, { ok: false, message: "attendance_device_not_found" });
+  }
+  return json(200, { ok: true, deviceId, trustStatus, notes });
+}
+
+async function updateAttendanceSecurityEvent(request, db, requester, rawEventId) {
+  const eventId = normalizeText(rawEventId);
+  const input = await readJsonBody(request);
+  if (!input.ok) return input.response;
+  const status = normalizeAttendanceSecurityEventStatus(input.data?.status);
+  if (!eventId) return json(400, { ok: false, message: "invalid_security_event_id" });
+  if (!new Set(["open", "resolved", "ignored"]).has(normalizeText(input.data?.status))) {
+    return json(400, { ok: false, message: "invalid_security_event_status" });
+  }
+  const now = new Date().toISOString();
+  const result = await db.prepare(`
+    UPDATE attendance_security_events
+    SET status = ?,
+        resolved_by_uid = CASE WHEN ? = 'open' THEN NULL ELSE ? END,
+        resolved_at = CASE WHEN ? = 'open' THEN NULL ELSE ? END,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(status, status, requester.uid, status, now, now, eventId).run();
+  if (!Number(result.meta?.changes || 0)) {
+    return json(404, { ok: false, message: "attendance_security_event_not_found" });
+  }
+  return json(200, { ok: true, id: eventId, status });
 }
 
 async function listAttendanceRecords(url, db, directoryDb) {
@@ -1864,13 +2267,25 @@ async function recordAttendance({
   if (attendanceDebug) {
     console.log("attendance_debug", attendanceDebug);
   }
-  const initialResult = locationDecision.result;
-  const initialReason = locationDecision.rejectionReason;
-
   const recordId = crypto.randomUUID();
   const now = new Date().toISOString();
   const clientTime = clampText(input.data?.clientTime, 80) || null;
   const deviceInfo = normalizeDeviceInfo(input.data?.deviceInfo);
+  const previousDeviceId = await readLastSuccessfulDeviceId(db, requester.uid);
+  const deviceContext = await readAttendanceDeviceSecurityContext(
+    db,
+    deviceInfo.deviceId,
+    requester.uid
+  );
+  const deviceChange = evaluateDeviceChange(
+    deviceInfo.deviceId,
+    previousDeviceId
+  );
+  const blockedDevice = deviceContext.trustStatus === "blocked";
+  const initialResult = blockedDevice ? "rejected" : locationDecision.result;
+  const initialReason = blockedDevice
+    ? "blocked_device"
+    : locationDecision.rejectionReason;
   const zone = zoneCheck.zone;
   const role = normalizeText(requester.runtime?.role) || "guest";
   const source = buildAttendanceSource({ clientIp, zone });
@@ -1893,6 +2308,19 @@ async function recordAttendance({
         role,
         source,
       });
+      await syncAttendanceDeviceSecurity({
+        db,
+        requester,
+        recordId,
+        employeeDocId,
+        now,
+        result: "rejected",
+        rejectionReason: initialReason,
+        location,
+        deviceInfo,
+        previousDeviceId,
+        deviceContext,
+      });
       const currentState = await readAttendanceState(db, requester.uid);
       return attendanceResponse({
         recordId,
@@ -1907,15 +2335,6 @@ async function recordAttendance({
         debug: attendanceDebug,
       });
     }
-
-    const previousDeviceId = await readLastSuccessfulDeviceId(
-      db,
-      requester.uid
-    );
-    const deviceChange = evaluateDeviceChange(
-      deviceInfo.deviceId,
-      previousDeviceId
-    );
 
     const stateRequirement = type === "check_in" ? "checked_out" : "checked_in";
     const targetStatus = type === "check_in" ? "checked_in" : "checked_out";
@@ -2006,7 +2425,7 @@ async function recordAttendance({
           `
         UPDATE attendance_records
         SET device_info = json_set(
-          device_info,
+          COALESCE(NULLIF(device_info, ''), '{}'),
           '$.deviceChanged', json(?),
           '$.previousDeviceId', json(?)
         )
@@ -2035,6 +2454,19 @@ async function recordAttendance({
       savedResult === "allowed" ? stateRequirement : targetStatus;
     const currentStatus =
       savedResult === "allowed" ? targetStatus : previousStatus;
+    await syncAttendanceDeviceSecurity({
+      db,
+      requester,
+      recordId,
+      employeeDocId,
+      now,
+      result: savedResult,
+      rejectionReason: savedReason,
+      location,
+      deviceInfo,
+      previousDeviceId,
+      deviceContext,
+    });
     return attendanceResponse({
       recordId,
       type,
@@ -2171,6 +2603,296 @@ async function rebuildAttendanceState(db, employeeUid) {
       new Date().toISOString()
     )
     .run();
+}
+
+
+async function readAttendanceDeviceSecurityContext(db, rawDeviceId, employeeUid) {
+  const deviceId = normalizeText(rawDeviceId);
+  const uid = normalizeText(employeeUid);
+  if (!deviceId) {
+    return {
+      deviceExists: false,
+      trustStatus: "new",
+      assignmentCount: 0,
+      assignedToEmployee: false,
+    };
+  }
+
+  try {
+    const [deviceResult, assignmentResult] = await db.batch([
+      db.prepare(`
+        SELECT trust_status
+        FROM attendance_devices
+        WHERE device_id = ?
+        LIMIT 1
+      `).bind(deviceId),
+      db.prepare(`
+        SELECT
+          COUNT(*) AS assignment_count,
+          SUM(CASE WHEN employee_uid = ? THEN 1 ELSE 0 END) AS assigned_to_employee
+        FROM attendance_device_assignments
+        WHERE device_id = ?
+      `).bind(uid, deviceId),
+    ]);
+    const deviceRow = deviceResult?.results?.[0] || null;
+    const assignmentRow = assignmentResult?.results?.[0] || {};
+    return {
+      deviceExists: Boolean(deviceRow),
+      trustStatus: normalizeAttendanceDeviceStatus(deviceRow?.trust_status),
+      assignmentCount: Number(assignmentRow.assignment_count || 0),
+      assignedToEmployee: Number(assignmentRow.assigned_to_employee || 0) > 0,
+    };
+  } catch (error) {
+    // The endpoint can still record attendance during a staged rollout before
+    // migration 0005 is applied. The deployment instructions apply it first.
+    console.warn("[attendance] device security context lookup failed", error);
+    return {
+      deviceExists: false,
+      trustStatus: "new",
+      assignmentCount: 0,
+      assignedToEmployee: false,
+    };
+  }
+}
+
+async function syncAttendanceDeviceSecurity({
+  db,
+  requester,
+  recordId,
+  employeeDocId,
+  now,
+  result,
+  rejectionReason,
+  location,
+  deviceInfo,
+  previousDeviceId,
+  deviceContext,
+}) {
+  const deviceId = normalizeText(deviceInfo?.deviceId);
+  const classification = classifyAttendanceDeviceSecurity({
+    deviceId,
+    previousDeviceId,
+    trustStatus: deviceContext?.trustStatus,
+    assignmentCount: deviceContext?.assignmentCount,
+    assignedToEmployee: deviceContext?.assignedToEmployee,
+    deviceExists: deviceContext?.deviceExists,
+    result,
+    rejectionReason,
+    accuracy: location?.accuracy,
+  });
+
+  try {
+    const statements = [];
+    if (deviceId) {
+      statements.push(
+        db.prepare(`
+          INSERT INTO attendance_devices (
+            device_id, first_seen_at, last_seen_at,
+            first_seen_employee_uid, last_seen_employee_uid,
+            platform, user_agent, language, time_zone,
+            app_variant, app_version, screen_size, standalone,
+            total_records, allowed_records, rejected_records,
+            trust_status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'new', ?, ?)
+          ON CONFLICT(device_id) DO UPDATE SET
+            last_seen_at = excluded.last_seen_at,
+            last_seen_employee_uid = excluded.last_seen_employee_uid,
+            platform = COALESCE(excluded.platform, attendance_devices.platform),
+            user_agent = COALESCE(excluded.user_agent, attendance_devices.user_agent),
+            language = COALESCE(excluded.language, attendance_devices.language),
+            time_zone = COALESCE(excluded.time_zone, attendance_devices.time_zone),
+            app_variant = COALESCE(excluded.app_variant, attendance_devices.app_variant),
+            app_version = COALESCE(excluded.app_version, attendance_devices.app_version),
+            screen_size = COALESCE(excluded.screen_size, attendance_devices.screen_size),
+            standalone = excluded.standalone,
+            total_records = attendance_devices.total_records + 1,
+            allowed_records = attendance_devices.allowed_records + excluded.allowed_records,
+            rejected_records = attendance_devices.rejected_records + excluded.rejected_records,
+            updated_at = excluded.updated_at
+        `).bind(
+          deviceId,
+          now,
+          now,
+          requester.uid,
+          requester.uid,
+          deviceInfo.platform || null,
+          deviceInfo.userAgent || null,
+          deviceInfo.language || null,
+          deviceInfo.timeZone || null,
+          deviceInfo.appVariant || null,
+          deviceInfo.appVersion || null,
+          deviceInfo.screenSize || null,
+          deviceInfo.standalone ? 1 : 0,
+          result === "allowed" ? 1 : 0,
+          result === "rejected" ? 1 : 0,
+          now,
+          now
+        )
+      );
+      statements.push(
+        db.prepare(`
+          INSERT INTO attendance_device_assignments (
+            device_id, employee_uid, employee_doc_id,
+            first_seen_at, last_seen_at, records_count,
+            allowed_count, rejected_count, is_primary,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+          ON CONFLICT(device_id, employee_uid) DO UPDATE SET
+            employee_doc_id = excluded.employee_doc_id,
+            last_seen_at = excluded.last_seen_at,
+            records_count = attendance_device_assignments.records_count + 1,
+            allowed_count = attendance_device_assignments.allowed_count + excluded.allowed_count,
+            rejected_count = attendance_device_assignments.rejected_count + excluded.rejected_count,
+            is_primary = CASE
+              WHEN attendance_device_assignments.is_primary = 1 THEN 1
+              ELSE excluded.is_primary
+            END,
+            updated_at = excluded.updated_at
+        `).bind(
+          deviceId,
+          requester.uid,
+          employeeDocId,
+          now,
+          now,
+          result === "allowed" ? 1 : 0,
+          result === "rejected" ? 1 : 0,
+          previousDeviceId ? 0 : 1,
+          now,
+          now
+        )
+      );
+    }
+
+    statements.push(
+      db.prepare(`
+        UPDATE attendance_records
+        SET device_info = json_set(
+          COALESCE(NULLIF(device_info, ''), '{}'),
+          '$.deviceChanged', json(?),
+          '$.previousDeviceId', json(?),
+          '$.isNewDevice', json(?),
+          '$.isNewForEmployee', json(?),
+          '$.sharedDevice', json(?),
+          '$.trustStatus', ?
+        ), updated_at = ?
+        WHERE id = ?
+      `).bind(
+        classification.deviceChanged ? "true" : "false",
+        previousDeviceId ? JSON.stringify(previousDeviceId) : "null",
+        classification.isNewDevice ? "true" : "false",
+        classification.isNewForEmployee ? "true" : "false",
+        classification.sharedDevice ? "true" : "false",
+        classification.trustStatus,
+        now,
+        recordId
+      )
+    );
+
+    const eventSpecs = buildAttendanceSecurityEventSpecs({
+      classification,
+      recordId,
+      employeeUid: requester.uid,
+      employeeDocId,
+      deviceId: deviceId || null,
+      rejectionReason,
+      accuracy: location?.accuracy,
+      previousDeviceId,
+      now,
+    });
+    for (const event of eventSpecs) {
+      statements.push(
+        db.prepare(`
+          INSERT OR IGNORE INTO attendance_security_events (
+            id, event_type, severity, employee_uid, employee_doc_id,
+            device_id, record_id, title, detail, metadata_json,
+            status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+        `).bind(
+          event.id,
+          event.eventType,
+          event.severity,
+          requester.uid,
+          employeeDocId,
+          deviceId || null,
+          recordId,
+          event.title,
+          event.detail,
+          JSON.stringify(event.metadata),
+          now,
+          now
+        )
+      );
+    }
+
+    if (statements.length) await db.batch(statements);
+  } catch (error) {
+    // Device telemetry must never erase an already-recorded punch. Log the
+    // failure so the monitoring page exposes deployment/migration problems.
+    console.warn("[attendance] device security sync failed", error);
+  }
+}
+
+export function buildAttendanceSecurityEventSpecs(input = {}) {
+  const classification = input.classification || {};
+  const recordId = normalizeText(input.recordId);
+  const previousDeviceId = normalizeText(input.previousDeviceId);
+  const rejectionReason = normalizeText(input.rejectionReason);
+  const accuracy = Number(input.accuracy);
+  const definitions = {
+    new_device: {
+      severity: "info",
+      title: "بصمة من جهاز جديد",
+      detail: "تم تسجيل أول استخدام لهذا الجهاز في نظام البصمة.",
+    },
+    device_changed: {
+      severity: "warning",
+      title: "تغيير جهاز الموظفة",
+      detail: previousDeviceId
+        ? `تمت البصمة من جهاز مختلف عن الجهاز السابق (${previousDeviceId}).`
+        : "تمت البصمة من جهاز مختلف عن الجهاز السابق.",
+    },
+    shared_device: {
+      severity: "critical",
+      title: "جهاز مستخدم لأكثر من موظفة",
+      detail: "تم اكتشاف استخدام معرّف الجهاز نفسه في حساب موظفة أخرى.",
+    },
+    blocked_device_attempt: {
+      severity: "critical",
+      title: "محاولة بصمة من جهاز محظور",
+      detail: "تم رفض العملية لأن الجهاز محظور من إدارة الحضور.",
+    },
+    rejected_punch: {
+      severity: "warning",
+      title: "عملية بصمة مرفوضة",
+      detail: rejectionReason || "رُفضت عملية البصمة وفق قواعد الحضور.",
+    },
+    poor_accuracy: {
+      severity: "info",
+      title: "دقة موقع ضعيفة",
+      detail: Number.isFinite(accuracy)
+        ? `دقة الموقع المسجلة ${Math.round(accuracy)} متر.`
+        : "دقة الموقع أقل من المستوى المقبول.",
+    },
+  };
+
+  return (classification.eventTypes || [])
+    .map(eventType => {
+      const definition = definitions[eventType];
+      if (!definition || !recordId) return null;
+      return {
+        id: `${eventType}:${recordId}`,
+        eventType,
+        severity: definition.severity,
+        title: definition.title,
+        detail: definition.detail,
+        metadata: {
+          rejectionReason: rejectionReason || null,
+          accuracy: Number.isFinite(accuracy) ? accuracy : null,
+          previousDeviceId: previousDeviceId || null,
+        },
+      };
+    })
+    .filter(Boolean);
 }
 
 async function readLastSuccessfulDeviceId(db, employeeUid) {
@@ -2607,6 +3329,11 @@ function normalizeDeviceInfo(value) {
     platform: clampText(info.platform, 120) || null,
     language: clampText(info.language, 40) || null,
     timeZone: clampText(info.timeZone, 80) || null,
+    appVariant: clampText(info.appVariant, 40) || null,
+    appVersion: clampText(info.appVersion, 80) || null,
+    screenSize: clampText(info.screenSize, 40) || null,
+    standalone: info.standalone === true,
+    touchPoints: Math.max(0, Math.min(20, Number(info.touchPoints || 0) || 0)),
   };
 }
 
