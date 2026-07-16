@@ -375,7 +375,11 @@ test("internal booking exposes packages and sessions management from Packages D1
   assert.match(panel, /تحتاج متابعة/);
   assert.match(panel, /PackageOperationsService\.sessionDashboard/);
   assert.match(service, /\/api\/packages\/admin\/session-dashboard/);
+  assert.match(service, /normalizePackagesWorkerBaseUrl/);
+  assert.match(service, /indexOf\("\/api\/packages"\)/);
   assert.match(routes, /sessionDashboardAdminD1/);
+  assert.match(routes, /const pathname = url\.pathname/);
+  assert.match(routes, /url\.pathname\.replace/);
   assert.match(d1, /package_transactions/);
   assert.match(d1, /subscribedClients/);
   assert.doesNotMatch(panel, /firebase\/firestore/);

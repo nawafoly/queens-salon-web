@@ -115,6 +115,8 @@ const routes = {
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
   // D1 ONLY — administrative packages and session dashboard.
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
+  // Backward-compatible alias for older dashboard builds.
+  "GET /api/packages/session-dashboard": { d1: sessionDashboardAdminD1 },
   // D1 ONLY — do not add Firestore fallback.
   "GET /api/packages/my-wallet": { d1: myWalletD1 },
 };
@@ -122,7 +124,8 @@ const routes = {
 export async function handleRequest(request, env) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request, env) });
   const url = new URL(request.url);
-  const key = `${request.method} ${url.pathname}`;
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+  const key = `${request.method} ${pathname}`;
   const route = routes[key];
   if (!route) throw new AppError(404, "packages_api:not_found");
   const body = request.method === "GET" ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
@@ -134,7 +137,7 @@ export async function handleRequest(request, env) {
     ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null }
     : await withActor(request, env, body);
   const data = await handler(ctx, body);
-  if (request.method === "POST" && url.pathname !== "/api/packages/client-wallet") {
+  if (request.method === "POST" && pathname !== "/api/packages/client-wallet") {
     clearD1WalletRuntimeCaches();
   }
   return jsonResponse(request, env, 200, { ok: true, data });

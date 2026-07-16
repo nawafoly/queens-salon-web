@@ -552,6 +552,17 @@ test("D1 admin session dashboard returns package summary and ledger", async () =
   assert.equal(body.data.transactions[0].bookingId, "MK-10423");
 });
 
+
+
+test("D1 admin session dashboard accepts compatibility alias and trailing slash", async () => {
+  const fake = new FakeD1();
+  seedBase(fake);
+  const aliasResponse = await worker.fetch(request("/api/packages/session-dashboard", { method: "GET" }), env(fake));
+  assert.equal(aliasResponse.status, 200, JSON.stringify(await json(aliasResponse.clone())));
+  const slashResponse = await worker.fetch(request("/api/packages/admin/session-dashboard/", { method: "GET" }), env(fake));
+  assert.equal(slashResponse.status, 200, JSON.stringify(await json(slashResponse.clone())));
+});
+
 test("D1 cron expires active packages", async () => {
   const fake = new FakeD1();
   seedBase(fake);

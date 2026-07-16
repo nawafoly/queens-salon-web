@@ -130,12 +130,29 @@ function operationId(prefix: string) {
 
 const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-packages-api.maedin.workers.dev";
 
+function normalizePackagesWorkerBaseUrl(value: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const packagePathIndex = url.pathname.indexOf("/api/packages");
+    if (packagePathIndex >= 0) url.pathname = url.pathname.slice(0, packagePathIndex) || "/";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return raw.replace(/\/api\/packages(?:\/.*)?$/i, "").replace(/\/+$/, "");
+  }
+}
+
 function packageWorkerBaseUrl() {
   const flags = getDataSourceFlags();
-  if (flags.usePackagesD1) return requirePackagesWorkerUrl();
-  // Explicit transition mode: keep the currently deployed package Worker.
-  // Never silently fall back after a D1 request failure.
-  return String(flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL).replace(/\/+$/, "");
+  const configured = flags.usePackagesD1
+    ? requirePackagesWorkerUrl()
+    : flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL;
+  // Some production environments stored the full /api/packages path as the
+  // worker URL. Keep only the worker origin so request paths are never doubled.
+  return normalizePackagesWorkerBaseUrl(configured);
 }
 
 function isDevRuntime() {
