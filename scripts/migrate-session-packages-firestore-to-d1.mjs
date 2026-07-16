@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const DEFAULT_DATABASE = "queens-salon-packages";
@@ -297,20 +299,45 @@ function insertSql(table, row) {
 }
 
 function buildSql(rowsByTable) {
-  const statements = ["BEGIN TRANSACTION;"];
+  // Wrangler D1 remote execution rejects explicit SQL BEGIN/COMMIT statements.
+  // Each statement is idempotent, so the import can be safely retried if interrupted.
+  const statements = [];
   for (const table of ["package_catalog", "clients", "client_identity_aliases", "client_packages", "package_transactions"]) {
     for (const row of rowsByTable[table] || []) statements.push(insertSql(table, row));
   }
-  statements.push("COMMIT;");
   return statements.join("\n");
 }
 
-function runWranglerD1(sql, database) {
-  const result = spawnSync("npx", ["wrangler", "d1", "execute", database, "--remote", "--command", sql], {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
-  if (result.status !== 0) throw new Error(`wrangler d1 execute failed with exit code ${result.status}`);
+function runWranglerD1(sql, database, config) {
+  const directory = mkdtempSync(join(tmpdir(), "queens-packages-migration-"));
+  const sqlPath = join(directory, "migration.sql");
+  try {
+    writeFileSync(sqlPath, sql, "utf8");
+    const result = spawnSync(
+      "npx",
+      [
+        "wrangler",
+        "d1",
+        "execute",
+        database,
+        "--remote",
+        "--file",
+        sqlPath,
+        "--config",
+        config,
+      ],
+      {
+        stdio: "inherit",
+        shell: process.platform === "win32",
+      }
+    );
+    if (result.status !== 0) {
+      const detail = result.error?.message || result.signal || `exit code ${result.status}`;
+      throw new Error(`wrangler d1 execute failed: ${detail}`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 const apply = hasFlag("--apply");
@@ -318,6 +345,7 @@ const inputPath = arg("--input");
 const projectId = clean(arg("--project") || process.env.FIREBASE_PROJECT_ID || "waves-hotel-dashboard");
 const salonId = clean(arg("--salon") || process.env.SALON_ID || DEFAULT_SALON_ID);
 const database = clean(arg("--database") || process.env.PACKAGES_D1_DATABASE || DEFAULT_DATABASE);
+const config = clean(arg("--config") || process.env.PACKAGES_WRANGLER_CONFIG || "wrangler.packages.jsonc");
 
 const source = await readSource({ projectId, salonId, inputPath });
 const { rows, conflicts } = transform(source, salonId);
@@ -339,5 +367,5 @@ if (conflicts.length && !hasFlag("--allow-conflicts")) {
   throw new Error("Conflicts detected. Resolve them or pass --allow-conflicts after review.");
 }
 
-runWranglerD1(buildSql(rows), database);
+runWranglerD1(buildSql(rows), database, config);
 console.log("migration applied idempotently with INSERT OR REPLACE.");
