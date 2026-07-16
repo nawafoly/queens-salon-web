@@ -24,12 +24,14 @@ import {
   fetchAttendanceSecurityDashboard,
   updateAttendanceDeviceStatus,
   updateAttendanceSecurityEventStatus,
+  type AttendanceDeviceAssignment,
   type AttendanceSecurityDashboard,
   type AttendanceSecurityDevice,
   type AttendanceSecurityEvent,
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
 import "../styles/DashboardAttendanceSecurity.css";
+import "../styles/DashboardAttendanceDeviceCards.css";
 
 type AttendanceTab = "overview" | "records" | "devices" | "alerts" | "zones";
 type RecordResultFilter = "all" | "allowed" | "rejected";
@@ -109,9 +111,15 @@ function rejectionLabel(value?: string | null) {
 }
 
 function deviceStatusLabel(value: string) {
-  if (value === "trusted") return "موثوق";
+  if (value === "trusted") return "معتمد";
   if (value === "blocked") return "محظور";
   return "جديد";
+}
+
+function deviceStatusDescription(value: string) {
+  if (value === "trusted") return "جهاز معتمد ومسموح باستخدامه للبصمة.";
+  if (value === "blocked") return "جهاز محظور، وستُرفض أي بصمة جديدة منه.";
+  return "جهاز جديد — لم يتم اعتماده بعد.";
 }
 
 function eventTypeLabel(value: string) {
@@ -152,6 +160,80 @@ function resolveStaffName(
   );
 }
 
+function resolveAssignmentName(
+  assignment: AttendanceDeviceAssignment,
+  staffNames: Map<string, string>
+) {
+  return (
+    assignment.employeeName ||
+    staffNames.get(assignment.employeeUid) ||
+    staffNames.get(String(assignment.employeeDocId || "")) ||
+    assignment.employeeDocId ||
+    assignment.employeeUid ||
+    "موظفة غير معروفة"
+  );
+}
+
+function deviceEmployeeNames(
+  device: AttendanceSecurityDevice,
+  staffNames: Map<string, string>
+) {
+  return Array.from(
+    new Set(device.assignments.map((assignment) => resolveAssignmentName(assignment, staffNames)))
+  );
+}
+
+function primaryDeviceEmployeeName(
+  device: AttendanceSecurityDevice,
+  staffNames: Map<string, string>
+) {
+  const assignment =
+    device.assignments.find((item) => item.isPrimary) || device.assignments[0];
+  return assignment
+    ? resolveAssignmentName(assignment, staffNames)
+    : "لم يتم ربط الجهاز بموظفة";
+}
+
+function friendlyDeviceName(device: AttendanceSecurityDevice) {
+  const userAgent = String(device.userAgent || "");
+  const platform = String(device.platform || "").trim();
+  const lowerAgent = userAgent.toLowerCase();
+  const lowerPlatform = platform.toLowerCase();
+
+  let hardware = "جهاز غير معروف";
+
+  if (lowerAgent.includes("iphone")) {
+    hardware = "iPhone";
+  } else if (lowerAgent.includes("ipad")) {
+    hardware = "iPad";
+  } else if (lowerAgent.includes("android")) {
+    const modelMatch = userAgent.match(/;\s*([^;()]+?)\s+Build\//i);
+    const model = String(modelMatch?.[1] || "").trim();
+    if (/^SM-/i.test(model)) hardware = `Samsung ${model}`;
+    else if (/^Pixel/i.test(model)) hardware = `Google ${model}`;
+    else if (model && !/^wv$/i.test(model)) hardware = model;
+    else hardware = "هاتف Android";
+  } else if (lowerAgent.includes("windows") || lowerPlatform.includes("win")) {
+    hardware = "جهاز Windows";
+  } else if (lowerAgent.includes("macintosh") || lowerPlatform.includes("mac")) {
+    hardware = "جهاز Mac";
+  } else if (lowerPlatform.includes("linux arm")) {
+    hardware = "هاتف Android";
+  } else if (platform) {
+    hardware = platform;
+  }
+
+  const variant = String(device.appVariant || "web").trim().toLowerCase();
+  const surface =
+    variant === "staff"
+      ? "تطبيق الموظفات"
+      : variant === "web"
+        ? "متصفح الويب"
+        : variant || "واجهة غير معروفة";
+
+  return `${hardware} · ${surface}`;
+}
+
 export default function DashboardAttendanceSecurity() {
   const { hasPermission } = usePermissions();
   const canManageDevices = hasPermission("attendance.settings.manage");
@@ -169,6 +251,7 @@ export default function DashboardAttendanceSecurity() {
   const [resultFilter, setResultFilter] = useState<RecordResultFilter>("all");
   const [typeFilter, setTypeFilter] = useState<RecordTypeFilter>("all");
   const [selectedRecord, setSelectedRecord] = useState<AttendanceWorkerRecord | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<AttendanceSecurityDevice | null>(null);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -248,10 +331,12 @@ export default function DashboardAttendanceSecurity() {
         searchable(search, [
           device.deviceId,
           device.platform,
+          device.userAgent,
           device.appVariant,
           device.appVersion,
           device.screenSize,
           device.trustStatus,
+          friendlyDeviceName(device),
           ...device.assignments.flatMap((assignment) => [
             assignment.employeeName,
             staffNames.get(assignment.employeeUid),
@@ -314,6 +399,7 @@ export default function DashboardAttendanceSecurity() {
             ? "تم حظر الجهاز، وستُرفض بصماته القادمة."
             : "تمت إعادة الجهاز إلى حالة جديد."
       );
+      setSelectedDevice(null);
       await load();
     } catch (actionError: any) {
       setError(String(actionError?.message || "تعذر تحديث حالة الجهاز."));
@@ -494,38 +580,59 @@ export default function DashboardAttendanceSecurity() {
 
         {!error && activeTab === "devices" ? (
           <div className="attendance-security-device-grid">
-            {visibleDevices.map((device) => (
-              <article key={device.deviceId} className={`attendance-security-device-card is-${device.trustStatus}`}>
-                <header>
-                  <span><FiCpu /></span>
-                  <div><strong dir="ltr">{shortDeviceId(device.deviceId)}</strong><small>{device.platform || "منصة غير معروفة"} · {device.appVariant || "web"}</small></div>
-                  <em>{deviceStatusLabel(device.trustStatus)}</em>
-                </header>
-                <dl>
-                  <div><dt>أول استخدام</dt><dd>{formatDateTime(device.firstSeenAt)}</dd></div>
-                  <div><dt>آخر استخدام</dt><dd>{formatDateTime(device.lastSeenAt)}</dd></div>
-                  <div><dt>عدد البصمات</dt><dd>{device.totalRecords}</dd></div>
-                  <div><dt>الموظفات</dt><dd>{device.assignments.length}</dd></div>
-                  <div><dt>الشاشة</dt><dd>{device.screenSize || "—"}</dd></div>
-                  <div><dt>نسخة التطبيق</dt><dd>{device.appVersion || "—"}</dd></div>
-                </dl>
-                <div className="attendance-security-device-users">
-                  {device.assignments.map((assignment) => (
-                    <span key={assignment.employeeUid}>
-                      {assignment.employeeName || staffNames.get(assignment.employeeUid) || assignment.employeeDocId || assignment.employeeUid}
-                      <small>{assignment.recordsCount} بصمة</small>
-                    </span>
-                  ))}
-                </div>
-                {canManageDevices ? (
+            {visibleDevices.map((device) => {
+              const employeeNames = deviceEmployeeNames(device, staffNames);
+              const primaryEmployee = primaryDeviceEmployeeName(device, staffNames);
+              const isShared = employeeNames.length > 1;
+              return (
+                <article key={device.deviceId} className={`attendance-security-device-card is-${device.trustStatus}`}>
+                  <header>
+                    <span><FiSmartphone /></span>
+                    <div className="attendance-security-device-identity">
+                      <strong>{primaryEmployee}</strong>
+                      <small>{friendlyDeviceName(device)}</small>
+                    </div>
+                    <em>{deviceStatusLabel(device.trustStatus)}</em>
+                  </header>
+
+                  <p className="attendance-security-device-status-note">
+                    {deviceStatusDescription(device.trustStatus)}
+                  </p>
+
+                  <dl>
+                    <div className="attendance-security-device-owner">
+                      <dt>{isShared ? "الموظفات المستخدمات للجهاز" : "الموظفة المرتبطة بالجهاز"}</dt>
+                      <dd>{employeeNames.length ? employeeNames.join("، ") : "لم يتم تحديد الموظفة"}</dd>
+                    </div>
+                    <div><dt>أول استخدام</dt><dd>{formatDateTime(device.firstSeenAt)}</dd></div>
+                    <div><dt>آخر استخدام</dt><dd>{formatDateTime(device.lastSeenAt)}</dd></div>
+                    <div><dt>عدد البصمات</dt><dd>{device.totalRecords}</dd></div>
+                    <div><dt>حالة الاستخدام</dt><dd>{isShared ? `مشترك بين ${employeeNames.length} موظفات` : "تستخدمه موظفة واحدة"}</dd></div>
+                  </dl>
+
+                  <span className="attendance-security-device-users-label">سجل الاستخدام حسب الموظفة</span>
+                  <div className="attendance-security-device-users">
+                    {device.assignments.map((assignment) => (
+                      <span key={`${assignment.employeeUid}:${assignment.employeeDocId || ""}`}>
+                        {resolveAssignmentName(assignment, staffNames)}
+                        <small>{assignment.recordsCount} بصمة</small>
+                      </span>
+                    ))}
+                  </div>
+
                   <footer>
-                    <button type="button" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "trusted"} onClick={() => void setDeviceStatus(device, "trusted")}><FiUnlock />اعتماد</button>
-                    <button type="button" className="is-danger" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "blocked"} onClick={() => void setDeviceStatus(device, "blocked")}><FiLock />حظر</button>
-                    {device.trustStatus !== "new" ? <button type="button" disabled={busyKey === `device:${device.deviceId}`} onClick={() => void setDeviceStatus(device, "new")}>إعادة للمراجعة</button> : null}
+                    {canManageDevices ? (
+                      <>
+                        <button type="button" className="is-primary" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "trusted"} onClick={() => void setDeviceStatus(device, "trusted")}><FiUnlock />اعتماد الجهاز</button>
+                        <button type="button" className="is-danger" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "blocked"} onClick={() => void setDeviceStatus(device, "blocked")}><FiLock />حظر الجهاز</button>
+                        {device.trustStatus !== "new" ? <button type="button" disabled={busyKey === `device:${device.deviceId}`} onClick={() => void setDeviceStatus(device, "new")}>إعادة للمراجعة</button> : null}
+                      </>
+                    ) : null}
+                    <button type="button" className="is-technical" onClick={() => setSelectedDevice(device)}><FiEye />التفاصيل التقنية</button>
                   </footer>
-                ) : null}
-              </article>
-            ))}
+                </article>
+              );
+            })}
             {!loading && !visibleDevices.length ? <p className="attendance-security-empty">لا توجد أجهزة مطابقة للبحث.</p> : null}
           </div>
         ) : null}
@@ -584,6 +691,44 @@ export default function DashboardAttendanceSecurity() {
               <div><dt>تغيير الجهاز</dt><dd>{selectedRecord.deviceInfo?.deviceChanged === true ? "نعم" : "لا"}</dd></div>
             </dl>
             <a className="attendance-security-map-link" href={`https://www.google.com/maps?q=${selectedRecord.location.lat},${selectedRecord.location.lng}`} target="_blank" rel="noreferrer"><FiMapPin />فتح الموقع على الخريطة</a>
+          </aside>
+        </div>
+      ) : null}
+
+      {selectedDevice ? (
+        <div className="attendance-security-detail-backdrop" role="presentation" onMouseDown={() => setSelectedDevice(null)}>
+          <aside className="attendance-security-detail" role="dialog" aria-modal="true" aria-label="التفاصيل التقنية للجهاز" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div><p>التفاصيل التقنية للجهاز</p><h2>{primaryDeviceEmployeeName(selectedDevice, staffNames)}</h2></div>
+              <button type="button" onClick={() => setSelectedDevice(null)}>×</button>
+            </header>
+            <div className="attendance-security-detail-status">
+              <span className={`is-${selectedDevice.trustStatus === "blocked" ? "rejected" : "allowed"}`}>{deviceStatusLabel(selectedDevice.trustStatus)}</span>
+              <strong>{friendlyDeviceName(selectedDevice)}</strong>
+            </div>
+            <dl>
+              <div><dt>معرف الجهاز</dt><dd dir="ltr">{selectedDevice.deviceId}</dd></div>
+              <div><dt>المنصة</dt><dd>{selectedDevice.platform || "—"}</dd></div>
+              <div><dt>واجهة التطبيق</dt><dd>{selectedDevice.appVariant || "—"}</dd></div>
+              <div><dt>نسخة التطبيق</dt><dd>{selectedDevice.appVersion || "—"}</dd></div>
+              <div><dt>حجم الشاشة</dt><dd>{selectedDevice.screenSize || "—"}</dd></div>
+              <div><dt>اللغة</dt><dd>{selectedDevice.language || "—"}</dd></div>
+              <div><dt>المنطقة الزمنية</dt><dd>{selectedDevice.timeZone || "—"}</dd></div>
+              <div><dt>وضع التطبيق المستقل</dt><dd>{selectedDevice.standalone ? "نعم" : "لا"}</dd></div>
+              <div><dt>أول استخدام</dt><dd>{formatDateTime(selectedDevice.firstSeenAt)}</dd></div>
+              <div><dt>آخر استخدام</dt><dd>{formatDateTime(selectedDevice.lastSeenAt)}</dd></div>
+              <div><dt>البصمات المقبولة</dt><dd>{selectedDevice.allowedRecords}</dd></div>
+              <div><dt>البصمات المرفوضة</dt><dd>{selectedDevice.rejectedRecords}</dd></div>
+              <div style={{ gridColumn: "1 / -1" }}><dt>User Agent</dt><dd dir="ltr">{selectedDevice.userAgent || "—"}</dd></div>
+            </dl>
+            <div className="attendance-security-device-detail-users">
+              {selectedDevice.assignments.map((assignment) => (
+                <span key={`${assignment.employeeUid}:${assignment.employeeDocId || ""}`}>
+                  {resolveAssignmentName(assignment, staffNames)}
+                  <small>{assignment.recordsCount} بصمة · {assignment.allowedCount} مقبولة · {assignment.rejectedCount} مرفوضة</small>
+                </span>
+              ))}
+            </div>
           </aside>
         </div>
       ) : null}
