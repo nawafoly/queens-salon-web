@@ -15,6 +15,7 @@ import { buildClientCanonicalization } from "./migration-client-canonicalization
 
 const DEFAULT_DATABASE = "queens-salon-core";
 const DEFAULT_SALON_ID = "main";
+const MAX_SQL_STATEMENT_BYTES = 250000;
 const DAY_TO_WEEKDAY = {
   sun: 0,
   mon: 1,
@@ -1495,47 +1496,228 @@ function transform(input, salonId, options = {}) {
   };
 }
 
+const SQL_TABLE_ORDER = [
+  "clients",
+  "client_aliases",
+  "service_categories",
+  "service_sections",
+  "services",
+  "staff",
+  "staff_services",
+  "staff_schedules",
+  "bookings",
+  "booking_items",
+  "booking_slot_locks",
+  "invoices",
+  "payments",
+  "income_entries",
+  "expense_entries",
+  "discounts",
+  "refunds",
+  "audit_logs",
+  "employee_profiles",
+  "employee_employment",
+  "hr_work_schedules",
+  "attendance_records",
+  "attendance_state",
+  "employee_leaves",
+  "employee_absences",
+  "payroll_periods",
+  "payroll_entries",
+  "salon_settings",
+  "admin_profiles",
+  "role_assignments",
+  "file_metadata",
+  "notification_records",
+];
+
+const SQL_PRIMARY_KEYS = {
+  clients: ["id"],
+  client_aliases: ["salon_id", "alias_id"],
+  service_categories: ["id"],
+  service_sections: ["id"],
+  services: ["id"],
+  staff: ["id"],
+  staff_services: ["salon_id", "staff_id", "service_id"],
+  staff_schedules: ["id"],
+  bookings: ["id"],
+  booking_items: ["id"],
+  booking_slot_locks: ["salon_id", "staff_id", "booking_date", "slot_time"],
+  invoices: ["id"],
+  payments: ["id"],
+  income_entries: ["id"],
+  expense_entries: ["id"],
+  discounts: ["id"],
+  refunds: ["id"],
+  audit_logs: ["id"],
+  employee_profiles: ["id"],
+  employee_employment: ["salon_id", "employee_id"],
+  hr_work_schedules: ["id"],
+  attendance_records: ["id"],
+  attendance_state: ["salon_id", "employee_id"],
+  employee_leaves: ["id"],
+  employee_absences: ["id"],
+  payroll_periods: ["id"],
+  payroll_entries: ["id"],
+  salon_settings: ["salon_id", "setting_key"],
+  admin_profiles: ["salon_id", "firebase_uid"],
+  role_assignments: ["salon_id", "firebase_uid", "role", "scope"],
+  file_metadata: ["id"],
+  notification_records: ["id"],
+};
+
+function utf8Bytes(value) {
+  return Buffer.byteLength(String(value), "utf8");
+}
+
+function insertPrefix(table, columns) {
+  return `INSERT OR REPLACE INTO ${table} (${columns.join(", ")}) VALUES `;
+}
+
+function rowValuesSql(row, columns) {
+  return `(${columns.map((key) => sqlValue(row[key])).join(", ")})`;
+}
+
+function whereByPrimaryKey(table, row) {
+  const keys = SQL_PRIMARY_KEYS[table] || ["id"];
+  if (keys.some((key) => clean(row[key]) === "")) return "";
+  return keys.map((key) => `${key} = ${sqlValue(row[key])}`).join(" AND ");
+}
+
+function splitSqlString(value, maxLiteralBytes) {
+  const chunks = [];
+  let current = "";
+  for (const char of Array.from(String(value))) {
+    const candidate = `${current}${char}`;
+    if (current && utf8Bytes(sqlValue(candidate)) > maxLiteralBytes) {
+      chunks.push(current);
+      current = char;
+      continue;
+    }
+    current = candidate;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function singleRowInsert(table, row, columns) {
+  return `${insertPrefix(table, columns)}${rowValuesSql(row, columns)};`;
+}
+
+function buildLargeRowStatements(table, row, columns, maxStatementBytes) {
+  const original = singleRowInsert(table, row, columns);
+  if (utf8Bytes(original) <= maxStatementBytes) return [original];
+
+  const where = whereByPrimaryKey(table, row);
+  if (!where) return [original];
+  const primaryKeys = new Set(SQL_PRIMARY_KEYS[table] || ["id"]);
+  const stringColumns = columns
+    .filter((column) => !primaryKeys.has(column) && typeof row[column] === "string" && row[column] !== "")
+    .sort((a, b) => utf8Bytes(sqlValue(row[b])) - utf8Bytes(sqlValue(row[a])));
+
+  const baseRow = { ...row };
+  const offloaded = [];
+  for (const column of stringColumns) {
+    baseRow[column] = "";
+    offloaded.push(column);
+    if (utf8Bytes(singleRowInsert(table, baseRow, columns)) <= maxStatementBytes) break;
+  }
+
+  const statements = [singleRowInsert(table, baseRow, columns)];
+  for (const column of offloaded) {
+    const prefix = `UPDATE ${table} SET ${column} = COALESCE(${column}, '') || `;
+    const suffix = ` WHERE ${where};`;
+    const maxLiteralBytes = Math.max(1, maxStatementBytes - utf8Bytes(prefix) - utf8Bytes(suffix));
+    for (const chunk of splitSqlString(row[column], maxLiteralBytes)) {
+      statements.push(`${prefix}${sqlValue(chunk)}${suffix}`);
+    }
+  }
+  return statements;
+}
+
+function buildSqlArtifact(tables, { maxStatementBytes = MAX_SQL_STATEMENT_BYTES } = {}) {
+  const statements = [];
+  const chunksPerTable = {};
+  let largestStatementBytes = 0;
+  const addStatement = (table, statement) => {
+    const bytes = utf8Bytes(statement);
+    largestStatementBytes = Math.max(largestStatementBytes, bytes);
+    chunksPerTable[table] = (chunksPerTable[table] || 0) + 1;
+    statements.push(statement);
+  };
+
+  for (const table of SQL_TABLE_ORDER) {
+    const rowsForTable = tables[table] || [];
+    let activeSignature = "";
+    let activePrefix = "";
+    let activePrefixBytes = 0;
+    let activeValues = [];
+    let activeValuesBytes = 0;
+
+    const flush = () => {
+      if (!activeValues.length) return;
+      addStatement(table, `${activePrefix}${activeValues.join(", ")};`);
+      activeSignature = "";
+      activePrefix = "";
+      activePrefixBytes = 0;
+      activeValues = [];
+      activeValuesBytes = 0;
+    };
+
+    for (const row of rowsForTable) {
+      const columns = Object.keys(row);
+      const signature = columns.join("\u0000");
+      const prefix = insertPrefix(table, columns);
+      const valuesSql = rowValuesSql(row, columns);
+      const singleStatement = `${prefix}${valuesSql};`;
+      if (utf8Bytes(singleStatement) > maxStatementBytes) {
+        flush();
+        for (const statement of buildLargeRowStatements(table, row, columns, maxStatementBytes)) {
+          addStatement(table, statement);
+        }
+        continue;
+      }
+
+      if (!activeValues.length || activeSignature !== signature) {
+        flush();
+        activeSignature = signature;
+        activePrefix = prefix;
+        activePrefixBytes = utf8Bytes(prefix);
+      }
+
+      const valuesBytes = utf8Bytes(valuesSql);
+      const separatorBytes = activeValues.length ? utf8Bytes(", ") : 0;
+      const candidateBytes = activePrefixBytes + activeValuesBytes + separatorBytes + valuesBytes + utf8Bytes(";");
+      if (activeValues.length && candidateBytes > maxStatementBytes) {
+        flush();
+        activeSignature = signature;
+        activePrefix = prefix;
+        activePrefixBytes = utf8Bytes(prefix);
+      }
+      activeValues.push(valuesSql);
+      activeValuesBytes += (activeValues.length > 1 ? utf8Bytes(", ") : 0) + valuesBytes;
+    }
+    flush();
+  }
+
+  const sql = statements.join("\n");
+  return {
+    sql,
+    report: {
+      sqlStatementsGenerated: statements.length,
+      largestStatementBytes,
+      sqlFileBytes: utf8Bytes(sql),
+      chunksPerTable,
+      maxStatementBytes,
+    },
+  };
+}
+
 function buildSql(tables) {
-  const order = [
-    "clients",
-    "client_aliases",
-    "service_categories",
-    "service_sections",
-    "services",
-    "staff",
-    "staff_services",
-    "staff_schedules",
-    "bookings",
-    "booking_items",
-    "booking_slot_locks",
-    "invoices",
-    "payments",
-    "income_entries",
-    "expense_entries",
-    "discounts",
-    "refunds",
-    "audit_logs",
-    "employee_profiles",
-    "employee_employment",
-    "hr_work_schedules",
-    "attendance_records",
-    "attendance_state",
-    "employee_leaves",
-    "employee_absences",
-    "payroll_periods",
-    "payroll_entries",
-    "salon_settings",
-    "admin_profiles",
-    "role_assignments",
-    "file_metadata",
-    "notification_records",
-  ];
   // Wrangler D1 remote execution on Windows is reliable with --file, but
-  // rejects explicit BEGIN/COMMIT statements in the SQL file. Every statement
-  // is INSERT OR REPLACE, so interrupted runs can be safely retried.
-  return order
-    .flatMap((table) => (tables[table] || []).map((row) => insert(table, row)))
-    .join("\n");
+  // rejects explicit BEGIN/COMMIT statements in the SQL file. Statements are
+  // bounded by UTF-8 byte size and remain idempotent via INSERT OR REPLACE.
+  return buildSqlArtifact(tables).sql;
 }
 
 function runWranglerD1(sql, database, config) {
@@ -1589,6 +1771,8 @@ const { tables, blockingConflicts, warningConflicts, report } = transform(input,
 const counts = Object.fromEntries(
   Object.entries(tables).map(([table, tableRows]) => [table, tableRows.length])
 );
+const sqlArtifact = buildSqlArtifact(tables);
+const sqlReport = sqlArtifact.report;
 
 console.log("core migration source", inputPath ? "input-file" : "source-rest");
 console.table(counts);
@@ -1632,9 +1816,20 @@ if (report.discountDecisions.length) {
   console.log("discount conflict decisions");
   console.table(report.discountDecisions);
 }
+console.log(`sqlStatementsGenerated = ${sqlReport.sqlStatementsGenerated}`);
+console.log(`largestStatementBytes = ${sqlReport.largestStatementBytes}`);
+console.log(`sqlFileBytes = ${sqlReport.sqlFileBytes}`);
+console.log(`maxStatementBytes = ${sqlReport.maxStatementBytes}`);
+console.log("chunksPerTable");
+console.table(
+  Object.entries(sqlReport.chunksPerTable).map(([table, chunks]) => ({
+    table,
+    chunks,
+  }))
+);
 if (!apply && hasFlag("--dump-sql")) {
   console.log("sql dump");
-  console.log(buildSql(tables));
+  console.log(sqlArtifact.sql);
   process.exit(0);
 }
 if (!apply) {
@@ -1646,5 +1841,10 @@ if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
     "Blocking conflicts detected. Resolve them or pass --allow-conflicts after review."
   );
 }
-runWranglerD1(buildSql(tables), database, config);
+if (sqlReport.largestStatementBytes > MAX_SQL_STATEMENT_BYTES) {
+  throw new Error(
+    `Generated SQL statement exceeds ${MAX_SQL_STATEMENT_BYTES} bytes: ${sqlReport.largestStatementBytes}`
+  );
+}
+runWranglerD1(sqlArtifact.sql, database, config);
 console.log("core migration applied idempotently with INSERT OR REPLACE.");

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { buildClientCanonicalization } from "../scripts/migration-client-canonicalization.mjs";
 import worker from "./core/index.js";
@@ -430,6 +432,80 @@ async function json(response) {
   return response.json();
 }
 
+function splitSqlValues(text) {
+  const values = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "'") {
+      if (quoted && text[index + 1] === "'") {
+        current += "''";
+        index += 1;
+        continue;
+      }
+      quoted = !quoted;
+    }
+    if (char === "," && !quoted) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function splitSqlTuples(text) {
+  const tuples = [];
+  let current = "";
+  let quoted = false;
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "'") {
+      if (quoted && text[index + 1] === "'") {
+        current += "''";
+        index += 1;
+        continue;
+      }
+      quoted = !quoted;
+    }
+    if (!quoted && char === "(") {
+      if (depth === 0) {
+        current = "";
+        depth = 1;
+        continue;
+      }
+      depth += 1;
+    } else if (!quoted && char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        tuples.push(current);
+        current = "";
+        continue;
+      }
+    }
+    if (depth > 0) current += char;
+  }
+  return tuples;
+}
+
+function unquoteSqlValue(value) {
+  return value === "NULL" ? "" : value.replace(/^'/, "").replace(/'$/, "").replace(/''/g, "'");
+}
+
+function parseInsertRows(line) {
+  const match = /^INSERT OR REPLACE INTO (\w+) \((.+)\) VALUES (.*);$/.exec(line.trim());
+  if (!match) return [];
+  const columns = match[2].split(",").map((column) => column.trim());
+  return splitSqlTuples(match[3]).map((tuple) => {
+    const values = splitSqlValues(tuple).map(unquoteSqlValue);
+    return Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+  });
+}
+
 function seedCore(fake) {
   const now = "2027-01-01T00:00:00.000Z";
   fake.seed("clients", { id: "client-a", salon_id: "main", name: "Client A", phone_normalized: "0500000001", email: null, firebase_uid: "client1", status: "active", notes: null, created_at: now, updated_at: now });
@@ -852,56 +928,80 @@ test("core migration SQL never emits NULL or dangling booking client ids", () =>
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
 
-  const splitSqlValues = (text) => {
-    const values = [];
-    let current = "";
-    let quoted = false;
-    for (let index = 0; index < text.length; index += 1) {
-      const char = text[index];
-      if (char === "'") {
-        if (quoted && text[index + 1] === "'") {
-          current += "''";
-          index += 1;
-          continue;
-        }
-        quoted = !quoted;
-      }
-      if (char === "," && !quoted) {
-        values.push(current.trim());
-        current = "";
-        continue;
-      }
-      current += char;
-    }
-    values.push(current.trim());
-    return values;
-  };
-  const unquote = (value) =>
-    value === "NULL" ? "" : value.replace(/^'/, "").replace(/';?$/, "").replace(/''/g, "'");
-  const parseInsert = (line) => {
-    const match = /^INSERT OR REPLACE INTO (\w+) \((.+)\) VALUES \((.*)\);$/.exec(line.trim());
-    if (!match) return null;
-    const columns = match[2].split(",").map((column) => column.trim());
-    const values = splitSqlValues(match[3]).map(unquote);
-    return Object.fromEntries(columns.map((column, index) => [column, values[index]]));
-  };
-
   const sqlLines = result.stdout.split(/\r?\n/).filter((line) => line.startsWith("INSERT OR REPLACE INTO "));
   const clientIds = new Set(
     sqlLines
       .filter((line) => line.startsWith("INSERT OR REPLACE INTO clients "))
-      .map((line) => parseInsert(line)?.id)
+      .flatMap(parseInsertRows)
+      .map((row) => row.id)
       .filter(Boolean)
   );
   const bookings = sqlLines
     .filter((line) => line.startsWith("INSERT OR REPLACE INTO bookings "))
-    .map(parseInsert);
+    .flatMap(parseInsertRows);
 
   assert.ok(bookings.length > 0);
   for (const booking of bookings) {
     assert.ok(booking.client_id, `missing client_id for ${booking.id}`);
     assert.notEqual(booking.client_id, "NULL");
     assert.ok(clientIds.has(booking.client_id), `dangling client_id ${booking.client_id} for ${booking.id}`);
+  }
+});
+
+test("core migration chunks large SQL by UTF-8 statement size", () => {
+  const directory = mkdtempSync(join(tmpdir(), "core-migration-large-"));
+  const inputPath = join(directory, "large-fixture.json");
+  try {
+    const clients = Array.from({ length: 1205 }, (_, index) => {
+      const id = `large-client-${String(index).padStart(4, "0")}`;
+      return {
+        id,
+        name: `Large Client ${index}`,
+        phone: `05${String(10000000 + index).slice(0, 8)}`,
+        firebaseUid: `large-alias-${String(index).padStart(4, "0")}`,
+        notes: JSON.stringify({
+          source: "sql-chunk-regression",
+          index,
+          metadata: "x".repeat(1800),
+        }),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+    });
+    writeFileSync(inputPath, JSON.stringify({ clients, bookings: [] }), "utf8");
+
+    const result = spawnSync(process.execPath, [
+      "scripts/migrate-core-firestore-to-d1.mjs",
+      `--input=${inputPath}`,
+      "--today=2026-07-16",
+      "--dump-sql",
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /blockingConflicts = 0/);
+    assert.match(result.stdout, /clients\s+[^0-9]+1205/);
+    assert.doesNotMatch(result.stdout, /BEGIN TRANSACTION|COMMIT;/);
+    const largest = Number(/largestStatementBytes = (\d+)/.exec(result.stdout)?.[1] || 0);
+    assert.ok(largest > 0, "missing largestStatementBytes");
+    assert.ok(largest <= 250000, `largest statement was ${largest}`);
+    const statements = result.stdout
+      .split(/\r?\n/)
+      .filter((line) => /^(INSERT OR REPLACE|UPDATE) /.test(line));
+    assert.ok(statements.length > 1);
+    for (const statement of statements) {
+      assert.ok(Buffer.byteLength(statement, "utf8") <= 250000, "statement exceeded 250KB");
+    }
+    for (let index = 0; index < clients.length; index += 1) {
+      const id = `large-client-${String(index).padStart(4, "0")}`;
+      const alias = `large-alias-${String(index).padStart(4, "0")}`;
+      assert.match(result.stdout, new RegExp(id));
+      assert.match(result.stdout, new RegExp(alias));
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
