@@ -1,0 +1,40 @@
+name: Apply attendance zone precision controls
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/attendance-zone-patch/apply.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply verified source
+        run: python .github/attendance-zone-patch/apply.py
+
+      - name: Verify frontend
+        run: |
+          npm ci
+          npm run test:frontend:core
+          npm run build
+
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/settings/SettingsAttendance.tsx
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add precise attendance zone controls"
+          git push origin main
