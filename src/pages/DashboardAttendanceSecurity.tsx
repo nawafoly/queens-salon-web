@@ -37,6 +37,14 @@ type AttendanceTab = "overview" | "records" | "devices" | "alerts" | "zones";
 type RecordResultFilter = "all" | "allowed" | "rejected";
 type RecordTypeFilter = "all" | "check_in" | "check_out";
 
+type FriendlyDeviceInput = {
+  userAgent?: unknown;
+  platform?: unknown;
+  appVariant?: unknown;
+};
+
+const ATTENDANCE_AR_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
+
 const EMPTY_DASHBOARD: AttendanceSecurityDashboard = {
   summary: {
     date: "",
@@ -69,16 +77,41 @@ function initialFromDate() {
   return localDateKey(date);
 }
 
-function formatDateTime(value?: string | null) {
+function parseAttendanceTimestamp(value?: string | null) {
   const timestamp = Date.parse(String(value || ""));
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Intl.DateTimeFormat("ar-SA", {
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
+
+function formatDateTime(value?: string | null) {
+  const date = parseAttendanceTimestamp(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat(ATTENDANCE_AR_LOCALE, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(timestamp));
+  }).format(date);
+}
+
+function formatRecordDate(value?: string | null) {
+  const date = parseAttendanceTimestamp(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat(ATTENDANCE_AR_LOCALE, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatRecordTime(value?: string | null) {
+  const date = parseAttendanceTimestamp(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat(ATTENDANCE_AR_LOCALE, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
 }
 
 function shortDeviceId(value?: string | null) {
@@ -194,7 +227,7 @@ function primaryDeviceEmployeeName(
     : "لم يتم ربط الجهاز بموظفة";
 }
 
-function friendlyDeviceName(device: AttendanceSecurityDevice) {
+function friendlyDeviceLabel(device: FriendlyDeviceInput) {
   const userAgent = String(device.userAgent || "");
   const platform = String(device.platform || "").trim();
   const lowerAgent = userAgent.toLowerCase();
@@ -232,6 +265,40 @@ function friendlyDeviceName(device: AttendanceSecurityDevice) {
         : variant || "واجهة غير معروفة";
 
   return `${hardware} · ${surface}`;
+}
+
+function friendlyDeviceName(device: AttendanceSecurityDevice) {
+  return friendlyDeviceLabel(device);
+}
+
+function recordDevicePresentation(
+  record: AttendanceWorkerRecord,
+  devicesById: Map<string, AttendanceSecurityDevice>
+) {
+  const info = record.deviceInfo || {};
+  const device = devicesById.get(deviceIdOf(record));
+  const hasRisk =
+    info.deviceChanged === true ||
+    info.isNewDevice === true ||
+    Boolean(info.sharedDevice) ||
+    device?.trustStatus === "blocked";
+
+  const label = friendlyDeviceLabel({
+    userAgent: info.userAgent || device?.userAgent,
+    platform: info.platform || device?.platform,
+    appVariant: info.appVariant || device?.appVariant,
+  });
+
+  let status = "جهاز مسجل";
+  if (device?.trustStatus === "blocked") status = "جهاز محظور";
+  else if (Boolean(info.sharedDevice)) status = "جهاز مشترك";
+  else if (info.deviceChanged === true) status = "تم تغيير الجهاز";
+  else if (device?.trustStatus === "trusted") status = "جهاز معتمد";
+  else if (device?.trustStatus === "new" || info.isNewDevice === true) {
+    status = "جهاز غير معتمد";
+  }
+
+  return { label, status, hasRisk };
 }
 
 export default function DashboardAttendanceSecurity() {
@@ -308,21 +375,29 @@ export default function DashboardAttendanceSecurity() {
     void load();
   }, [load]);
 
+  const devicesById = useMemo(
+    () => new Map(dashboard.devices.map((device) => [device.deviceId, device])),
+    [dashboard.devices]
+  );
+
   const visibleRecords = useMemo(
     () =>
-      dashboard.records.filter((record) =>
-        searchable(search, [
+      dashboard.records.filter((record) => {
+        const deviceView = recordDevicePresentation(record, devicesById);
+        return searchable(search, [
           resolveStaffName(record, staffNames),
           record.employeeUid,
           record.employeeDocId,
           record.zoneName,
           deviceIdOf(record),
+          deviceView.label,
+          deviceView.status,
           record.rejectionReason,
           recordTypeLabel(record.type),
           recordResultLabel(record.result),
-        ])
-      ),
-    [dashboard.records, search, staffNames]
+        ]);
+      }),
+    [dashboard.records, devicesById, search, staffNames]
   );
 
   const visibleDevices = useMemo(
@@ -537,13 +612,16 @@ export default function DashboardAttendanceSecurity() {
               <article className="attendance-security-panel">
                 <header><div><h2>تحتاج مراجعة</h2><p>جهاز جديد، تغيير جهاز، مشاركة أو رفض.</p></div><button type="button" onClick={() => setActiveTab("alerts")}>كل التنبيهات</button></header>
                 <div className="attendance-security-compact-list">
-                  {recentRiskRecords.slice(0, 7).map((record) => (
-                    <button key={record.id} type="button" onClick={() => setSelectedRecord(record)}>
-                      <span className="attendance-security-record-icon is-risk"><FiAlertTriangle /></span>
-                      <span><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.rejectionReason ? rejectionLabel(record.rejectionReason) : "تغيير أو مشاركة جهاز"}</small></span>
-                      <em>{shortDeviceId(deviceIdOf(record))}</em>
-                    </button>
-                  ))}
+                  {recentRiskRecords.slice(0, 7).map((record) => {
+                    const deviceView = recordDevicePresentation(record, devicesById);
+                    return (
+                      <button key={record.id} type="button" onClick={() => setSelectedRecord(record)}>
+                        <span className="attendance-security-record-icon is-risk"><FiAlertTriangle /></span>
+                        <span><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.rejectionReason ? rejectionLabel(record.rejectionReason) : "تغيير أو مشاركة جهاز"}</small></span>
+                        <em>{deviceView.status}</em>
+                      </button>
+                    );
+                  })}
                   {!loading && !recentRiskRecords.length ? <p className="attendance-security-empty">لا توجد عمليات تحتاج مراجعة حاليًا.</p> : null}
                 </div>
               </article>
@@ -557,16 +635,15 @@ export default function DashboardAttendanceSecurity() {
               <thead><tr><th>الموظفة</th><th>العملية</th><th>الوقت</th><th>النطاق</th><th>الدقة</th><th>الجهاز</th><th>النتيجة</th><th>التفاصيل</th></tr></thead>
               <tbody>
                 {visibleRecords.map((record) => {
-                  const info = record.deviceInfo || {};
-                  const hasRisk = info.deviceChanged === true || info.isNewDevice === true || Boolean(info.sharedDevice);
+                  const deviceView = recordDevicePresentation(record, devicesById);
                   return (
-                    <tr key={record.id} className={hasRisk ? "is-risk" : ""}>
+                    <tr key={record.id} className={deviceView.hasRisk ? "is-risk" : ""}>
                       <td><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.employeeDocId || record.employeeUid}</small></td>
                       <td><span className={`attendance-security-kind is-${record.type}`}>{recordTypeLabel(record.type)}</span></td>
-                      <td>{formatDateTime(record.serverTime)}</td>
+                      <td><strong>{formatRecordDate(record.serverTime)}</strong><small dir="ltr">{formatRecordTime(record.serverTime)}</small></td>
                       <td><strong>{record.zoneName || "—"}</strong><small>{record.distanceMeters == null ? "" : `${Math.round(record.distanceMeters)} م`}</small></td>
                       <td>{Math.round(Number(record.location?.accuracy || 0))} م</td>
-                      <td><strong dir="ltr">{shortDeviceId(deviceIdOf(record))}</strong>{hasRisk ? <small className="is-warning">جهاز يحتاج مراجعة</small> : null}</td>
+                      <td><strong>{deviceView.label}</strong><small className={deviceView.hasRisk ? "is-warning" : undefined}>{deviceView.status}</small></td>
                       <td><span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>{record.rejectionReason ? <small>{rejectionLabel(record.rejectionReason)}</small> : null}</td>
                       <td><button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}><FiEye />عرض</button></td>
                     </tr>
