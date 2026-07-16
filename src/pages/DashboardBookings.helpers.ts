@@ -4,6 +4,7 @@ import {
   round2,
   toMillisSafeDashboardBookings as toMillisSafe,
 } from "../helpers/pageSharedUtils";
+import { formatBookingReference } from "../helpers/bookingReference";
 
 export type PaymentDisplayLine = {
   key: string;
@@ -298,13 +299,10 @@ export function paymentAmountsDisplayLines(payment: BookingPaymentSummary): Paym
   ];
 }
 
-export function bookingRef(b: Pick<DashboardBookingRowLike, "publicId"> | null | undefined) {
-  const raw = String(b?.publicId || "").trim();
-  if (!raw) return "—";
-  const up = raw.toUpperCase();
-  if (/^MK-\d+$/.test(up)) return up;
-  if (/^\d+$/.test(up)) return `MK-${up}`;
-  return up;
+export function bookingRef(
+  b: Pick<DashboardBookingRowLike, "id" | "publicId" | "date"> | null | undefined
+) {
+  return formatBookingReference(b);
 }
 
 export function bookingCreationRefMs(b: DashboardBookingRowLike | null | undefined) {

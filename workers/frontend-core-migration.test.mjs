@@ -303,3 +303,28 @@ test("internal booking V2 is pinned to Core D1 and cannot read the Firestore boo
   assert.match(compat, /mode === "core" \? resolveCoreBookingDataSource\(\)/);
   assert.match(envWeb, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api\.maedin\.workers\.dev/);
 });
+
+test("booking references are compact and dashboard delete preserves financial records", () => {
+  const reference = readFileSync("src/helpers/bookingReference.ts", "utf8");
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
+  const migration = readFileSync("migrations/core/0007_booking_soft_delete.sql", "utf8");
+  const sequenceMigration = readFileSync("migrations/core/0008_booking_reference_sequence.sql", "utf8");
+
+  assert.match(reference, /QS-/);
+  assert.match(reference, /formatBookingReference/);
+  assert.match(v2, /createdBookingReference/);
+  assert.match(v2, /رقم الحجز/);
+  assert.match(dashboard, /setBookings\(\(current\) => current\.filter/);
+  assert.match(dashboard, /الاحتفاظ بالفاتورة والمدفوعات والسجل المالي/);
+  assert.match(repo, /financialRecordsPreserved:\s*true/);
+  assert.match(repo, /deleted_at IS NULL/);
+  assert.match(migration, /ALTER TABLE bookings ADD COLUMN deleted_at TEXT/);
+  assert.match(sequenceMigration, /VALUES \(\'main\', 10422/);
+  assert.match(sequenceMigration, /CREATE TABLE IF NOT EXISTS booking_counters/);
+  assert.match(repo, /allocateBookingPublicId/);
+  assert.match(repo, /RETURNING last_number/);
+  assert.match(repo, /return `MK-\$\{number\}`/);
+  assert.doesNotMatch(repo, /optionalText\(data\.publicId \|\| data\.public_id\)/);
+});

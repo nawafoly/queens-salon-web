@@ -104,11 +104,18 @@ class FakeD1 {
     }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
-      return this.find("bookings", salonId, id) ? [this.find("bookings", salonId, id)] : [];
+      const row = this.find("bookings", salonId, id);
+      if (!row) return [];
+      if (normalized.includes("deleted_at IS NULL") && row.deleted_at) return [];
+      return [row];
     }
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ?")) {
       const [salonId, date] = params;
-      return this.rows("bookings").filter((row) => row.salon_id === salonId && row.booking_date === date);
+      return this.rows("bookings").filter((row) =>
+        row.salon_id === salonId &&
+        row.booking_date === date &&
+        (!normalized.includes("deleted_at IS NULL") || !row.deleted_at)
+      );
     }
     if (normalized.startsWith("SELECT COUNT(*) AS count FROM bookings WHERE salon_id = ? AND client_id = ?")) {
       const [salonId, clientId, needle] = params;
@@ -121,9 +128,12 @@ class FakeD1 {
         ).length,
       }];
     }
-    if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? ORDER BY")) {
+    if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ?")) {
       const [salonId] = params;
-      return this.rows("bookings").filter((row) => row.salon_id === salonId);
+      return this.rows("bookings").filter((row) =>
+        row.salon_id === salonId &&
+        (!normalized.includes("deleted_at IS NULL") || !row.deleted_at)
+      );
     }
     if (normalized.startsWith("SELECT * FROM booking_items WHERE booking_id IN (")) {
       const bookingIds = new Set(params.map(String));
@@ -278,6 +288,9 @@ class FakeD1 {
         row.payment_status ??= "unpaid";
         row.cancelled_at ??= null;
         row.completed_at ??= null;
+        row.deleted_at ??= null;
+        row.deleted_by_uid ??= null;
+        row.delete_reason ??= null;
       }
       return this.insert(table, row);
     }
@@ -382,6 +395,21 @@ class FakeD1 {
         const key = `${salon_id}\u0000${staff_id}\u0000${booking_date}\u0000${slot_time}`;
         if (this.tables.booking_slot_locks.has(key)) throw new Error("UNIQUE constraint failed: booking_slot_locks");
         results.push(this.insert("booking_slot_locks", { salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at }));
+      } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'") && sql.includes("deleted_at = ?")) {
+        const [cancelled_at, deleted_at, deleted_by_uid, delete_reason, updated_at, salonId, id] = params;
+        const current = this.find("bookings", salonId, id);
+        if (!current || current.deleted_at) {
+          results.push({ meta: { changes: 0 } });
+        } else {
+          results.push(this.update("bookings", salonId, id, {
+            status: "cancelled",
+            cancelled_at: current.cancelled_at || cancelled_at,
+            deleted_at,
+            deleted_by_uid,
+            delete_reason,
+            updated_at,
+          }));
+        }
       } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'")) {
         const [cancelled_at, notes, updated_at, salonId, id] = params;
         results.push(this.update("bookings", salonId, id, { status: "cancelled", cancelled_at, notes, updated_at }));
@@ -717,10 +745,45 @@ test("booking creation creates booking items and invoice", async () => {
   assert.equal(body.data.total_halalas, 7500);
   assert.equal(body.data.end_time, "10:30");
   assert.equal(body.data.items.length, 1);
+  assert.equal(body.data.public_id || body.data.publicId, "MK-10423");
   assert.equal(fake.rows("invoices")[0].booking_id, "booking-a");
   assert.equal(fake.rows("payments").length, 0);
   assert.equal(fake.rows("income_entries").length, 0);
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_created" && row.entity_id === "booking-a"));
+
+  const retryResponse = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-a",
+      invoiceId: "invoice-a",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      items: [{ id: "item-a", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  const retryBody = await json(retryResponse);
+  assert.equal(retryResponse.status, 200, JSON.stringify(retryBody));
+  assert.equal(retryBody.data.public_id, "MK-10423");
+
+  const secondResponse = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-b",
+      invoiceId: "invoice-b",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-10",
+      startTime: "10:30",
+      items: [{ id: "item-b", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  const secondBody = await json(secondResponse);
+  assert.equal(secondResponse.status, 200, JSON.stringify(secondBody));
+  assert.equal(secondBody.data.public_id, "MK-10424");
 });
 
 test("booking list hydrates large dashboard results with bounded D1 reads", async () => {
@@ -1420,24 +1483,88 @@ test("refund is idempotent and adjusts invoice paid total", async () => {
   assert.equal(fake.rows("expense_entries").filter((row) => row.source_ref_id === "refund-a").length, 0);
 });
 
-test("booking delete is blocked by financial records and audited when safe", async () => {
+test("booking delete hides paid bookings while preserving financial records", async () => {
   const fake = new FakeD1();
   seedCore(fake);
-  const booking = { id: "booking-delete", salon_id: "main", client_id: "client-a", staff_id: "staff-a", booking_date: "2027-01-10", start_time: "10:00", end_time: "10:30", status: "booked", source: "test", notes: null, subtotal_halalas: 7500, discount_halalas: 0, total_halalas: 7500, payment_status: "unpaid", package_sessions_used: 0, created_by_uid: "owner1", created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-01T00:00:00.000Z" };
+  const booking = {
+    id: "booking-delete",
+    public_id: "QS-270110-DELETE01",
+    salon_id: "main",
+    client_id: "client-a",
+    staff_id: "staff-a",
+    booking_date: "2027-01-10",
+    start_time: "10:00",
+    end_time: "10:30",
+    status: "booked",
+    source: "test",
+    notes: null,
+    subtotal_halalas: 7500,
+    discount_halalas: 0,
+    total_halalas: 7500,
+    payment_status: "paid",
+    package_sessions_used: 0,
+    created_by_uid: "owner1",
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+    deleted_at: null,
+  };
   fake.seed("bookings", booking);
-  fake.seed("booking_items", { id: "item-delete", salon_id: "main", booking_id: booking.id, service_id: "svc-a", service_name_snapshot: "Service A", created_at: booking.created_at });
-  fake.seed("payments", { id: "payment-delete", salon_id: "main", booking_id: booking.id, amount_halalas: 1000 });
+  fake.seed("booking_items", {
+    id: "item-delete",
+    salon_id: "main",
+    booking_id: booking.id,
+    service_id: "svc-a",
+    service_name_snapshot: "Service A",
+    created_at: booking.created_at,
+  });
+  fake.seed("invoices", {
+    id: "invoice-delete",
+    salon_id: "main",
+    booking_id: booking.id,
+    client_id: "client-a",
+    total_halalas: 7500,
+    paid_halalas: 7500,
+    status: "paid",
+  });
+  fake.seed("payments", {
+    id: "payment-delete",
+    salon_id: "main",
+    booking_id: booking.id,
+    invoice_id: "invoice-delete",
+    amount_halalas: 7500,
+    status: "paid",
+  });
+  fake.seed("income_entries", {
+    id: "income-delete",
+    salon_id: "main",
+    booking_id: booking.id,
+    invoice_id: "invoice-delete",
+    payment_id: "payment-delete",
+    amount_halalas: 7500,
+  });
 
-  let response = await worker.fetch(request(`/api/core/bookings/${booking.id}`, { method: "DELETE" }), env(fake));
-  let body = await json(response);
-  assert.equal(response.status, 409, JSON.stringify(body));
-  assert.equal(body.error, "core_booking:financial_records_exist");
-
-  fake.tables.payments.clear();
-  response = await worker.fetch(request(`/api/core/bookings/${booking.id}`, { method: "DELETE" }), env(fake));
-  body = await json(response);
+  const response = await worker.fetch(
+    request(`/api/core/bookings/${booking.id}`, { method: "DELETE" }),
+    env(fake)
+  );
+  const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
-  assert.equal(fake.find("bookings", "main", booking.id), null);
+  assert.equal(body.data.deleted, true);
+  assert.equal(body.data.mode, "soft");
+  assert.equal(body.data.financialRecordsPreserved, true);
+
+  const stored = fake.find("bookings", "main", booking.id);
+  assert.ok(stored?.deleted_at);
+  assert.equal(stored.status, "cancelled");
+  assert.equal(fake.rows("payments").length, 1);
+  assert.equal(fake.rows("income_entries").length, 1);
+  assert.equal(fake.rows("invoices").length, 1);
+  assert.equal(fake.rows("booking_items").length, 1);
+
+  const listResponse = await worker.fetch(request("/api/core/bookings"), env(fake));
+  const listBody = await json(listResponse);
+  assert.equal(listResponse.status, 200, JSON.stringify(listBody));
+  assert.equal(listBody.data.some((row) => row.id === booking.id), false);
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_deleted"));
 });
 

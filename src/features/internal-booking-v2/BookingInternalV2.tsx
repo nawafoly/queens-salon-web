@@ -23,6 +23,7 @@ import {
   type DiscountSnapshotSource,
 } from "../../helpers/bookingDiscountSnapshot";
 import { getAuth } from "firebase/auth";
+import { formatBookingReference } from "../../helpers/bookingReference";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -356,6 +357,7 @@ export default function BookingInternalV2() {
   const [postSaveWarning, setPostSaveWarning] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
+  const [createdBookingReference, setCreatedBookingReference] = useState("");
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountMode, setDiscountMode] = useState<DiscountMode>("none");
   const [manualFixedDiscount, setManualFixedDiscount] = useState("");
@@ -821,6 +823,7 @@ export default function BookingInternalV2() {
     setSubmitError("");
     setPostSaveWarning("");
     setCreatedBookingIds([]);
+    setCreatedBookingReference("");
     if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
     if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
     if (!allScheduled) { setSubmitError("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."); setStep(3); return; }
@@ -980,6 +983,13 @@ export default function BookingInternalV2() {
       const created = await createBookingGroup({ parent, items: itemRows }, "core");
       const bookingId = String(created.parentId || "");
       const savedIds = [bookingId, ...(created.itemIds || [])].filter(Boolean);
+      setCreatedBookingReference(
+        formatBookingReference({
+          id: bookingId,
+          publicId: String(created.parentPublicId || ""),
+          date: bookingDate,
+        })
+      );
 
       // The booking is already committed at this point. Preserve its success
       // state even if a later network call fails, then retry idempotent financial
@@ -1122,7 +1132,7 @@ export default function BookingInternalV2() {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
-    setCreatedBookingIds([]); setSubmitError(""); setPostSaveWarning("");
+    setCreatedBookingIds([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
     setDiscountOpen(false); setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
@@ -1388,10 +1398,18 @@ export default function BookingInternalV2() {
                   {createdBookingIds.length ? (
                     <div className="bk2-booking-success">
                       <strong>✓ تم حفظ الحجز بنجاح</strong>
-                      <p>تم إنشاء {createdBookingIds.length} سجل حجز وربطها بالعميلة والموظفات المختارات.</p>
+                      {createdBookingReference ? (
+                        <div className="bk2-booking-success-reference">
+                          <span>رقم الحجز</span>
+                          <bdi dir="ltr">{createdBookingReference}</bdi>
+                        </div>
+                      ) : null}
+                      <p>تم ربط {cart.length} {cart.length === 1 ? "خدمة" : "خدمات"} بالعميلة والموظفات المختارات.</p>
                       {postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}
-                      <button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button>
-                      <button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button>
+                      <div className="bk2-booking-success-actions">
+                        <button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button>
+                        <button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button>
+                      </div>
                     </div>
                   ) : (
                     <>

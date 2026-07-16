@@ -32,6 +32,7 @@ import { resolveBookingDiscount } from './discount-application.js';
 
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 const LOCK_GRANULARITY_MIN = 5;
+const BOOKING_REFERENCE_BASE = 10422;
 
 function normalizeItems(data) {
   const items = Array.isArray(data.items) ? data.items : [];
@@ -55,6 +56,49 @@ function minutesToTime(value) {
 
 function compareDateTime(leftDate, leftTime, rightDate, rightTime) {
   return `${leftDate}T${leftTime}`.localeCompare(`${rightDate}T${rightTime}`);
+}
+
+function parseBookingReferenceNumber(value) {
+  const match = cleanText(value).toUpperCase().match(/^MK-(\d+)$/);
+  if (!match) return 0;
+  const parsed = Number(match[1]);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+async function allocateBookingPublicId(db, salonId) {
+  if (db.__fakeD1) {
+    if (!db.__bookingReferenceCounters) db.__bookingReferenceCounters = new Map();
+    const existingMax = db.rows("bookings").reduce(
+      (max, row) => row.salon_id === salonId
+        ? Math.max(max, parseBookingReferenceNumber(row.public_id))
+        : max,
+      BOOKING_REFERENCE_BASE
+    );
+    const current = Math.max(
+      BOOKING_REFERENCE_BASE,
+      Number(db.__bookingReferenceCounters.get(salonId) || 0),
+      existingMax
+    );
+    const next = current + 1;
+    db.__bookingReferenceCounters.set(salonId, next);
+    return `MK-${next}`;
+  }
+
+  const row = await dbFirst(
+    db,
+    `INSERT INTO booking_counters (salon_id, last_number, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(salon_id) DO UPDATE SET
+       last_number = booking_counters.last_number + 1,
+       updated_at = excluded.updated_at
+     RETURNING last_number`,
+    [salonId, BOOKING_REFERENCE_BASE + 1, nowIso()]
+  );
+  const number = Number(row?.last_number || 0);
+  if (!Number.isSafeInteger(number) || number <= BOOKING_REFERENCE_BASE) {
+    throw new AppError(500, "core_booking:reference_allocation_failed");
+  }
+  return `MK-${number}`;
 }
 
 function occupiedSlotTimes(startTime, endTime, slotStepMin, bufferMin) {
@@ -173,12 +217,12 @@ export async function listBookings(db, salonId, query = {}) {
   const rows = date
     ? await dbAll(
         db,
-        "SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ? ORDER BY start_time LIMIT 500",
+        "SELECT * FROM bookings WHERE salon_id = ? AND booking_date = ? AND deleted_at IS NULL ORDER BY start_time LIMIT 500",
         [salonId, date]
       )
     : await dbAll(
         db,
-        "SELECT * FROM bookings WHERE salon_id = ? ORDER BY booking_date DESC, start_time DESC LIMIT 500",
+        "SELECT * FROM bookings WHERE salon_id = ? AND deleted_at IS NULL ORDER BY booking_date DESC, start_time DESC LIMIT 500",
         [salonId]
       );
 
@@ -280,7 +324,7 @@ export async function listBookings(db, salonId, query = {}) {
 export async function getBooking(db, salonId, id) {
   const booking = await dbFirst(
     db,
-    "SELECT * FROM bookings WHERE salon_id = ? AND id = ? LIMIT 1",
+    "SELECT * FROM bookings WHERE salon_id = ? AND id = ? AND deleted_at IS NULL LIMIT 1",
     [salonId, requiredId(id)]
   );
   if (!booking) rowNotFound("booking");
@@ -493,7 +537,10 @@ export async function createBooking(db, salonId, data, actor = "") {
   const discount = discountApplication.discountHalalas;
   const total = discountApplication.totalHalalas;
   const bookingId = requiredId(requestedBookingId || generatedId("booking"));
-  const publicId = optionalText(data.publicId || data.public_id) || bookingId;
+  // Core D1 is the authority for human-readable booking numbers. Frontend
+  // values are intentionally ignored so concurrent requests cannot reuse or
+  // forge a sequence number.
+  const publicId = await allocateBookingPublicId(db, salonId);
   const invoiceId =
     data.createInvoice === false
       ? ""
@@ -921,35 +968,62 @@ export async function cancelBooking(db, salonId, id, reason = "") {
 export async function deleteBooking(db, salonId, id, actor = {}) {
   const bookingId = requiredId(id);
   const booking = await getBooking(db, salonId, bookingId);
-  const payment = await dbFirst(
-    db,
-    "SELECT id FROM payments WHERE salon_id = ? AND booking_id = ? LIMIT 1",
-    [salonId, bookingId]
-  );
-  const refund = await dbFirst(
-    db,
-    "SELECT id FROM refunds WHERE salon_id = ? AND booking_id = ? LIMIT 1",
-    [salonId, bookingId]
-  );
-  if (payment || refund) {
-    throw new AppError(409, "core_booking:financial_records_exist", "Booking with payments or refunds cannot be deleted");
-  }
+  const now = nowIso();
+  const actorUid = typeof actor === "string" ? actor : cleanText(actor?.uid);
 
-  await dbBatch(db, [
-    { sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
-    { sql: "DELETE FROM booking_items WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
-    { sql: "DELETE FROM income_entries WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
-    { sql: "DELETE FROM invoices WHERE salon_id = ? AND booking_id = ?", params: [salonId, bookingId] },
-    { sql: "DELETE FROM bookings WHERE salon_id = ? AND id = ?", params: [salonId, bookingId] },
+  const results = await dbBatch(db, [
+    {
+      sql: `UPDATE bookings
+               SET status = 'cancelled',
+                   cancelled_at = COALESCE(cancelled_at, ?),
+                   deleted_at = ?,
+                   deleted_by_uid = ?,
+                   delete_reason = ?,
+                   updated_at = ?
+             WHERE salon_id = ? AND id = ? AND deleted_at IS NULL`,
+      params: [
+        now,
+        now,
+        actorUid || null,
+        "dashboard_delete",
+        now,
+        salonId,
+        bookingId,
+      ],
+    },
+    {
+      sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?",
+      params: [salonId, bookingId],
+    },
   ]);
-  await recordAudit(db, salonId, {
-    action: "booking_deleted",
-    entityType: "booking",
-    entityId: bookingId,
-    description: "Booking deleted from Core D1",
-    before: booking,
-    after: null,
-    source: "dashboard",
-  }, actor);
-  return { id: bookingId, deleted: true };
+
+  if (!changes(results[0])) rowNotFound("booking");
+
+  await recordAudit(
+    db,
+    salonId,
+    {
+      action: "booking_deleted",
+      entityType: "booking",
+      entityId: bookingId,
+      description:
+        "Booking removed from dashboard while financial records were preserved",
+      before: booking,
+      after: {
+        id: bookingId,
+        status: "cancelled",
+        deletedAt: now,
+        financialRecordsPreserved: true,
+      },
+      source: "dashboard",
+    },
+    actor
+  );
+
+  return {
+    id: bookingId,
+    deleted: true,
+    mode: "soft",
+    financialRecordsPreserved: true,
+  };
 }

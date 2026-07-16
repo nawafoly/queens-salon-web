@@ -879,7 +879,7 @@ function sensitiveActionDescription(action: SensitiveBookingAction | null) {
   }
   if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
   if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
-  return `حذف نهائي للحجز ${bookingRef(action.booking)}`;
+  return `إزالة الحجز ${bookingRef(action.booking)} من صفحة الحجوزات`;
 }
 
 type ActionPinModalProps = {
@@ -922,8 +922,12 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
     try {
       await onConfirm(action);
       shouldClose = true;
-    } catch {
-      setError("تعذر إكمال الإجراء.");
+    } catch (error) {
+      setError(
+        error instanceof Error && String(error.message || "").trim()
+          ? error.message
+          : "تعذر إكمال الإجراء."
+      );
     } finally {
       setBusy(false);
     }
@@ -948,7 +952,7 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
             {sensitiveActionDescription(action) || "إجراء حساس"}
           </div>
           {action?.kind === "delete" ? (
-            <div className="bk-action-pin-warning">تنبيه: الحذف النهائي لا يمكن التراجع عنه.</div>
+            <div className="bk-action-pin-warning">سيختفي الحجز من صفحة الحجوزات، مع الاحتفاظ بالفاتورة والمدفوعات والسجل المالي للمراجعة.</div>
           ) : null}
         </div>
         <div
@@ -3299,7 +3303,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     }
     if (action.kind === "edit") return `تعديل بيانات الحجز ${bookingRef(action.booking)}`;
     if (action.kind === "refund") return `إدارة استرجاع الحجز ${bookingRef(action.booking)}`;
-    return `حذف نهائي للحجز ${bookingRef(action.booking)}`;
+    return `إزالة الحجز ${bookingRef(action.booking)} من صفحة الحجوزات`;
   };
 
   const executeStatusUpdate = async (id: string, newStatus: BookingStatus) => {
@@ -3535,21 +3539,41 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   const executeDeleteBooking = async (b: Booking) => {
     if (uiRole !== "owner") {
-      alert("الحذف النهائي متاح للمالك فقط");
+      alert("حذف الحجز متاح للمالك فقط");
       return;
     }
 
+    const bookingId = String(b.id || "").trim();
+    if (!bookingId) return;
+
     try {
-      await deleteBooking(b.id);
-      if (selectedBooking?.id === b.id) setSelectedBooking(null);
-    } catch (e) {
-      alert("تعذر حذف الحجز نهائيًا");
+      await deleteBooking(bookingId);
+      setBookings((current) => current.filter((row) => String(row.id || "").trim() !== bookingId));
+      setSelectedBooking((current) =>
+        current && String(current.id || "").trim() === bookingId ? null : current
+      );
+      setSelectedBookingIds((current) => {
+        if (!current.has(bookingId)) return current;
+        const next = new Set(current);
+        next.delete(bookingId);
+        return next;
+      });
+      setRefundMapByBookingId((current) => {
+        if (!current[bookingId]) return current;
+        const next = { ...current };
+        delete next[bookingId];
+        return next;
+      });
+    } catch (error) {
+      console.error("[DashboardBookings] booking delete failed", error);
+      if (error instanceof Error) throw error;
+      throw new Error("تعذر حذف الحجز الآن.");
     }
   };
 
   const handleDeleteBooking = useCallback((b: Booking) => {
     if (uiRole !== "owner") {
-      alert("الحذف النهائي متاح للمالك فقط");
+      alert("حذف الحجز متاح للمالك فقط");
       return;
     }
     requestSensitiveAction({ kind: "delete", booking: b });
@@ -4454,7 +4478,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-ref-cell">
-                            <div className="bk-ref-code"><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
+                            <div className="bk-ref-code" title={`المعرف الكامل: ${String(b.id || "—")}`}><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
                             <div className="bk-ref-meta">
                               <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                                 {statusLabel[safeStatus]}
@@ -4563,7 +4587,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                     type="button"
                                     className="exp-btn danger sm"
                                     onClick={() => handleDeleteBooking(b)}
-                                    title="حذف الحجز"
+                                    title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
                                   >
                                     حذف
                                   </button>
@@ -5416,7 +5440,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       >
                         <td>
                           <div className="bk-ref-cell">
-                            <div className="bk-ref-code"><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
+                            <div className="bk-ref-code" title={`المعرف الكامل: ${String(b.id || "—")}`}><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
                             <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                               {statusLabel[safeStatus]}
                             </span>
@@ -5506,7 +5530,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                     type="button"
                                     className="exp-btn danger sm"
                                     onClick={() => handleDeleteBooking(b)}
-                                    title="حذف نهائي"
+                                    title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
                                   >
                                     حذف
                                   </button>
@@ -5644,7 +5668,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                          <>
                            {uiRole === "owner" && (
                              <button type="button" className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
-                               حذف نهائي
+                               حذف الحجز
                              </button>
                            )}
                            <select
@@ -6107,7 +6131,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               )}
               {uiRole === "owner" && (
                 <button className="exp-btn danger" onClick={() => handleDeleteBooking(selectedBooking)}>
-                  حذف نهائي
+                  حذف الحجز
                 </button>
               )}
               <button className="exp-btn bk-close-btn" onClick={closeBookingModal}>إغلاق</button>
@@ -6139,7 +6163,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 {sensitiveActionDescription(pendingSensitiveAction) || "إجراء حساس"}
               </div>
               {pendingSensitiveAction?.kind === "delete" ? (
-                <div className="bk-action-pin-warning">تنبيه: الحذف النهائي لا يمكن التراجع عنه.</div>
+                <div className="bk-action-pin-warning">سيختفي الحجز من صفحة الحجوزات مع الاحتفاظ بالسجلات المالية.</div>
               ) : null}
             </div>
             <div className="bk-action-pin-form">

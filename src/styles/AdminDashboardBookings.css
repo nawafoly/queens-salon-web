@@ -2265,3 +2265,119 @@
     --qs-modal-overlay-blur: none;
   }
 }
+
+/* Booking table readability pass: keep columns legible instead of squeezing
+   ten operational columns into the available dashboard width. */
+@media (min-width: 901px) {
+  .dashboard-skin .bk-page-wrapper .bookings-table-card {
+    border: 1px solid #e5e9ef !important;
+    border-radius: 16px !important;
+    overflow: hidden;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-table-wrap {
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bookings-table {
+    width: 100% !important;
+    min-width: 1460px !important;
+    table-layout: fixed !important;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(1),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(1) { width: 48px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(2),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(2) { width: 170px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(3),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(3) { width: 170px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(4),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(4) { width: 220px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(5),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(5) { width: 120px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(6),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(6) { width: 140px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(7),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(7) { width: 145px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(8),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(8) { width: 155px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(9),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(9) { width: 175px !important; }
+  .dashboard-skin .bk-page-wrapper .bookings-table th:nth-child(10),
+  .dashboard-skin .bk-page-wrapper .bookings-table td:nth-child(10) { width: 260px !important; }
+
+  .dashboard-skin .bk-page-wrapper .bookings-table thead th {
+    padding: 12px 10px !important;
+    font-size: .68rem !important;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bookings-table tbody td {
+    padding: 12px 10px !important;
+    font-size: .76rem !important;
+    line-height: 1.5;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-ref-cell {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-ref-code {
+    width: 100%;
+    padding: 8px 9px;
+    border: 1px solid #d9e0e9;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #162033;
+    font-size: .72rem;
+    letter-spacing: .035em;
+    text-align: center;
+    cursor: help;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-ref-meta {
+    margin-top: 0;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-customer-name,
+  .dashboard-skin .bk-page-wrapper .bk-service-main,
+  .dashboard-skin .bk-page-wrapper .bk-datetime-date {
+    font-size: .78rem;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-customer-phone,
+  .dashboard-skin .bk-page-wrapper .bk-service-meta,
+  .dashboard-skin .bk-page-wrapper .bk-datetime-time,
+  .dashboard-skin .bk-page-wrapper .bk-update-at,
+  .dashboard-skin .bk-page-wrapper .bk-update-by {
+    font-size: .66rem;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-actions-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-actions-row .bk-owner-status-select {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-actions-row .exp-btn,
+  .dashboard-skin .bk-page-wrapper .bk-actions-row .bk-select {
+    min-height: 38px !important;
+    height: 38px !important;
+    font-size: .68rem !important;
+  }
+
+  .dashboard-skin .bk-page-wrapper .bk-payment-total,
+  .dashboard-skin .bk-page-wrapper .bk-payment-metric-row {
+    min-height: 36px;
+  }
+}
