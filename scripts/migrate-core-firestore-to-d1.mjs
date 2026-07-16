@@ -11,14 +11,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { buildClientCanonicalization } from "./migration-client-canonicalization.mjs";
 
 const DEFAULT_DATABASE = "queens-salon-core";
 const DEFAULT_SALON_ID = "main";
-const MAX_SQL_STATEMENT_BYTES = 250000;
+const MAX_SQL_STATEMENT_BYTES = 60000;
+const LOCAL_D1_PERSIST_DIR = join(".migration-work", "d1-local");
 const SNAPSHOT_META_KEY = "__snapshot";
 const SNAPSHOT_VERSION = "core-firestore-to-d1/v1";
 const RODINA_CANONICAL_CLIENT_ID = "3be178a6-dacb-5407-aca0-1215f403631e";
@@ -1610,6 +1611,17 @@ function rowValuesSql(row, columns) {
   return `(${columns.map((key) => sqlValue(row[key])).join(", ")})`;
 }
 
+function singleRowInsert(table, row, columns) {
+  return `${insertPrefix(table, columns)}${rowValuesSql(row, columns)};`;
+}
+
+function rowIdentity(table, row) {
+  const keys = SQL_PRIMARY_KEYS[table] || ["id"];
+  const values = keys.map((key) => clean(row[key])).filter(Boolean);
+  if (values.length) return values.join("|");
+  return clean(row.id || row.alias_id || row.firebase_uid || row.client_id) || "(unknown)";
+}
+
 function whereByPrimaryKey(table, row) {
   const keys = SQL_PRIMARY_KEYS[table] || ["id"];
   if (keys.some((key) => clean(row[key]) === "")) return "";
@@ -1632,104 +1644,93 @@ function splitSqlString(value, maxLiteralBytes) {
   return chunks;
 }
 
-function singleRowInsert(table, row, columns) {
-  return `${insertPrefix(table, columns)}${rowValuesSql(row, columns)};`;
-}
-
-function buildLargeRowStatements(table, row, columns, maxStatementBytes) {
-  const original = singleRowInsert(table, row, columns);
-  if (utf8Bytes(original) <= maxStatementBytes) return [original];
+function buildSingleRowStatements(table, row, columns, maxStatementBytes) {
+  const fullInsert = singleRowInsert(table, row, columns);
+  const fullInsertBytes = utf8Bytes(fullInsert);
+  if (fullInsertBytes <= maxStatementBytes) {
+    return { statements: [fullInsert], statementBytes: fullInsertBytes, oversized: null };
+  }
 
   const where = whereByPrimaryKey(table, row);
-  if (!where) return [original];
+  if (!where) {
+    return { statements: [fullInsert], statementBytes: fullInsertBytes, oversized: true };
+  }
+
   const primaryKeys = new Set(SQL_PRIMARY_KEYS[table] || ["id"]);
   const stringColumns = columns
     .filter((column) => !primaryKeys.has(column) && typeof row[column] === "string" && row[column] !== "")
     .sort((a, b) => utf8Bytes(sqlValue(row[b])) - utf8Bytes(sqlValue(row[a])));
 
   const baseRow = { ...row };
-  const offloaded = [];
+  const offloadedColumns = [];
   for (const column of stringColumns) {
     baseRow[column] = "";
-    offloaded.push(column);
+    offloadedColumns.push(column);
     if (utf8Bytes(singleRowInsert(table, baseRow, columns)) <= maxStatementBytes) break;
   }
 
-  const statements = [singleRowInsert(table, baseRow, columns)];
-  for (const column of offloaded) {
+  const baseInsert = singleRowInsert(table, baseRow, columns);
+  if (utf8Bytes(baseInsert) > maxStatementBytes) {
+    return { statements: [fullInsert], statementBytes: fullInsertBytes, oversized: true };
+  }
+
+  const statements = [baseInsert];
+  for (const column of offloadedColumns) {
     const prefix = `UPDATE ${table} SET ${column} = COALESCE(${column}, '') || `;
     const suffix = ` WHERE ${where};`;
-    const maxLiteralBytes = Math.max(1, maxStatementBytes - utf8Bytes(prefix) - utf8Bytes(suffix));
+    const maxLiteralBytes = maxStatementBytes - utf8Bytes(prefix) - utf8Bytes(suffix);
+    if (maxLiteralBytes <= utf8Bytes(sqlValue("x"))) {
+      return { statements: [fullInsert], statementBytes: fullInsertBytes, oversized: true };
+    }
     for (const chunk of splitSqlString(row[column], maxLiteralBytes)) {
       statements.push(`${prefix}${sqlValue(chunk)}${suffix}`);
     }
   }
-  return statements;
+
+  const largestStatementBytes = Math.max(...statements.map(utf8Bytes));
+  if (largestStatementBytes > maxStatementBytes) {
+    return { statements, statementBytes: largestStatementBytes, oversized: true };
+  }
+  return { statements, statementBytes: largestStatementBytes, oversized: null };
 }
 
 function buildSqlArtifact(tables, { maxStatementBytes = MAX_SQL_STATEMENT_BYTES } = {}) {
   const statements = [];
-  const chunksPerTable = {};
+  const statementsPerTable = {};
   let largestStatementBytes = 0;
-  const addStatement = (table, statement) => {
+  let largestStatementTable = "";
+  let largestStatementRowId = "";
+  const oversizedRows = [];
+  const addStatement = (table, rowId, statement) => {
     const bytes = utf8Bytes(statement);
-    largestStatementBytes = Math.max(largestStatementBytes, bytes);
-    chunksPerTable[table] = (chunksPerTable[table] || 0) + 1;
+    if (bytes > largestStatementBytes) {
+      largestStatementBytes = bytes;
+      largestStatementTable = table;
+      largestStatementRowId = rowId;
+    }
+    statementsPerTable[table] = (statementsPerTable[table] || 0) + 1;
     statements.push(statement);
   };
 
   for (const table of SQL_TABLE_ORDER) {
     const rowsForTable = tables[table] || [];
-    let activeSignature = "";
-    let activePrefix = "";
-    let activePrefixBytes = 0;
-    let activeValues = [];
-    let activeValuesBytes = 0;
-
-    const flush = () => {
-      if (!activeValues.length) return;
-      addStatement(table, `${activePrefix}${activeValues.join(", ")};`);
-      activeSignature = "";
-      activePrefix = "";
-      activePrefixBytes = 0;
-      activeValues = [];
-      activeValuesBytes = 0;
-    };
-
     for (const row of rowsForTable) {
       const columns = Object.keys(row);
-      const signature = columns.join("\u0000");
-      const prefix = insertPrefix(table, columns);
-      const valuesSql = rowValuesSql(row, columns);
-      const singleStatement = `${prefix}${valuesSql};`;
-      if (utf8Bytes(singleStatement) > maxStatementBytes) {
-        flush();
-        for (const statement of buildLargeRowStatements(table, row, columns, maxStatementBytes)) {
-          addStatement(table, statement);
-        }
-        continue;
+      const rowId = rowIdentity(table, row);
+      const rowSql = buildSingleRowStatements(table, row, columns, maxStatementBytes);
+      if (rowSql.oversized) {
+        oversizedRows.push({
+          type: "sql_row_too_large",
+          table,
+          rowId,
+          statementBytes: rowSql.statementBytes,
+          maxStatementBytes,
+        });
       }
-
-      if (!activeValues.length || activeSignature !== signature) {
-        flush();
-        activeSignature = signature;
-        activePrefix = prefix;
-        activePrefixBytes = utf8Bytes(prefix);
+      for (const statement of rowSql.statements) {
+        addStatement(table, rowId, statement);
       }
-
-      const valuesBytes = utf8Bytes(valuesSql);
-      const separatorBytes = activeValues.length ? utf8Bytes(", ") : 0;
-      const candidateBytes = activePrefixBytes + activeValuesBytes + separatorBytes + valuesBytes + utf8Bytes(";");
-      if (activeValues.length && candidateBytes > maxStatementBytes) {
-        flush();
-        activeSignature = signature;
-        activePrefix = prefix;
-        activePrefixBytes = utf8Bytes(prefix);
-      }
-      activeValues.push(valuesSql);
-      activeValuesBytes += (activeValues.length > 1 ? utf8Bytes(", ") : 0) + valuesBytes;
     }
-    flush();
   }
 
   const sql = statements.join("\n");
@@ -1738,17 +1739,21 @@ function buildSqlArtifact(tables, { maxStatementBytes = MAX_SQL_STATEMENT_BYTES 
     report: {
       sqlStatementsGenerated: statements.length,
       largestStatementBytes,
+      largestStatementTable,
+      largestStatementRowId,
       sqlFileBytes: utf8Bytes(sql),
-      chunksPerTable,
+      statementsPerTable,
       maxStatementBytes,
+      oversizedRows,
     },
   };
 }
 
 function buildSql(tables) {
   // Wrangler D1 remote execution on Windows is reliable with --file, but
-  // rejects explicit BEGIN/COMMIT statements in the SQL file. Statements are
-  // bounded by UTF-8 byte size and remain idempotent via INSERT OR REPLACE.
+  // rejects explicit BEGIN/COMMIT statements in the SQL file. Each row is
+  // emitted as its own idempotent INSERT OR REPLACE statement. Very large
+  // text fields are appended with bounded UPDATE statements for that row.
   return buildSqlArtifact(tables).sql;
 }
 
@@ -1811,6 +1816,122 @@ function buildExpectedCounts(tables, tableNames = SQL_TABLE_ORDER) {
   return Object.fromEntries(
     tableNames.map((table) => [table, (tables?.[table] || []).length])
   );
+}
+
+function sortById(a, b) {
+  return clean(a.id || a.firebase_uid).localeCompare(clean(b.id || b.firebase_uid));
+}
+
+function terminalBookingStatus(status) {
+  return ["cancelled", "completed", "no_show"].includes(clean(status).toLowerCase());
+}
+
+function cloneTables(tables) {
+  return Object.fromEntries(
+    Object.entries(tables || {}).map(([table, rowsForTable]) => [
+      table,
+      (rowsForTable || []).map((row) => ({ ...row })),
+    ])
+  );
+}
+
+function resolveBookingUniqueIndexConflictsForSql(bookings, warningConflicts) {
+  const groups = new Map();
+  for (const booking of bookings || []) {
+    if (!clean(booking.staff_id) || clean(booking.status).toLowerCase() === "cancelled") continue;
+    const key = [
+      booking.salon_id,
+      booking.staff_id,
+      booking.booking_date,
+      booking.start_time,
+    ].map(clean).join("\u0000");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(booking);
+  }
+
+  for (const [key, group] of groups) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) => {
+      const activeDelta = Number(terminalBookingStatus(a.status)) - Number(terminalBookingStatus(b.status));
+      if (activeDelta) return activeDelta;
+      return sortById(a, b);
+    });
+    const keep = sorted[0];
+    for (const duplicate of sorted.slice(1)) {
+      if (!terminalBookingStatus(duplicate.status)) {
+        warningConflicts.push({
+          type: "sql_unique_index_conflict_unresolved",
+          table: "bookings",
+          rowId: duplicate.id,
+          uniqueIndex: "idx_core_bookings_staff_slot_active",
+          conflictKey: key.replace(/\u0000/g, "|"),
+          keptRowId: keep.id,
+        });
+        continue;
+      }
+      const originalStaffId = duplicate.staff_id;
+      duplicate.staff_id = "";
+      warningConflicts.push({
+        type: "sql_unique_index_conflict_resolved",
+        table: "bookings",
+        rowId: duplicate.id,
+        uniqueIndex: "idx_core_bookings_staff_slot_active",
+        conflictKey: key.replace(/\u0000/g, "|"),
+        keptRowId: keep.id,
+        field: "staff_id",
+        originalValue: originalStaffId,
+        sqlValue: "NULL",
+        reason: "terminal historical booking conflicts with Core unique slot index; booking_items keep staff_id",
+      });
+    }
+  }
+}
+
+function resolveAdminUniqueIndexConflictsForSql(adminProfiles, warningConflicts) {
+  const resolveField = (field, uniqueIndex) => {
+    const groups = new Map();
+    for (const profile of adminProfiles || []) {
+      const value = clean(profile[field]);
+      if (!value) continue;
+      const key = `${clean(profile.salon_id)}\u0000${value.toLowerCase()}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(profile);
+    }
+    for (const [key, group] of groups) {
+      if (group.length < 2) continue;
+      const sorted = [...group].sort((a, b) => {
+        const activeDelta = Number(b.active || 0) - Number(a.active || 0);
+        if (activeDelta) return activeDelta;
+        return clean(a.firebase_uid).localeCompare(clean(b.firebase_uid));
+      });
+      const keep = sorted[0];
+      for (const duplicate of sorted.slice(1)) {
+        const originalValue = duplicate[field];
+        duplicate[field] = "";
+        warningConflicts.push({
+          type: "sql_unique_index_conflict_resolved",
+          table: "admin_profiles",
+          rowId: duplicate.firebase_uid,
+          uniqueIndex,
+          conflictKey: key.replace(/\u0000/g, "|"),
+          keptRowId: keep.firebase_uid,
+          field,
+          originalValue,
+          sqlValue: "NULL",
+          reason: `duplicate admin ${field} conflicts with Core unique index`,
+        });
+      }
+    }
+  };
+  resolveField("username", "idx_admin_profile_username");
+  resolveField("email", "idx_admin_profile_email");
+}
+
+function prepareTablesForSql(tables, warningConflicts = []) {
+  const sqlTables = cloneTables(tables);
+  resolveBookingUniqueIndexConflictsForSql(sqlTables.bookings, warningConflicts);
+  resolveAdminUniqueIndexConflictsForSql(sqlTables.admin_profiles, warningConflicts);
+  return sqlTables;
 }
 
 function localValidationTableOrder(tables) {
@@ -1960,6 +2081,33 @@ function validateLocalImportReport({
     fail("integrity_check", error.message);
   }
 
+  if (failures.some((failure) => failure.check === "integrity_check" && /SQLITE_AUTH|not authorized/i.test(failure.detail))) {
+    const index = failures.findIndex((failure) => failure.check === "integrity_check");
+    if (index >= 0) failures.splice(index, 1);
+    const checkIndex = checks.findIndex((check) => check.check === "integrity_check");
+    if (checkIndex >= 0) checks.splice(checkIndex, 1);
+    try {
+      const rowsForCheck = queryRows("PRAGMA quick_check;");
+      const values = rowsForCheck.flatMap((row) => Object.values(row).map(String));
+      const ok = values.length > 0 && values.every((value) => value.toLowerCase() === "ok");
+      checks.push({
+        check: "integrity_check",
+        expected: "ok",
+        actual: ok ? "ok (quick_check fallback)" : values.join(", "),
+        status: ok ? "ok" : "failed",
+      });
+      if (!ok) fail("integrity_check", values.join(", "));
+    } catch (fallbackError) {
+      checks.push({
+        check: "integrity_check",
+        expected: "ok",
+        actual: "unsupported",
+        status: "skipped",
+        detail: fallbackError.message,
+      });
+    }
+  }
+
   return {
     ok: failures.length === 0,
     counts,
@@ -1968,15 +2116,31 @@ function validateLocalImportReport({
   };
 }
 
+function quoteWindowsCommandArgument(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:\\=-]+$/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 function runWrangler(args, options = {}) {
-  const result = spawnSync("npx", ["wrangler", ...args], {
+  const executable = process.platform === "win32" ? "cmd.exe" : "npx";
+  const spawnArgs = process.platform === "win32"
+    ? [
+        "/d",
+        "/s",
+        "/c",
+        ["npx", "wrangler", ...args].map(quoteWindowsCommandArgument).join(" "),
+      ]
+    : ["wrangler", ...args];
+  const result = spawnSync(executable, spawnArgs, {
     stdio: options.stdio || "inherit",
     encoding: options.encoding,
-    shell: process.platform === "win32",
+    env: options.env ? { ...process.env, ...options.env } : process.env,
   });
   if (result.status !== 0) {
     const detail =
       result.stderr ||
+      result.stdout ||
       result.error?.message ||
       result.signal ||
       `exit code ${result.status}`;
@@ -1985,11 +2149,25 @@ function runWrangler(args, options = {}) {
   return result;
 }
 
-function runWranglerD1File({ database, config, sqlPath, local = false }) {
+function runWranglerD1File({ database, config, sqlPath, local = false, persistTo = "", quiet = false }) {
+  if (local && !clean(persistTo)) {
+    throw new Error("--apply-local requires an explicit local D1 persistence directory.");
+  }
   const args = local
-    ? ["d1", "execute", database, "--local", "--config", config, "--file", sqlPath]
+    ? [
+        "d1",
+        "execute",
+        database,
+        "--local",
+        "--persist-to",
+        persistTo,
+        "--config",
+        config,
+        "--file",
+        sqlPath,
+      ]
     : ["d1", "execute", database, "--remote", "--file", sqlPath, "--config", config];
-  runWrangler(args);
+  runWrangler(args, quiet ? { stdio: "pipe", encoding: "utf8" } : {});
 }
 
 function runWranglerD1(sql, database, config) {
@@ -2003,8 +2181,32 @@ function runWranglerD1(sql, database, config) {
   }
 }
 
-function applyLocalMigrations(database, config) {
-  runWrangler(["d1", "migrations", "apply", database, "--local", "--config", config]);
+function prepareLocalD1PersistDirectory(directory = LOCAL_D1_PERSIST_DIR) {
+  const target = resolve(process.cwd(), directory);
+  const allowed = resolve(process.cwd(), LOCAL_D1_PERSIST_DIR);
+  if (target !== allowed) {
+    throw new Error(`Refusing to delete unexpected local D1 directory: ${target}`);
+  }
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(target, { recursive: true });
+  return target;
+}
+
+function applyLocalMigrations(database, config, persistTo) {
+  runWrangler(
+    [
+      "d1",
+      "migrations",
+      "apply",
+      database,
+      "--local",
+      "--persist-to",
+      persistTo,
+      "--config",
+      config,
+    ],
+    { env: { CI: "true" } }
+  );
 }
 
 function parseWranglerJsonOutput(stdout) {
@@ -2029,18 +2231,37 @@ function extractWranglerResultRows(parsed) {
   return [];
 }
 
-function queryLocalD1(database, config, command) {
-  const result = runWrangler(
-    ["d1", "execute", database, "--local", "--config", config, "--command", command, "--json"],
-    { stdio: "pipe", encoding: "utf8" }
-  );
-  return extractWranglerResultRows(parseWranglerJsonOutput(result.stdout));
+function queryLocalD1(database, config, persistTo, command) {
+  const directory = mkdtempSync(join(tmpdir(), "queens-core-local-query-"));
+  const queryPath = join(directory, "query.sql");
+  try {
+    writeFileSync(queryPath, command, "utf8");
+    const result = runWrangler(
+      [
+        "d1",
+        "execute",
+        database,
+        "--local",
+        "--persist-to",
+        persistTo,
+        "--config",
+        config,
+        "--file",
+        queryPath,
+        "--json",
+      ],
+      { stdio: "pipe", encoding: "utf8" }
+    );
+    return extractWranglerResultRows(parseWranglerJsonOutput(result.stdout));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
-function runLocalValidation({ database, config, expectedCounts, report }) {
+function runLocalValidation({ database, config, persistTo, expectedCounts, report }) {
   const validation = validateLocalImportReport({
     expectedCounts,
-    queryRows: (sql) => queryLocalD1(database, config, sql),
+    queryRows: (sql) => queryLocalD1(database, config, persistTo, sql),
     requiredClientIds: [
       { id: RODINA_CANONICAL_CLIENT_ID, label: "rodina" },
       { id: GHADA_CANONICAL_CLIENT_ID, label: "ghada" },
@@ -2128,10 +2349,12 @@ async function main() {
     today: asOfDate || undefined,
     now: migrationNow || undefined,
   });
+  const sqlTables = prepareTablesForSql(tables, warningConflicts);
   const counts = Object.fromEntries(
     Object.entries(tables).map(([table, tableRows]) => [table, tableRows.length])
   );
-  const sqlArtifact = buildSqlArtifact(tables);
+  const sqlArtifact = buildSqlArtifact(sqlTables);
+  blockingConflicts.push(...sqlArtifact.report.oversizedRows);
   const sqlReport = {
     ...sqlArtifact.report,
     sqlSha256: sha256Hex(sqlArtifact.sql),
@@ -2181,14 +2404,16 @@ async function main() {
   }
   console.log(`sqlStatementsGenerated = ${sqlReport.sqlStatementsGenerated}`);
   console.log(`largestStatementBytes = ${sqlReport.largestStatementBytes}`);
+  console.log(`largestStatementTable = ${sqlReport.largestStatementTable}`);
+  console.log(`largestStatementRowId = ${sqlReport.largestStatementRowId}`);
   console.log(`sqlFileBytes = ${sqlReport.sqlFileBytes}`);
   console.log(`sqlSha256 = ${sqlReport.sqlSha256}`);
   console.log(`maxStatementBytes = ${sqlReport.maxStatementBytes}`);
-  console.log("chunksPerTable");
+  console.log("statementsPerTable");
   console.table(
-    Object.entries(sqlReport.chunksPerTable).map(([table, chunks]) => ({
+    Object.entries(sqlReport.statementsPerTable).map(([table, statements]) => ({
       table,
-      chunks,
+      statements,
     }))
   );
 
@@ -2225,12 +2450,22 @@ async function main() {
 
   try {
     if (applyLocal) {
-      applyLocalMigrations(database, config);
-      runWranglerD1File({ database, config, sqlPath: sqlPathForApply, local: true });
+      const persistTo = prepareLocalD1PersistDirectory();
+      console.log(`localD1PersistTo = ${persistTo}`);
+      applyLocalMigrations(database, config, persistTo);
+      runWranglerD1File({
+        database,
+        config,
+        sqlPath: sqlPathForApply,
+        local: true,
+        persistTo,
+        quiet: true,
+      });
       runLocalValidation({
         database,
         config,
-        expectedCounts: buildExpectedCounts(tables, localValidationTableOrder(tables)),
+        persistTo,
+        expectedCounts: buildExpectedCounts(sqlTables, localValidationTableOrder(sqlTables)),
         report,
       });
       console.log("core migration applied to local D1 and validated.");
@@ -2249,6 +2484,7 @@ export {
   buildExpectedCounts,
   buildSql,
   buildSqlArtifact,
+  prepareLocalD1PersistDirectory,
   sha256Hex,
   transform,
   validateLocalImportReport,

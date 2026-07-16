@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { buildClientCanonicalization } from "../scripts/migration-client-canonicalization.mjs";
-import { validateLocalImportReport } from "../scripts/migrate-core-firestore-to-d1.mjs";
+import {
+  buildSqlArtifact,
+  prepareLocalD1PersistDirectory,
+  validateLocalImportReport,
+} from "../scripts/migrate-core-firestore-to-d1.mjs";
 import worker from "./core/index.js";
 
 class FakeD1 {
@@ -1039,7 +1043,91 @@ test("core migration local validation detects count mismatches", () => {
   assert.ok(validation.failures.some((failure) => failure.check === "count:clients"));
 });
 
-test("core migration chunks large SQL by UTF-8 statement size", () => {
+test("core migration local validation passes when counts and orphan checks are clean", () => {
+  const validation = validateLocalImportReport({
+    expectedCounts: { clients: 1, bookings: 0, booking_items: 0 },
+    queryRows: fakeLocalValidationQueryRows({
+      counts: { clients: 1, bookings: 0, booking_items: 0 },
+    }),
+    requiredClientIds: [{ id: "client-a", label: "client-a" }],
+    packageCanonicalMappings: [{ clientPackageId: "pkg-a", canonicalClientId: "client-a" }],
+  });
+
+  assert.equal(validation.ok, true, JSON.stringify(validation.failures));
+});
+
+test("core migration reports oversized single-row SQL as blocking preflight data", () => {
+  const artifact = buildSqlArtifact({
+    clients: [{
+      id: `huge-client-${"x".repeat(61000)}`,
+      salon_id: "main",
+      name: "Huge Client",
+      phone_normalized: "",
+      email: "",
+      firebase_uid: "",
+      status: "active",
+      notes: "",
+      vip: 0,
+      legacy_client_doc_id: "",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    }],
+  });
+
+  assert.equal(artifact.report.oversizedRows.length, 1);
+  assert.equal(artifact.report.oversizedRows[0].type, "sql_row_too_large");
+  assert.equal(artifact.report.oversizedRows[0].table, "clients");
+  assert.match(artifact.report.oversizedRows[0].rowId, /^huge-client-/);
+  assert.ok(artifact.report.oversizedRows[0].statementBytes > 60000);
+});
+
+test("core migration preserves large text fields with bounded row-local updates", () => {
+  const artifact = buildSqlArtifact({
+    discounts: [{
+      id: "discount-large-image",
+      salon_id: "main",
+      code: "BIGIMG",
+      name: "Big image",
+      type: "fixed",
+      value: 10,
+      active: 1,
+      starts_at: "2026-01-01",
+      ends_at: "2026-12-31",
+      usage_limit: null,
+      used_count: 0,
+      code_key: "BIGIMG",
+      applies_to: "all",
+      service_ids_json: "[]",
+      sequence_steps_json: "[]",
+      image_url: `data:image/png;base64,${"a".repeat(180000)}`,
+      deleted_at: "",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    }],
+  });
+
+  assert.equal(artifact.report.oversizedRows.length, 0, JSON.stringify(artifact.report.oversizedRows));
+  assert.ok(artifact.sql.includes("INSERT OR REPLACE INTO discounts"));
+  assert.ok(artifact.sql.includes("UPDATE discounts SET image_url = COALESCE(image_url, '') ||"));
+  for (const statement of artifact.sql.split(/\n/).filter(Boolean)) {
+    assert.ok(Buffer.byteLength(statement, "utf8") <= 60000, "statement exceeded 60KB");
+  }
+});
+
+test("core apply-local persistence directory is cleaned before reuse", () => {
+  const persistDir = join(process.cwd(), ".migration-work", "d1-local");
+  const staleFile = join(persistDir, "stale.txt");
+  mkdirSync(persistDir, { recursive: true });
+  writeFileSync(staleFile, "stale", "utf8");
+
+  const prepared = prepareLocalD1PersistDirectory();
+
+  assert.equal(prepared, persistDir);
+  assert.equal(existsSync(staleFile), false);
+  assert.equal(existsSync(prepared), true);
+});
+
+test("core migration emits one bounded INSERT statement per row", () => {
   const directory = mkdtempSync(join(tmpdir(), "core-migration-large-"));
   const inputPath = join(directory, "large-fixture.json");
   try {
@@ -1051,7 +1139,7 @@ test("core migration chunks large SQL by UTF-8 statement size", () => {
         phone: `05${String(10000000 + index).slice(0, 8)}`,
         firebaseUid: `large-alias-${String(index).padStart(4, "0")}`,
         notes: JSON.stringify({
-          source: "sql-chunk-regression",
+          source: "sql-single-row-regression",
           index,
           metadata: "x".repeat(1800),
         }),
@@ -1075,16 +1163,22 @@ test("core migration chunks large SQL by UTF-8 statement size", () => {
     assert.match(result.stdout, /blockingConflicts = 0/);
     assert.match(result.stdout, /clients\s+[^0-9]+1205/);
     assert.doesNotMatch(result.stdout, /BEGIN TRANSACTION|COMMIT;/);
+    assert.match(result.stdout, /statementsPerTable/);
     const largest = Number(/largestStatementBytes = (\d+)/.exec(result.stdout)?.[1] || 0);
     assert.ok(largest > 0, "missing largestStatementBytes");
-    assert.ok(largest <= 250000, `largest statement was ${largest}`);
+    assert.ok(largest <= 60000, `largest statement was ${largest}`);
     const statements = result.stdout
       .split(/\r?\n/)
-      .filter((line) => /^(INSERT OR REPLACE|UPDATE) /.test(line));
+      .filter((line) => /^INSERT OR REPLACE /.test(line));
     assert.ok(statements.length > 1);
     for (const statement of statements) {
-      assert.ok(Buffer.byteLength(statement, "utf8") <= 250000, "statement exceeded 250KB");
+      assert.ok(Buffer.byteLength(statement, "utf8") <= 60000, "statement exceeded 60KB");
+      assert.equal(parseInsertRows(statement).length, 1, "statement contained multiple rows");
     }
+    const clientStatements = statements.filter((line) => line.startsWith("INSERT OR REPLACE INTO clients "));
+    const aliasStatements = statements.filter((line) => line.startsWith("INSERT OR REPLACE INTO client_aliases "));
+    assert.equal(clientStatements.length, 1205);
+    assert.ok(aliasStatements.length >= 1205);
     for (let index = 0; index < clients.length; index += 1) {
       const id = `large-client-${String(index).padStart(4, "0")}`;
       const alias = `large-alias-${String(index).padStart(4, "0")}`;
