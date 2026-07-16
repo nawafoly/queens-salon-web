@@ -147,3 +147,53 @@ test("Core and package migrations share client canonicalization policy", () => {
   assert.match(shared, /activePackageIds/);
   assert.match(shared, /client_alias_conflict/);
 });
+
+test("dashboard bookings merges Core D1 rows with legacy Firestore rows in Core mode", () => {
+  const source = readFileSync("src/services/firestoreBookings.ts", "utf8");
+  assert.match(source, /function mergeBookingReadRows/);
+  assert.match(source, /async function readCoreBookings/);
+  assert.match(source, /async function readFirestoreBookings/);
+  assert.match(source, /function watchFirestoreBookings/);
+  assert.match(source, /source:\s*"core-d1"/);
+  assert.match(source, /source:\s*"firestore"/);
+});
+
+test("internal booking V2 staff source merges staff_public and employees without hardcoded staff names", () => {
+  const staffSource = readFileSync("src/services/firestoreStaffPublic.ts", "utf8");
+  const v2Source = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  assert.match(staffSource, /readStaffRowsFromCollection\(sid,\s*"staff_public"\)/);
+  assert.match(staffSource, /readStaffRowsFromCollection\(sid,\s*"employees"\)/);
+  assert.match(staffSource, /function mergeStaffRows/);
+  assert.match(staffSource, /employeeProfile/);
+  assert.match(v2Source, /filterStaffForResolverTarget/);
+  assert.match(v2Source, /isStaffOperationallyActiveForDate/);
+  assert.match(v2Source, /isStaffAvailableForDate/);
+  assert.doesNotMatch(v2Source, /Wessam|وسام/i);
+});
+
+test("Core invoice printing is not Firestore-only and supports success reprint rows", () => {
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  const coreInvoice = readFileSync("src/services/CoreInvoiceService.ts", "utf8");
+  const workerIndex = readFileSync("workers/core/index.js", "utf8");
+  const v2Source = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+
+  assert.match(coreInvoice, /getByBookingId/);
+  assert.match(coreInvoice, /query:\s*\{\s*bookingId\s*\}/);
+  assert.match(workerIndex, /getInvoiceByBookingId/);
+  assert.match(workerIndex, /query\.bookingId\s*\|\|\s*query\.booking_id/);
+  assert.match(dashboard, /enrichCoreBookingForInvoicePrint/);
+  assert.match(dashboard, /CoreInvoiceService\.getByBookingId/);
+  assert.match(dashboard, /CorePaymentService\.list/);
+  const printBlockStart = dashboard.indexOf("const handlePrintBookingInvoice");
+  const printBlockEnd = dashboard.indexOf("const renderBookingSection");
+  const printBlock = dashboard.slice(printBlockStart, printBlockEnd);
+  assert.match(printBlock, /getBookingById/);
+  assert.doesNotMatch(printBlock, /getDoc\(/);
+
+  assert.match(v2Source, /buildInternalV2InvoiceRows/);
+  assert.match(v2Source, /localStorage\.setItem\("allBookings"/);
+  assert.match(v2Source, /success-internal/);
+  assert.match(v2Source, /paymentMethod === "mixed"/);
+  assert.match(v2Source, /paymentType === "none"/);
+  assert.doesNotMatch(v2Source, /CoreAuditService/);
+});

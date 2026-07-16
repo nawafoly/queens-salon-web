@@ -24,6 +24,16 @@ export async function getInvoice(db, salonId, id) {
   return row;
 }
 
+export async function getInvoiceByBookingId(db, salonId, bookingId) {
+  const row = await dbFirst(
+    db,
+    "SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1",
+    [salonId, requiredId(bookingId, "bookingId")]
+  );
+  if (!row) rowNotFound("invoice");
+  return row;
+}
+
 export async function createInvoice(db, salonId, data) {
   const now = nowIso();
   const clientId = requiredId(data.clientId || data.client_id, "clientId");

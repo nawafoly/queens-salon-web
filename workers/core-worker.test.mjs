@@ -666,6 +666,24 @@ test("booking creation creates booking items and invoice", async () => {
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_created" && row.entity_id === "booking-a"));
 });
 
+test("invoice lookup by booking id returns the Core invoice", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, {
+    id: "booking-invoice-lookup",
+    invoiceId: "invoice-lookup",
+  });
+
+  const response = await worker.fetch(
+    request("/api/core/invoices?bookingId=booking-invoice-lookup"),
+    env(fake)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.id, "invoice-lookup");
+  assert.equal(body.data.booking_id, "booking-invoice-lookup");
+});
+
 test("booking conflict rejects same staff slot", async () => {
   const fake = new FakeD1();
   seedCore(fake);

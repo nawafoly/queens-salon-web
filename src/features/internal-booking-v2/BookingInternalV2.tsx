@@ -126,6 +126,123 @@ function servicePrice(service: any) {
   return Math.max(0, Number(extractMinPriceInternal(String(raw || "")) || 0));
 }
 
+function roundMoney(value: number) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function splitAmountByWeights(total: number, weights: number[]) {
+  const roundedTotal = roundMoney(total);
+  const sum = weights.reduce((acc, value) => acc + Math.max(0, Number(value || 0)), 0);
+  if (roundedTotal <= 0 || sum <= 0 || !weights.length) return weights.map(() => 0);
+
+  let running = 0;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return roundMoney(roundedTotal - running);
+    const part = roundMoney((roundedTotal * Math.max(0, Number(weight || 0))) / sum);
+    running = roundMoney(running + part);
+    return part;
+  });
+}
+
+function createInternalV2InvoicePrintRequestId(source: string) {
+  const requestId = `${source}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    localStorage.setItem("invoicePrintRequestId", requestId);
+  } catch {
+    // ignore storage errors; SuccessInternal can still render allBookings.
+  }
+  return requestId;
+}
+
+function buildInternalV2InvoiceRows(args: {
+  createdBookingIds: string[];
+  selectedClient: ClientCandidate | null;
+  cart: CatalogService[];
+  scheduleByService: Record<string, ScheduleSelection>;
+  bookingDate: string;
+  paymentType: PaymentType;
+  paymentMethod: PaymentMethod;
+  effectivePaidAmount: number;
+  remainingAmount: number;
+  cashAmount: string;
+  cardAmount: string;
+  transferAmount: string;
+  selectedSectionId: string;
+}) {
+  const bookingIds = Array.isArray(args.createdBookingIds) ? args.createdBookingIds : [];
+  const parentId = String(bookingIds[0] || "").trim();
+  if (!parentId || !args.selectedClient || !args.cart.length) return [];
+
+  const rowPrices = args.cart.map((service) => Math.max(0, servicePrice(service)));
+  const paidParts = splitAmountByWeights(args.effectivePaidAmount, rowPrices);
+  const remainingParts = splitAmountByWeights(args.remainingAmount, rowPrices);
+  const paymentBreakdown =
+    args.paymentType === "none"
+      ? { cash: 0, card: 0, transfer: 0 }
+      : args.paymentMethod === "mixed"
+        ? {
+            cash: Math.max(0, Number(args.cashAmount || 0)),
+            card: Math.max(0, Number(args.cardAmount || 0)),
+            transfer: Math.max(0, Number(args.transferAmount || 0)),
+          }
+        : {
+            cash: args.paymentMethod === "cash" ? args.effectivePaidAmount : 0,
+            card: args.paymentMethod === "card" ? args.effectivePaidAmount : 0,
+            transfer: args.paymentMethod === "transfer" ? args.effectivePaidAmount : 0,
+          };
+  const cashParts = splitAmountByWeights(paymentBreakdown.cash, rowPrices);
+  const cardParts = splitAmountByWeights(paymentBreakdown.card, rowPrices);
+  const transferParts = splitAmountByWeights(paymentBreakdown.transfer, rowPrices);
+  const createdAt = Date.now();
+
+  return args.cart.map((service, index) => {
+    const serviceKey = String(service.id || "");
+    const schedule = (args.scheduleByService[serviceKey] || {}) as Partial<ScheduleSelection>;
+    const rowId = String(bookingIds[index + 1] || parentId || `${serviceKey}_${index}`).trim();
+    const total = rowPrices[index] || 0;
+    const serviceName = serviceTitle(service);
+    const sectionTitle = String(service?.sectionTitle || service?.sectionName || service?.sectionLabel || args.selectedSectionId || "").trim();
+    const categoryTitle = String(service?.categoryTitle || service?.categoryName || service?.categoryLabel || service?.categoryId || "").trim();
+    return {
+      id: rowId,
+      publicId: parentId,
+      clientName: args.selectedClient?.name || "",
+      clientPhone: args.selectedClient?.phone || "",
+      serviceId: serviceKey,
+      serviceName,
+      serviceSectionId: String(service?.sectionId || args.selectedSectionId || "").trim() || undefined,
+      serviceSectionTitle: sectionTitle || undefined,
+      serviceCategoryId: String(service?.categoryId || service?.category || "").trim() || undefined,
+      serviceCategoryName: categoryTitle || undefined,
+      serviceSnapshot: {
+        serviceNameAtBooking: serviceName,
+        sectionIdAtBooking: String(service?.sectionId || args.selectedSectionId || "").trim() || undefined,
+        sectionTitleAtBooking: sectionTitle || undefined,
+        categoryIdAtBooking: String(service?.categoryId || service?.category || "").trim() || undefined,
+        categoryNameAtBooking: categoryTitle || undefined,
+      },
+      employeeName: String(schedule.staffName || "").trim(),
+      date: args.bookingDate,
+      time: String(schedule.time || "").trim(),
+      durationMin: serviceDuration(service) || 30,
+      total,
+      finalPrice: total,
+      paymentMethod: args.paymentType === "none" ? undefined : args.paymentMethod,
+      paymentBreakdown: {
+        cash: cashParts[index] || 0,
+        card: cardParts[index] || 0,
+        transfer: transferParts[index] || 0,
+      },
+      paymentType: args.paymentType,
+      paidAmount: paidParts[index] || 0,
+      remainingAmount: remainingParts[index] || 0,
+      status: args.paymentType === "none" ? "pending" : "confirmed",
+      createdAt,
+    };
+  });
+}
+
 function serviceCategoryId(service: any) {
   return String(service?.categoryId ?? service?.category_id ?? service?.["معرف_التصنيف"] ?? "").trim();
 }
@@ -688,6 +805,57 @@ export default function BookingInternalV2() {
     }
   }, [selectedClient, cart, allScheduled, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
 
+  const printCreatedBookingInvoice = useCallback(() => {
+    const rows = buildInternalV2InvoiceRows({
+      createdBookingIds,
+      selectedClient,
+      cart,
+      scheduleByService,
+      bookingDate,
+      paymentType,
+      paymentMethod,
+      effectivePaidAmount,
+      remainingAmount,
+      cashAmount,
+      cardAmount,
+      transferAmount,
+      selectedSectionId,
+    });
+    if (!rows.length) {
+      setSubmitError("لا توجد بيانات فاتورة جاهزة للطباعة.");
+      return;
+    }
+
+    createInternalV2InvoicePrintRequestId("internal_booking_v2");
+    localStorage.setItem("allBookings", JSON.stringify(rows));
+    localStorage.setItem("currentBooking", JSON.stringify(rows[0] || null));
+
+    const popup = window.open(
+      `${window.location.origin}/success-internal`,
+      "internal_print_popup",
+      "width=980,height=900,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes"
+    );
+    if (!popup || popup === window) {
+      setSubmitError("تم منع فتح نافذة الفاتورة. فعّلي النوافذ المنبثقة للموقع ثم حاولي مرة أخرى.");
+      return;
+    }
+    popup.focus();
+  }, [
+    createdBookingIds,
+    selectedClient,
+    cart,
+    scheduleByService,
+    bookingDate,
+    paymentType,
+    paymentMethod,
+    effectivePaidAmount,
+    remainingAmount,
+    cashAmount,
+    cardAmount,
+    transferAmount,
+    selectedSectionId,
+  ]);
+
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
@@ -957,6 +1125,7 @@ export default function BookingInternalV2() {
                     <div className="bk2-booking-success">
                       <strong>✓ تم حفظ الحجز بنجاح</strong>
                       <p>تم إنشاء {createdBookingIds.length} سجل حجز وربطها بالعميلة والموظفات المختارات.</p>
+                      <button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button>
                       <button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button>
                     </div>
                   ) : (

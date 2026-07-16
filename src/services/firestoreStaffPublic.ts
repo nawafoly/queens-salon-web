@@ -53,12 +53,37 @@ export type StaffPublicDoc = {
     windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
     periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
   }>;
+  source?: "staff_public" | "employees" | string;
+  employeeId?: string;
+  employeeDocId?: string;
+  employeeUid?: string;
+  uid?: string;
+  authUid?: string;
+  userId?: string;
+  email?: string;
+  phone?: string;
 };
 
 export type StaffPublicWithId = StaffPublicDoc & { id: string };
 
 function norm(v: any) {
   return String(v ?? "").trim().toLowerCase();
+}
+
+function cleanPhone(v: any) {
+  return String(v ?? "").replace(/\D+/g, "");
+}
+
+function normalizeArabicName(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآا]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\u0600-\u06FFa-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeArray(v: any): string[] {
@@ -100,10 +125,18 @@ function normalizeArray(v: any): string[] {
 
 function extractSpecialties(raw: any): string[] {
   const data = raw && typeof raw === "object" ? raw : {};
+  const employeeProfile = data?.employeeProfile && typeof data.employeeProfile === "object" ? data.employeeProfile : {};
+  const bookingProfile = data?.bookingProfile && typeof data.bookingProfile === "object" ? data.bookingProfile : {};
+  const operationalProfile = data?.operationalProfile && typeof data.operationalProfile === "object" ? data.operationalProfile : {};
   const direct = normalizeArray(data?.specialties);
   const serviceIds = normalizeArray(data?.serviceIds);
   const servicesIds = normalizeArray(data?.servicesIds);
   const providedServices = normalizeArray(data?.providedServices);
+  const profileSpecialties = normalizeArray((employeeProfile as any)?.specialties);
+  const profileServiceIds = normalizeArray((employeeProfile as any)?.serviceIds);
+  const bookingSpecialties = normalizeArray((bookingProfile as any)?.specialties);
+  const bookingServiceIds = normalizeArray((bookingProfile as any)?.serviceIds);
+  const operationalSpecialties = normalizeArray((operationalProfile as any)?.specialties);
   const nestedServiceIds = Array.isArray(data?.services)
     ? data.services
         .map((x: any) => String(x?.serviceId || x?.id || x?.name || "").trim())
@@ -115,6 +148,11 @@ function extractSpecialties(raw: any): string[] {
       ...serviceIds,
       ...servicesIds,
       ...providedServices,
+      ...profileSpecialties,
+      ...profileServiceIds,
+      ...bookingSpecialties,
+      ...bookingServiceIds,
+      ...operationalSpecialties,
       ...nestedServiceIds,
     ])
   );
@@ -243,49 +281,169 @@ function normalizeWorkingHourOverrides(v: any) {
     .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
 }
 
+function resolveStaffName(data: any) {
+  return String(data?.name ?? data?.displayName ?? data?.fullName ?? data?.employeeName ?? "").trim();
+}
+
+function normalizeStaffRow(
+  id: string,
+  data: any,
+  source: "staff_public" | "employees"
+): StaffPublicWithId {
+  const employeeProfile = data?.employeeProfile && typeof data.employeeProfile === "object" ? data.employeeProfile : {};
+  const employment = data?.employment && typeof data.employment === "object" ? data.employment : {};
+  const staffId =
+    source === "staff_public"
+      ? id
+      : String(data?.staffPublicId || data?.linkedStaffPublicId || data?.employeeId || data?.employeeDocId || id).trim() || id;
+  const linkedUid = String(
+    data?.linkedUid ||
+      data?.employeeUid ||
+      data?.authUid ||
+      data?.uid ||
+      data?.userId ||
+      data?.linkedUserId ||
+      ""
+  ).trim();
+  return {
+    id: staffId,
+    source,
+    employeeId: String(data?.employeeId || data?.employeeDocId || id).trim() || id,
+    employeeDocId: String(data?.employeeDocId || id).trim() || id,
+    employeeUid: String(data?.employeeUid || data?.uid || data?.authUid || data?.userId || "").trim() || undefined,
+    uid: String(data?.uid || data?.employeeUid || "").trim() || undefined,
+    authUid: String(data?.authUid || "").trim() || undefined,
+    userId: String(data?.userId || "").trim() || undefined,
+    email: String(data?.email || data?.userEmail || "").trim() || undefined,
+    phone: String(data?.phone || data?.mobile || data?.phoneNumber || data?.employeePhone || "").trim() || undefined,
+    name: resolveStaffName(data),
+    specialties: extractSpecialties(data),
+    active: data?.active !== false && data?.isActive !== false,
+    avatarUrl: String(data?.avatarUrl ?? data?.avatarURL ?? data?.photoURL ?? data?.photoUrl ?? data?.imageUrl ?? data?.imageURL ?? data?.profileImageUrl ?? data?.profileImage ?? data?.picture ?? data?.avatar ?? "").trim() || undefined,
+    avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
+    photoURL: String(data?.photoURL ?? "").trim() || undefined,
+    photoUrl: String(data?.photoUrl ?? "").trim() || undefined,
+    imageUrl: String(data?.imageUrl ?? "").trim() || undefined,
+    imageURL: String(data?.imageURL ?? "").trim() || undefined,
+    profileImageUrl: String(data?.profileImageUrl ?? "").trim() || undefined,
+    profileImage: String(data?.profileImage ?? "").trim() || undefined,
+    picture: String(data?.picture ?? "").trim() || undefined,
+    avatar: String(data?.avatar ?? "").trim() || undefined,
+    rating: Number.isFinite(Number(data?.rating)) ? Number(data?.rating) : undefined,
+    reviewsCount: Number.isFinite(Number(data?.reviewsCount)) ? Number(data?.reviewsCount) : undefined,
+    reviewCount: Number.isFinite(Number(data?.reviewCount)) ? Number(data?.reviewCount) : undefined,
+    ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
+    employmentEndDate: resolveEmploymentEndDate({ ...employment, ...employeeProfile, ...data }) || undefined,
+    linkedUid: linkedUid || undefined,
+    showOnBooking: data?.showOnBooking !== false && (employeeProfile as any)?.showOnBooking !== false,
+    onLeave: !!data?.onLeave || (employeeProfile as any)?.onLeave === true,
+    leaveUntil: String(data?.leaveUntil ?? (employeeProfile as any)?.leaveUntil ?? "").trim(),
+    leaveNote: String(data?.leaveNote ?? (employeeProfile as any)?.leaveNote ?? "").trim(),
+    exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates || (employeeProfile as any)?.exceptionalLeaveDates),
+    exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays || data?.weeklyOffDays || data?.offWeekdays || (employeeProfile as any)?.exceptionalLeaveWeekdays),
+    useCustomWorkingHours: !!data?.useCustomWorkingHours || (employeeProfile as any)?.useCustomWorkingHours === true,
+    customWorkingHours: normalizeWorkingHours(data?.customWorkingHours || (employeeProfile as any)?.customWorkingHours),
+    customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides || (employeeProfile as any)?.customWorkingHourOverrides),
+  } as StaffPublicWithId;
+}
+
+function staffMergeKeys(row: StaffPublicWithId): string[] {
+  const keys = new Set<string>();
+  [
+    row.id,
+    row.employeeId,
+    row.employeeDocId,
+    row.employeeUid,
+    row.uid,
+    row.authUid,
+    row.userId,
+    row.linkedUid,
+  ].forEach((value) => {
+    const key = String(value || "").trim();
+    if (key) keys.add(`id:${key}`);
+  });
+  const email = String(row.email || "").trim().toLowerCase();
+  if (email) keys.add(`email:${email}`);
+  const phone = cleanPhone(row.phone);
+  if (phone) keys.add(`phone:${phone}`);
+  const name = normalizeArabicName(row.name);
+  if (name) keys.add(`name:${name}`);
+  return Array.from(keys);
+}
+
+function mergeStaffRow(current: StaffPublicWithId | undefined, next: StaffPublicWithId): StaffPublicWithId {
+  if (!current) return next;
+  const keepCurrentId = current.source === "staff_public" || next.source !== "staff_public";
+  const primary = keepCurrentId ? current : next;
+  const secondary = keepCurrentId ? next : current;
+  return {
+    ...secondary,
+    ...primary,
+    id: primary.id || secondary.id,
+    name: primary.name || secondary.name,
+    specialties: Array.from(new Set([...(current.specialties || []), ...(next.specialties || [])])),
+    active: current.active !== false && next.active !== false,
+    linkedUid: current.linkedUid || next.linkedUid,
+    employeeId: current.employeeId || next.employeeId,
+    employeeDocId: current.employeeDocId || next.employeeDocId,
+    employeeUid: current.employeeUid || next.employeeUid,
+    uid: current.uid || next.uid,
+    authUid: current.authUid || next.authUid,
+    userId: current.userId || next.userId,
+    email: current.email || next.email,
+    showOnBooking: current.showOnBooking !== false && next.showOnBooking !== false,
+    onLeave: current.onLeave === true || next.onLeave === true,
+    leaveUntil: current.leaveUntil || next.leaveUntil,
+    leaveNote: current.leaveNote || next.leaveNote,
+    employmentEndDate: current.employmentEndDate || next.employmentEndDate,
+    exceptionalLeaveDates: current.exceptionalLeaveDates?.length ? current.exceptionalLeaveDates : next.exceptionalLeaveDates,
+    exceptionalLeaveWeekdays: current.exceptionalLeaveWeekdays?.length ? current.exceptionalLeaveWeekdays : next.exceptionalLeaveWeekdays,
+    useCustomWorkingHours: current.useCustomWorkingHours === true || next.useCustomWorkingHours === true,
+    customWorkingHours: Object.keys(current.customWorkingHours || {}).length ? current.customWorkingHours : next.customWorkingHours,
+    customWorkingHourOverrides: current.customWorkingHourOverrides?.length ? current.customWorkingHourOverrides : next.customWorkingHourOverrides,
+    source: primary.source || secondary.source,
+  };
+}
+
+function mergeStaffRows(rows: StaffPublicWithId[]): StaffPublicWithId[] {
+  const byPrimaryKey = new Map<string, StaffPublicWithId>();
+  const aliasToPrimaryKey = new Map<string, string>();
+  rows.forEach((row) => {
+    if (!String(row.name || "").trim()) return;
+    const keys = staffMergeKeys(row);
+    if (!keys.length) return;
+    const matchedPrimary = keys.map((key) => aliasToPrimaryKey.get(key)).find(Boolean);
+    const primary = matchedPrimary || keys[0];
+    const merged = mergeStaffRow(byPrimaryKey.get(primary), row);
+    byPrimaryKey.set(primary, merged);
+    staffMergeKeys(merged).forEach((key) => aliasToPrimaryKey.set(key, primary));
+    keys.forEach((key) => aliasToPrimaryKey.set(key, primary));
+  });
+  return Array.from(byPrimaryKey.values());
+}
+
+async function readStaffRowsFromCollection(
+  salonId: string,
+  collectionName: "staff_public" | "employees"
+) {
+  const colRef = collection(db, "salons", salonId, collectionName);
+  const snaps = await getDocs(colRef);
+  return snaps.docs
+    .filter((d) => !isRemovedFromStaffRecord(d.data()))
+    .map((d) => normalizeStaffRow(d.id, d.data() as any, collectionName));
+}
+
 export async function listActiveStaffAll(salonId: string): Promise<StaffPublicWithId[]> {
   const sid = String(salonId || "").trim();
   if (!sid) return [];
 
   try {
-    const colRef = collection(db, "salons", sid, "staff_public");
-    const snaps = await getDocs(colRef);
+    const [staffPublicRows, employeeRows] = await Promise.all([
+      readStaffRowsFromCollection(sid, "staff_public"),
+      readStaffRowsFromCollection(sid, "employees"),
+    ]);
 
-    const all = snaps.docs.filter((d) => !isRemovedFromStaffRecord(d.data())).map((d) => {
-      const data = d.data() as any;
-      return {
-        id: d.id,
-        name: String(data?.name ?? "").trim(),
-        specialties: extractSpecialties(data),
-        active: data?.active !== false,
-        avatarUrl: String(data?.avatarUrl ?? "").trim() || undefined,
-        avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
-        photoURL: String(data?.photoURL ?? "").trim() || undefined,
-        photoUrl: String(data?.photoUrl ?? "").trim() || undefined,
-        imageUrl: String(data?.imageUrl ?? "").trim() || undefined,
-        imageURL: String(data?.imageURL ?? "").trim() || undefined,
-        profileImageUrl: String(data?.profileImageUrl ?? "").trim() || undefined,
-        profileImage: String(data?.profileImage ?? "").trim() || undefined,
-        picture: String(data?.picture ?? "").trim() || undefined,
-        avatar: String(data?.avatar ?? "").trim() || undefined,
-        rating: Number.isFinite(Number(data?.rating)) ? Number(data?.rating) : undefined,
-        reviewsCount: Number.isFinite(Number(data?.reviewsCount)) ? Number(data?.reviewsCount) : undefined,
-        reviewCount: Number.isFinite(Number(data?.reviewCount)) ? Number(data?.reviewCount) : undefined,
-        ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
-        employmentEndDate: resolveEmploymentEndDate(data) || undefined,
-        linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
-        showOnBooking: data?.showOnBooking !== false,
-        onLeave: !!data?.onLeave,
-        leaveUntil: String(data?.leaveUntil ?? "").trim(),
-        leaveNote: String(data?.leaveNote ?? "").trim(),
-        exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
-        exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
-        useCustomWorkingHours: !!data?.useCustomWorkingHours,
-        customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
-        customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
-      } as StaffPublicWithId;
-    });
-
+    const all = mergeStaffRows([...staffPublicRows, ...employeeRows]);
     const activeOnly = all.filter((x) => isStaffOperationallyActiveForDate(x));
     return activeOnly;
   } catch (e: any) {
@@ -305,43 +463,7 @@ export async function listActiveStaffBySpecialty(args: {
   const wanted = norm(wantedRaw);
 
   try {
-    const colRef = collection(db, "salons", salonId, "staff_public");
-    const snaps = await getDocs(colRef);
-
-    const all = snaps.docs.filter((d) => !isRemovedFromStaffRecord(d.data())).map((d) => {
-      const data = d.data() as any;
-      return {
-        id: d.id,
-        name: String(data?.name ?? "").trim(),
-        specialties: extractSpecialties(data),
-        active: data?.active !== false,
-        avatarUrl: String(data?.avatarUrl ?? "").trim() || undefined,
-        avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
-        photoURL: String(data?.photoURL ?? "").trim() || undefined,
-        photoUrl: String(data?.photoUrl ?? "").trim() || undefined,
-        imageUrl: String(data?.imageUrl ?? "").trim() || undefined,
-        imageURL: String(data?.imageURL ?? "").trim() || undefined,
-        profileImageUrl: String(data?.profileImageUrl ?? "").trim() || undefined,
-        profileImage: String(data?.profileImage ?? "").trim() || undefined,
-        picture: String(data?.picture ?? "").trim() || undefined,
-        avatar: String(data?.avatar ?? "").trim() || undefined,
-        rating: Number.isFinite(Number(data?.rating)) ? Number(data?.rating) : undefined,
-        reviewsCount: Number.isFinite(Number(data?.reviewsCount)) ? Number(data?.reviewsCount) : undefined,
-        reviewCount: Number.isFinite(Number(data?.reviewCount)) ? Number(data?.reviewCount) : undefined,
-        ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
-        employmentEndDate: resolveEmploymentEndDate(data) || undefined,
-        linkedUid: String(data?.linkedUid ?? "").trim() || undefined,
-        showOnBooking: data?.showOnBooking !== false,
-        onLeave: !!data?.onLeave,
-        leaveUntil: String(data?.leaveUntil ?? "").trim(),
-        leaveNote: String(data?.leaveNote ?? "").trim(),
-        exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates),
-        exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays),
-        useCustomWorkingHours: !!data?.useCustomWorkingHours,
-        customWorkingHours: normalizeWorkingHours(data?.customWorkingHours),
-        customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides),
-      } as StaffPublicWithId;
-    });
+    const all = await listActiveStaffAll(salonId);
 
     const filtered = all.filter((staff) => {
       if (!isStaffOperationallyActiveForDate(staff)) return false;

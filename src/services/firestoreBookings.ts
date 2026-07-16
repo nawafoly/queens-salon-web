@@ -194,6 +194,7 @@ export type BookingDoc = {
 
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  source?: "firestore" | "core-d1" | string;
 };
 
 export type BookingDocWithId = BookingDoc & { id: string };
@@ -219,6 +220,70 @@ const BOOKINGS_COUNTER_DOC = "bookings";
 const LOGS_COL = ["salons", SALON_ID, "booking_logs"] as const;
 type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 const JS_DAY_TO_WEEKDAY: WeekdayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function bookingReadSortMs(row: BookingDocWithId): number {
+  const createdAt = (row.createdAt as any);
+  const fromTimestamp =
+    typeof createdAt?.toMillis === "function"
+      ? Number(createdAt.toMillis())
+      : typeof createdAt?.seconds === "number"
+        ? Number(createdAt.seconds) * 1000
+        : 0;
+  const fromCreatedAtMs = Number(row.createdAtMs || 0);
+  const fromDate = Date.parse(`${String(row.date || "").trim()}T${String(row.time || "00:00").trim()}:00`);
+  return [fromTimestamp, fromCreatedAtMs, fromDate]
+    .find((value) => Number.isFinite(value) && value > 0) || 0;
+}
+
+function sortBookingReadRows(rows: BookingDocWithId[]) {
+  return [...rows].sort((a, b) => {
+    const diff = bookingReadSortMs(b) - bookingReadSortMs(a);
+    if (diff !== 0) return diff;
+    return String(b.id || "").localeCompare(String(a.id || ""));
+  });
+}
+
+function bookingDedupeKeys(row: BookingDocWithId): string[] {
+  const keys = new Set<string>();
+  const id = String(row.id || "").trim();
+  const publicId = String(row.publicId || "").trim().toUpperCase();
+  if (id) keys.add(`id:${id}`);
+  if (publicId) keys.add(`public:${publicId}`);
+  return Array.from(keys);
+}
+
+function preferBookingReadRow(current: BookingDocWithId | undefined, next: BookingDocWithId) {
+  if (!current) return next;
+  const currentSource = String((current as any).source || "").trim();
+  const nextSource = String((next as any).source || "").trim();
+  if (nextSource === "core-d1" && currentSource !== "core-d1") return next;
+  if (currentSource === "core-d1" && nextSource !== "core-d1") return current;
+  return bookingReadSortMs(next) >= bookingReadSortMs(current) ? next : current;
+}
+
+function mergeBookingReadRows(...lists: BookingDocWithId[][]): BookingDocWithId[] {
+  const byPrimaryKey = new Map<string, BookingDocWithId>();
+  const aliasToPrimaryKey = new Map<string, string>();
+
+  lists.flat().forEach((row) => {
+    const keys = bookingDedupeKeys(row);
+    if (!keys.length) return;
+    const matchedPrimary = keys.map((key) => aliasToPrimaryKey.get(key)).find(Boolean);
+    const primary = matchedPrimary || keys[0];
+    byPrimaryKey.set(primary, preferBookingReadRow(byPrimaryKey.get(primary), row));
+    keys.forEach((key) => aliasToPrimaryKey.set(key, primary));
+  });
+
+  return sortBookingReadRows(Array.from(byPrimaryKey.values()));
+}
+
+function scopeAllowsBooking(row: BookingDocWithId, scope?: BookingReadScope) {
+  const statuses = new Set(scope?.statuses || []);
+  if (statuses.size && !statuses.has(row.status)) return false;
+  if (scope?.dateFrom && String(row.date || "") < scope.dateFrom) return false;
+  if (scope?.dateTo && String(row.date || "") > scope.dateTo) return false;
+  return true;
+}
 
 function isPlainObject(v: any): v is Record<string, any> {
   if (Object.prototype.toString.call(v) !== "[object Object]") return false;
@@ -2530,13 +2595,22 @@ export async function createDashboardBooking(args: {
 ========================= */
 
 export async function getBookingById(id: string) {
+  const bookingId = String(id || "").trim();
   if (getDataSourceFlags().useCoreD1) {
-    try { return coreBookingToLegacy(await CoreBookingService.get(id)); }
-    catch { return null; }
+    try {
+      return { ...coreBookingToLegacy(await CoreBookingService.get(bookingId)), source: "core-d1" };
+    } catch {
+      const legacy = await getFirestoreBookingById(bookingId);
+      return legacy ? { ...legacy, source: "firestore" } : null;
+    }
   }
+  return getFirestoreBookingById(bookingId);
+}
+
+async function getFirestoreBookingById(id: string) {
   const snap = await getDoc(doc(db, ...BOOKINGS_COL, id));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...normalizeBooking(snap.data()) };
+  return { id: snap.id, ...normalizeBooking(snap.data()), source: "firestore" as const };
 }
 
 export async function markBookingViewed(bookingId: string) {
@@ -2618,17 +2692,17 @@ export async function markBookingViewed(bookingId: string) {
 
 export async function listAllBookings(): Promise<BookingDocWithId[]> {
   if (getDataSourceFlags().useCoreD1) {
-    return (await CoreBookingService.list()).map(coreBookingToLegacy);
+    const coreRows = (await CoreBookingService.list()).map((row) => ({
+      ...coreBookingToLegacy(row),
+      source: "core-d1" as const,
+    }));
+    const firestoreRows = await readFirestoreBookings().catch((error) => {
+      console.warn("[firestoreBookings] legacy Firestore booking read failed", error);
+      return [] as BookingDocWithId[];
+    });
+    return mergeBookingReadRows(firestoreRows, coreRows);
   }
-  const snap = await getDocs(collection(db, ...BOOKINGS_COL));
-  snap.docs.forEach((d) => {
-    if (d?.ref?.path) {
-      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listAllBookings", "getDocs");
-    }
-  });
-  return snap.docs
-    .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
+  return readFirestoreBookings();
 }
 
 /**
@@ -2663,26 +2737,69 @@ function buildBookingsReadQuery(scope?: BookingReadScope) {
   return query(collection(db, ...BOOKINGS_COL), ...constraints);
 }
 
-export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
-  if (getDataSourceFlags().useCoreD1) {
-    const rows = (await CoreBookingService.list()).map(coreBookingToLegacy);
-    const statuses = new Set(scope?.statuses || []);
-    return rows.filter((row) => {
-      if (statuses.size && !statuses.has(row.status)) return false;
-      if (scope?.dateFrom && String(row.date || "") < scope.dateFrom) return false;
-      if (scope?.dateTo && String(row.date || "") > scope.dateTo) return false;
-      return true;
-    });
-  }
-  const snap = await getDocs(buildBookingsReadQuery(scope));
+async function readFirestoreBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+  const snap = await getDocs(scope ? buildBookingsReadQuery(scope) : collection(db, ...BOOKINGS_COL));
   snap.docs.forEach((d) => {
     if (d?.ref?.path) {
-      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listBookings", "getDocs");
+      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.readFirestoreBookings", "getDocs");
     }
   });
-  return snap.docs
-    .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-    .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
+  return sortBookingReadRows(
+    snap.docs.map((d) => ({
+      id: d.id,
+      ...normalizeBooking(d.data()),
+      source: "firestore" as const,
+    }))
+  );
+}
+
+async function readCoreBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+  return (await CoreBookingService.list()).map((row) => ({
+    ...coreBookingToLegacy(row),
+    source: "core-d1" as const,
+  })).filter((row) => scopeAllowsBooking(row, scope));
+}
+
+export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+  if (getDataSourceFlags().useCoreD1) {
+    const coreRows = await readCoreBookings(scope);
+    const firestoreRows = await readFirestoreBookings(scope).catch((error) => {
+      console.warn("[firestoreBookings] legacy Firestore booking read failed", error);
+      return [] as BookingDocWithId[];
+    });
+    return mergeBookingReadRows(firestoreRows, coreRows);
+  }
+  return readFirestoreBookings(scope);
+}
+
+function watchFirestoreBookings(
+  onData: (rows: BookingDocWithId[]) => void,
+  onError?: (err: unknown) => void,
+  scope?: BookingReadScope
+) {
+  const q = buildBookingsReadQuery(scope);
+  let first = true;
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const source = "firestoreBookings.watchFirestoreBookings";
+      const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
+      docs.forEach((d) => {
+        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
+      });
+      first = false;
+
+      onData(sortBookingReadRows(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...normalizeBooking(d.data()),
+          source: "firestore" as const,
+        }))
+      ));
+    },
+    (err) => onError?.(err)
+  );
 }
 
 export function watchAllBookings(
@@ -2692,36 +2809,39 @@ export function watchAllBookings(
 ) {
   if (getDataSourceFlags().useCoreD1) {
     let stopped = false;
-    const load = async () => {
-      try { if (!stopped) onData(await listBookings(scope)); }
+    let latestCoreRows: BookingDocWithId[] = [];
+    let latestFirestoreRows: BookingDocWithId[] = [];
+    const emit = () => {
+      if (!stopped) onData(mergeBookingReadRows(latestFirestoreRows, latestCoreRows));
+    };
+    const legacyUnsubscribe = watchFirestoreBookings(
+      (rows) => {
+        latestFirestoreRows = rows;
+        emit();
+      },
+      (error) => {
+        console.warn("[firestoreBookings] legacy Firestore booking watcher failed", error);
+        latestFirestoreRows = [];
+        emit();
+      },
+      scope
+    );
+    const loadCore = async () => {
+      try {
+        latestCoreRows = await readCoreBookings(scope);
+        emit();
+      }
       catch (error) { if (!stopped) onError?.(error); }
     };
-    void load();
-    const timer = globalThis.setInterval(load, 12_000);
-    return () => { stopped = true; globalThis.clearInterval(timer); };
+    void loadCore();
+    const timer = globalThis.setInterval(loadCore, 12_000);
+    return () => {
+      stopped = true;
+      legacyUnsubscribe();
+      globalThis.clearInterval(timer);
+    };
   }
-  const q = buildBookingsReadQuery(scope);
-  let first = true;
-
-  return onSnapshot(
-    q,
-    (snap) => {
-      // Track billed reads: initial snapshot reads all docs, later snapshots read only changes.
-      const source = "firestoreBookings.watchAllBookings";
-      const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
-      docs.forEach((d) => {
-        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
-      });
-      first = false;
-
-      const rows = snap.docs
-        .map((d) => ({ id: d.id, ...normalizeBooking(d.data()) }))
-        .sort((a, b) => (b.createdAt as any)?.toMillis?.() - (a.createdAt as any)?.toMillis?.());
-
-      onData(rows);
-    },
-    (err) => onError?.(err)
-  );
+  return watchFirestoreBookings(onData, onError, scope);
 }
 
 export async function listUserBookings(userId: string) {

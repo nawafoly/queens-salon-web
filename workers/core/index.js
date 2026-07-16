@@ -37,6 +37,7 @@ import {
 } from './repositories/bookings.js';
 import {
   createInvoice,
+  getInvoiceByBookingId,
   getInvoice,
   listInvoices,
 } from './repositories/invoices.js';
@@ -394,6 +395,9 @@ async function dispatch(ctx, route, method, body, query) {
         return getInvoice(db, ctx.salonId, route.id);
       }
       if (method === "GET") {
+        if (query.bookingId || query.booking_id) {
+          return getInvoiceByBookingId(db, ctx.salonId, query.bookingId || query.booking_id);
+        }
         return listInvoices(db, ctx.salonId);
       }
       if (method === "POST") {

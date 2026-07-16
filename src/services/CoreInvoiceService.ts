@@ -17,6 +17,14 @@ export const CoreInvoiceService = {
     return mapCoreInvoice(row);
   },
 
+  async getByBookingId(bookingId: string): Promise<CoreInvoice> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/invoices",
+      { query: { bookingId } }
+    );
+    return mapCoreInvoice(row);
+  },
+
   async create(input: Record<string, unknown>): Promise<CoreInvoice> {
     const row = await coreApiRequest<Record<string, unknown>>(
       "/api/core/invoices",

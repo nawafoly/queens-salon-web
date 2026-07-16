@@ -30,6 +30,7 @@ import {
 
 import {
   listBookings,
+  getBookingById,
   watchAllBookings, // ✅ Realtime
   updateBookingStatus,
   updateBookingsStatusBatch,
@@ -43,6 +44,8 @@ import { listActiveStaffAll, type StaffPublicWithId } from "../services/firestor
 import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreRefundService } from "../services/CoreRefundService";
+import { CoreInvoiceService } from "../services/CoreInvoiceService";
+import { CorePaymentService } from "../services/CorePaymentService";
 import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
@@ -420,6 +423,83 @@ function stageBookingInvoiceForPrint(b: Booking) {
   localStorage.setItem("allBookings", JSON.stringify(rows));
   localStorage.setItem("currentBooking", JSON.stringify(rows[0] || null));
   return rows;
+}
+
+function normalizeCorePaymentMethod(method: string): "cash" | "card" | "transfer" | "other" {
+  const value = String(method || "").trim().toLowerCase();
+  if (value === "cash") return "cash";
+  if (value === "card" || value === "mada" || value === "network") return "card";
+  if (value === "transfer" || value === "bank_transfer") return "transfer";
+  return "other";
+}
+
+function resolvePaymentMethodFromBreakdown(
+  breakdown: { cash: number; card: number; transfer: number },
+  fallback?: string
+): "cash" | "card" | "transfer" | "mixed" | undefined {
+  const active = [
+    breakdown.cash > 0 ? "cash" : "",
+    breakdown.card > 0 ? "card" : "",
+    breakdown.transfer > 0 ? "transfer" : "",
+  ].filter(Boolean);
+  if (active.length > 1) return "mixed";
+  if (active.length === 1) return active[0] as "cash" | "card" | "transfer";
+  const normalized = normalizeCorePaymentMethod(String(fallback || ""));
+  return normalized === "other" ? undefined : normalized;
+}
+
+async function enrichCoreBookingForInvoicePrint(booking: Booking): Promise<Booking> {
+  if (!getDataSourceFlags().useCoreD1) return booking;
+  const bookingId = String(booking?.id || "").trim();
+  if (!bookingId) return booking;
+
+  const invoice = await CoreInvoiceService.getByBookingId(bookingId).catch(() => null);
+  const payments = await CorePaymentService.list()
+    .then((rows) =>
+      rows.filter((payment) => {
+        const paymentBookingId = String(payment.bookingId || "").trim();
+        const paymentInvoiceId = String(payment.invoiceId || "").trim();
+        return (
+          paymentBookingId === bookingId ||
+          (!!invoice?.id && paymentInvoiceId === invoice.id)
+        );
+      })
+    )
+    .catch(() => []);
+
+  const totalAmount = invoice
+    ? round2(Number(invoice.totalHalalas || 0) / 100)
+    : readBookingTotalAmount(booking);
+  const paidAmount = invoice
+    ? round2(Number(invoice.paidHalalas || 0) / 100)
+    : round2(payments.reduce((sum, payment) => sum + Number(payment.amountHalalas || 0) / 100, 0));
+  const remainingAmount = round2(Math.max(0, totalAmount - paidAmount));
+  const breakdown = payments.reduce(
+    (sum, payment) => {
+      const amount = round2(Number(payment.amountHalalas || 0) / 100);
+      const method = normalizeCorePaymentMethod(payment.method);
+      if (method === "cash") sum.cash = round2(sum.cash + amount);
+      if (method === "card") sum.card = round2(sum.card + amount);
+      if (method === "transfer") sum.transfer = round2(sum.transfer + amount);
+      return sum;
+    },
+    { cash: 0, card: 0, transfer: 0 }
+  );
+  const paymentMethod = resolvePaymentMethodFromBreakdown(breakdown, payments[0]?.method);
+
+  return {
+    ...booking,
+    total: totalAmount,
+    finalPrice: totalAmount,
+    discountAmount: invoice ? round2(Number(invoice.discountHalalas || 0) / 100) : (booking as any).discountAmount,
+    paidAmount,
+    remainingAmount,
+    paymentType: paidAmount <= 0 && remainingAmount > 0 ? "none" : remainingAmount > 0 ? "partial" : "full",
+    paymentMethod,
+    paymentBreakdown: breakdown,
+    invoiceId: invoice?.id || (booking as any).invoiceId,
+    invoiceNumber: invoice?.invoiceNumber || (booking as any).invoiceNumber,
+  } as Booking;
 }
 
 function toLocalISODate(d: Date) {
@@ -4237,18 +4317,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     try {
       let sourceBooking = booking;
       try {
-        const bookingSnap = await getDoc(doc(db, "salons", SALON_ID, "bookings", bookingId));
-        if (bookingSnap?.ref?.path) {
-          FirestoreReadStats.bump(bookingSnap.ref.path, "DashboardBookings.printInvoice", "getDoc");
-        }
-        if (bookingSnap.exists()) {
-          sourceBooking = { id: bookingSnap.id, ...(bookingSnap.data() as any) } as Booking;
-        }
+        const latest = await getBookingById(bookingId);
+        if (latest) sourceBooking = latest as Booking;
       } catch (readError) {
         console.warn("Could not refresh booking before invoice print; using current row data.", readError);
       }
 
-      const rows = stageBookingInvoiceForPrint(sourceBooking);
+      const printableBooking = await enrichCoreBookingForInvoicePrint(sourceBooking);
+      const rows = stageBookingInvoiceForPrint(printableBooking);
       if (!rows.length) throw new Error("NO_INVOICE_ROWS");
 
       const popup = window.open(
