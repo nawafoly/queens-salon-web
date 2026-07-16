@@ -411,32 +411,85 @@ export const coreD1BookingDataSource: BookingDataSource = {
   },
 
   async updateBooking(id, patch) {
-    const scheduleChanged = Boolean(
-      patch.date || patch.time || patch.startTime || patch.endTime || patch.employeeId
-    );
-    if (scheduleChanged) {
-      const current = await CoreBookingService.get(id);
-      const updated = await CoreBookingService.reschedule(id, {
-        bookingDate: patch.date,
-        startTime: patch.time || patch.startTime,
-        endTime: patch.endTime,
-        staffId: patch.employeeId,
-        notes: patch.note,
-      });
-      invalidateCoreAvailability(current);
-      invalidateCoreAvailability(updated);
-    }
-    await CoreBookingService.patch(id, {
+    const current = await CoreBookingService.get(id);
+    const totalSar = Number(patch.finalPrice ?? patch.total);
+    const paidSar = Number(patch.paidAmount);
+    const rawBreakdown = patch.paymentBreakdown as Record<string, unknown> | null | undefined;
+    const paymentBreakdown = rawBreakdown
+      ? Object.fromEntries(
+          Object.entries(rawBreakdown)
+            .map(([method, amount]) => [method, Number(amount || 0)] as [string, number])
+            .filter(([, amount]) => Number.isFinite(amount) && amount > 0)
+        )
+      : null;
+
+    const editPatch = patch as Partial<BookingDoc> & {
+      customerName?: string | null;
+      customerPhone?: string | null;
+      phone?: string | null;
+    };
+
+    const updated = await CoreBookingService.patch(id, {
       status:
         patch.status === "confirmed" ? "booked" : patch.status,
-      notes: patch.note,
+      notes: patch.note === undefined ? undefined : patch.note || null,
+      bookingDate: patch.date,
+      startTime: patch.time || patch.startTime,
+      endTime: patch.endTime,
+      staffId:
+        patch.employeeId === undefined
+          ? undefined
+          : patch.employeeId || null,
+      clientName:
+        editPatch.clientName === undefined && editPatch.customerName === undefined
+          ? undefined
+          : String(editPatch.clientName || editPatch.customerName || "").trim(),
+      clientPhone:
+        editPatch.clientPhone === undefined &&
+        editPatch.customerPhone === undefined &&
+        editPatch.phone === undefined
+          ? undefined
+          : String(editPatch.clientPhone || editPatch.customerPhone || editPatch.phone || "").trim() || null,
+      serviceId:
+        patch.serviceId === undefined
+          ? undefined
+          : String(patch.serviceId || "").trim(),
+      durationMinutes:
+        patch.durationMin === undefined
+          ? undefined
+          : Math.max(1, Math.round(Number(patch.durationMin || 0))),
+      totalHalalas:
+        Number.isFinite(totalSar)
+          ? Math.max(0, Math.round(totalSar * 100))
+          : undefined,
+      paidHalalas:
+        Number.isFinite(paidSar)
+          ? Math.max(0, Math.round(paidSar * 100))
+          : undefined,
+      paymentMethod:
+        patch.paymentMethod === undefined
+          ? undefined
+          : patch.paymentMethod
+            ? String(patch.paymentMethod)
+            : null,
+      paymentBreakdown,
+      reconcilePayment:
+        patch.paidAmount !== undefined ||
+        patch.paymentMethod !== undefined ||
+        patch.paymentBreakdown !== undefined ||
+        patch.paymentType !== undefined,
       paymentStatus:
         patch.paymentType === "full"
           ? "paid"
           : patch.paymentType === "partial"
-            ? "partial"
+            ? Number(patch.paidAmount || 0) > 0
+              ? "partial"
+              : "unpaid"
             : undefined,
     });
+
+    invalidateCoreAvailability(current);
+    invalidateCoreAvailability(updated);
   },
 
   async updateBookingStatus(

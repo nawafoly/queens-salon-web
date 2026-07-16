@@ -14,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { auth, db } from "../services/firebase";
+import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
 
 import {
@@ -40,7 +41,8 @@ import {
   type BookingPaymentType,
   type BookingStatus,
 } from "../services/firestoreBookings";
-import { listActiveStaffAll, type StaffPublicWithId } from "../services/firestoreStaffPublic";
+import type { StaffPublicWithId } from "../services/firestoreStaffPublic";
+import { resolveBookingDataSource } from "../services/bookingDataSource";
 import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreRefundService } from "../services/CoreRefundService";
@@ -127,7 +129,6 @@ type SortOrderOption = "newest" | "oldest";
 type OldPendingFilterOption = "off" | "before_today" | "older_7" | "older_30" | "custom";
 
 const NOTES_KEY = "dashboard_booking_notes_v1";
-const BOOKING_ACTION_PIN = "598867395";
 const NEW_BOOKINGS_SEEN_AT_KEY = "dashboard_bookings_seen_at_v1";
 const LIVE_WINDOW_PAST_DAYS = 90;
 const LIVE_WINDOW_FUTURE_DAYS = 90;
@@ -635,6 +636,24 @@ type EditBookingDraft = {
   mixedCardAmount: string;
 };
 
+function sanitizeBookingNoteForEditor(value: unknown): string {
+  return String(value ?? "")
+    .split(/\r?\n|\s*\|\s*/g)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const normalized = part.toLowerCase();
+      return !(
+        normalized.startsWith("payment_method:") ||
+        normalized.startsWith("payment_type:") ||
+        normalized.startsWith("paid_amount:") ||
+        normalized.startsWith("remaining_amount:") ||
+        normalized.startsWith("invoice_from_reception:")
+      );
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
   const payment = resolveBookingPaymentSummary(b);
   const paymentMethod = detectPaymentMethod(b);
@@ -645,7 +664,7 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
   return {
     customerName: String(b.customerName || "").trim(),
     phone: String(b.phone || "").trim(),
-    note: String((b as any)?.note || "").trim(),
+    note: sanitizeBookingNoteForEditor((b as any)?.note),
     employeeId: String((b as any)?.employeeId || "").trim(),
     date: String(b.date || "").trim(),
     time: normalizeEditBookingTimeInput(String(b.time || "").trim()) || String(b.time || "").trim(),
@@ -886,19 +905,25 @@ type ActionPinModalProps = {
   action: SensitiveBookingAction | null;
   onClose: () => void;
   onConfirm: (action: SensitiveBookingAction) => Promise<void>;
+  onVerifyPassword: (password: string) => Promise<void>;
 };
 
-const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm }: ActionPinModalProps) {
+const ActionPinModal = memo(function ActionPinModal({
+  action,
+  onClose,
+  onConfirm,
+  onVerifyPassword,
+}: ActionPinModalProps) {
   const open = !!action;
-  const [pin, setPin] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const authorizationInputId = "booking_action_authorization_code_input";
-  const authorizationHintId = "booking_action_authorization_code_hint";
+  const passwordInputId = "booking_action_account_password_input";
+  const passwordHintId = "booking_action_account_password_hint";
 
   useEffect(() => {
     if (!open) return;
-    setPin("");
+    setPassword("");
     setBusy(false);
     setError("");
   }, [open, action?.kind]);
@@ -910,8 +935,8 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
 
   const handleConfirm = useCallback(async () => {
     if (!action) return;
-    if (String(pin).trim() !== BOOKING_ACTION_PIN) {
-      setError("رمز التفويض غير صحيح.");
+    if (!String(password).trim()) {
+      setError("أدخلي كلمة مرور الحساب الحالي.");
       return;
     }
 
@@ -920,80 +945,82 @@ const ActionPinModal = memo(function ActionPinModal({ action, onClose, onConfirm
     setError("");
 
     try {
+      await onVerifyPassword(password);
       await onConfirm(action);
       shouldClose = true;
-    } catch (error) {
-      setError(
-        error instanceof Error && String(error.message || "").trim()
-          ? error.message
-          : "تعذر إكمال الإجراء."
-      );
+    } catch (caught) {
+      const code = String((caught as any)?.code || "").toLowerCase();
+      if (
+        code.includes("invalid-credential") ||
+        code.includes("wrong-password") ||
+        code.includes("invalid-login-credentials")
+      ) {
+        setError("كلمة المرور غير صحيحة.");
+      } else if (code.includes("too-many-requests")) {
+        setError("تم إيقاف المحاولات مؤقتًا بسبب كثرة المحاولات. انتظري قليلًا ثم أعيدي المحاولة.");
+      } else if (code.includes("requires-recent-login")) {
+        setError("انتهت صلاحية التحقق. سجّلي الخروج ثم ادخلي مرة أخرى.");
+      } else {
+        setError(
+          caught instanceof Error && String(caught.message || "").trim()
+            ? caught.message
+            : "تعذر التحقق من كلمة المرور."
+        );
+      }
     } finally {
       setBusy(false);
     }
 
     if (shouldClose) onClose();
-  }, [action, onClose, onConfirm, pin]);
+  }, [action, onClose, onConfirm, onVerifyPassword, password]);
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      ariaLabel="التحقق برمز التفويض الإداري"
+      ariaLabel="التحقق بكلمة مرور الحساب"
       overlayClassName="bk-action-pin-overlay"
       panelClassName="bk-cancel-modal bk-action-pin-modal"
       size="sm"
     >
-      <div className="bk-cancel-head">تأكيد الإجراء برمز التفويض</div>
+      <div className="bk-cancel-head">تأكيد كلمة مرور الحساب</div>
       <div className="bk-cancel-body">
         <div className="bk-action-pin-summary">
-          <div className="bk-action-pin-summary-label">الإجراء الذي يحتاج تفويضًا</div>
+          <div className="bk-action-pin-summary-label">الإجراء المطلوب</div>
           <div className="bk-action-pin-summary-value">
             {sensitiveActionDescription(action) || "إجراء حساس"}
           </div>
           {action?.kind === "delete" ? (
-            <div className="bk-action-pin-warning">سيختفي الحجز من صفحة الحجوزات، مع الاحتفاظ بالفاتورة والمدفوعات والسجل المالي للمراجعة.</div>
+            <div className="bk-action-pin-warning">
+              سيختفي الحجز من صفحة الحجوزات، مع الاحتفاظ بالفاتورة والمدفوعات والسجل المالي للمراجعة.
+            </div>
           ) : null}
         </div>
-        <div
-          className="bk-action-pin-form"
-          data-form-type="other"
-        >
-          <label className="bk-action-pin-label" htmlFor={authorizationInputId}>
-            رمز التفويض الإداري
+        <div className="bk-action-pin-form">
+          <label className="bk-action-pin-label" htmlFor={passwordInputId}>
+            كلمة مرور حسابك الحالي
           </label>
           <input
-            id={authorizationInputId}
-            type="text"
+            id={passwordInputId}
+            type="password"
             className="bk-input bk-action-pin-input"
-            style={{ WebkitTextSecurity: "disc" } as any}
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D+/g, ""))}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
               void handleConfirm();
             }}
-            placeholder="أدخلي رمز التفويض لإكمال هذا الإجراء"
-            autoComplete="one-time-code"
-            name="booking_action_authorization_code_no_autofill"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={BOOKING_ACTION_PIN.length}
-            aria-describedby={authorizationHintId}
-            aria-label="رمز التفويض الإداري المطلوب قبل تعديل أو حذف الحجز"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="done"
+            placeholder="أدخلي كلمة مرور الحساب"
+            autoComplete="current-password"
+            name="booking_action_current_password"
+            maxLength={128}
+            aria-describedby={passwordHintId}
             disabled={busy}
-            data-form-type="other"
-            data-lpignore="true"
-            data-1p-ignore="true"
             autoFocus
           />
-          <div className="bk-action-pin-hint" id={authorizationHintId}>
-            هذا تحقق داخلي قبل التعديل أو الحذف، وليس تسجيل دخول للحساب.
+          <div className="bk-action-pin-hint" id={passwordHintId}>
+            سيتم التحقق من كلمة مرور الحساب المسجل حاليًا قبل تنفيذ الإجراء.
           </div>
         </div>
         {error ? <div className="bk-action-pin-error">{error}</div> : null}
@@ -1464,25 +1491,15 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
       setCatalogLoading(true);
       try {
-        const sectionsCol = collection(db, "salons", "main", "service_sections");
-        let sectionsSnap;
-        try {
-          sectionsSnap = await getDocs(fsQuery(sectionsCol, orderBy("order", "asc")));
-        } catch {
-          sectionsSnap = await getDocs(sectionsCol);
-        }
-
+        const rows = await resolveBookingDataSource().getServiceSections();
         if (cancelled) return;
 
-        const nextSections = sectionsSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
-            return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
-              active: raw?.active !== false,
-            };
-          })
+        const nextSections = (rows || [])
+          .map((raw: any) => ({
+            id: String(raw?.id || "").trim(),
+            name: readCatalogLabel(raw, String(raw?.id || "").trim()),
+            active: raw?.active !== false,
+          }))
           .filter((row) => row.id && row.name && row.active)
           .map(({ id, name }) => ({ id, name }));
 
@@ -1513,49 +1530,30 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       setCatalogLoading(true);
       try {
         const sectionId = String(draft.sectionId || "").trim();
-        const categoriesCol = collection(db, "salons", "main", "service_categories");
-        const servicesCol = collection(db, "salons", "main", "services");
-
-        let categoriesSnap;
-        try {
-          categoriesSnap = await getDocs(
-            fsQuery(categoriesCol, where("sectionId", "==", sectionId), orderBy("order", "asc"))
-          );
-        } catch {
-          categoriesSnap = await getDocs(fsQuery(categoriesCol, where("sectionId", "==", sectionId)));
-        }
-
-        let servicesSnap;
-        try {
-          servicesSnap = await getDocs(
-            fsQuery(servicesCol, where("sectionId", "==", sectionId), orderBy("createdAt", "desc"))
-          );
-        } catch {
-          servicesSnap = await getDocs(fsQuery(servicesCol, where("sectionId", "==", sectionId)));
-        }
+        const dataSource = resolveBookingDataSource();
+        const [categoryRows, serviceRows] = await Promise.all([
+          dataSource.getServiceCategories(sectionId),
+          dataSource.getServices(sectionId),
+        ]);
 
         if (cancelled) return;
 
-        const nextCategories = categoriesSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
-            return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
-              sectionId: String(raw?.sectionId || sectionId).trim(),
-              active: raw?.active !== false,
-            };
-          })
+        const nextCategories = (categoryRows || [])
+          .map((raw: any) => ({
+            id: String(raw?.id || "").trim(),
+            name: readCatalogLabel(raw, String(raw?.id || "").trim()),
+            sectionId: String(raw?.sectionId || sectionId).trim(),
+            active: raw?.active !== false,
+          }))
           .filter((row) => row.id && row.name && row.active);
 
-        const nextServices = servicesSnap.docs
-          .map((docSnap) => {
-            const raw = docSnap.data() as any;
+        const nextServices = (serviceRows || [])
+          .map((raw: any) => {
             const duration = Number(raw?.durationMin ?? raw?.duration ?? raw?.["المدة"] ?? 60) || 60;
             const price = Number(raw?.price ?? raw?.["السعر"] ?? 0) || 0;
             return {
-              id: String(docSnap.id || "").trim(),
-              name: readCatalogLabel(raw, String(docSnap.id || "").trim()),
+              id: String(raw?.id || "").trim(),
+              name: readCatalogLabel(raw, String(raw?.id || "").trim()),
               sectionId: String(raw?.sectionId || sectionId).trim(),
               categoryId: String(raw?.categoryId || "").trim(),
               price: Math.max(0, price),
@@ -1592,10 +1590,12 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       if (!currentServiceId) return;
 
       try {
-        const snap = await getDoc(doc(db, "salons", "main", "services", currentServiceId));
-        if (cancelled || !snap.exists()) return;
-
-        const raw = snap.data() as any;
+        const serviceRows = await resolveBookingDataSource().getServices();
+        if (cancelled) return;
+        const raw: any = (serviceRows || []).find(
+          (row: any) => String(row?.id || "").trim() === currentServiceId
+        );
+        if (!raw) return;
         const nextSectionId = String(raw?.sectionId || "").trim();
         const nextCategoryId = String(raw?.categoryId || "").trim();
         if (!nextSectionId) return;
@@ -1652,7 +1652,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
 
       setStaffLoading(true);
       try {
-        const rows = await listActiveStaffAll(SALON_ID);
+        const rows = await resolveBookingDataSource().getActiveStaff();
         const nextOptions = (rows || [])
           .map((row: StaffPublicWithId) => ({
             id: String(row.id || "").trim(),
@@ -2328,6 +2328,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setConfirmError("");
   }, [confirmSaving]);
   const closeActionPinModal = useCallback(() => setPendingSensitiveAction(null), []);
+  const verifyCurrentAccountPassword = useCallback(async (password: string) => {
+    const currentUser = auth.currentUser;
+    const email = String(currentUser?.email || "").trim();
+    if (!currentUser || !email) {
+      throw new Error("لا يمكن التحقق من هذا الحساب لأنه لا يحتوي على بريد إلكتروني مسجل.");
+    }
+    const credential = EmailAuthProvider.credential(email, password);
+    await reauthenticateWithCredential(currentUser, credential);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -3592,8 +3601,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
+    if (uiRole === "owner") {
+      openEditBookingModalUnsafe(b);
+      return;
+    }
     requestSensitiveAction({ kind: "edit", booking: b });
-  }, [canEditBookings, requestSensitiveAction]);
+  }, [canEditBookings, openEditBookingModalUnsafe, requestSensitiveAction, uiRole]);
 
   const applyLocalBookingPatch = useCallback(
     (bookingId: string, patch: Partial<Booking>) => {
@@ -6144,6 +6157,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             action={pendingSensitiveAction}
             onClose={closeActionPinModal}
             onConfirm={executeSensitiveAction}
+            onVerifyPassword={verifyCurrentAccountPassword}
           />
         ) : null}
 

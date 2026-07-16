@@ -11,6 +11,7 @@ import {
   generatedId,
   integer,
   nowIso,
+  normalizePhone,
   optionalText,
   placeholders,
   requiredId,
@@ -898,34 +899,437 @@ export async function rescheduleBooking(db, salonId, idValue, data) {
   return getBooking(db, salonId, bookingId);
 }
 
-export async function patchBooking(db, salonId, id, data) {
+function bookingPaymentStatus(totalHalalas, paidHalalas) {
+  if (paidHalalas <= 0) return "unpaid";
+  if (paidHalalas >= totalHalalas) return "paid";
+  return "partial";
+}
+
+function normalizeEditPaymentRows(data, paidHalalas) {
+  if (paidHalalas <= 0) return [];
+  const supported = new Set(["cash", "card", "transfer", "other"]);
+  const rawBreakdown =
+    data.paymentBreakdown && typeof data.paymentBreakdown === "object"
+      ? data.paymentBreakdown
+      : data.payment_breakdown && typeof data.payment_breakdown === "object"
+        ? data.payment_breakdown
+        : null;
+
+  if (rawBreakdown) {
+    const rows = Object.entries(rawBreakdown)
+      .map(([method, amount]) => ({
+        method: cleanText(method).toLowerCase(),
+        amountHalalas: Math.max(0, Math.round(Number(amount || 0) * 100)),
+      }))
+      .filter((row) => supported.has(row.method) && row.amountHalalas > 0);
+    const total = rows.reduce((sum, row) => sum + row.amountHalalas, 0);
+    if (rows.length && total !== paidHalalas) {
+      throw new AppError(400, "core_booking:payment_breakdown_mismatch");
+    }
+    if (rows.length) return rows;
+  }
+
+  const requestedMethod = cleanText(data.paymentMethod || data.payment_method).toLowerCase();
+  const method = supported.has(requestedMethod) ? requestedMethod : "cash";
+  return [{ method, amountHalalas: paidHalalas }];
+}
+
+export async function patchBooking(db, salonId, id, data, actor = {}) {
   if (cleanText(data.status).toLowerCase() === "cancelled") {
     return cancelBooking(db, salonId, id, data.reason || data.notes || "");
   }
-  return updateById(db, "bookings", salonId, requiredId(id), {
-    status:
-      data.status === undefined ? undefined : cleanText(data.status),
-    notes:
-      data.notes === undefined
-        ? undefined
-        : optionalText(data.notes) || null,
-    payment_status:
-      data.paymentStatus === undefined && data.payment_status === undefined
-        ? undefined
-        : cleanText(data.paymentStatus || data.payment_status),
-    subtotal_halalas:
-      data.subtotalHalalas === undefined && data.subtotal_halalas === undefined
-        ? undefined
-        : integer(data.subtotalHalalas ?? data.subtotal_halalas, "subtotalHalalas", { min: 0, max: 100_000_000 }),
-    discount_halalas:
-      data.discountHalalas === undefined && data.discount_halalas === undefined
-        ? undefined
-        : integer(data.discountHalalas ?? data.discount_halalas, "discountHalalas", { min: 0, max: 100_000_000 }),
-    total_halalas:
-      data.totalHalalas === undefined && data.total_halalas === undefined
-        ? undefined
-        : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", { min: 0, max: 100_000_000 }),
-  });
+
+  const bookingId = requiredId(id);
+  const before = await getBooking(db, salonId, bookingId);
+  const hasOperationalEdit = [
+    data.bookingDate,
+    data.booking_date,
+    data.date,
+    data.startTime,
+    data.start_time,
+    data.time,
+    data.endTime,
+    data.end_time,
+    data.staffId,
+    data.staff_id,
+    data.serviceId,
+    data.service_id,
+    data.durationMinutes,
+    data.duration_minutes,
+    data.clientName,
+    data.client_name,
+    data.clientPhone,
+    data.client_phone,
+    data.totalHalalas,
+    data.total_halalas,
+    data.paidHalalas,
+    data.paid_halalas,
+    data.paymentMethod,
+    data.payment_method,
+    data.paymentBreakdown,
+    data.payment_breakdown,
+    data.reconcilePayment,
+  ].some((value) => value !== undefined);
+
+  if (!hasOperationalEdit) {
+    return updateById(db, "bookings", salonId, bookingId, {
+      status:
+        data.status === undefined ? undefined : cleanText(data.status),
+      notes:
+        data.notes === undefined
+          ? undefined
+          : optionalText(data.notes) || null,
+      payment_status:
+        data.paymentStatus === undefined && data.payment_status === undefined
+          ? undefined
+          : cleanText(data.paymentStatus || data.payment_status),
+      subtotal_halalas:
+        data.subtotalHalalas === undefined && data.subtotal_halalas === undefined
+          ? undefined
+          : integer(data.subtotalHalalas ?? data.subtotal_halalas, "subtotalHalalas", { min: 0, max: 100_000_000 }),
+      discount_halalas:
+        data.discountHalalas === undefined && data.discount_halalas === undefined
+          ? undefined
+          : integer(data.discountHalalas ?? data.discount_halalas, "discountHalalas", { min: 0, max: 100_000_000 }),
+      total_halalas:
+        data.totalHalalas === undefined && data.total_halalas === undefined
+          ? undefined
+          : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", { min: 0, max: 100_000_000 }),
+    });
+  }
+
+  const currentItem = before.items?.[0];
+  if (!currentItem) throw new AppError(409, "core_booking:item_missing");
+
+  const serviceId = requiredId(
+    data.serviceId || data.service_id || currentItem.service_id,
+    "serviceId"
+  );
+  const service = await getService(db, salonId, serviceId);
+  if (!serviceIsActive(service)) {
+    throw new AppError(409, "core_booking:service_inactive");
+  }
+
+  const bookingDate = validDate(
+    data.bookingDate || data.booking_date || data.date || before.booking_date,
+    "bookingDate"
+  );
+  const startTime = validTime(
+    data.startTime || data.start_time || data.time || before.start_time,
+    "startTime"
+  );
+  const durationMinutes = integer(
+    data.durationMinutes ??
+      data.duration_minutes ??
+      currentItem.duration_minutes ??
+      service.duration_minutes,
+    "durationMinutes",
+    { min: 1, max: 24 * 60 }
+  );
+  const endTime = validTime(
+    data.endTime || data.end_time || addMinutes(startTime, durationMinutes),
+    "endTime"
+  );
+  if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    throw new AppError(400, "core_booking:invalid_time_range");
+  }
+
+  const staffId =
+    data.staffId === null || data.staff_id === null
+      ? null
+      : optionalText(data.staffId || data.staff_id) ||
+        currentItem.staff_id ||
+        before.staff_id ||
+        null;
+  const currentStatus = cleanText(before.status).toLowerCase();
+  const shouldHoldSlots =
+    !CANCELLED_STATUSES.has(currentStatus) && currentStatus !== "completed";
+  const slotStepMin = integer(
+    data.slotStepMin ?? data.slot_step_min ?? before.slot_step_min,
+    "slotStepMin",
+    { min: 5, max: 120, fallback: 10 }
+  );
+  const bufferMin = integer(
+    data.bufferMin ?? data.buffer_min ?? before.buffer_min,
+    "bufferMin",
+    { min: 0, max: 240, fallback: 0 }
+  );
+
+  if (shouldHoldSlots) {
+    if (timeToMinutes(startTime) % slotStepMin !== 0) {
+      throw new AppError(400, "core_booking:invalid_slot_alignment");
+    }
+    await assertStaffRangeAvailable(
+      db,
+      salonId,
+      staffId,
+      bookingDate,
+      startTime,
+      addMinutes(endTime, bufferMin),
+      bookingId
+    );
+  }
+
+  const requestedTotal =
+    data.totalHalalas === undefined && data.total_halalas === undefined
+      ? Number(before.total_halalas || 0)
+      : integer(data.totalHalalas ?? data.total_halalas, "totalHalalas", {
+          min: 0,
+          max: 100_000_000,
+        });
+  const discountHalalas = Number(before.discount_halalas || 0);
+  const subtotalHalalas = Math.max(requestedTotal, requestedTotal + discountHalalas);
+  const invoice = await dbFirst(
+    db,
+    "SELECT * FROM invoices WHERE salon_id = ? AND booking_id = ? ORDER BY issued_at DESC LIMIT 1",
+    [salonId, bookingId]
+  );
+  const shouldReconcilePayment =
+    data.reconcilePayment === true ||
+    data.paidHalalas !== undefined ||
+    data.paid_halalas !== undefined ||
+    data.paymentMethod !== undefined ||
+    data.payment_method !== undefined ||
+    data.paymentBreakdown !== undefined ||
+    data.payment_breakdown !== undefined;
+  const paidHalalas = shouldReconcilePayment
+    ? integer(data.paidHalalas ?? data.paid_halalas ?? 0, "paidHalalas", {
+        min: 0,
+        max: requestedTotal,
+      })
+    : Number(invoice?.paid_halalas || before.paid_halalas || 0);
+  const paymentStatus = bookingPaymentStatus(requestedTotal, paidHalalas);
+  const clientName =
+    data.clientName === undefined && data.client_name === undefined
+      ? undefined
+      : cleanText(data.clientName || data.client_name);
+  const rawClientPhone =
+    data.clientPhone === undefined && data.client_phone === undefined
+      ? undefined
+      : cleanText(data.clientPhone || data.client_phone);
+  const clientPhone =
+    rawClientPhone === undefined
+      ? undefined
+      : rawClientPhone
+        ? normalizePhone(rawClientPhone)
+        : null;
+  if (rawClientPhone && !clientPhone) {
+    throw new AppError(400, "core_booking:invalid_client_phone");
+  }
+
+  const now = nowIso();
+  const statements = [
+    {
+      sql: "DELETE FROM booking_slot_locks WHERE salon_id = ? AND booking_id = ?",
+      params: [salonId, bookingId],
+    },
+    {
+      sql: `UPDATE booking_items
+               SET service_id = ?, service_name_snapshot = ?, staff_id = ?, duration_minutes = ?,
+                   booking_date = ?, start_time = ?, end_time = ?, unit_price_halalas = ?,
+                   total_halalas = ?, final_total_halalas = ?
+             WHERE salon_id = ? AND booking_id = ? AND id = ?`,
+      params: [
+        service.id,
+        service.name,
+        staffId,
+        durationMinutes,
+        bookingDate,
+        startTime,
+        endTime,
+        subtotalHalalas,
+        subtotalHalalas,
+        requestedTotal,
+        salonId,
+        bookingId,
+        currentItem.id,
+      ],
+    },
+    {
+      sql: `UPDATE bookings
+               SET staff_id = ?, booking_date = ?, start_time = ?, end_time = ?,
+                   notes = ?, subtotal_halalas = ?, total_halalas = ?, payment_status = ?,
+                   slot_step_min = ?, buffer_min = ?, updated_at = ?
+             WHERE salon_id = ? AND id = ?`,
+      params: [
+        staffId,
+        bookingDate,
+        startTime,
+        endTime,
+        data.notes === undefined ? before.notes || null : optionalText(data.notes) || null,
+        subtotalHalalas,
+        requestedTotal,
+        paymentStatus,
+        slotStepMin,
+        bufferMin,
+        now,
+        salonId,
+        bookingId,
+      ],
+    },
+  ];
+
+  if (clientName !== undefined || clientPhone !== undefined) {
+    statements.push({
+      sql: `UPDATE clients
+               SET name = ?, phone_normalized = ?, updated_at = ?
+             WHERE salon_id = ? AND id = ?`,
+      params: [
+        clientName || before.client_name || "عميلة",
+        clientPhone === undefined ? before.client_phone || null : clientPhone,
+        now,
+        salonId,
+        before.client_id,
+      ],
+    });
+  }
+
+  if (invoice) {
+    statements.push({
+      sql: `UPDATE invoices
+               SET subtotal_halalas = ?, discount_halalas = ?, total_halalas = ?,
+                   paid_halalas = ?, status = ?, updated_at = ?
+             WHERE salon_id = ? AND id = ?`,
+      params: [
+        subtotalHalalas,
+        discountHalalas,
+        requestedTotal,
+        paidHalalas,
+        paymentStatus,
+        now,
+        salonId,
+        invoice.id,
+      ],
+    });
+  }
+
+  if (shouldReconcilePayment) {
+    statements.push(
+      {
+        sql: "DELETE FROM income_entries WHERE salon_id = ? AND booking_id = ? AND payment_id IS NOT NULL",
+        params: [salonId, bookingId],
+      },
+      {
+        sql: "DELETE FROM payments WHERE salon_id = ? AND booking_id = ?",
+        params: [salonId, bookingId],
+      }
+    );
+
+    const paymentRows = normalizeEditPaymentRows(data, paidHalalas);
+    for (const row of paymentRows) {
+      const paymentId = generatedId("payment");
+      const incomeId = generatedId("income");
+      statements.push(
+        {
+          sql: `INSERT INTO payments
+            (id, salon_id, invoice_id, booking_id, client_id, method, amount_halalas, status,
+             provider, provider_reference, idempotency_key, paid_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [
+            paymentId,
+            salonId,
+            invoice?.id || null,
+            bookingId,
+            before.client_id,
+            row.method,
+            row.amountHalalas,
+            "paid",
+            "dashboard_edit",
+            null,
+            null,
+            now,
+            now,
+          ],
+        },
+        {
+          sql: `INSERT INTO income_entries
+            (id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description,
+             method, payment_breakdown_json, source, note, occurred_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, 'booking', ?, ?, ?)`,
+          params: [
+            incomeId,
+            salonId,
+            bookingId,
+            invoice?.id || null,
+            paymentId,
+            row.amountHalalas,
+            `Payment ${row.method}`,
+            row.method,
+            JSON.stringify({ [row.method]: row.amountHalalas / 100 }),
+            `booking_edit_payment:${row.method}`,
+            now,
+            now,
+          ],
+        }
+      );
+    }
+  }
+
+  if (shouldHoldSlots && staffId) {
+    for (const slotTime of occupiedSlotTimes(
+      startTime,
+      endTime,
+      LOCK_GRANULARITY_MIN,
+      bufferMin
+    )) {
+      statements.push({
+        sql: `INSERT INTO booking_slot_locks
+          (salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          salonId,
+          staffId,
+          bookingDate,
+          slotTime,
+          bookingId,
+          currentItem.id,
+          now,
+        ],
+      });
+    }
+  }
+
+  statements.push(
+    auditInsertStatement(
+      salonId,
+      {
+        action: "details_updated",
+        entityType: "booking",
+        entityId: bookingId,
+        description: "Booking details updated from dashboard",
+        source: "dashboard",
+        before,
+        after: {
+          clientName: clientName ?? before.client_name,
+          clientPhone: clientPhone === undefined ? before.client_phone : clientPhone,
+          staffId,
+          bookingDate,
+          startTime,
+          endTime,
+          serviceId: service.id,
+          serviceName: service.name,
+          durationMinutes,
+          subtotalHalalas,
+          discountHalalas,
+          totalHalalas: requestedTotal,
+          paidHalalas,
+          paymentStatus,
+        },
+      },
+      actor
+    ).statement
+  );
+
+  try {
+    await dbBatch(db, statements);
+  } catch (error) {
+    if (cleanText(error?.message).toUpperCase().includes("UNIQUE")) {
+      throw conflictError();
+    }
+    throw error;
+  }
+
+  return getBooking(db, salonId, bookingId);
 }
 
 export async function completeBooking(db, salonId, id) {

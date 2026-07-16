@@ -3533,8 +3533,6 @@ async function applyAvailabilityPatchMap(map: Map<string, AvailabilityPatchEntry
 
 export async function updateBookingDetails(bookingId: string, patch: Partial<BookingDoc>) {
   if (getDataSourceFlags().useCoreD1) {
-    const unsupported = [patch.date, patch.time, patch.startTime, patch.employeeId, patch.employeeUid, patch.employeeKey, patch.employeeName, patch.durationMin].some((value) => value !== undefined);
-    if (unsupported) throw new Error("CORE_D1_BOOKING_RESCHEDULE_REQUIRES_PHASE6");
     await coreD1BookingDataSource.updateBooking(bookingId, patch);
     return;
   }

@@ -41,15 +41,23 @@ export const CoreBookingService = {
     id: string,
     input: Partial<{
       status: string;
-      notes: string;
+      notes: string | null;
       paymentStatus: string;
       bookingDate: string;
       startTime: string;
       endTime: string;
-      staffId: string;
+      staffId: string | null;
+      clientName: string;
+      clientPhone: string | null;
+      serviceId: string;
+      durationMinutes: number;
       subtotalHalalas: number;
       discountHalalas: number;
       totalHalalas: number;
+      paidHalalas: number;
+      paymentMethod: string | null;
+      paymentBreakdown: Record<string, number> | null;
+      reconcilePayment: boolean;
     }>
   ): Promise<CoreBooking> {
     const row = await coreApiRequest<Record<string, unknown>>(

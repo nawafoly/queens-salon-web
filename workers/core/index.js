@@ -369,7 +369,7 @@ async function dispatch(ctx, route, method, body, query) {
         );
       }
       if (method === "PATCH" && route.id) {
-        return patchBooking(db, ctx.salonId, route.id, body);
+        return patchBooking(db, ctx.salonId, route.id, body, actorInfo);
       }
       if (method === "DELETE" && route.id) {
         return deleteBooking(db, ctx.salonId, route.id, actorInfo);

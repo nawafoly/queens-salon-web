@@ -57,7 +57,7 @@ const requiredChecks = [
   },
   {
     file: "src/services/bookingDataSources/coreD1BookingDataSource.ts",
-    required: [/CoreBookingService\.reschedule/, /CoreAvailabilityService\.invalidate/],
+    required: [/CoreBookingService\.(?:reschedule|patch)/, /CoreAvailabilityService\.invalidate/],
   },
   {
     file: "src/services/AppSettingsService.ts",
@@ -91,7 +91,7 @@ const documentedExceptions = [
   "Firebase Authentication remains temporary; Core and Packages Workers only verify the Firebase ID token.",
   "Phase 6 adds Core D1 HR, attendance, leave, absence, payroll and schedule APIs, while legacy HR UI branches remain explicitly selected when VITE_USE_HR_D1=false.",
   "Salon settings have an explicit D1 adapter and files have an explicit R2 adapter; their Firebase branches remain available only while the corresponding flags are false.",
-  "Booking rescheduling now uses the dedicated Core D1 reschedule endpoint and replaces slot locks atomically.",
+  "Booking scheduling updates use Core D1 and replace slot locks atomically.",
   "Messages, recruitment, weekly-report and notification UI workflows still require a later explicit cutover where they currently use legacy Firebase services.",
   "D1/R2 failures never trigger an automatic Firestore or Firebase Storage fallback.",
 ];

@@ -304,6 +304,37 @@ test("internal booking V2 is pinned to Core D1 and cannot read the Firestore boo
   assert.match(envWeb, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api\.maedin\.workers\.dev/);
 });
 
+
+test("dashboard booking edit uses Core D1, owner bypasses password, and admins reauthenticate", () => {
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  const service = readFileSync("src/services/firestoreBookings.ts", "utf8");
+  const coreDataSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
+  const coreService = readFileSync("src/services/CoreBookingService.ts", "utf8");
+  const repo = readFileSync("workers/core/repositories/bookings.js", "utf8");
+
+  assert.match(dashboard, /reauthenticateWithCredential/);
+  assert.match(dashboard, /EmailAuthProvider\.credential/);
+  assert.match(dashboard, /if \(uiRole === "owner"\) \{\s*openEditBookingModalUnsafe\(b\)/);
+  assert.match(dashboard, /sanitizeBookingNoteForEditor/);
+  assert.match(dashboard, /resolveBookingDataSource\(\)\.getServiceSections/);
+  assert.match(dashboard, /resolveBookingDataSource\(\)\.getActiveStaff/);
+  assert.doesNotMatch(dashboard, /const BOOKING_ACTION_PIN/);
+
+  assert.match(
+    service,
+    /export async function updateBookingDetails[\s\S]*?coreD1BookingDataSource\.updateBooking/
+  );
+  assert.doesNotMatch(service, /CORE_D1_BOOKING_RESCHEDULE_REQUIRES_PHASE6/);
+
+  assert.match(coreDataSource, /reconcilePayment/);
+  assert.match(coreDataSource, /clientName/);
+  assert.match(coreDataSource, /serviceId/);
+  assert.match(coreService, /paidHalalas/);
+  assert.match(repo, /Booking details updated from dashboard/);
+  assert.match(repo, /DELETE FROM payments WHERE salon_id = \? AND booking_id = \?/);
+  assert.match(repo, /UPDATE booking_items/);
+});
+
 test("booking references are compact and dashboard delete preserves financial records", () => {
   const reference = readFileSync("src/helpers/bookingReference.ts", "utf8");
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");

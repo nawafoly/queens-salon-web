@@ -395,6 +395,43 @@ class FakeD1 {
         const key = `${salon_id}\u0000${staff_id}\u0000${booking_date}\u0000${slot_time}`;
         if (this.tables.booking_slot_locks.has(key)) throw new Error("UNIQUE constraint failed: booking_slot_locks");
         results.push(this.insert("booking_slot_locks", { salon_id, staff_id, booking_date, slot_time, booking_id, booking_item_id, created_at }));
+      } else if (sql.startsWith("UPDATE clients SET")) {
+        results.push(this.dynamicUpdate("clients", sql, params));
+      } else if (sql.startsWith("UPDATE booking_items SET")) {
+        const [
+          service_id,
+          service_name_snapshot,
+          staff_id,
+          duration_minutes,
+          booking_date,
+          start_time,
+          end_time,
+          unit_price_halalas,
+          total_halalas,
+          final_total_halalas,
+          salonId,
+          bookingId,
+          id,
+        ] = params;
+        const row = this.rows("booking_items").find(
+          (item) => item.salon_id === salonId && item.booking_id === bookingId && item.id === id
+        );
+        results.push(
+          row
+            ? this.update("booking_items", salonId, id, {
+                service_id,
+                service_name_snapshot,
+                staff_id,
+                duration_minutes,
+                booking_date,
+                start_time,
+                end_time,
+                unit_price_halalas,
+                total_halalas,
+                final_total_halalas,
+              })
+            : { meta: { changes: 0 } }
+        );
       } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'") && sql.includes("deleted_at = ?")) {
         const [cancelled_at, deleted_at, deleted_by_uid, delete_reason, updated_at, salonId, id] = params;
         const current = this.find("bookings", salonId, id);
@@ -438,6 +475,26 @@ class FakeD1 {
           }
         }
         results.push({ meta: { changes: removed } });
+      } else if (sql.startsWith("DELETE FROM income_entries WHERE salon_id = ? AND booking_id = ? AND payment_id IS NOT NULL")) {
+        const [salonId, bookingId] = params;
+        let removed = 0;
+        for (const [key, row] of this.tables.income_entries.entries()) {
+          if (row.salon_id === salonId && row.booking_id === bookingId && row.payment_id) {
+            this.tables.income_entries.delete(key);
+            removed += 1;
+          }
+        }
+        results.push({ meta: { changes: removed } });
+      } else if (sql.startsWith("DELETE FROM payments WHERE salon_id = ? AND booking_id = ?")) {
+        const [salonId, bookingId] = params;
+        let removed = 0;
+        for (const [key, row] of this.tables.payments.entries()) {
+          if (row.salon_id === salonId && row.booking_id === bookingId) {
+            this.tables.payments.delete(key);
+            removed += 1;
+          }
+        }
+        results.push({ meta: { changes: removed } });
       } else if (/^DELETE FROM (booking_items|income_entries|invoices) WHERE salon_id = \? AND booking_id = \?/.test(sql)) {
         const table = sql.match(/^DELETE FROM ([a-z_]+)/)[1];
         const [salonId, bookingId] = params;
@@ -468,8 +525,7 @@ class FakeD1 {
         const row = this.rows("expense_entries").find((item) => item.salon_id === salonId && item.source_kind === "refund" && item.source_ref_id === sourceRefId);
         results.push(row ? this.update("expense_entries", salonId, row.id, { amount_halalas: amountHalalas, description, payment_method: paymentMethod, occurred_at: occurredAt, title: "استرجاع", note }) : { meta: { changes: 0 } });
       } else if (sql.startsWith("UPDATE invoices SET")) {
-        const [paid_halalas, status, updated_at, salonId, id] = params;
-        results.push(this.update("invoices", salonId, id, { paid_halalas, status, updated_at }));
+        results.push(this.dynamicUpdate("invoices", sql, params));
       } else if (sql.startsWith("DELETE FROM ")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO refunds") || sql.startsWith("INSERT INTO expense_entries")) {
@@ -842,6 +898,96 @@ test("booking list hydrates large dashboard results with bounded D1 reads", asyn
   assert.ok(reads <= 12, `expected bounded reads, received ${reads}`);
 });
 
+
+
+test("dashboard booking edit updates schedule service client totals and payment atomically", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const now = "2027-01-01T00:00:00.000Z";
+  fake.seed("services", {
+    id: "svc-b",
+    salon_id: "main",
+    name: "Service B",
+    section_id: "hair",
+    category_id: "cat-b",
+    description: null,
+    duration_minutes: 45,
+    price_halalas: 9000,
+    active: 1,
+    image_url: null,
+    sort_order: 2,
+    created_at: now,
+    updated_at: now,
+  });
+
+  let response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      id: "booking-edit-a",
+      invoiceId: "invoice-edit-a",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2027-01-10",
+      startTime: "10:00",
+      items: [{ id: "item-edit-a", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      id: "payment-edit-old",
+      bookingId: "booking-edit-a",
+      method: "card",
+      amountHalalas: 7500,
+      idempotencyKey: "payment-edit-old",
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/bookings/booking-edit-a", {
+    method: "PATCH",
+    body: {
+      clientName: "Client Updated",
+      clientPhone: "0561234567",
+      bookingDate: "2027-01-11",
+      startTime: "11:00",
+      staffId: "staff-a",
+      serviceId: "svc-b",
+      durationMinutes: 45,
+      notes: "ملاحظة نظيفة",
+      totalHalalas: 9000,
+      paidHalalas: 3000,
+      paymentMethod: "cash",
+      reconcilePayment: true,
+    },
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.client_name, "Client Updated");
+  assert.equal(body.data.client_phone, "0561234567");
+  assert.equal(body.data.booking_date, "2027-01-11");
+  assert.equal(body.data.start_time, "11:00");
+  assert.equal(body.data.end_time, "11:45");
+  assert.equal(body.data.total_halalas, 9000);
+  assert.equal(body.data.payment_status, "partial");
+  assert.equal(body.data.paid_halalas, 3000);
+  assert.equal(body.data.items[0].service_id, "svc-b");
+  assert.equal(body.data.items[0].service_name_snapshot, "Service B");
+  assert.equal(body.data.items[0].final_total_halalas, 9000);
+  assert.equal(fake.find("clients", "main", "client-a").name, "Client Updated");
+  assert.equal(fake.find("invoices", "main", "invoice-edit-a").total_halalas, 9000);
+  assert.equal(fake.find("invoices", "main", "invoice-edit-a").paid_halalas, 3000);
+  assert.equal(fake.rows("payments").length, 1);
+  assert.equal(fake.rows("payments")[0].method, "cash");
+  assert.equal(fake.rows("payments")[0].amount_halalas, 3000);
+  assert.equal(fake.rows("income_entries").length, 1);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "details_updated"));
+  assert.ok(fake.rows("booking_slot_locks").every((row) => row.booking_date === "2027-01-11"));
+});
 
 test("booking manual fixed discount is verified, capped and snapshotted by Core", async () => {
   const fake = new FakeD1();
