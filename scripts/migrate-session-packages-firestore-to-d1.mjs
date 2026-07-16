@@ -5,6 +5,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import {
+  buildClientCanonicalization,
+  sourceClientPackageId,
+} from "./migration-client-canonicalization.mjs";
 
 const DEFAULT_DATABASE = "queens-salon-packages";
 const DEFAULT_SALON_ID = "main";
@@ -21,18 +25,6 @@ function hasFlag(name) {
 
 function clean(value) {
   return String(value ?? "").trim();
-}
-
-function normalizePhone(value) {
-  const raw = clean(value);
-  if (!raw || /[A-Za-z]/.test(raw)) return "";
-  let digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
-  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
-  if (/^05\d{8}$/.test(digits)) return digits;
-  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
-  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
-  return "";
 }
 
 function jsonArray(value) {
@@ -55,14 +47,6 @@ function sqlString(value) {
 function sqlNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? String(number) : String(fallback);
-}
-
-function pick(data, fields) {
-  for (const field of fields) {
-    const value = data?.[field];
-    if (value !== undefined && value !== null && clean(value) !== "") return value;
-  }
-  return "";
 }
 
 function toRows(input, collection) {
@@ -169,63 +153,34 @@ async function readSource({ projectId, salonId, inputPath }) {
   };
 }
 
-function canonicalClientId(row) {
-  return clean(pick(row, ["canonicalClientId", "clientId", "id", "docId", "customerId", "authUid", "uid", "firebaseUid"])) || clean(row.id);
-}
-
-function clientAliases(row) {
-  return [
-    row.id,
-    row.clientId,
-    row.canonicalClientId,
-    row.docId,
-    row.customerId,
-    row.uid,
-    row.authUid,
-    row.userId,
-    row.firebaseUid,
-    ...(Array.isArray(row.aliasClientIds) ? row.aliasClientIds : []),
-    ...(Array.isArray(row.legacyIds) ? row.legacyIds : []),
-  ].map(clean).filter(Boolean);
-}
-
 function transform(input, salonId) {
   const now = new Date().toISOString();
-  const clients = new Map();
-  const aliases = new Map();
-  const conflicts = [];
-
-  for (const row of [...toRows(input, "clients"), ...toRows(input, "users")]) {
-    const canonical = canonicalClientId(row);
-    if (!canonical) continue;
-    const phone = normalizePhone(pick(row, ["phoneNormalized", "normalizedPhone", "phone", "mobile", "clientPhone", "phoneNumber"]));
-    const existing = clients.get(canonical) || {};
-    clients.set(canonical, {
-      canonical_client_id: canonical,
-      salon_id: salonId,
-      name: clean(existing.name || pick(row, ["name", "displayName", "clientName"])),
-      phone_normalized: clean(existing.phone_normalized || phone),
-      firebase_uid: clean(existing.firebase_uid || pick(row, ["firebaseUid", "authUid", "uid", "userId"])),
-      legacy_ids_json: jsonArray([...JSON.parse(existing.legacy_ids_json || "[]"), ...clientAliases(row).filter((id) => id !== canonical)]),
-      created_at: clean(existing.created_at || row.createdAt || now),
-      updated_at: now,
-    });
-    for (const alias of clientAliases(row).filter((id) => id !== canonical)) {
-      const key = `${salonId}\u0000${alias}`;
-      const prior = aliases.get(key);
-      if (prior && prior.canonical_client_id !== canonical) {
-        conflicts.push({ type: "alias_conflict", aliasId: alias, canonicalClientIds: [prior.canonical_client_id, canonical] });
-        continue;
-      }
-      aliases.set(key, {
-        salon_id: salonId,
-        alias_id: alias,
-        canonical_client_id: canonical,
-        alias_type: "migration",
-        created_at: now,
-      });
-    }
-  }
+  const clientPackageRows = toRows(input, "client_packages");
+  const transactionRows = toRows(input, "package_transactions");
+  const clientIdentity = buildClientCanonicalization({
+    salonId,
+    now,
+    asOfDate: clean(arg("--today") || process.env.MIGRATION_TODAY) || now.slice(0, 10),
+    clients: toRows(input, "clients"),
+    clientPackages: clientPackageRows,
+  });
+  const blockingConflicts = [
+    ...clientIdentity.blockingConflicts,
+    ...clientIdentity.validateClientPackageLinks(clientPackageRows),
+  ];
+  const warningConflicts = [...clientIdentity.warningConflicts];
+  const clients = clientIdentity.clients.map((row) => ({
+    canonical_client_id: row.canonical_client_id,
+    salon_id: salonId,
+    name: row.name,
+    phone_normalized: row.phone_normalized,
+    firebase_uid: row.firebase_uid,
+    legacy_ids_json: row.legacy_ids_json,
+    created_at: row.created_at,
+    updated_at: now,
+  }));
+  const aliases = clientIdentity.aliases;
+  const { resolveClientId } = clientIdentity;
 
   const packageCatalog = toRows(input, "package_catalog").map((row) => ({
     id: clean(row.id),
@@ -239,54 +194,92 @@ function transform(input, salonId) {
     updated_at: now,
   })).filter((row) => row.id && row.name && row.total_sessions > 0);
 
-  const clientPackages = toRows(input, "client_packages").map((row) => ({
-    id: clean(row.id),
-    salon_id: salonId,
-    canonical_client_id: clean(row.canonicalClientId || row.clientId),
-    package_catalog_id: clean(row.packageCatalogId || row.catalogId || "migrated"),
-    package_name_snapshot: clean(row.packageNameSnapshot || row.packageName || row.name || "Migrated package"),
-    allowed_service_ids_json: jsonArray(row.allowedServiceIdsSnapshot || row.allowedServiceIds || row.serviceIds),
-    total_sessions: Number(row.totalSessions || 0),
-    remaining_sessions: Number(row.remainingSessions || 0),
-    reserved_sessions: Number(row.reservedSessions || 0),
-    used_sessions: Number(row.usedSessions || 0),
-    status: clean(row.status || "active"),
-    purchased_at: clean(row.purchasedAt || row.createdAt || now),
-    expires_at: clean(row.expiresAt),
-    invoice_id: clean(row.invoiceId || row.invoiceDocumentId),
-    created_at: clean(row.createdAt || now),
-    updated_at: now,
-  })).filter((row) => row.id && row.canonical_client_id);
+  const packageCanonicalById = new Map();
+  const clientPackages = clientPackageRows
+    .map((row) => {
+      const canonicalClientId = resolveClientId(sourceClientPackageId(row));
+      if (!canonicalClientId) return null;
+      const packageRow = {
+        id: clean(row.id),
+        salon_id: salonId,
+        canonical_client_id: canonicalClientId,
+        package_catalog_id: clean(row.packageCatalogId || row.catalogId || "migrated"),
+        package_name_snapshot: clean(row.packageNameSnapshot || row.packageName || row.name || "Migrated package"),
+        allowed_service_ids_json: jsonArray(row.allowedServiceIdsSnapshot || row.allowedServiceIds || row.serviceIds),
+        total_sessions: Number(row.totalSessions || 0),
+        remaining_sessions: Number(row.remainingSessions || 0),
+        reserved_sessions: Number(row.reservedSessions || 0),
+        used_sessions: Number(row.usedSessions || 0),
+        status: clean(row.status || "active"),
+        purchased_at: clean(row.purchasedAt || row.createdAt || now),
+        expires_at: clean(row.expiresAt),
+        invoice_id: clean(row.invoiceId || row.invoiceDocumentId),
+        created_at: clean(row.createdAt || now),
+        updated_at: now,
+      };
+      if (packageRow.id) packageCanonicalById.set(packageRow.id, canonicalClientId);
+      return packageRow;
+    })
+    .filter((row) => row && row.id && row.canonical_client_id);
 
-  const transactions = toRows(input, "package_transactions").map((row) => ({
-    id: clean(row.id),
-    salon_id: salonId,
-    client_package_id: clean(row.clientPackageId),
-    canonical_client_id: clean(row.canonicalClientId || row.clientId),
-    type: clean(row.type || "migration"),
-    sessions_delta: Number(row.sessionsDelta || 0),
-    remaining_before: Number(row.remainingBefore || 0),
-    remaining_after: Number(row.remainingAfter || 0),
-    reserved_before: Number(row.reservedBefore || 0),
-    reserved_after: Number(row.reservedAfter || 0),
-    used_before: Number(row.usedBefore || 0),
-    used_after: Number(row.usedAfter || 0),
-    service_id: clean(row.serviceId),
-    booking_id: clean(row.bookingId),
-    cart_item_id: clean(row.cartItemId),
-    invoice_id: clean(row.invoiceId),
-    created_at: clean(row.createdAt || now),
-  })).filter((row) => row.id && row.client_package_id && row.canonical_client_id);
+  const transactions = transactionRows
+    .map((row) => {
+      const clientPackageId = clean(row.clientPackageId);
+      const packageCanonicalId = packageCanonicalById.get(clientPackageId) || "";
+      const rawClientId = clean(row.canonicalClientId || row.clientId || packageCanonicalId);
+      const canonicalClientId = resolveClientId(rawClientId) || packageCanonicalId;
+      if (!canonicalClientId) {
+        blockingConflicts.push({
+          type: "package_transaction_unresolved_client",
+          transactionId: clean(row.id),
+          clientPackageId,
+          sourceClientId: rawClientId,
+        });
+        return null;
+      }
+      if (packageCanonicalId && canonicalClientId !== packageCanonicalId) {
+        blockingConflicts.push({
+          type: "package_transaction_client_mismatch",
+          transactionId: clean(row.id),
+          clientPackageId,
+          transactionCanonicalClientId: canonicalClientId,
+          packageCanonicalClientId: packageCanonicalId,
+        });
+        return null;
+      }
+      return {
+        id: clean(row.id),
+        salon_id: salonId,
+        client_package_id: clientPackageId,
+        canonical_client_id: canonicalClientId,
+        type: clean(row.type || "migration"),
+        sessions_delta: Number(row.sessionsDelta || 0),
+        remaining_before: Number(row.remainingBefore || 0),
+        remaining_after: Number(row.remainingAfter || 0),
+        reserved_before: Number(row.reservedBefore || 0),
+        reserved_after: Number(row.reservedAfter || 0),
+        used_before: Number(row.usedBefore || 0),
+        used_after: Number(row.usedAfter || 0),
+        service_id: clean(row.serviceId),
+        booking_id: clean(row.bookingId),
+        cart_item_id: clean(row.cartItemId),
+        invoice_id: clean(row.invoiceId),
+        created_at: clean(row.createdAt || now),
+      };
+    })
+    .filter((row) => row && row.id && row.client_package_id && row.canonical_client_id);
 
   return {
     rows: {
-      clients: [...clients.values()],
-      client_identity_aliases: [...aliases.values()],
+      clients,
+      client_identity_aliases: aliases,
       package_catalog: packageCatalog,
       client_packages: clientPackages,
       package_transactions: transactions,
     },
-    conflicts,
+    blockingConflicts,
+    warningConflicts,
+    report: clientIdentity.report,
   };
 }
 
@@ -348,14 +341,29 @@ const database = clean(arg("--database") || process.env.PACKAGES_D1_DATABASE || 
 const config = clean(arg("--config") || process.env.PACKAGES_WRANGLER_CONFIG || "wrangler.packages.jsonc");
 
 const source = await readSource({ projectId, salonId, inputPath });
-const { rows, conflicts } = transform(source, salonId);
+const { rows, blockingConflicts, warningConflicts, report } = transform(source, salonId);
 const counts = Object.fromEntries(Object.entries(rows).map(([key, value]) => [key, value.length]));
 
 console.log("session package migration source", inputPath ? "input-file" : "firestore");
 console.table(counts);
-if (conflicts.length) {
-  console.warn("conflicts");
-  console.table(conflicts);
+console.log(`blockingConflicts = ${blockingConflicts.length}`);
+if (blockingConflicts.length) {
+  console.log("blocking conflicts");
+  console.table(blockingConflicts);
+}
+console.log(`warningConflicts = ${warningConflicts.length}`);
+if (warningConflicts.length) {
+  console.log("warning conflicts");
+  console.table(warningConflicts);
+}
+console.log(`mergedClients = ${report.mergedClients}`);
+if (report.clientCanonicalMappings.length) {
+  console.log("client canonicalization oldClientId -> canonicalClientId");
+  console.table(report.clientCanonicalMappings);
+}
+if (report.packageCanonicalMappings.length) {
+  console.log("package canonicalization clientPackageId -> canonicalClientId");
+  console.table(report.packageCanonicalMappings);
 }
 
 if (!apply) {
@@ -363,8 +371,8 @@ if (!apply) {
   process.exit(0);
 }
 
-if (conflicts.length && !hasFlag("--allow-conflicts")) {
-  throw new Error("Conflicts detected. Resolve them or pass --allow-conflicts after review.");
+if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
+  throw new Error("Blocking conflicts detected. Resolve them or pass --allow-conflicts after review.");
 }
 
 runWranglerD1(buildSql(rows), database, config);

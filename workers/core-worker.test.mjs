@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { buildClientCanonicalization } from "../scripts/migration-client-canonicalization.mjs";
 import worker from "./core/index.js";
 
 class FakeD1 {
@@ -773,6 +775,78 @@ test("core migration dry-run resolves client, slot lock, and QS953 conflicts wit
   assert.match(result.stdout, /QS953/);
   assert.match(result.stdout, /discount-qs953-active/);
   assert.match(result.stdout, /QS953_LEGACY_/);
+});
+
+test("shared client canonicalization keeps active package client ids canonical", () => {
+  const fixture = JSON.parse(readFileSync("scripts/fixtures/client-canonicalization-regression-fixture.json", "utf8"));
+  const policy = buildClientCanonicalization({
+    salonId: "main",
+    now: "2026-07-16T00:00:00.000Z",
+    asOfDate: "2026-07-16",
+    clients: fixture.clients,
+    bookings: fixture.bookings,
+    clientPackages: fixture.client_packages,
+  });
+
+  assert.equal(policy.blockingConflicts.length, 0, JSON.stringify(policy.blockingConflicts));
+  assert.equal(policy.resolveClientId("0556209042"), "3be178a6-dacb-5407-aca0-1215f403631e");
+  assert.equal(policy.resolveClientId("0546640401"), "78967b2b-d2d1-4260-adac-95fac142ee9d");
+  assert.equal(policy.resolveClientId("3be178a6-dacb-5407-aca0-1215f403631e"), "3be178a6-dacb-5407-aca0-1215f403631e");
+  assert.equal(policy.resolveClientId("78967b2b-d2d1-4260-adac-95fac142ee9d"), "78967b2b-d2d1-4260-adac-95fac142ee9d");
+  assert.ok(policy.aliases.some((row) => row.alias_id === "0556209042" && row.canonical_client_id === "3be178a6-dacb-5407-aca0-1215f403631e"));
+  assert.ok(policy.aliases.some((row) => row.alias_id === "0546640401" && row.canonical_client_id === "78967b2b-d2d1-4260-adac-95fac142ee9d"));
+  assert.equal(policy.resolveClientId("tia8CSOIfZfD60LTuPa90cdnI0L2"), "");
+  assert.equal(policy.resolveClientId("EkAxHGHMMBfD11OCDP1XavS9KA43"), "");
+});
+
+test("shared client canonicalization treats verified alias conflicts as blocking", () => {
+  const fixture = JSON.parse(readFileSync("scripts/fixtures/client-alias-blocking-fixture.json", "utf8"));
+  const policy = buildClientCanonicalization({
+    salonId: "main",
+    now: "2026-07-16T00:00:00.000Z",
+    asOfDate: "2026-07-16",
+    clients: fixture.clients,
+  });
+
+  assert.equal(policy.blockingConflicts.length, 1);
+  assert.equal(policy.blockingConflicts[0].type, "client_alias_conflict");
+  assert.equal(policy.blockingConflicts[0].alias, "shared-verified-uid");
+});
+
+test("core migration dry-run preserves package-backed canonical clients and reports slot lock buckets", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-core-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/client-canonicalization-regression-fixture.json",
+    "--today=2026-07-16",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /blockingConflicts = 0/);
+  assert.doesNotMatch(result.stdout, /client_alias_conflict/);
+  assert.match(result.stdout, /3be178a6-dacb-5407-aca0-1215f403631e/);
+  assert.match(result.stdout, /78967b2b-d2d1-4260-adac-95fac142ee9d/);
+  assert.match(result.stdout, /asOfDate = 2026-07-16/);
+  assert.match(result.stdout, /slotLocksGeneratedActiveFuture = 6/);
+  assert.match(result.stdout, /slotLocksSkippedPast = 36/);
+  assert.match(result.stdout, /slotLocksSkippedTerminalStatus = 6/);
+  assert.match(result.stdout, /slotLocksSkippedInvalid = 1/);
+});
+
+test("core migration dry-run reports verified alias conflicts as blocking", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-core-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/client-alias-blocking-fixture.json",
+    "--today=2026-07-16",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /blockingConflicts = 1/);
+  assert.match(result.stdout, /client_alias_conflict/);
+  assert.match(result.stdout, /shared-verified-uid/);
 });
 
 test("availability endpoint returns D1 slot locks and booking metadata", async () => {

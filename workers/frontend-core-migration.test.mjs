@@ -137,3 +137,13 @@ test("Core migration writes D1 SQL through a file without explicit transactions"
   assert.doesNotMatch(source, /"BEGIN TRANSACTION;"/);
   assert.doesNotMatch(source, /"COMMIT;"/);
 });
+
+test("Core and package migrations share client canonicalization policy", () => {
+  const core = readFileSync("scripts/migrate-core-firestore-to-d1.mjs", "utf8");
+  const packages = readFileSync("scripts/migrate-session-packages-firestore-to-d1.mjs", "utf8");
+  const shared = readFileSync("scripts/migration-client-canonicalization.mjs", "utf8");
+  assert.match(core, /migration-client-canonicalization\.mjs/);
+  assert.match(packages, /migration-client-canonicalization\.mjs/);
+  assert.match(shared, /activePackageIds/);
+  assert.match(shared, /client_alias_conflict/);
+});

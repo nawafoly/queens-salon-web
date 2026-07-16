@@ -1,0 +1,204 @@
+{
+  "clients": [
+    {
+      "id": "3be178a6-dacb-5407-aca0-1215f403631e",
+      "name": "Rodina",
+      "phone": "0556209042",
+      "firebaseUid": "uid-rodina",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "78967b2b-d2d1-4260-adac-95fac142ee9d",
+      "name": "Ghada",
+      "phone": "0546640401",
+      "firebaseUid": "uid-ghada",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    }
+  ],
+  "package_catalog": [
+    {
+      "id": "hair-10",
+      "name": "Hair 10",
+      "totalSessions": 10,
+      "price": 300,
+      "allowedServiceIds": ["svc-a"],
+      "active": true
+    }
+  ],
+  "client_packages": [
+    {
+      "id": "pkg-rodina",
+      "clientId": "3be178a6-dacb-5407-aca0-1215f403631e",
+      "packageCatalogId": "hair-10",
+      "packageName": "Hair 10",
+      "allowedServiceIds": ["svc-a"],
+      "totalSessions": 10,
+      "remainingSessions": 6,
+      "reservedSessions": 0,
+      "usedSessions": 4,
+      "status": "active",
+      "purchasedAt": "2026-01-01T00:00:00.000Z",
+      "expiresAt": "2027-12-31T00:00:00.000Z"
+    },
+    {
+      "id": "pkg-ghada",
+      "clientId": "78967b2b-d2d1-4260-adac-95fac142ee9d",
+      "packageCatalogId": "hair-10",
+      "packageName": "Hair 10",
+      "allowedServiceIds": ["svc-a"],
+      "totalSessions": 10,
+      "remainingSessions": 7,
+      "reservedSessions": 0,
+      "usedSessions": 3,
+      "status": "active",
+      "purchasedAt": "2026-01-02T00:00:00.000Z",
+      "expiresAt": "2027-12-31T00:00:00.000Z"
+    }
+  ],
+  "package_transactions": [
+    {
+      "id": "tx-rodina",
+      "clientPackageId": "pkg-rodina",
+      "clientId": "0556209042",
+      "type": "migration",
+      "sessionsDelta": 0,
+      "remainingBefore": 6,
+      "remainingAfter": 6
+    },
+    {
+      "id": "tx-ghada",
+      "clientPackageId": "pkg-ghada",
+      "clientId": "0546640401",
+      "type": "migration",
+      "sessionsDelta": 0,
+      "remainingBefore": 7,
+      "remainingAfter": 7
+    }
+  ],
+  "services": [
+    {
+      "id": "svc-a",
+      "name": "Blowdry",
+      "durationMinutes": 30,
+      "priceHalalas": 7500,
+      "active": true
+    }
+  ],
+  "staff_public": [
+    {
+      "id": "staff-a",
+      "name": "Staff A",
+      "serviceIds": ["svc-a"],
+      "active": true
+    }
+  ],
+  "bookings": [
+    {
+      "id": "booking-rodina-future-phone-only",
+      "clientPhone": "0556209042",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-ghada-past-phone-only",
+      "clientPhone": "0546640401",
+      "staffId": "staff-a",
+      "date": "2025-01-10",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-ghada-completed-future",
+      "clientPhone": "0546640401",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "11:00",
+      "status": "completed",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-invalid-lock",
+      "clientPhone": "0556209042",
+      "date": "2027-01-10",
+      "time": "12:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "bad-uid-booking-01",
+      "clientPhone": "0501111101",
+      "userId": "tia8CSOIfZfD60LTuPa90cdnI0L2",
+      "staffId": "staff-a",
+      "date": "2025-01-11",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "bad-uid-booking-02",
+      "clientPhone": "0501111102",
+      "userId": "tia8CSOIfZfD60LTuPa90cdnI0L2",
+      "staffId": "staff-a",
+      "date": "2025-01-12",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "bad-uid-booking-03",
+      "clientPhone": "0501111103",
+      "userId": "tia8CSOIfZfD60LTuPa90cdnI0L2",
+      "staffId": "staff-a",
+      "date": "2025-01-13",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "bad-uid-booking-04",
+      "clientPhone": "0501111104",
+      "userId": "EkAxHGHMMBfD11OCDP1XavS9KA43",
+      "staffId": "staff-a",
+      "date": "2025-01-14",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "bad-uid-booking-05",
+      "clientPhone": "0501111105",
+      "userId": "EkAxHGHMMBfD11OCDP1XavS9KA43",
+      "staffId": "staff-a",
+      "date": "2025-01-15",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    }
+  ]
+}

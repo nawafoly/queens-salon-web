@@ -1,0 +1,21 @@
+{
+  "clients": [
+    {
+      "id": "client-alias-a",
+      "name": "Alias A",
+      "phone": "0500000101",
+      "firebaseUid": "shared-verified-uid",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "client-alias-b",
+      "name": "Alias B",
+      "phone": "0500000102",
+      "firebaseUid": "shared-verified-uid",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    }
+  ],
+  "services": [],
+  "staff_public": [],
+  "bookings": []
+}

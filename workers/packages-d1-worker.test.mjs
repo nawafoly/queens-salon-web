@@ -293,6 +293,23 @@ test("packages operational path passes D1-only guard", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
+test("package migration dry-run uses shared package-backed client canonicalization", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-session-packages-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/client-canonicalization-regression-fixture.json",
+    "--today=2026-07-16",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /blockingConflicts = 0/);
+  assert.match(result.stdout, /pkg-rodina/);
+  assert.match(result.stdout, /3be178a6-dacb-5407-aca0-1215f403631e/);
+  assert.match(result.stdout, /pkg-ghada/);
+  assert.match(result.stdout, /78967b2b-d2d1-4260-adac-95fac142ee9d/);
+});
+
 test("package endpoints fail clearly when D1 binding is missing", async () => {
   const response = await worker.fetch(request("/api/packages/client-wallet", {
     body: { salonId: "main", clientId: "client-a" },

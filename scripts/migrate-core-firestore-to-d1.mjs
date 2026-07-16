@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { buildClientCanonicalization } from "./migration-client-canonicalization.mjs";
 
 const DEFAULT_DATABASE = "queens-salon-core";
 const DEFAULT_SALON_ID = "main";
@@ -277,6 +278,8 @@ async function readSourceFromFirestore(projectId, salonId) {
     "settings",
     "employee_files",
     "notifications",
+    "client_packages",
+    "client_package_transactions",
   ];
   const entries = await Promise.all(
     collections.map(async (collection) => [
@@ -363,24 +366,6 @@ function newestFirst(a, b) {
   return sortText(a.id, b.id);
 }
 
-function activeClientRank(row) {
-  const status = clean(row.status || (row.active === false ? "inactive" : "active")).toLowerCase();
-  if (row.active === false || row.disabled === true || row.archived === true) return 1;
-  if (["inactive", "disabled", "archived", "deleted", "blocked"].includes(status)) return 1;
-  return 0;
-}
-
-function canonicalClientRank(a, b) {
-  const activeDelta = activeClientRank(a) - activeClientRank(b);
-  if (activeDelta) return activeDelta;
-  const aCreated = clean(a.created_at || a.createdAt) || "9999-99-99T99:99:99.999Z";
-  const bCreated = clean(b.created_at || b.createdAt) || "9999-99-99T99:99:99.999Z";
-  if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
-  const firebaseDelta = (a.firebase_uid ? 0 : 1) - (b.firebase_uid ? 0 : 1);
-  if (firebaseDelta) return firebaseDelta;
-  return sortText(a.id, b.id);
-}
-
 function uniqueClean(values) {
   const seen = new Set();
   const out = [];
@@ -391,245 +376,6 @@ function uniqueClean(values) {
     out.push(text);
   }
   return out;
-}
-
-function clientPrimaryId(row, fallback = "") {
-  return clean(
-    pick(
-      row,
-      ["canonicalClientId", "clientId", "client_id", "id", "docId", "customerId", "authUid", "uid", "firebaseUid"],
-      fallback
-    )
-  );
-}
-
-function clientIdAliases(row, primaryId) {
-  return uniqueClean([
-    primaryId,
-    row.id,
-    row.clientId,
-    row.client_id,
-    row.canonicalClientId,
-    row.docId,
-    row.customerId,
-    row.legacyClientDocId,
-    Array.isArray(row.aliasClientIds) ? row.aliasClientIds : [],
-    Array.isArray(row.legacyIds) ? row.legacyIds : [],
-  ]);
-}
-
-function clientLookupAliases(row, primaryId, phone) {
-  return uniqueClean([
-    ...clientIdAliases(row, primaryId),
-    row.uid,
-    row.authUid,
-    row.userId,
-    row.firebaseUid,
-    phone,
-  ]);
-}
-
-function bookingClientCandidate(row, now) {
-  const bookingId = clean(row.id);
-  const phone = normalizePhone(row.clientPhone || row.phone || row.mobile);
-  const id = clean(
-    row.clientId ||
-      row.client_id ||
-      row.canonicalClientId ||
-      row.userId ||
-      phone ||
-      stableId("client", bookingId || JSON.stringify(row))
-  );
-  return {
-    id,
-    clientId: row.clientId,
-    client_id: row.client_id,
-    canonicalClientId: row.canonicalClientId,
-    userId: row.userId,
-    firebaseUid: row.userId,
-    phone,
-    clientPhone: row.clientPhone,
-    name: row.clientName || row.name || "Legacy client",
-    clientName: row.clientName,
-    email: row.clientEmail || row.email,
-    status: "active",
-    notes: "Created during Core D1 migration from booking history",
-    createdAt: row.createdAt || now,
-  };
-}
-
-function buildClientIdentity(input, salonId, now, warningConflicts) {
-  const candidates = new Map();
-
-  const addCandidate = (row) => {
-    const phone = normalizePhone(
-      pick(row, ["phoneNormalized", "normalizedPhone", "phone", "mobile", "clientPhone"])
-    );
-    const primaryId = clientPrimaryId(row, phone || stableId("client", JSON.stringify(row)));
-    if (!primaryId) return;
-    const existing = candidates.get(primaryId) || {
-      id: primaryId,
-      salon_id: salonId,
-      name: "",
-      phone_normalized: "",
-      email: "",
-      firebase_uid: "",
-      status: "",
-      notes: "",
-      vip: 0,
-      legacy_client_doc_id: "",
-      created_at: now,
-      updated_at: now,
-      idAliases: new Set(),
-      lookupAliases: new Set(),
-      rows: [],
-    };
-    const aliases = clientIdAliases(row, primaryId);
-    const lookupAliases = clientLookupAliases(row, primaryId, phone);
-    for (const alias of aliases) existing.idAliases.add(alias);
-    for (const alias of lookupAliases) existing.lookupAliases.add(alias);
-    existing.rows.push(row);
-    existing.name ||= clean(pick(row, ["name", "clientName", "displayName"], "Unnamed client"));
-    existing.phone_normalized ||= phone;
-    existing.email ||= clean(row.email);
-    existing.firebase_uid ||= clean(pick(row, ["firebaseUid", "authUid", "uid", "userId"]));
-    const rowStatus = clean(row.status || (row.active === false ? "inactive" : "active"));
-    if (
-      !existing.status ||
-      activeClientRank({ ...row, status: rowStatus }) < activeClientRank(existing)
-    ) {
-      existing.status = rowStatus;
-    }
-    existing.notes ||= clean(row.notes || row.note);
-    existing.vip = existing.vip || (row.vip === true ? 1 : 0);
-    existing.legacy_client_doc_id ||=
-      clean(row.legacyClientDocId || (/^\d+$/.test(clean(row.id)) ? row.id : ""));
-    existing.created_at =
-      [existing.created_at, clean(row.createdAt || now)].filter(Boolean).sort()[0] || now;
-    candidates.set(primaryId, existing);
-  };
-
-  for (const row of rows(input, "clients")) addCandidate(row);
-  for (const row of rows(input, "bookings")) addCandidate(bookingClientCandidate(row, now));
-
-  const groups = [];
-  const phoneGroups = new Map();
-  for (const candidate of candidates.values()) {
-    if (!candidate.phone_normalized) {
-      groups.push([candidate]);
-      continue;
-    }
-    const group = phoneGroups.get(candidate.phone_normalized) || [];
-    group.push(candidate);
-    phoneGroups.set(candidate.phone_normalized, group);
-  }
-  groups.push(...phoneGroups.values());
-
-  const clientMap = new Map();
-  const aliasRows = new Map();
-  const aliasOwners = new Map();
-  const aliasToCanonical = new Map();
-  const clientCanonicalMappings = [];
-  let mergedClients = 0;
-  let mergedClientGroups = 0;
-
-  const addAlias = (alias, canonicalId, type) => {
-    const value = clean(alias);
-    if (!value) return;
-    const ownerKey = `${salonId}\u0000${value}`;
-    const prior = aliasOwners.get(ownerKey);
-    if (prior && prior !== canonicalId) {
-      warningConflicts.push({
-        type: "client_alias_conflict",
-        alias: value,
-        canonicalClientIds: [prior, canonicalId].sort(sortText),
-        chosenCanonicalClientId: prior,
-      });
-      return;
-    }
-    aliasOwners.set(ownerKey, canonicalId);
-    aliasToCanonical.set(value, canonicalId);
-    if (value === canonicalId) return;
-    if (aliasRows.has(ownerKey)) return;
-    aliasRows.set(ownerKey, {
-      salon_id: salonId,
-      alias_id: value,
-      canonical_client_id: canonicalId,
-      alias_type: type,
-      created_at: now,
-    });
-  };
-
-  for (const group of groups) {
-    const sorted = [...group].sort(canonicalClientRank);
-    const canonical = sorted[0];
-    const canonicalId = canonical.id;
-    const oldClientIds = uniqueClean(sorted.map((candidate) => [...candidate.idAliases]));
-    const duplicateIds = oldClientIds.filter((id) => id !== canonicalId);
-    if (duplicateIds.length) {
-      mergedClientGroups += 1;
-      mergedClients += duplicateIds.length;
-      warningConflicts.push({
-        type: "client_phone_merged",
-        phone: canonical.phone_normalized,
-        canonicalClientId: canonicalId,
-        oldClientIds: duplicateIds,
-      });
-    }
-
-    const mergedNotes = uniqueClean(sorted.map((candidate) => candidate.notes));
-    if (duplicateIds.length) {
-      mergedNotes.push(`Merged legacy client ids: ${duplicateIds.join(", ")}`);
-    }
-
-    clientMap.set(canonicalId, {
-      id: canonicalId,
-      salon_id: salonId,
-      name: clean(canonical.name || sorted.find((candidate) => candidate.name)?.name || "Unnamed client"),
-      phone_normalized: clean(canonical.phone_normalized || sorted.find((candidate) => candidate.phone_normalized)?.phone_normalized),
-      email: clean(canonical.email || sorted.find((candidate) => candidate.email)?.email),
-      firebase_uid: clean(canonical.firebase_uid || sorted.find((candidate) => candidate.firebase_uid)?.firebase_uid),
-      status: clean(canonical.status || "active"),
-      notes: mergedNotes.join(" | "),
-      vip: sorted.some((candidate) => candidate.vip === 1) ? 1 : 0,
-      legacy_client_doc_id: clean(canonical.legacy_client_doc_id || sorted.find((candidate) => candidate.legacy_client_doc_id)?.legacy_client_doc_id),
-      created_at: sorted.map((candidate) => candidate.created_at).filter(Boolean).sort()[0] || now,
-      updated_at: now,
-    });
-
-    for (const candidate of sorted) {
-      for (const oldClientId of candidate.idAliases) {
-        aliasToCanonical.set(oldClientId, canonicalId);
-        if (oldClientId !== canonicalId) {
-          addAlias(oldClientId, canonicalId, "legacy_client_id");
-        }
-      }
-      for (const alias of candidate.lookupAliases) addAlias(alias, canonicalId, "migration");
-    }
-
-    for (const oldClientId of duplicateIds.sort(sortText)) {
-      clientCanonicalMappings.push({ oldClientId, canonicalClientId: canonicalId });
-    }
-  }
-
-  const resolveClientId = (value) => {
-    const normalized = clean(value);
-    if (!normalized) return "";
-    return aliasToCanonical.get(normalized) || normalized;
-  };
-
-  return {
-    clientMap,
-    clientAliases: [...aliasRows.values()].sort((a, b) => sortText(a.alias_id, b.alias_id)),
-    resolveClientId,
-    report: {
-      mergedClients,
-      mergedClientGroups,
-      clientCanonicalMappings: clientCanonicalMappings.sort((a, b) =>
-        sortText(a.oldClientId, b.oldClientId)
-      ),
-    },
-  };
 }
 
 const LOCK_INACTIVE_STATUSES = new Set([
@@ -769,16 +515,47 @@ function transform(input, salonId, options = {}) {
   const blockingConflicts = [];
   const warningConflicts = [];
   const report = {
+    asOfDate: today,
+    slotLocksGeneratedActiveFuture: 0,
     slotLocksSkippedPast: 0,
+    slotLocksSkippedTerminalStatus: 0,
+    slotLocksSkippedInvalid: 0,
+    slotLockItemsProcessed: 0,
     mergedClients: 0,
     mergedClientGroups: 0,
     clientCanonicalMappings: [],
     discountDecisions: [],
   };
 
-  const clientIdentity = buildClientIdentity(input, salonId, now, warningConflicts);
-  const { clientMap, clientAliases, resolveClientId } = clientIdentity;
+  const clientPackageRows = rows(input, "client_packages");
+  const clientIdentity = buildClientCanonicalization({
+    salonId,
+    now,
+    asOfDate: today,
+    clients: rows(input, "clients"),
+    bookings: rows(input, "bookings"),
+    clientPackages: clientPackageRows,
+  });
+  const { clientMap, resolveClientId } = clientIdentity;
+  const clientAliases = clientIdentity.aliases;
+  blockingConflicts.push(...clientIdentity.blockingConflicts);
+  blockingConflicts.push(...clientIdentity.validateClientPackageLinks(clientPackageRows));
+  warningConflicts.push(...clientIdentity.warningConflicts);
   Object.assign(report, clientIdentity.report);
+  const coreClients = [...clientMap.values()].map((client) => ({
+    id: client.id,
+    salon_id: client.salon_id,
+    name: client.name,
+    phone_normalized: client.phone_normalized,
+    email: client.email,
+    firebase_uid: client.firebase_uid,
+    status: client.status,
+    notes: client.notes,
+    vip: client.vip,
+    legacy_client_doc_id: client.legacy_client_doc_id,
+    created_at: client.created_at,
+    updated_at: client.updated_at,
+  }));
 
   const categories = rows(input, "service_categories", "categories")
     .map((row) => ({
@@ -1039,25 +816,28 @@ function transform(input, salonId, options = {}) {
       transformedItems.push(bookingItem);
       bookingItems.push(bookingItem);
 
-      if (staffId && shouldCreateSlotLocks(status)) {
-        // Use the same fixed five-minute lock granularity as the Core Worker.
-        // Historical UI slot steps are preserved on the booking row but must
-        // not weaken overlap protection in booking_slot_locks.
-        const slotTimes = occupiedSlots(itemStart, itemEnd, 5, bufferMin);
-        if (itemDate < today) {
-          report.slotLocksSkippedPast += slotTimes.length;
-        } else {
-          for (const slotTime of slotTimes) {
-            bookingLockCandidates.push({
-              salon_id: salonId,
-              staff_id: staffId,
-              booking_date: itemDate,
-              slot_time: slotTime,
-              booking_id: bookingId,
-              booking_item_id: itemId,
-              created_at: clean(row.createdAt || now),
-            });
-          }
+      report.slotLockItemsProcessed += 1;
+      // Use the same fixed five-minute lock granularity as the Core Worker.
+      // Historical UI slot steps are preserved on the booking row but must
+      // not weaken overlap protection in booking_slot_locks.
+      const slotTimes = occupiedSlots(itemStart, itemEnd, 5, bufferMin);
+      if (!staffId || !/^\d{4}-\d{2}-\d{2}$/.test(itemDate) || !itemStart || !itemEnd || !slotTimes.length) {
+        report.slotLocksSkippedInvalid += 1;
+      } else if (!shouldCreateSlotLocks(status)) {
+        report.slotLocksSkippedTerminalStatus += slotTimes.length;
+      } else if (itemDate < today) {
+        report.slotLocksSkippedPast += slotTimes.length;
+      } else {
+        for (const slotTime of slotTimes) {
+          bookingLockCandidates.push({
+            salon_id: salonId,
+            staff_id: staffId,
+            booking_date: itemDate,
+            slot_time: slotTime,
+            booking_id: bookingId,
+            booking_item_id: itemId,
+            created_at: clean(row.createdAt || now),
+          });
         }
       }
       cursorDate = itemDate;
@@ -1110,6 +890,7 @@ function transform(input, salonId, options = {}) {
   }
 
   const bookingSlotLocks = buildBookingSlotLocks(bookingLockCandidates, warningConflicts);
+  report.slotLocksGeneratedActiveFuture = bookingSlotLocks.length;
 
   const invoices = rows(input, "invoices")
     .map((row) => ({
@@ -1482,7 +1263,7 @@ function transform(input, salonId, options = {}) {
     warningConflicts,
     report,
     tables: {
-      clients: [...clientMap.values()],
+      clients: coreClients,
       client_aliases: clientAliases,
       service_categories: categories,
       service_sections: sections,
@@ -1625,12 +1406,21 @@ if (warningConflicts.length) {
   console.log("warning conflicts");
   console.table(warningConflicts);
 }
+console.log(`asOfDate = ${report.asOfDate}`);
+console.log(`slotLocksGeneratedActiveFuture = ${report.slotLocksGeneratedActiveFuture}`);
 console.log(`slotLocksSkippedPast = ${report.slotLocksSkippedPast}`);
+console.log(`slotLocksSkippedTerminalStatus = ${report.slotLocksSkippedTerminalStatus}`);
+console.log(`slotLocksSkippedInvalid = ${report.slotLocksSkippedInvalid}`);
+console.log(`slotLockItemsProcessed = ${report.slotLockItemsProcessed}`);
 console.log(`mergedClients = ${report.mergedClients}`);
 console.log(`mergedClientGroups = ${report.mergedClientGroups}`);
 if (report.clientCanonicalMappings.length) {
   console.log("client canonicalization oldClientId -> canonicalClientId");
   console.table(report.clientCanonicalMappings);
+}
+if (report.packageCanonicalMappings.length) {
+  console.log("package canonicalization clientPackageId -> canonicalClientId");
+  console.table(report.packageCanonicalMappings);
 }
 if (report.discountDecisions.length) {
   console.log("discount conflict decisions");
