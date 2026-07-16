@@ -787,6 +787,100 @@ export async function listClientPackagesAdminD1(ctx) {
   }));
 }
 
+export async function sessionDashboardAdminD1(ctx) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const db = packagesDb(ctx);
+  const packageRows = await dbAll(
+    db,
+    `SELECT cp.*, c.name AS client_name, c.phone_normalized AS client_phone
+       FROM client_packages cp
+       LEFT JOIN clients c
+         ON c.salon_id = cp.salon_id AND c.canonical_client_id = cp.canonical_client_id
+      WHERE cp.salon_id = ?
+      ORDER BY COALESCE(cp.updated_at, cp.created_at) DESC
+      LIMIT 1000`,
+    [ctx.salonId]
+  );
+  const transactionRows = await dbAll(
+    db,
+    `SELECT pt.*, cp.package_name_snapshot, c.name AS client_name, c.phone_normalized AS client_phone
+       FROM package_transactions pt
+       LEFT JOIN client_packages cp
+         ON cp.salon_id = pt.salon_id AND cp.id = pt.client_package_id
+       LEFT JOIN clients c
+         ON c.salon_id = pt.salon_id AND c.canonical_client_id = pt.canonical_client_id
+      WHERE pt.salon_id = ?
+      ORDER BY pt.created_at DESC
+      LIMIT 500`,
+    [ctx.salonId]
+  );
+
+  const packages = packageRows.map((row) => ({
+    id: cleanText(row.id),
+    clientName: row.client_name || "",
+    phone: row.client_phone || "",
+    canonicalClientId: cleanText(row.canonical_client_id),
+    packageCatalogId: cleanText(row.package_catalog_id),
+    packageName: row.package_name_snapshot || "",
+    totalSessions: Number(row.total_sessions || 0),
+    remainingSessions: Number(row.remaining_sessions || 0),
+    usedSessions: Number(row.used_sessions || 0),
+    reservedSessions: Number(row.reserved_sessions || 0),
+    status: packageStatus(row),
+    purchasedAt: row.purchased_at || row.created_at || "",
+    expiresAt: row.expires_at || "",
+    invoiceId: row.invoice_id || "",
+    updatedAt: row.updated_at || row.created_at || "",
+  }));
+
+  const transactions = transactionRows.map((row) => ({
+    id: cleanText(row.id),
+    clientPackageId: cleanText(row.client_package_id),
+    canonicalClientId: cleanText(row.canonical_client_id),
+    clientName: row.client_name || "",
+    phone: row.client_phone || "",
+    packageName: row.package_name_snapshot || "",
+    type: cleanText(row.type),
+    sessionsDelta: Number(row.sessions_delta || 0),
+    remainingBefore: Number(row.remaining_before || 0),
+    remainingAfter: Number(row.remaining_after || 0),
+    reservedBefore: Number(row.reserved_before || 0),
+    reservedAfter: Number(row.reserved_after || 0),
+    usedBefore: Number(row.used_before || 0),
+    usedAfter: Number(row.used_after || 0),
+    serviceId: row.service_id || "",
+    bookingId: row.booking_id || "",
+    cartItemId: row.cart_item_id || "",
+    invoiceId: row.invoice_id || "",
+    createdAt: row.created_at || "",
+  }));
+
+  const activePackages = packages.filter((row) => row.status === "active");
+  const subscribedClients = new Set(activePackages.map((row) => row.canonicalClientId).filter(Boolean)).size;
+  const now = Date.now();
+  const soon = now + 30 * 24 * 60 * 60 * 1000;
+  const expiringSoonCount = activePackages.filter((row) => {
+    const expiry = Date.parse(row.expiresAt || "");
+    return Number.isFinite(expiry) && expiry >= now && expiry <= soon;
+  }).length;
+
+  return {
+    summary: {
+      subscribedClients,
+      totalPackages: packages.length,
+      activePackages: activePackages.length,
+      totalRemainingSessions: activePackages.reduce((sum, row) => sum + row.remainingSessions, 0),
+      totalUsedSessions: packages.reduce((sum, row) => sum + row.usedSessions, 0),
+      totalReservedSessions: activePackages.reduce((sum, row) => sum + row.reservedSessions, 0),
+      expiringSoonCount,
+      exhaustedPackages: packages.filter((row) => row.status === "exhausted").length,
+      expiredPackages: packages.filter((row) => row.status === "expired").length,
+    },
+    packages,
+    transactions,
+  };
+}
+
 export async function auditClientIdentitiesAdminD1(ctx) {
   requireRole(ctx.role, ADMIN_ROLES);
   const clients = await dbAll(packagesDb(ctx), "SELECT * FROM clients WHERE salon_id = ? ORDER BY canonical_client_id LIMIT 1000", [ctx.salonId]);

@@ -24,6 +24,7 @@ import {
   redeemPackageD1,
   releasePackageD1,
   reservePackageD1,
+  sessionDashboardAdminD1,
 } from './d1.js';
 
 export function allowedOrigins(env) {
@@ -112,6 +113,8 @@ const routes = {
   "GET /api/packages/admin/audit-client-identities": { d1: auditClientIdentitiesAdminD1 },
   // D1 ONLY — do not add Firestore fallback.
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
+  // D1 ONLY — administrative packages and session dashboard.
+  "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
   // D1 ONLY — do not add Firestore fallback.
   "GET /api/packages/my-wallet": { d1: myWalletD1 },
 };

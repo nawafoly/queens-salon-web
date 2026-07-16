@@ -33,6 +33,63 @@ export type PackageRedemptionResult = {
   cartItemId?: string;
 };
 
+
+export type PackageSessionDashboardPackage = {
+  id: string;
+  clientName: string;
+  phone: string;
+  canonicalClientId: string;
+  packageCatalogId: string;
+  packageName: string;
+  totalSessions: number;
+  remainingSessions: number;
+  usedSessions: number;
+  reservedSessions: number;
+  status: "active" | "exhausted" | "expired" | "cancelled" | string;
+  purchasedAt: string;
+  expiresAt: string;
+  invoiceId: string;
+  updatedAt: string;
+};
+
+export type PackageSessionDashboardTransaction = {
+  id: string;
+  clientPackageId: string;
+  canonicalClientId: string;
+  clientName: string;
+  phone: string;
+  packageName: string;
+  type: string;
+  sessionsDelta: number;
+  remainingBefore: number;
+  remainingAfter: number;
+  reservedBefore: number;
+  reservedAfter: number;
+  usedBefore: number;
+  usedAfter: number;
+  serviceId: string;
+  bookingId: string;
+  cartItemId: string;
+  invoiceId: string;
+  createdAt: string;
+};
+
+export type PackageSessionDashboardResult = {
+  summary: {
+    subscribedClients: number;
+    totalPackages: number;
+    activePackages: number;
+    totalRemainingSessions: number;
+    totalUsedSessions: number;
+    totalReservedSessions: number;
+    expiringSoonCount: number;
+    exhaustedPackages: number;
+    expiredPackages: number;
+  };
+  packages: PackageSessionDashboardPackage[];
+  transactions: PackageSessionDashboardTransaction[];
+};
+
 export type PackageClientLookup = {
   id?: string;
   docId?: string;
@@ -173,6 +230,9 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
 
 export const PackageOperationsService = {
   newOperationId: operationId,
+  sessionDashboard() {
+    return invoke<PackageSessionDashboardResult>("/api/packages/admin/session-dashboard", { salonId: "main" }, "GET");
+  },
   myWallet() {
     return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");
   },

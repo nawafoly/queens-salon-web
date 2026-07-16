@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import "./booking-internal-v2.css";
+import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { createBookingGroup, getStaffAvailability, listActiveCategoriesBySection, listActiveSections, listActiveServices, listActiveStaffAll, updateBookingDetails } from "../../services/bookingDataSourceCompat";
 import { SALON_ID } from "../../helpers/bookingSharedConstants";
@@ -314,9 +314,8 @@ const steps = [
 ];
 
 export default function BookingInternalV2() {
-  const navigate = useNavigate();
   const [step, setStep] = useState<Step>(1);
-  const [mode, setMode] = useState<"new" | "manage">("new");
+  const [mode, setMode] = useState<"new" | "sessions">("new");
   const [query, setQuery] = useState("");
   const [selectedClient, setSelectedClient] = useState<ClientCandidate | null>(null);
   const [clients, setClients] = useState<ClientCandidate[]>(() => readQuickClients());
@@ -1148,17 +1147,12 @@ export default function BookingInternalV2() {
 
         <div className="bk2-mode-switch" aria-label="وضع الحجز">
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>حجز جديد</button>
-          <button className={mode === "manage" ? "is-active" : ""} onClick={() => setMode("manage")}>إدارة الحجوزات</button>
+          <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>الباقات والجلسات</button>
         </div>
       </header>
 
-      {mode === "manage" ? (
-        <section className="bk2-manage-card">
-          <div className="bk2-empty-icon"><FiCalendar /></div>
-          <h2>إدارة الحجوزات ستكون في مساحة مستقلة</h2>
-          <p>البحث، التحصيل، التأكيد، الطباعة والاسترجاع ستُنقل هنا دون تغيير منطق الحجز الحالي.</p>
-          <button onClick={() => navigate("/dashboard/bookings")}>فتح صفحة الحجوزات</button>
-        </section>
+      {mode === "sessions" ? (
+        <PackageSessionsManager />
       ) : (
         <>
           <nav className="bk2-stepper" aria-label="خطوات الحجز">

@@ -359,3 +359,24 @@ test("booking references are compact and dashboard delete preserves financial re
   assert.match(repo, /return `MK-\$\{number\}`/);
   assert.doesNotMatch(repo, /optionalText\(data\.publicId \|\| data\.public_id\)/);
 });
+
+test("internal booking exposes packages and sessions management from Packages D1", () => {
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  const panel = readFileSync("src/features/internal-booking-v2/PackageSessionsManager.tsx", "utf8");
+  const service = readFileSync("src/services/PackageOperationsService.ts", "utf8");
+  const routes = readFileSync("workers/packages/routes.js", "utf8");
+  const d1 = readFileSync("workers/packages/d1.js", "utf8");
+
+  assert.match(v2, /PackageSessionsManager/);
+  assert.match(v2, /الباقات والجلسات/);
+  assert.doesNotMatch(v2, /إدارة الحجوزات ستكون في مساحة مستقلة/);
+  assert.match(panel, /العميلات المشتركات/);
+  assert.match(panel, /سجل الجلسات/);
+  assert.match(panel, /تحتاج متابعة/);
+  assert.match(panel, /PackageOperationsService\.sessionDashboard/);
+  assert.match(service, /\/api\/packages\/admin\/session-dashboard/);
+  assert.match(routes, /sessionDashboardAdminD1/);
+  assert.match(d1, /package_transactions/);
+  assert.match(d1, /subscribedClients/);
+  assert.doesNotMatch(panel, /firebase\/firestore/);
+});

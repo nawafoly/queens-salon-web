@@ -100,12 +100,24 @@ class FakeD1 {
     }
     if (normalized.startsWith("SELECT cp.*, c.name AS client_name")) {
       const [salonId] = params;
+      const activeOnly = normalized.includes("cp.status = 'active'");
       return this.rows("client_packages")
-        .filter((row) => row.salon_id === salonId && row.status === "active")
+        .filter((row) => row.salon_id === salonId && (!activeOnly || row.status === "active"))
         .map((row) => {
           const client = this.rows("clients").find((item) => item.salon_id === row.salon_id && item.canonical_client_id === row.canonical_client_id) || {};
           return { ...row, client_name: client.name || "", client_phone: client.phone_normalized || "" };
         });
+    }
+    if (normalized.startsWith("SELECT pt.*, cp.package_name_snapshot")) {
+      const [salonId] = params;
+      return this.rows("package_transactions")
+        .filter((row) => row.salon_id === salonId)
+        .map((row) => {
+          const pkg = this.rows("client_packages").find((item) => item.salon_id === row.salon_id && item.id === row.client_package_id) || {};
+          const client = this.rows("clients").find((item) => item.salon_id === row.salon_id && item.canonical_client_id === row.canonical_client_id) || {};
+          return { ...row, package_name_snapshot: pkg.package_name_snapshot || "", client_name: client.name || "", client_phone: client.phone_normalized || "" };
+        })
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     }
     throw new Error(`unhandled fake D1 all: ${normalized}`);
   }
@@ -512,6 +524,32 @@ test("D1 admin list exposes only safe package fields", async () => {
     "status",
     "expiresAt",
   ]);
+});
+
+test("D1 admin session dashboard returns package summary and ledger", async () => {
+  const fake = new FakeD1();
+  seedBase(fake);
+  fake.seed("client_packages", {
+    id: "pkg-dashboard", salon_id: "main", canonical_client_id: "client-a", package_catalog_id: "blowdry-10",
+    package_name_snapshot: "Blowdry 10", allowed_service_ids_json: JSON.stringify(["svc-a"]), total_sessions: 10,
+    remaining_sessions: 7, reserved_sessions: 1, used_sessions: 2, status: "active",
+    purchased_at: "2027-01-01T00:00:00.000Z", expires_at: "2099-01-01T00:00:00.000Z", invoice_id: "invoice-dashboard",
+    created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-02T00:00:00.000Z",
+  });
+  fake.seed("package_transactions", {
+    id: "tx-dashboard", salon_id: "main", client_package_id: "pkg-dashboard", canonical_client_id: "client-a",
+    type: "reserve", sessions_delta: -1, remaining_before: 8, remaining_after: 7, reserved_before: 0, reserved_after: 1,
+    used_before: 2, used_after: 2, service_id: "svc-a", booking_id: "MK-10423", cart_item_id: "item-a", invoice_id: "invoice-dashboard",
+    created_at: "2027-01-02T00:00:00.000Z",
+  });
+  const response = await worker.fetch(request("/api/packages/admin/session-dashboard", { method: "GET" }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.summary.subscribedClients, 1);
+  assert.equal(body.data.summary.activePackages, 1);
+  assert.equal(body.data.summary.totalRemainingSessions, 7);
+  assert.equal(body.data.packages[0].id, "pkg-dashboard");
+  assert.equal(body.data.transactions[0].bookingId, "MK-10423");
 });
 
 test("D1 cron expires active packages", async () => {
