@@ -12,6 +12,7 @@ import {
   integer,
   nowIso,
   optionalText,
+  placeholders,
   requiredId,
   rowNotFound,
   updateById,
@@ -181,9 +182,68 @@ export async function listBookings(db, salonId, query = {}) {
         [salonId]
       );
 
-  const enriched = await Promise.all(
-    rows.map((row) => getBooking(db, salonId, row.id))
-  );
+  if (!rows.length) return [];
+
+  // Avoid the previous N+1 read pattern (up to four D1 queries per booking).
+  // Dashboard lists are hydrated in a bounded number of batch reads instead.
+  const bookingIds = rows.map((row) => row.id);
+  const idChunks = [];
+  for (let index = 0; index < bookingIds.length; index += 80) {
+    idChunks.push(bookingIds.slice(index, index + 80));
+  }
+
+  const [clients, staffRows, invoices, itemGroups] = await Promise.all([
+    dbAll(db, "SELECT * FROM clients WHERE salon_id = ? ORDER BY created_at DESC", [salonId]),
+    dbAll(db, "SELECT * FROM staff WHERE salon_id = ? ORDER BY created_at DESC", [salonId]),
+    dbAll(
+      db,
+      "SELECT * FROM invoices WHERE salon_id = ? ORDER BY issued_at DESC, created_at DESC, id DESC",
+      [salonId]
+    ),
+    Promise.all(
+      idChunks.map((ids) =>
+        dbAll(
+          db,
+          `SELECT * FROM booking_items WHERE booking_id IN (${placeholders(ids.length)}) ORDER BY COALESCE(booking_date, ''), COALESCE(start_time, ''), created_at, id`,
+          ids
+        )
+      )
+    ),
+  ]);
+
+  const clientsById = new Map(clients.map((row) => [cleanText(row.id), row]));
+  const staffById = new Map(staffRows.map((row) => [cleanText(row.id), row]));
+  const itemsByBookingId = new Map();
+  for (const item of itemGroups.flat()) {
+    const bookingId = cleanText(item.booking_id);
+    if (!itemsByBookingId.has(bookingId)) itemsByBookingId.set(bookingId, []);
+    itemsByBookingId.get(bookingId).push(item);
+  }
+
+  const invoiceByBookingId = new Map();
+  for (const invoice of invoices) {
+    const bookingId = cleanText(invoice.booking_id);
+    if (bookingId && !invoiceByBookingId.has(bookingId)) {
+      invoiceByBookingId.set(bookingId, invoice);
+    }
+  }
+
+  const enriched = rows.map((row) => {
+    const client = clientsById.get(cleanText(row.client_id));
+    const staff = staffById.get(cleanText(row.staff_id));
+    const invoice = invoiceByBookingId.get(cleanText(row.id));
+    return {
+      ...row,
+      client_name: client?.name || null,
+      client_phone: client?.phone_normalized || null,
+      staff_name: staff?.name || null,
+      invoice_id: invoice?.id || null,
+      invoice_number: invoice?.invoice_number || null,
+      paid_halalas: Number(invoice?.paid_halalas || 0),
+      items: itemsByBookingId.get(cleanText(row.id)) || [],
+    };
+  });
+
   const search = cleanText(query.search || query.q).toLowerCase();
   const clientId = cleanText(query.clientId || query.client_id);
   const staffId = cleanText(query.staffId || query.staff_id);

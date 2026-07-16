@@ -17,6 +17,7 @@ class FakeD1 {
   constructor() {
     this.__fakeD1 = true;
     this.failBatchOnSqlIncludes = "";
+    this.allQueryCount = 0;
     this.tables = Object.fromEntries([
       "clients",
       "client_aliases",
@@ -64,6 +65,7 @@ class FakeD1 {
   }
 
   async all(sql, params = []) {
+    this.allQueryCount += 1;
     const normalized = sql.replace(/\s+/g, " ").trim();
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
@@ -122,6 +124,10 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM bookings WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("bookings").filter((row) => row.salon_id === salonId);
+    }
+    if (normalized.startsWith("SELECT * FROM booking_items WHERE booking_id IN (")) {
+      const bookingIds = new Set(params.map(String));
+      return this.rows("booking_items").filter((row) => bookingIds.has(String(row.booking_id)));
     }
     if (normalized.startsWith("SELECT * FROM booking_items WHERE booking_id = ?")) {
       const [bookingId] = params;
@@ -358,6 +364,7 @@ class FakeD1 {
       const params = statement.params || [];
       if (this.failBatchOnSqlIncludes && sql.includes(this.failBatchOnSqlIncludes)) {
         this.failBatchOnSqlIncludes = "";
+    this.allQueryCount = 0;
         throw new Error("simulated fake D1 batch failure");
       }
       if (sql.startsWith("INSERT INTO bookings")) {
@@ -715,6 +722,63 @@ test("booking creation creates booking items and invoice", async () => {
   assert.equal(fake.rows("income_entries").length, 0);
   assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_created" && row.entity_id === "booking-a"));
 });
+
+test("booking list hydrates large dashboard results with bounded D1 reads", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const now = "2027-01-01T00:00:00.000Z";
+  for (let index = 0; index < 150; index += 1) {
+    const id = `booking-list-${String(index).padStart(3, "0")}`;
+    fake.seed("bookings", {
+      id,
+      salon_id: "main",
+      client_id: "client-a",
+      staff_id: "staff-a",
+      booking_date: "2027-02-01",
+      start_time: "10:00",
+      end_time: "10:30",
+      status: "confirmed",
+      source: "internal_v2",
+      subtotal_halalas: 7500,
+      discount_halalas: 0,
+      total_halalas: 7500,
+      payment_status: "unpaid",
+      package_sessions_used: 0,
+      created_at: now,
+      updated_at: now,
+    });
+    fake.seed("booking_items", {
+      id: `item-${id}`,
+      booking_id: id,
+      salon_id: "main",
+      service_id: "svc-a",
+      service_name_snapshot: "Service A",
+      staff_id: "staff-a",
+      quantity: 1,
+      unit_price_halalas: 7500,
+      total_halalas: 7500,
+      package_covered: 0,
+      duration_minutes: 30,
+      booking_date: "2027-02-01",
+      start_time: "10:00",
+      end_time: "10:30",
+      created_at: now,
+    });
+  }
+
+  const before = fake.allQueryCount;
+  const response = await worker.fetch(request("/api/core/bookings"), env(fake));
+  const body = await json(response);
+  const reads = fake.allQueryCount - before;
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.length, 150);
+  assert.equal(body.data[0].client_name, "Client A");
+  assert.equal(body.data[0].staff_name, "Staff A");
+  assert.equal(body.data[0].items.length, 1);
+  assert.ok(reads <= 12, `expected bounded reads, received ${reads}`);
+});
+
 
 test("booking manual fixed discount is verified, capped and snapshotted by Core", async () => {
   const fake = new FakeD1();
