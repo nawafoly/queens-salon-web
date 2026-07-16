@@ -2,11 +2,11 @@
 // Session packages use Cloudflare D1 as the only operational database.
 // Do not reintroduce Firestore reads or writes into package wallet,
 // purchase, redeem, reserve, release, or admin package reports.
-// Firebase is used only for authentication token verification.
+// Firebase is used only for authentication and the signed-in user's own role lookup.
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { AppError } from './errors.js';
-import { authenticateRequest } from './auth.js';
+import { authenticateRequest, resolveActorRole } from './auth.js';
 import {
   DEFAULT_ALLOWED_ORIGINS,
   cleanText,
@@ -73,10 +73,7 @@ export async function withActor(request, env, body) {
   const identity = await authenticateRequest(request, env);
   const salonId = getSalonId(body || {}, env);
   if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
-  const claimedRole = cleanText(identity.claims?.role || identity.claims?.packagesRole).toLowerCase();
-  const role = ["owner", "admin", "hr", "reception", "staff", "client"].includes(claimedRole)
-    ? claimedRole
-    : "guest";
+  const role = await resolveActorRole(env, salonId, identity);
   return { identity, packagesDb: env.PACKAGES_DB, salonId, role };
 }
 

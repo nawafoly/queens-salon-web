@@ -88,7 +88,7 @@ for (const check of requiredChecks) {
 }
 
 const documentedExceptions = [
-  "Firebase Authentication remains temporary; Core and Packages Workers only verify the Firebase ID token.",
+  "Firebase Authentication remains temporary; Core verifies the Firebase ID token, and Packages may additionally read the signed-in user's own role profile for authorization when the token claim is missing or stale.",
   "Phase 6 adds Core D1 HR, attendance, leave, absence, payroll and schedule APIs, while legacy HR UI branches remain explicitly selected when VITE_USE_HR_D1=false.",
   "Salon settings have an explicit D1 adapter and files have an explicit R2 adapter; their Firebase branches remain available only while the corresponding flags are false.",
   "Booking scheduling updates use Core D1 and replace slot locks atomically.",

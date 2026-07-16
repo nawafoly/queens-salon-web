@@ -2,11 +2,11 @@
 // Session packages use Cloudflare D1 as the only operational database.
 // Do not reintroduce Firestore reads or writes into package wallet,
 // purchase, redeem, reserve, release, or admin package reports.
-// Firebase is used only for authentication token verification.
+// Firebase is used only for authentication and the signed-in user's own role lookup.
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { normalizeError, AppError } from './errors.js';
-import { verifyFirebaseIdToken } from './auth.js';
+import { clearActorRoleCache, resolveActorRole, verifyFirebaseIdToken } from './auth.js';
 import { handleRequest, jsonResponse } from './routes.js';
 import { __testD1, expireClientPackagesD1 } from './d1.js';
 
@@ -31,6 +31,8 @@ export default {
 export const __test = {
   AppError,
   verifyFirebaseIdToken,
+  resolveActorRole,
+  clearActorRoleCache,
   handleRequest,
   __testD1,
 };

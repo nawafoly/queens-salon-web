@@ -297,6 +297,59 @@ async function json(response) {
   return response.json();
 }
 
+
+
+test("actor role falls back to the signed-in user's own profile when token has no custom role", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), authorization: init?.headers?.Authorization || "" });
+    return new Response(JSON.stringify({
+      fields: {
+        role: { stringValue: "owner" },
+        active: { booleanValue: true },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const role = await __test.resolveActorRole(
+      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
+      "main",
+      { uid: "owner-no-claim", email: "owner@example.com", claims: { role: "client" }, idToken: "verified-id-token" }
+    );
+    assert.equal(role, "owner");
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /salons%2F|salons\/main\/users\/owner-no-claim/);
+    assert.equal(calls[0].authorization, "Bearer verified-id-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+    __test.clearActorRoleCache();
+  }
+});
+
+test("verified bootstrap owner email is authorized without a custom role claim", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    throw new Error("profile lookup should not run for bootstrap owner");
+  };
+  try {
+    const role = await __test.resolveActorRole(
+      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
+      "main",
+      { uid: "bootstrap-owner", email: "nawafaaa0@gmail.com", claims: { role: "client" }, idToken: "verified-id-token" }
+    );
+    assert.equal(role, "owner");
+    assert.equal(called, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __test.clearActorRoleCache();
+  }
+});
+
 test("packages operational path passes D1-only guard", () => {
   const result = spawnSync(process.execPath, ["scripts/check-packages-d1-only.mjs"], {
     cwd: process.cwd(),

@@ -5,15 +5,141 @@ import { cleanText, decodeJwtPart, optionalText, salonPath } from './validation.
 const FIREBASE_CERTS_URL =
   "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 
-let firebaseCertificateCache = { certificates: null, expiresAt: 0 };
+const VALID_ROLES = new Set(["owner", "admin", "hr", "reception", "staff", "client"]);
+const DEFAULT_BOOTSTRAP_OWNER_EMAILS = new Set([
+  "nawafaaa0@gmail.com",
+  "alolayan3@gmail.com",
+]);
+const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
+const ROLE_CACHE_GUEST_TTL_MS = 30 * 1000;
 
+let firebaseCertificateCache = { certificates: null, expiresAt: 0 };
+const actorRoleCache = new Map();
+
+function normalizeRole(value) {
+  const role = cleanText(value).toLowerCase();
+  if (role === "administrator" || role === "super_admin" || role === "super-admin") return "admin";
+  if (role === "owner-role" || role === "malik" || role === "المالك" || role === "مالك") return "owner";
+  if (role === "receptionist" || role === "frontdesk" || role === "desk") return "reception";
+  if (role === "employee") return "staff";
+  return VALID_ROLES.has(role) ? role : "";
+}
+
+function bootstrapOwnerEmails(env) {
+  const configured = cleanText(env.PACKAGES_BOOTSTRAP_OWNER_EMAILS);
+  if (!configured) return DEFAULT_BOOTSTRAP_OWNER_EMAILS;
+  return new Set(
+    configured
+      .split(",")
+      .map((email) => cleanText(email).toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function roleFromClaims(identity) {
+  return normalizeRole(identity?.claims?.role || identity?.claims?.packagesRole);
+}
+
+function fromDocumentValue(value) {
+  if (!value || typeof value !== "object") return undefined;
+  if ("stringValue" in value) return value.stringValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("nullValue" in value) return null;
+  return undefined;
+}
+
+function documentData(body) {
+  const out = {};
+  for (const [key, value] of Object.entries(body?.fields || {})) {
+    out[key] = fromDocumentValue(value);
+  }
+  return out;
+}
+
+function roleDocumentUrl(projectId, path) {
+  const encodedPath = path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodedPath}`;
+}
+
+async function readOwnRoleDocument(projectId, path, idToken) {
+  const response = await fetch(roleDocumentUrl(projectId, path), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (response.status === 404 || response.status === 403) return null;
+  if (response.status === 401) throw new AppError(401, "packages_auth:invalid_token");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new AppError(
+      503,
+      "packages_auth:role_lookup_failed",
+      body?.error?.message || "Unable to resolve account role"
+    );
+  }
+  return documentData(body);
+}
+
+export function clearActorRoleCache() {
+  actorRoleCache.clear();
+}
+
+/**
+ * Resolve authorization from the verified Firebase identity.
+ * Package balances and ledgers remain D1-only. This reads only the signed-in
+ * user's own Firebase profile when the ID token does not carry a custom role.
+ */
+export async function resolveActorRole(env, salonId, identity) {
+  const email = cleanText(identity?.email || identity?.claims?.email).toLowerCase();
+  if (email && bootstrapOwnerEmails(env).has(email)) return "owner";
+
+  const claimRole = roleFromClaims(identity);
+  if (claimRole === "owner" || claimRole === "admin") return claimRole;
+
+  const uid = cleanText(identity?.uid);
+  const idToken = cleanText(identity?.idToken);
+  const projectId = cleanText(env.FIREBASE_PROJECT_ID);
+  if (!uid || !idToken || !projectId) return claimRole || "client";
+
+  const cacheKey = `${projectId}\u0000${salonId}\u0000${uid}`;
+  const cached = actorRoleCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.role;
+
+  const paths = [
+    salonPath(salonId, "users", uid),
+    salonPath(salonId, "admin_users", uid),
+    `users/${uid}`,
+  ];
+
+  for (const path of paths) {
+    const data = await readOwnRoleDocument(projectId, path, idToken);
+    if (!data) continue;
+    if (data.active === false || data.disabled === true || data.deleted === true) {
+      actorRoleCache.set(cacheKey, { role: "guest", expiresAt: Date.now() + ROLE_CACHE_GUEST_TTL_MS });
+      return "guest";
+    }
+    const role = normalizeRole(data.role || data.userRole || data.accountRole || data.type);
+    if (role) {
+      actorRoleCache.set(cacheKey, { role, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
+      return role;
+    }
+  }
+
+  const fallbackRole = claimRole || "client";
+  actorRoleCache.set(cacheKey, { role: fallbackRole, expiresAt: Date.now() + ROLE_CACHE_GUEST_TTL_MS });
+  return fallbackRole;
+}
+
+// Legacy helper retained for migration-only callers.
 export async function resolveRole(db, salonId, identity) {
   const snap = await db.getDoc(salonPath(salonId, "users", identity.uid));
   const data = snap.data || {};
   if (data.active === false) return "guest";
-  const role = cleanText(data.role || identity.claims?.role).toLowerCase();
-  if (["owner", "admin", "hr", "reception", "staff", "client"].includes(role)) return role;
-  return "guest";
+  return normalizeRole(data.role || identity.claims?.role) || "guest";
 }
 
 export function maxAgeMilliseconds(cacheControl) {
@@ -108,5 +234,7 @@ export async function authenticateRequest(request, env) {
   if (!projectId) throw new AppError(503, "packages_auth:project_not_configured");
   const authorization = request.headers.get("Authorization") || "";
   if (!authorization.startsWith("Bearer ")) throw new AppError(401, "packages_auth:login_required");
-  return verifyFirebaseIdToken(authorization.slice("Bearer ".length).trim(), projectId, env);
+  const idToken = authorization.slice("Bearer ".length).trim();
+  const identity = await verifyFirebaseIdToken(idToken, projectId, env);
+  return { ...identity, idToken };
 }

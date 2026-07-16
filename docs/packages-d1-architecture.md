@@ -27,7 +27,7 @@ This includes:
 
 ## Firebase Scope
 
-Firebase is allowed only for authentication token verification.
+Firebase is allowed only for authentication and a bounded read of the signed-in user's own role profile when the verified ID token does not carry the current role. Package balances, wallets, purchases, redemptions, and reports remain D1-only.
 
 The package system may verify a Firebase ID token to identify the requester and read role claims. It must not use Firestore to resolve wallet balances, package ownership, package catalog entries, package transactions, admin reports, or package mutations.
 
