@@ -40,6 +40,24 @@ export type GreenStartTimesArgs = {
   takenAll: Set<string>;
 };
 
+export type AvailabilityRangeBookingLike = {
+  startTime?: unknown;
+  endTime?: unknown;
+  start_time?: unknown;
+  end_time?: unknown;
+  bufferMin?: unknown;
+  buffer_min?: unknown;
+};
+
+export type AvailabilityRangeCheckArgs = {
+  startTime: string;
+  durationMin: number;
+  bufferMin: number;
+  bookings?: AvailabilityRangeBookingLike[] | null;
+  lockedTimes?: string[] | null;
+  lockGranularityMin?: number;
+};
+
 export type BlockedReasonSummary = {
   from: string;
   to: string;
@@ -366,6 +384,56 @@ export function getGreenStartTimes(args: GreenStartTimesArgs) {
   }
 
   return greens;
+}
+
+function strictTimeToMinutes(value: unknown) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && startB < endA;
+}
+
+/**
+ * Checks the whole requested service interval, not only its start button.
+ * This prevents a start time from appearing available when the service would
+ * run into a later booking or a five-minute D1 slot lock.
+ */
+export function isAvailabilityRangeFree(args: AvailabilityRangeCheckArgs) {
+  const candidateStart = strictTimeToMinutes(args.startTime);
+  if (candidateStart === null) return false;
+
+  const duration = Math.max(1, Number(args.durationMin || 0));
+  const candidateBuffer = Math.max(0, Number(args.bufferMin || 0));
+  const candidateEnd = candidateStart + duration + candidateBuffer;
+  if (candidateEnd > 24 * 60) return false;
+
+  for (const booking of args.bookings || []) {
+    const bookingStart = strictTimeToMinutes(booking?.startTime ?? booking?.start_time);
+    const bookingEndBase = strictTimeToMinutes(booking?.endTime ?? booking?.end_time);
+    if (bookingStart === null || bookingEndBase === null || bookingEndBase <= bookingStart) continue;
+    const bookingBuffer = Math.max(0, Number(booking?.bufferMin ?? booking?.buffer_min ?? 0));
+    if (rangesOverlap(candidateStart, candidateEnd, bookingStart, bookingEndBase + bookingBuffer)) {
+      return false;
+    }
+  }
+
+  const lockStep = Math.max(1, Number(args.lockGranularityMin || 5));
+  for (const lockTime of args.lockedTimes || []) {
+    const lockStart = strictTimeToMinutes(lockTime);
+    if (lockStart === null) continue;
+    if (rangesOverlap(candidateStart, candidateEnd, lockStart, lockStart + lockStep)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function getLocalTakenTimesForItem<T extends AvailabilityCartItemLike>(

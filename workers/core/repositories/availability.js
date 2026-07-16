@@ -115,6 +115,7 @@ async function bookedRows(db, salonId, staffId, date) {
           service_name_snapshot: item.service_name_snapshot,
           start_time: item.start_time || booking.start_time,
           end_time: item.end_time || booking.end_time,
+          buffer_min: Number(booking.buffer_min || 0),
           status: booking.status,
           client_id: booking.client_id,
           client_name: client?.name || null,
@@ -135,6 +136,7 @@ async function bookedRows(db, salonId, staffId, date) {
        bi.service_name_snapshot,
        COALESCE(bi.start_time, b.start_time) AS start_time,
        COALESCE(bi.end_time, b.end_time) AS end_time,
+       COALESCE(b.buffer_min, 0) AS buffer_min,
        b.status,
        b.client_id,
        c.name AS client_name,
@@ -182,6 +184,9 @@ export async function getStaffAvailability(db, salonId, query = {}) {
         return minute !== null && minute % slotStepMin === 0;
       })
   );
+  const lockedTimes = locks
+    .map((row) => cleanText(row.slot_time))
+    .filter((time) => timeToMinutes(time) !== null);
   const bookedSlots = {};
 
   for (const booking of bookings) {
@@ -203,6 +208,7 @@ export async function getStaffAvailability(db, salonId, query = {}) {
           status: cleanText(booking.status),
           startTime: start,
           endTime: end,
+          bufferMin: Number(booking.buffer_min || 0),
         };
       }
     }
@@ -233,6 +239,7 @@ export async function getStaffAvailability(db, salonId, query = {}) {
       !onLeave &&
       (staff.schedules?.length ? scheduleWindows.length > 0 : true),
     scheduleWindows,
+    lockedTimes,
     takenTimes: [...takenTimes].sort(),
     bookedSlots,
     bookings,

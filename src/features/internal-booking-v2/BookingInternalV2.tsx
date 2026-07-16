@@ -9,7 +9,7 @@ import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpe
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
 import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../../helpers/timeSlots";
 import { formatTime12 } from "../../helpers/timeDisplay";
-import { filterStaffForInternalBookingTarget, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
+import { filterStaffForInternalBookingTarget, isAvailabilityRangeFree, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
 import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isStaffAvailableForDate } from "../../helpers/staffAvailability";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { findActiveOfferByCode, isOfferActiveNow, listOffers, type Offer } from "../../services/firestoreOffers";
@@ -739,9 +739,17 @@ export default function BookingInternalV2() {
         date: bookingDate,
         slotStepMin,
         bufferMin,
-      });
-      const taken = new Set((availability?.takenTimes || []).map((value: any) => String(value || "").trim()));
-      const free = endingOk.map((slot: any) => String(slot.value24 || "").trim()).filter(Boolean).filter((time) => !taken.has(time));
+      }, "core");
+      const free = endingOk
+        .map((slot: any) => String(slot.value24 || "").trim())
+        .filter(Boolean)
+        .filter((time) => isAvailabilityRangeFree({
+          startTime: time,
+          durationMin: duration,
+          bufferMin,
+          bookings: availability?.bookings || [],
+          lockedTimes: availability?.lockedTimes || availability?.takenTimes || [],
+        }));
       setAvailableTimes((current) => ({ ...current, [serviceKey]: free }));
     } catch (error) {
       console.error("[BookingInternalV2] availability load failed", error);
@@ -833,6 +841,54 @@ export default function BookingInternalV2() {
 
     setSubmitting(true);
     try {
+      const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
+      for (const service of cart) {
+        const serviceKey = String(service.id);
+        const selection = scheduleByService[serviceKey];
+        const staff = allStaff.find((row) => staffId(row) === selection?.staffId);
+        if (!selection?.time || !staff) continue;
+
+        const availability = await getStaffAvailability({
+          staffId: selection.staffId,
+          employeeKey: resolveEmployeeKey({
+            employeeUid: String(staff?.uid || staff?.employeeUid || ""),
+            employeeId: selection.staffId,
+          }),
+          employeeUid: String(staff?.uid || staff?.employeeUid || ""),
+          employeeName: staffName(staff),
+          date: bookingDate,
+          slotStepMin,
+          bufferMin,
+          forceFresh: true,
+        }, "core");
+
+        if (!isAvailabilityRangeFree({
+          startTime: selection.time,
+          durationMin: serviceDuration(service) || 30,
+          bufferMin,
+          bookings: availability?.bookings || [],
+          lockedTimes: availability?.lockedTimes || availability?.takenTimes || [],
+        })) {
+          staleSelections.push({ service, staff, serviceKey });
+        }
+      }
+
+      if (staleSelections.length) {
+        setScheduleByService((current) => {
+          const next = { ...current };
+          for (const row of staleSelections) {
+            const existing = next[row.serviceKey];
+            if (existing) next[row.serviceKey] = { ...existing, time: "" };
+          }
+          return next;
+        });
+        await Promise.all(staleSelections.map(({ service, staff }) => loadTimesForService(service, staff)));
+        setScheduleMessage("تم تحديث المواعيد؛ الوقت المختار أصبح محجوزًا أو يتداخل مع حجز آخر. اختاري وقتًا جديدًا.");
+        setSubmitError("الموعد المختار لم يعد متاحًا. تمت إعادتك إلى خطوة الموعد بعد تحديث الأوقات.");
+        setStep(3);
+        return;
+      }
+
       const authUser = getAuth().currentUser;
       const userId = String(authUser?.uid || "internal_staff");
       const status = paymentType === "none" ? "pending" : "confirmed";
@@ -985,11 +1041,29 @@ export default function BookingInternalV2() {
       }
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
-      setSubmitError(`تعذر حفظ الحجز: ${String(error?.message || error || "خطأ غير معروف")}`);
+      const code = String(error?.code || "").toLowerCase();
+      const message = String(error?.message || error || "");
+      const isSlotConflict =
+        Number(error?.status || 0) === 409 ||
+        code.includes("slot") ||
+        code.includes("staff_slot_conflict") ||
+        message.toUpperCase().includes("SLOT_TAKEN") ||
+        message.toLowerCase().includes("الموعد محجوز");
+      if (isSlotConflict) {
+        setScheduleByService((current) => Object.fromEntries(
+          Object.entries(current).map(([key, value]) => [key, { ...value, time: "" }])
+        ));
+        setAvailableTimes({});
+        setScheduleMessage("سبق حجز هذا الوقت قبل إتمام العملية. أعيدي اختيار المواعيد من القائمة المحدثة.");
+        setSubmitError("الموعد محجوز بالفعل. تمت إعادتك إلى خطوة الموعد ولم يتم إنشاء حجز مكرر.");
+        setStep(3);
+      } else {
+        setSubmitError(`تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
+      }
     } finally {
       setSubmitting(false);
     }
-  }, [selectedClient, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
+  }, [selectedClient, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({

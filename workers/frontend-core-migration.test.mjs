@@ -268,11 +268,18 @@ test("Core booking responses carry invoice paid totals and V2 retries idempotent
 test("internal booking V2 is pinned to Core D1 and cannot read the Firestore booking counter", () => {
   const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
   const compat = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
+  const availabilityHelper = readFileSync("src/helpers/bookingAvailabilityUtils.ts", "utf8");
   const envWeb = readFileSync(".env.web", "utf8");
   assert.match(v2, /resolveCoreBookingDataSource/);
   assert.match(v2, /createBookingGroup\(\{ parent, items: itemRows \}, "core"\)/);
   assert.match(v2, /listActiveStaffAll\(SALON_ID, "core"\)/);
   assert.match(v2, /listOffers\(SALON_ID, "core"\)/);
+  assert.match(v2, /getStaffAvailability\([\s\S]*?forceFresh:\s*true[\s\S]*?\}, "core"\)/);
+  assert.match(v2, /isAvailabilityRangeFree/);
+  assert.match(v2, /setStep\(3\)/);
+  assert.match(availabilityHelper, /export function isAvailabilityRangeFree/);
+  assert.match(availabilityHelper, /rangesOverlap/);
+  assert.match(availabilityHelper, /lockedTimes/);
   assert.doesNotMatch(v2, /getDataSourceFlags\(\)\.useCoreD1/);
   assert.doesNotMatch(v2, /firebase\/firestore/);
   assert.match(compat, /mode === "core" \? resolveCoreBookingDataSource\(\)/);

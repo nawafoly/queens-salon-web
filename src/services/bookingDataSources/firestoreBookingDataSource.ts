@@ -224,6 +224,7 @@ export const firestoreBookingDataSource: BookingDataSource = {
       leaveNote: "",
       availableForDate: true,
       scheduleWindows: [],
+      lockedTimes: [...takenTimes].sort(),
       takenTimes: [...takenTimes].sort(),
       bookedSlots,
       bookings: [],

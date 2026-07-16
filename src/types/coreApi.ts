@@ -276,6 +276,7 @@ export type CoreAvailabilityBookingSlot = {
   status: string;
   startTime: string;
   endTime: string;
+  bufferMin?: number;
 };
 
 export type CoreStaffAvailability = {
@@ -290,6 +291,7 @@ export type CoreStaffAvailability = {
   leaveNote: string;
   availableForDate: boolean;
   scheduleWindows: Array<{ id: string; startTime: string; endTime: string }>;
+  lockedTimes: string[];
   takenTimes: string[];
   bookedSlots: Record<string, CoreAvailabilityBookingSlot>;
   bookings: Array<Record<string, unknown>>;

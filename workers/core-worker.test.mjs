@@ -1785,6 +1785,7 @@ test("availability endpoint returns D1 slot locks and booking metadata", async (
   ), env(fake));
   const body = await json(response);
   assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.lockedTimes, ["10:00", "10:05", "10:10", "10:15", "10:20", "10:25"]);
   assert.deepEqual(body.data.takenTimes, ["10:00", "10:10", "10:20"]);
   assert.equal(body.data.bookedSlots["10:00"].bookingId, "booking-availability");
   assert.equal(body.data.scheduleWindows[0].startTime, "09:00");
@@ -1820,6 +1821,7 @@ test("availability projects five-minute locks onto the requested UI slot grid", 
   );
   const body = await json(availability);
   assert.equal(availability.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.lockedTimes, ["10:05", "10:10", "10:15", "10:20", "10:25", "10:30"]);
   assert.deepEqual(body.data.takenTimes, ["10:10", "10:20", "10:30"]);
 });
 
