@@ -1,0 +1,138 @@
+/* Attendance device cards — clarity layer
+   Keeps the technical device id out of the daily operational view and
+   promotes the employee assignment, device type, trust status, and usage data. */
+
+.attendance-security-device-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0;
+}
+
+/* Employee identity becomes the first and clearest part of the card. */
+.attendance-security-device-card > .attendance-security-device-users {
+  order: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.attendance-security-device-card > .attendance-security-device-users::before {
+  content: "الموظفة المرتبطة بالجهاز";
+  grid-column: 1 / -1;
+  color: #7b8395;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.attendance-security-device-card > .attendance-security-device-users > span {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid #eadce1;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #fff, #fff9fb);
+  color: #171e30;
+  font-size: 0.98rem;
+  font-weight: 950;
+}
+
+.attendance-security-device-card > .attendance-security-device-users > span::before {
+  content: "الموظفة";
+  display: block;
+  grid-column: 1 / -1;
+  margin-bottom: -5px;
+  color: #8c6571;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.attendance-security-device-card > .attendance-security-device-users small {
+  min-width: max-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f1f3f7;
+  color: #687185;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+/* Device type and trust status appear second. The technical id is hidden. */
+.attendance-security-device-card > header {
+  order: 2;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #edf0f4;
+  border-radius: 14px;
+  background: #fafbfc;
+}
+
+.attendance-security-device-card > header > div > strong {
+  display: none !important;
+}
+
+.attendance-security-device-card > header > div::before {
+  content: "نوع الجهاز";
+  display: block;
+  margin-bottom: 3px;
+  color: #7e8799;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.attendance-security-device-card > header > div > small {
+  margin-top: 0 !important;
+  color: #222b3d !important;
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.attendance-security-device-card > header > em {
+  min-width: 66px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Keep only operationally useful information in the main card. */
+.attendance-security-device-card > dl {
+  order: 3;
+}
+
+.attendance-security-device-card > dl > div:nth-child(5),
+.attendance-security-device-card > dl > div:nth-child(6) {
+  display: none;
+}
+
+.attendance-security-device-card > footer {
+  order: 4;
+}
+
+.attendance-security-device-card > footer button:first-child {
+  border-color: #c7d9cf;
+  background: #f4fbf7;
+  color: #176a46;
+}
+
+.attendance-security-device-card > footer button.is-danger {
+  background: #fffafb;
+}
+
+@media (max-width: 720px) {
+  .attendance-security-device-card > .attendance-security-device-users {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attendance-security-device-card > .attendance-security-device-users > span {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attendance-security-device-card > .attendance-security-device-users small {
+    width: fit-content;
+  }
+}
