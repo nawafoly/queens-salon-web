@@ -2698,15 +2698,7 @@ export async function markBookingViewed(bookingId: string) {
 
 export async function listAllBookings(): Promise<BookingDocWithId[]> {
   if (getDataSourceFlags().useCoreD1) {
-    const coreRows = (await CoreBookingService.list()).map((row) => ({
-      ...coreBookingToLegacy(row),
-      source: "core-d1" as const,
-    }));
-    const firestoreRows = await readFirestoreBookings().catch((error) => {
-      console.warn("[firestoreBookings] legacy Firestore booking read failed", error);
-      return [] as BookingDocWithId[];
-    });
-    return mergeBookingReadRows(firestoreRows, coreRows);
+    return listCoreBookings();
   }
   return readFirestoreBookings();
 }
@@ -2768,12 +2760,7 @@ export async function listCoreBookings(scope?: BookingReadScope): Promise<Bookin
 
 export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
   if (getDataSourceFlags().useCoreD1) {
-    const coreRows = await listCoreBookings(scope);
-    const firestoreRows = await readFirestoreBookings(scope).catch((error) => {
-      console.warn("[firestoreBookings] legacy Firestore booking read failed", error);
-      return [] as BookingDocWithId[];
-    });
-    return mergeBookingReadRows(firestoreRows, coreRows);
+    return listCoreBookings(scope);
   }
   return readFirestoreBookings(scope);
 }
@@ -2815,36 +2802,46 @@ export function watchAllBookings(
 ) {
   if (getDataSourceFlags().useCoreD1) {
     let stopped = false;
-    let latestCoreRows: BookingDocWithId[] = [];
-    let latestFirestoreRows: BookingDocWithId[] = [];
-    const emit = () => {
-      if (!stopped) onData(mergeBookingReadRows(latestFirestoreRows, latestCoreRows));
-    };
-    const legacyUnsubscribe = watchFirestoreBookings(
-      (rows) => {
-        latestFirestoreRows = rows;
-        emit();
-      },
-      (error) => {
-        console.warn("[firestoreBookings] legacy Firestore booking watcher failed", error);
-        latestFirestoreRows = [];
-        emit();
-      },
-      scope
-    );
+    let loading = false;
+
     const loadCore = async () => {
+      if (stopped || loading) return;
+      loading = true;
       try {
-        latestCoreRows = await listCoreBookings(scope);
-        emit();
+        const rows = await listCoreBookings(scope);
+        if (!stopped) onData(rows);
+      } catch (error) {
+        if (!stopped) onError?.(error);
+      } finally {
+        loading = false;
       }
-      catch (error) { if (!stopped) onError?.(error); }
     };
+
+    const handleVisible = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void loadCore();
+      }
+    };
+    const handleFocus = () => void loadCore();
+
     void loadCore();
-    const timer = globalThis.setInterval(loadCore, 12_000);
+    const timer = globalThis.setInterval(loadCore, 8_000);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisible);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleFocus);
+    }
+
     return () => {
       stopped = true;
-      legacyUnsubscribe();
       globalThis.clearInterval(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisible);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleFocus);
+      }
     };
   }
   return watchFirestoreBookings(onData, onError, scope);

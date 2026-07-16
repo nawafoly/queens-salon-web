@@ -148,14 +148,32 @@ test("Core and package migrations share client canonicalization policy", () => {
   assert.match(shared, /client_alias_conflict/);
 });
 
-test("dashboard bookings merges Core D1 rows with legacy Firestore rows in Core mode", () => {
-  const source = readFileSync("src/services/firestoreBookings.ts", "utf8");
-  assert.match(source, /function mergeBookingReadRows/);
-  assert.match(source, /export async function listCoreBookings/);
-  assert.match(source, /async function readFirestoreBookings/);
-  assert.match(source, /function watchFirestoreBookings/);
-  assert.match(source, /source:\s*"core-d1"/);
-  assert.match(source, /source:\s*"firestore"/);
+test("dashboard bookings uses Core D1 without touching Firestore in Core mode", () => {
+  const service = readFileSync("src/services/firestoreBookings.ts", "utf8");
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+
+  const listStart = service.indexOf("export async function listBookings");
+  const listEnd = service.indexOf("function watchFirestoreBookings", listStart);
+  const listBlock = service.slice(listStart, listEnd);
+  const coreListBranch = listBlock.match(
+    /if \(getDataSourceFlags\(\)\.useCoreD1\) \{([\s\S]*?)\n\s*\}/
+  )?.[1] || "";
+  assert.match(coreListBranch, /return listCoreBookings\(scope\)/);
+  assert.doesNotMatch(coreListBranch, /readFirestoreBookings/);
+
+  const watchStart = service.indexOf("export function watchAllBookings");
+  const watchEnd = service.indexOf("export async function listUserBookings", watchStart);
+  const watchBlock = service.slice(watchStart, watchEnd);
+  const coreWatchBranch = watchBlock.match(
+    /if \(getDataSourceFlags\(\)\.useCoreD1\) \{([\s\S]*?)\n\s*\}\n\s*return watchFirestoreBookings/
+  )?.[1] || "";
+  assert.match(coreWatchBranch, /const rows = await listCoreBookings\(scope\)/);
+  assert.match(coreWatchBranch, /setInterval\(loadCore, 8_000\)/);
+  assert.doesNotMatch(coreWatchBranch, /watchFirestoreBookings/);
+
+  assert.match(dashboard, /const scope = useCoreD1 \? undefined : \{ statuses: LIVE_ACTIVE_STATUSES \}/);
+  assert.match(dashboard, /if \(useCoreD1\) setHistoryBookingsSource\(\[\]\)/);
+  assert.match(dashboard, /تحديث البيانات/);
 });
 
 test("internal booking V2 staff source merges staff_public and employees without hardcoded staff names", () => {

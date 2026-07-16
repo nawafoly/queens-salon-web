@@ -2139,11 +2139,13 @@ type DashboardBookingsProps = {
 };
 
 export default function DashboardBookings({ currentRole = "guest" }: DashboardBookingsProps) {
+  const useCoreD1 = getDataSourceFlags().useCoreD1;
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveBookingsSource, setLiveBookingsSource] = useState<Booking[]>([]);
   const [historyBookingsSource, setHistoryBookingsSource] = useState<Booking[]>([]);
   const [error, setError] = useState("");
+  const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0);
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusOption>("all");
@@ -2368,27 +2370,40 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
 
-    const handleLiveError = () => {
+    const handleLiveError = (loadError: unknown) => {
       if (!active) return;
-      setError("خطأ في تحميل الحجوزات");
+      console.error("[DashboardBookings] booking source load failed", loadError);
+      setError(
+        useCoreD1
+          ? "تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى."
+          : "خطأ في تحميل الحجوزات"
+      );
       setLoading(false);
     };
 
+    const scope = useCoreD1 ? undefined : { statuses: LIVE_ACTIVE_STATUSES };
     const unsub = watchAllBookings((data) => {
       if (!active) return;
       setLiveBookingsSource(data as Booking[]);
+      if (useCoreD1) setHistoryBookingsSource([]);
       setError("");
       setLoading(false);
-    }, handleLiveError, { statuses: LIVE_ACTIVE_STATUSES });
+    }, handleLiveError, scope);
 
     return () => {
       active = false;
       unsub();
     };
-  }, []);
+  }, [bookingsRefreshKey, useCoreD1]);
 
   useEffect(() => {
+    if (useCoreD1) {
+      setHistoryBookingsSource([]);
+      return;
+    }
+
     let cancelled = false;
     const requestId = historyBookingsRequestRef.current + 1;
     historyBookingsRequestRef.current = requestId;
@@ -2417,7 +2432,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return () => {
       cancelled = true;
     };
-  }, [explicitHistoryScope]);
+  }, [explicitHistoryScope, useCoreD1]);
 
   useEffect(() => {
     const baseList = mergedBookingSources.map((b: any) => ({
@@ -4816,6 +4831,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       .join(" | ");
   }, [bulkTargetBookings]);
 
+  const refreshBookingData = useCallback(() => {
+    historyBookingsCacheRef.current = {};
+    setError("");
+    setLoading(true);
+    setBookingsRefreshKey((current) => current + 1);
+  }, []);
+
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
 
   return (
@@ -5255,6 +5277,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             ) : null}
           </div>
           <div className="bk-actions">
+            <button className="exp-btn ghost" type="button" onClick={refreshBookingData}>
+              <FontAwesomeIcon icon={faRotate} /> تحديث البيانات
+            </button>
             <button className="exp-btn" onClick={handleExport}>
               <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
             </button>
