@@ -1,0 +1,131 @@
+.attendance-security-device-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.attendance-security-device-card > header {
+  align-items: flex-start;
+}
+
+.attendance-security-device-identity {
+  min-width: 0;
+}
+
+.attendance-security-device-identity strong {
+  color: var(--att-ink);
+  font-size: 1rem;
+  line-height: 1.45;
+  white-space: normal !important;
+}
+
+.attendance-security-device-identity small {
+  margin-top: 5px !important;
+  color: #677186 !important;
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.attendance-security-device-status-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #ead8a9;
+  border-radius: 11px;
+  background: #fffaf0;
+  color: #8a601a;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.attendance-security-device-card.is-trusted .attendance-security-device-status-note {
+  border-color: #c5e2d1;
+  background: #f1faf5;
+  color: #176a46;
+}
+
+.attendance-security-device-card.is-blocked .attendance-security-device-status-note {
+  border-color: #efc0c9;
+  background: #fff2f4;
+  color: #aa2139;
+}
+
+.attendance-security-device-owner {
+  grid-column: 1 / -1;
+  padding: 12px 13px;
+  border: 1px solid #edf0f4;
+  border-radius: 11px;
+  background: #fafbfc;
+}
+
+.attendance-security-device-owner dt {
+  color: #7e8799;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.attendance-security-device-owner dd {
+  margin: 5px 0 0;
+  color: #222b3d;
+  font-size: .82rem;
+  font-weight: 950;
+}
+
+.attendance-security-device-users-label {
+  display: block;
+  margin-top: 15px;
+  color: #697286;
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.attendance-security-device-card footer button.is-primary {
+  border-color: var(--att-maroon);
+  background: var(--att-maroon);
+  color: #fff;
+}
+
+.attendance-security-device-card footer button.is-technical {
+  margin-inline-start: auto;
+}
+
+.attendance-security-device-detail-users {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.attendance-security-device-detail-users > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 10px;
+  background: #fafbfc;
+  color: #3f485b;
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.attendance-security-device-detail-users small {
+  color: #8a92a3;
+  font-size: .7rem;
+}
+
+@media (max-width: 680px) {
+  .attendance-security-device-card > header {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .attendance-security-device-card > header > em {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+
+  .attendance-security-device-card footer button.is-technical {
+    margin-inline-start: 0;
+  }
+}
