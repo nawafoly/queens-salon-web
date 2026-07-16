@@ -3053,7 +3053,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   path="booking-internal"
                   element={
                     <PermissionRoute permission="bookings.create">
-                      <BookingInternal internalMode />
+                      <BookingInternalV2 />
                     </PermissionRoute>
                   }
                 />
@@ -3063,6 +3063,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   element={
                     <PermissionRoute permission="bookings.create">
                       <BookingInternalV2 />
+                    </PermissionRoute>
+                  }
+                />
+
+                <Route
+                  path="booking-internal-legacy"
+                  element={
+                    <PermissionRoute permission="bookings.create">
+                      <BookingInternal internalMode />
                     </PermissionRoute>
                   }
                 />

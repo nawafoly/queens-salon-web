@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import "./booking-internal-v2.css";
 import { addDoc, collection, getDocs, limit, orderBy, query as fsQuery, serverTimestamp, where } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { getDataSourceFlags } from "../../config/dataSourceFlags";
 import { resolveBookingDataSource } from "../../services/bookingDataSource";
-import { createBooking, getStaffAvailability, listActiveCategoriesBySection, listActiveSections, listActiveServices, listActiveStaffAll } from "../../services/bookingDataSourceCompat";
+import { createBookingGroup, getStaffAvailability, listActiveCategoriesBySection, listActiveSections, listActiveServices, listActiveStaffAll, updateBookingDetails } from "../../services/bookingDataSourceCompat";
 import { SALON_ID } from "../../helpers/bookingSharedConstants";
 import { classifySearchKey } from "../../helpers/bookingSearchUtils";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
@@ -17,6 +18,7 @@ import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isSt
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { todayISO } from "../../helpers/bookingDateUtils";
 import { getAuth } from "firebase/auth";
+import { CoreAuditService } from "../../services/CoreAuditService";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -152,6 +154,7 @@ const steps = [
 ];
 
 export default function BookingInternalV2() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>(1);
   const [mode, setMode] = useState<"new" | "manage">("new");
   const [query, setQuery] = useState("");
@@ -564,35 +567,23 @@ export default function BookingInternalV2() {
     if (paymentMethod === "mixed" && Math.abs(mixedTotal - effectivePaidAmount) > 0.01) {
       setSubmitError(`مجموع الدفع المختلط يجب أن يساوي ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س.`); return;
     }
+
     setSubmitting(true);
     try {
-      const userId = String(getAuth().currentUser?.uid || "internal_staff");
+      const authUser = getAuth().currentUser;
+      const userId = String(authUser?.uid || "internal_staff");
       const status = paymentType === "none" ? "pending" : "confirmed";
       const total = Math.max(0, finalTotal);
-      const created: string[] = [];
-      let allocatedPaid = 0;
-      for (let index = 0; index < cart.length; index += 1) {
-        const service = cart[index];
+
+      const itemRows = cart.map((service, index) => {
         const key = String(service.id);
         const schedule = scheduleByService[key];
         const itemTotal = Math.max(0, servicePrice(service));
-        const itemPaid = index === cart.length - 1
-          ? Math.max(0, effectivePaidAmount - allocatedPaid)
-          : total > 0 ? Math.min(itemTotal, Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100) : 0;
-        allocatedPaid += itemPaid;
+        const proportionalPaid = total > 0
+          ? Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100
+          : 0;
         const selectedStaff = allStaff.find((row) => staffId(row) === schedule.staffId);
-        const paymentBreakdown = paymentMethod === "mixed"
-          ? {
-              cash: total > 0 ? Math.round((Number(cashAmount || 0) * itemTotal / total) * 100) / 100 : 0,
-              card: total > 0 ? Math.round((Number(cardAmount || 0) * itemTotal / total) * 100) / 100 : 0,
-              transfer: total > 0 ? Math.round((Number(transferAmount || 0) * itemTotal / total) * 100) / 100 : 0,
-            }
-          : {
-              cash: paymentMethod === "cash" ? itemPaid : 0,
-              card: paymentMethod === "card" ? itemPaid : 0,
-              transfer: paymentMethod === "transfer" ? itemPaid : 0,
-            };
-        const result = await createBooking({
+        return {
           userId,
           createdBy: "staff",
           channel: "internal",
@@ -616,19 +607,98 @@ export default function BookingInternalV2() {
           finalPrice: itemTotal,
           status,
           paymentMethod: paymentType === "none" ? undefined : paymentMethod,
-          paymentBreakdown,
           paymentType,
-          paidAmount: itemPaid,
-          remainingAmount: Math.max(0, itemTotal - itemPaid),
-          ...(itemPaid > 0 ? { paidAt: Date.now() } : {}),
+          paidAmount: proportionalPaid,
+          remainingAmount: Math.max(0, itemTotal - proportionalPaid),
+          ...(proportionalPaid > 0 ? { paidAt: Date.now() } : {}),
           note: bookingNote.trim() || undefined,
           slotStepMinAtBooking: slotStepMin,
           bufferMinAtBooking: bufferMin,
           durationMin: serviceDuration(service) || 30,
+          cartItemId: `item_${index}`,
+        } as any;
+      });
+
+      const firstItem = itemRows[0];
+      const parent = {
+        ...firstItem,
+        serviceName: cart.length === 1 ? firstItem.serviceName : `${cart.length} خدمات`,
+        serviceId: cart.length === 1 ? firstItem.serviceId : undefined,
+        employeeId: undefined,
+        employeeUid: null,
+        employeeName: "عدة موظفات",
+        total,
+        finalPrice: total,
+        paymentMethod: paymentType === "none" ? undefined : paymentMethod,
+        paymentType,
+        paidAmount: effectivePaidAmount,
+        remainingAmount,
+        paymentBreakdown: paymentMethod === "mixed"
+          ? { cash: Number(cashAmount || 0), card: Number(cardAmount || 0), transfer: Number(transferAmount || 0) }
+          : {
+              cash: paymentMethod === "cash" ? effectivePaidAmount : 0,
+              card: paymentMethod === "card" ? effectivePaidAmount : 0,
+              transfer: paymentMethod === "transfer" ? effectivePaidAmount : 0,
+            },
+      } as any;
+
+      const created = await createBookingGroup({ parent, items: itemRows });
+      const bookingId = String(created.parentId || "");
+
+      // Core D1 separates booking creation from financial posting. Record each
+      // actual payment here so income_entries, invoice totals and reports stay in sync.
+      if (getDataSourceFlags().useCoreD1 && effectivePaidAmount > 0 && bookingId) {
+        const dataSource = resolveBookingDataSource();
+        const payments = paymentMethod === "mixed"
+          ? [
+              ["cash", Number(cashAmount || 0)],
+              ["card", Number(cardAmount || 0)],
+              ["transfer", Number(transferAmount || 0)],
+            ] as const
+          : [[paymentMethod, effectivePaidAmount]] as const;
+
+        for (const [method, amount] of payments) {
+          if (amount <= 0) continue;
+          await dataSource.recordPayment({
+            bookingId,
+            method,
+            amountHalalas: Math.round(amount * 100),
+            status: "paid",
+            paidAt: new Date().toISOString(),
+            idempotencyKey: `booking-v2:${bookingId}:${method}:${Math.round(amount * 100)}`,
+          });
+        }
+
+        await updateBookingDetails(bookingId, {
+          paymentType,
+          paidAmount: effectivePaidAmount,
+          remainingAmount,
+          paymentMethod,
+          status,
         } as any);
-        created.push(String((result as any)?.id || ""));
+
+        await CoreAuditService.record({
+          action: "booking_created",
+          entityType: "booking",
+          entityId: bookingId,
+          description: `تم إنشاء حجز إداري من ${cart.length} خدمة`,
+          source: "dashboard_booking_v2",
+          actorUid: userId,
+          actorEmail: authUser?.email || null,
+          afterJson: JSON.stringify({
+            clientName: selectedClient.name,
+            clientPhone: selectedClient.phone,
+            total,
+            paidAmount: effectivePaidAmount,
+            remainingAmount,
+            paymentType,
+            paymentMethod,
+            services: cart.map((service) => serviceTitle(service)),
+          }),
+        });
       }
-      setCreatedBookingIds(created.filter(Boolean));
+
+      setCreatedBookingIds([bookingId, ...(created.itemIds || [])].filter(Boolean));
       markQuickClientUsage(selectedClient);
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
@@ -636,7 +706,7 @@ export default function BookingInternalV2() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedClient, cart, allScheduled, paymentType, paymentMethod, effectivePaidAmount, finalTotal, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
+  }, [selectedClient, cart, allScheduled, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId]);
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
@@ -665,7 +735,7 @@ export default function BookingInternalV2() {
           <div className="bk2-empty-icon"><FiCalendar /></div>
           <h2>إدارة الحجوزات ستكون في مساحة مستقلة</h2>
           <p>البحث، التحصيل، التأكيد، الطباعة والاسترجاع ستُنقل هنا دون تغيير منطق الحجز الحالي.</p>
-          <button onClick={() => setMode("new")}>العودة إلى حجز جديد</button>
+          <button onClick={() => navigate("/dashboard/bookings")}>فتح صفحة الحجوزات</button>
         </section>
       ) : (
         <>
