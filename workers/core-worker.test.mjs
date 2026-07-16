@@ -15,6 +15,7 @@ import worker from "./core/index.js";
 class FakeD1 {
   constructor() {
     this.__fakeD1 = true;
+    this.failBatchOnSqlIncludes = "";
     this.tables = Object.fromEntries([
       "clients",
       "client_aliases",
@@ -328,10 +329,21 @@ class FakeD1 {
   }
 
   async batch(statements) {
+    const snapshot = Object.fromEntries(
+      Object.entries(this.tables).map(([table, rows]) => [
+        table,
+        new Map([...rows.entries()].map(([key, row]) => [key, { ...row }])),
+      ])
+    );
     const results = [];
-    for (const statement of statements) {
+    try {
+      for (const statement of statements) {
       const sql = statement.sql.replace(/\s+/g, " ").trim();
       const params = statement.params || [];
+      if (this.failBatchOnSqlIncludes && sql.includes(this.failBatchOnSqlIncludes)) {
+        this.failBatchOnSqlIncludes = "";
+        throw new Error("simulated fake D1 batch failure");
+      }
       if (sql.startsWith("INSERT INTO bookings")) {
         const [id, public_id, salon_id, client_id, staff_id, booking_date, start_time, end_time, status, source, notes, subtotal_halalas, discount_halalas, total_halalas, package_sessions_used, created_by_uid, created_at, updated_at, slot_step_min, buffer_min] = params;
         results.push(this.insert("bookings", {
@@ -350,6 +362,8 @@ class FakeD1 {
       } else if (sql.startsWith("UPDATE bookings SET status = 'cancelled'")) {
         const [cancelled_at, notes, updated_at, salonId, id] = params;
         results.push(this.update("bookings", salonId, id, { status: "cancelled", cancelled_at, notes, updated_at }));
+      } else if (sql.startsWith("UPDATE bookings SET")) {
+        results.push(this.dynamicUpdate("bookings", sql, params));
       } else if (sql.startsWith("DELETE FROM booking_slot_locks")) {
         const [salonId, bookingId] = params;
         let removed = 0;
@@ -391,6 +405,8 @@ class FakeD1 {
         results.push(this.insert("payments", { id, salon_id, invoice_id, booking_id, client_id, method, amount_halalas, status, provider, provider_reference, idempotency_key, paid_at, created_at }));
       } else if (sql.startsWith("INSERT INTO income_entries")) {
         results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("INSERT INTO audit_logs")) {
+        results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE refunds SET amount_halalas")) {
         const [amountHalalas, method, reason, refundedAt, salonId, id] = params;
         results.push(this.update("refunds", salonId, id, { amount_halalas: amountHalalas, method, reason, refunded_at: refundedAt }));
@@ -408,8 +424,12 @@ class FakeD1 {
       } else {
         throw new Error(`unhandled fake D1 batch: ${sql}`);
       }
+      }
+      return results;
+    } catch (error) {
+      this.tables = snapshot;
+      throw error;
     }
-    return results;
   }
 }
 
@@ -539,6 +559,26 @@ function seedCore(fake) {
   fake.seed("staff", { id: "staff-a", salon_id: "main", firebase_uid: "staff1", name: "Staff A", phone_normalized: null, active: 1, employment_status: "active", created_at: now, updated_at: now });
 }
 
+async function createCoreBooking(fake, overrides = {}) {
+  const id = overrides.id || "booking-a";
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id,
+      invoiceId: overrides.invoiceId || `invoice-${id}`,
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: overrides.bookingDate || "2027-01-10",
+      startTime: overrides.startTime || "10:00",
+      items: [{ id: overrides.itemId || `item-${id}`, serviceId: "svc-a" }],
+      ...overrides.body,
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  return fake.find("bookings", "main", id);
+}
+
 test("core operational path passes D1-only guard", () => {
   const result = spawnSync(process.execPath, ["scripts/check-core-d1-only.mjs"], {
     cwd: process.cwd(),
@@ -621,6 +661,9 @@ test("booking creation creates booking items and invoice", async () => {
   assert.equal(body.data.end_time, "10:30");
   assert.equal(body.data.items.length, 1);
   assert.equal(fake.rows("invoices")[0].booking_id, "booking-a");
+  assert.equal(fake.rows("payments").length, 0);
+  assert.equal(fake.rows("income_entries").length, 0);
+  assert.ok(fake.rows("audit_logs").some((row) => row.action === "booking_created" && row.entity_id === "booking-a"));
 });
 
 test("booking conflict rejects same staff slot", async () => {
@@ -685,6 +728,178 @@ test("invoice creation and split payment are idempotent", async () => {
   assert.equal(repeat.data.idempotent, true);
   assert.equal(fake.find("invoices", "main", "invoice-a").status, "paid");
   assert.equal(fake.rows("payments").length, 2);
+});
+
+test("full cash booking payment updates invoice booking income reports and audit", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, { id: "booking-cash", invoiceId: "invoice-cash" });
+
+  const response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-cash",
+      bookingId: "booking-cash",
+      method: "cash",
+      amountHalalas: 7500,
+      idempotencyKey: "booking-cash:cash:7500",
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  assert.equal(fake.find("invoices", "main", "invoice-cash").paid_halalas, 7500);
+  assert.equal(fake.find("invoices", "main", "invoice-cash").status, "paid");
+  assert.equal(fake.find("bookings", "main", "booking-cash").payment_status, "paid");
+  assert.equal(fake.rows("payments").length, 1);
+  assert.equal(fake.rows("income_entries").length, 1);
+  assert.equal(fake.rows("income_entries")[0].booking_id, "booking-cash");
+
+  const incomeResponse = await worker.fetch(request("/api/core/income"), env(fake));
+  const incomeBody = await json(incomeResponse);
+  assert.equal(incomeBody.data.length, 1);
+  assert.equal(incomeBody.data[0].amount_halalas, 7500);
+
+  const actions = fake.rows("audit_logs").map((row) => row.action);
+  assert.ok(actions.includes("booking_created"));
+  assert.ok(actions.includes("payment_recorded"));
+  assert.ok(actions.includes("income_created"));
+  assert.ok(actions.includes("invoice_payment_updated"));
+  assert.ok(actions.includes("booking_payment_status_updated"));
+});
+
+test("deposit booking payment stays partial and is safe to retry", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, { id: "booking-deposit", invoiceId: "invoice-deposit" });
+
+  let response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-deposit",
+      bookingId: "booking-deposit",
+      method: "cash",
+      amountHalalas: 2500,
+      idempotencyKey: "booking-deposit:deposit",
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+
+  response = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-deposit-repeat",
+      bookingId: "booking-deposit",
+      method: "cash",
+      amountHalalas: 2500,
+      idempotencyKey: "booking-deposit:deposit",
+    },
+  }), env(fake));
+  const repeat = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(repeat));
+  assert.equal(repeat.data.idempotent, true);
+  assert.equal(fake.find("invoices", "main", "invoice-deposit").paid_halalas, 2500);
+  assert.equal(fake.find("invoices", "main", "invoice-deposit").status, "partial");
+  assert.equal(fake.find("bookings", "main", "booking-deposit").payment_status, "partial");
+  assert.equal(fake.rows("payments").length, 1);
+  assert.equal(fake.rows("income_entries").length, 1);
+});
+
+test("mixed booking payments create independent payment and income rows", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, { id: "booking-mixed", invoiceId: "invoice-mixed" });
+
+  for (const [id, method, amount] of [
+    ["payment-mixed-cash", "cash", 3000],
+    ["payment-mixed-card", "card", 4500],
+  ]) {
+    const response = await worker.fetch(request("/api/core/payments", {
+      method: "POST",
+      body: {
+        salonId: "main",
+        id,
+        bookingId: "booking-mixed",
+        method,
+        amountHalalas: amount,
+        idempotencyKey: `booking-mixed:${method}:${amount}`,
+      },
+    }), env(fake));
+    assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  }
+
+  const repeat = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-mixed-card-repeat",
+      bookingId: "booking-mixed",
+      method: "card",
+      amountHalalas: 4500,
+      idempotencyKey: "booking-mixed:card:4500",
+    },
+  }), env(fake));
+  assert.equal(repeat.status, 200, JSON.stringify(await json(repeat)));
+
+  assert.equal(fake.rows("payments").length, 2);
+  assert.equal(fake.rows("income_entries").length, 2);
+  assert.deepEqual(
+    fake.rows("payments").map((row) => [row.method, row.amount_halalas]).sort(),
+    [["card", 4500], ["cash", 3000]]
+  );
+  assert.equal(fake.find("invoices", "main", "invoice-mixed").paid_halalas, 7500);
+  assert.equal(fake.find("invoices", "main", "invoice-mixed").status, "paid");
+  assert.equal(fake.find("bookings", "main", "booking-mixed").payment_status, "paid");
+});
+
+test("payment batch failure rolls back and retry succeeds without duplicate rows", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, { id: "booking-retry", invoiceId: "invoice-retry" });
+
+  fake.failBatchOnSqlIncludes = "INSERT INTO income_entries";
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    if (String(args[0] || "").includes("core-worker unhandled error")) return;
+    originalConsoleError(...args);
+  };
+  const failed = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-retry",
+      bookingId: "booking-retry",
+      method: "cash",
+      amountHalalas: 7500,
+      idempotencyKey: "booking-retry:cash",
+    },
+  }), env(fake)).finally(() => {
+    console.error = originalConsoleError;
+  });
+  assert.notEqual(failed.status, 200);
+  assert.equal(fake.rows("payments").length, 0);
+  assert.equal(fake.rows("income_entries").length, 0);
+  assert.equal(Number(fake.find("invoices", "main", "invoice-retry").paid_halalas), 0);
+  assert.equal(fake.find("bookings", "main", "booking-retry").payment_status, "unpaid");
+
+  const retried = await worker.fetch(request("/api/core/payments", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "payment-retry",
+      bookingId: "booking-retry",
+      method: "cash",
+      amountHalalas: 7500,
+      idempotencyKey: "booking-retry:cash",
+    },
+  }), env(fake));
+  assert.equal(retried.status, 200, JSON.stringify(await json(retried)));
+  assert.equal(fake.rows("payments").length, 1);
+  assert.equal(fake.rows("income_entries").length, 1);
+  assert.equal(fake.find("invoices", "main", "invoice-retry").status, "paid");
+  assert.equal(fake.find("bookings", "main", "booking-retry").payment_status, "paid");
 });
 
 test("expense creation and patch use D1", async () => {

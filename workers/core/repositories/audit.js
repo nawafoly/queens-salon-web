@@ -19,7 +19,12 @@ function safeJson(value) {
   }
 }
 
-export async function recordAudit(db, salonId, data = {}, actor = {}) {
+function actorField(actor, field) {
+  if (typeof actor === 'string') return field === 'uid' ? actor : '';
+  return actor?.[field] || '';
+}
+
+export function auditInsertStatement(salonId, data = {}, actor = {}) {
   const row = {
     id: requiredId(data.id || generatedId('audit')),
     salon_id: salonId,
@@ -28,38 +33,45 @@ export async function recordAudit(db, salonId, data = {}, actor = {}) {
     entity_id: optionalText(data.entityId || data.entity_id) || null,
     description: optionalText(data.description) || null,
     source: optionalText(data.source) || 'core-worker',
-    actor_uid: optionalText(data.actorUid || data.actor_uid || actor.uid) || null,
-    actor_email: optionalText(data.actorEmail || data.actor_email || actor.email) || null,
-    actor_name: optionalText(data.actorName || data.actor_name || actor.name) || null,
+    actor_uid: optionalText(data.actorUid || data.actor_uid || actorField(actor, 'uid')) || null,
+    actor_email: optionalText(data.actorEmail || data.actor_email || actorField(actor, 'email')) || null,
+    actor_name: optionalText(data.actorName || data.actor_name || actorField(actor, 'name')) || null,
     before_json: safeJson(data.before),
     after_json: safeJson(data.after),
     meta_json: safeJson(data.meta),
     created_at: optionalText(data.createdAt || data.created_at) || nowIso(),
   };
 
-  await dbRun(
-    db,
-    `INSERT INTO audit_logs
+  return {
+    row,
+    statement: {
+      sql: `INSERT INTO audit_logs
       (id, salon_id, action, entity_type, entity_id, description, source,
        actor_uid, actor_email, actor_name, before_json, after_json, meta_json, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      row.id,
-      row.salon_id,
-      row.action,
-      row.entity_type,
-      row.entity_id,
-      row.description,
-      row.source,
-      row.actor_uid,
-      row.actor_email,
-      row.actor_name,
-      row.before_json,
-      row.after_json,
-      row.meta_json,
-      row.created_at,
-    ]
-  );
+      params: [
+        row.id,
+        row.salon_id,
+        row.action,
+        row.entity_type,
+        row.entity_id,
+        row.description,
+        row.source,
+        row.actor_uid,
+        row.actor_email,
+        row.actor_name,
+        row.before_json,
+        row.after_json,
+        row.meta_json,
+        row.created_at,
+      ],
+    },
+  };
+}
+
+export async function recordAudit(db, salonId, data = {}, actor = {}) {
+  const { row, statement } = auditInsertStatement(salonId, data, actor);
+  await dbRun(db, statement.sql, statement.params);
   return row;
 }
 

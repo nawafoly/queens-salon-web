@@ -364,7 +364,7 @@ async function dispatch(ctx, route, method, body, query) {
           db,
           ctx.salonId,
           body,
-          ctx.identity.uid
+          actorInfo
         );
       }
       if (method === "PATCH" && route.id) {
@@ -406,7 +406,7 @@ async function dispatch(ctx, route, method, body, query) {
         return listPayments(db, ctx.salonId);
       }
       if (method === "POST") {
-        return createPayment(db, ctx.salonId, body);
+        return createPayment(db, ctx.salonId, body, actorInfo);
       }
       break;
 

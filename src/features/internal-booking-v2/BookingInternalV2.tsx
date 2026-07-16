@@ -18,7 +18,6 @@ import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isSt
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { todayISO } from "../../helpers/bookingDateUtils";
 import { getAuth } from "firebase/auth";
-import { CoreAuditService } from "../../services/CoreAuditService";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -677,25 +676,6 @@ export default function BookingInternalV2() {
           status,
         } as any);
 
-        await CoreAuditService.record({
-          action: "booking_created",
-          entityType: "booking",
-          entityId: bookingId,
-          description: `تم إنشاء حجز إداري من ${cart.length} خدمة`,
-          source: "dashboard_booking_v2",
-          actorUid: userId,
-          actorEmail: authUser?.email || null,
-          afterJson: JSON.stringify({
-            clientName: selectedClient.name,
-            clientPhone: selectedClient.phone,
-            total,
-            paidAmount: effectivePaidAmount,
-            remainingAmount,
-            paymentType,
-            paymentMethod,
-            services: cart.map((service) => serviceTitle(service)),
-          }),
-        });
       }
 
       setCreatedBookingIds([bookingId, ...(created.itemIds || [])].filter(Boolean));

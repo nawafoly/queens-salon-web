@@ -20,7 +20,7 @@ import {
 } from '../d1.js';
 import { getClient } from './clients.js';
 import { AppError } from '../errors.js';
-import { recordAudit } from './audit.js';
+import { auditInsertStatement, recordAudit } from './audit.js';
 import { getService, serviceIsActive } from './services.js';
 import {
   getStaff,
@@ -253,7 +253,8 @@ export async function getBooking(db, salonId, id) {
   };
 }
 
-export async function createBooking(db, salonId, data, actorUid = "") {
+export async function createBooking(db, salonId, data, actor = "") {
+  const actorUid = typeof actor === "string" ? actor : actor?.uid || "";
   const requestedBookingId = optionalText(data.id);
   if (requestedBookingId) {
     const existing = await dbFirst(
@@ -447,6 +448,7 @@ export async function createBooking(db, salonId, data, actorUid = "") {
       ? rows.find((row) => row.staff_id)?.staff_id || null
       : null);
 
+  const bookingStatus = cleanText(data.status || "booked");
   const statements = [
     {
       sql: `INSERT INTO bookings
@@ -463,7 +465,7 @@ export async function createBooking(db, salonId, data, actorUid = "") {
         firstRow.booking_date,
         firstRow.start_time,
         parentEnd,
-        cleanText(data.status || "booked"),
+        bookingStatus,
         optionalText(data.source) || "dashboard",
         optionalText(data.notes) || null,
         subtotal,
@@ -545,6 +547,26 @@ export async function createBooking(db, salonId, data, actorUid = "") {
       ],
     });
   }
+
+  statements.push(auditInsertStatement(salonId, {
+    action: "booking_created",
+    entityType: "booking",
+    entityId: bookingId,
+    description: "Core booking created",
+    source: "core-booking",
+    after: {
+      id: bookingId,
+      publicId,
+      clientId,
+      invoiceId: invoiceId || null,
+      status: bookingStatus,
+      paymentStatus: "unpaid",
+      subtotalHalalas: subtotal,
+      discountHalalas: discount,
+      totalHalalas: total,
+      itemCount: rows.length,
+    },
+  }, actor).statement);
 
   try {
     await dbBatch(db, statements);
