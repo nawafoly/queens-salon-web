@@ -392,6 +392,184 @@ function shouldCreateSlotLocks(status) {
   return !LOCK_INACTIVE_STATUSES.has(clean(status || "booked").toLowerCase());
 }
 
+function firstBookingClientId(row) {
+  return clean(row.clientId || row.client_id || row.canonicalClientId || row.canonical_client_id);
+}
+
+function bookingTrustedPhone(row) {
+  return normalizePhone(row.phoneNormalized || row.phone_normalized || row.normalizedPhone);
+}
+
+function bookingPrimaryPhone(row) {
+  return normalizePhone(row.clientPhone || row.phone || row.mobile || row.phoneNumber);
+}
+
+function bookingClientName(row) {
+  return clean(row.clientName || row.name || row.customerName || "Legacy booking client");
+}
+
+function bookingClientEmail(row) {
+  return clean(row.clientEmail || row.email || row.customerEmail);
+}
+
+function createBookingClientResolver({
+  salonId,
+  now,
+  clientMap,
+  coreClients,
+  clientAliases,
+  report,
+  blockingConflicts,
+}) {
+  const aliasMap = new Map();
+  const phoneOwners = new Map();
+  const canonicalMappings = new Map(
+    (report.clientCanonicalMappings || []).map((row) => [clean(row.oldClientId), clean(row.canonicalClientId)])
+  );
+
+  for (const alias of clientAliases) {
+    const aliasId = clean(alias.alias_id);
+    const canonicalId = clean(alias.canonical_client_id);
+    if (!aliasId || !canonicalId) continue;
+    aliasMap.set(aliasId, canonicalId);
+  }
+
+  const rebuildPhoneOwners = () => {
+    phoneOwners.clear();
+    for (const client of coreClients) {
+      const phone = clean(client.phone_normalized);
+      if (!phone) continue;
+      const owners = phoneOwners.get(phone) || new Set();
+      owners.add(client.id);
+      phoneOwners.set(phone, owners);
+    }
+  };
+  rebuildPhoneOwners();
+
+  const addAliasIfUnowned = (aliasId, canonicalId, type) => {
+    const value = clean(aliasId);
+    if (!value || value === canonicalId) return false;
+    const existing = aliasMap.get(value);
+    if (existing) return existing === canonicalId;
+    aliasMap.set(value, canonicalId);
+    clientAliases.push({
+      salon_id: salonId,
+      alias_id: value,
+      canonical_client_id: canonicalId,
+      alias_type: type,
+      created_at: now,
+    });
+    return true;
+  };
+
+  const resolveKnown = (value) => {
+    const id = clean(value);
+    if (!id) return "";
+    if (clientMap.has(id)) return id;
+    const mapped = canonicalMappings.get(id);
+    if (mapped && clientMap.has(mapped)) return mapped;
+    const alias = aliasMap.get(id);
+    if (alias && clientMap.has(alias)) return alias;
+    return "";
+  };
+
+  const resolveUniquePhone = (phone) => {
+    const normalized = clean(phone);
+    if (!normalized) return "";
+    const owners = phoneOwners.get(normalized);
+    if (!owners || owners.size !== 1) return "";
+    const [owner] = [...owners];
+    return clientMap.has(owner) ? owner : "";
+  };
+
+  const createLegacyClient = (row, sourceClientId, phone) => {
+    const bookingId = clean(row.id);
+    const legacyClientId = `legacy_booking_client_${bookingId}`;
+    if (!clientMap.has(legacyClientId)) {
+      const client = {
+        id: legacyClientId,
+        salon_id: salonId,
+        name: bookingClientName(row),
+        phone_normalized: phone,
+        email: bookingClientEmail(row),
+        firebase_uid: "",
+        status: "active",
+        notes: [
+          "Created during Core D1 migration because booking client could not be resolved deterministically.",
+          sourceClientId ? `Original booking client field: ${sourceClientId}` : "",
+        ].filter(Boolean).join(" "),
+        vip: 0,
+        legacy_client_doc_id: "",
+        created_at: clean(row.createdAt || now),
+        updated_at: now,
+      };
+      clientMap.set(legacyClientId, client);
+      coreClients.push(client);
+      if (sourceClientId) addAliasIfUnowned(sourceClientId, legacyClientId, "legacy_booking_client_id");
+      if (phone) {
+        const owners = phoneOwners.get(phone);
+        if (!owners || owners.size === 0) addAliasIfUnowned(phone, legacyClientId, "booking_phone");
+      }
+      rebuildPhoneOwners();
+    }
+    report.bookingLegacyClientsCreated += 1;
+    report.bookingLegacyClientRows.push({
+      bookingId,
+      originalClientField: sourceClientId,
+      legacyClientId,
+      phone,
+    });
+    return legacyClientId;
+  };
+
+  return (row) => {
+    const bookingId = clean(row.id);
+    const sourceClientId = firstBookingClientId(row);
+    if (sourceClientId) {
+      if (clientMap.has(sourceClientId)) {
+        report.bookingClientsResolvedDirect += 1;
+        return sourceClientId;
+      }
+      const canonical = canonicalMappings.get(sourceClientId);
+      if (canonical && clientMap.has(canonical)) {
+        report.bookingClientsResolvedCanonical += 1;
+        return canonical;
+      }
+      const alias = aliasMap.get(sourceClientId);
+      if (alias && clientMap.has(alias)) {
+        report.bookingClientsResolvedByAlias += 1;
+        return alias;
+      }
+    }
+
+    const trustedPhone = bookingTrustedPhone(row);
+    const trustedPhoneClient = resolveUniquePhone(trustedPhone);
+    if (trustedPhoneClient) {
+      report.bookingClientsResolvedByPhone += 1;
+      return trustedPhoneClient;
+    }
+
+    const primaryPhone = bookingPrimaryPhone(row);
+    const primaryPhoneClient = resolveUniquePhone(primaryPhone);
+    if (primaryPhoneClient) {
+      report.bookingClientsResolvedByPhone += 1;
+      return primaryPhoneClient;
+    }
+
+    const phoneForLegacy = trustedPhone || primaryPhone;
+    if (bookingId) return createLegacyClient(row, sourceClientId, phoneForLegacy);
+
+    report.bookingClientsUnresolved += 1;
+    blockingConflicts.push({
+      type: "booking_client_unresolved",
+      bookingId,
+      originalClientField: sourceClientId,
+      phone: phoneForLegacy,
+    });
+    return "";
+  };
+}
+
 function buildBookingSlotLocks(candidates, warningConflicts) {
   const grouped = new Map();
   for (const candidate of candidates) {
@@ -521,6 +699,13 @@ function transform(input, salonId, options = {}) {
     slotLocksSkippedTerminalStatus: 0,
     slotLocksSkippedInvalid: 0,
     slotLockItemsProcessed: 0,
+    bookingClientsResolvedDirect: 0,
+    bookingClientsResolvedCanonical: 0,
+    bookingClientsResolvedByAlias: 0,
+    bookingClientsResolvedByPhone: 0,
+    bookingLegacyClientsCreated: 0,
+    bookingClientsUnresolved: 0,
+    bookingLegacyClientRows: [],
     mergedClients: 0,
     mergedClientGroups: 0,
     clientCanonicalMappings: [],
@@ -533,7 +718,6 @@ function transform(input, salonId, options = {}) {
     now,
     asOfDate: today,
     clients: rows(input, "clients"),
-    bookings: rows(input, "bookings"),
     clientPackages: clientPackageRows,
   });
   const { clientMap, resolveClientId } = clientIdentity;
@@ -685,20 +869,20 @@ function transform(input, salonId, options = {}) {
   const bookings = [];
   const bookingItems = [];
   const bookingLockCandidates = [];
+  const resolveBookingClientId = createBookingClientResolver({
+    salonId,
+    now,
+    clientMap,
+    coreClients,
+    clientAliases,
+    report,
+    blockingConflicts,
+  });
 
   for (const row of rows(input, "bookings")) {
     const bookingId = clean(row.id);
     if (!bookingId) continue;
-    const clientPhone = normalizePhone(row.clientPhone || row.phone || row.mobile);
-    const rawClientId = clean(
-      row.clientId ||
-        row.client_id ||
-        row.canonicalClientId ||
-        row.userId ||
-        clientPhone ||
-        stableId("client", bookingId)
-    );
-    const clientId = resolveClientId(rawClientId);
+    const clientId = resolveBookingClientId(row);
 
     const parentDate = clean(row.date || row.bookingDate || row.booking_date);
     const parentStart = normalizeTime(row.time || row.startTime || row.start_time);
@@ -886,6 +1070,18 @@ function transform(input, salonId, options = {}) {
       completed_at: clean(row.completedAt),
       slot_step_min: slotStepMin,
       buffer_min: bufferMin,
+    });
+  }
+
+  const bookingClientIds = new Set(coreClients.map((client) => client.id).filter(Boolean));
+  for (const booking of bookings) {
+    if (booking.client_id && bookingClientIds.has(booking.client_id)) continue;
+    report.bookingClientsUnresolved += 1;
+    blockingConflicts.push({
+      type: "booking_client_unresolved",
+      bookingId: booking.id,
+      clientId: booking.client_id,
+      reason: booking.client_id ? "client_id_not_found_in_clients" : "empty_client_id",
     });
   }
 
@@ -1412,6 +1608,16 @@ console.log(`slotLocksSkippedPast = ${report.slotLocksSkippedPast}`);
 console.log(`slotLocksSkippedTerminalStatus = ${report.slotLocksSkippedTerminalStatus}`);
 console.log(`slotLocksSkippedInvalid = ${report.slotLocksSkippedInvalid}`);
 console.log(`slotLockItemsProcessed = ${report.slotLockItemsProcessed}`);
+console.log(`bookingClientsResolvedDirect = ${report.bookingClientsResolvedDirect}`);
+console.log(`bookingClientsResolvedCanonical = ${report.bookingClientsResolvedCanonical}`);
+console.log(`bookingClientsResolvedByAlias = ${report.bookingClientsResolvedByAlias}`);
+console.log(`bookingClientsResolvedByPhone = ${report.bookingClientsResolvedByPhone}`);
+console.log(`bookingLegacyClientsCreated = ${report.bookingLegacyClientsCreated}`);
+console.log(`bookingClientsUnresolved = ${report.bookingClientsUnresolved}`);
+if (report.bookingLegacyClientRows.length) {
+  console.log("booking legacy clients created");
+  console.table(report.bookingLegacyClientRows);
+}
 console.log(`mergedClients = ${report.mergedClients}`);
 console.log(`mergedClientGroups = ${report.mergedClientGroups}`);
 if (report.clientCanonicalMappings.length) {
@@ -1425,6 +1631,11 @@ if (report.packageCanonicalMappings.length) {
 if (report.discountDecisions.length) {
   console.log("discount conflict decisions");
   console.table(report.discountDecisions);
+}
+if (!apply && hasFlag("--dump-sql")) {
+  console.log("sql dump");
+  console.log(buildSql(tables));
+  process.exit(0);
 }
 if (!apply) {
   console.log("dry-run only. Re-run with --apply to write to Cloudflare D1.");

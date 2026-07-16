@@ -790,6 +790,7 @@ test("shared client canonicalization keeps active package client ids canonical",
 
   assert.equal(policy.blockingConflicts.length, 0, JSON.stringify(policy.blockingConflicts));
   assert.equal(policy.resolveClientId("0556209042"), "3be178a6-dacb-5407-aca0-1215f403631e");
+  assert.equal(policy.resolveClientId("rodina-old-doc"), "3be178a6-dacb-5407-aca0-1215f403631e");
   assert.equal(policy.resolveClientId("0546640401"), "78967b2b-d2d1-4260-adac-95fac142ee9d");
   assert.equal(policy.resolveClientId("3be178a6-dacb-5407-aca0-1215f403631e"), "3be178a6-dacb-5407-aca0-1215f403631e");
   assert.equal(policy.resolveClientId("78967b2b-d2d1-4260-adac-95fac142ee9d"), "78967b2b-d2d1-4260-adac-95fac142ee9d");
@@ -828,10 +829,80 @@ test("core migration dry-run preserves package-backed canonical clients and repo
   assert.match(result.stdout, /3be178a6-dacb-5407-aca0-1215f403631e/);
   assert.match(result.stdout, /78967b2b-d2d1-4260-adac-95fac142ee9d/);
   assert.match(result.stdout, /asOfDate = 2026-07-16/);
-  assert.match(result.stdout, /slotLocksGeneratedActiveFuture = 6/);
+  assert.match(result.stdout, /slotLocksGeneratedActiveFuture = 18/);
   assert.match(result.stdout, /slotLocksSkippedPast = 36/);
   assert.match(result.stdout, /slotLocksSkippedTerminalStatus = 6/);
   assert.match(result.stdout, /slotLocksSkippedInvalid = 1/);
+  assert.match(result.stdout, /bookingClientsResolvedCanonical = 1/);
+  assert.match(result.stdout, /bookingClientsResolvedByPhone = 4/);
+  assert.match(result.stdout, /bookingLegacyClientsCreated = 6/);
+  assert.match(result.stdout, /bookingClientsUnresolved = 0/);
+  assert.match(result.stdout, /legacy_booking_client_booking-no-client-no-known-phone/);
+});
+
+test("core migration SQL never emits NULL or dangling booking client ids", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-core-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/client-canonicalization-regression-fixture.json",
+    "--today=2026-07-16",
+    "--dump-sql",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const splitSqlValues = (text) => {
+    const values = [];
+    let current = "";
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "'") {
+        if (quoted && text[index + 1] === "'") {
+          current += "''";
+          index += 1;
+          continue;
+        }
+        quoted = !quoted;
+      }
+      if (char === "," && !quoted) {
+        values.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    values.push(current.trim());
+    return values;
+  };
+  const unquote = (value) =>
+    value === "NULL" ? "" : value.replace(/^'/, "").replace(/';?$/, "").replace(/''/g, "'");
+  const parseInsert = (line) => {
+    const match = /^INSERT OR REPLACE INTO (\w+) \((.+)\) VALUES \((.*)\);$/.exec(line.trim());
+    if (!match) return null;
+    const columns = match[2].split(",").map((column) => column.trim());
+    const values = splitSqlValues(match[3]).map(unquote);
+    return Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+  };
+
+  const sqlLines = result.stdout.split(/\r?\n/).filter((line) => line.startsWith("INSERT OR REPLACE INTO "));
+  const clientIds = new Set(
+    sqlLines
+      .filter((line) => line.startsWith("INSERT OR REPLACE INTO clients "))
+      .map((line) => parseInsert(line)?.id)
+      .filter(Boolean)
+  );
+  const bookings = sqlLines
+    .filter((line) => line.startsWith("INSERT OR REPLACE INTO bookings "))
+    .map(parseInsert);
+
+  assert.ok(bookings.length > 0);
+  for (const booking of bookings) {
+    assert.ok(booking.client_id, `missing client_id for ${booking.id}`);
+    assert.notEqual(booking.client_id, "NULL");
+    assert.ok(clientIds.has(booking.client_id), `dangling client_id ${booking.client_id} for ${booking.id}`);
+  }
 });
 
 test("core migration dry-run reports verified alias conflicts as blocking", () => {

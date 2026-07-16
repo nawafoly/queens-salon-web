@@ -8,6 +8,12 @@
       "createdAt": "2025-01-01T00:00:00.000Z"
     },
     {
+      "id": "rodina-old-doc",
+      "name": "Rodina Old Doc",
+      "phone": "0556209042",
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
       "id": "78967b2b-d2d1-4260-adac-95fac142ee9d",
       "name": "Ghada",
       "phone": "0546640401",
@@ -99,6 +105,31 @@
       "staffId": "staff-a",
       "date": "2027-01-10",
       "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-rodina-old-client-id",
+      "clientId": "rodina-old-doc",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "14:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-no-client-no-known-phone",
+      "clientName": "Walk-in Legacy",
+      "clientEmail": "walkin@example.com",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "15:00",
       "status": "booked",
       "serviceId": "svc-a",
       "serviceName": "Blowdry",
