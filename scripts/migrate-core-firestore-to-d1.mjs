@@ -333,64 +333,225 @@ function bookingItemSources(row) {
   return [row];
 }
 
-function transform(input, salonId) {
-  const now = new Date().toISOString();
-  const conflicts = [];
+function migrationToday() {
+  const explicit = clean(arg("--today") || process.env.MIGRATION_TODAY);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: process.env.TZ || "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date()).map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function sortText(a, b) {
+  return clean(a).localeCompare(clean(b), "en", { sensitivity: "base" });
+}
+
+function sourceDate(row) {
+  return clean(row.updatedAt || row.updated_at || row.createdAt || row.created_at);
+}
+
+function newestFirst(a, b) {
+  const aDate = sourceDate(a);
+  const bDate = sourceDate(b);
+  if (aDate !== bDate) return bDate.localeCompare(aDate);
+  return sortText(a.id, b.id);
+}
+
+function activeClientRank(row) {
+  const status = clean(row.status || (row.active === false ? "inactive" : "active")).toLowerCase();
+  if (row.active === false || row.disabled === true || row.archived === true) return 1;
+  if (["inactive", "disabled", "archived", "deleted", "blocked"].includes(status)) return 1;
+  return 0;
+}
+
+function canonicalClientRank(a, b) {
+  const activeDelta = activeClientRank(a) - activeClientRank(b);
+  if (activeDelta) return activeDelta;
+  const aCreated = clean(a.created_at || a.createdAt) || "9999-99-99T99:99:99.999Z";
+  const bCreated = clean(b.created_at || b.createdAt) || "9999-99-99T99:99:99.999Z";
+  if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
+  const firebaseDelta = (a.firebase_uid ? 0 : 1) - (b.firebase_uid ? 0 : 1);
+  if (firebaseDelta) return firebaseDelta;
+  return sortText(a.id, b.id);
+}
+
+function uniqueClean(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values.flat()) {
+    const text = clean(value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function clientPrimaryId(row, fallback = "") {
+  return clean(
+    pick(
+      row,
+      ["canonicalClientId", "clientId", "client_id", "id", "docId", "customerId", "authUid", "uid", "firebaseUid"],
+      fallback
+    )
+  );
+}
+
+function clientIdAliases(row, primaryId) {
+  return uniqueClean([
+    primaryId,
+    row.id,
+    row.clientId,
+    row.client_id,
+    row.canonicalClientId,
+    row.docId,
+    row.customerId,
+    row.legacyClientDocId,
+    Array.isArray(row.aliasClientIds) ? row.aliasClientIds : [],
+    Array.isArray(row.legacyIds) ? row.legacyIds : [],
+  ]);
+}
+
+function clientLookupAliases(row, primaryId, phone) {
+  return uniqueClean([
+    ...clientIdAliases(row, primaryId),
+    row.uid,
+    row.authUid,
+    row.userId,
+    row.firebaseUid,
+    phone,
+  ]);
+}
+
+function bookingClientCandidate(row, now) {
+  const bookingId = clean(row.id);
+  const phone = normalizePhone(row.clientPhone || row.phone || row.mobile);
+  const id = clean(
+    row.clientId ||
+      row.client_id ||
+      row.canonicalClientId ||
+      row.userId ||
+      phone ||
+      stableId("client", bookingId || JSON.stringify(row))
+  );
+  return {
+    id,
+    clientId: row.clientId,
+    client_id: row.client_id,
+    canonicalClientId: row.canonicalClientId,
+    userId: row.userId,
+    firebaseUid: row.userId,
+    phone,
+    clientPhone: row.clientPhone,
+    name: row.clientName || row.name || "Legacy client",
+    clientName: row.clientName,
+    email: row.clientEmail || row.email,
+    status: "active",
+    notes: "Created during Core D1 migration from booking history",
+    createdAt: row.createdAt || now,
+  };
+}
+
+function buildClientIdentity(input, salonId, now, warningConflicts) {
+  const candidates = new Map();
+
+  const addCandidate = (row) => {
+    const phone = normalizePhone(
+      pick(row, ["phoneNormalized", "normalizedPhone", "phone", "mobile", "clientPhone"])
+    );
+    const primaryId = clientPrimaryId(row, phone || stableId("client", JSON.stringify(row)));
+    if (!primaryId) return;
+    const existing = candidates.get(primaryId) || {
+      id: primaryId,
+      salon_id: salonId,
+      name: "",
+      phone_normalized: "",
+      email: "",
+      firebase_uid: "",
+      status: "",
+      notes: "",
+      vip: 0,
+      legacy_client_doc_id: "",
+      created_at: now,
+      updated_at: now,
+      idAliases: new Set(),
+      lookupAliases: new Set(),
+      rows: [],
+    };
+    const aliases = clientIdAliases(row, primaryId);
+    const lookupAliases = clientLookupAliases(row, primaryId, phone);
+    for (const alias of aliases) existing.idAliases.add(alias);
+    for (const alias of lookupAliases) existing.lookupAliases.add(alias);
+    existing.rows.push(row);
+    existing.name ||= clean(pick(row, ["name", "clientName", "displayName"], "Unnamed client"));
+    existing.phone_normalized ||= phone;
+    existing.email ||= clean(row.email);
+    existing.firebase_uid ||= clean(pick(row, ["firebaseUid", "authUid", "uid", "userId"]));
+    const rowStatus = clean(row.status || (row.active === false ? "inactive" : "active"));
+    if (
+      !existing.status ||
+      activeClientRank({ ...row, status: rowStatus }) < activeClientRank(existing)
+    ) {
+      existing.status = rowStatus;
+    }
+    existing.notes ||= clean(row.notes || row.note);
+    existing.vip = existing.vip || (row.vip === true ? 1 : 0);
+    existing.legacy_client_doc_id ||=
+      clean(row.legacyClientDocId || (/^\d+$/.test(clean(row.id)) ? row.id : ""));
+    existing.created_at =
+      [existing.created_at, clean(row.createdAt || now)].filter(Boolean).sort()[0] || now;
+    candidates.set(primaryId, existing);
+  };
+
+  for (const row of rows(input, "clients")) addCandidate(row);
+  for (const row of rows(input, "bookings")) addCandidate(bookingClientCandidate(row, now));
+
+  const groups = [];
+  const phoneGroups = new Map();
+  for (const candidate of candidates.values()) {
+    if (!candidate.phone_normalized) {
+      groups.push([candidate]);
+      continue;
+    }
+    const group = phoneGroups.get(candidate.phone_normalized) || [];
+    group.push(candidate);
+    phoneGroups.set(candidate.phone_normalized, group);
+  }
+  groups.push(...phoneGroups.values());
 
   const clientMap = new Map();
-  for (const row of rows(input, "clients")) {
-    const id = clean(pick(row, ["canonicalClientId", "clientId", "id"], row.id));
-    if (!id) continue;
-    clientMap.set(id, {
-      id,
-      salon_id: salonId,
-      name: clean(pick(row, ["name", "clientName", "displayName"], "Unnamed client")),
-      phone_normalized: normalizePhone(
-        pick(row, ["phoneNormalized", "normalizedPhone", "phone", "mobile", "clientPhone"])
-      ),
-      email: clean(row.email),
-      firebase_uid: clean(pick(row, ["firebaseUid", "authUid", "uid", "userId"])),
-      status: clean(row.status || "active"),
-      notes: clean(row.notes || row.note),
-      vip: row.vip === true ? 1 : 0,
-      legacy_client_doc_id: clean(row.legacyClientDocId || (/^\d+$/.test(clean(row.id)) ? row.id : "")),
-      created_at: clean(row.createdAt || now),
-      updated_at: now,
-    });
-  }
+  const aliasRows = new Map();
+  const aliasOwners = new Map();
+  const aliasToCanonical = new Map();
+  const clientCanonicalMappings = [];
+  let mergedClients = 0;
+  let mergedClientGroups = 0;
 
-  const phoneOwners = new Map();
-  for (const client of clientMap.values()) {
-    if (!client.phone_normalized) continue;
-    const prior = phoneOwners.get(client.phone_normalized);
-    if (prior && prior !== client.id) {
-      conflicts.push({
-        type: "client_phone_conflict",
-        phone: client.phone_normalized,
-        clientIds: [prior, client.id],
-      });
-    } else {
-      phoneOwners.set(client.phone_normalized, client.id);
-    }
-  }
-
-  const clientAliases = [];
-  const aliasOwner = new Map();
   const addAlias = (alias, canonicalId, type) => {
     const value = clean(alias);
-    if (!value || value === canonicalId) return;
-    const key = `${salonId}\u0000${value}`;
-    const prior = aliasOwner.get(key);
+    if (!value) return;
+    const ownerKey = `${salonId}\u0000${value}`;
+    const prior = aliasOwners.get(ownerKey);
     if (prior && prior !== canonicalId) {
-      conflicts.push({
+      warningConflicts.push({
         type: "client_alias_conflict",
         alias: value,
-        canonicalClientIds: [prior, canonicalId],
+        canonicalClientIds: [prior, canonicalId].sort(sortText),
+        chosenCanonicalClientId: prior,
       });
       return;
     }
-    aliasOwner.set(key, canonicalId);
-    clientAliases.push({
+    aliasOwners.set(ownerKey, canonicalId);
+    aliasToCanonical.set(value, canonicalId);
+    if (value === canonicalId) return;
+    if (aliasRows.has(ownerKey)) return;
+    aliasRows.set(ownerKey, {
       salon_id: salonId,
       alias_id: value,
       canonical_client_id: canonicalId,
@@ -399,10 +560,225 @@ function transform(input, salonId) {
     });
   };
 
-  for (const client of clientMap.values()) {
-    addAlias(client.firebase_uid, client.id, "firebase_uid");
-    addAlias(client.phone_normalized, client.id, "phone");
+  for (const group of groups) {
+    const sorted = [...group].sort(canonicalClientRank);
+    const canonical = sorted[0];
+    const canonicalId = canonical.id;
+    const oldClientIds = uniqueClean(sorted.map((candidate) => [...candidate.idAliases]));
+    const duplicateIds = oldClientIds.filter((id) => id !== canonicalId);
+    if (duplicateIds.length) {
+      mergedClientGroups += 1;
+      mergedClients += duplicateIds.length;
+      warningConflicts.push({
+        type: "client_phone_merged",
+        phone: canonical.phone_normalized,
+        canonicalClientId: canonicalId,
+        oldClientIds: duplicateIds,
+      });
+    }
+
+    const mergedNotes = uniqueClean(sorted.map((candidate) => candidate.notes));
+    if (duplicateIds.length) {
+      mergedNotes.push(`Merged legacy client ids: ${duplicateIds.join(", ")}`);
+    }
+
+    clientMap.set(canonicalId, {
+      id: canonicalId,
+      salon_id: salonId,
+      name: clean(canonical.name || sorted.find((candidate) => candidate.name)?.name || "Unnamed client"),
+      phone_normalized: clean(canonical.phone_normalized || sorted.find((candidate) => candidate.phone_normalized)?.phone_normalized),
+      email: clean(canonical.email || sorted.find((candidate) => candidate.email)?.email),
+      firebase_uid: clean(canonical.firebase_uid || sorted.find((candidate) => candidate.firebase_uid)?.firebase_uid),
+      status: clean(canonical.status || "active"),
+      notes: mergedNotes.join(" | "),
+      vip: sorted.some((candidate) => candidate.vip === 1) ? 1 : 0,
+      legacy_client_doc_id: clean(canonical.legacy_client_doc_id || sorted.find((candidate) => candidate.legacy_client_doc_id)?.legacy_client_doc_id),
+      created_at: sorted.map((candidate) => candidate.created_at).filter(Boolean).sort()[0] || now,
+      updated_at: now,
+    });
+
+    for (const candidate of sorted) {
+      for (const oldClientId of candidate.idAliases) {
+        aliasToCanonical.set(oldClientId, canonicalId);
+        if (oldClientId !== canonicalId) {
+          addAlias(oldClientId, canonicalId, "legacy_client_id");
+        }
+      }
+      for (const alias of candidate.lookupAliases) addAlias(alias, canonicalId, "migration");
+    }
+
+    for (const oldClientId of duplicateIds.sort(sortText)) {
+      clientCanonicalMappings.push({ oldClientId, canonicalClientId: canonicalId });
+    }
   }
+
+  const resolveClientId = (value) => {
+    const normalized = clean(value);
+    if (!normalized) return "";
+    return aliasToCanonical.get(normalized) || normalized;
+  };
+
+  return {
+    clientMap,
+    clientAliases: [...aliasRows.values()].sort((a, b) => sortText(a.alias_id, b.alias_id)),
+    resolveClientId,
+    report: {
+      mergedClients,
+      mergedClientGroups,
+      clientCanonicalMappings: clientCanonicalMappings.sort((a, b) =>
+        sortText(a.oldClientId, b.oldClientId)
+      ),
+    },
+  };
+}
+
+const LOCK_INACTIVE_STATUSES = new Set([
+  "cancelled",
+  "canceled",
+  "completed",
+  "no_show",
+  "no-show",
+  "noshow",
+  "rejected",
+]);
+
+function shouldCreateSlotLocks(status) {
+  return !LOCK_INACTIVE_STATUSES.has(clean(status || "booked").toLowerCase());
+}
+
+function buildBookingSlotLocks(candidates, warningConflicts) {
+  const grouped = new Map();
+  for (const candidate of candidates) {
+    const key = `${candidate.salon_id}\u0000${candidate.staff_id}\u0000${candidate.booking_date}\u0000${candidate.slot_time}`;
+    const group = grouped.get(key) || [];
+    group.push(candidate);
+    grouped.set(key, group);
+  }
+
+  const locks = [];
+  for (const group of [...grouped.values()]) {
+    group.sort((a, b) => {
+      if (a.created_at !== b.created_at) return a.created_at.localeCompare(b.created_at);
+      if (a.booking_id !== b.booking_id) return sortText(a.booking_id, b.booking_id);
+      return sortText(a.booking_item_id, b.booking_item_id);
+    });
+    const winner = group[0];
+    const bookingIds = uniqueClean(group.map((candidate) => candidate.booking_id));
+    if (bookingIds.length > 1) {
+      warningConflicts.push({
+        type: "booking_slot_conflict",
+        staffId: winner.staff_id,
+        date: winner.booking_date,
+        slotTime: winner.slot_time,
+        bookingIds,
+        chosenBookingId: winner.booking_id,
+      });
+    }
+    locks.push({
+      salon_id: winner.salon_id,
+      staff_id: winner.staff_id,
+      booking_date: winner.booking_date,
+      slot_time: winner.slot_time,
+      booking_id: winner.booking_id,
+      booking_item_id: winner.booking_item_id,
+      created_at: winner.created_at,
+    });
+  }
+  return locks.sort((a, b) => {
+    const aKey = `${a.staff_id}\u0000${a.booking_date}\u0000${a.slot_time}\u0000${a.booking_id}`;
+    const bKey = `${b.staff_id}\u0000${b.booking_date}\u0000${b.slot_time}\u0000${b.booking_id}`;
+    return sortText(aKey, bKey);
+  });
+}
+
+function legacyDiscountCode(code, id, usedCodes) {
+  const base = clean(code || "DISCOUNT").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "DISCOUNT";
+  const suffix =
+    clean(id).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24) ||
+    stableId("discount", id).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  let candidate = `${base}_LEGACY_${suffix}`;
+  if (candidate.length > 64) candidate = candidate.slice(0, 64);
+  let counter = 2;
+  while (usedCodes.has(candidate)) {
+    const hash = createHash("sha1").update(`${code}:${id}:${counter}`).digest("hex").slice(0, 8).toUpperCase();
+    candidate = `${base}_LEGACY_${hash}`;
+    counter += 1;
+  }
+  usedCodes.add(candidate);
+  return candidate;
+}
+
+function resolveDiscountCodeConflicts(discounts, warningConflicts) {
+  const groups = new Map();
+  for (const discount of discounts) {
+    const key = clean(discount.code_key || discount.code).toUpperCase();
+    if (!key) continue;
+    const group = groups.get(key) || [];
+    group.push(discount);
+    groups.set(key, group);
+  }
+
+  const usedCodes = new Set(
+    [...groups.entries()]
+      .filter(([, group]) => group.length === 1)
+      .map(([code]) => code)
+  );
+  const decisions = [];
+
+  for (const [code, group] of [...groups.entries()].sort(([a], [b]) => sortText(a, b))) {
+    if (group.length === 1) {
+      group[0].code = clean(group[0].code || code).toUpperCase();
+      group[0].code_key = code;
+      continue;
+    }
+    group.sort((a, b) => {
+      const activeDelta = (b.active ? 1 : 0) - (a.active ? 1 : 0);
+      if (activeDelta) return activeDelta;
+      return newestFirst(a, b);
+    });
+    const canonical = group[0];
+    canonical.code = code;
+    canonical.code_key = code;
+    usedCodes.add(code);
+    for (const duplicate of group.slice(1)) {
+      const legacyCode = legacyDiscountCode(code, duplicate.id, usedCodes);
+      duplicate.code = legacyCode;
+      duplicate.code_key = legacyCode;
+      duplicate.active = 0;
+      const decision = {
+        code,
+        canonicalDiscountId: canonical.id,
+        legacyDiscountId: duplicate.id,
+        legacyCode,
+        reason: code === "QS953" ? "QS953 duplicate resolved: active row preferred, then newest, then id" : "duplicate discount code resolved",
+      };
+      decisions.push(decision);
+      warningConflicts.push({
+        type: "discount_code_resolved",
+        ...decision,
+      });
+    }
+  }
+
+  return decisions;
+}
+
+function transform(input, salonId, options = {}) {
+  const now = new Date().toISOString();
+  const today = options.today || migrationToday();
+  const blockingConflicts = [];
+  const warningConflicts = [];
+  const report = {
+    slotLocksSkippedPast: 0,
+    mergedClients: 0,
+    mergedClientGroups: 0,
+    clientCanonicalMappings: [],
+    discountDecisions: [],
+  };
+
+  const clientIdentity = buildClientIdentity(input, salonId, now, warningConflicts);
+  const { clientMap, clientAliases, resolveClientId } = clientIdentity;
+  Object.assign(report, clientIdentity.report);
 
   const categories = rows(input, "service_categories", "categories")
     .map((row) => ({
@@ -531,39 +907,26 @@ function transform(input, salonId) {
 
   const bookings = [];
   const bookingItems = [];
-  const bookingSlotLocks = [];
-  const lockOwners = new Map();
+  const bookingLockCandidates = [];
 
   for (const row of rows(input, "bookings")) {
     const bookingId = clean(row.id);
     if (!bookingId) continue;
     const clientPhone = normalizePhone(row.clientPhone || row.phone || row.mobile);
-    const clientId = clean(
-      row.clientId || row.client_id || row.canonicalClientId || row.userId || clientPhone || stableId("client", bookingId)
+    const rawClientId = clean(
+      row.clientId ||
+        row.client_id ||
+        row.canonicalClientId ||
+        row.userId ||
+        clientPhone ||
+        stableId("client", bookingId)
     );
-    if (!clientMap.has(clientId)) {
-      clientMap.set(clientId, {
-        id: clientId,
-        salon_id: salonId,
-        name: clean(row.clientName || row.name || "Legacy client"),
-        phone_normalized: clientPhone,
-        email: clean(row.clientEmail || row.email),
-        firebase_uid: clean(row.userId),
-        status: "active",
-        notes: "Created during Core D1 migration from booking history",
-        vip: 0,
-        legacy_client_doc_id: "",
-        created_at: clean(row.createdAt || now),
-        updated_at: now,
-      });
-      addAlias(row.userId, clientId, "booking_user_id");
-      addAlias(clientPhone, clientId, "phone");
-    }
+    const clientId = resolveClientId(rawClientId);
 
     const parentDate = clean(row.date || row.bookingDate || row.booking_date);
     const parentStart = normalizeTime(row.time || row.startTime || row.start_time);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(parentDate) || !parentStart) {
-      conflicts.push({ type: "booking_missing_schedule", bookingId });
+      blockingConflicts.push({ type: "booking_missing_schedule", bookingId });
       continue;
     }
     const slotStepMin = Math.max(5, number(row.slotStepMinAtBooking || row.slotStepMin, 10));
@@ -572,6 +935,7 @@ function transform(input, salonId) {
     const transformedItems = [];
     let cursorDate = parentDate;
     let cursorTime = parentStart;
+    const status = clean(row.status || "booked").toLowerCase();
 
     itemSources.forEach((item, index) => {
       const serviceName = clean(
@@ -675,35 +1039,25 @@ function transform(input, salonId) {
       transformedItems.push(bookingItem);
       bookingItems.push(bookingItem);
 
-      const status = clean(row.status || "booked").toLowerCase();
-      if (staffId && !["cancelled", "canceled", "rejected"].includes(status)) {
+      if (staffId && shouldCreateSlotLocks(status)) {
         // Use the same fixed five-minute lock granularity as the Core Worker.
         // Historical UI slot steps are preserved on the booking row but must
         // not weaken overlap protection in booking_slot_locks.
-        for (const slotTime of occupiedSlots(itemStart, itemEnd, 5, bufferMin)) {
-          const key = `${salonId}\u0000${staffId}\u0000${itemDate}\u0000${slotTime}`;
-          const prior = lockOwners.get(key);
-          if (prior && prior.booking_id !== bookingId) {
-            conflicts.push({
-              type: "booking_slot_conflict",
-              staffId,
-              date: itemDate,
-              slotTime,
-              bookingIds: [prior.booking_id, bookingId],
+        const slotTimes = occupiedSlots(itemStart, itemEnd, 5, bufferMin);
+        if (itemDate < today) {
+          report.slotLocksSkippedPast += slotTimes.length;
+        } else {
+          for (const slotTime of slotTimes) {
+            bookingLockCandidates.push({
+              salon_id: salonId,
+              staff_id: staffId,
+              booking_date: itemDate,
+              slot_time: slotTime,
+              booking_id: bookingId,
+              booking_item_id: itemId,
+              created_at: clean(row.createdAt || now),
             });
-            continue;
           }
-          const lock = {
-            salon_id: salonId,
-            staff_id: staffId,
-            booking_date: itemDate,
-            slot_time: slotTime,
-            booking_id: bookingId,
-            booking_item_id: itemId,
-            created_at: clean(row.createdAt || now),
-          };
-          lockOwners.set(key, lock);
-          bookingSlotLocks.push(lock);
         }
       }
       cursorDate = itemDate;
@@ -711,7 +1065,7 @@ function transform(input, salonId) {
     });
 
     if (!transformedItems.length) {
-      conflicts.push({ type: "booking_without_items", bookingId });
+      blockingConflicts.push({ type: "booking_without_items", bookingId });
       continue;
     }
     const subtotal = transformedItems.reduce(
@@ -755,12 +1109,14 @@ function transform(input, salonId) {
     });
   }
 
+  const bookingSlotLocks = buildBookingSlotLocks(bookingLockCandidates, warningConflicts);
+
   const invoices = rows(input, "invoices")
     .map((row) => ({
       id: clean(row.id),
       salon_id: salonId,
       booking_id: clean(row.bookingId),
-      client_id: clean(row.clientId),
+      client_id: resolveClientId(row.clientId),
       invoice_number: clean(row.invoiceNumber || row.number),
       subtotal_halalas: moneyHalalas(row, ["subtotalHalalas", "subtotal_halalas"], ["subtotal"], 0),
       discount_halalas: moneyHalalas(row, ["discountHalalas", "discount_halalas"], ["discount"], 0),
@@ -779,7 +1135,7 @@ function transform(input, salonId) {
       salon_id: salonId,
       invoice_id: clean(row.invoiceId),
       booking_id: clean(row.bookingId),
-      client_id: clean(row.clientId),
+      client_id: resolveClientId(row.clientId),
       method: clean(row.method || row.paymentMethod || "cash"),
       amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
       status: clean(row.status || "paid"),
@@ -837,21 +1193,11 @@ function transform(input, salonId) {
     }))
     .filter((row) => row.id && row.amount_halalas > 0);
 
-  const discountCodeOwners = new Map();
   const discounts = mergeRowsById(rows(input, "discounts"), rows(input, "offers"))
     .map((row) => {
       const id = clean(row.id);
       const code = clean(row.code).toUpperCase();
       let codeKey = clean(row.codeKey || row.code).toUpperCase();
-      if (codeKey) {
-        const prior = discountCodeOwners.get(codeKey);
-        if (prior && prior !== id) {
-          conflicts.push({ type: "discount_code_conflict", code: codeKey, discountIds: [prior, id] });
-          codeKey = "";
-        } else {
-          discountCodeOwners.set(codeKey, id);
-        }
-      }
       return {
         id,
         salon_id: salonId,
@@ -875,11 +1221,12 @@ function transform(input, salonId) {
       };
     })
     .filter((row) => row.id && row.name);
+  report.discountDecisions = resolveDiscountCodeConflicts(discounts, warningConflicts);
 
   const refunds = rows(input, "refunds")
     .map((row) => ({
       id: clean(row.id), salon_id: salonId, payment_id: clean(row.paymentId),
-      invoice_id: clean(row.invoiceId), booking_id: clean(row.bookingId), client_id: clean(row.clientId),
+      invoice_id: clean(row.invoiceId), booking_id: clean(row.bookingId), client_id: resolveClientId(row.clientId),
       amount_halalas: moneyHalalas(row, ["amountHalalas", "amount_halalas"], ["amount"], 0),
       method: clean(row.method || row.paymentMethod || "cash"), reason: clean(row.reason),
       status: clean(row.status || "completed"), idempotency_key: clean(row.idempotencyKey || row.id),
@@ -1131,7 +1478,9 @@ function transform(input, salonId) {
   })).filter((row) => row.id && row.target_uid && row.title);
 
   return {
-    conflicts,
+    blockingConflicts,
+    warningConflicts,
+    report,
     tables: {
       clients: [...clientMap.values()],
       client_aliases: clientAliases,
@@ -1204,13 +1553,12 @@ function buildSql(tables) {
     "file_metadata",
     "notification_records",
   ];
-  return [
-    "BEGIN TRANSACTION;",
-    ...order.flatMap((table) =>
-      (tables[table] || []).map((row) => insert(table, row))
-    ),
-    "COMMIT;",
-  ].join("\n");
+  // Wrangler D1 remote execution on Windows is reliable with --file, but
+  // rejects explicit BEGIN/COMMIT statements in the SQL file. Every statement
+  // is INSERT OR REPLACE, so interrupted runs can be safely retried.
+  return order
+    .flatMap((table) => (tables[table] || []).map((row) => insert(table, row)))
+    .join("\n");
 }
 
 function runWranglerD1(sql, database, config) {
@@ -1237,9 +1585,8 @@ function runWranglerD1(sql, database, config) {
       }
     );
     if (result.status !== 0) {
-      throw new Error(
-        `wrangler d1 execute failed with exit code ${result.status}`
-      );
+      const detail = result.error?.message || result.signal || `exit code ${result.status}`;
+      throw new Error(`wrangler d1 execute failed: ${detail}`);
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -1261,24 +1608,41 @@ const apply = hasFlag("--apply");
 const input = inputPath
   ? JSON.parse(readFileSync(inputPath, "utf8"))
   : await readSourceFromFirestore(projectId, salonId);
-const { tables, conflicts } = transform(input, salonId);
+const { tables, blockingConflicts, warningConflicts, report } = transform(input, salonId);
 const counts = Object.fromEntries(
   Object.entries(tables).map(([table, tableRows]) => [table, tableRows.length])
 );
 
 console.log("core migration source", inputPath ? "input-file" : "source-rest");
 console.table(counts);
-if (conflicts.length) {
-  console.warn("conflicts");
-  console.table(conflicts);
+console.log(`blockingConflicts = ${blockingConflicts.length}`);
+if (blockingConflicts.length) {
+  console.log("blocking conflicts");
+  console.table(blockingConflicts);
+}
+console.log(`warningConflicts = ${warningConflicts.length}`);
+if (warningConflicts.length) {
+  console.log("warning conflicts");
+  console.table(warningConflicts);
+}
+console.log(`slotLocksSkippedPast = ${report.slotLocksSkippedPast}`);
+console.log(`mergedClients = ${report.mergedClients}`);
+console.log(`mergedClientGroups = ${report.mergedClientGroups}`);
+if (report.clientCanonicalMappings.length) {
+  console.log("client canonicalization oldClientId -> canonicalClientId");
+  console.table(report.clientCanonicalMappings);
+}
+if (report.discountDecisions.length) {
+  console.log("discount conflict decisions");
+  console.table(report.discountDecisions);
 }
 if (!apply) {
   console.log("dry-run only. Re-run with --apply to write to Cloudflare D1.");
   process.exit(0);
 }
-if (conflicts.length && !hasFlag("--allow-conflicts")) {
+if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
   throw new Error(
-    "Conflicts detected. Resolve them or pass --allow-conflicts after review."
+    "Blocking conflicts detected. Resolve them or pass --allow-conflicts after review."
   );
 }
 runWranglerD1(buildSql(tables), database, config);

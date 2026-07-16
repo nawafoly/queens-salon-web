@@ -129,3 +129,11 @@ test("Core migration preserves explicit halala fields", () => {
   assert.match(source, /amountHalalas/);
   assert.match(source, /totalHalalas/);
 });
+
+test("Core migration writes D1 SQL through a file without explicit transactions", () => {
+  const source = readFileSync("scripts/migrate-core-firestore-to-d1.mjs", "utf8");
+  assert.match(source, /wrangler[\s\S]*d1[\s\S]*execute[\s\S]*--file/);
+  assert.match(source, /mkdtempSync/);
+  assert.doesNotMatch(source, /"BEGIN TRANSACTION;"/);
+  assert.doesNotMatch(source, /"COMMIT;"/);
+});

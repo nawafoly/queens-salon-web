@@ -1,0 +1,136 @@
+{
+  "clients": [
+    {
+      "id": "client-canonical",
+      "name": "Canonical Client",
+      "phone": "0500000003",
+      "firebaseUid": "uid-client-canonical",
+      "status": "active",
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "client-legacy",
+      "name": "Legacy Client",
+      "phone": "+966500000003",
+      "firebaseUid": "uid-client-legacy",
+      "status": "active",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    }
+  ],
+  "services": [
+    {
+      "id": "svc-a",
+      "name": "Blowdry",
+      "durationMinutes": 30,
+      "priceHalalas": 7500,
+      "active": true
+    }
+  ],
+  "staff_public": [
+    {
+      "id": "staff-a",
+      "name": "Staff A",
+      "serviceIds": ["svc-a"],
+      "active": true
+    }
+  ],
+  "bookings": [
+    {
+      "id": "booking-past",
+      "clientId": "client-legacy",
+      "staffId": "staff-a",
+      "date": "2025-01-01",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500,
+      "createdAt": "2025-01-01T07:00:00.000Z"
+    },
+    {
+      "id": "booking-future-a",
+      "clientId": "client-canonical",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500,
+      "createdAt": "2027-01-01T07:00:00.000Z"
+    },
+    {
+      "id": "booking-future-b",
+      "clientId": "client-legacy",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "10:00",
+      "status": "booked",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500,
+      "createdAt": "2027-01-01T08:00:00.000Z"
+    },
+    {
+      "id": "booking-cancelled",
+      "clientId": "client-legacy",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "11:00",
+      "status": "cancelled",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-completed",
+      "clientId": "client-canonical",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "12:00",
+      "status": "completed",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    },
+    {
+      "id": "booking-no-show",
+      "clientId": "client-canonical",
+      "staffId": "staff-a",
+      "date": "2027-01-10",
+      "time": "13:00",
+      "status": "no_show",
+      "serviceId": "svc-a",
+      "serviceName": "Blowdry",
+      "durationMin": 30,
+      "totalHalalas": 7500
+    }
+  ],
+  "discounts": [
+    {
+      "id": "discount-qs953-active",
+      "code": "QS953",
+      "name": "QS953 Active",
+      "type": "fixed",
+      "value": 10,
+      "active": true,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "discount-qs953-newer-inactive",
+      "code": "QS953",
+      "name": "QS953 Newer Inactive",
+      "type": "fixed",
+      "value": 20,
+      "active": false,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    }
+  ]
+}

@@ -742,6 +742,7 @@ test("core migration dry-run parses fixture and prints counts", () => {
   const result = spawnSync(process.execPath, [
     "scripts/migrate-core-firestore-to-d1.mjs",
     "--input=scripts/fixtures/core-migration-fixture.json",
+    "--today=2026-07-16",
   ], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -750,6 +751,28 @@ test("core migration dry-run parses fixture and prints counts", () => {
   assert.match(result.stdout, /dry-run only/);
   assert.match(result.stdout, /clients/);
   assert.match(result.stdout, /payments/);
+});
+
+test("core migration dry-run resolves client, slot lock, and QS953 conflicts without blocking", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-core-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/core-migration-conflicts-fixture.json",
+    "--today=2026-07-16",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /blockingConflicts = 0/);
+  assert.match(result.stdout, /warningConflicts = \d+/);
+  assert.match(result.stdout, /booking_slot_locks\s+│ 6/);
+  assert.match(result.stdout, /slotLocksSkippedPast = 6/);
+  assert.match(result.stdout, /mergedClients = 1/);
+  assert.match(result.stdout, /client-legacy/);
+  assert.match(result.stdout, /client-canonical/);
+  assert.match(result.stdout, /QS953/);
+  assert.match(result.stdout, /discount-qs953-active/);
+  assert.match(result.stdout, /QS953_LEGACY_/);
 });
 
 test("availability endpoint returns D1 slot locks and booking metadata", async () => {
