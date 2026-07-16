@@ -2,18 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import "./booking-internal-v2.css";
-import { addDoc, collection, getDocs, limit, orderBy, query as fsQuery, serverTimestamp, where } from "firebase/firestore";
-import { db } from "../../services/firebase";
-import { getDataSourceFlags } from "../../config/dataSourceFlags";
-import { resolveBookingDataSource } from "../../services/bookingDataSource";
+import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
 import { createBookingGroup, getStaffAvailability, listActiveCategoriesBySection, listActiveSections, listActiveServices, listActiveStaffAll, updateBookingDetails } from "../../services/bookingDataSourceCompat";
 import { SALON_ID } from "../../helpers/bookingSharedConstants";
-import { classifySearchKey } from "../../helpers/bookingSearchUtils";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
 import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../../helpers/timeSlots";
 import { formatTime12 } from "../../helpers/timeDisplay";
-import { filterStaffForResolverTarget, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
+import { filterStaffForInternalBookingTarget, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
 import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isStaffAvailableForDate } from "../../helpers/staffAvailability";
 import { AppSettingsService } from "../../services/AppSettingsService";
 import { findActiveOfferByCode, isOfferActiveNow, listOffers, type Offer } from "../../services/firestoreOffers";
@@ -357,6 +353,7 @@ export default function BookingInternalV2() {
   const [transferAmount, setTransferAmount] = useState("");
   const [bookingNote, setBookingNote] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [postSaveWarning, setPostSaveWarning] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -383,17 +380,11 @@ export default function BookingInternalV2() {
     setCreatingClient(true);
     setNewClientError("");
     try {
-      let created: any;
-      if (getDataSourceFlags().useCoreD1) {
-        created = await resolveBookingDataSource().createClient({ name, phone, email: email || undefined });
-      } else {
-        const ref = await addDoc(collection(db, "salons", SALON_ID, "clients"), {
-          name, fullName: name, phone, mobile: phone, phoneNormalized: phone,
-          email: email || null, status: "active", source: "internal_booking_v2",
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-        });
-        created = { id: ref.id, name, fullName: name, phone, mobile: phone, email, source: "client_profile" };
-      }
+      const created: any = await resolveCoreBookingDataSource().createClient({
+        name,
+        phone,
+        email: email || undefined,
+      });
       const candidate: ClientCandidate = {
         id: String(created?.id || `client:${makeLocalId()}`),
         name: String(created?.name || created?.fullName || name),
@@ -421,7 +412,6 @@ export default function BookingInternalV2() {
       return;
     }
 
-    const parsed = classifySearchKey(qRaw);
     setClientSearching(true);
     setClientMessage("");
     const seen = new Set<string>();
@@ -447,38 +437,8 @@ export default function BookingInternalV2() {
     };
 
     try {
-      if (getDataSourceFlags().useCoreD1) {
-        const rows = await resolveBookingDataSource().searchClients(qRaw);
-        (Array.isArray(rows) ? rows : []).forEach((row: any) => push(row, "core_d1"));
-      } else {
-        const collections = [
-          { ref: collection(db, "salons", SALON_ID, "clients"), source: "client_profile" },
-          { ref: collection(db, "salons", SALON_ID, "users"), source: "user_profile" },
-          { ref: collection(db, "users"), source: "root_user" },
-        ];
-        const digits = parsed.kind === "phone" ? parsed.value : phone10Digits(qRaw);
-        const nameNeedle = normalizeSearchText(qRaw);
-
-        for (const item of collections) {
-          if (digits) {
-            for (const field of ["phone", "mobile"]) {
-              try {
-                const snap = await getDocs(fsQuery(item.ref, where(field, "==", digits), limit(20)));
-                snap.docs.forEach((docSnap) => push({ id: docSnap.id, ...docSnap.data() }, item.source));
-              } catch { /* continue */ }
-            }
-          }
-          if (nameNeedle) {
-            for (const field of ["nameLower", "name", "fullName"]) {
-              try {
-                const value = field === "nameLower" ? nameNeedle : normalizeDigits(qRaw);
-                const snap = await getDocs(fsQuery(item.ref, where(field, ">=", value), where(field, "<=", `${value}\uf8ff`), orderBy(field), limit(30)));
-                snap.docs.forEach((docSnap) => push({ id: docSnap.id, ...docSnap.data() }, item.source));
-              } catch { /* continue */ }
-            }
-          }
-        }
-      }
+      const rows = await resolveCoreBookingDataSource().searchClients(qRaw);
+      (Array.isArray(rows) ? rows : []).forEach((row: any) => push(row, "core_d1"));
 
       setClients(found.slice(0, 25));
       setClientMessage(found.length ? `تم العثور على ${found.length} نتيجة.` : "لم يتم العثور على عميلة مطابقة.");
@@ -505,7 +465,7 @@ export default function BookingInternalV2() {
     async function loadStaff() {
       setStaffLoading(true);
       try {
-        const rows = await listActiveStaffAll(SALON_ID);
+        const rows = await listActiveStaffAll(SALON_ID, "core");
         if (!cancelled) setAllStaff(Array.isArray(rows) ? (rows as StaffRow[]) : []);
       } catch (error) {
         console.error("[BookingInternalV2] staff load failed", error);
@@ -524,7 +484,7 @@ export default function BookingInternalV2() {
       setOffersLoading(true);
       setOffersMessage("");
       try {
-        const rows = await listOffers(SALON_ID);
+        const rows = await listOffers(SALON_ID, "core");
         if (cancelled) return;
         const activeRows = (Array.isArray(rows) ? rows : [])
           .filter((offer: any) => !offer?.deletedAt)
@@ -552,7 +512,7 @@ export default function BookingInternalV2() {
       setCatalogLoading(true);
       setCatalogMessage("");
       try {
-        const rows = await listActiveSections(SALON_ID);
+        const rows = await listActiveSections(SALON_ID, "core");
         if (cancelled) return;
         const safe = Array.isArray(rows) ? (rows as CatalogSection[]) : [];
         setSections(safe);
@@ -581,8 +541,8 @@ export default function BookingInternalV2() {
       setCatalogMessage("");
       try {
         const [cats, rows] = await Promise.all([
-          listActiveCategoriesBySection(selectedSectionId, SALON_ID),
-          listActiveServices({ sectionId: selectedSectionId }, SALON_ID),
+          listActiveCategoriesBySection(selectedSectionId, SALON_ID, "core"),
+          listActiveServices({ sectionId: selectedSectionId }, SALON_ID, "core"),
         ]);
         if (cancelled) return;
         setCategories(Array.isArray(cats) ? (cats as CatalogCategory[]) : []);
@@ -738,7 +698,7 @@ export default function BookingInternalV2() {
   const eligibleStaffByService = useMemo(() => {
     const out: Record<string, StaffRow[]> = {};
     cart.forEach((service) => {
-      out[String(service.id)] = filterStaffForResolverTarget(allStaff, String(service.id), {
+      out[String(service.id)] = filterStaffForInternalBookingTarget(allStaff, String(service.id), {
         kind: String(service?.kind || service?.type || "service"),
         name: serviceTitle(service),
         sectionId: String(service?.sectionId || service?.section_id || ""),
@@ -746,9 +706,8 @@ export default function BookingInternalV2() {
         categoryId: String(service?.categoryId || service?.category_id || ""),
         category: String(service?.category || service?.categoryName || ""),
       })
-        .filter((staff: any) => staff?.showOnBooking !== false)
         .filter((staff: any) => isStaffOperationallyActiveForDate(staff, bookingDate))
-        .filter((staff: any) => isStaffAvailableForDate(staff, bookingDate));
+        .filter((staff: any) => isStaffAvailableForDate(staff, bookingDate, { requireShowOnBooking: false }));
     });
     return out;
   }, [cart, allStaff, bookingDate]);
@@ -823,7 +782,7 @@ export default function BookingInternalV2() {
     }
     setCouponChecking(true);
     try {
-      const offer = await findActiveOfferByCode(SALON_ID, code);
+      const offer = await findActiveOfferByCode(SALON_ID, code, "core");
       if (!offer) {
         setCouponMessage("الكوبون غير صحيح أو منتهي أو غير نشط.");
         return;
@@ -852,6 +811,7 @@ export default function BookingInternalV2() {
 
   const submitBooking = useCallback(async () => {
     setSubmitError("");
+    setPostSaveWarning("");
     setCreatedBookingIds([]);
     if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
     if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
@@ -961,13 +921,18 @@ export default function BookingInternalV2() {
             },
       } as any;
 
-      const created = await createBookingGroup({ parent, items: itemRows });
+      const created = await createBookingGroup({ parent, items: itemRows }, "core");
       const bookingId = String(created.parentId || "");
+      const savedIds = [bookingId, ...(created.itemIds || [])].filter(Boolean);
 
-      // Core D1 separates booking creation from financial posting. Record each
-      // actual payment here so income_entries, invoice totals and reports stay in sync.
-      if (getDataSourceFlags().useCoreD1 && effectivePaidAmount > 0 && bookingId) {
-        const dataSource = resolveBookingDataSource();
+      // The booking is already committed at this point. Preserve its success
+      // state even if a later network call fails, then retry idempotent financial
+      // posting so mixed payments cannot leave duplicate income rows.
+      setCreatedBookingIds(savedIds);
+      markQuickClientUsage(selectedClient);
+
+      if (effectivePaidAmount > 0 && bookingId) {
+        const dataSource = resolveCoreBookingDataSource();
         const payments = paymentMethod === "mixed"
           ? [
               ["cash", Number(cashAmount || 0)],
@@ -976,30 +941,48 @@ export default function BookingInternalV2() {
             ] as const
           : [[paymentMethod, effectivePaidAmount]] as const;
 
-        for (const [method, amount] of payments) {
-          if (amount <= 0) continue;
-          await dataSource.recordPayment({
-            bookingId,
-            method,
-            amountHalalas: Math.round(amount * 100),
-            status: "paid",
-            paidAt: new Date().toISOString(),
-            idempotencyKey: `booking-v2:${bookingId}:${method}:${Math.round(amount * 100)}`,
-          });
+        const recordPaymentWithRetry = async (method: string, amount: number) => {
+          const amountHalalas = Math.round(amount * 100);
+          let lastError: unknown = null;
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+              await dataSource.recordPayment({
+                bookingId,
+                method,
+                amountHalalas,
+                status: "paid",
+                paidAt: new Date().toISOString(),
+                idempotencyKey: `booking-v2:${bookingId}:${method}:${amountHalalas}`,
+              });
+              return;
+            } catch (error) {
+              lastError = error;
+              if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, attempt * 350));
+            }
+          }
+          throw lastError;
+        };
+
+        try {
+          for (const [method, amount] of payments) {
+            if (amount <= 0) continue;
+            await recordPaymentWithRetry(method, amount);
+          }
+
+          await updateBookingDetails(bookingId, {
+            paymentType,
+            paidAmount: effectivePaidAmount,
+            remainingAmount,
+            paymentMethod,
+            status,
+          } as any, "core");
+        } catch (financialError: any) {
+          console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
+          setPostSaveWarning(
+            `تم حفظ الحجز رقم ${bookingId}، لكن تعذر إكمال مزامنة الدفعة بعد المحاولة التلقائية. لا تعيدي إنشاء الحجز؛ راجعيه من صفحة الحجوزات ثم أعيدي التحصيل.`
+          );
         }
-
-        await updateBookingDetails(bookingId, {
-          paymentType,
-          paidAmount: effectivePaidAmount,
-          remainingAmount,
-          paymentMethod,
-          status,
-        } as any);
-
       }
-
-      setCreatedBookingIds([bookingId, ...(created.itemIds || [])].filter(Boolean));
-      markQuickClientUsage(selectedClient);
     } catch (error: any) {
       console.error("[BookingInternalV2] booking submit failed", error);
       setSubmitError(`تعذر حفظ الحجز: ${String(error?.message || error || "خطأ غير معروف")}`);
@@ -1065,7 +1048,7 @@ export default function BookingInternalV2() {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
-    setCreatedBookingIds([]); setSubmitError("");
+    setCreatedBookingIds([]); setSubmitError(""); setPostSaveWarning("");
     setDiscountOpen(false); setDiscountMode("none"); setManualFixedDiscount(""); setManualPercentDiscount(""); setManualMaxDiscount("");
     setSelectedOfferId(""); setCouponInput(""); setCouponOffer(null); setCouponMessage("");
   }, []);
@@ -1332,6 +1315,7 @@ export default function BookingInternalV2() {
                     <div className="bk2-booking-success">
                       <strong>✓ تم حفظ الحجز بنجاح</strong>
                       <p>تم إنشاء {createdBookingIds.length} سجل حجز وربطها بالعميلة والموظفات المختارات.</p>
+                      {postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}
                       <button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button>
                       <button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button>
                     </div>

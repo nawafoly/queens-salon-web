@@ -113,6 +113,9 @@ export type CoreBooking = {
   totalHalalas: number;
   discountSnapshotJson?: string | null;
   paymentStatus: string;
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
+  paidHalalas?: number;
   packageSessionsUsed: number;
   createdByUid?: string | null;
   createdAt: string;

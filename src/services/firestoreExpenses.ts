@@ -196,9 +196,13 @@ function legacyExpenseToCore(expense: Expense) {
  * - يحاول orderBy(createdAt desc)
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
+export async function listAllExpensesCore(): Promise<Expense[]> {
+  return (await CoreFinanceService.listExpenses()).map(coreExpenseToLegacy);
+}
+
 export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
   if (getDataSourceFlags().useCoreD1) {
-    return (await CoreFinanceService.listExpenses()).map(coreExpenseToLegacy);
+    return listAllExpensesCore();
   }
   const col = expensesCol(salonId || DEFAULT_SALON_ID);
 

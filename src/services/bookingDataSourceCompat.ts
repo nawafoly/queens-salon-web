@@ -8,65 +8,81 @@ import type {
   ServiceDoc,
 } from "./firestoreCatalog";
 import type { StaffPublicWithId } from "./firestoreStaffPublic";
-import { resolveBookingDataSource } from "./bookingDataSource";
+import { resolveBookingDataSource, resolveCoreBookingDataSource } from "./bookingDataSource";
 import type { BookingStaffAvailabilityQuery } from "./bookingDataSource";
 
+export type BookingDataSourceMode = "auto" | "core";
+
+function resolveCompatDataSource(mode: BookingDataSourceMode = "auto") {
+  return mode === "core" ? resolveCoreBookingDataSource() : resolveBookingDataSource();
+}
+
 export function listActiveSections(
-  _salonId = "main"
+  _salonId = "main",
+  mode: BookingDataSourceMode = "auto"
 ): Promise<SectionDoc[]> {
-  return resolveBookingDataSource().getServiceSections();
+  return resolveCompatDataSource(mode).getServiceSections();
 }
 
 export function listActiveCategoriesBySection(
   sectionId: string,
-  _salonId = "main"
+  _salonId = "main",
+  mode: BookingDataSourceMode = "auto"
 ): Promise<CategoryDoc[]> {
-  return resolveBookingDataSource().getServiceCategories(sectionId);
+  return resolveCompatDataSource(mode).getServiceCategories(sectionId);
 }
 
 export function listActiveServices(
   params: { sectionId: string; categoryId?: string | null },
-  _salonId = "main"
+  _salonId = "main",
+  mode: BookingDataSourceMode = "auto"
 ): Promise<ServiceDoc[]> {
-  return resolveBookingDataSource().getServices(
+  return resolveCompatDataSource(mode).getServices(
     params.sectionId,
     params.categoryId
   );
 }
 
 export function listActiveStaffAll(
-  _salonId = "main"
+  _salonId = "main",
+  mode: BookingDataSourceMode = "auto"
 ): Promise<StaffPublicWithId[]> {
-  return resolveBookingDataSource().getActiveStaff();
+  return resolveCompatDataSource(mode).getActiveStaff();
 }
 
 export function getStaffAvailability(
-  query: BookingStaffAvailabilityQuery
+  query: BookingStaffAvailabilityQuery,
+  mode: BookingDataSourceMode = "auto"
 ) {
-  return resolveBookingDataSource().getStaffAvailability(query);
+  return resolveCompatDataSource(mode).getStaffAvailability(query);
 }
 
-export function createBooking(booking: BookingDoc) {
-  return resolveBookingDataSource().createBooking(booking);
+export function createBooking(
+  booking: BookingDoc,
+  mode: BookingDataSourceMode = "auto"
+) {
+  return resolveCompatDataSource(mode).createBooking(booking);
 }
 
 export function createBookingGroup(input: {
   parent: BookingDoc;
   items: BookingDoc[];
-}) {
-  return resolveBookingDataSource().createBookingGroup(input);
+}, mode: BookingDataSourceMode = "auto") {
+  return resolveCompatDataSource(mode).createBookingGroup(input);
 }
 
 export function updateBookingStatus(
   id: string,
-  status: BookingStatus
+  status: BookingStatus,
+  mode: BookingDataSourceMode = "auto"
 ) {
-  return resolveBookingDataSource().updateBookingStatus(id, status);
+  return resolveCompatDataSource(mode).updateBookingStatus(id, status);
 }
 
 export function updateBookingDetails(
   id: string,
-  patch: Partial<BookingDoc>
+  patch: Partial<BookingDoc>,
+  mode: BookingDataSourceMode = "auto"
 ) {
-  return resolveBookingDataSource().updateBooking(id, patch);
+  return resolveCompatDataSource(mode).updateBooking(id, patch);
 }

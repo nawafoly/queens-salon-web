@@ -151,7 +151,7 @@ test("Core and package migrations share client canonicalization policy", () => {
 test("dashboard bookings merges Core D1 rows with legacy Firestore rows in Core mode", () => {
   const source = readFileSync("src/services/firestoreBookings.ts", "utf8");
   assert.match(source, /function mergeBookingReadRows/);
-  assert.match(source, /async function readCoreBookings/);
+  assert.match(source, /export async function listCoreBookings/);
   assert.match(source, /async function readFirestoreBookings/);
   assert.match(source, /function watchFirestoreBookings/);
   assert.match(source, /source:\s*"core-d1"/);
@@ -165,7 +165,7 @@ test("internal booking V2 staff source merges staff_public and employees without
   assert.match(staffSource, /readStaffRowsFromCollection\(sid,\s*"employees"\)/);
   assert.match(staffSource, /function mergeStaffRows/);
   assert.match(staffSource, /employeeProfile/);
-  assert.match(v2Source, /filterStaffForResolverTarget/);
+  assert.match(v2Source, /filterStaffForInternalBookingTarget/);
   assert.match(v2Source, /isStaffOperationallyActiveForDate/);
   assert.match(v2Source, /isStaffAvailableForDate/);
   assert.doesNotMatch(v2Source, /Wessam|وسام/i);
@@ -220,4 +220,61 @@ test("internal booking V2 uses shared discount snapshot flow instead of hardcode
   assert.match(helper, /usageCount/);
   assert.match(migration, /discount_snapshot_json/);
   assert.match(migration, /final_total_halalas/);
+});
+
+
+test("internal booking V2 keeps internal staff visible independently from public booking visibility", () => {
+  const helper = readFileSync("src/helpers/bookingAvailabilityUtils.ts", "utf8");
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  assert.match(helper, /filterStaffForInternalBookingTarget/);
+  assert.match(helper, /specialties\.length === 0/);
+  assert.match(v2, /requireShowOnBooking:\s*false/);
+  assert.doesNotMatch(v2, /filter\(\(staff: any\) => staff\?\.showOnBooking !== false\)/);
+});
+
+test("dashboard reports read bookings and finance from explicit Core D1 sources", () => {
+  const reports = readFileSync("src/pages/DashboardReports.tsx", "utf8");
+  assert.match(reports, /listCoreBookings\(\)/);
+  assert.match(reports, /listAllIncomeCore\(\)/);
+  assert.match(reports, /listAllExpensesCore\(\)/);
+  assert.match(reports, /return Number\(item\.amount \|\| 0\)/);
+  assert.doesNotMatch(reports, /listAllIncomeFS\(/);
+  assert.doesNotMatch(reports, /listAllExpensesFS\(/);
+  assert.doesNotMatch(reports, /const bookingsQ = collection\(db, "salons", SALON_ID, "bookings"\)/);
+  assert.doesNotMatch(reports, /const incomeQ = collection\(db, "salons", SALON_ID, "income"\)/);
+});
+
+test("dashboard income totals each payment row without replacing it with the full booking paid total", () => {
+  const income = readFileSync("src/pages/DashboardIncome.tsx", "utf8");
+  assert.match(income, /const effectiveAmount = Number\(x\.amount \|\| 0\)/);
+  assert.match(income, /const rowEffectiveAmount = \(item: IncomeItem\) => Number\(item\.amount \|\| 0\)/);
+  assert.doesNotMatch(income, /bm \? Number\(bm\.paidAmount \|\| 0\) : Number\(item\.amount \|\| 0\)/);
+});
+
+test("Core booking responses carry invoice paid totals and V2 retries idempotent financial posting", () => {
+  const bookingsRepo = readFileSync("workers/core/repositories/bookings.js", "utf8");
+  const mapper = readFileSync("src/services/coreBookingMappers.ts", "utf8");
+  const paymentsRepo = readFileSync("workers/core/repositories/payments.js", "utf8");
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  assert.match(bookingsRepo, /paid_halalas:\s*Number\(invoice\?\.paid_halalas \|\| 0\)/);
+  assert.match(mapper, /paidAmount = Math\.max/);
+  assert.match(paymentsRepo, /payment_breakdown_json/);
+  assert.match(paymentsRepo, /'booking'/);
+  assert.match(v2, /recordPaymentWithRetry/);
+  assert.match(v2, /لا تعيدي إنشاء الحجز/);
+});
+
+
+test("internal booking V2 is pinned to Core D1 and cannot read the Firestore booking counter", () => {
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  const compat = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
+  const envWeb = readFileSync(".env.web", "utf8");
+  assert.match(v2, /resolveCoreBookingDataSource/);
+  assert.match(v2, /createBookingGroup\(\{ parent, items: itemRows \}, "core"\)/);
+  assert.match(v2, /listActiveStaffAll\(SALON_ID, "core"\)/);
+  assert.match(v2, /listOffers\(SALON_ID, "core"\)/);
+  assert.doesNotMatch(v2, /getDataSourceFlags\(\)\.useCoreD1/);
+  assert.doesNotMatch(v2, /firebase\/firestore/);
+  assert.match(compat, /mode === "core" \? resolveCoreBookingDataSource\(\)/);
+  assert.match(envWeb, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api\.maedin\.workers\.dev/);
 });

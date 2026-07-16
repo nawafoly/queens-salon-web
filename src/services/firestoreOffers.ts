@@ -67,6 +67,12 @@ export type Offer = {
 
 const DEFAULT_SALON_ID = "main";
 
+export type OfferDataSourceMode = "auto" | "core";
+
+function useCoreOfferSource(mode: OfferDataSourceMode = "auto") {
+  return mode === "core" || getDataSourceFlags().useCoreD1;
+}
+
 function offersCol(salonId = DEFAULT_SALON_ID) {
   return collection(db, "salons", salonId, "offers");
 }
@@ -246,8 +252,11 @@ function offerToCore(offer: Offer) {
 }
 
 /** ✅ قائمة العروض */
-export async function listOffers(salonId = DEFAULT_SALON_ID): Promise<Offer[]> {
-  if (getDataSourceFlags().useCoreD1) {
+export async function listOffers(
+  salonId = DEFAULT_SALON_ID,
+  mode: OfferDataSourceMode = "auto"
+): Promise<Offer[]> {
+  if (useCoreOfferSource(mode)) {
     return (await CoreOfferService.list({ includeDeleted: true })).map(coreDiscountToOffer);
   }
   const q = query(offersCol(salonId), orderBy("createdAt", "desc"));
@@ -425,12 +434,13 @@ export async function removeOffer(id: string, salonId = DEFAULT_SALON_ID) {
  */
 export async function findActiveOfferByCode(
   salonId: string,
-  codeRaw: string
+  codeRaw: string,
+  mode: OfferDataSourceMode = "auto"
 ): Promise<Offer | null> {
   const code = normalizeCode(codeRaw);
   if (!code) return null;
 
-  if (getDataSourceFlags().useCoreD1) {
+  if (useCoreOfferSource(mode)) {
     const [row] = await CoreOfferService.list({ active: true, code });
     if (!row) return null;
     const offer = coreDiscountToOffer(row);

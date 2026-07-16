@@ -161,6 +161,8 @@ export type BookingDoc = {
   paymentType?: BookingPaymentType;
   paidAmount?: number;
   remainingAmount?: number;
+  invoiceId?: string;
+  invoiceNumber?: string;
 
   status: BookingStatus;
   note?: string;
@@ -2757,7 +2759,7 @@ async function readFirestoreBookings(scope?: BookingReadScope): Promise<BookingD
   );
 }
 
-async function readCoreBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
+export async function listCoreBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
   return (await CoreBookingService.list()).map((row) => ({
     ...coreBookingToLegacy(row),
     source: "core-d1" as const,
@@ -2766,7 +2768,7 @@ async function readCoreBookings(scope?: BookingReadScope): Promise<BookingDocWit
 
 export async function listBookings(scope?: BookingReadScope): Promise<BookingDocWithId[]> {
   if (getDataSourceFlags().useCoreD1) {
-    const coreRows = await readCoreBookings(scope);
+    const coreRows = await listCoreBookings(scope);
     const firestoreRows = await readFirestoreBookings(scope).catch((error) => {
       console.warn("[firestoreBookings] legacy Firestore booking read failed", error);
       return [] as BookingDocWithId[];
@@ -2832,7 +2834,7 @@ export function watchAllBookings(
     );
     const loadCore = async () => {
       try {
-        latestCoreRows = await readCoreBookings(scope);
+        latestCoreRows = await listCoreBookings(scope);
         emit();
       }
       catch (error) { if (!stopped) onError?.(error); }

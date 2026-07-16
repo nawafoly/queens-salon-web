@@ -2431,11 +2431,13 @@ async function main() {
   if (!apply && !applyLocal && hasFlag("--dump-sql")) {
     console.log("sql dump");
     console.log(sqlArtifact.sql);
-    process.exit(0);
+    // Do not force process.exit here: large SQL dumps may still be buffered when
+    // stdout is piped by tests or automation, causing silent truncation.
+    return;
   }
   if (!apply && !applyLocal) {
     console.log("dry-run only. Re-run with --apply-local for local D1 validation or --apply for remote D1.");
-    process.exit(0);
+    return;
   }
   if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
     throw new Error(

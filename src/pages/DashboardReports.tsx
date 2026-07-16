@@ -5,6 +5,9 @@ import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/fre
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { listCoreBookings } from "../services/firestoreBookings";
+import { listAllIncomeCore } from "../services/firestoreIncome";
+import { listAllExpensesCore } from "../services/firestoreExpenses";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
 import type { PaymentMethod } from "../types/finance";
 import {
@@ -310,10 +313,11 @@ function statusLabelForIncome(item: IncomeRow): string {
   return "نشط";
 }
 
-function rowEffectiveAmount(item: IncomeRow, bookingMetaById: Record<string, BookingMeta>) {
-  const linkedBookingId = resolveLinkedBookingId(item);
-  const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
-  return meta ? Number(meta.paidAmount || 0) : Number(item.amount || 0);
+function rowEffectiveAmount(item: IncomeRow, _bookingMetaById: Record<string, BookingMeta>) {
+  // Each income row is an actual posted financial movement. Replacing it with
+  // the booking paid total duplicates mixed payments and turns partial Core
+  // payments into zero when the booking snapshot is stale.
+  return Number(item.amount || 0);
 }
 
 function normalizePaymentType(raw: any): BookingPaymentType | null {
@@ -661,6 +665,11 @@ export default function DashboardReports() {
   useEffect(() => {
     let active = true;
     let pending = 5;
+    let bookingsReady = false;
+    let incomeReady = false;
+    let expensesReady = false;
+    let staffReady = false;
+    let settingsReady = false;
     setLoading(true);
     setLoadErr("");
 
@@ -668,42 +677,30 @@ export default function DashboardReports() {
       pending -= 1;
       if (active && pending <= 0) setLoading(false);
     };
-    let bookingsReady = false;
-    let incomeReady = false;
-    let expensesReady = false;
-    let staffReady = false;
-    let settingsReady = false;
+    const readyOnce = (key: "bookings" | "income" | "expenses" | "staff" | "settings") => {
+      if (key === "bookings" && !bookingsReady) { bookingsReady = true; done(); }
+      if (key === "income" && !incomeReady) { incomeReady = true; done(); }
+      if (key === "expenses" && !expensesReady) { expensesReady = true; done(); }
+      if (key === "staff" && !staffReady) { staffReady = true; done(); }
+      if (key === "settings" && !settingsReady) { settingsReady = true; done(); }
+    };
+    const appendLoadError = (label: string, error: unknown) => {
+      const detail = String((error as any)?.message || error || "خطأ غير معروف");
+      setLoadErr((current) => [current, `${label}: ${detail}`].filter(Boolean).join(" | "));
+    };
 
-    const bookingsQ = collection(db, "salons", SALON_ID, "bookings");
-    const incomeQ = collection(db, "salons", SALON_ID, "income");
-    const expensesQ = collection(db, "salons", SALON_ID, "expenses");
-    const staffQ = collection(db, "salons", SALON_ID, "staff_public");
-
-    let firstBookings = true;
-    let firstIncome = true;
-    let firstExpenses = true;
-    let firstStaff = true;
-
-    const unsubBookings = loadCollectionOnce(
-      bookingsQ,
-      (snap) => {
-        const source = "DashboardReports.bookings.getDocs";
-        const docs = firstBookings ? snap.docs : snap.docChanges().map((c: any) => c.doc);
-        docs.forEach((d: any) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
-        });
-        firstBookings = false;
-
-        const rows: BookingRow[] = snap.docs.map((d: any) => {
-          const raw = d.data() as any;
-          const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
-          const date = normalizeIsoDate(raw?.date, createdAtMs);
+    const loadBookingsData = async () => {
+      try {
+        const data = await listCoreBookings();
+        if (!active) return;
+        const rows: BookingRow[] = data.map((raw: any) => {
+          const createdAtMs = parseMillis(raw?.createdAt || raw?.createdAtMs || raw?.updatedAt);
           const payment = resolveBookingPayment(raw);
           return {
-            id: d.id,
+            id: String(raw?.id || "").trim(),
             publicId: String(raw?.publicId || raw?.trackPublicId || "").trim(),
-            date,
-            time: String(raw?.time || "").trim(),
+            date: normalizeIsoDate(raw?.date, createdAtMs),
+            time: String(raw?.time || raw?.startTime || "").trim(),
             status: String(raw?.status || "pending").trim().toLowerCase() as BookingStatus,
             amount: payment.paidAmount,
             totalAmount: payment.totalAmount,
@@ -719,45 +716,23 @@ export default function DashboardReports() {
         });
         setBookings(rows);
         setLastSyncMs(Date.now());
-        if (!bookingsReady) {
-          bookingsReady = true;
-          done();
-        }
-      },
-      (err) => {
-        setLoadErr(String(err?.message || err || "تعذر تحميل الحجوزات"));
-        if (!bookingsReady) {
-          bookingsReady = true;
-          done();
-        }
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل الحجوزات", error);
+      } finally {
+        if (active) readyOnce("bookings");
       }
-    );
+    };
 
-    const unsubIncome = loadCollectionOnce(
-      incomeQ,
-      (snap) => {
-        const source = "DashboardReports.income.getDocs";
-        const docs = firstIncome ? snap.docs : snap.docChanges().map((c: any) => c.doc);
-        docs.forEach((d: any) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
-        });
-        firstIncome = false;
-
-        const rows: IncomeRow[] = snap.docs.map((d: any) => {
-          const raw = d.data() as any;
-          const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
-          const date = normalizeIsoDate(raw?.date, createdAtMs);
-          const time = createdAtMs
-            ? new Intl.DateTimeFormat("ar-SA", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }).format(new Date(createdAtMs))
-            : "";
-
+    const loadIncomeData = async () => {
+      try {
+        const data = await listAllIncomeCore();
+        if (!active) return;
+        const rows: IncomeRow[] = data.map((raw: any) => {
+          const createdAtMs = parseMillis(raw?.createdAt);
           return {
-            id: d.id,
-            date,
-            time,
+            id: String(raw?.id || "").trim(),
+            date: normalizeIsoDate(raw?.date, createdAtMs),
+            time: createdAtMs ? new Intl.DateTimeFormat("ar-SA", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAtMs)) : "",
             amount: Number(raw?.amount ?? 0) || 0,
             method: normalizePaymentMethod(raw?.method),
             source: String(raw?.source || "").trim(),
@@ -769,93 +744,62 @@ export default function DashboardReports() {
         });
         setIncomeRows(rows);
         setLastSyncMs(Date.now());
-        if (!incomeReady) {
-          incomeReady = true;
-          done();
-        }
-      },
-      (err) => {
-        setLoadErr(String(err?.message || err || "تعذر تحميل الإيرادات"));
-        if (!incomeReady) {
-          incomeReady = true;
-          done();
-        }
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل الإيرادات", error);
+      } finally {
+        if (active) readyOnce("income");
       }
-    );
+    };
 
-    const unsubExpenses = loadCollectionOnce(
-      expensesQ,
-      (snap) => {
-        const source = "DashboardReports.expenses.getDocs";
-        const docs = firstExpenses ? snap.docs : snap.docChanges().map((c: any) => c.doc);
-        docs.forEach((d: any) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
-        });
-        firstExpenses = false;
-
-        const rows: ExpenseRow[] = snap.docs.map((d: any) => {
-          const raw = d.data() as any;
-          const createdAtMs = parseMillis(raw?.createdAt || raw?.updatedAt);
+    const loadExpensesData = async () => {
+      try {
+        const data = await listAllExpensesCore();
+        if (!active) return;
+        const rows: ExpenseRow[] = data.map((raw: any) => {
+          const createdAtMs = parseMillis(raw?.createdAt);
           return {
-            id: d.id,
+            id: String(raw?.id || "").trim(),
             date: normalizeIsoDate(raw?.date, createdAtMs),
             amount: Number(raw?.amount ?? 0) || 0,
             category: String(raw?.category || "أخرى").trim() || "أخرى",
             title: String(raw?.title || "").trim(),
             note: String(raw?.note || "").trim(),
-            addedBy: String(
-              raw?.createdByName ||
-                raw?.addedBy ||
-                raw?.createdBy ||
-                raw?.createdByEmail ||
-                raw?.createdByUid ||
-                "الإدارة"
-            ).trim() || "الإدارة",
+            addedBy: String(raw?.createdByName || raw?.addedBy || raw?.createdBy || "الإدارة").trim() || "الإدارة",
             createdAtMs,
           };
         });
         setExpenses(rows);
         setLastSyncMs(Date.now());
-        if (!expensesReady) {
-          expensesReady = true;
-          done();
-        }
-      },
-      (err) => {
-        setLoadErr(String(err?.message || err || "تعذر تحميل المصروفات"));
-        if (!expensesReady) {
-          expensesReady = true;
-          done();
-        }
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل المصروفات", error);
+      } finally {
+        if (active) readyOnce("expenses");
       }
-    );
+    };
 
+    const refreshFinancialData = () => {
+      void loadBookingsData();
+      void loadIncomeData();
+      void loadExpensesData();
+    };
+    refreshFinancialData();
+    const refreshTimer = globalThis.setInterval(refreshFinancialData, 12_000);
+
+    const staffQ = collection(db, "salons", SALON_ID, "staff_public");
     const unsubStaff = loadCollectionOnce(
       staffQ,
       (snap) => {
         const source = "DashboardReports.staff_public.getDocs";
-        const docs = firstStaff ? snap.docs : snap.docChanges().map((c: any) => c.doc);
-        docs.forEach((d: any) => {
+        snap.docs.forEach((d: any) => {
           if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
         });
-        firstStaff = false;
-
-        const rows = normalizeStaffPayrollRows(
-          snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))
-        );
-        setStaffRows(rows);
+        setStaffRows(normalizeStaffPayrollRows(snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))));
         setLastSyncMs(Date.now());
-        if (!staffReady) {
-          staffReady = true;
-          done();
-        }
+        readyOnce("staff");
       },
-      (err) => {
-        setLoadErr(String(err?.message || err || "تعذر تحميل الموظفات"));
-        if (!staffReady) {
-          staffReady = true;
-          done();
-        }
+      (error) => {
+        appendLoadError("تعذر تحميل الموظفات", error);
+        readyOnce("staff");
       }
     );
 
@@ -863,30 +807,19 @@ export default function DashboardReports() {
       (remote: any) => {
         setAppSettings(remote || {});
         setLastSyncMs(Date.now());
-        if (!settingsReady) {
-          settingsReady = true;
-          done();
-        }
+        readyOnce("settings");
       },
-      () => {
-        if (!settingsReady) {
-          settingsReady = true;
-          done();
-        }
+      (error) => {
+        appendLoadError("تعذر تحميل الإعدادات", error);
+        readyOnce("settings");
       }
     );
 
     return () => {
       active = false;
-      unsubBookings();
-      unsubIncome();
-      unsubExpenses();
+      globalThis.clearInterval(refreshTimer);
       unsubStaff();
-      try {
-        unsubSettings?.();
-      } catch {
-        // noop
-      }
+      try { unsubSettings?.(); } catch { /* noop */ }
     };
   }, []);
 

@@ -134,7 +134,7 @@ function coreIncomeToLegacy(row: import("../types/coreApi").CoreIncomeEntry): In
     amount: Number(row.amountHalalas || 0) / 100,
     method: normalizePaymentMethod(row.method),
     paymentBreakdown,
-    source: String(row.source || row.category || "دخل"),
+    source: String(row.source || (row.bookingId ? "booking" : row.category) || "دخل"),
     note: row.note || row.description || undefined,
     bookingId: row.bookingId || undefined,
     clientName: row.clientName || undefined,
@@ -167,9 +167,13 @@ function legacyIncomeToCore(item: IncomeItem) {
  * - يحاول orderBy(createdAt desc)
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
+export async function listAllIncomeCore(): Promise<IncomeItem[]> {
+  return (await CoreFinanceService.listIncome()).map(coreIncomeToLegacy);
+}
+
 export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
   if (getDataSourceFlags().useCoreD1) {
-    return (await CoreFinanceService.listIncome()).map(coreIncomeToLegacy);
+    return listAllIncomeCore();
   }
   const col = incomeCol(salonId || DEFAULT_SALON_ID);
 
@@ -196,16 +200,21 @@ export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {
   }
 }
 
+/** Core-only income write used by D1 dashboard surfaces. */
+export async function upsertIncomeCore(item: IncomeItem) {
+  const payload = legacyIncomeToCore(item);
+  try {
+    await CoreFinanceService.patchIncome(item.id, payload);
+  } catch (error) {
+    if (!(error instanceof CoreApiError) || error.status !== 404) throw error;
+    await CoreFinanceService.createIncome(payload);
+  }
+}
+
 /** ✅ إضافة/تحديث */
 export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
   if (getDataSourceFlags().useCoreD1) {
-    const payload = legacyIncomeToCore(item);
-    try {
-      await CoreFinanceService.patchIncome(item.id, payload);
-    } catch (error) {
-      if (!(error instanceof CoreApiError) || error.status !== 404) throw error;
-      await CoreFinanceService.createIncome(payload);
-    }
+    await upsertIncomeCore(item);
     return;
   }
   const sid = salonId || DEFAULT_SALON_ID;
@@ -262,9 +271,13 @@ export async function upsertIncomeFS(item: IncomeItem, salonId?: string) {
 }
 
 /** ✅ حذف */
+export async function removeIncomeCore(id: string) {
+  await CoreFinanceService.deleteIncome(id);
+}
+
 export async function removeIncomeFS(id: string, salonId?: string) {
   if (getDataSourceFlags().useCoreD1) {
-    await CoreFinanceService.deleteIncome(id);
+    await removeIncomeCore(id);
     return;
   }
   const sid = salonId || DEFAULT_SALON_ID;

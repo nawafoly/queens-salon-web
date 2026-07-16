@@ -16,16 +16,15 @@ import {
 import Modal from "../components/Modal";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
 
 import {
-  listAllIncomeFS,
-  removeIncomeFS,
-  upsertIncomeFS,
+  listAllIncomeCore,
+  removeIncomeCore,
+  upsertIncomeCore,
 } from "../services/firestoreIncome";
-import { listAllBookings } from "../services/firestoreBookings";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { listCoreBookings } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
@@ -456,12 +455,6 @@ function normalizeIncomeSourceInput(raw: string): string {
   return trimmed;
 }
 
-function normalizeConfirmedPaymentMethod(raw: any): "cash" | "card" | "transfer" | "mixed" | null {
-  const m = normalizePaymentMethod(raw);
-  if (m === "cash" || m === "card" || m === "transfer" || m === "mixed") return m;
-  return null;
-}
-
 function loadLegacyIncome(): IncomeItem[] {
   try {
     const raw = localStorage.getItem(LEGACY_INCOME_KEY);
@@ -541,7 +534,7 @@ export default function DashboardIncome() {
   const refresh = async () => {
     try {
       setLoading(true);
-      const [incomeRows, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
+      const [incomeRows, bookingRows] = await Promise.all([listAllIncomeCore(), listCoreBookings()]);
       const bookingMap = bookingRows.reduce(
         (acc, b: any) => {
           const payment = resolveBookingPayment(b);
@@ -592,7 +585,7 @@ export default function DashboardIncome() {
         const role = await resolveRoleFromFirestore(user.uid);
         if (mounted) setUiRole(role);
 
-        const data = await listAllIncomeFS();
+        const data = await listAllIncomeCore();
 
         // ✅ Migration (once)
         const migrated = localStorage.getItem(INCOME_MIGRATED_KEY) === "1";
@@ -600,7 +593,7 @@ export default function DashboardIncome() {
           const legacy = loadLegacyIncome();
           if (legacy.length) {
             for (const it of legacy) {
-              await upsertIncomeFS(it);
+              await upsertIncomeCore(it);
             }
           }
           localStorage.setItem(INCOME_MIGRATED_KEY, "1");
@@ -608,7 +601,7 @@ export default function DashboardIncome() {
           localStorage.setItem(INCOME_MIGRATED_KEY, "1");
         }
 
-        const [finalData, bookingRows] = await Promise.all([listAllIncomeFS(), listAllBookings()]);
+        const [finalData, bookingRows] = await Promise.all([listAllIncomeCore(), listCoreBookings()]);
         const bookingMap = bookingRows.reduce(
           (acc, b: any) => {
             const payment = resolveBookingPayment(b);
@@ -675,7 +668,7 @@ export default function DashboardIncome() {
       const effectiveDate = effectiveDateOf(x);
       const paymentSummary = buildPaymentSummary(bm);
       const noteText = formatIncomeNote(x.note);
-      const effectiveAmount = bm ? Number(bm.paidAmount || 0) : Number(x.amount || 0);
+      const effectiveAmount = Number(x.amount || 0);
       const a =
         `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
           x.bookingId || ""
@@ -694,10 +687,7 @@ export default function DashboardIncome() {
     return normalizeISODate(bm?.bookingDate) || normalizeISODate(item.date) || String(item.date || "").trim();
   };
 
-  const rowEffectiveAmount = (item: IncomeItem) => {
-    const bm = rowBookingMeta(item);
-    return bm ? Number(bm.paidAmount || 0) : Number(item.amount || 0);
-  };
+  const rowEffectiveAmount = (item: IncomeItem) => Number(item.amount || 0);
 
   const total = useMemo(
     () => periodFiltered.reduce((s, x) => s + rowEffectiveAmount(x), 0),
@@ -765,8 +755,8 @@ export default function DashboardIncome() {
 
     try {
       setLoading(true);
-      await upsertIncomeFS(item);
-      const next = await listAllIncomeFS();
+      await upsertIncomeCore(item);
+      const next = await listAllIncomeCore();
       setItems(next);
       setAddOpen(false);
       setAmount("");
@@ -804,8 +794,8 @@ export default function DashboardIncome() {
     try {
       setLoading(true);
       setDeleteError("");
-      await removeIncomeFS(String(deleteTarget.id));
-      const next = await listAllIncomeFS();
+      await removeIncomeCore(String(deleteTarget.id));
+      const next = await listAllIncomeCore();
       setItems(next);
       setDeleteOpen(false);
       setDeleteTarget(null);
@@ -892,56 +882,18 @@ export default function DashboardIncome() {
         const paidRounded = round2(Math.max(0, Math.min(totalAmount, paidAmount)));
         const remainingAmount = round2(Math.max(0, totalAmount - paidRounded));
 
-        if (getDataSourceFlags().useCoreD1) {
-          await Promise.all([
-            upsertIncomeFS({
-              ...editTarget,
-              amount: paidRounded,
-              createdAt: Number(editTarget.createdAt) || Date.now(),
-            }),
-            CoreBookingService.patch(bookingId, {
-              subtotalHalalas: Math.round(totalAmount * 100),
-              totalHalalas: Math.round(totalAmount * 100),
-              paymentStatus: paymentType === "full" ? "paid" : "partial",
-            }),
-          ]);
-        } else {
-          await Promise.all([
-            upsertIncomeFS({
-              ...editTarget,
-              amount: paidRounded,
-              createdAt: Number(editTarget.createdAt) || Date.now(),
-            }),
-            setDoc(
-              doc(db, "salons", "main", "bookings", bookingId),
-              {
-                total: totalAmount,
-                finalPrice: totalAmount,
-                paymentType,
-                paidAmount: paidRounded,
-                remainingAmount,
-                updatedAt: serverTimestamp(),
-                amountEditedFromIncome: true,
-                amountEditedAt: serverTimestamp(),
-              },
-              { merge: true }
-            ),
-            setDoc(
-              doc(db, "salons", "main", "booking_tracks", bookingId),
-              {
-                total: totalAmount,
-                finalPrice: totalAmount,
-                paymentType,
-                paidAmount: paidRounded,
-                remainingAmount,
-                updatedAt: serverTimestamp(),
-                amountEditedFromIncome: true,
-                amountEditedAt: serverTimestamp(),
-              },
-              { merge: true }
-            ),
-          ]);
-        }
+        await Promise.all([
+          upsertIncomeCore({
+            ...editTarget,
+            amount: paidRounded,
+            createdAt: Number(editTarget.createdAt) || Date.now(),
+          }),
+          CoreBookingService.patch(bookingId, {
+            subtotalHalalas: Math.round(totalAmount * 100),
+            totalHalalas: Math.round(totalAmount * 100),
+            paymentStatus: paymentType === "full" ? "paid" : "partial",
+          }),
+        ]);
 
         await refresh();
         setModalMsg("تم تعديل طريقة الدفع وتحديث الإيراد");
@@ -953,12 +905,12 @@ export default function DashboardIncome() {
         }
 
         const nextAmount = round2(nextAmountRaw);
-        await upsertIncomeFS({
+        await upsertIncomeCore({
           ...editTarget,
           amount: nextAmount,
           createdAt: Number(editTarget.createdAt) || Date.now(),
         });
-        const next = await listAllIncomeFS();
+        const next = await listAllIncomeCore();
         setItems(next);
         setModalMsg("تم تعديل المبلغ");
       }
@@ -983,56 +935,7 @@ export default function DashboardIncome() {
   const canFixPaymentMethods = uiRole === "owner" || uiRole === "admin";
 
   const fixPaymentMethods = async () => {
-    if (getDataSourceFlags().useCoreD1) {
-      setModalMsg("إصلاح طرق الدفع القديمة مخصص لمسار Firestore قبل النقل فقط؛ مدفوعات D1 محفوظة كسجلات مستقلة.");
-      return;
-    }
-    if (!canFixPaymentMethods) {
-      setModalMsg("هذه العملية تتطلب صلاحية Owner/Admin.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const bookings = await listAllBookings();
-      const targets = bookings.filter((b: any) => {
-        const status = String(b?.status || "").toLowerCase().trim();
-        if (!(status === "confirmed" || status === "completed")) return false;
-        const method = normalizeConfirmedPaymentMethod((b as any)?.paymentMethod);
-        return !method || method === "cash";
-      });
-
-      await Promise.all(
-        targets.map(async (b: any) => {
-          const id = String(b?.id || "").trim();
-          if (!id) return;
-          await setDoc(
-            doc(db, "salons", "main", "bookings", id),
-            {
-              paymentMethod: "transfer",
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-          await setDoc(
-            doc(db, "salons", "main", "booking_tracks", id),
-            {
-              paymentMethod: "transfer",
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        })
-      );
-
-      await refresh();
-      setModalMsg(`تم إصلاح ${targets.length} حجز: تم تعيين paymentMethod = transfer.`);
-    } catch (e) {
-      setModalMsg(firebaseMsg(e));
-    } finally {
-      setLoading(false);
-    }
+    setModalMsg("إصلاح طرق الدفع القديمة مخصص لمسار Firestore قبل النقل فقط؛ مدفوعات D1 محفوظة كسجلات مستقلة.");
   };
 
   return (

@@ -94,12 +94,16 @@ export interface BookingDataSource {
   ): Promise<CorePayment | null>;
 }
 
+export function resolveCoreBookingDataSource(): BookingDataSource {
+  requireCoreWorkerUrl();
+  return coreD1BookingDataSource;
+}
+
 export function resolveBookingDataSource(): BookingDataSource {
   const flags = getDataSourceFlags();
   if (flags.useCoreD1) {
     // Explicit cutover only. Never fall back to Firestore after a D1 failure.
-    requireCoreWorkerUrl();
-    return coreD1BookingDataSource;
+    return resolveCoreBookingDataSource();
   }
   return firestoreBookingDataSource;
 }

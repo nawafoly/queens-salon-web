@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { buildClientCanonicalization } from "../scripts/migration-client-canonicalization.mjs";
 import {
   buildSqlArtifact,
@@ -299,6 +300,10 @@ class FakeD1 {
       return this.insert("invoices", { id, salon_id, booking_id, client_id, invoice_number, subtotal_halalas, discount_halalas, total_halalas, paid_halalas, status, issued_at, created_at, updated_at });
     }
     if (normalized.startsWith("INSERT INTO income_entries")) {
+      if (normalized.includes("METHOD, PAYMENT_BREAKDOWN_JSON, SOURCE, NOTE")) {
+        const [id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, description, method, payment_breakdown_json, note, occurred_at, created_at] = params;
+        return this.insert("income_entries", { id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category: "payment", description, method, payment_breakdown_json, source: "booking", note, occurred_at, created_at });
+      }
       const [id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description, occurred_at, created_at] = params;
       return this.insert("income_entries", { id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description, occurred_at, created_at });
     }
@@ -1070,6 +1075,16 @@ test("full cash booking payment updates invoice booking income reports and audit
   const incomeBody = await json(incomeResponse);
   assert.equal(incomeBody.data.length, 1);
   assert.equal(incomeBody.data[0].amount_halalas, 7500);
+  assert.equal(incomeBody.data[0].method, "cash");
+  assert.equal(incomeBody.data[0].source, "booking");
+  assert.equal(incomeBody.data[0].note, "booking_payment:cash");
+  assert.deepEqual(JSON.parse(incomeBody.data[0].payment_breakdown_json), { cash: 75 });
+
+  const bookingResponse = await worker.fetch(request("/api/core/bookings/booking-cash"), env(fake));
+  const bookingBody = await json(bookingResponse);
+  assert.equal(bookingResponse.status, 200, JSON.stringify(bookingBody));
+  assert.equal(bookingBody.data.paid_halalas, 7500);
+  assert.equal(bookingBody.data.invoice_id, "invoice-cash");
 
   const actions = fake.rows("audit_logs").map((row) => row.action);
   assert.ok(actions.includes("booking_created"));
@@ -1156,6 +1171,10 @@ test("mixed booking payments create independent payment and income rows", async 
 
   assert.equal(fake.rows("payments").length, 2);
   assert.equal(fake.rows("income_entries").length, 2);
+  assert.deepEqual(
+    fake.rows("income_entries").map((row) => [row.method, row.amount_halalas, row.source]).sort(),
+    [["card", 4500, "booking"], ["cash", 3000, "booking"]]
+  );
   assert.deepEqual(
     fake.rows("payments").map((row) => [row.method, row.amount_halalas]).sort(),
     [["card", 4500], ["cash", 3000]]
@@ -1395,7 +1414,7 @@ test("core migration dry-run resolves client, slot lock, and QS953 conflicts wit
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /blockingConflicts = 0/);
   assert.match(result.stdout, /warningConflicts = \d+/);
-  assert.match(result.stdout, /booking_slot_locks\s+│ 6/);
+  assert.match(stripVTControlCharacters(result.stdout), /booking_slot_locks\s+│ 6/);
   assert.match(result.stdout, /slotLocksSkippedPast = 6/);
   assert.match(result.stdout, /mergedClients = 1/);
   assert.match(result.stdout, /client-legacy/);
@@ -1687,7 +1706,7 @@ test("core migration emits one bounded INSERT statement per row", () => {
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /blockingConflicts = 0/);
-    assert.match(result.stdout, /clients\s+[^0-9]+1205/);
+    assert.match(stripVTControlCharacters(result.stdout), /clients\s+[^0-9]+1205/);
     assert.doesNotMatch(result.stdout, /BEGIN TRANSACTION|COMMIT;/);
     assert.match(result.stdout, /statementsPerTable/);
     const largest = Number(/largestStatementBytes = (\d+)/.exec(result.stdout)?.[1] || 0);

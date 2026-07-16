@@ -84,8 +84,9 @@ export async function createPayment(db, salonId, data, actor = {}) {
     },
     {
       sql: `INSERT INTO income_entries
-        (id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description, occurred_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?)`,
+        (id, salon_id, booking_id, invoice_id, payment_id, amount_halalas, category, description,
+         method, payment_breakdown_json, source, note, occurred_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, 'booking', ?, ?, ?)`,
       params: [
         generatedId("income"),
         salonId,
@@ -94,6 +95,9 @@ export async function createPayment(db, salonId, data, actor = {}) {
         payment.id,
         payment.amount_halalas,
         `Payment ${payment.method}`,
+        payment.method,
+        JSON.stringify({ [payment.method]: payment.amount_halalas / 100 }),
+        `booking_payment:${payment.method}`,
         payment.paid_at,
         now,
       ],

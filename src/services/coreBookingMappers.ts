@@ -161,6 +161,9 @@ export function mapCoreBooking(
     total_halalas: "totalHalalas",
     discount_snapshot_json: "discountSnapshotJson",
     payment_status: "paymentStatus",
+    invoice_id: "invoiceId",
+    invoice_number: "invoiceNumber",
+    paid_halalas: "paidHalalas",
     package_sessions_used: "packageSessionsUsed",
     created_by_uid: "createdByUid",
     created_at: "createdAt",
@@ -348,8 +351,9 @@ export function coreBookingToLegacy(
   const firstItem = booking.items[0];
   const total = sarFromHalalas(booking.totalHalalas);
   const discountAmount = sarFromHalalas(booking.discountHalalas);
-  const isPaid = booking.paymentStatus === "paid";
-  const isPartial = booking.paymentStatus === "partial";
+  const paidAmount = Math.max(0, Math.min(total, sarFromHalalas(booking.paidHalalas || 0)));
+  const isPaid = booking.paymentStatus === "paid" || (total > 0 && paidAmount >= total);
+  const isPartial = booking.paymentStatus === "partial" || (paidAmount > 0 && paidAmount < total);
   let discountSnapshot: unknown = undefined;
   try {
     discountSnapshot = booking.discountSnapshotJson
@@ -391,8 +395,10 @@ export function coreBookingToLegacy(
     discountAmount,
     discountSnapshot,
     paymentType: isPaid ? "full" : isPartial ? "partial" : "none",
-    paidAmount: isPaid ? total : 0,
-    remainingAmount: isPaid ? 0 : total,
+    paidAmount,
+    remainingAmount: Math.max(0, total - paidAmount),
+    invoiceId: booking.invoiceId || undefined,
+    invoiceNumber: booking.invoiceNumber || undefined,
     status: legacyBookingStatus(booking.status),
     note: booking.notes || undefined,
     durationMin: firstItem?.durationMinutes || undefined,

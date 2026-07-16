@@ -230,6 +230,36 @@ export function filterStaffForResolverTarget<T>(
   });
 }
 
+
+/**
+ * Internal reception bookings must not inherit the public-site visibility flag.
+ * Staff with no specialties configured are treated as unassigned rather than
+ * silently hidden, while explicitly configured specialties remain enforced.
+ */
+export function filterStaffForInternalBookingTarget<T>(
+  rows: T[] | null | undefined,
+  serviceId: string,
+  target: StaffResolverTarget
+) {
+  const named = filterNamedStaffRows(rows);
+  const matched = filterStaffForResolverTarget(named, serviceId, target);
+  const unrestricted = named.filter((staff: any) => {
+    const specialties = normalizeStaffSpecialties(staff);
+    return specialties.length === 0 || specialties.includes("*") || specialties.includes("all") || specialties.includes("الكل");
+  });
+
+  const output: T[] = [];
+  const seen = new Set<string>();
+  for (const staff of [...matched, ...unrestricted]) {
+    const row: any = staff as any;
+    const key = String(row?.id || row?.uid || row?.employeeId || row?.linkedUid || row?.name || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(staff);
+  }
+  return output;
+}
+
 export function buildSlotId(
   salonId: string,
   employeeKey: string,
