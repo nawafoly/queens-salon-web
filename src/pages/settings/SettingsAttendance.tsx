@@ -27,6 +27,7 @@ import {
   SettingsState,
   SettingsStats,
 } from "./SettingsFrame";
+import "../../styles/SettingsAttendancePrecision.css";
 
 type Props = {
   hasAdminPower: boolean;
@@ -40,6 +41,15 @@ const emptyZone = {
   radiusMeters: 100,
   active: true,
 };
+
+const RADIUS_PRESETS = [25, 50, 100, 150, 200, 300];
+const MIN_RADIUS_METERS = 10;
+const MAX_RADIUS_METERS = 5000;
+
+function clampRadius(value: number, fallback = 100) {
+  const normalized = Number.isFinite(value) ? value : fallback;
+  return Math.min(MAX_RADIUS_METERS, Math.max(MIN_RADIUS_METERS, Math.round(normalized)));
+}
 
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
 let googleMapsLoader: Promise<any> | null = null;
@@ -100,6 +110,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
   const [manualPickMode, setManualPickMode] = useState(false);
   const [manualMarkerOffset, setManualMarkerOffset] = useState({ x: 0, y: 0 });
   const [mapZoom, setMapZoom] = useState(18);
+  const [nudgeMeters, setNudgeMeters] = useState(5);
   const [mapFrameCenter, setMapFrameCenter] = useState({
     lat: emptyZone.lat,
     lng: emptyZone.lng,
@@ -115,6 +126,7 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
   const googleCircleRef = useRef<any>(null);
   const dragOriginRef = useRef<{ x: number; y: number; lat: number; lng: number } | null>(null);
   const latestZoneDraftRef = useRef(zoneDraft);
+  const manualPickModeRef = useRef(manualPickMode);
 
   const attendance = settings.attendance || AppSettingsService.getDefaults().attendance!;
   const activeZones = zones.filter((zone) => zone.active).length;
@@ -215,6 +227,10 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
   }, [zoneDraft]);
 
   useEffect(() => {
+    manualPickModeRef.current = manualPickMode;
+  }, [manualPickMode]);
+
+  useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY || !googleMapEl.current) return;
     let disposed = false;
 
@@ -259,21 +275,32 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
         });
 
         map.addListener("click", (event: any) => {
-          if (!hasAdminPower || !event.latLng) return;
-          setZoneDraft((current) => ({
-            ...current,
-            lat: Number(event.latLng.lat().toFixed(6)),
-            lng: Number(event.latLng.lng().toFixed(6)),
-          }));
+          if (!hasAdminPower || !event.latLng || manualPickModeRef.current) return;
+          const nextCenter = {
+            lat: Number(event.latLng.lat().toFixed(7)),
+            lng: Number(event.latLng.lng().toFixed(7)),
+          };
+          setZoneDraft((current) => ({ ...current, ...nextCenter }));
+          setMapFrameCenter(nextCenter);
+        });
+
+        map.addListener("idle", () => {
+          const centerValue = map.getCenter?.();
+          if (!centerValue) return;
+          setMapFrameCenter({
+            lat: Number(centerValue.lat().toFixed(7)),
+            lng: Number(centerValue.lng().toFixed(7)),
+          });
         });
 
         marker.addListener("dragend", (event: any) => {
           if (!hasAdminPower || !event.latLng) return;
-          setZoneDraft((current) => ({
-            ...current,
-            lat: Number(event.latLng.lat().toFixed(6)),
-            lng: Number(event.latLng.lng().toFixed(6)),
-          }));
+          const nextCenter = {
+            lat: Number(event.latLng.lat().toFixed(7)),
+            lng: Number(event.latLng.lng().toFixed(7)),
+          };
+          setZoneDraft((current) => ({ ...current, ...nextCenter }));
+          setMapFrameCenter(nextCenter);
         });
 
         googleMapRef.current = map;
@@ -436,12 +463,53 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
     }
   };
 
+  const setRadiusMeters = (value: number) => {
+    if (!hasAdminPower) return;
+    setZoneDraft((current) => ({
+      ...current,
+      radiusMeters: clampRadius(value, current.radiusMeters),
+    }));
+  };
+
   const changeRadius = (delta: number) => {
     if (!hasAdminPower) return;
     setZoneDraft((current) => ({
       ...current,
-      radiusMeters: Math.max(10, Math.round(current.radiusMeters + delta)),
+      radiusMeters: clampRadius(current.radiusMeters + delta, current.radiusMeters),
     }));
+  };
+
+  const nudgeDraft = (northMeters: number, eastMeters: number) => {
+    if (!hasAdminPower) return;
+    const current = latestZoneDraftRef.current;
+    const latitudeRadians = (current.lat * Math.PI) / 180;
+    const next = {
+      lat: Number((current.lat + northMeters / 110540).toFixed(7)),
+      lng: Number((current.lng + eastMeters / (111320 * Math.max(0.08, Math.cos(latitudeRadians)))).toFixed(7)),
+    };
+    setZoneDraft({ ...current, ...next });
+    setMapFrameCenter(next);
+    setManualMarkerOffset({ x: 0, y: 0 });
+  };
+
+  const adoptMapCenter = () => {
+    if (!hasAdminPower) return;
+    const googleCenter = googleMapRef.current?.getCenter?.();
+    const next = googleCenter
+      ? {
+          lat: Number(googleCenter.lat().toFixed(7)),
+          lng: Number(googleCenter.lng().toFixed(7)),
+        }
+      : {
+          lat: Number(mapFrameCenter.lat.toFixed(7)),
+          lng: Number(mapFrameCenter.lng.toFixed(7)),
+        };
+
+    setZoneDraft((current) => ({ ...current, ...next }));
+    setMapFrameCenter(next);
+    setManualMarkerOffset({ x: 0, y: 0 });
+    setManualPickMode(false);
+    setMessage("تم اعتماد مركز الخريطة كموقع المنطقة.");
   };
 
   const moveDraftByPixels = (event: PointerEvent<HTMLElement>) => {
@@ -604,18 +672,19 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
           <div className="settings-attendance__zone-form">
             <div className="settings-attendance__map-card">
               {GOOGLE_MAPS_API_KEY ? (
-                <div className="settings-attendance__map settings-attendance__map--google" ref={googleMapEl}>
+                <div
+                  className={`settings-attendance__map settings-attendance__map--google ${manualPickMode ? "is-center-pick" : ""}`}
+                  ref={googleMapEl}
+                >
                   {!mapReady ? <span className="settings-attendance__map-loading">جاري تحميل Google Maps...</span> : null}
-                  <span
-                    className="settings-attendance__radius-overlay"
-                    style={{ width: visibleRadiusSize, height: visibleRadiusSize }}
-                    aria-hidden="true"
-                  />
-                  <span className="settings-attendance__marker" aria-hidden="true">
-                    <FontAwesomeIcon icon={faLocationDot} />
-                  </span>
-                  <span className="settings-attendance__radius-label">
-                    Radius {zoneDraft.radiusMeters} م
+                  {manualPickMode ? (
+                    <>
+                      <span className="settings-attendance__center-sight" aria-hidden="true"><i /></span>
+                      <span className="settings-attendance__center-instruction">حرّك الخريطة حتى يصبح المؤشر فوق المكان المطلوب، ثم اضغط اعتماد المركز.</span>
+                    </>
+                  ) : null}
+                  <span className="settings-attendance__radius-label settings-attendance__radius-label--google">
+                    النطاق {zoneDraft.radiusMeters} م
                   </span>
                 </div>
               ) : (
@@ -654,39 +723,132 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
                 </div>
               )}
 
-              <div className="settings-attendance__map-tools">
-                <button
-                  className={`exp-btn ${manualPickMode ? "primary" : ""}`}
-                  type="button"
-                  disabled={!hasAdminPower || saving}
-                  onClick={() => {
-                    setManualMarkerOffset({ x: 0, y: 0 });
-                    setManualPickMode((value) => !value);
-                  }}
-                >
-                  {manualPickMode ? "إيقاف التحديد اليدوي" : "تحديد يدوي"}
-                </button>
-                <button className="exp-btn" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.max(3, value - 1))}>
-                  - خريطة
-                </button>
-                <button className="exp-btn" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.min(21, value + 1))}>
-                  + خريطة
-                </button>
-                <button className="exp-btn" type="button" disabled={!hasAdminPower || saving} onClick={useCurrentLocation}>
-                  <FontAwesomeIcon icon={faLocationDot} /> استخدام موقعي
-                </button>
-                <button className="exp-btn" type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-10)}>
-                  - Radius
-                </button>
-                <button className="exp-btn" type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(10)}>
-                  + Radius
-                </button>
-                <a className="exp-btn" href={googleMapsOpenUrl} target="_blank" rel="noreferrer">
-                  فتح في Google Maps
-                </a>
-                <span className="settings-attendance__map-coords">
-                  lat {Number(zoneDraft.lat).toFixed(5)} | lng {Number(zoneDraft.lng).toFixed(5)} | Radius {zoneDraft.radiusMeters} م
-                </span>
+              <div className="settings-attendance__precision-controls">
+                <div className="settings-attendance__precision-head">
+                  <div>
+                    <strong>تحديد مركز المنطقة بدقة</strong>
+                    <small>اضغط على الخريطة أو اسحب العلامة، ثم استخدم التحريك المتري للوصول للنقطة الدقيقة.</small>
+                  </div>
+                  <span className="settings-attendance__selection-state">
+                    دقة الإحداثيات: 7 منازل عشرية
+                  </span>
+                </div>
+
+                <div className="settings-attendance__precision-grid">
+                  <section className="settings-attendance__control-card settings-attendance__control-card--location">
+                    <header>
+                      <div><strong>الموقع</strong><small>اختيار سريع أو اعتماد مركز الخريطة</small></div>
+                      <FontAwesomeIcon icon={faLocationDot} />
+                    </header>
+                    <div className="settings-attendance__location-actions">
+                      <button className="exp-btn primary" type="button" disabled={!hasAdminPower || saving} onClick={useCurrentLocation}>
+                        <FontAwesomeIcon icon={faLocationDot} /> استخدام موقعي الحالي
+                      </button>
+                      <button
+                        className={`exp-btn ${manualPickMode ? "primary" : ""}`}
+                        type="button"
+                        disabled={!hasAdminPower || saving}
+                        onClick={() => {
+                          setManualMarkerOffset({ x: 0, y: 0 });
+                          setManualPickMode((value) => !value);
+                        }}
+                      >
+                        {manualPickMode ? "إلغاء وضع مركز الخريطة" : "التحديد من مركز الخريطة"}
+                      </button>
+                      <button className="exp-btn" type="button" disabled={!hasAdminPower || saving || !manualPickMode} onClick={adoptMapCenter}>
+                        اعتماد مركز الخريطة
+                      </button>
+                    </div>
+
+                    <div className="settings-attendance__nudge-panel">
+                      <div className="settings-attendance__nudge-copy">
+                        <strong>تحريك دقيق</strong>
+                        <small>كل ضغطة تحرّك الموقع بالمقدار المحدد.</small>
+                        <div className="settings-attendance__nudge-steps" aria-label="مقدار التحريك">
+                          {[1, 5, 10].map((step) => (
+                            <button
+                              key={step}
+                              type="button"
+                              className={nudgeMeters === step ? "is-active" : ""}
+                              onClick={() => setNudgeMeters(step)}
+                            >
+                              {step} م
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="settings-attendance__direction-pad" aria-label="تحريك موقع المنطقة">
+                        <button type="button" className="is-north" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(nudgeMeters, 0)} aria-label={`تحريك شمال ${nudgeMeters} متر`}>↑<small>شمال</small></button>
+                        <button type="button" className="is-west" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, -nudgeMeters)} aria-label={`تحريك غرب ${nudgeMeters} متر`}>←<small>غرب</small></button>
+                        <span>{nudgeMeters}م</span>
+                        <button type="button" className="is-east" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(0, nudgeMeters)} aria-label={`تحريك شرق ${nudgeMeters} متر`}>→<small>شرق</small></button>
+                        <button type="button" className="is-south" disabled={!hasAdminPower || saving} onClick={() => nudgeDraft(-nudgeMeters, 0)} aria-label={`تحريك جنوب ${nudgeMeters} متر`}>↓<small>جنوب</small></button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="settings-attendance__control-card settings-attendance__control-card--radius">
+                    <header><div><strong>حجم النطاق</strong><small>يتحدث على الخريطة فورًا</small></div><span>{zoneDraft.radiusMeters} م</span></header>
+                    <label className="settings-attendance__radius-input">
+                      <span>نصف القطر بالمتر</span>
+                      <input
+                        type="number"
+                        min={MIN_RADIUS_METERS}
+                        max={MAX_RADIUS_METERS}
+                        step={1}
+                        value={zoneDraft.radiusMeters}
+                        disabled={!hasAdminPower}
+                        onChange={(event) => setRadiusMeters(Number(event.target.value))}
+                      />
+                    </label>
+                    <input
+                      className="settings-attendance__radius-range"
+                      type="range"
+                      min={MIN_RADIUS_METERS}
+                      max={1000}
+                      step={5}
+                      value={Math.min(1000, zoneDraft.radiusMeters)}
+                      disabled={!hasAdminPower}
+                      onChange={(event) => setRadiusMeters(Number(event.target.value))}
+                      aria-label="تغيير نصف قطر المنطقة"
+                    />
+                    <div className="settings-attendance__radius-presets">
+                      {RADIUS_PRESETS.map((radius) => (
+                        <button
+                          key={radius}
+                          type="button"
+                          className={zoneDraft.radiusMeters === radius ? "is-active" : ""}
+                          disabled={!hasAdminPower || saving}
+                          onClick={() => setRadiusMeters(radius)}
+                        >
+                          {radius} م
+                        </button>
+                      ))}
+                    </div>
+                    <div className="settings-attendance__radius-fine">
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-1)}>− 1 م</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(1)}>+ 1 م</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(-5)}>− 5 م</button>
+                      <button type="button" disabled={!hasAdminPower || saving} onClick={() => changeRadius(5)}>+ 5 م</button>
+                    </div>
+                    <p>قطر التغطية الكامل: <strong>{zoneDraft.radiusMeters * 2} متر</strong></p>
+                  </section>
+
+                  <section className="settings-attendance__control-card settings-attendance__control-card--view">
+                    <header><div><strong>عرض الخريطة</strong><small>التكبير لا يغيّر الموقع المحفوظ</small></div><span>Zoom {mapZoom}</span></header>
+                    <div className="settings-attendance__view-actions">
+                      <button className="exp-btn" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.max(3, value - 1))}>− تصغير</button>
+                      <button className="exp-btn" type="button" disabled={saving} onClick={() => setMapZoom((value) => Math.min(21, value + 1))}>+ تكبير</button>
+                      <a className="exp-btn" href={googleMapsOpenUrl} target="_blank" rel="noreferrer">فتح في Google Maps</a>
+                    </div>
+                  </section>
+                </div>
+
+                <div className="settings-attendance__selected-location">
+                  <div><small>الموقع المحدد</small><strong dir="ltr">{Number(zoneDraft.lat).toFixed(7)}, {Number(zoneDraft.lng).toFixed(7)}</strong></div>
+                  <div><small>نصف القطر</small><strong>{zoneDraft.radiusMeters} متر</strong></div>
+                  <div><small>طريقة التعديل</small><strong>{manualPickMode ? "مركز الخريطة" : "ضغط / سحب / تحريك متري"}</strong></div>
+                </div>
               </div>
             </div>
 
@@ -701,39 +863,45 @@ export default function SettingsAttendance({ hasAdminPower }: Props) {
               />
             </label>
 
-            <label className="settings-field">
-              <span>خط العرض lat</span>
-              <input
-                className="settings-input"
-                type="number"
-                value={zoneDraft.lat}
-                disabled={!hasAdminPower}
-                onChange={(event) => setZoneDraft((current) => ({ ...current, lat: numberInput(Number(event.target.value), current.lat) }))}
-              />
-            </label>
-
-            <label className="settings-field">
-              <span>خط الطول lng</span>
-              <input
-                className="settings-input"
-                type="number"
-                value={zoneDraft.lng}
-                disabled={!hasAdminPower}
-                onChange={(event) => setZoneDraft((current) => ({ ...current, lng: numberInput(Number(event.target.value), current.lng) }))}
-              />
-            </label>
-
-            <label className="settings-field">
-              <span>Radius بالمتر</span>
-              <input
-                className="settings-input"
-                type="number"
-                min={10}
-                value={zoneDraft.radiusMeters}
-                disabled={!hasAdminPower}
-                onChange={(event) => setZoneDraft((current) => ({ ...current, radiusMeters: Math.max(10, numberInput(Number(event.target.value), 100)) }))}
-              />
-            </label>
+            <details className="settings-attendance__advanced">
+              <summary>الإعدادات المتقدمة والإحداثيات اليدوية</summary>
+              <div className="settings-attendance__advanced-grid">
+                <label className="settings-field">
+                  <span>خط العرض lat</span>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    step="0.0000001"
+                    value={zoneDraft.lat}
+                    disabled={!hasAdminPower}
+                    onChange={(event) => setZoneDraft((current) => ({ ...current, lat: numberInput(Number(event.target.value), current.lat) }))}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span>خط الطول lng</span>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    step="0.0000001"
+                    value={zoneDraft.lng}
+                    disabled={!hasAdminPower}
+                    onChange={(event) => setZoneDraft((current) => ({ ...current, lng: numberInput(Number(event.target.value), current.lng) }))}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span>نصف القطر بالمتر</span>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={MIN_RADIUS_METERS}
+                    max={MAX_RADIUS_METERS}
+                    value={zoneDraft.radiusMeters}
+                    disabled={!hasAdminPower}
+                    onChange={(event) => setRadiusMeters(Number(event.target.value))}
+                  />
+                </label>
+              </div>
+            </details>
 
             <button
               type="button"
