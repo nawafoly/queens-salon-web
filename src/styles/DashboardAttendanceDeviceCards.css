@@ -115,6 +115,43 @@
   font-size: .7rem;
 }
 
+/* Keep the attendance details drawer above the sticky dashboard header. */
+.dashboard-skin:has(.attendance-security-detail-backdrop) .dashboard-main,
+.dashboard-skin:has(.attendance-security-detail-backdrop) .dashboard-inner {
+  position: relative;
+  z-index: 100000 !important;
+  overflow: visible !important;
+}
+
+.dashboard-skin:has(.attendance-security-detail-backdrop) .dash-topbar,
+.dashboard-skin:has(.attendance-security-detail-backdrop) .dashboard-sidebar {
+  z-index: 0 !important;
+}
+
+.attendance-security-detail-backdrop {
+  z-index: 100001 !important;
+}
+
+.attendance-security-detail {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100vw) !important;
+  max-width: 100vw;
+  height: 100dvh !important;
+  min-height: 100dvh;
+  padding-top: max(24px, env(safe-area-inset-top)) !important;
+  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+}
+
+.attendance-security-detail > header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: -24px -24px 0;
+  padding: 24px 24px 18px;
+  background: #fff;
+}
+
 @media (max-width: 680px) {
   .attendance-security-device-card > header {
     grid-template-columns: 42px minmax(0, 1fr);
@@ -127,5 +164,15 @@
 
   .attendance-security-device-card footer button.is-technical {
     margin-inline-start: 0;
+  }
+
+  .attendance-security-detail {
+    width: 100vw !important;
+    padding-inline: 18px !important;
+  }
+
+  .attendance-security-detail > header {
+    margin-inline: -18px;
+    padding-inline: 18px;
   }
 }
