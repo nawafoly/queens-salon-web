@@ -47,6 +47,7 @@ android-hr/app/src/main/assets/public/
 android-hr/app/src/main/assets/capacitor.config.json
 
 .wrangler/
+.migration-work/
 vite-*.out.log
 vite-*.err.log
 

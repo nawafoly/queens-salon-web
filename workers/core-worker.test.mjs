@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { buildClientCanonicalization } from "../scripts/migration-client-canonicalization.mjs";
+import { validateLocalImportReport } from "../scripts/migrate-core-firestore-to-d1.mjs";
 import worker from "./core/index.js";
 
 class FakeD1 {
@@ -506,6 +507,27 @@ function parseInsertRows(line) {
   });
 }
 
+function fakeLocalValidationQueryRows({ counts = {}, danglingBookingClients = 0 } = {}) {
+  return (sql) => {
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    if (normalized === "PRAGMA foreign_key_check;") return [];
+    if (normalized === "PRAGMA integrity_check;") return [{ integrity_check: "ok" }];
+    if (normalized.includes("LEFT JOIN clients c ON c.id = b.client_id")) {
+      return [{ count: danglingBookingClients }];
+    }
+    if (normalized.includes("bookings WHERE client_id IS NULL")) return [{ count: 0 }];
+    if (normalized.includes("LEFT JOIN bookings b ON b.id = bi.booking_id")) return [{ count: 0 }];
+    if (normalized.includes("LEFT JOIN services s ON s.id = bi.service_id")) return [{ count: 0 }];
+    if (normalized.includes("LEFT JOIN bookings b ON b.id = l.booking_id")) return [{ count: 0 }];
+    if (normalized.includes("LEFT JOIN clients c ON c.id = a.canonical_client_id")) return [{ count: 0 }];
+    if (normalized.includes("FROM (SELECT salon_id, UPPER(TRIM(COALESCE(code_key, code)))")) return [{ count: 0 }];
+    if (normalized.includes("FROM clients WHERE id =")) return [{ count: 1 }];
+    const countMatch = /^SELECT COUNT\(\*\) AS count FROM ([a-z_]+);?$/.exec(normalized);
+    if (countMatch) return [{ count: counts[countMatch[1]] ?? 0 }];
+    throw new Error(`unexpected validation query: ${normalized}`);
+  };
+}
+
 function seedCore(fake) {
   const now = "2027-01-01T00:00:00.000Z";
   fake.seed("clients", { id: "client-a", salon_id: "main", name: "Client A", phone_normalized: "0500000001", email: null, firebase_uid: "client1", status: "active", notes: null, created_at: now, updated_at: now });
@@ -946,6 +968,75 @@ test("core migration SQL never emits NULL or dangling booking client ids", () =>
     assert.notEqual(booking.client_id, "NULL");
     assert.ok(clientIds.has(booking.client_id), `dangling client_id ${booking.client_id} for ${booking.id}`);
   }
+});
+
+test("core migration snapshot-out then snapshot-in produces stable SQL and SHA-256", () => {
+  const directory = mkdtempSync(join(tmpdir(), "core-migration-snapshot-"));
+  const snapshotPath = join(directory, "core-source.json");
+  const firstSqlPath = join(directory, "first.sql");
+  const secondSqlPath = join(directory, "second.sql");
+  try {
+    const first = spawnSync(process.execPath, [
+      "scripts/migrate-core-firestore-to-d1.mjs",
+      "--input=scripts/fixtures/client-canonicalization-regression-fixture.json",
+      "--today=2026-07-16",
+      `--snapshot-out=${snapshotPath}`,
+      `--sql-out=${firstSqlPath}`,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    assert.equal(first.status, 0, first.stderr || first.stdout);
+    assert.match(first.stdout, /snapshotOut = /);
+    assert.match(first.stdout, /sqlSha256 = [a-f0-9]{64}/);
+    assert.match(first.stdout, /blockingConflicts = 0/);
+
+    const second = spawnSync(process.execPath, [
+      "scripts/migrate-core-firestore-to-d1.mjs",
+      `--snapshot-in=${snapshotPath}`,
+      `--sql-out=${secondSqlPath}`,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    assert.equal(second.status, 0, second.stderr || second.stdout);
+    assert.match(second.stdout, /core migration source snapshot-in/);
+    assert.match(second.stdout, /blockingConflicts = 0/);
+
+    const firstSha = /sqlSha256 = ([a-f0-9]{64})/.exec(first.stdout)?.[1];
+    const secondSha = /sqlSha256 = ([a-f0-9]{64})/.exec(second.stdout)?.[1];
+    assert.equal(firstSha, secondSha);
+    assert.equal(readFileSync(firstSqlPath, "utf8"), readFileSync(secondSqlPath, "utf8"));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("core migration local validation detects orphan booking clients", () => {
+  const validation = validateLocalImportReport({
+    expectedCounts: { clients: 1, bookings: 1 },
+    queryRows: fakeLocalValidationQueryRows({
+      counts: { clients: 1, bookings: 1 },
+      danglingBookingClients: 1,
+    }),
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.failures.some((failure) => failure.check === "booking_clients_exist"));
+});
+
+test("core migration local validation detects count mismatches", () => {
+  const validation = validateLocalImportReport({
+    expectedCounts: { clients: 2, bookings: 0 },
+    queryRows: fakeLocalValidationQueryRows({
+      counts: { clients: 1, bookings: 0 },
+    }),
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.failures.some((failure) => failure.check === "count:clients"));
 });
 
 test("core migration chunks large SQL by UTF-8 statement size", () => {

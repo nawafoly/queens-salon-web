@@ -3,19 +3,51 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
 import { buildClientCanonicalization } from "./migration-client-canonicalization.mjs";
 
 const DEFAULT_DATABASE = "queens-salon-core";
 const DEFAULT_SALON_ID = "main";
 const MAX_SQL_STATEMENT_BYTES = 250000;
+const SNAPSHOT_META_KEY = "__snapshot";
+const SNAPSHOT_VERSION = "core-firestore-to-d1/v1";
+const RODINA_CANONICAL_CLIENT_ID = "3be178a6-dacb-5407-aca0-1215f403631e";
+const GHADA_CANONICAL_CLIENT_ID = "78967b2b-d2d1-4260-adac-95fac142ee9d";
+const LOCAL_VALIDATION_TABLES = [
+  "clients",
+  "client_aliases",
+  "services",
+  "staff",
+  "staff_services",
+  "staff_schedules",
+  "bookings",
+  "booking_items",
+  "booking_slot_locks",
+  "invoices",
+  "income_entries",
+  "expense_entries",
+  "discounts",
+  "employee_profiles",
+  "employee_employment",
+  "hr_work_schedules",
+  "employee_leaves",
+  "salon_settings",
+  "admin_profiles",
+  "role_assignments",
+  "notification_records",
+];
+const SNAPSHOT_SECRET_KEY_PATTERN =
+  /(^|_|\b)(access[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?key|client[_-]?secret|service[_-]?account|authorization|credential|password)(_|$|\b)/i;
 const DAY_TO_WEEKDAY = {
   sun: 0,
   mon: 1,
@@ -689,7 +721,7 @@ function resolveDiscountCodeConflicts(discounts, warningConflicts) {
 }
 
 function transform(input, salonId, options = {}) {
-  const now = new Date().toISOString();
+  const now = clean(options.now) || new Date().toISOString();
   const today = options.today || migrationToday();
   const blockingConflicts = [];
   const warningConflicts = [];
@@ -1720,131 +1752,509 @@ function buildSql(tables) {
   return buildSqlArtifact(tables).sql;
 }
 
+function sha256Hex(value) {
+  return createHash("sha256").update(String(value), "utf8").digest("hex");
+}
+
+function writeTextAtomic(filePath, value) {
+  const target = clean(filePath);
+  if (!target) throw new Error("Output path is required.");
+  mkdirSync(dirname(target), { recursive: true });
+  const temporary = join(
+    dirname(target),
+    `.${basename(target)}.${process.pid}.${Date.now()}.tmp`
+  );
+  writeFileSync(temporary, value, "utf8");
+  renameSync(temporary, target);
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function redactSnapshotSecrets(value) {
+  if (Array.isArray(value)) return value.map(redactSnapshotSecrets);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      SNAPSHOT_SECRET_KEY_PATTERN.test(key)
+        ? "[REDACTED_BY_CORE_MIGRATION_SNAPSHOT]"
+        : redactSnapshotSecrets(child),
+    ])
+  );
+}
+
+function snapshotWithMetadata(source, { projectId, salonId, asOfDate, migrationNow }) {
+  const sanitized = redactSnapshotSecrets(source || {});
+  return {
+    ...sanitized,
+    [SNAPSHOT_META_KEY]: {
+      version: SNAPSHOT_VERSION,
+      projectId,
+      salonId,
+      asOfDate,
+      migrationNow,
+      createdAt: migrationNow,
+    },
+  };
+}
+
+function writeSnapshotAtomic(filePath, source, metadata) {
+  writeTextAtomic(
+    filePath,
+    `${JSON.stringify(snapshotWithMetadata(source, metadata), null, 2)}\n`
+  );
+}
+
+function buildExpectedCounts(tables, tableNames = SQL_TABLE_ORDER) {
+  return Object.fromEntries(
+    tableNames.map((table) => [table, (tables?.[table] || []).length])
+  );
+}
+
+function localValidationTableOrder(tables) {
+  return Array.from(new Set([...LOCAL_VALIDATION_TABLES, ...SQL_TABLE_ORDER])).filter(
+    (table) => tables?.[table] !== undefined || LOCAL_VALIDATION_TABLES.includes(table)
+  );
+}
+
+function firstNumericValue(rowsForQuery, preferredKeys = ["count"]) {
+  const row = rowsForQuery?.[0] || {};
+  for (const key of preferredKeys) {
+    if (row[key] !== undefined && row[key] !== null) return Number(row[key]);
+  }
+  const first = Object.values(row)[0];
+  return Number(first ?? 0);
+}
+
+function sqlStringLiteral(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function validateLocalImportReport({
+  expectedCounts,
+  queryRows,
+  requiredClientIds = [],
+  packageCanonicalMappings = [],
+} = {}) {
+  const counts = [];
+  const checks = [];
+  const failures = [];
+  const fail = (name, detail) => {
+    failures.push({ check: name, detail });
+  };
+  const countQuery = (name, sql, expected = 0) => {
+    try {
+      const actual = firstNumericValue(queryRows(sql));
+      const ok = actual === expected;
+      checks.push({ check: name, expected, actual, status: ok ? "ok" : "failed" });
+      if (!ok) fail(name, `expected ${expected}, got ${actual}`);
+      return actual;
+    } catch (error) {
+      checks.push({ check: name, expected, actual: "query_failed", status: "failed" });
+      fail(name, error.message);
+      return NaN;
+    }
+  };
+
+  for (const [table, expected] of Object.entries(expectedCounts || {})) {
+    try {
+      const actual = firstNumericValue(queryRows(`SELECT COUNT(*) AS count FROM ${table};`));
+      const ok = actual === expected;
+      counts.push({ table, expected, actual, status: ok ? "ok" : "failed" });
+      if (!ok) fail(`count:${table}`, `expected ${expected}, got ${actual}`);
+    } catch (error) {
+      counts.push({ table, expected, actual: "query_failed", status: "failed" });
+      fail(`count:${table}`, error.message);
+    }
+  }
+
+  countQuery(
+    "bookings_have_client_id",
+    "SELECT COUNT(*) AS count FROM bookings WHERE client_id IS NULL OR client_id = '';"
+  );
+  countQuery(
+    "booking_clients_exist",
+    "SELECT COUNT(*) AS count FROM bookings b LEFT JOIN clients c ON c.id = b.client_id WHERE b.client_id IS NOT NULL AND b.client_id <> '' AND c.id IS NULL;"
+  );
+  countQuery(
+    "booking_items_have_booking",
+    "SELECT COUNT(*) AS count FROM booking_items bi LEFT JOIN bookings b ON b.id = bi.booking_id WHERE b.id IS NULL;"
+  );
+  countQuery(
+    "booking_items_have_service",
+    "SELECT COUNT(*) AS count FROM booking_items bi LEFT JOIN services s ON s.id = bi.service_id WHERE s.id IS NULL;"
+  );
+  countQuery(
+    "slot_locks_have_booking",
+    "SELECT COUNT(*) AS count FROM booking_slot_locks l LEFT JOIN bookings b ON b.id = l.booking_id WHERE b.id IS NULL;"
+  );
+  countQuery(
+    "client_aliases_have_client",
+    "SELECT COUNT(*) AS count FROM client_aliases a LEFT JOIN clients c ON c.id = a.canonical_client_id WHERE c.id IS NULL;"
+  );
+  countQuery(
+    "discount_codes_unique",
+    "SELECT COUNT(*) AS count FROM (SELECT salon_id, UPPER(TRIM(COALESCE(code_key, code))) AS normalized_code FROM discounts WHERE COALESCE(code_key, code) IS NOT NULL AND TRIM(COALESCE(code_key, code)) <> '' AND deleted_at IS NULL GROUP BY salon_id, normalized_code HAVING COUNT(*) > 1);"
+  );
+
+  for (const item of requiredClientIds) {
+    const client = typeof item === "string" ? { id: item, label: item } : item;
+    countQuery(
+      `required_client:${client.label || client.id}`,
+      `SELECT COUNT(*) AS count FROM clients WHERE id = ${sqlStringLiteral(client.id)};`,
+      1
+    );
+  }
+
+  const packageCanonicalIds = Array.from(
+    new Set((packageCanonicalMappings || []).map((row) => clean(row.canonicalClientId)).filter(Boolean))
+  );
+  for (const canonicalClientId of packageCanonicalIds) {
+    countQuery(
+      `package_canonical_client:${canonicalClientId}`,
+      `SELECT COUNT(*) AS count FROM clients WHERE id = ${sqlStringLiteral(canonicalClientId)};`,
+      1
+    );
+  }
+
+  try {
+    const rowsForCheck = queryRows("PRAGMA foreign_key_check;");
+    const ok = rowsForCheck.length === 0;
+    checks.push({
+      check: "foreign_key_check",
+      expected: 0,
+      actual: rowsForCheck.length,
+      status: ok ? "ok" : "failed",
+    });
+    if (!ok) fail("foreign_key_check", JSON.stringify(rowsForCheck.slice(0, 10)));
+  } catch (error) {
+    checks.push({
+      check: "foreign_key_check",
+      expected: 0,
+      actual: "unsupported",
+      status: "skipped",
+      detail: error.message,
+    });
+  }
+
+  try {
+    const rowsForCheck = queryRows("PRAGMA integrity_check;");
+    const values = rowsForCheck.flatMap((row) => Object.values(row).map(String));
+    const ok = values.length > 0 && values.every((value) => value.toLowerCase() === "ok");
+    checks.push({
+      check: "integrity_check",
+      expected: "ok",
+      actual: values.join(", "),
+      status: ok ? "ok" : "failed",
+    });
+    if (!ok) fail("integrity_check", values.join(", "));
+  } catch (error) {
+    checks.push({
+      check: "integrity_check",
+      expected: "ok",
+      actual: "query_failed",
+      status: "failed",
+    });
+    fail("integrity_check", error.message);
+  }
+
+  return {
+    ok: failures.length === 0,
+    counts,
+    checks,
+    failures,
+  };
+}
+
+function runWrangler(args, options = {}) {
+  const result = spawnSync("npx", ["wrangler", ...args], {
+    stdio: options.stdio || "inherit",
+    encoding: options.encoding,
+    shell: process.platform === "win32",
+  });
+  if (result.status !== 0) {
+    const detail =
+      result.stderr ||
+      result.error?.message ||
+      result.signal ||
+      `exit code ${result.status}`;
+    throw new Error(`wrangler failed: ${detail}`);
+  }
+  return result;
+}
+
+function runWranglerD1File({ database, config, sqlPath, local = false }) {
+  const args = local
+    ? ["d1", "execute", database, "--local", "--config", config, "--file", sqlPath]
+    : ["d1", "execute", database, "--remote", "--file", sqlPath, "--config", config];
+  runWrangler(args);
+}
+
 function runWranglerD1(sql, database, config) {
   const directory = mkdtempSync(join(tmpdir(), "queens-core-migration-"));
   const sqlPath = join(directory, "migration.sql");
   try {
     writeFileSync(sqlPath, sql, "utf8");
-    const result = spawnSync(
-      "npx",
-      [
-        "wrangler",
-        "d1",
-        "execute",
-        database,
-        "--remote",
-        "--file",
-        sqlPath,
-        "--config",
-        config,
-      ],
-      {
-        stdio: "inherit",
-        shell: process.platform === "win32",
-      }
-    );
-    if (result.status !== 0) {
-      const detail = result.error?.message || result.signal || `exit code ${result.status}`;
-      throw new Error(`wrangler d1 execute failed: ${detail}`);
-    }
+    runWranglerD1File({ database, config, sqlPath, local: false });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 }
 
-const salonId = clean(arg("--salon") || process.env.SALON_ID || DEFAULT_SALON_ID);
-const database = clean(
-  arg("--database") || process.env.CORE_D1_DATABASE || DEFAULT_DATABASE
-);
-const config = clean(arg("--config") || "wrangler.core.jsonc");
-const projectId = clean(
-  arg("--project") ||
-    process.env.FIREBASE_PROJECT_ID ||
-    "waves-hotel-dashboard"
-);
-const inputPath = arg("--input");
-const apply = hasFlag("--apply");
-const input = inputPath
-  ? JSON.parse(readFileSync(inputPath, "utf8"))
-  : await readSourceFromFirestore(projectId, salonId);
-const { tables, blockingConflicts, warningConflicts, report } = transform(input, salonId);
-const counts = Object.fromEntries(
-  Object.entries(tables).map(([table, tableRows]) => [table, tableRows.length])
-);
-const sqlArtifact = buildSqlArtifact(tables);
-const sqlReport = sqlArtifact.report;
+function applyLocalMigrations(database, config) {
+  runWrangler(["d1", "migrations", "apply", database, "--local", "--config", config]);
+}
 
-console.log("core migration source", inputPath ? "input-file" : "source-rest");
-console.table(counts);
-console.log(`blockingConflicts = ${blockingConflicts.length}`);
-if (blockingConflicts.length) {
-  console.log("blocking conflicts");
-  console.table(blockingConflicts);
+function parseWranglerJsonOutput(stdout) {
+  const text = clean(stdout);
+  if (!text) return [];
+  try {
+    return JSON.parse(text);
+  } catch {
+    const starts = [text.indexOf("["), text.indexOf("{")].filter((index) => index >= 0);
+    if (!starts.length) throw new Error(`wrangler did not return JSON: ${text.slice(0, 200)}`);
+    return JSON.parse(text.slice(Math.min(...starts)));
+  }
 }
-console.log(`warningConflicts = ${warningConflicts.length}`);
-if (warningConflicts.length) {
-  console.log("warning conflicts");
-  console.table(warningConflicts);
+
+function extractWranglerResultRows(parsed) {
+  const candidates = Array.isArray(parsed) ? parsed : [parsed];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate?.results)) return candidate.results;
+    if (Array.isArray(candidate?.result?.results)) return candidate.result.results;
+    if (Array.isArray(candidate?.result?.[0]?.results)) return candidate.result[0].results;
+  }
+  return [];
 }
-console.log(`asOfDate = ${report.asOfDate}`);
-console.log(`slotLocksGeneratedActiveFuture = ${report.slotLocksGeneratedActiveFuture}`);
-console.log(`slotLocksSkippedPast = ${report.slotLocksSkippedPast}`);
-console.log(`slotLocksSkippedTerminalStatus = ${report.slotLocksSkippedTerminalStatus}`);
-console.log(`slotLocksSkippedInvalid = ${report.slotLocksSkippedInvalid}`);
-console.log(`slotLockItemsProcessed = ${report.slotLockItemsProcessed}`);
-console.log(`bookingClientsResolvedDirect = ${report.bookingClientsResolvedDirect}`);
-console.log(`bookingClientsResolvedCanonical = ${report.bookingClientsResolvedCanonical}`);
-console.log(`bookingClientsResolvedByAlias = ${report.bookingClientsResolvedByAlias}`);
-console.log(`bookingClientsResolvedByPhone = ${report.bookingClientsResolvedByPhone}`);
-console.log(`bookingLegacyClientsCreated = ${report.bookingLegacyClientsCreated}`);
-console.log(`bookingClientsUnresolved = ${report.bookingClientsUnresolved}`);
-if (report.bookingLegacyClientRows.length) {
-  console.log("booking legacy clients created");
-  console.table(report.bookingLegacyClientRows);
-}
-console.log(`mergedClients = ${report.mergedClients}`);
-console.log(`mergedClientGroups = ${report.mergedClientGroups}`);
-if (report.clientCanonicalMappings.length) {
-  console.log("client canonicalization oldClientId -> canonicalClientId");
-  console.table(report.clientCanonicalMappings);
-}
-if (report.packageCanonicalMappings.length) {
-  console.log("package canonicalization clientPackageId -> canonicalClientId");
-  console.table(report.packageCanonicalMappings);
-}
-if (report.discountDecisions.length) {
-  console.log("discount conflict decisions");
-  console.table(report.discountDecisions);
-}
-console.log(`sqlStatementsGenerated = ${sqlReport.sqlStatementsGenerated}`);
-console.log(`largestStatementBytes = ${sqlReport.largestStatementBytes}`);
-console.log(`sqlFileBytes = ${sqlReport.sqlFileBytes}`);
-console.log(`maxStatementBytes = ${sqlReport.maxStatementBytes}`);
-console.log("chunksPerTable");
-console.table(
-  Object.entries(sqlReport.chunksPerTable).map(([table, chunks]) => ({
-    table,
-    chunks,
-  }))
-);
-if (!apply && hasFlag("--dump-sql")) {
-  console.log("sql dump");
-  console.log(sqlArtifact.sql);
-  process.exit(0);
-}
-if (!apply) {
-  console.log("dry-run only. Re-run with --apply to write to Cloudflare D1.");
-  process.exit(0);
-}
-if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
-  throw new Error(
-    "Blocking conflicts detected. Resolve them or pass --allow-conflicts after review."
+
+function queryLocalD1(database, config, command) {
+  const result = runWrangler(
+    ["d1", "execute", database, "--local", "--config", config, "--command", command, "--json"],
+    { stdio: "pipe", encoding: "utf8" }
   );
+  return extractWranglerResultRows(parseWranglerJsonOutput(result.stdout));
 }
-if (sqlReport.largestStatementBytes > MAX_SQL_STATEMENT_BYTES) {
-  throw new Error(
-    `Generated SQL statement exceeds ${MAX_SQL_STATEMENT_BYTES} bytes: ${sqlReport.largestStatementBytes}`
+
+function runLocalValidation({ database, config, expectedCounts, report }) {
+  const validation = validateLocalImportReport({
+    expectedCounts,
+    queryRows: (sql) => queryLocalD1(database, config, sql),
+    requiredClientIds: [
+      { id: RODINA_CANONICAL_CLIENT_ID, label: "rodina" },
+      { id: GHADA_CANONICAL_CLIENT_ID, label: "ghada" },
+    ],
+    packageCanonicalMappings: report.packageCanonicalMappings,
+  });
+  console.log("local D1 validation counts");
+  console.table(validation.counts);
+  console.log("local D1 validation checks");
+  console.table(validation.checks);
+  if (!validation.ok) {
+    console.log("local D1 validation failures");
+    console.table(validation.failures);
+    throw new Error("Local D1 validation failed.");
+  }
+  return validation;
+}
+
+async function readMigrationSource({ projectId, salonId, inputPath, snapshotInPath }) {
+  if (snapshotInPath) {
+    return {
+      source: readJsonFile(snapshotInPath),
+      sourceLabel: "snapshot-in",
+    };
+  }
+  if (inputPath) {
+    return {
+      source: readJsonFile(inputPath),
+      sourceLabel: "input-file",
+    };
+  }
+  return {
+    source: await readSourceFromFirestore(projectId, salonId),
+    sourceLabel: "source-rest",
+  };
+}
+
+async function main() {
+  const salonId = clean(arg("--salon") || process.env.SALON_ID || DEFAULT_SALON_ID);
+  const database = clean(
+    arg("--database") || process.env.CORE_D1_DATABASE || DEFAULT_DATABASE
   );
+  const config = clean(arg("--config") || "wrangler.core.jsonc");
+  const projectId = clean(
+    arg("--project") ||
+      process.env.FIREBASE_PROJECT_ID ||
+      "waves-hotel-dashboard"
+  );
+  const inputPath = arg("--input");
+  const snapshotInPath = arg("--snapshot-in");
+  const snapshotOutPath = arg("--snapshot-out");
+  const sqlOutPath = arg("--sql-out");
+  const apply = hasFlag("--apply");
+  const applyLocal = hasFlag("--apply-local");
+
+  if (apply && applyLocal) {
+    throw new Error("Use either --apply or --apply-local, not both.");
+  }
+
+  const { source: input, sourceLabel } = await readMigrationSource({
+    projectId,
+    salonId,
+    inputPath,
+    snapshotInPath,
+  });
+  const snapshotMeta = input?.[SNAPSHOT_META_KEY] || {};
+  const todayOverride = clean(arg("--today") || process.env.MIGRATION_TODAY);
+  const nowOverride = clean(arg("--now") || process.env.MIGRATION_NOW);
+  const migrationNow =
+    nowOverride || clean(snapshotMeta.migrationNow) || (snapshotOutPath ? new Date().toISOString() : "");
+  const asOfDate =
+    todayOverride || clean(snapshotMeta.asOfDate) || (snapshotOutPath ? migrationToday() : "");
+
+  if (snapshotOutPath) {
+    writeSnapshotAtomic(snapshotOutPath, input, {
+      projectId,
+      salonId,
+      asOfDate: asOfDate || migrationToday(),
+      migrationNow: migrationNow || new Date().toISOString(),
+    });
+    console.log(`snapshotOut = ${snapshotOutPath}`);
+  }
+
+  const { tables, blockingConflicts, warningConflicts, report } = transform(input, salonId, {
+    today: asOfDate || undefined,
+    now: migrationNow || undefined,
+  });
+  const counts = Object.fromEntries(
+    Object.entries(tables).map(([table, tableRows]) => [table, tableRows.length])
+  );
+  const sqlArtifact = buildSqlArtifact(tables);
+  const sqlReport = {
+    ...sqlArtifact.report,
+    sqlSha256: sha256Hex(sqlArtifact.sql),
+  };
+
+  console.log("core migration source", sourceLabel);
+  console.table(counts);
+  console.log(`blockingConflicts = ${blockingConflicts.length}`);
+  if (blockingConflicts.length) {
+    console.log("blocking conflicts");
+    console.table(blockingConflicts);
+  }
+  console.log(`warningConflicts = ${warningConflicts.length}`);
+  if (warningConflicts.length) {
+    console.log("warning conflicts");
+    console.table(warningConflicts);
+  }
+  console.log(`asOfDate = ${report.asOfDate}`);
+  console.log(`slotLocksGeneratedActiveFuture = ${report.slotLocksGeneratedActiveFuture}`);
+  console.log(`slotLocksSkippedPast = ${report.slotLocksSkippedPast}`);
+  console.log(`slotLocksSkippedTerminalStatus = ${report.slotLocksSkippedTerminalStatus}`);
+  console.log(`slotLocksSkippedInvalid = ${report.slotLocksSkippedInvalid}`);
+  console.log(`slotLockItemsProcessed = ${report.slotLockItemsProcessed}`);
+  console.log(`bookingClientsResolvedDirect = ${report.bookingClientsResolvedDirect}`);
+  console.log(`bookingClientsResolvedCanonical = ${report.bookingClientsResolvedCanonical}`);
+  console.log(`bookingClientsResolvedByAlias = ${report.bookingClientsResolvedByAlias}`);
+  console.log(`bookingClientsResolvedByPhone = ${report.bookingClientsResolvedByPhone}`);
+  console.log(`bookingLegacyClientsCreated = ${report.bookingLegacyClientsCreated}`);
+  console.log(`bookingClientsUnresolved = ${report.bookingClientsUnresolved}`);
+  if (report.bookingLegacyClientRows.length) {
+    console.log("booking legacy clients created");
+    console.table(report.bookingLegacyClientRows);
+  }
+  console.log(`mergedClients = ${report.mergedClients}`);
+  console.log(`mergedClientGroups = ${report.mergedClientGroups}`);
+  if (report.clientCanonicalMappings.length) {
+    console.log("client canonicalization oldClientId -> canonicalClientId");
+    console.table(report.clientCanonicalMappings);
+  }
+  if (report.packageCanonicalMappings.length) {
+    console.log("package canonicalization clientPackageId -> canonicalClientId");
+    console.table(report.packageCanonicalMappings);
+  }
+  if (report.discountDecisions.length) {
+    console.log("discount conflict decisions");
+    console.table(report.discountDecisions);
+  }
+  console.log(`sqlStatementsGenerated = ${sqlReport.sqlStatementsGenerated}`);
+  console.log(`largestStatementBytes = ${sqlReport.largestStatementBytes}`);
+  console.log(`sqlFileBytes = ${sqlReport.sqlFileBytes}`);
+  console.log(`sqlSha256 = ${sqlReport.sqlSha256}`);
+  console.log(`maxStatementBytes = ${sqlReport.maxStatementBytes}`);
+  console.log("chunksPerTable");
+  console.table(
+    Object.entries(sqlReport.chunksPerTable).map(([table, chunks]) => ({
+      table,
+      chunks,
+    }))
+  );
+
+  let temporarySqlDirectory = "";
+  let sqlPathForApply = sqlOutPath;
+  if (sqlOutPath) {
+    writeTextAtomic(sqlOutPath, sqlArtifact.sql);
+    console.log(`sqlOut = ${sqlOutPath}`);
+  } else if (applyLocal) {
+    temporarySqlDirectory = mkdtempSync(join(tmpdir(), "queens-core-local-import-"));
+    sqlPathForApply = join(temporarySqlDirectory, "core-import.sql");
+    writeFileSync(sqlPathForApply, sqlArtifact.sql, "utf8");
+  }
+
+  if (!apply && !applyLocal && hasFlag("--dump-sql")) {
+    console.log("sql dump");
+    console.log(sqlArtifact.sql);
+    process.exit(0);
+  }
+  if (!apply && !applyLocal) {
+    console.log("dry-run only. Re-run with --apply-local for local D1 validation or --apply for remote D1.");
+    process.exit(0);
+  }
+  if (blockingConflicts.length && !hasFlag("--allow-conflicts")) {
+    throw new Error(
+      "Blocking conflicts detected. Resolve them or pass --allow-conflicts after review."
+    );
+  }
+  if (sqlReport.largestStatementBytes > MAX_SQL_STATEMENT_BYTES) {
+    throw new Error(
+      `Generated SQL statement exceeds ${MAX_SQL_STATEMENT_BYTES} bytes: ${sqlReport.largestStatementBytes}`
+    );
+  }
+
+  try {
+    if (applyLocal) {
+      applyLocalMigrations(database, config);
+      runWranglerD1File({ database, config, sqlPath: sqlPathForApply, local: true });
+      runLocalValidation({
+        database,
+        config,
+        expectedCounts: buildExpectedCounts(tables, localValidationTableOrder(tables)),
+        report,
+      });
+      console.log("core migration applied to local D1 and validated.");
+      return;
+    }
+
+    runWranglerD1(sqlArtifact.sql, database, config);
+    console.log("core migration applied idempotently with INSERT OR REPLACE.");
+  } finally {
+    if (temporarySqlDirectory) rmSync(temporarySqlDirectory, { recursive: true, force: true });
+  }
 }
-runWranglerD1(sqlArtifact.sql, database, config);
-console.log("core migration applied idempotently with INSERT OR REPLACE.");
+
+export {
+  MAX_SQL_STATEMENT_BYTES,
+  buildExpectedCounts,
+  buildSql,
+  buildSqlArtifact,
+  sha256Hex,
+  transform,
+  validateLocalImportReport,
+  writeSnapshotAtomic,
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
