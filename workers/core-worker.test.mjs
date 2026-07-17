@@ -71,6 +71,12 @@ class FakeD1 {
       const [salonId, id] = params;
       return this.find("clients", salonId, id) ? [this.find("clients", salonId, id)] : [];
     }
+    if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND firebase_uid = ?")) {
+      const [salonId, uid] = params;
+      return this.rows("clients")
+        .filter((row) => row.salon_id === salonId && row.firebase_uid === uid)
+        .slice(0, 2);
+    }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("clients").filter((row) => row.salon_id === salonId);
@@ -294,9 +300,21 @@ class FakeD1 {
       }
       return this.insert(table, row);
     }
+    if (normalized.startsWith("INSERT OR IGNORE INTO client_aliases")) {
+      const [salon_id, alias_id, canonical_client_id, created_at] = params;
+      const key = `${salon_id}\u0000${alias_id}`;
+      if (this.tables.client_aliases.has(key)) return { meta: { changes: 0 } };
+      return this.insert("client_aliases", {
+        salon_id,
+        alias_id,
+        canonical_client_id,
+        alias_type: "firebase_uid",
+        created_at,
+      });
+    }
     if (normalized.startsWith("INSERT INTO clients")) {
-      const [id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at] = params;
-      return this.insert("clients", { id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, created_at, updated_at });
+      const [id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id, created_at, updated_at] = params;
+      return this.insert("clients", { id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id, created_at, updated_at });
     }
     if (normalized.startsWith("INSERT INTO services")) {
       const [id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at] = params;
@@ -2247,7 +2265,8 @@ test("cancelling a booking releases D1 slot locks", async () => {
       items: [{ serviceId: "svc-a" }],
     },
   }), env(fake));
-  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
 });
 
 test("multi-item booking preserves each item date and time", async () => {
@@ -2448,7 +2467,7 @@ test("authenticated client can submit a public /booking reservation", async () =
       salonId: "main",
       id: "client-booking-a",
       invoiceId: "invoice-client-booking-a",
-      clientId: "client-a",
+      clientId: "spoofed-client-id",
       staffId: "staff-a",
       bookingDate: "2027-01-12",
       startTime: "11:00",
@@ -2456,5 +2475,53 @@ test("authenticated client can submit a public /booking reservation", async () =
     },
   }), env(fake));
   assert.equal(response.status, 200, JSON.stringify(await json(response)));
-  assert.equal(fake.find("bookings", "main", "client-booking-a")?.created_by_uid, "client1");
+  const created = fake.find("bookings", "main", "client-booking-a");
+  assert.equal(created?.created_by_uid, "client1");
+  assert.equal(created?.client_id, "client-a");
+});
+
+test("client identity endpoints never trust browser-supplied Firebase UID", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+
+  const clientResponse = await worker.fetch(request("/api/core/clients", {
+    method: "POST",
+    token: "test:client1:client",
+    body: {
+      salonId: "main",
+      name: "Spoof attempt",
+      phone: "0500000002",
+      firebaseUid: "victim-uid",
+    },
+  }), env(fake));
+  const clientBody = await json(clientResponse);
+  assert.equal(clientResponse.status, 200, JSON.stringify(clientBody));
+  assert.equal(clientBody.data.id, "client-a");
+  assert.equal(fake.find("clients", "main", "client-a")?.firebase_uid, "client1");
+
+  const guestResponse = await worker.fetch(request("/api/core/clients", {
+    method: "POST",
+    token: "",
+    body: {
+      salonId: "main",
+      name: "Guest",
+      phone: "0500000009",
+      firebaseUid: "victim-uid",
+    },
+  }), env(fake));
+  const guestBody = await json(guestResponse);
+  assert.equal(guestResponse.status, 200, JSON.stringify(guestBody));
+  assert.equal(fake.find("clients", "main", guestBody.data.id)?.firebase_uid, null);
+});
+
+test("reception role can use operational client search without a D1 role seed", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(
+    request("/api/core/clients?search=0500000001", {
+      token: "test:reception1:reception",
+    }),
+    env(fake)
+  );
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
 });

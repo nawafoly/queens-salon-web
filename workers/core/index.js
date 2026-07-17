@@ -1,6 +1,6 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
-import { verifyFirebaseIdToken } from '../packages/auth.js';
+import { resolveActorRole, verifyFirebaseIdToken } from '../packages/auth.js';
 import {
   ADMIN_ROLES,
   OPERATIONS_ROLES,
@@ -81,6 +81,7 @@ import {
   listSelfBookings,
   listSelfOffers,
   patchSelfProfile,
+  resolveSelfClient,
 } from './repositories/client-portal.js';
 
 import {
@@ -208,26 +209,35 @@ async function actor(request, env, data, allowGuest) {
     throw new AppError(503, "core_auth:project_not_configured");
   }
 
+  const idToken = authorization.slice("Bearer ".length).trim();
   const identity = await verifyFirebaseIdToken(
-    authorization.slice("Bearer ".length).trim(),
+    idToken,
     projectId,
     env
   );
-  const requestedRole = cleanText(
-    identity.claims?.role ||
-      identity.claims?.coreRole ||
-      "guest"
+
+  // Core D1 role assignments remain authoritative when present, but new or
+  // migrated admin accounts may not have been seeded into D1 yet. Resolve the
+  // signed-in user's own Firebase profile as the secure fallback, matching the
+  // Packages Worker authorization model instead of silently downgrading the
+  // user to guest/client.
+  const testClaimRole = cleanText(
+    identity.claims?.role || identity.claims?.coreRole
   ).toLowerCase();
-  const claimRole = [
-    "owner",
-    "admin",
-    "reception",
-    "staff",
-    "client",
-  ].includes(requestedRole)
-    ? requestedRole
-    : "guest";
-  const role = await resolveAssignedRole(db, sid, identity.uid, claimRole);
+  const profileRole =
+    env.PACKAGES_AUTH_TEST_MODE === "true" &&
+    ["owner", "admin", "hr", "reception", "staff", "client"].includes(testClaimRole)
+      ? testClaimRole
+      : await resolveActorRole(env, sid, {
+          ...identity,
+          idToken,
+        });
+  const role = await resolveAssignedRole(
+    db,
+    sid,
+    identity.uid,
+    profileRole
+  );
 
   return {
     identity,
@@ -435,6 +445,18 @@ async function dispatch(ctx, route, method, body, query) {
         return listClients(db, ctx.salonId, query);
       }
       if (method === "POST") {
+        if (ctx.role === "client") {
+          // A client may only create/resolve their own canonical record. Ignore
+          // browser-supplied UID values and bind to the verified token identity.
+          return resolveSelfClient(db, ctx.salonId, ctx.identity, {
+            createIfMissing: true,
+          });
+        }
+        if (ctx.guestAccess) {
+          // Guests can be deduplicated by phone, but cannot claim a Firebase UID.
+          const { firebaseUid, uid, authUid, ...safeBody } = body || {};
+          return createClient(db, ctx.salonId, safeBody);
+        }
         return createClient(db, ctx.salonId, body);
       }
       if (method === "PATCH" && route.id) {
@@ -483,10 +505,25 @@ async function dispatch(ctx, route, method, body, query) {
         return listBookings(db, ctx.salonId, query);
       }
       if (method === "POST") {
+        let bookingBody = body;
+        if (ctx.role === "client") {
+          const selfClient = await resolveSelfClient(
+            db,
+            ctx.salonId,
+            ctx.identity,
+            { createIfMissing: true }
+          );
+          bookingBody = {
+            ...body,
+            clientId: selfClient.id,
+            client_id: selfClient.id,
+            source: "client",
+          };
+        }
         return createBooking(
           db,
           ctx.salonId,
-          body,
+          bookingBody,
           actorInfo
         );
       }

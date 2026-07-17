@@ -399,6 +399,13 @@ export async function writeAuditLog(input: AuditLogInput) {
   ).trim();
 
   if (getDataSourceFlags().useCoreD1) {
+    // Client/guest actions are already recorded by the authoritative Core
+    // booking/profile endpoints. Do not call the administrative audit endpoint
+    // from the public portal, which correctly rejects those roles with 403.
+    if (["client", "guest"].includes(String(userRole || "guest").toLowerCase())) {
+      return null;
+    }
+
     try {
       const row = await CoreAuditService.record({
         action: input.action,

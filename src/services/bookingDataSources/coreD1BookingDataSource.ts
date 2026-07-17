@@ -39,14 +39,16 @@ function normalizePhone(value: unknown): string {
 async function resolveClientId(booking: BookingDoc): Promise<string> {
   const explicitClientId = String(booking.clientId || "").trim();
   const firebaseUid = String(
-    booking.clientFirebaseUid || booking.userId || ""
+    booking.clientFirebaseUid ||
+      (booking.channel === "client" ? booking.userId : "") ||
+      ""
   ).trim();
 
   if (explicitClientId) {
     const exact = await CoreClientService.get(explicitClientId);
 
-    // Link the selected Core client to the Firebase account when the admin
-    // selected a real client record that was created before account signup.
+    // Administrative booking must link only the selected client account UID.
+    // Never use the operator UID as a client UID.
     if (firebaseUid && !String(exact.firebaseUid || "").trim()) {
       await CoreClientService.patch(exact.id, { firebaseUid });
     }
@@ -54,33 +56,12 @@ async function resolveClientId(booking: BookingDoc): Promise<string> {
     return exact.id;
   }
 
-  if (firebaseUid) {
-    const byUid = await CoreClientService.list(firebaseUid);
-    const exact = byUid.find(
-      (client) => client.firebaseUid === firebaseUid
-    );
-    if (exact) return exact.id;
-  }
-
-  const phone = normalizePhone(booking.clientPhone);
-  const searchValue = phone || booking.clientName;
-  const rows = searchValue
-    ? await CoreClientService.list(searchValue)
-    : [];
-
-  const matched =
-    rows.find(
-      (client) =>
-        phone &&
-        normalizePhone(client.phoneNormalized) === phone
-    ) ||
-    rows.find((client) => client.name === booking.clientName);
-
-  if (matched) return matched.id;
-
+  // Do not call the administrative GET /clients endpoint from public/client
+  // booking. POST /clients is an idempotent public upsert by UID/phone, and the
+  // worker sanitizes identity fields before writing them.
   const created = await CoreClientService.create({
     name: booking.clientName || "عميلة",
-    phone: booking.clientPhone,
+    phone: normalizePhone(booking.clientPhone) || booking.clientPhone,
     firebaseUid: firebaseUid || undefined,
   });
   return created.id;

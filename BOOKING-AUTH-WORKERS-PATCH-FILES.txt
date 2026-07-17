@@ -1,0 +1,13 @@
+src/services/bookingDataSources/coreD1BookingDataSource.ts
+src/services/logService.ts
+workers/core/index.js
+workers/core-worker.test.mjs
+workers/frontend-core-migration.test.mjs
+workers/packages/index.js
+workers/packages/routes.js
+workers/packages/d1.js
+scripts/verify-client-booking-workers.mjs
+migrations/packages/0002_package_catalog_management.sql
+migrations/packages/0003_package_transaction_audit.sql
+README-BOOKING-AUTH-WORKERS-FINAL-FIX-AR.txt
+BOOKING-AUTH-WORKERS-PATCH-FILES.txt

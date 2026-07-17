@@ -611,3 +611,30 @@ test("client offer CTA preselects the offer through the booking page supported q
   assert.match(booking, /pickRaw/);
   assert.match(booking, /offer:/);
 });
+
+test("public and client booking never query the administrative client list", () => {
+  const source = readFileSync(
+    "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    "utf8"
+  );
+  const start = source.indexOf("async function resolveClientId");
+  const end = source.indexOf("function generatedBookingId", start);
+  const block = source.slice(start, end);
+  assert.match(block, /CoreClientService\.create/);
+  assert.doesNotMatch(block, /CoreClientService\.list/);
+  assert.match(block, /booking\.channel === "client"/);
+});
+
+test("client audit calls are not sent to the administrative Core audit endpoint", () => {
+  const source = readFileSync("src/services/logService.ts", "utf8");
+  assert.match(source, /\["client", "guest"\]/);
+  assert.match(source, /return null/);
+});
+
+test("Core worker binds authenticated bookings to the verified client identity", () => {
+  const source = readFileSync("workers/core/index.js", "utf8");
+  assert.match(source, /resolveActorRole/);
+  assert.match(source, /resolveSelfClient/);
+  assert.match(source, /clientId:\s*selfClient\.id/);
+  assert.match(source, /source:\s*"client"/);
+});
