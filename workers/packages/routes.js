@@ -25,6 +25,8 @@ import {
   releasePackageD1,
   reservePackageD1,
   sessionDashboardAdminD1,
+  updateClientPackageAdminD1,
+  deleteClientPackageAdminD1,
 } from './d1.js';
 
 export function allowedOrigins(env) {
@@ -36,7 +38,7 @@ export function corsHeaders(request, env) {
   const origin = request.headers.get("Origin");
   const headers = {
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -112,6 +114,9 @@ const routes = {
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
   // D1 ONLY — administrative packages and session dashboard.
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
+  // D1 ONLY — update/delete one purchased client package.
+  "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1 },
+  "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1 },
   // Backward-compatible alias for older dashboard builds.
   "GET /api/packages/session-dashboard": { d1: sessionDashboardAdminD1 },
   // D1 ONLY — do not add Firestore fallback.
@@ -125,7 +130,9 @@ export async function handleRequest(request, env) {
   const key = `${request.method} ${pathname}`;
   const route = routes[key];
   if (!route) throw new AppError(404, "packages_api:not_found");
-  const body = request.method === "GET" ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
+  const body = ["GET", "DELETE"].includes(request.method)
+    ? Object.fromEntries(url.searchParams.entries())
+    : await readJson(request);
   const routeRecord = typeof route === "function" ? { d1: route } : route;
   const handler = routeRecord.d1;
   if (!handler) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
@@ -134,7 +141,7 @@ export async function handleRequest(request, env) {
     ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null }
     : await withActor(request, env, body);
   const data = await handler(ctx, body);
-  if (request.method === "POST" && pathname !== "/api/packages/client-wallet") {
+  if (["POST", "PATCH", "DELETE"].includes(request.method) && pathname !== "/api/packages/client-wallet") {
     clearD1WalletRuntimeCaches();
   }
   return jsonResponse(request, env, 200, { ok: true, data });
