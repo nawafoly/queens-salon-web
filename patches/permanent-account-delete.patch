@@ -1,0 +1,355 @@
+diff --git a/functions/src/index.ts b/functions/src/index.ts
+--- a/functions/src/index.ts
++++ b/functions/src/index.ts
+@@ -732,6 +732,80 @@ export const setUserRole = onCall({ region: "us-central1" }, async (request) =>
+   return { ok: true, uid, role };
+ });
+ 
++/**
++ * ✅ Callable: adminDeleteUserAccount
++ * - يحذف هوية تسجيل الدخول نهائيًا من Firebase Authentication
++ * - يحذف سجلات الحساب فقط من Firestore
++ * - لا يحذف ملف الموظفة أو السجل التشغيلي والتاريخي
++ */
++export const adminDeleteUserAccount = onCall({ region: "us-central1" }, async (request) => {
++  const requestAuth = request.auth;
++  if (!requestAuth) throw new HttpsError("unauthenticated", "لازم تسجل دخول.");
++
++  const callerUid = requestAuth.uid;
++  const targetUid = String((request.data as any)?.uid || "").trim();
++  if (!targetUid) throw new HttpsError("invalid-argument", "uid مطلوب.");
++  if (targetUid === callerUid) {
++    throw new HttpsError("failed-precondition", "لا يمكن حذف حسابك من هذه الصفحة.");
++  }
++
++  const caller = await admin.auth().getUser(callerUid);
++  const callerEmail = String(caller.email || "").toLowerCase().trim();
++  const callerRole = await getCallerRole(callerUid);
++  const isBootstrap = isBootstrapEmail(callerEmail);
++  if (!isBootstrap && !["owner", "admin"].includes(callerRole)) {
++    throw new HttpsError("permission-denied", "غير مصرح. فقط Owner/Admin.");
++  }
++
++  let targetUser: admin.auth.UserRecord | null = null;
++  try {
++    targetUser = await admin.auth().getUser(targetUid);
++  } catch (error: any) {
++    if (String(error?.code || "") !== "auth/user-not-found") throw error;
++  }
++
++  const targetEmail = String(targetUser?.email || "").toLowerCase().trim();
++  if (targetEmail === BOOTSTRAP_OWNER_EMAIL.toLowerCase()) {
++    throw new HttpsError("permission-denied", "لا يمكن حذف حساب المالك الأساسي.");
++  }
++
++  const usersRef = db.collection("salons").doc(SALON_ID).collection("users").doc(targetUid);
++  const adminRef = db.collection("salons").doc(SALON_ID).collection("admin_users").doc(targetUid);
++  const [userSnap, adminSnap] = await Promise.all([usersRef.get(), adminRef.get()]);
++  const targetRole = normalizeRole(
++    userSnap.data()?.role || adminSnap.data()?.role || targetUser?.customClaims?.role
++  );
++  if (targetRole === "owner" && callerRole !== "owner" && !isBootstrap) {
++    throw new HttpsError("permission-denied", "فقط المالك يستطيع حذف حساب مالك آخر.");
++  }
++
++  const batch = db.batch();
++  batch.delete(usersRef);
++  batch.delete(adminRef);
++  await batch.commit();
++
++  let authDeleted = false;
++  if (targetUser) {
++    await admin.auth().deleteUser(targetUid);
++    authDeleted = true;
++  }
++
++  logger.info("[adminDeleteUserAccount] account permanently deleted", {
++    callerUid,
++    targetUid,
++    targetEmail,
++    targetRole,
++    authDeleted,
++    employeeRecordsDeleted: false,
++  });
++
++  return {
++    ok: true,
++    uid: targetUid,
++    authDeleted,
++    firestoreDeleted: true,
++  };
++});
+ /**
+  * ✅ Callable: whoAmI
+  */
+diff --git a/src/pages/settings/SettingsUsers.tsx b/src/pages/settings/SettingsUsers.tsx
+--- a/src/pages/settings/SettingsUsers.tsx
++++ b/src/pages/settings/SettingsUsers.tsx
+@@ -22,6 +22,7 @@ import {
+ 
+ import { auth, db } from "../../services/firebase";
+ import { writeAuditLog } from "../../services/logService";
++import { deleteAdminAccountPermanently } from "../../services/adminAccountDeletionService";
+ import {
+   APP_PERMISSION_CATALOG,
+   APP_PERMISSION_GROUPS,
+@@ -1805,7 +1806,7 @@ export default function SettingsUsers({
+     }
+ 
+     const ok = confirm(
+-      `سيتم تعطيل حساب الدخول فقط دون تعديل ملف الموظفة أو إخفائها من الحجز.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
++      `حذف نهائي لحساب الدخول من Firebase Authentication وCloudflare D1.\n\nالحساب: ${row.email || uid}\n\nلن يتم حذف ملف الموظفة أو الحجوزات أو الحضور أو الرواتب. لا يمكن استعادة الحساب بعد المتابعة.`
+     );
+     if (!ok) return;
+ 
+@@ -1813,71 +1814,45 @@ export default function SettingsUsers({
+       setUsersLoading(true);
+       const actorUid = String((auth as any)?.currentUser?.uid || "").trim();
+ 
+-      await setDoc(
+-        doc(db, ...USERS_COLLECTION, uid),
+-        {
+-          active: false,
+-          isActive: false,
+-          deleted: true,
+-          deletedAt: serverTimestamp(),
+-          deletedBy: actorUid || "",
+-          updatedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
+-
+-      await setDoc(
+-        doc(db, "salons", SALON_ID, "admin_users", uid),
+-        {
+-          active: false,
+-          isActive: false,
+-          deleted: true,
+-          deletedAt: serverTimestamp(),
+-          deletedBy: actorUid || "",
+-          updatedAt: serverTimestamp(),
+-        },
+-        { merge: true }
+-      );
++      await deleteAdminAccountPermanently(uid);
+ 
+-      setUsers((prev) =>
+-        prev.map((u) =>
+-          u.uid === uid
+-            ? {
+-                ...u,
+-                active: false,
+-                isActive: false,
+-                deleted: true,
+-                deletedAt: true,
+-                deletedBy: actorUid || "",
+-              }
+-            : u
+-        )
+-      );
++      setUsers((prev) => prev.filter((u) => u.uid !== uid));
++      if (selectedUserId === uid) setSelectedUserId("");
++      if (editDraft?.uid === uid) setEditDraft(null);
+ 
+       void writeAuditLog({
+         salonId: SALON_ID,
+         action: "user_deleted",
+         entityType: "user",
+         entityId: uid,
+-        description: "تم حذف الحساب منطقيًا دون تعديل ملف الموظفة",
++        description: "تم حذف حساب الدخول نهائيًا من Firebase وCloudflare",
+         source: "dashboard",
+         before: {
++          email: row.email || null,
+           role: row.role,
+           active: row.active,
+           linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || null,
+         },
+         after: {
+-          role: row.role,
+-          active: false,
+-          deletedAt: true,
++          accountDeletedPermanently: true,
++          authDeleted: true,
++          coreD1Deleted: true,
+           staffFileChanged: false,
+         },
++        meta: { actorUid },
+       });
+ 
+-      toastMsg("✅ تم حذف الحساب منطقيًا دون تعديل ملف الموظفة", 2400);
+-    } catch (e) {
++      toastMsg("✅ تم حذف حساب الدخول نهائيًا من السيرفر", 2600);
++    } catch (e: any) {
+       console.error("deleteUserAccount error:", e);
+-      toastMsg("❌ تعذر حذف الحساب", 2800);
++      const message = String(e?.message || "");
++      if (message.includes("permission") || message.includes("صلاحية")) {
++        toastMsg("❌ ليست لديك صلاحية الحذف النهائي", 2800);
++      } else if (message.includes("login") || message.includes("جلسة")) {
++        toastMsg("❌ انتهت جلسة الدخول. سجّل الدخول ثم أعد المحاولة", 3000);
++      } else {
++        toastMsg("❌ تعذر إكمال الحذف النهائي. لم يتم حذف ملف الموظفة", 3000);
++      }
+     } finally {
+       setUsersLoading(false);
+     }
+diff --git a/workers/core/index.js b/workers/core/index.js
+--- a/workers/core/index.js
++++ b/workers/core/index.js
+@@ -93,6 +93,7 @@ import {
+ } from './repositories/payroll.js';
+ import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
+ import {
++  deleteAdminProfile,
+   listAdminProfiles,
+   resolveAssignedRole,
+   upsertAdminProfile,
+@@ -302,6 +303,7 @@ async function dispatch(ctx, route, method, body, query) {
+   const actorInfo = {
+     uid: ctx.identity?.uid || "",
+     email: ctx.identity?.claims?.email || "",
+     name: ctx.identity?.claims?.name || "",
++    role: ctx.role,
+   };
+@@ -559,6 +561,7 @@ async function dispatch(ctx, route, method, body, query) {
+       requireRole(ctx.role, ADMIN_ROLES);
+       if (method === "GET") return listAdminProfiles(db, ctx.salonId);
+       if (["POST", "PATCH"].includes(method)) return upsertAdminProfile(db, ctx.salonId, route.id ? { ...body, firebaseUid: route.id } : body, actorInfo);
++      if (method === "DELETE" && route.id) return deleteAdminProfile(db, ctx.salonId, route.id, actorInfo);
+       break;
+ 
+     case "files":
+diff --git a/workers/core/repositories/admin-profiles.js b/workers/core/repositories/admin-profiles.js
+--- a/workers/core/repositories/admin-profiles.js
++++ b/workers/core/repositories/admin-profiles.js
+@@ -2,6 +2,7 @@
+ // Firebase is allowed only for authentication token verification.
+ 
+ import { activeFlag, cleanText, dbAll, dbBatch, dbFirst, nowIso, optionalText, requiredId } from '../d1.js';
++import { AppError } from '../errors.js';
+ 
+ export async function resolveAssignedRole(db, salonId, firebaseUid, fallbackRole = 'guest') {
+   if (!firebaseUid) return fallbackRole;
+@@ -11,6 +12,7 @@ export async function resolveAssignedRole(db, salonId, firebaseUid, fallbackRole
+   } else {
+     rows = await dbAll(db, 'SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND active = 1', [salonId, firebaseUid]);
+   }
++  if (rows.some((row) => cleanText(row.role).toLowerCase() === 'revoked')) return 'guest';
+   const priority = ['owner', 'admin', 'reception', 'staff', 'client'];
+   for (const role of priority) if (rows.some((row) => cleanText(row.role).toLowerCase() === role)) return role;
+   return fallbackRole;
+@@ -64,3 +66,59 @@ export async function upsertAdminProfile(db, salonId, data, actor = {}) {
+   await dbBatch(db, statements);
+   return (await listAdminProfiles(db, salonId)).find((profile) => profile.firebase_uid === uid) || row;
+ }
++
++export async function deleteAdminProfile(db, salonId, firebaseUid, actor = {}) {
++  const uid = requiredId(firebaseUid, 'firebaseUid');
++  const actorUid = cleanText(actor.uid);
++  const actorRole = cleanText(actor.role).toLowerCase();
++  if (actorUid && actorUid === uid) {
++    throw new AppError(409, 'core_admin:cannot_delete_self');
++  }
++
++  const existing = await dbFirst(
++    db,
++    'SELECT * FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ? LIMIT 1',
++    [salonId, uid]
++  );
++  const targetRoles = await dbAll(
++    db,
++    'SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND active = 1',
++    [salonId, uid]
++  );
++  const targetEmail = cleanText(existing?.email).toLowerCase();
++  const targetIsOwner = targetRoles.some((row) => cleanText(row.role).toLowerCase() === 'owner');
++  if (targetEmail === 'nawafaaa0@gmail.com') {
++    throw new AppError(403, 'core_admin:bootstrap_owner_protected');
++  }
++  if (targetIsOwner && actorRole !== 'owner') {
++    throw new AppError(403, 'core_admin:owner_delete_requires_owner');
++  }
++
++  const now = nowIso();
++  await dbBatch(db, [
++    {
++      sql: 'DELETE FROM role_assignments WHERE salon_id = ? AND firebase_uid = ?',
++      params: [salonId, uid],
++    },
++    {
++      sql: `INSERT INTO role_assignments
++        (salon_id, firebase_uid, role, scope, active, assigned_by_uid, created_at, updated_at)
++        VALUES (?, ?, 'revoked', 'account_deleted', 1, ?, ?, ?)`,
++      params: [salonId, uid, optionalText(actor.uid) || null, now, now],
++    },
++    {
++      sql: 'DELETE FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ?',
++      params: [salonId, uid],
++    },
++  ]);
++
++  return {
++    firebase_uid: uid,
++    deleted: true,
++    revoked: true,
++    existed: Boolean(existing),
++    employee_id: existing?.employee_id || null,
++  };
++}
+diff --git a/workers/hr-core-worker.test.mjs b/workers/hr-core-worker.test.mjs
+--- a/workers/hr-core-worker.test.mjs
++++ b/workers/hr-core-worker.test.mjs
+@@ -11,6 +11,7 @@ import { upsertPayrollEntry, upsertPayrollPeriod } from './core/repositories/pay
+ import { getSetting, upsertSetting } from './core/repositories/settings.js';
+ import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
+ import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
++import { deleteAdminProfile, listAdminProfiles, resolveAssignedRole, upsertAdminProfile } from './core/repositories/admin-profiles.js';
+ 
+ async function setup() {
+   const mf = new Miniflare({
+@@ -141,3 +142,45 @@ test('booking reschedule atomically replaces slot locks', async (t) => {
+   assert.equal(oldLocks.count, 0);
+   assert.equal(newLocks.count, 1);
+ });
++
++test('admin account deletion removes D1 access but preserves employee records', async (t) => {
++  const { mf, db } = await setup();
++  t.after(() => mf.dispose());
++
++  await db.prepare(`INSERT INTO staff
++    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
++    VALUES ('emp-keep','main','uid-delete','Employee Keep',1,'active','2026-01-01','2026-01-01')`).run();
++
++  await upsertAdminProfile(db, 'main', {
++    firebaseUid: 'uid-delete',
++    email: 'delete@malikat.com',
++    displayName: 'Delete Me',
++    employeeId: 'emp-keep',
++    roles: ['staff'],
++  }, actor);
++  assert.equal((await listAdminProfiles(db, 'main')).length, 1);
++
++  const deleted = await deleteAdminProfile(db, 'main', 'uid-delete', actor);
++  assert.equal(deleted.deleted, true);
++  assert.equal(deleted.revoked, true);
++  assert.equal(deleted.existed, true);
++  assert.equal((await listAdminProfiles(db, 'main')).length, 0);
++  const revoked = await db.prepare("SELECT role, active FROM role_assignments WHERE firebase_uid='uid-delete'").first();
++  assert.equal(revoked.role, 'revoked');
++  assert.equal(revoked.active, 1);
++  assert.equal(await resolveAssignedRole(db, 'main', 'uid-delete', 'admin'), 'guest');
++  assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM staff WHERE id='emp-keep'").first()).count, 1);
++
++  await upsertAdminProfile(db, 'main', {
++    firebaseUid: 'uid-owner-target',
++    email: 'other-owner@malikat.com',
++    displayName: 'Other Owner',
++    roles: ['owner'],
++  }, actor);
++  await assert.rejects(
++    deleteAdminProfile(db, 'main', 'uid-owner-target', { ...actor, role: 'admin' }),
++    (error) => error?.code === 'core_admin:owner_delete_requires_owner'
++  );
++  assert.equal((await listAdminProfiles(db, 'main')).length, 1);
++});
