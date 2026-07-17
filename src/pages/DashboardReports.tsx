@@ -686,7 +686,16 @@ export default function DashboardReports() {
     };
     const appendLoadError = (label: string, error: unknown) => {
       const detail = String((error as any)?.message || error || "خطأ غير معروف");
-      setLoadErr((current) => [current, `${label}: ${detail}`].filter(Boolean).join(" | "));
+      const nextMessage = `${label}: ${detail}`;
+      setLoadErr((current) => {
+        const messages = current
+          .split(" | ")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        return messages.includes(nextMessage)
+          ? current
+          : [...messages, nextMessage].join(" | ");
+      });
     };
 
     const loadBookingsData = async () => {

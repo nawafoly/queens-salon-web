@@ -76,3 +76,6 @@ vite-*.err.log
 /dist-ssr/
 /.wrangler/
 /.vercel/
+
+# Public Vite web configuration required by Vercel builds
+!/.env.web
