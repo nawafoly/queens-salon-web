@@ -3,6 +3,8 @@ import {
   FiActivity,
   FiAlertTriangle,
   FiClock,
+  FiEdit3,
+  FiTrash2,
   FiPackage,
   FiRefreshCw,
   FiSearch,
@@ -99,6 +101,7 @@ export default function PackageSessionsManager() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [mutationLoading, setMutationLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,6 +186,51 @@ export default function PackageSessionsManager() {
     () => dashboard.transactions.filter((row) => row.canonicalClientId === selectedClientId),
     [dashboard.transactions, selectedClientId]
   );
+
+  const editPackage = async (pkg: PackageSessionDashboardPackage) => {
+    if (mutationLoading) return;
+    const packageName = window.prompt("اسم الباقة", pkg.packageName || "");
+    if (packageName === null) return;
+    const remainingRaw = window.prompt("عدد الجلسات المتبقية", String(pkg.remainingSessions));
+    if (remainingRaw === null) return;
+    const remainingSessions = Number(remainingRaw);
+    if (!packageName.trim() || !Number.isInteger(remainingSessions) || remainingSessions < 0) {
+      window.alert("تحققي من اسم الباقة وعدد الجلسات المتبقية.");
+      return;
+    }
+    const expiresAt = window.prompt("تاريخ الانتهاء بصيغة YYYY-MM-DD، أو اتركيه فارغًا", String(pkg.expiresAt || "").slice(0, 10));
+    if (expiresAt === null) return;
+    try {
+      setMutationLoading(true);
+      await PackageOperationsService.updateClientPackage({
+        clientPackageId: pkg.id,
+        packageName: packageName.trim(),
+        remainingSessions,
+        expiresAt: expiresAt.trim() || undefined,
+        status: pkg.status,
+      });
+      await load();
+    } catch (error: any) {
+      window.alert(String(error?.message || "تعذر تعديل الباقة."));
+    } finally {
+      setMutationLoading(false);
+    }
+  };
+
+  const deletePackage = async (pkg: PackageSessionDashboardPackage) => {
+    if (mutationLoading) return;
+    const ok = window.confirm(`حذف باقة ${pkg.packageName} نهائيًا من Cloudflare D1 مع سجل حركاتها؟`);
+    if (!ok) return;
+    try {
+      setMutationLoading(true);
+      await PackageOperationsService.deleteClientPackage(pkg.id);
+      await load();
+    } catch (error: any) {
+      window.alert(String(error?.message || "تعذر حذف الباقة."));
+    } finally {
+      setMutationLoading(false);
+    }
+  };
 
   const tabs: Array<{ id: SessionsTab; label: string }> = [
     { id: "overview", label: "نظرة عامة" },
@@ -313,13 +361,14 @@ export default function PackageSessionsManager() {
       {!error && activeTab === "packages" ? (
         <div className="bk2-session-table-wrap">
           <table className="bk2-session-table">
-            <thead><tr><th>العميلة</th><th>الباقة</th><th>الإجمالي</th><th>المستخدم</th><th>المتبقي</th><th>المحجوز</th><th>الانتهاء</th><th>الحالة</th></tr></thead>
+            <thead><tr><th>العميلة</th><th>الباقة</th><th>الإجمالي</th><th>المستخدم</th><th>المتبقي</th><th>المحجوز</th><th>الانتهاء</th><th>الحالة</th><th>الإجراء</th></tr></thead>
             <tbody>{visiblePackages.map((pkg) => (
               <tr key={pkg.id}>
                 <td><strong>{pkg.clientName || "عميلة بدون اسم"}</strong><small dir="ltr">{pkg.phone || pkg.canonicalClientId}</small></td>
                 <td><strong>{pkg.packageName}</strong><small>{pkg.invoiceId ? `فاتورة ${pkg.invoiceId}` : "بدون رقم فاتورة"}</small></td>
                 <td>{pkg.totalSessions}</td><td>{pkg.usedSessions}</td><td><b>{pkg.remainingSessions}</b></td><td>{pkg.reservedSessions}</td><td>{dateText(pkg.expiresAt)}</td>
                 <td><span className={`bk2-session-status is-${pkg.status}`}>{statusLabel(pkg.status)}</span></td>
+                <td><button type="button" onClick={() => void editPackage(pkg)} disabled={mutationLoading}><FiEdit3 /> تعديل</button> <button type="button" onClick={() => void deletePackage(pkg)} disabled={mutationLoading}><FiTrash2 /> حذف</button></td>
               </tr>
             ))}</tbody>
           </table>
