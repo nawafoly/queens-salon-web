@@ -893,6 +893,62 @@ test("booking creation canonicalizes a stale service id by an exact Core service
   assert.equal(item?.service_name_snapshot, "Service A");
 });
 
+test("booking creation resolves a legacy Arabic service label to one canonical Core service", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("services", {
+    id: "svc-blowdry-short",
+    salon_id: "main",
+    name: "استشوار قصير",
+    section_id: "hair-care",
+    category_id: "blowdry",
+    duration_minutes: 30,
+    price_halalas: 5000,
+    active: 1,
+    sort_order: 2,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  fake.seed("services", {
+    id: "svc-blowdry-long",
+    salon_id: "main",
+    name: "استشوار طويل",
+    section_id: "hair-care",
+    category_id: "blowdry",
+    duration_minutes: 45,
+    price_halalas: 7500,
+    active: 1,
+    sort_order: 3,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-arabic-stale-service",
+      invoiceId: "invoice-arabic-stale-service",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-11",
+      startTime: "11:00",
+      items: [{
+        id: "item-arabic-stale-service",
+        serviceId: "legacy-firestore-blowdry-short",
+        serviceName: "الاستشوار - شعر قصير",
+      }],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const item = fake.rows("booking_items").find(
+    (row) => row.id === "item-arabic-stale-service"
+  );
+  assert.equal(item?.service_id, "svc-blowdry-short");
+  assert.equal(item?.service_name_snapshot, "استشوار قصير");
+});
+
 test("booking list hydrates large dashboard results with bounded D1 reads", async () => {
   const fake = new FakeD1();
   seedCore(fake);

@@ -46,6 +46,63 @@ export async function getService(db, salonId, id) {
   return row;
 }
 
+function normalizedServiceNameTokens(value) {
+  const normalized = cleanText(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u064b-\u065f\u0670]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[_\-–—/|()[\]{}:،,.;]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized
+    .split(" ")
+    .map((token) => {
+      let next = token;
+      if (next.startsWith("ال") && next.length > 4) next = next.slice(2);
+      const aliases = {
+        سشوار: "استشوار",
+        سيشوار: "استشوار",
+        قصيره: "قصير",
+        طويله: "طويل",
+        متوسطه: "متوسط",
+        خدمه: "",
+        خدمات: "",
+        قسم: "",
+      };
+      return aliases[next] ?? next;
+    })
+    .filter(Boolean);
+}
+
+function serviceNamesEquivalent(leftValue, rightValue) {
+  const left = normalizedServiceNameTokens(leftValue);
+  const right = normalizedServiceNameTokens(rightValue);
+  if (!left.length || !right.length) return false;
+
+  const leftKey = left.join(" ");
+  const rightKey = right.join(" ");
+  if (leftKey === rightKey) return true;
+
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  const leftInsideRight = left.every((token) => rightSet.has(token));
+  const rightInsideLeft = right.every((token) => leftSet.has(token));
+  const shared = left.filter((token) => rightSet.has(token));
+
+  // Accept a unique subset match only when it carries enough meaning. This
+  // handles legacy labels such as "الاستشوار - شعر قصير" versus
+  // "استشوار قصير" without allowing a generic word such as "استشوار" to
+  // select one row from several length variants.
+  return (leftInsideRight || rightInsideLeft) && shared.length >= 2;
+}
+
 export async function resolveBookingService(db, salonId, input = {}) {
   const serviceId = requiredId(input.serviceId || input.service_id, "serviceId");
   const direct = await dbFirst(
@@ -55,19 +112,26 @@ export async function resolveBookingService(db, salonId, input = {}) {
   );
   if (direct) return direct;
 
-  // A stale browser tab or a legacy Firestore offer may still carry an old ID.
-  // Resolve only by an exact service-name snapshot and only when it identifies
-  // one Core D1 service, then persist the canonical Core ID in the booking item.
+  // Stale browser drafts and legacy Firestore offers can carry an old ID.
+  // Resolve the supplied name to one and only one canonical Core service.
   const serviceName = cleanText(
     input.serviceName || input.service_name || input.serviceNameSnapshot || input.service_name_snapshot
   );
   if (serviceName) {
-    const matches = await dbAll(
+    const services = await dbAll(
       db,
-      "SELECT * FROM services WHERE salon_id = ? AND TRIM(name) = TRIM(?) LIMIT 2",
-      [salonId, serviceName]
+      "SELECT * FROM services WHERE salon_id = ? ORDER BY sort_order, name LIMIT 1000",
+      [salonId]
     );
-    if (matches.length === 1) return matches[0];
+    const exactMatches = services.filter(
+      (row) => cleanText(row.name).toLowerCase() === serviceName.toLowerCase()
+    );
+    if (exactMatches.length === 1) return exactMatches[0];
+
+    const normalizedMatches = services.filter((row) =>
+      serviceNamesEquivalent(serviceName, row.name)
+    );
+    if (normalizedMatches.length === 1) return normalizedMatches[0];
   }
 
   rowNotFound("service");

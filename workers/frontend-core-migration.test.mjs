@@ -462,6 +462,24 @@ test("client portal uses authenticated Core D1 snapshot instead of fixed profile
   assert.match(worker, /listSelfOffers/);
 });
 
+test("public booking repairs stale service IDs before creating a Core booking", () => {
+  const booking = readFileSync("src/pages/Booking.tsx", "utf8");
+  const serviceRepo = readFileSync(
+    "workers/core/repositories/services.js",
+    "utf8"
+  );
+
+  assert.match(booking, /function serviceNamesEquivalent/);
+  assert.match(booking, /Repair an old local booking draft/);
+  assert.match(booking, /const canonicalId = resolveCanonicalServiceId/);
+  assert.match(booking, /serviceId:\s*canonicalId/);
+  assert.match(booking, /const unresolvedService = items\.find/);
+  assert.match(booking, /localStorage\.removeItem\("bookingDraft"\)/);
+  assert.match(serviceRepo, /normalizedServiceNameTokens/);
+  assert.match(serviceRepo, /shared\.length >= 2/);
+  assert.match(serviceRepo, /normalizedMatches\.length === 1/);
+});
+
 test("administrative bookings attach to the selected canonical client and repair legacy duplicate links", () => {
   const internalBooking = readFileSync("src/pages/BookingInternal.tsx", "utf8");
   const bookingSource = readFileSync(

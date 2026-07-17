@@ -315,6 +315,55 @@ function normalizeUiLabel(value: string) {
     .trim();
 }
 
+function normalizedServiceNameTokens(value: string) {
+  const normalized = String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u064b-\u065f\u0670]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[_\-–—/|()[\]{}:،,.;]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized
+    .split(" ")
+    .map((token) => {
+      let next = token;
+      if (next.startsWith("ال") && next.length > 4) next = next.slice(2);
+      const aliases: Record<string, string> = {
+        سشوار: "استشوار",
+        سيشوار: "استشوار",
+        قصيره: "قصير",
+        طويله: "طويل",
+        متوسطه: "متوسط",
+        خدمه: "",
+        خدمات: "",
+        قسم: "",
+      };
+      return aliases[next] ?? next;
+    })
+    .filter(Boolean);
+}
+
+function serviceNamesEquivalent(leftValue: string, rightValue: string) {
+  const left = normalizedServiceNameTokens(leftValue);
+  const right = normalizedServiceNameTokens(rightValue);
+  if (!left.length || !right.length) return false;
+  if (left.join(" ") === right.join(" ")) return true;
+
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  const leftInsideRight = left.every((token) => rightSet.has(token));
+  const rightInsideLeft = right.every((token) => leftSet.has(token));
+  const sharedCount = left.filter((token) => rightSet.has(token)).length;
+  return (leftInsideRight || rightInsideLeft) && sharedCount >= 2;
+}
+
 function stripCatalogNoise(value: string) {
   let s = String(value || "");
   // remove slug-like fragments: hair-color-treatments / advanced_catalog / a/b
@@ -2861,11 +2910,57 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     const byName = String(rawName || "").trim();
     if (byName) {
-      const hit = serviceIdByName.get(byName.toLowerCase());
-      if (hit) return hit;
+      const exact = serviceIdByName.get(byName.toLowerCase());
+      if (exact) return exact;
+    }
+
+    const lookupName = byName || id;
+    if (lookupName) {
+      const normalizedMatches = (servicesFlat || []).filter(
+        (service) =>
+          service.kind === "service" &&
+          serviceNamesEquivalent(lookupName, String(service.name || ""))
+      );
+      if (normalizedMatches.length === 1) {
+        return String(normalizedMatches[0].id || "").trim() || id;
+      }
     }
     return id;
   };
+
+  // Repair an old local booking draft after the Core catalog arrives. Old
+  // drafts can contain Firestore IDs even though the visible service name still
+  // identifies one canonical Core service.
+  useEffect(() => {
+    if (!useCoreCatalog || !servicesFlat.length) return;
+    setFormData((current) => {
+      const currentItems = Array.isArray(current.items) ? current.items : [];
+      let changed = false;
+      const nextItems = currentItems.map((item) => {
+        const previousId = String(item.serviceId || "").trim();
+        const canonicalId = resolveCanonicalServiceId(
+          previousId,
+          String(item.serviceName || "").trim()
+        );
+        const canonicalService = canonicalId ? getServiceById(canonicalId) : null;
+        if (!canonicalService || canonicalId === previousId) return item;
+        changed = true;
+        return {
+          ...item,
+          serviceId: canonicalId,
+          serviceName: String(canonicalService.name || item.serviceName || "").trim(),
+          serviceSectionId: String(canonicalService.sectionId || item.serviceSectionId || "").trim(),
+          serviceSectionTitle: String(canonicalService.sectionTitle || item.serviceSectionTitle || "").trim() || undefined,
+          serviceCategoryId: String(canonicalService.categoryId || item.serviceCategoryId || "").trim() || undefined,
+          serviceCategoryName: String(canonicalService.category || item.serviceCategoryName || "").trim() || undefined,
+        };
+      });
+      return changed ? { ...current, items: nextItems } : current;
+    });
+    // servicesFlat is the synchronization boundary; resolver helpers are
+    // intentionally derived from the same catalog snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useCoreCatalog, servicesFlat]);
 
   const normalizeSpecialty = (v: string) =>
     String(v || "")
@@ -6314,7 +6409,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    const items = (formData.items || []).map((x) => ({ ...x }));
+    const items = (formData.items || []).map((item) => {
+      const previousId = String(item.serviceId || "").trim();
+      const canonicalId = resolveCanonicalServiceId(
+        previousId,
+        String(item.serviceName || "").trim()
+      );
+      const canonicalService = canonicalId ? getServiceById(canonicalId) : null;
+      return {
+        ...item,
+        serviceId: canonicalId,
+        serviceName: String(canonicalService?.name || item.serviceName || "").trim(),
+        serviceSectionId:
+          String(canonicalService?.sectionId || item.serviceSectionId || "").trim(),
+        serviceSectionTitle:
+          String(canonicalService?.sectionTitle || item.serviceSectionTitle || "").trim() || undefined,
+        serviceCategoryId:
+          String(canonicalService?.categoryId || item.serviceCategoryId || "").trim() || undefined,
+        serviceCategoryName:
+          String(canonicalService?.category || item.serviceCategoryName || "").trim() || undefined,
+      };
+    });
     if (!items.length) {
       openModal({
         title: "اختيار الخدمات",
@@ -6323,6 +6438,25 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         confirmText: "حسنًا",
       });
       return;
+    }
+
+    if (useCoreCatalog) {
+      const unresolvedService = items.find((item) => {
+        const id = String(item.serviceId || "").trim();
+        return !id || !getServiceById(id);
+      });
+      if (unresolvedService) {
+        localStorage.removeItem("bookingDraft");
+        openModal({
+          title: "حدّثي اختيار الخدمة",
+          message:
+            `الخدمة "${String(unresolvedService.serviceName || "الخدمة المختارة")}" محفوظة من نسخة قديمة ولم تعد مرتبطة بكتالوج الحجز الحالي. ` +
+            "احذفيها من السلة واختاريها مرة واحدة من جديد، ثم لن تتكرر المشكلة.",
+          variant: "danger",
+          confirmText: "حسنًا",
+        });
+        return;
+      }
     }
 
     if (!String(bookingDate || "").trim()) {
