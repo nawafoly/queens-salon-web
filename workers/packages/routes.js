@@ -25,8 +25,6 @@ import {
   releasePackageD1,
   reservePackageD1,
   sessionDashboardAdminD1,
-  updateClientPackageAdminD1,
-  deleteClientPackageAdminD1,
 } from './d1.js';
 
 export function allowedOrigins(env) {
@@ -79,6 +77,40 @@ export async function withActor(request, env, body) {
   return { identity, packagesDb: env.PACKAGES_DB, salonId, role };
 }
 
+async function updateClientPackageAdminD1(ctx, data) {
+  if (!["owner", "admin", "hr", "reception"].includes(String(ctx.role || "").toLowerCase())) throw new AppError(403, "packages_auth:permission_denied");
+  const id = requiredDocumentId(data?.clientPackageId || data?.id, "clientPackageId");
+  const current = await ctx.packagesDb.prepare("SELECT * FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
+  if (!current) throw new AppError(404, "packages_d1:client_package_not_found");
+  const packageName = cleanText(data?.packageName ?? current.package_name_snapshot);
+  const remaining = Number(data?.remainingSessions ?? current.remaining_sessions);
+  if (!packageName) throw new AppError(400, "packages_d1:package_name_required");
+  if (!Number.isInteger(remaining) || remaining < 0) throw new AppError(400, "packages_d1:remaining_sessions_invalid");
+  const reserved = Number(current.reserved_sessions || 0);
+  const used = Number(current.used_sessions || 0);
+  const total = remaining + reserved + used;
+  const expiresAt = cleanText(data?.expiresAt ?? current.expires_at) || null;
+  if (expiresAt && !Number.isFinite(Date.parse(expiresAt))) throw new AppError(400, "packages_d1:expires_at_invalid");
+  const requestedStatus = cleanText(data?.status || current.status || "active").toLowerCase();
+  const status = ["active", "cancelled", "expired", "exhausted"].includes(requestedStatus) ? requestedStatus : "active";
+  const now = new Date().toISOString();
+  await ctx.packagesDb.prepare(`UPDATE client_packages SET package_name_snapshot = ?, total_sessions = ?, remaining_sessions = ?, expires_at = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ?`).bind(packageName, total, remaining, expiresAt, status, now, ctx.salonId, id).run();
+  return { id, updated: true };
+}
+
+async function deleteClientPackageAdminD1(ctx, data) {
+  if (!["owner", "admin", "hr", "reception"].includes(String(ctx.role || "").toLowerCase())) throw new AppError(403, "packages_auth:permission_denied");
+  const id = requiredDocumentId(data?.clientPackageId || data?.id, "clientPackageId");
+  const current = await ctx.packagesDb.prepare("SELECT reserved_sessions FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
+  if (!current) throw new AppError(404, "packages_d1:client_package_not_found");
+  if (Number(current.reserved_sessions || 0) > 0) throw new AppError(409, "packages_d1:package_has_reserved_sessions", "Release reserved sessions before deleting the package");
+  await ctx.packagesDb.batch([
+    ctx.packagesDb.prepare("DELETE FROM package_transactions WHERE salon_id = ? AND client_package_id = ?").bind(ctx.salonId, id),
+    ctx.packagesDb.prepare("DELETE FROM client_packages WHERE salon_id = ? AND id = ?").bind(ctx.salonId, id),
+  ]);
+  return { id, deleted: true };
+}
+
 function endpointNotMigratedToD1() {
   throw new AppError(501, "packages_d1:endpoint_not_migrated", "This package endpoint has no D1 implementation yet");
 }
@@ -114,7 +146,6 @@ const routes = {
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
   // D1 ONLY — administrative packages and session dashboard.
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
-  // D1 ONLY — update/delete one purchased client package.
   "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1 },
   "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1 },
   // Backward-compatible alias for older dashboard builds.
@@ -130,9 +161,7 @@ export async function handleRequest(request, env) {
   const key = `${request.method} ${pathname}`;
   const route = routes[key];
   if (!route) throw new AppError(404, "packages_api:not_found");
-  const body = ["GET", "DELETE"].includes(request.method)
-    ? Object.fromEntries(url.searchParams.entries())
-    : await readJson(request);
+  const body = ["GET", "DELETE"].includes(request.method) ? Object.fromEntries(url.searchParams.entries()) : await readJson(request);
   const routeRecord = typeof route === "function" ? { d1: route } : route;
   const handler = routeRecord.d1;
   if (!handler) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
