@@ -175,6 +175,21 @@ function callableErrorAr(error: any) {
   const code = String(error?.code || "");
   const message = String(error?.message || "");
   const status = Number(error?.status || 0);
+  if (code.includes("package_has_reserved_sessions")) {
+    return "لا يمكن حذف الباقة لأنها تحتوي على جلسات محجوزة. ألغِ الحجز أو أعِد الجلسة أولًا.";
+  }
+  if (code.includes("client_package_not_found")) {
+    return "الباقة غير موجودة أو تم حذفها مسبقًا. حدّثي البيانات.";
+  }
+  if (code.includes("client_package_delete_failed")) {
+    return "تعذر حذف الباقة من قاعدة البيانات. حدّثي الصفحة ثم حاولي مرة أخرى.";
+  }
+  if (code.includes("invalid_document_id")) {
+    return "معرّف الباقة غير صالح. حدّثي البيانات ثم حاولي مجددًا.";
+  }
+  if (code.includes("packages_api:not_found") || status === 404) {
+    return "واجهة إدارة الباقات على السيرفر غير محدثة. يجب نشر Packages Worker ثم المحاولة مجددًا.";
+  }
   if (status === 401) return "يجب تسجيل الدخول مرة أخرى.";
   if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";
   if (status === 409) {
@@ -253,8 +268,26 @@ export const PackageOperationsService = {
   updateClientPackage(args: { clientPackageId: string; packageName: string; remainingSessions: number; expiresAt?: string; status?: string }) {
     return invoke<{ id: string; updated: boolean }>("/api/packages/admin/client-package", { salonId: "main", ...args }, "PATCH");
   },
-  deleteClientPackage(clientPackageId: string) {
-    return invoke<{ id: string; deleted: boolean }>("/api/packages/admin/client-package", { salonId: "main", clientPackageId }, "DELETE");
+  async deleteClientPackage(clientPackageId: string) {
+    const payload = { salonId: "main", clientPackageId };
+    try {
+      // The DELETE endpoint existed before the POST compatibility alias and is
+      // therefore the safest first choice for already-deployed workers.
+      return await invoke<{ id: string; deleted: boolean }>(
+        "/api/packages/admin/client-package",
+        payload,
+        "DELETE"
+      );
+    } catch (error: any) {
+      const status = Number(error?.status || 0);
+      const code = String(error?.code || "");
+      if (status !== 404 && status !== 405 && !code.includes("packages_api:not_found")) throw error;
+      return invoke<{ id: string; deleted: boolean }>(
+        "/api/packages/admin/delete-client-package",
+        payload,
+        "POST"
+      );
+    }
   },
   myWallet() {
     return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");

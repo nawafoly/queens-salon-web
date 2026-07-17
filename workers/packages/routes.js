@@ -104,10 +104,21 @@ async function deleteClientPackageAdminD1(ctx, data) {
   const current = await ctx.packagesDb.prepare("SELECT reserved_sessions FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
   if (!current) throw new AppError(404, "packages_d1:client_package_not_found");
   if (Number(current.reserved_sessions || 0) > 0) throw new AppError(409, "packages_d1:package_has_reserved_sessions", "Release reserved sessions before deleting the package");
-  await ctx.packagesDb.batch([
-    ctx.packagesDb.prepare("DELETE FROM package_transactions WHERE salon_id = ? AND client_package_id = ?").bind(ctx.salonId, id),
-    ctx.packagesDb.prepare("DELETE FROM client_packages WHERE salon_id = ? AND id = ?").bind(ctx.salonId, id),
-  ]);
+  // client_packages.id is globally unique. Delete every ledger row pointing to
+  // the package even when an older migrated transaction has an incorrect
+  // salon_id, otherwise the foreign-key constraint blocks the package delete.
+  try {
+    await ctx.packagesDb.batch([
+      ctx.packagesDb.prepare("DELETE FROM package_transactions WHERE client_package_id = ?").bind(id),
+      ctx.packagesDb.prepare("DELETE FROM client_packages WHERE salon_id = ? AND id = ?").bind(ctx.salonId, id),
+    ]);
+  } catch (error) {
+    throw new AppError(409, "packages_d1:client_package_delete_failed", error instanceof Error ? error.message : "Client package delete failed");
+  }
+  const stillExists = await ctx.packagesDb.prepare("SELECT id FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1").bind(ctx.salonId, id).first();
+  if (stillExists) {
+    throw new AppError(409, "packages_d1:client_package_delete_failed", "Client package was not deleted");
+  }
   return { id, deleted: true };
 }
 
@@ -148,6 +159,9 @@ const routes = {
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
   "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1 },
   "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1 },
+  // POST alias avoids browser/proxy inconsistencies with authenticated DELETE
+  // requests while retaining the original endpoint for backward compatibility.
+  "POST /api/packages/admin/delete-client-package": { d1: deleteClientPackageAdminD1 },
   // Backward-compatible alias for older dashboard builds.
   "GET /api/packages/session-dashboard": { d1: sessionDashboardAdminD1 },
   // D1 ONLY — do not add Firestore fallback.

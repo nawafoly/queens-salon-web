@@ -30,6 +30,18 @@ class FakeD1 {
     return [...this.tables[table].values()].map((row) => ({ ...row }));
   }
 
+  prepare(sql) {
+    const statement = {
+      sql,
+      params: [],
+      bind: (...params) => { statement.params = params; return statement; },
+      first: () => this.first(statement.sql, statement.params),
+      all: () => this.all(statement.sql, statement.params),
+      run: () => this.run(statement.sql, statement.params),
+    };
+    return statement;
+  }
+
   async first(sql, params = []) {
     const rows = await this.all(sql, params);
     return rows[0] || null;
@@ -77,6 +89,18 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM package_catalog WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.rows("package_catalog").filter((row) => row.salon_id === salonId && row.id === id && Number(row.active) === 1).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT reserved_sessions FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1")) {
+      const [salonId, id] = params;
+      return this.rows("client_packages").filter((row) => row.salon_id === salonId && row.id === id).slice(0, 1).map((row) => ({ reserved_sessions: row.reserved_sessions }));
+    }
+    if (normalized.startsWith("SELECT * FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1")) {
+      const [salonId, id] = params;
+      return this.rows("client_packages").filter((row) => row.salon_id === salonId && row.id === id).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT id FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1")) {
+      const [salonId, id] = params;
+      return this.rows("client_packages").filter((row) => row.salon_id === salonId && row.id === id).slice(0, 1).map((row) => ({ id: row.id }));
     }
     if (normalized.startsWith("SELECT * FROM client_packages WHERE salon_id = ? AND invoice_id = ?")) {
       const [salonId, invoiceId] = params;
@@ -233,6 +257,20 @@ class FakeD1 {
           });
           results.push({ meta: { changes: 1 } });
         }
+      } else if (sql.startsWith("DELETE FROM package_transactions WHERE client_package_id = ?")) {
+        const [clientPackageId] = params;
+        let changes = 0;
+        for (const row of this.rows("package_transactions")) {
+          if (row.client_package_id !== clientPackageId) continue;
+          this.tables.package_transactions.delete(row.id);
+          changes += 1;
+        }
+        results.push({ meta: { changes } });
+      } else if (sql.startsWith("DELETE FROM client_packages WHERE salon_id = ? AND id = ?")) {
+        const [salonId, id] = params;
+        const row = this.rows("client_packages").find((item) => item.salon_id === salonId && item.id === id);
+        if (row) this.tables.client_packages.delete(row.id);
+        results.push({ meta: { changes: row ? 1 : 0 } });
       } else {
         throw new Error(`unhandled fake D1 batch: ${sql}`);
       }
@@ -684,6 +722,53 @@ test("D1 admin session dashboard accepts compatibility alias and trailing slash"
   assert.equal(aliasResponse.status, 200, JSON.stringify(await json(aliasResponse.clone())));
   const slashResponse = await worker.fetch(request("/api/packages/admin/session-dashboard/", { method: "GET" }), env(fake));
   assert.equal(slashResponse.status, 200, JSON.stringify(await json(slashResponse.clone())));
+});
+
+
+test("D1 admin deletes a package and all of its ledger rows", async () => {
+  const fake = new FakeD1();
+  seedBase(fake);
+  fake.seed("client_packages", {
+    id: "pkg-delete", salon_id: "main", canonical_client_id: "client-a", package_catalog_id: "blowdry-10",
+    package_name_snapshot: "Blowdry 10", allowed_service_ids_json: JSON.stringify(["svc-a"]), total_sessions: 10,
+    remaining_sessions: 8, reserved_sessions: 0, used_sessions: 2, status: "active",
+    purchased_at: "2027-01-01T00:00:00.000Z", expires_at: "2099-01-01T00:00:00.000Z", invoice_id: "invoice-delete",
+    created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-02T00:00:00.000Z",
+  });
+  fake.seed("package_transactions", {
+    id: "tx-delete", salon_id: "main", client_package_id: "pkg-delete", canonical_client_id: "client-a",
+    type: "purchase", sessions_delta: 10, remaining_before: 0, remaining_after: 10, reserved_before: 0,
+    reserved_after: 0, used_before: 0, used_after: 0, service_id: null, booking_id: null,
+    cart_item_id: null, invoice_id: "invoice-delete", created_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/packages/admin/client-package?salonId=main&clientPackageId=pkg-delete", {
+    method: "DELETE",
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.deleted, true);
+  assert.equal(fake.rows("client_packages").some((row) => row.id === "pkg-delete"), false);
+  assert.equal(fake.rows("package_transactions").some((row) => row.client_package_id === "pkg-delete"), false);
+});
+
+test("D1 admin refuses to delete a package with reserved sessions", async () => {
+  const fake = new FakeD1();
+  seedBase(fake);
+  fake.seed("client_packages", {
+    id: "pkg-reserved", salon_id: "main", canonical_client_id: "client-a", package_catalog_id: "blowdry-10",
+    package_name_snapshot: "Blowdry 10", allowed_service_ids_json: JSON.stringify(["svc-a"]), total_sessions: 10,
+    remaining_sessions: 8, reserved_sessions: 1, used_sessions: 1, status: "active",
+    purchased_at: "2027-01-01T00:00:00.000Z", expires_at: "2099-01-01T00:00:00.000Z", invoice_id: "invoice-reserved",
+    created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-02T00:00:00.000Z",
+  });
+  const response = await worker.fetch(request("/api/packages/admin/delete-client-package", {
+    body: { salonId: "main", clientPackageId: "pkg-reserved" },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "packages_d1:package_has_reserved_sessions");
+  assert.equal(fake.rows("client_packages").some((row) => row.id === "pkg-reserved"), true);
 });
 
 test("D1 cron expires active packages", async () => {
