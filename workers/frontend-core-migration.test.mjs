@@ -250,6 +250,24 @@ test("internal booking V2 keeps internal staff visible independently from public
   assert.doesNotMatch(v2, /filter\(\(staff: any\) => staff\?\.showOnBooking !== false\)/);
 });
 
+test("Core refunds are exposed as negative revenue and excluded from expenses", () => {
+  const income = readFileSync("src/services/firestoreIncome.ts", "utf8");
+  const expenses = readFileSync("src/services/firestoreExpenses.ts", "utf8");
+  const refundsRepo = readFileSync("workers/core/repositories/refunds.js", "utf8");
+  const financeRepo = readFileSync("workers/core/repositories/finance.js", "utf8");
+  const incomePage = readFileSync("src/pages/DashboardIncome.tsx", "utf8");
+  const cleanupMigration = readFileSync("migrations/core/0009_remove_refund_expense_shadows.sql", "utf8");
+
+  assert.match(income, /CoreRefundService\.list\(\)/);
+  assert.match(income, /amount:\s*-Math\.abs/);
+  assert.match(income, /source:\s*"refund"/);
+  assert.match(expenses, /filter\(\(expense\) => !isRefundExpense\(expense\)\)/);
+  assert.doesNotMatch(refundsRepo, /INSERT INTO expense_entries/);
+  assert.match(financeRepo, /COALESCE\(source_kind/);
+  assert.match(incomePage, /يُدار من الحجوزات/);
+  assert.match(cleanupMigration, /DELETE FROM expense_entries/i);
+});
+
 test("dashboard reports read bookings and finance from explicit Core D1 sources", () => {
   const reports = readFileSync("src/pages/DashboardReports.tsx", "utf8");
   assert.match(reports, /listCoreBookings\(\)/);

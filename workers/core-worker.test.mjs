@@ -167,9 +167,16 @@ class FakeD1 {
       const [salonId] = params;
       return this.rows("income_entries").filter((row) => row.salon_id === salonId);
     }
-    if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ? ORDER BY")) {
+    if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ?")) {
       const [salonId] = params;
-      return this.rows("expense_entries").filter((row) => row.salon_id === salonId);
+      let rows = this.rows("expense_entries").filter((row) => row.salon_id === salonId);
+      if (normalized.includes("COALESCE(source_kind") || normalized.includes("COALESCE(source_type")) {
+        rows = rows.filter((row) =>
+          String(row.source_kind || "").toLowerCase() !== "refund" &&
+          String(row.source_type || "").toLowerCase() !== "refund"
+        );
+      }
+      return rows;
     }
     if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
@@ -1596,6 +1603,35 @@ test("income supports patch and delete with D1 audit", async () => {
   assert.equal(fake.rows("income_entries").length, 0);
 });
 
+test("expense listing excludes legacy refund shadow rows", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  fake.seed("expense_entries", {
+    id: "expense-manual",
+    salon_id: "main",
+    amount_halalas: 1200,
+    category: "supplies",
+    source_kind: null,
+    source_type: null,
+    occurred_at: "2027-01-01T00:00:00.000Z",
+  });
+  fake.seed("expense_entries", {
+    id: "expense-refund-shadow",
+    salon_id: "main",
+    amount_halalas: 2500,
+    category: "refund",
+    source_kind: "refund",
+    source_type: "refund",
+    source_ref_id: "refund-a",
+    occurred_at: "2027-01-02T00:00:00.000Z",
+  });
+
+  const response = await worker.fetch(request("/api/core/expenses?salonId=main"), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.data.map((row) => row.id), ["expense-manual"]);
+});
+
 test("refund is idempotent and adjusts invoice paid total", async () => {
   const fake = new FakeD1();
   seedCore(fake);
@@ -1608,6 +1644,7 @@ test("refund is idempotent and adjusts invoice paid total", async () => {
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(fake.find("invoices", "main", "invoice-r").paid_halalas, 7500);
   assert.equal(fake.find("invoices", "main", "invoice-r").status, "partial");
+  assert.equal(fake.rows("expense_entries").filter((row) => row.source_ref_id === "refund-a").length, 0);
 
   response = await worker.fetch(request("/api/core/refunds", { method: "POST", body: { ...payload, id: "refund-b" } }), env(fake));
   body = await json(response);

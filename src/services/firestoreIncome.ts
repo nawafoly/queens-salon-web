@@ -20,6 +20,7 @@ import { writeAuditLog } from "./logService";
 import { FirestoreReadStats } from "./firestoreReadStats";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreFinanceService } from "./CoreFinanceService";
+import { CoreRefundService } from "./CoreRefundService";
 import { CoreApiError } from "./coreApiClient";
 
 // ✅ ثابت الآن (لاحقًا نخليه ديناميكي)
@@ -120,6 +121,11 @@ function normalizeIncome(raw: any, id: string): IncomeItem {
   };
 }
 
+function isRefundSource(value: unknown): boolean {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "refund" || normalized === "استرجاع";
+}
+
 function coreIncomeToLegacy(row: import("../types/coreApi").CoreIncomeEntry): IncomeItem {
   let paymentBreakdown: PaymentBreakdown | undefined;
   try {
@@ -128,18 +134,34 @@ function coreIncomeToLegacy(row: import("../types/coreApi").CoreIncomeEntry): In
   } catch {
     paymentBreakdown = undefined;
   }
+  const source = String(row.source || (row.bookingId ? "booking" : row.category) || "دخل");
+  const amount = Number(row.amountHalalas || 0) / 100;
+  const refund = isRefundSource(source) || String(row.id || "").startsWith("refund_");
   return {
     id: row.id,
     date: String(row.occurredAt || "").slice(0, 10),
-    amount: Number(row.amountHalalas || 0) / 100,
+    amount: refund ? -Math.abs(amount) : amount,
     method: normalizePaymentMethod(row.method),
     paymentBreakdown,
-    source: String(row.source || (row.bookingId ? "booking" : row.category) || "دخل"),
+    source,
     note: row.note || row.description || undefined,
     bookingId: row.bookingId || undefined,
     clientName: row.clientName || undefined,
     clientPhone: row.clientPhone || undefined,
     createdAt: Date.parse(row.createdAt || row.occurredAt || "") || Date.now(),
+  };
+}
+
+function coreRefundToLegacy(row: import("../types/coreApi").CoreRefund): IncomeItem {
+  return {
+    id: row.id,
+    date: String(row.refundedAt || row.createdAt || "").slice(0, 10),
+    amount: -Math.abs(Number(row.amountHalalas || 0) / 100),
+    method: normalizePaymentMethod(row.method),
+    source: "refund",
+    note: row.reason || undefined,
+    bookingId: row.bookingId || undefined,
+    createdAt: Date.parse(row.refundedAt || row.createdAt || "") || Date.now(),
   };
 }
 
@@ -168,7 +190,21 @@ function legacyIncomeToCore(item: IncomeItem) {
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
 export async function listAllIncomeCore(): Promise<IncomeItem[]> {
-  return (await CoreFinanceService.listIncome()).map(coreIncomeToLegacy);
+  const [incomeRows, refundRows] = await Promise.all([
+    CoreFinanceService.listIncome(),
+    CoreRefundService.list(),
+  ]);
+
+  const income = incomeRows.map(coreIncomeToLegacy);
+  const existingIds = new Set(income.map((item) => String(item.id || "").trim()));
+  const refunds = refundRows
+    .filter((row) => String(row.status || "completed").trim().toLowerCase() === "completed")
+    .filter((row) => !existingIds.has(String(row.id || "").trim()))
+    .map(coreRefundToLegacy);
+
+  return [...income, ...refunds].sort(
+    (a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
+  );
 }
 
 export async function listAllIncomeFS(salonId?: string): Promise<IncomeItem[]> {

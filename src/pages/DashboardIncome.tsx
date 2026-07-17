@@ -770,6 +770,10 @@ export default function DashboardIncome() {
   };
 
   const openDeleteIncomeModal = (item: IncomeItem) => {
+    if (isRefundIncomeRow(item)) {
+      setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
+      return;
+    }
     setDeleteTarget(item);
     setDeletePin("");
     setDeleteError("");
@@ -810,6 +814,10 @@ export default function DashboardIncome() {
   };
 
   const openEditIncomeModal = (item: IncomeItem) => {
+    if (isRefundIncomeRow(item)) {
+      setModalMsg("الاسترجاع يُدار من صفحة الحجوزات حتى تبقى الفاتورة والمدفوعات متطابقة.");
+      return;
+    }
     const linkedBookingId = resolveLinkedBookingId(item);
     const meta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
     const fallbackAmount = round2(Math.max(0, Number(item.amount || 0)));
@@ -1290,24 +1298,32 @@ export default function DashboardIncome() {
                         </td>
                         <td className="income-col-actions income-actions-cell">
                           <div className="income-row-actions">
-                            <button
-                              className="dash-icon-btn qs-black income-edit-btn"
-                              type="button"
-                              title="تعديل المبلغ"
-                              onClick={() => openEditIncomeModal(x)}
-                              disabled={loading}
-                            >
-                              <FontAwesomeIcon icon={faPen} />
-                            </button>
-                            <button
-                              className="dash-icon-btn qs-black income-delete-btn"
-                              type="button"
-                              title="حذف"
-                              onClick={() => openDeleteIncomeModal(x)}
-                              disabled={loading}
-                            >
-                              <FontAwesomeIcon icon={faTrash} />
-                            </button>
+                            {isRefundIncomeRow(x) ? (
+                              <span title="يتم تعديل أو إلغاء الاسترجاع من صفحة الحجوزات">
+                                يُدار من الحجوزات
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  className="dash-icon-btn qs-black income-edit-btn"
+                                  type="button"
+                                  title="تعديل المبلغ"
+                                  onClick={() => openEditIncomeModal(x)}
+                                  disabled={loading}
+                                >
+                                  <FontAwesomeIcon icon={faPen} />
+                                </button>
+                                <button
+                                  className="dash-icon-btn qs-black income-delete-btn"
+                                  type="button"
+                                  title="حذف"
+                                  onClick={() => openDeleteIncomeModal(x)}
+                                  disabled={loading}
+                                >
+                                  <FontAwesomeIcon icon={faTrash} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1409,24 +1425,32 @@ export default function DashboardIncome() {
                       </span>
                     </div>
                     <div className="income-mobile-actions">
-                      <button
-                        className="dash-pill dash-pill-outline income-mobile-edit"
-                        type="button"
-                        title="تعديل المبلغ"
-                        onClick={() => openEditIncomeModal(x)}
-                        disabled={loading}
-                      >
-                        <FontAwesomeIcon icon={faPen} /> تعديل
-                      </button>
-                      <button
-                        className="dash-pill dash-pill-outline income-mobile-delete"
-                        type="button"
-                        title="حذف"
-                        onClick={() => openDeleteIncomeModal(x)}
-                        disabled={loading}
-                      >
-                        <FontAwesomeIcon icon={faTrash} /> حذف
-                      </button>
+                      {isRefundIncomeRow(x) ? (
+                        <span title="يتم تعديل أو إلغاء الاسترجاع من صفحة الحجوزات">
+                          يُدار من الحجوزات
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            className="dash-pill dash-pill-outline income-mobile-edit"
+                            type="button"
+                            title="تعديل المبلغ"
+                            onClick={() => openEditIncomeModal(x)}
+                            disabled={loading}
+                          >
+                            <FontAwesomeIcon icon={faPen} /> تعديل
+                          </button>
+                          <button
+                            className="dash-pill dash-pill-outline income-mobile-delete"
+                            type="button"
+                            title="حذف"
+                            onClick={() => openDeleteIncomeModal(x)}
+                            disabled={loading}
+                          >
+                            <FontAwesomeIcon icon={faTrash} /> حذف
+                          </button>
+                        </>
+                      )}
                     </div>
                   </article>
                 );

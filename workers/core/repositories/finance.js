@@ -13,7 +13,18 @@ import {
   rowNotFound,
   updateById,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
+
+function isRefundExpenseSource(value) {
+  return cleanText(value).toLowerCase() === 'refund';
+}
+
+function rejectRefundExpense(data) {
+  if (isRefundExpenseSource(data?.sourceKind || data?.source_kind) || isRefundExpenseSource(data?.sourceType || data?.source_type)) {
+    throw new AppError(422, 'core_expense:refund_not_allowed');
+  }
+}
 
 function jsonObject(value) {
   if (!value) return '{}';
@@ -117,7 +128,11 @@ export async function deleteIncome(db, salonId, id, actor = {}) {
 }
 
 export async function listExpenses(db, salonId) {
-  return dbAll(db, 'SELECT * FROM expense_entries WHERE salon_id = ? ORDER BY occurred_at DESC LIMIT 500', [salonId]);
+  return dbAll(
+    db,
+    "SELECT * FROM expense_entries WHERE salon_id = ? AND LOWER(COALESCE(source_kind, '')) <> 'refund' AND LOWER(COALESCE(source_type, '')) <> 'refund' ORDER BY occurred_at DESC LIMIT 500",
+    [salonId]
+  );
 }
 
 export async function getExpense(db, salonId, id) {
@@ -127,6 +142,7 @@ export async function getExpense(db, salonId, id) {
 }
 
 export async function createExpense(db, salonId, data, actorUid = '', actor = {}) {
+  rejectRefundExpense(data);
   const now = nowIso();
   const row = {
     id: requiredId(data.id || generatedId('expense')),
@@ -173,6 +189,7 @@ export async function createExpense(db, salonId, data, actorUid = '', actor = {}
 }
 
 export async function patchExpense(db, salonId, id, data, actor = {}) {
+  rejectRefundExpense(data);
   const before = await getExpense(db, salonId, id);
   const row = await updateById(db, 'expense_entries', salonId, requiredId(id), {
     amount_halalas: data.amountHalalas === undefined && data.amount_halalas === undefined

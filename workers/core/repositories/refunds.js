@@ -113,17 +113,6 @@ export async function createRefund(db, salonId, data, actor = {}) {
         row.provider_reference, row.created_by_uid, row.refunded_at, row.voided_at, row.voided_by_uid, row.created_at,
       ],
     },
-    {
-      sql: `INSERT INTO expense_entries
-        (id, salon_id, amount_halalas, category, description, payment_method, occurred_at,
-         created_by_uid, created_at, updated_at, title, note, added_by, source_kind, source_ref_id, source_type)
-       VALUES (?, ?, ?, 'refund', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'refund', ?, 'refund')`,
-      params: [
-        generatedId('expense'), salonId, amount, row.reason || 'Refund', row.method,
-        row.refunded_at, row.created_by_uid, now, now, 'استرجاع', row.reason,
-        actor.name || actor.email || actor.uid || null, row.id,
-      ],
-    },
   ];
 
   if (invoice) {
@@ -182,10 +171,8 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
       params: [amount, method, reason, refundedAt, salonId, refund.id],
     },
     {
-      sql: `UPDATE expense_entries SET amount_halalas = ?, description = ?, payment_method = ?, occurred_at = ?,
-            title = 'استرجاع', note = ?
-            WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?`,
-      params: [amount, reason || 'Refund', method, refundedAt, reason, salonId, refund.id],
+      sql: "DELETE FROM expense_entries WHERE salon_id = ? AND source_kind = 'refund' AND source_ref_id = ?",
+      params: [salonId, refund.id],
     },
   ];
 

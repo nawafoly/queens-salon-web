@@ -146,6 +146,12 @@ function resolveExpenseActor() {
   return { uid, email, name };
 }
 
+function isRefundExpense(expense: Pick<Expense, "sourceKind" | "sourceType">): boolean {
+  const sourceKind = String(expense.sourceKind || "").trim().toLowerCase();
+  const sourceType = String(expense.sourceType || "").trim().toLowerCase();
+  return sourceKind === "refund" || sourceType === "refund";
+}
+
 function coreExpenseToLegacy(row: import("../types/coreApi").CoreExpenseEntry): Expense {
   return {
     id: row.id,
@@ -197,7 +203,9 @@ function legacyExpenseToCore(expense: Expense) {
  * - لو فشل: fallback بدون orderBy + ترتيب محلي
  */
 export async function listAllExpensesCore(): Promise<Expense[]> {
-  return (await CoreFinanceService.listExpenses()).map(coreExpenseToLegacy);
+  return (await CoreFinanceService.listExpenses())
+    .map(coreExpenseToLegacy)
+    .filter((expense) => !isRefundExpense(expense));
 }
 
 export async function listAllExpensesFS(salonId?: string): Promise<Expense[]> {
