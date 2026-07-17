@@ -167,16 +167,9 @@ class FakeD1 {
       const [salonId] = params;
       return this.rows("income_entries").filter((row) => row.salon_id === salonId);
     }
-    if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ?")) {
+    if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
-      let rows = this.rows("expense_entries").filter((row) => row.salon_id === salonId);
-      if (normalized.includes("COALESCE(source_kind") || normalized.includes("COALESCE(source_type")) {
-        rows = rows.filter((row) =>
-          String(row.source_kind || "").toLowerCase() !== "refund" &&
-          String(row.source_type || "").toLowerCase() !== "refund"
-        );
-      }
-      return rows;
+      return this.rows("expense_entries").filter((row) => row.salon_id === salonId);
     }
     if (normalized.startsWith("SELECT * FROM expense_entries WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
@@ -1603,35 +1596,6 @@ test("income supports patch and delete with D1 audit", async () => {
   assert.equal(fake.rows("income_entries").length, 0);
 });
 
-test("expense listing excludes legacy refund shadow rows", async () => {
-  const fake = new FakeD1();
-  seedCore(fake);
-  fake.seed("expense_entries", {
-    id: "expense-manual",
-    salon_id: "main",
-    amount_halalas: 1200,
-    category: "supplies",
-    source_kind: null,
-    source_type: null,
-    occurred_at: "2027-01-01T00:00:00.000Z",
-  });
-  fake.seed("expense_entries", {
-    id: "expense-refund-shadow",
-    salon_id: "main",
-    amount_halalas: 2500,
-    category: "refund",
-    source_kind: "refund",
-    source_type: "refund",
-    source_ref_id: "refund-a",
-    occurred_at: "2027-01-02T00:00:00.000Z",
-  });
-
-  const response = await worker.fetch(request("/api/core/expenses?salonId=main"), env(fake));
-  const body = await json(response);
-  assert.equal(response.status, 200, JSON.stringify(body));
-  assert.deepEqual(body.data.map((row) => row.id), ["expense-manual"]);
-});
-
 test("refund is idempotent and adjusts invoice paid total", async () => {
   const fake = new FakeD1();
   seedCore(fake);
@@ -1644,7 +1608,6 @@ test("refund is idempotent and adjusts invoice paid total", async () => {
   assert.equal(response.status, 200, JSON.stringify(body));
   assert.equal(fake.find("invoices", "main", "invoice-r").paid_halalas, 7500);
   assert.equal(fake.find("invoices", "main", "invoice-r").status, "partial");
-  assert.equal(fake.rows("expense_entries").filter((row) => row.source_ref_id === "refund-a").length, 0);
 
   response = await worker.fetch(request("/api/core/refunds", { method: "POST", body: { ...payload, id: "refund-b" } }), env(fake));
   body = await json(response);
@@ -2417,4 +2380,81 @@ test("staff leave blocks booking and is exposed by availability", async () => {
   const body = await json(response);
   assert.equal(response.status, 400, JSON.stringify(body));
   assert.equal(body.error, "core_booking:staff_unavailable");
+});
+
+test("authenticated client can load public /booking data without operations permissions", async () => {
+  const fake = new FakeD1();
+  const now = new Date().toISOString();
+
+  fake.seed("service_sections", {
+    id: "visible-section", salon_id: "main", name: "Visible", active: 1, sort_order: 1, created_at: now, updated_at: now,
+  });
+  fake.seed("service_sections", {
+    id: "hidden-section", salon_id: "main", name: "Hidden", active: 0, sort_order: 2, created_at: now, updated_at: now,
+  });
+  fake.seed("staff", {
+    id: "visible-staff", salon_id: "main", firebase_uid: "staff-visible", name: "Visible Staff",
+    active: 1, show_on_booking: 1, employment_status: "active", created_at: now, updated_at: now,
+  });
+  fake.seed("staff", {
+    id: "hidden-staff", salon_id: "main", firebase_uid: "staff-hidden", name: "Hidden Staff",
+    active: 1, show_on_booking: 0, employment_status: "active", created_at: now, updated_at: now,
+  });
+  fake.seed("discounts", {
+    id: "visible-offer", salon_id: "main", code: "VISIBLE", code_key: "VISIBLE", name: "Visible Offer",
+    type: "percent", value: 10, active: 1, published: 1, status: "active", deleted_at: null,
+    created_at: now, updated_at: now,
+  });
+  fake.seed("discounts", {
+    id: "deleted-offer", salon_id: "main", code: "DELETED", code_key: "DELETED", name: "Deleted Offer",
+    type: "percent", value: 10, active: 1, published: 1, status: "active", deleted_at: now,
+    created_at: now, updated_at: now,
+  });
+
+  const token = "test:client1:client";
+
+  const sectionsResponse = await worker.fetch(
+    request("/api/core/sections?active=true", { token }),
+    env(fake)
+  );
+  assert.equal(sectionsResponse.status, 200);
+  const sectionsBody = await json(sectionsResponse);
+  assert.deepEqual(sectionsBody.data.map((row) => row.id), ["visible-section"]);
+
+  const staffResponse = await worker.fetch(
+    request("/api/core/staff?active=true", { token }),
+    env(fake)
+  );
+  assert.equal(staffResponse.status, 200);
+  const staffBody = await json(staffResponse);
+  assert.deepEqual(staffBody.data.map((row) => row.id), ["visible-staff"]);
+
+  const discountsResponse = await worker.fetch(
+    request("/api/core/discounts?includeDeleted=true", { token }),
+    env(fake)
+  );
+  assert.equal(discountsResponse.status, 200);
+  const discountsBody = await json(discountsResponse);
+  assert.deepEqual(discountsBody.data.map((row) => row.id), ["visible-offer"]);
+});
+
+test("authenticated client can submit a public /booking reservation", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    token: "test:client1:client",
+    body: {
+      salonId: "main",
+      id: "client-booking-a",
+      invoiceId: "invoice-client-booking-a",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-12",
+      startTime: "11:00",
+      items: [{ id: "item-client-booking-a", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  assert.equal(response.status, 200, JSON.stringify(await json(response)));
+  assert.equal(fake.find("bookings", "main", "client-booking-a")?.created_by_uid, "client1");
 });

@@ -3,6 +3,7 @@
 import { verifyFirebaseIdToken } from '../packages/auth.js';
 import {
   ADMIN_ROLES,
+  OPERATIONS_ROLES,
   cleanText,
   requireDb,
   requireRole,
@@ -326,6 +327,33 @@ function match(url, method) {
   return null;
 }
 
+function publicBookingQuery(routeName, query = {}) {
+  const safe = { ...query };
+  if (["services", "staff", "sections", "categories"].includes(routeName)) {
+    safe.active = "true";
+  }
+  if (routeName === "discounts") {
+    safe.active = "true";
+    safe.includeDeleted = "false";
+  }
+  return safe;
+}
+
+function publicDiscountIsVisible(row, nowMs = Date.now()) {
+  if (Number(row?.active) !== 1 || Number(row?.published ?? 1) !== 1 || row?.deleted_at) return false;
+  const status = cleanText(row?.status || "active").toLowerCase();
+  if (["draft", "disabled", "expired"].includes(status)) return false;
+  const startsAt = Date.parse(cleanText(row?.starts_at));
+  const endsAt = Date.parse(cleanText(row?.ends_at));
+  if (Number.isFinite(startsAt) && startsAt > nowMs) return false;
+  if (Number.isFinite(endsAt) && endsAt < nowMs) return false;
+  return true;
+}
+
+function publicStaffIsVisible(row) {
+  return Number(row?.active) === 1 && Number(row?.show_on_booking ?? 1) === 1 && cleanText(row?.employment_status || "active") !== "terminated";
+}
+
 async function dispatch(ctx, route, method, body, query) {
   const db = ctx.coreDb;
   const isClientSelfRoute = new Set([
@@ -335,7 +363,10 @@ async function dispatch(ctx, route, method, body, query) {
     "client:loyalty",
     "client:offers",
   ]).has(route.name);
-  if (!ctx.guestAccess && !isClientSelfRoute) requireRole(ctx.role);
+  const publicRoute = isPublicRoute(route, method);
+  const publicConsumer = publicRoute && (ctx.guestAccess || !OPERATIONS_ROLES.has(ctx.role));
+  if (!ctx.guestAccess && !isClientSelfRoute && !publicRoute) requireRole(ctx.role);
+  const readQuery = publicConsumer ? publicBookingQuery(route.name, query) : query;
   const actorInfo = {
     uid: ctx.identity?.uid || "",
     email: ctx.identity?.claims?.email || "",
@@ -413,7 +444,7 @@ async function dispatch(ctx, route, method, body, query) {
 
     case "services":
       if (method === "GET") {
-        return listServices(db, ctx.salonId, query);
+        return listServices(db, ctx.salonId, readQuery);
       }
       if (method === "POST") {
         return createService(db, ctx.salonId, body);
@@ -425,10 +456,13 @@ async function dispatch(ctx, route, method, body, query) {
 
     case "staff":
       if (method === "GET" && route.id) {
-        return getStaff(db, ctx.salonId, route.id);
+        const row = await getStaff(db, ctx.salonId, route.id);
+        if (publicConsumer && !publicStaffIsVisible(row)) throw new AppError(404, "core_staff:not_found");
+        return row;
       }
       if (method === "GET") {
-        return listStaff(db, ctx.salonId, query);
+        const rows = await listStaff(db, ctx.salonId, readQuery);
+        return publicConsumer ? rows.filter(publicStaffIsVisible) : rows;
       }
       if (method === "PATCH" && route.id) {
         return patchStaff(db, ctx.salonId, route.id, body);
@@ -539,7 +573,10 @@ async function dispatch(ctx, route, method, body, query) {
       break;
 
     case "discounts":
-      if (method === "GET") return listDiscounts(db, ctx.salonId, query);
+      if (method === "GET") {
+        const rows = await listDiscounts(db, ctx.salonId, readQuery);
+        return publicConsumer ? rows.filter((row) => publicDiscountIsVisible(row)) : rows;
+      }
       if (method === "POST") return createDiscount(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return patchDiscount(db, ctx.salonId, route.id, body, actorInfo);
       if (method === "DELETE" && route.id) return deleteDiscount(db, ctx.salonId, route.id, actorInfo);
@@ -551,7 +588,7 @@ async function dispatch(ctx, route, method, body, query) {
     case "sections":
     case "categories": {
       const kind = route.name;
-      if (method === "GET") return listCatalogRows(db, ctx.salonId, kind, query);
+      if (method === "GET") return listCatalogRows(db, ctx.salonId, kind, readQuery);
       if (method === "POST") return createCatalogRow(db, ctx.salonId, kind, body);
       if (method === "PATCH" && route.id) return patchCatalogRow(db, ctx.salonId, kind, route.id, body);
       if (method === "DELETE" && route.id) return deleteCatalogRow(db, ctx.salonId, kind, route.id);
@@ -631,12 +668,12 @@ async function dispatch(ctx, route, method, body, query) {
     case "settings": {
       if (method === "GET" && route.id) {
         const setting = await getSetting(db, ctx.salonId, route.id);
-        if (ctx.guestAccess && setting && setting.visibility !== "public") throw new AppError(404, "core_settings:not_found");
+        if (publicConsumer && setting && setting.visibility !== "public") throw new AppError(404, "core_settings:not_found");
         return setting;
       }
       if (method === "GET") {
-        const settings = await listSettings(db, ctx.salonId, query);
-        return ctx.guestAccess ? settings.filter((row) => row.visibility === "public") : settings;
+        const settings = await listSettings(db, ctx.salonId, readQuery);
+        return publicConsumer ? settings.filter((row) => row.visibility === "public") : settings;
       }
       requireRole(ctx.role, ADMIN_ROLES);
       if (["POST", "PATCH"].includes(method)) return upsertSetting(db, ctx.salonId, route.id || body.settingKey || body.setting_key, body, actorInfo);
