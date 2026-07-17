@@ -37,7 +37,22 @@ function normalizePhone(value: unknown): string {
 }
 
 async function resolveClientId(booking: BookingDoc): Promise<string> {
-  const firebaseUid = String(booking.userId || "").trim();
+  const explicitClientId = String(booking.clientId || "").trim();
+  const firebaseUid = String(
+    booking.clientFirebaseUid || booking.userId || ""
+  ).trim();
+
+  if (explicitClientId) {
+    const exact = await CoreClientService.get(explicitClientId);
+
+    // Link the selected Core client to the Firebase account when the admin
+    // selected a real client record that was created before account signup.
+    if (firebaseUid && !String(exact.firebaseUid || "").trim()) {
+      await CoreClientService.patch(exact.id, { firebaseUid });
+    }
+
+    return exact.id;
+  }
 
   if (firebaseUid) {
     const byUid = await CoreClientService.list(firebaseUid);

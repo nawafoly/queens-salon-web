@@ -454,6 +454,31 @@ test("client portal uses authenticated Core D1 snapshot instead of fixed profile
   assert.match(worker, /listSelfOffers/);
 });
 
+test("administrative bookings attach to the selected canonical client and repair legacy duplicate links", () => {
+  const internalBooking = readFileSync("src/pages/BookingInternal.tsx", "utf8");
+  const bookingSource = readFileSync(
+    "src/services/bookingDataSources/coreD1BookingDataSource.ts",
+    "utf8"
+  );
+  const portalRepo = readFileSync(
+    "workers/core/repositories/client-portal.js",
+    "utf8"
+  );
+
+  assert.match(internalBooking, /clientId:\s*canonicalClientId/);
+  assert.match(internalBooking, /clientFirebaseUid:\s*clientFirebaseUid/);
+  assert.match(internalBooking, /userId:\s*clientFirebaseUid \|\| null/);
+  assert.match(internalBooking, /createdByUid:\s*staffUid/);
+  assert.doesNotMatch(internalBooking, /userId:\s*staffUid/);
+  assert.match(bookingSource, /const explicitClientId = String\(booking\.clientId/);
+  assert.match(bookingSource, /CoreClientService\.get\(explicitClientId\)/);
+  assert.match(portalRepo, /UPDATE bookings SET client_id = \?/);
+  assert.match(portalRepo, /UPDATE invoices SET client_id = \?/);
+  assert.match(portalRepo, /UPDATE payments SET client_id = \?/);
+  assert.match(portalRepo, /UPDATE refunds SET client_id = \?/);
+  assert.match(portalRepo, /legacy_client_id/);
+});
+
 test("client mobile routes and bottom navigation expose packages instead of Instagram", () => {
   const profile = readFileSync("src/pages/Profile.tsx", "utf8");
   const app = readFileSync("src/App.tsx", "utf8");

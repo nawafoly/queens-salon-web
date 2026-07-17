@@ -541,6 +541,26 @@ const emptyBusyState = (): BusyState => ({
   bookedMetaByTime: {},
 });
 
+function selectedCoreClientId(raw: any): string {
+  const direct = String(
+    raw?.clientId || raw?.canonicalClientId || raw?.canonical_client_id || ""
+  ).trim();
+  if (direct) return direct;
+
+  const source = String(raw?.source || "").trim().toLowerCase();
+  if (source === "core-d1" || source === "core" || source === "client_profile") {
+    return String(raw?.id || "").trim();
+  }
+
+  return "";
+}
+
+function selectedClientFirebaseUid(raw: any): string {
+  return String(
+    raw?.firebaseUid || raw?.firebase_uid || raw?.authUid || raw?.uid || raw?.userId || ""
+  ).trim();
+}
+
 const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) => {
   const navigate = useNavigate();
   const dateRef = useRef<HTMLInputElement>(null);
@@ -5580,6 +5600,9 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         return;
       }
 
+      const canonicalClientId = selectedCoreClientId(selectedClient);
+      const clientFirebaseUid = selectedClientFirebaseUid(selectedClient);
+
       const userNote = String(formData.note || "").trim();
       const offerNote = finalApplied.title && discountTotal > 0
         ? `Offer: ${finalApplied.title}${bookingCouponCode ? ` (${bookingCouponCode})` : ""} | discount=${Number(finalApplied.discountAmount || 0).toFixed(0)}`
@@ -5783,8 +5806,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
 
             const groupRes = await createBookingGroup({
               parent: {
-                userId: staffUid,
+                clientId: canonicalClientId || undefined,
+                clientFirebaseUid: clientFirebaseUid || undefined,
+                userId: clientFirebaseUid || null,
                 createdBy: "staff",
+                createdByUid: staffUid,
                 channel: "internal",
                 clientName: String(formData.name || "").trim(),
                 clientPhone: phone,
@@ -5851,8 +5877,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                     .join(" | ") || undefined;
 
                 return {
-                  userId: staffUid,
+                  clientId: canonicalClientId || undefined,
+                  clientFirebaseUid: clientFirebaseUid || undefined,
+                  userId: clientFirebaseUid || null,
                   createdBy: "staff",
+                  createdByUid: staffUid,
                   channel: "internal",
                   clientName: String(formData.name || "").trim(),
                   clientPhone: phone,
@@ -6010,8 +6039,11 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
         };
 
         const res = await createBooking({
-          userId: staffUid,
+          clientId: canonicalClientId || undefined,
+          clientFirebaseUid: clientFirebaseUid || undefined,
+          userId: clientFirebaseUid || null,
           createdBy: "staff",
+          createdByUid: staffUid,
           channel: "internal",
 
           clientName: String(formData.name || "").trim(),

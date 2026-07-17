@@ -88,6 +88,16 @@ export type PackageSnapshot = {
 };
 
 export type BookingDoc = {
+  /**
+   * Canonical client id in Core D1. Internal/dashboard bookings must pass this
+   * when an existing client was selected so the booking is attached to the
+   * exact same account shown in the client portal.
+   */
+  clientId?: string | null;
+
+  /** Firebase Auth UID for the client account, never the staff creator UID. */
+  clientFirebaseUid?: string | null;
+
   userId?: string | null;
 
   slotStepMinAtBooking?: number;

@@ -133,6 +133,71 @@ export async function resolveSelfClient(db, salonId, identity, { createIfMissing
   return (await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, client.id])) || client;
 }
 
+async function relinkSelfClientData(db, salonId, identity, canonicalClient) {
+  const values = identityValues(identity);
+  const canonicalId = cleanText(canonicalClient?.id);
+  if (!canonicalId || !values.uid) return canonicalClient;
+
+  const email = cleanText(canonicalClient?.email || values.email).toLowerCase();
+  const phone = normalizePhone(canonicalClient?.phone_normalized || values.phone);
+  const candidates = await dbAll(
+    db,
+    `SELECT * FROM clients
+      WHERE salon_id = ?
+        AND (
+          id = ?
+          OR firebase_uid = ?
+          OR (? <> '' AND LOWER(COALESCE(email, '')) = ?)
+          OR (? <> '' AND phone_normalized = ?)
+        )`,
+    [salonId, canonicalId, values.uid, email, email, phone, phone]
+  );
+
+  const linkedIds = candidates
+    .filter((candidate) => {
+      const id = cleanText(candidate.id);
+      if (!id) return false;
+      if (id === canonicalId) return true;
+
+      const candidateUid = cleanText(candidate.firebase_uid);
+      if (candidateUid && candidateUid !== values.uid) return false;
+
+      const sameEmail = email && cleanText(candidate.email).toLowerCase() === email;
+      const samePhone = phone && normalizePhone(candidate.phone_normalized) === phone;
+      return Boolean(sameEmail || samePhone);
+    })
+    .map((candidate) => cleanText(candidate.id))
+    .filter(Boolean);
+
+  for (const legacyClientId of linkedIds) {
+    if (legacyClientId === canonicalId) continue;
+
+    // Administrative bookings created before the portal integration could be
+    // attached to a duplicate phone/name client. Move every financial child to
+    // the Firebase-linked canonical client so old and future bookings appear in
+    // one account and are not counted twice.
+    await dbRun(db, 'UPDATE bookings SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
+    await dbRun(db, 'UPDATE invoices SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
+    await dbRun(db, 'UPDATE payments SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
+    await dbRun(db, 'UPDATE refunds SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
+    await dbRun(db, 'UPDATE loyalty_point_transactions SET client_id = ? WHERE salon_id = ? AND client_id = ?', [canonicalId, salonId, legacyClientId]);
+    await dbRun(
+      db,
+      `INSERT OR IGNORE INTO client_aliases
+        (salon_id, alias_id, canonical_client_id, alias_type, created_at)
+       VALUES (?, ?, ?, 'legacy_client_id', ?)`,
+      [salonId, legacyClientId, canonicalId, nowIso()]
+    );
+  }
+
+  return (await dbFirst(db, 'SELECT * FROM clients WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, canonicalId])) || canonicalClient;
+}
+
+async function resolveCanonicalSelfClient(db, salonId, identity, options = {}) {
+  const client = await resolveSelfClient(db, salonId, identity, options);
+  return relinkSelfClientData(db, salonId, identity, client);
+}
+
 function computedBookingStatus(booking, refundedHalalas) {
   const original = cleanText(booking.status || 'pending').toLowerCase();
   if (['cancelled', 'no_show'].includes(original)) return original;
@@ -150,7 +215,7 @@ function computedBookingStatus(booking, refundedHalalas) {
 }
 
 export async function listSelfBookings(db, salonId, identity) {
-  const client = await resolveSelfClient(db, salonId, identity);
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const [bookings, payments, refunds] = await Promise.all([
     listBookings(db, salonId, { clientId: client.id }),
     dbAll(db, `SELECT * FROM payments WHERE salon_id = ? AND client_id = ? ORDER BY COALESCE(paid_at, created_at) DESC`, [salonId, client.id]),
@@ -325,7 +390,7 @@ export async function getClientLoyaltyById(db, salonId, clientId) {
 }
 
 export async function getSelfLoyalty(db, salonId, identity) {
-  const client = await resolveSelfClient(db, salonId, identity);
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
   return getClientLoyaltyById(db, salonId, client.id);
 }
 
@@ -426,7 +491,7 @@ export async function adjustClientLoyalty(db, salonId, clientId, data, actorUid 
 }
 
 export async function listSelfOffers(db, salonId, identity) {
-  const client = await resolveSelfClient(db, salonId, identity);
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const now = nowIso();
   const rows = await dbAll(
     db,
@@ -451,7 +516,7 @@ export async function listSelfOffers(db, salonId, identity) {
 }
 
 export async function getSelfProfile(db, salonId, identity) {
-  const client = await resolveSelfClient(db, salonId, identity);
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const bookings = await listSelfBookings(db, salonId, identity);
   const counts = {
     total: bookings.length,
@@ -475,7 +540,7 @@ export async function getSelfProfile(db, salonId, identity) {
 }
 
 export async function patchSelfProfile(db, salonId, identity, data) {
-  const client = await resolveSelfClient(db, salonId, identity);
+  const client = await resolveCanonicalSelfClient(db, salonId, identity);
   const name = data.name === undefined ? client.name : requiredText(data.name, 'name');
   const phone = data.phone === undefined && data.phoneNormalized === undefined
     ? client.phone_normalized
@@ -492,7 +557,7 @@ export async function patchSelfProfile(db, salonId, identity, data) {
 export async function getClientPortalSnapshot(db, salonId, identity) {
   // Resolve/link the account once before parallel reads. Without this guard a
   // first-time account could race and attempt to create more than one client.
-  await resolveSelfClient(db, salonId, identity);
+  await resolveCanonicalSelfClient(db, salonId, identity);
   const [profile, bookings, loyalty, offers] = await Promise.all([
     getSelfProfile(db, salonId, identity),
     listSelfBookings(db, salonId, identity),
