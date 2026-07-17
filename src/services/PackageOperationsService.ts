@@ -200,7 +200,7 @@ function callableErrorAr(error: any) {
   return "تعذر تنفيذ العملية. تحققي من البيانات وحاولي مجددًا.";
 }
 
-async function invoke<T>(path: string, payload: Record<string, unknown> = {}, method: "GET" | "POST" = "POST"): Promise<T> {
+async function invoke<T>(path: string, payload: Record<string, unknown> = {}, method: "GET" | "POST" | "PATCH" | "DELETE" = "POST"): Promise<T> {
   try {
     const baseUrl = packageWorkerBaseUrl();
     if (!baseUrl) throw Object.assign(new Error("packages_worker:not_configured"), { code: "failed-precondition" });
@@ -209,7 +209,7 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
     const requestOnce = async (forceRefresh = false) => {
       const token = await user.getIdToken(forceRefresh);
       const url = new URL(`${baseUrl}${path}`);
-      if (method === "GET") {
+      if (method === "GET" || method === "DELETE") {
         Object.entries(payload).forEach(([key, value]) => {
           if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
         });
@@ -218,9 +218,9 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
         method,
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(["POST", "PATCH"].includes(method) ? { "Content-Type": "application/json" } : {}),
         },
-        ...(method === "POST" ? { body: JSON.stringify(payload) } : {}),
+        ...(["POST", "PATCH"].includes(method) ? { body: JSON.stringify(payload) } : {}),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.ok === false) {
@@ -249,6 +249,12 @@ export const PackageOperationsService = {
   newOperationId: operationId,
   sessionDashboard() {
     return invoke<PackageSessionDashboardResult>("/api/packages/admin/session-dashboard", { salonId: "main" }, "GET");
+  },
+  updateClientPackage(args: { clientPackageId: string; packageName: string; remainingSessions: number; expiresAt?: string; status?: string }) {
+    return invoke<{ id: string; updated: boolean }>("/api/packages/admin/client-package", { salonId: "main", ...args }, "PATCH");
+  },
+  deleteClientPackage(clientPackageId: string) {
+    return invoke<{ id: string; deleted: boolean }>("/api/packages/admin/client-package", { salonId: "main", clientPackageId }, "DELETE");
   },
   myWallet() {
     return invoke<PackageClientWalletResult>("/api/packages/my-wallet", { salonId: "main" }, "GET");
