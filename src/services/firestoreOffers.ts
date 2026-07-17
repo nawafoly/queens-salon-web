@@ -57,6 +57,16 @@ export type Offer = {
   perClientLimit?: number | null;
   categoryIds?: string[];
   imageUrl?: string;
+  description?: string;
+  priceBeforeHalalas?: number | null;
+  priceAfterHalalas?: number | null;
+  published?: boolean;
+  status?: "draft" | "scheduled" | "active" | "expired" | "disabled" | string;
+  sortOrder?: number;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  targetScope?: "all" | "specific" | string;
+  targetClientIds?: string[];
 
   createdAt?: Timestamp | any;
   updatedAt?: Timestamp | any;
@@ -217,6 +227,16 @@ function coreDiscountToOffer(row: import("../types/coreApi").CoreDiscount): Offe
     perClientLimit: row.perClientLimit ?? null,
     categoryIds: row.categoryIds || [],
     imageUrl: row.imageUrl || undefined,
+    description: row.description || undefined,
+    priceBeforeHalalas: row.priceBeforeHalalas ?? null,
+    priceAfterHalalas: row.priceAfterHalalas ?? null,
+    published: row.published,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    ctaLabel: row.ctaLabel || undefined,
+    ctaUrl: row.ctaUrl || undefined,
+    targetScope: row.targetScope || "all",
+    targetClientIds: row.targetClientIds || [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.deletedAt ? { deletedAt: row.deletedAt } : {}),
@@ -247,6 +267,16 @@ function offerToCore(offer: Offer) {
     categoryIds: offer.categoryIds || [],
     sequenceSteps: offer.sequenceSteps || [],
     imageUrl: offer.imageUrl,
+    description: offer.description,
+    priceBeforeHalalas: offer.priceBeforeHalalas ?? undefined,
+    priceAfterHalalas: offer.priceAfterHalalas ?? undefined,
+    published: offer.published !== false,
+    status: offer.status || (offer.active ? "active" : "disabled"),
+    sortOrder: offer.sortOrder || 0,
+    ctaLabel: offer.ctaLabel,
+    ctaUrl: offer.ctaUrl,
+    targetScope: offer.targetScope || "all",
+    targetClientIds: offer.targetClientIds || [],
     deletedAt: (offer as Offer & { deletedAt?: unknown }).deletedAt,
   };
 }

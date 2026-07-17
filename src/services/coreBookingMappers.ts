@@ -363,6 +363,9 @@ export function coreBookingToLegacy(
     discountSnapshot = undefined;
   }
 
+  const packageItems = booking.items.filter((item) => item.packageCovered || item.clientPackageId);
+  const firstPackageItem = packageItems[0];
+
   return {
     id: booking.id,
     publicId: booking.publicId || booking.id,
@@ -402,6 +405,10 @@ export function coreBookingToLegacy(
     status: legacyBookingStatus(booking.status),
     note: booking.notes || undefined,
     durationMin: firstItem?.durationMinutes || undefined,
+    fromSessionPackage: packageItems.length > 0,
+    consumeOneSession: packageItems.length > 0,
+    sessionPackageId: firstPackageItem?.clientPackageId || undefined,
+    allowedServiceIds: packageItems.map((item) => item.serviceId).filter(Boolean) as string[],
     createdAtMs: Date.parse(booking.createdAt) || undefined,
   };
 }

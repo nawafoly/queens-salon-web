@@ -35,12 +35,22 @@ import {
 
 type OfferForm = {
   title: string;
+  description: string;
   code: string;
   discountType: DiscountType;
   value: number;
+  priceBefore: number;
+  priceAfter: number;
   startDate: string;
   endDate: string;
   active: boolean;
+  published: boolean;
+  status: "draft" | "scheduled" | "active" | "expired" | "disabled";
+  sortOrder: number;
+  ctaLabel: string;
+  ctaUrl: string;
+  targetScope: "all" | "specific";
+  targetClientIdsText: string;
   imageUrl?: string;
 
   appliesTo: OfferAppliesTo;
@@ -297,12 +307,22 @@ const DashboardOffers: React.FC = () => {
 
   const [form, setForm] = useState<OfferForm>({
     title: "",
+    description: "",
     code: "",
     discountType: "fixed",
     value: 0,
+    priceBefore: 0,
+    priceAfter: 0,
     startDate: "",
     endDate: "",
     active: true,
+    published: true,
+    status: "active",
+    sortOrder: 0,
+    ctaLabel: "احجزي الآن",
+    ctaUrl: "",
+    targetScope: "all",
+    targetClientIdsText: "",
     imageUrl: "",
     appliesTo: "all",
     serviceIds: [],
@@ -584,12 +604,22 @@ const DashboardOffers: React.FC = () => {
 
     setForm({
       title: "",
+      description: "",
       code: generateCode(),
       discountType: "fixed",
       value: 0,
+      priceBefore: 0,
+      priceAfter: 0,
       startDate: "",
       endDate: "",
       active: true,
+      published: true,
+      status: "active",
+      sortOrder: 0,
+      ctaLabel: "احجزي الآن",
+      ctaUrl: "",
+      targetScope: "all",
+      targetClientIdsText: "",
       imageUrl: "",
       appliesTo: "all",
       serviceIds: [],
@@ -613,12 +643,22 @@ const DashboardOffers: React.FC = () => {
 
     setForm({
       title: (o as any).title || "",
+      description: (o as any).description || "",
       code: (o as any).code || "",
       discountType: ((o as any).discountType as DiscountType) || "fixed",
       value: Number((o as any).value || 0),
+      priceBefore: Number((o as any).priceBeforeHalalas || 0) / 100,
+      priceAfter: Number((o as any).priceAfterHalalas || 0) / 100,
       startDate: (o as any).startDate || "",
       endDate: (o as any).endDate || "",
       active: Boolean((o as any).active),
+      published: (o as any).published !== false,
+      status: (["draft", "scheduled", "active", "expired", "disabled"].includes(String((o as any).status)) ? String((o as any).status) : ((o as any).active ? "active" : "disabled")) as OfferForm["status"],
+      sortOrder: Number((o as any).sortOrder || 0),
+      ctaLabel: (o as any).ctaLabel || "احجزي الآن",
+      ctaUrl: (o as any).ctaUrl || "",
+      targetScope: (o as any).targetScope === "specific" ? "specific" : "all",
+      targetClientIdsText: Array.isArray((o as any).targetClientIds) ? (o as any).targetClientIds.join(", ") : "",
       imageUrl: (o as any).imageUrl || "",
       appliesTo: ((o as any).appliesTo as OfferAppliesTo) || "all",
       serviceIds: Array.isArray((o as any).serviceIds) ? (o as any).serviceIds : [],
@@ -645,6 +685,10 @@ const DashboardOffers: React.FC = () => {
     if (Number(form.value) <= 0) return showNotice("قيمة الخصم لازم تكون أكبر من صفر");
     if (form.discountType === "percent" && Number(form.value) > 100) return showNotice("النسبة المئوية لا تتجاوز 100%");
     if (form.startDate && form.endDate && form.startDate > form.endDate) return showNotice("تاريخ البداية لازم يكون قبل النهاية");
+    if (form.priceBefore < 0 || form.priceAfter < 0) return showNotice("أسعار العرض لا يمكن أن تكون سالبة");
+    if (form.priceBefore > 0 && form.priceAfter > form.priceBefore) return showNotice("السعر بعد الخصم يجب ألا يتجاوز السعر السابق");
+    const targetClientIds = form.targetClientIdsText.split(/[،,\n]/).map((item) => item.trim()).filter(Boolean);
+    if (form.targetScope === "specific" && targetClientIds.length === 0) return showNotice("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد");
 
     if (form.appliesTo === "services" && form.serviceIds.length === 0) {
       return showNotice("اختر خدمة واحدة على الأقل أو خلّه ينطبق على الجميع");
@@ -661,12 +705,22 @@ const DashboardOffers: React.FC = () => {
       const payload: any = {
         id,
         title: form.title.trim(),
+        description: form.description.trim(),
         code: form.code.trim(),
         discountType: form.discountType,
         value: Number(form.value),
+        priceBeforeHalalas: Math.round(Number(form.priceBefore || 0) * 100),
+        priceAfterHalalas: Math.round(Number(form.priceAfter || 0) * 100),
         startDate: form.startDate || "",
         endDate: form.endDate || "",
         active: Boolean(form.active),
+        published: Boolean(form.published),
+        status: form.status,
+        sortOrder: Math.max(0, Math.floor(Number(form.sortOrder || 0))),
+        ctaLabel: form.ctaLabel.trim() || "احجزي الآن",
+        ctaUrl: form.ctaUrl.trim(),
+        targetScope: form.targetScope,
+        targetClientIds,
         imageUrl: form.imageUrl || "",
 
         appliesTo: form.appliesTo,
@@ -1680,6 +1734,16 @@ const DashboardOffers: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="settings-field">
+                  <label>وصف العرض</label>
+                  <textarea
+                    rows={3}
+                    value={form.description}
+                    onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                    placeholder="وصف مختصر يظهر للعميلة داخل التطبيق"
+                  />
+                </div>
+
                 <div className="of-grid-3">
                   <div>
                     <label>نوع الخصم</label>
@@ -1747,6 +1811,65 @@ const DashboardOffers: React.FC = () => {
                     <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
                   </div>
                 </div>
+
+                <div className="of-grid-3">
+                  <div>
+                    <label>السعر قبل الخصم (ريال)</label>
+                    <input type="number" min={0} step="0.01" value={form.priceBefore} onChange={(e) => setForm((p) => ({ ...p, priceBefore: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label>السعر بعد الخصم (ريال)</label>
+                    <input type="number" min={0} step="0.01" value={form.priceAfter} onChange={(e) => setForm((p) => ({ ...p, priceAfter: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label>ترتيب العرض</label>
+                    <input type="number" min={0} value={form.sortOrder} onChange={(e) => setForm((p) => ({ ...p, sortOrder: Number(e.target.value) }))} />
+                  </div>
+                </div>
+
+                <div className="of-grid-3">
+                  <div>
+                    <label>حالة النشر</label>
+                    <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as OfferForm["status"] }))}>
+                      <option value="draft">مسودة</option>
+                      <option value="scheduled">مجدول</option>
+                      <option value="active">نشط</option>
+                      <option value="expired">منتهي</option>
+                      <option value="disabled">موقوف</option>
+                    </select>
+                  </div>
+                  <div className="of-switch">
+                    <label className="of-checkline">
+                      <input type="checkbox" checked={form.published} onChange={(e) => setForm((p) => ({ ...p, published: e.target.checked }))} />
+                      <span>منشور للعميلات</span>
+                    </label>
+                  </div>
+                  <div>
+                    <label>نص زر الإجراء</label>
+                    <input value={form.ctaLabel} onChange={(e) => setForm((p) => ({ ...p, ctaLabel: e.target.value }))} placeholder="احجزي الآن" />
+                  </div>
+                </div>
+
+                <div className="of-grid-2">
+                  <div>
+                    <label>رابط الإجراء (اختياري)</label>
+                    <input value={form.ctaUrl} onChange={(e) => setForm((p) => ({ ...p, ctaUrl: e.target.value }))} placeholder="/booking أو رابط داخلي" />
+                  </div>
+                  <div>
+                    <label>استهداف العملاء</label>
+                    <select value={form.targetScope} onChange={(e) => setForm((p) => ({ ...p, targetScope: e.target.value as OfferForm["targetScope"] }))}>
+                      <option value="all">جميع العميلات</option>
+                      <option value="specific">عميلات محددات</option>
+                    </select>
+                  </div>
+                </div>
+
+                {form.targetScope === "specific" ? (
+                  <div className="settings-field">
+                    <label>معرفات العميلات المستهدفات</label>
+                    <textarea rows={3} value={form.targetClientIdsText} onChange={(e) => setForm((p) => ({ ...p, targetClientIdsText: e.target.value }))} placeholder="clientId أو Firebase UID، مفصولة بفواصل" />
+                  </div>
+                ) : null}
               </div>
 
               {/* نطاق العرض */}

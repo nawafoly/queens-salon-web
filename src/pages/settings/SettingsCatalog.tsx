@@ -105,6 +105,14 @@ type PackageRow = {
   price: number;
   validityDays?: number;
   active: boolean;
+  saleEnabled: boolean;
+  imageUrl?: string;
+  terms?: string;
+  startsAt?: string;
+  endsAt?: string;
+  audienceScope: "all" | "specific" | string;
+  targetClientIds: string[];
+  sortOrder: number;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -160,6 +168,14 @@ function resetPackageFormState(setters: {
   setPackagePrice: (value: number) => void;
   setPackageValidityDays: (value: string) => void;
   setPackageActive: (value: boolean) => void;
+  setPackageSaleEnabled: (value: boolean) => void;
+  setPackageImageUrl: (value: string) => void;
+  setPackageTerms: (value: string) => void;
+  setPackageStartsAt: (value: string) => void;
+  setPackageEndsAt: (value: string) => void;
+  setPackageAudienceScope: (value: "all" | "specific") => void;
+  setPackageTargetClientIdsText: (value: string) => void;
+  setPackageSortOrder: (value: number) => void;
   setEditingPackageId: (value: string | null) => void;
 }) {
   setters.setPackageName("");
@@ -169,6 +185,14 @@ function resetPackageFormState(setters: {
   setters.setPackagePrice(0);
   setters.setPackageValidityDays("");
   setters.setPackageActive(true);
+  setters.setPackageSaleEnabled(true);
+  setters.setPackageImageUrl("");
+  setters.setPackageTerms("");
+  setters.setPackageStartsAt("");
+  setters.setPackageEndsAt("");
+  setters.setPackageAudienceScope("all");
+  setters.setPackageTargetClientIdsText("");
+  setters.setPackageSortOrder(0);
   setters.setEditingPackageId(null);
 }
 
@@ -195,6 +219,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
   const [packagePrice, setPackagePrice] = useState<number>(0);
   const [packageValidityDays, setPackageValidityDays] = useState("");
   const [packageActive, setPackageActive] = useState(true);
+  const [packageSaleEnabled, setPackageSaleEnabled] = useState(true);
+  const [packageImageUrl, setPackageImageUrl] = useState("");
+  const [packageTerms, setPackageTerms] = useState("");
+  const [packageStartsAt, setPackageStartsAt] = useState("");
+  const [packageEndsAt, setPackageEndsAt] = useState("");
+  const [packageAudienceScope, setPackageAudienceScope] = useState<"all" | "specific">("all");
+  const [packageTargetClientIdsText, setPackageTargetClientIdsText] = useState("");
+  const [packageSortOrder, setPackageSortOrder] = useState(0);
   const [packageSaving, setPackageSaving] = useState(false);
   const [packageServiceSearch, setPackageServiceSearch] = useState("");
   const [packageServiceSectionFilter, setPackageServiceSectionFilter] =
@@ -713,6 +745,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                 ? undefined
                 : Math.max(1, Math.floor(Number(pkg.validityDays || 1))),
             active: pkg.active !== false,
+            saleEnabled: pkg.saleEnabled !== false,
+            imageUrl: String(pkg.imageUrl || "").trim() || undefined,
+            terms: String(pkg.terms || "").trim() || undefined,
+            startsAt: String(pkg.startsAt || "").slice(0, 10) || undefined,
+            endsAt: String(pkg.endsAt || "").slice(0, 10) || undefined,
+            audienceScope: String(pkg.audienceScope || "all"),
+            targetClientIds: normalizePackageServiceIds(pkg.targetClientIds || []),
+            sortOrder: Math.max(0, Number(pkg.sortOrder || 0)),
             createdAt: pkg.createdAt,
             updatedAt: pkg.updatedAt,
           }))
@@ -738,6 +778,10 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     const validityDays = packageValidityDays.trim()
       ? Math.max(1, Math.floor(Number(packageValidityDays)))
       : undefined;
+    const targetClientIds = packageTargetClientIdsText
+      .split(/[،,\n]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
 
     if (!name) return showMsg("اسم الباقة مطلوب", 2200);
     if (!serviceIds.length) {
@@ -745,6 +789,12 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     }
     if (sessionsCount <= 0) {
       return showMsg("عدد الجلسات يجب أن يكون أكبر من صفر", 2200);
+    }
+    if (packageStartsAt && packageEndsAt && packageStartsAt > packageEndsAt) {
+      return showMsg("تاريخ بداية الباقة يجب أن يسبق تاريخ النهاية", 2400);
+    }
+    if (packageAudienceScope === "specific" && !targetClientIds.length) {
+      return showMsg("أدخلي معرف عميلة واحدة على الأقل للاستهداف المحدد", 2600);
     }
 
     setPackageSaving(true);
@@ -758,6 +808,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
         price,
         validityDays,
         active: packageActive !== false,
+        saleEnabled: packageSaleEnabled !== false,
+        imageUrl: packageImageUrl.trim(),
+        terms: packageTerms.trim(),
+        startsAt: packageStartsAt || undefined,
+        endsAt: packageEndsAt || undefined,
+        audienceScope: packageAudienceScope,
+        targetClientIds,
+        sortOrder: Math.max(0, Math.floor(Number(packageSortOrder || 0))),
       };
 
       const editingTargetId = String(editingPackageId || "").trim();
@@ -793,6 +851,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
       setPackagePrice,
       setPackageValidityDays,
       setPackageActive,
+      setPackageSaleEnabled,
+      setPackageImageUrl,
+      setPackageTerms,
+      setPackageStartsAt,
+      setPackageEndsAt,
+      setPackageAudienceScope,
+      setPackageTargetClientIdsText,
+      setPackageSortOrder,
       setEditingPackageId,
     });
     setPackageServiceSearch("");
@@ -809,6 +875,14 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     setPackagePrice(Math.max(0, Number(pkg.price || 0)));
     setPackageValidityDays(pkg.validityDays ? String(pkg.validityDays) : "");
     setPackageActive(pkg.active !== false);
+    setPackageSaleEnabled(pkg.saleEnabled !== false);
+    setPackageImageUrl(String(pkg.imageUrl || ""));
+    setPackageTerms(String(pkg.terms || ""));
+    setPackageStartsAt(String(pkg.startsAt || "").slice(0, 10));
+    setPackageEndsAt(String(pkg.endsAt || "").slice(0, 10));
+    setPackageAudienceScope(pkg.audienceScope === "specific" ? "specific" : "all");
+    setPackageTargetClientIdsText((pkg.targetClientIds || []).join(", "));
+    setPackageSortOrder(Math.max(0, Number(pkg.sortOrder || 0)));
     setPackageServiceSearch("");
     setPackageServiceSectionFilter("all");
     setPackageServiceView("selected");
@@ -880,6 +954,26 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
     } catch (error) {
       console.error("togglePackageActive_failed", error);
       showMsg("تعذر تحديث حالة الباقة", 2500);
+    } finally {
+      setPkgLoading(false);
+    }
+  };
+
+  const deletePackageCatalogItem = async (pkg: PackageRow) => {
+    if (!pkg.id) return;
+    const confirmed = window.confirm(
+      "حذف الباقة؟ إذا كانت مباعة سابقًا فسيتم أرشفتها وإيقاف بيعها مع حفظ سجلات العميلات."
+    );
+    if (!confirmed) return;
+    try {
+      setPkgLoading(true);
+      const result = await PackageService.remove(pkg.id);
+      showMsg(result?.archived ? "تمت أرشفة الباقة لأنها مرتبطة بمبيعات" : "تم حذف الباقة");
+      if (editingPackageId === pkg.id) resetPackageForm();
+      await loadCatalog();
+    } catch (error) {
+      console.error("deletePackageCatalog_failed", error);
+      showMsg("تعذر حذف الباقة", 2600);
     } finally {
       setPkgLoading(false);
     }
@@ -1791,6 +1885,51 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
           />
         </div>
 
+        <div className="settings-field">
+          <label>رابط صورة الباقة</label>
+          <input className="settings-input" value={packageImageUrl} onChange={(e) => setPackageImageUrl(e.target.value)} placeholder="https://..." />
+        </div>
+
+        <div className="settings-field">
+          <label>ترتيب العرض</label>
+          <input className="settings-input" type="number" min={0} value={packageSortOrder} onChange={(e) => setPackageSortOrder(Number(e.target.value))} />
+        </div>
+
+        <div className="settings-field">
+          <label>تاريخ بداية الإتاحة</label>
+          <input className="settings-input" type="date" value={packageStartsAt} onChange={(e) => setPackageStartsAt(e.target.value)} />
+        </div>
+
+        <div className="settings-field">
+          <label>تاريخ نهاية الإتاحة</label>
+          <input className="settings-input" type="date" value={packageEndsAt} onChange={(e) => setPackageEndsAt(e.target.value)} />
+        </div>
+
+        <div className="settings-field scatalog-package-details__name">
+          <label>شروط الاستخدام</label>
+          <textarea className="settings-input" rows={3} value={packageTerms} onChange={(e) => setPackageTerms(e.target.value)} placeholder="الشروط وسياسة الاستخدام والاسترجاع" />
+        </div>
+
+        <div className="settings-field">
+          <label>إتاحة الباقة</label>
+          <select className="settings-input" value={packageAudienceScope} onChange={(e) => setPackageAudienceScope(e.target.value === "specific" ? "specific" : "all")}>
+            <option value="all">جميع العميلات</option>
+            <option value="specific">عميلات محددات</option>
+          </select>
+        </div>
+
+        {packageAudienceScope === "specific" ? (
+          <div className="settings-field scatalog-package-details__name">
+            <label>معرفات العميلات المستهدفات</label>
+            <textarea className="settings-input" rows={3} value={packageTargetClientIdsText} onChange={(e) => setPackageTargetClientIdsText(e.target.value)} placeholder="clientId أو Firebase UID مفصولة بفواصل" />
+          </div>
+        ) : null}
+
+        <label className="scatalog-package-active-card">
+          <input className="settings-check" type="checkbox" checked={packageSaleEnabled} onChange={(e) => setPackageSaleEnabled(e.target.checked)} />
+          <span><strong>متاحة للبيع</strong><small>يمكن إيقاف البيع مع إبقاء الباقة في السجلات</small></span>
+        </label>
+
         <label className="scatalog-package-active-card">
           <input
             className="settings-check"
@@ -2039,6 +2178,8 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                       : "بدون تاريخ انتهاء"}
                   </span>
                   <span>{linkedNames.length} خدمة</span>
+                  <span>{pkg.saleEnabled ? "متاحة للبيع" : "البيع موقوف"}</span>
+                  <span>{pkg.audienceScope === "specific" ? `مخصصة (${pkg.targetClientIds.length})` : "لجميع العميلات"}</span>
                   <span
                     className={`scatalog-ref__pill ${
                       pkg.active ? "on" : "off"
@@ -2059,6 +2200,13 @@ export default function SettingsCatalog(props: { hasAdminPower: boolean }) {
                     onClick={() => void togglePackageActive(pkg)}
                   >
                     {pkg.active ? "تعطيل" : "تفعيل"}
+                  </button>
+                  <button
+                    className="dash-btn"
+                    type="button"
+                    onClick={() => void deletePackageCatalogItem(pkg)}
+                  >
+                    حذف/أرشفة
                   </button>
                 </div>
               </div>

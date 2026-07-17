@@ -19662,3 +19662,415 @@ textarea.form-control {
     min-height: 135px;
   }
 }
+
+/* =========================================================
+   Client portal mobile application shell
+   Strictly scoped: never affects dashboard/admin/employee.
+========================================================= */
+.client-app-shell {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding-top: env(safe-area-inset-top);
+  background: var(--qs-soft-bg);
+  overflow-x: clip;
+  position: relative;
+  isolation: isolate;
+}
+
+.client-app-shell .client-mobile-page {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: 14px clamp(12px, 4vw, 20px) calc(112px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.client-app-shell button,
+.client-app-shell a,
+.client-app-shell select,
+.client-app-shell input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.client-app-shell button,
+.client-app-shell a[role="button"],
+.client-app-shell select {
+  min-height: 44px;
+}
+
+.client-app-shell img {
+  max-width: 100%;
+}
+
+.client-app-shell .p-nav-header {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  z-index: 20;
+  margin-inline: calc(-1 * clamp(12px, 4vw, 20px));
+  padding: 8px clamp(12px, 4vw, 20px);
+  background: color-mix(in srgb, var(--qs-soft-bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.client-app-shell .p-profile-hero {
+  margin-bottom: 0;
+}
+
+.client-app-shell .p-loader,
+.client-app-shell .p-alert {
+  width: 100%;
+  border-radius: 16px;
+  padding: 13px 14px;
+  box-sizing: border-box;
+}
+
+.client-app-shell .p-loader {
+  background: #ffffff;
+  color: #526177;
+  text-align: center;
+  font-weight: 800;
+  box-shadow: var(--qs-soft-shadow);
+}
+
+.client-app-shell .p-alert {
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  background: #fff5f5;
+  color: #991b1b;
+}
+
+.client-app-shell .p-alert strong,
+.client-app-shell .p-alert-sub {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-alert-sub {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.client-app-shell .p-section-container {
+  min-width: 0;
+}
+
+.client-app-shell .p-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.client-app-shell .p-section-header h3 {
+  margin: 0;
+}
+
+.client-app-shell .p-text-link {
+  border: 0;
+  background: transparent;
+  color: #5b2130;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+  padding-inline: 4px;
+}
+
+.client-app-shell .p-home-loyalty-summary,
+.client-app-shell .p-account-card,
+.client-app-shell .p-packages-page-section {
+  border-radius: 22px;
+}
+
+.client-app-shell .p-home-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-app-shell .p-home-summary-grid > div {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--qs-soft-shadow);
+}
+
+.client-app-shell .p-home-summary-grid strong,
+.client-app-shell .p-home-summary-grid span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-home-summary-grid strong {
+  color: #182437;
+  font-size: 1.05rem;
+}
+
+.client-app-shell .p-home-summary-grid span {
+  margin-top: 3px;
+  color: #6b788c;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.client-app-shell .p-account-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.client-app-shell .p-account-rows > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 12px;
+  border: 1px solid rgba(37, 49, 64, 0.08);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.client-app-shell .p-account-rows span {
+  color: #758196;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.client-app-shell .p-account-rows strong {
+  min-width: 0;
+  color: #253140;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-loyalty-transactions {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(37, 49, 64, 0.09);
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.client-app-shell .p-loyalty-transactions h4 {
+  margin: 0;
+  padding: 14px;
+  color: #253140;
+  font-size: 0.9rem;
+}
+
+.client-app-shell .p-loyalty-transactions > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(37, 49, 64, 0.07);
+}
+
+.client-app-shell .p-loyalty-transactions span {
+  min-width: 0;
+  color: #5e6d82;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-loyalty-transactions strong.is-positive { color: #1c7a43; }
+.client-app-shell .p-loyalty-transactions strong.is-negative { color: #a62b42; }
+
+.client-app-shell .p-booking-history-card {
+  align-items: flex-start;
+}
+
+.client-app-shell .p-booking-financial-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.client-app-shell .p-booking-financial-row > span {
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: #f6f8fb;
+  color: #718096;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-booking-financial-row strong {
+  color: #314057;
+}
+
+.client-app-shell .status-refunded {
+  background: rgba(91, 33, 48, 0.1);
+  color: #6f2639;
+}
+
+.client-app-shell .status-partially_refunded {
+  background: rgba(141, 93, 20, 0.12);
+  color: #82570f;
+}
+
+.client-app-shell .status-no_show {
+  background: rgba(71, 85, 105, 0.12);
+  color: #475569;
+}
+
+.client-app-shell .p-offers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.client-app-shell .p-offer-card {
+  min-width: 0;
+  border: 1px solid rgba(37, 49, 64, 0.09);
+  border-radius: 19px;
+  background: #ffffff;
+  color: #253140;
+  box-shadow: var(--qs-soft-shadow);
+  overflow: hidden;
+}
+
+.client-app-shell button.p-offer-card--compact {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  text-align: right;
+  cursor: pointer;
+}
+
+.client-app-shell .p-offer-card--compact img,
+.client-app-shell .p-offer-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.client-app-shell .p-offer-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3eef0;
+  color: #6e2b3d;
+  font-size: 1.3rem;
+}
+
+.client-app-shell .p-offer-card--compact > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.client-app-shell .p-offer-card--compact strong,
+.client-app-shell .p-offer-card--compact small {
+  overflow-wrap: anywhere;
+}
+
+.client-app-shell .p-offer-card--compact strong { font-size: 0.86rem; }
+.client-app-shell .p-offer-card--compact small { color: #748095; line-height: 1.5; }
+
+.client-app-shell .p-offer-card--full > img,
+.client-app-shell .p-offer-image-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  object-fit: cover;
+}
+
+.client-app-shell .p-offer-image-placeholder {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f4eef0, #f7f8fb);
+  color: #6e2b3d;
+  font-size: 2rem;
+}
+
+.client-app-shell .p-offer-body {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+}
+
+.client-app-shell .p-offer-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.client-app-shell .p-offer-title-row h4,
+.client-app-shell .p-offer-body p { margin: 0; }
+.client-app-shell .p-offer-title-row h4 { font-size: 0.98rem; }
+.client-app-shell .p-offer-title-row > span { flex: 0 0 auto; color: #7b293e; font-weight: 900; }
+.client-app-shell .p-offer-body p { color: #66758b; font-size: 0.78rem; line-height: 1.7; }
+.client-app-shell .p-offer-body small { color: #788599; }
+
+.client-app-shell .p-offer-prices {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.client-app-shell .p-offer-prices del { color: #8d98a9; }
+.client-app-shell .p-offer-prices strong { color: #6e2b3d; font-size: 1.06rem; }
+
+.client-app-shell .p-offer-body > button {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  background: #253140;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.client-app-shell .client-bottom-navigation {
+  width: min(calc(100vw - 20px), 440px);
+  max-width: calc(480px - 20px);
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 601px) {
+  .client-app-shell {
+    border-inline: 1px solid rgba(37, 49, 64, 0.07);
+    box-shadow: 0 0 48px rgba(15, 23, 42, 0.08);
+  }
+}
+
+@media (max-width: 360px) {
+  .client-app-shell .client-mobile-page {
+    padding-inline: 10px;
+  }
+
+  .client-app-shell .p-account-rows > div,
+  .client-app-shell .p-booking-financial-row {
+    grid-template-columns: 1fr;
+  }
+
+  .client-app-shell .p-nav-title {
+    font-size: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-app-shell *,
+  .client-app-shell *::before,
+  .client-app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

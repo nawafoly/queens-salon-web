@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import worker, { __test } from "./packages/index.js";
 
@@ -795,4 +796,18 @@ test("D1 cron expires active packages", async () => {
   const result = await __test.__testD1.expireClientPackagesD1(env(fake));
   assert.equal(result.storage, "d1");
   assert.equal(result.expired, 1);
+});
+
+test("package worker source contains multi-item booking session state transitions", () => {
+  const routesSource = readFileSync("workers/packages/routes.js", "utf8");
+  const d1Source = readFileSync("workers/packages/d1.js", "utf8");
+
+  assert.match(routesSource, /POST \/api\/packages\/redemption\/reapply/);
+  assert.match(d1Source, /async function bookingSessionLedger/);
+  assert.match(d1Source, /for \(const source of ledger\.sources\)/);
+  assert.match(d1Source, /consumeReservedD1/);
+  assert.match(d1Source, /restoreBookingSessionD1/);
+  assert.match(d1Source, /reapplyBookingSessionD1/);
+  assert.match(d1Source, /reason/);
+  assert.match(d1Source, /created_by_uid/);
 });

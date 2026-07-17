@@ -107,6 +107,20 @@ export async function createDiscount(db, salonId, data, actor = {}) {
     category_ids_json: jsonArray(data.categoryIds || data.category_ids_json),
     sequence_steps_json: jsonArray(data.sequenceSteps || data.sequence_steps_json),
     image_url: optionalText(data.imageUrl || data.image_url) || null,
+    description: optionalText(data.description) || null,
+    price_before_halalas: data.priceBeforeHalalas === undefined && data.price_before_halalas === undefined
+      ? null
+      : integer(data.priceBeforeHalalas ?? data.price_before_halalas, 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
+    price_after_halalas: data.priceAfterHalalas === undefined && data.price_after_halalas === undefined
+      ? null
+      : integer(data.priceAfterHalalas ?? data.price_after_halalas, 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
+    published: activeFlag(data.published, 1),
+    status: cleanText(data.status || (activeFlag(data.active, 1) ? 'active' : 'disabled')),
+    sort_order: integer(data.sortOrder ?? data.sort_order, 'sortOrder', { min: 0, max: 1_000_000, fallback: 0 }),
+    cta_label: optionalText(data.ctaLabel || data.cta_label) || null,
+    cta_url: optionalText(data.ctaUrl || data.cta_url) || null,
+    target_scope: cleanText(data.targetScope || data.target_scope || 'all'),
+    target_client_ids_json: jsonArray(data.targetClientIds || data.target_client_ids_json),
     deleted_at: null,
     created_at: now,
     updated_at: now,
@@ -118,13 +132,17 @@ export async function createDiscount(db, salonId, data, actor = {}) {
       (id, salon_id, code, code_key, name, type, value, active, starts_at, ends_at,
        usage_limit, used_count, min_order_halalas, max_discount_halalas, per_client_limit,
        applies_to, service_ids_json, category_ids_json, sequence_steps_json,
-       image_url, deleted_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       image_url, description, price_before_halalas, price_after_halalas, published, status,
+       sort_order, cta_label, cta_url, target_scope, target_client_ids_json,
+       deleted_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id, row.salon_id, row.code, row.code_key, row.name, row.type, row.value,
       row.active, row.starts_at, row.ends_at, row.usage_limit, row.used_count,
       row.min_order_halalas, row.max_discount_halalas, row.per_client_limit,
       row.applies_to, row.service_ids_json, row.category_ids_json, row.sequence_steps_json, row.image_url,
+      row.description, row.price_before_halalas, row.price_after_halalas, row.published, row.status,
+      row.sort_order, row.cta_label, row.cta_url, row.target_scope, row.target_client_ids_json,
       row.deleted_at, row.created_at, row.updated_at,
     ]
   );
@@ -191,6 +209,30 @@ export async function patchDiscount(db, salonId, id, data, actor = {}) {
     image_url: data.imageUrl === undefined && data.image_url === undefined
       ? undefined
       : optionalText(data.imageUrl || data.image_url) || null,
+    description: data.description === undefined ? undefined : optionalText(data.description) || null,
+    price_before_halalas: data.priceBeforeHalalas === undefined && data.price_before_halalas === undefined
+      ? undefined
+      : integer(data.priceBeforeHalalas ?? data.price_before_halalas, 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
+    price_after_halalas: data.priceAfterHalalas === undefined && data.price_after_halalas === undefined
+      ? undefined
+      : integer(data.priceAfterHalalas ?? data.price_after_halalas, 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
+    published: data.published === undefined ? undefined : activeFlag(data.published),
+    status: data.status === undefined ? undefined : cleanText(data.status || 'active'),
+    sort_order: data.sortOrder === undefined && data.sort_order === undefined
+      ? undefined
+      : integer(data.sortOrder ?? data.sort_order, 'sortOrder', { min: 0, max: 1_000_000 }),
+    cta_label: data.ctaLabel === undefined && data.cta_label === undefined
+      ? undefined
+      : optionalText(data.ctaLabel || data.cta_label) || null,
+    cta_url: data.ctaUrl === undefined && data.cta_url === undefined
+      ? undefined
+      : optionalText(data.ctaUrl || data.cta_url) || null,
+    target_scope: data.targetScope === undefined && data.target_scope === undefined
+      ? undefined
+      : cleanText(data.targetScope || data.target_scope || 'all'),
+    target_client_ids_json: data.targetClientIds === undefined && data.target_client_ids_json === undefined
+      ? undefined
+      : jsonArray(data.targetClientIds || data.target_client_ids_json),
     deleted_at: data.deletedAt === undefined && data.deleted_at === undefined
       ? undefined
       : optionalText(data.deletedAt || data.deleted_at) || null,

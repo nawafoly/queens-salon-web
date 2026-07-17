@@ -1,6 +1,6 @@
-﻿// src/pages/Profile.tsx
+// src/pages/Profile.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   LuArrowLeft,
   LuAward,
@@ -11,29 +11,27 @@ import {
   LuHourglass,
   LuHouse,
   LuIdCard,
-  LuInstagram,
   LuImage,
   LuLogOut,
   LuMapPin,
+  LuPackage,
+  LuBadgePercent,
   LuPencil,
   LuPhone,
   LuReceipt,
   LuScissors,
-  LuSettings,
-  LuStar,
   LuUser,
 } from "react-icons/lu";
 
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { logoutFirebase } from "../services/authService";
 
-
-import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 import { createOrLoadUserProfile, updateUserProfile, type UserProfile } from "../services/userProfile";
 import { formatTime12 } from "../helpers/timeDisplay";
 import MyPackagesPanel from "../components/packages/MyPackagesPanel";
+import { ClientPortalService, type ClientPortalOffer, type ClientPortalLoyalty } from "../services/ClientPortalService";
 
 // =======================
 // دعم واتساب
@@ -52,25 +50,6 @@ function getWhatsAppLink(phoneDigits: string, msg: string) {
   return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
 }
 
-const INSTAGRAM_URL =
-  "https://www.instagram.com/malikat_sallon?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==";
-
-
-// =======================
-// خدمات (عرض فقط) - مؤقتاً
-// =======================
-const services = [
-  { id: "haircut", name: "قص الشعر" },
-  { id: "coloring", name: "صبغة الشعر" },
-  { id: "styling", name: "تسريحات الشعر" },
-  { id: "treatment", name: "معالجات الشعر" },
-  { id: "makeup", name: "مكياج" },
-  { id: "nails", name: "العناية بالأظافر" },
-  { id: "facial", name: "العناية بالبشرة" },
-  { id: "waxing", name: "إزالة الشعر" },
-];
-
-const getServiceName = (id: string) => services.find((s) => s.id === id)?.name || id;
 
 // =======================
 interface BookingData {
@@ -84,12 +63,20 @@ interface BookingData {
   status?: string;
   total?: number;
   finalPrice?: number;
+  paid?: number;
+  refunded?: number;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  packageSessionsUsed?: number;
+  packageName?: string;
   createdAt?: number;
   publicId?: string;
+  invoiceNumber?: string;
+  serviceDetails?: string[];
 }
 
 type ProfileMode = "firebase" | "local";
-type ProfileTab = "profile" | "loyalty" | "bookings";
+type ProfileTab = "profile" | "loyalty" | "bookings" | "packages" | "offers";
 type ProfileViewData = {
   name: string;
   phone: string;
@@ -110,19 +97,7 @@ type EditProfileForm = {
 const PROFILE_ACTIVE_TAB_STORAGE_KEY = "profile_active_tab_v1";
 
 function isProfileTab(value: string | null): value is ProfileTab {
-  return value === "profile" || value === "loyalty" || value === "bookings";
-}
-
-function readStoredProfileTab(): ProfileTab {
-  if (typeof window === "undefined") return "profile";
-
-  try {
-    const value = window.sessionStorage.getItem(PROFILE_ACTIVE_TAB_STORAGE_KEY);
-    if (value === "qr") return "loyalty";
-    return isProfileTab(value) ? value : "profile";
-  } catch {
-    return "profile";
-  }
+  return value === "profile" || value === "loyalty" || value === "bookings" || value === "packages" || value === "offers";
 }
 
 function writeStoredProfileTab(tab: ProfileTab) {
@@ -133,6 +108,23 @@ function writeStoredProfileTab(tab: ProfileTab) {
   } catch {
     // Session storage can be unavailable in restricted browser modes.
   }
+}
+
+function profileTabFromPath(pathname: string): ProfileTab {
+  const path = String(pathname || "").replace(/\/+$/, "");
+  if (path.endsWith("/bookings")) return "bookings";
+  if (path.endsWith("/packages")) return "packages";
+  if (path.endsWith("/offers")) return "offers";
+  if (path.endsWith("/profile")) return "loyalty";
+  return "profile";
+}
+
+function profilePathForTab(tab: ProfileTab): string {
+  if (tab === "bookings") return "/client/bookings";
+  if (tab === "packages") return "/client/packages";
+  if (tab === "offers") return "/client/offers";
+  if (tab === "loyalty") return "/client/profile";
+  return "/client";
 }
 
 function clearStoredProfileTab() {
@@ -161,7 +153,10 @@ function statusKey(status?: string) {
   if (s === "مؤكد" || s === "confirmed") return "confirmed";
   if (s === "انتظار" || s === "pending") return "pending";
   if (s === "مكتمل" || s === "completed") return "completed";
-  if (s === "ملغي" || s === "cancelled") return "cancelled";
+  if (s === "ملغي" || s === "cancelled" || s === "canceled") return "cancelled";
+  if (s === "مسترجع" || s === "refunded") return "refunded";
+  if (s === "استرجاع جزئي" || s === "partially_refunded") return "partially_refunded";
+  if (s === "لم تحضر" || s === "no_show") return "no_show";
   return "pending";
 }
 
@@ -171,6 +166,9 @@ function statusLabelAr(status?: string) {
   if (k === "pending") return "انتظار";
   if (k === "completed") return "مكتمل";
   if (k === "cancelled") return "ملغي";
+  if (k === "refunded") return "مسترجع";
+  if (k === "partially_refunded") return "استرجاع جزئي";
+  if (k === "no_show") return "لم تحضر";
   return String(status || "انتظار");
 }
 
@@ -216,8 +214,7 @@ function formatDateAr(dateISO: string) {
   return `${d}/${m}/${y}`;
 }
 
-// ===== Firestore helpers =====
-const SALON_ID = "main";
+// ===== Profile media helpers =====
 const PUBLIC_DEV_BASE = "https://pub-6ee7ebda32364985aa26e0386b7fbe28.r2.dev";
 const PUBLIC_DEV_BASE_CLEAN = PUBLIC_DEV_BASE.replace(/\/+$/, "");
 
@@ -245,91 +242,32 @@ function resolveStableAvatarUrl(raw: unknown): string {
   }
 }
 
-type FsBooking = {
-  userId?: string | null;
-
-  clientName?: string;
-  clientPhone?: string;
-
-  serviceName?: string;
-  serviceId?: string;
-  serviceSnapshot?: {
-    serviceNameAtBooking?: string;
-    priceAtBooking?: number;
-    durationAtBooking?: number;
-  };
-
-  publicId?: string;
-
-  employeeName?: string;
-  employeeId?: string | null;
-  employeeUid?: string | null;
-
-  date?: string;
-  time?: string;
-  status?: string;
-
-  total?: number;
-  finalPrice?: number;
-
-  createdAt?: any;
-  updatedAt?: any;
-};
-
-function toMillisAny(v: any): number {
-  if (!v) return 0;
-  if (typeof v === "number") return v;
-  if (typeof v?.toMillis === "function") return v.toMillis();
-  if (v?.seconds) return Number(v.seconds) * 1000;
-  return 0;
-}
-
-function mapFsBookingToUi(id: string, b: FsBooking): BookingData {
-  const serviceId = String(b?.serviceId || "").trim();
-  const legacyServiceName = String(b?.serviceName || "").trim();
-  const snapName = String(b?.serviceSnapshot?.serviceNameAtBooking || "").trim();
-
-  const serviceForDisplay =
-    snapName || legacyServiceName || (serviceId ? getServiceName(serviceId) : "—");
-
-  const createdAt = toMillisAny(b.createdAt) || toMillisAny(b.updatedAt) || 0;
-
+function mapPortalBookingToUi(row: import("../services/ClientPortalService").ClientPortalBooking): BookingData {
+  const firstItem = row.items[0];
+  const serviceNames = row.items.map((item) => item.serviceName).filter(Boolean);
+  const packageItem = row.items.find((item) => item.packageCovered || item.clientPackageId);
   return {
-    id,
-    name: String(b.clientName || "عميلة"),
-    phone: String(b.clientPhone || ""),
-    service: serviceForDisplay,
-    employee: String(b.employeeName || ""),
-    date: String(b.date || ""),
-    time: String(b.time || ""),
-    status: String(b.status || "pending"),
-    total: Number(b.total ?? 0) || 0,
-    finalPrice: Number(b.finalPrice ?? 0) || 0,
-    createdAt,
-    publicId: String(b.publicId || ""),
+    id: row.id,
+    name: row.clientName || "عميلة",
+    phone: row.clientPhone || "",
+    service: serviceNames.join(" + ") || "خدمة",
+    employee: row.staffName || firstItem?.staffName || "",
+    date: row.bookingDate,
+    time: row.startTime,
+    status: row.status,
+    total: row.totalHalalas / 100,
+    finalPrice: row.totalHalalas / 100,
+    paid: row.paidHalalas / 100,
+    refunded: row.refundedHalalas / 100,
+    paymentStatus: row.paymentStatus,
+    paymentMethod: row.paymentMethod,
+    packageSessionsUsed: row.packageSessionsUsed,
+    packageName: packageItem?.clientPackageId,
+    createdAt: row.createdAt ? Date.parse(row.createdAt) : 0,
+    publicId: row.publicId,
+    invoiceNumber: row.invoiceNumber,
+    serviceDetails: serviceNames,
   };
-}
-
-function sameBooking(a: BookingData, b: BookingData) {
-  return (
-    a.id === b.id &&
-    a.name === b.name &&
-    a.phone === b.phone &&
-    a.service === b.service &&
-    a.employee === b.employee &&
-    a.date === b.date &&
-    a.time === b.time &&
-    a.status === b.status &&
-    a.total === b.total &&
-    a.finalPrice === b.finalPrice &&
-    a.createdAt === b.createdAt &&
-    a.publicId === b.publicId
-  );
-}
-
-function sameBookings(a: BookingData[], b: BookingData[]) {
-  if (a.length !== b.length) return false;
-  return a.every((item, index) => sameBooking(item, b[index]));
 }
 
 function displayBookingRef(booking: BookingData) {
@@ -342,6 +280,7 @@ function displayBookingRef(booking: BookingData) {
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const leavingForBookingRef = useRef(false);
 
   const [profileMode, setProfileMode] = useState<ProfileMode>("local");
@@ -515,52 +454,69 @@ const Profile: React.FC = () => {
   }, [authChecked, firebaseUser, navigate]);
 
   // =======================
-  // ✅ الحجوزات (Realtime من Firestore)
+  // Client portal snapshot — Core D1 source of truth
   // =======================
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [bookingsErr, setBookingsErr] = useState<string>("");
-  const bookingsUidRef = useRef<string | null>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [loyaltyData, setLoyaltyData] = useState<ClientPortalLoyalty | null>(null);
+  const [clientOffers, setClientOffers] = useState<ClientPortalOffer[]>([]);
 
   useEffect(() => {
-    if (profileMode !== "firebase" || !firebaseUid) {
+    if (profileMode !== "firebase" || !firebaseUid || !firebaseUser) {
+      setBookings([]);
+      setLoyaltyData(null);
+      setClientOffers([]);
       return;
     }
 
-    if (bookingsUidRef.current && bookingsUidRef.current !== firebaseUid) {
-      setBookings((prev) => (prev.length ? [] : prev));
-    }
-    bookingsUidRef.current = firebaseUid;
-
-    setBookingsErr("");
-
-    const colRef = collection(db, "salons", SALON_ID, "bookings");
-    const q = query(colRef, where("userId", "==", firebaseUid));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const arr: BookingData[] = [];
-        snap.forEach((d) => {
-          arr.push(mapFsBookingToUi(d.id, d.data() as FsBooking));
-        });
-
-        arr.sort((a, b) => {
-          const tsA = toTs(a.date, a.time);
-          const tsB = toTs(b.date, b.time);
+    let alive = true;
+    let loading = false;
+    const loadPortal = async (silent = false) => {
+      if (loading) return;
+      loading = true;
+      if (!silent) setPortalLoading(true);
+      try {
+        const snapshot = await ClientPortalService.snapshot();
+        if (!alive) return;
+        const rows = snapshot.bookings.map(mapPortalBookingToUi).sort((a, b) => {
+          const tsA = toTs(a.date, a.time) || a.createdAt || 0;
+          const tsB = toTs(b.date, b.time) || b.createdAt || 0;
           return tsB - tsA;
         });
-
-        setBookings((prev) => (sameBookings(prev, arr) ? prev : arr));
-        setBookingsErr((prev) => (prev ? "" : prev));
-      },
-      (err) => {
-        console.error("Bookings snapshot error:", err);
-        setBookingsErr(`خطأ في تحميل الحجوزات: ${err.message}`);
+        setBookings(rows);
+        setLoyaltyData(snapshot.loyalty);
+        setClientOffers(snapshot.offers);
+        setBookingsErr("");
+        setUserData((prev) => ({
+          ...prev,
+          name: snapshot.profile.name || prev.name,
+          phone: normalizeKsaPhone(snapshot.profile.phoneNormalized || prev.phone),
+          email: snapshot.profile.email || prev.email,
+        }));
+      } catch (error: any) {
+        if (!alive) return;
+        console.error("Client portal load error:", error);
+        const message = String(error?.message || "تعذر تحميل بيانات الحساب.");
+        setBookingsErr(message);
+      } finally {
+        loading = false;
+        if (alive && !silent) setPortalLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
-  }, [profileMode, firebaseUid]);
+    void loadPortal(false);
+    const interval = window.setInterval(() => void loadPortal(true), 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void loadPortal(true);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [profileMode, firebaseUid, firebaseUser]);
 
   // =======================
   // KPIs
@@ -594,37 +550,20 @@ const Profile: React.FC = () => {
   }, [bookings]);
 
   // =======================
-  // Loyalty
+  // Loyalty — persisted, idempotent Core D1 ledger
   // =======================
-  const membershipId = useMemo(() => {
-    const raw = firebaseUid || userData.phone || "0000";
-    return raw.slice(-6).toUpperCase();
-  }, [firebaseUid, userData.phone]);
-
-  const loyalty = useMemo(() => {
-    const completedBookings = bookings.filter((b) => statusKey(b.status) === "completed");
-    const completedCount = completedBookings.length;
-    const pointsFromBookings = completedCount * 50;
-    const points = pointsFromBookings;
-
-    const pointsPerLevel = 300;
-    const level = Math.max(1, Math.floor(points / pointsPerLevel) + 1);
-    const levelStart = (level - 1) * pointsPerLevel;
-    const nextLevelPoints = level * pointsPerLevel;
-    const pointsIntoLevel = points - levelStart;
-    const progress = Math.max(0, Math.min(100, Math.round((pointsIntoLevel / pointsPerLevel) * 100)));
-    const pointsToNext = Math.max(0, nextLevelPoints - points);
-    const loyaltyTitle = level >= 5 ? "VIP" : level >= 3 ? "ذهبي" : level >= 2 ? "فضي" : "برونزي";
-
-    return {
-      points,
-      level,
-      loyaltyTitle,
-      progress,
-      pointsToNext,
-      completedCount,
-    };
-  }, [bookings]);
+  const membershipId = loyaltyData?.membershipId || "—";
+  const loyalty = useMemo(() => ({
+    points: loyaltyData?.balance ?? 0,
+    earned: loyaltyData?.earned ?? 0,
+    used: loyaltyData?.used ?? 0,
+    reversed: loyaltyData?.reversed ?? 0,
+    level: loyaltyData?.level ?? 1,
+    loyaltyTitle: loyaltyData?.levelLabel || "برونزي",
+    progress: loyaltyData?.progress ?? 0,
+    pointsToNext: loyaltyData?.pointsToNext ?? 0,
+    completedCount: bookings.filter((booking) => statusKey(booking.status) === "completed").length,
+  }), [loyaltyData, bookings]);
 
   // =======================
   // Avatar
@@ -744,24 +683,24 @@ const Profile: React.FC = () => {
     });
   };
 
-  const [activeTab, setActiveTab] = useState<ProfileTab>(() => readStoredProfileTab());
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() => profileTabFromPath(location.pathname));
+
+  useEffect(() => {
+    const tab = profileTabFromPath(location.pathname);
+    writeStoredProfileTab(tab);
+    setActiveTab(tab);
+  }, [location.pathname]);
 
   const selectProfileTab = (tab: ProfileTab) => {
     writeStoredProfileTab(tab);
     setActiveTab(tab);
+    navigate(profilePathForTab(tab));
   };
 
-  const handleBottomLoyalty = () => {
-    selectProfileTab("loyalty");
-  };
-
-  const handleBottomBookings = () => {
-    selectProfileTab("bookings");
-  };
-
-  const handleBottomProfile = () => {
-    selectProfileTab("profile");
-  };
+  const handleBottomLoyalty = () => selectProfileTab("loyalty");
+  const handleBottomBookings = () => selectProfileTab("bookings");
+  const handleBottomProfile = () => selectProfileTab("profile");
+  const handleBottomPackages = () => selectProfileTab("packages");
 
   // =======================
   // Edit Modal
@@ -836,7 +775,14 @@ const Profile: React.FC = () => {
 
     try {
       if (profileMode === "firebase" && firebaseUid && profileDoc) {
-        await updateUserProfile(firebaseUid, updated);
+        await Promise.all([
+          updateUserProfile(firebaseUid, updated),
+          ClientPortalService.patchProfile({
+            name: updated.name,
+            phone: updated.phone,
+            email: updated.email,
+          }),
+        ]);
       }
 
       setUserData((prev) => {
@@ -923,277 +869,265 @@ const Profile: React.FC = () => {
     );
   }
 
-  return (
-    <div className="p-root">
-      <div className="p-wrapper">
+  const pageTitle = activeTab === "bookings"
+    ? "حجوزاتي"
+    : activeTab === "packages"
+      ? "باقاتي"
+      : activeTab === "offers"
+        ? "العروض الخاصة"
+        : activeTab === "loyalty"
+          ? "حسابي"
+          : "الرئيسية";
 
-        {/* Top Navigation / Header */}
+  const money = (value?: number) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")} ريال`;
+  const paymentMethodLabel = (value?: string) => {
+    const key = String(value || "").toLowerCase();
+    if (key === "cash") return "كاش";
+    if (["card", "pos_card", "mada_online"].includes(key)) return "شبكة/مدى";
+    if (key === "transfer") return "تحويل بنكي";
+    return value || "غير محددة";
+  };
+  const paymentStatusLabel = (value?: string) => {
+    const key = String(value || "").toLowerCase();
+    if (key === "paid") return "مدفوع";
+    if (key === "partial") return "مدفوع جزئيًا";
+    if (key === "refunded") return "مسترجع";
+    return "غير مدفوع";
+  };
+
+  return (
+    <div className="p-root client-app-shell">
+      <div className="p-wrapper client-mobile-page">
         <div className="p-nav-header">
-          <button className="p-icon-btn" type="button" onClick={() => navigate("/", { replace: true })}>
+          <button className="p-icon-btn" type="button" onClick={() => navigate(-1)} aria-label="رجوع">
             <LuArrowLeft />
           </button>
-          <h1 className="p-nav-title">الملف الشخصي</h1>
+          <h1 className="p-nav-title">{pageTitle}</h1>
           <button className="p-icon-btn" type="button" onClick={handleLogout} aria-label="تسجيل الخروج">
             <LuLogOut />
           </button>
         </div>
 
-        {/* ✅ تنبيه لو Permission Denied */}
         {bookingsErr ? (
-          <div className="p-alert">
-            {bookingsErr}
-            <div className="p-alert-sub">
-              * تأكد من صلاحيات الوصول لحجوزاتك.
-            </div>
+          <div className="p-alert" role="alert">
+            <strong>تعذر تحميل بيانات حسابك</strong>
+            <div className="p-alert-sub">{bookingsErr}</div>
           </div>
         ) : null}
 
-        {/* ===== User Profile Section ===== */}
         <div className="p-profile-hero">
           <div className="p-avatar-wrapper">
             <div className="p-avatar-main">
-              {userData.avatar ? <img src={userData.avatar} alt="avatar" /> : <span><LuImage /></span>}
+              {userData.avatar ? <img src={userData.avatar} alt="صورة العميلة" /> : <span><LuImage /></span>}
             </div>
             {!userData.avatar ? (
-              <button className="p-avatar-edit" type="button" onClick={() => fileInputRef.current?.click()}>+</button>
+              <button className="p-avatar-edit" type="button" onClick={() => fileInputRef.current?.click()} aria-label="إضافة صورة">+</button>
             ) : null}
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </div>
           <h2 className="p-user-name-hero">{userData.name || "عميلة"}</h2>
         </div>
 
+        {portalLoading && !bookingsErr ? <div className="p-loader">جاري تحميل بيانات حسابك...</div> : null}
+
         {activeTab === "profile" ? (
-        <>
-          <div className="p-stats-grid">
-            <div className="p-stat-card">
-              <div className="p-stat-icon p-icon-total"><LuCalendarDays /></div>
-              <div className="p-stat-content">
-                <span className="p-stat-value">{kpis.total}</span>
-                <span className="p-stat-label">الحجوزات</span>
+          <>
+            <div className="p-stats-grid">
+              <div className="p-stat-card">
+                <div className="p-stat-icon p-icon-total"><LuCalendarDays /></div>
+                <div className="p-stat-content"><span className="p-stat-value">{kpis.total}</span><span className="p-stat-label">الحجوزات</span></div>
+              </div>
+              <div className="p-stat-card">
+                <div className="p-stat-icon p-icon-confirmed"><LuCalendarCheck /></div>
+                <div className="p-stat-content"><span className="p-stat-value">{kpis.confirmed}</span><span className="p-stat-label">مؤكدة</span></div>
+              </div>
+              <div className="p-stat-card">
+                <div className="p-stat-icon p-icon-pending"><LuHourglass /></div>
+                <div className="p-stat-content"><span className="p-stat-value">{kpis.pending}</span><span className="p-stat-label">انتظار</span></div>
+              </div>
+              <div className="p-stat-card">
+                <div className="p-stat-icon p-icon-completed"><LuAward /></div>
+                <div className="p-stat-content"><span className="p-stat-value">{kpis.completed}</span><span className="p-stat-label">مكتملة</span></div>
               </div>
             </div>
-            <div className="p-stat-card">
-              <div className="p-stat-icon p-icon-confirmed"><LuCalendarCheck /></div>
-              <div className="p-stat-content">
-                <span className="p-stat-value">{kpis.confirmed}</span>
-                <span className="p-stat-label">مؤكدة</span>
+
+            <section className="p-quick-booking">
+              <div className="p-quick-booking-head">
+                <h3>اختصاراتك السريعة</h3>
+                <p>احجزي موعدًا جديدًا أو راجعي حجوزاتك وباقاتك.</p>
               </div>
-            </div>
-            <div className="p-stat-card">
-              <div className="p-stat-icon p-icon-pending"><LuHourglass /></div>
-              <div className="p-stat-content">
-                <span className="p-stat-value">{kpis.pending}</span>
-                <span className="p-stat-label">انتظار</span>
-              </div>
-            </div>
-            <div className="p-stat-card">
-              <div className="p-stat-icon p-icon-completed"><LuAward /></div>
-              <div className="p-stat-content">
-                <span className="p-stat-value">{kpis.completed}</span>
-                <span className="p-stat-label">مكتملة</span>
-              </div>
-            </div>
-          </div>
-          <section className="p-quick-booking">
-            <div className="p-quick-booking-head">
-              <h3>اختصاراتك السريعة</h3>
-              <p>احجزي موعد جديد، راجعي حجوزاتك، أو تابعي موعدك الحالي.</p>
-            </div>
-            <div className="p-quick-booking-actions">
-              <button
-                className="p-link-action p-link-action-wide"
-                onClick={() => {
-                  leavingForBookingRef.current = true;
-                  navigate("/booking");
-                }}
-                type="button"
-                aria-label="حجز جديد"
-              >
-                <span className="p-link-action-plus">+</span>
-                <span>حجز جديد</span>
-              </button>
-              <button
-                className="p-link-action p-link-action-soft"
-                onClick={() => selectProfileTab("bookings")}
-                type="button"
-                aria-label="عرض حجوزاتي"
-              >
-                <span>حجوزاتي</span>
-              </button>
-              {upcomingBooking ? (
-                <button
-                  className="p-link-action p-link-action-ghost"
-                  onClick={() => navigate("/track")}
-                  type="button"
-                  aria-label="تتبع الحجز القادم"
-                >
-                  <span>تتبع الحجز</span>
+              <div className="p-quick-booking-actions">
+                <button className="p-link-action p-link-action-wide" onClick={() => navigate("/booking")} type="button">
+                  <span className="p-link-action-plus">+</span><span>حجز جديد</span>
                 </button>
-              ) : (
-                <a
-                  className="p-link-action p-link-action-ghost"
-                  href={getWhatsAppLink(SUPPORT_PHONE, "مرحباً، أحتاج مساعدة في حجز موعد.")}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="التواصل عبر واتساب"
-                >
-                  <span>واتساب الدعم</span>
-                </a>
-              )}
+                <button className="p-link-action p-link-action-soft" onClick={() => selectProfileTab("bookings")} type="button">حجوزاتي</button>
+                <button className="p-link-action p-link-action-ghost" onClick={() => selectProfileTab("packages")} type="button">باقاتي</button>
+              </div>
+            </section>
+
+            <section className="p-section-container p-home-loyalty-summary">
+              <div className="p-section-header"><h3>النقاط والولاء</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("loyalty")}>عرض الحساب</button></div>
+              <div className="p-home-summary-grid">
+                <div><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
+                <div><strong>{loyalty.loyaltyTitle}</strong><span>المستوى الحالي</span></div>
+              </div>
+            </section>
+
+            <section className="p-section-container">
+              <div className="p-section-header"><h3>العروض الخاصة</h3><button type="button" className="p-text-link" onClick={() => selectProfileTab("offers")}>عرض الكل</button></div>
+              {clientOffers.length ? (
+                <div className="p-offers-grid">
+                  {clientOffers.slice(0, 2).map((offer) => (
+                    <button key={offer.id} type="button" className="p-offer-card p-offer-card--compact" onClick={() => navigate(`/booking?scope=offers&pick=${encodeURIComponent(`offer:${offer.id}`)}`)}>
+                      {offer.imageUrl ? <img src={offer.imageUrl} alt="" /> : <span className="p-offer-icon"><LuBadgePercent /></span>}
+                      <span><strong>{offer.title}</strong><small>{offer.description || (offer.discountType === "percent" ? `خصم ${offer.value}%` : `خصم ${money(offer.value / 100)}`)}</small></span>
+                    </button>
+                  ))}
+                </div>
+              ) : !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد عروض متاحة حاليًا.</div> : null}
+            </section>
+          </>
+        ) : null}
+
+        {activeTab === "loyalty" ? (
+          <>
+            <section className="p-section-container p-account-card">
+              <div className="p-section-header"><h3>بيانات الحساب</h3><button type="button" className="p-text-link" onClick={openEditProfile}>تعديل</button></div>
+              <div className="p-account-rows">
+                <div><span>رقم العميلة</span><strong dir="ltr">{membershipId}</strong></div>
+                <div><span>رقم الجوال</span><strong dir="ltr">{userData.phone || "—"}</strong></div>
+                <div><span>البريد الإلكتروني</span><strong dir="ltr">{userData.email || "—"}</strong></div>
+              </div>
+            </section>
+
+            <section className="p-section-container">
+              <div className="p-section-header">
+                <h3>النقاط والولاء</h3>
+                <button type="button" className="p-badge-id-hero" onClick={copyMembershipId}><LuIdCard className="p-inline-icon" /> ID: {membershipId}</button>
+              </div>
+              <div className="p-points-card">
+                <div className="p-points-head"><h4>رصيد النقاط</h4><span className="p-points-badge">Points</span></div>
+                <div className="p-points-value-row"><strong>{loyalty.points}</strong><span>نقطة متاحة</span></div>
+                <div className="p-points-meta">
+                  <span>مكتسبة: {loyalty.earned}</span>
+                  <span>مستخدمة: {loyalty.used}</span>
+                  <span>معكوسة بالاسترجاع: {loyalty.reversed}</span>
+                  <span>{loyalty.pointsToNext > 0 ? `متبقي ${loyalty.pointsToNext} نقطة للمستوى التالي` : "أعلى مستوى حالي"}</span>
+                </div>
+              </div>
+              <div className="p-loyalty-card">
+                <div className="p-loyalty-head"><h4>حالة الولاء</h4><div className="p-level-badge">Lv. {loyalty.level}</div></div>
+                <div className="p-loyalty-tier-line"><span>التصنيف الحالي: {loyalty.loyaltyTitle}</span><span>{loyalty.progress}%</span></div>
+                <div className="p-progress-bar-container"><div className="p-progress-bar-fill" style={{ width: `${loyalty.progress}%` }} /></div>
+                <p className="p-loyalty-note">تُحتسب النقاط من قيمة الحجوزات المكتملة، وتُعكس تلقائيًا عند الاسترجاع.</p>
+              </div>
+              {loyaltyData?.transactions?.length ? (
+                <div className="p-loyalty-transactions">
+                  <h4>آخر حركات النقاط</h4>
+                  {loyaltyData.transactions.slice(0, 10).map((tx) => (
+                    <div key={tx.id}><span>{tx.reason}</span><strong className={tx.points >= 0 ? "is-positive" : "is-negative"}>{tx.points > 0 ? "+" : ""}{tx.points}</strong></div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          </>
+        ) : null}
+
+        {activeTab === "bookings" ? (
+          <>
+            <section className="p-section-container">
+              <div className="p-section-header"><h3>الحجز القادم</h3></div>
+              {!upcomingBooking && !portalLoading && !bookingsErr ? (
+                <div className="p-empty-state">لا يوجد حجز قادم حاليًا.</div>
+              ) : upcomingBooking ? (
+                <div className="p-modern-booking-card">
+                  <div className="p-booking-main-info">
+                    <div className="p-booking-service-icon"><LuScissors /></div>
+                    <div className="p-booking-details"><span className="p-booking-service-name">{upcomingBooking.service}</span><span className="p-booking-employee-name">مع {upcomingBooking.employee || "سيتم تحديد الموظفة"}</span></div>
+                    <div className={`p-status-pill status-${statusKey(upcomingBooking.status)}`}>{statusLabelAr(upcomingBooking.status)}</div>
+                  </div>
+                  <div className="p-booking-footer-info">
+                    <div className="p-footer-item"><LuCalendarDays /> {formatDateAr(upcomingBooking.date)}</div>
+                    <div className="p-footer-item"><LuClock3 /> {formatTime12(upcomingBooking.time, "-")}</div>
+                  </div>
+                  <div className="p-booking-actions-modern"><button className="p-btn-modern primary" type="button" onClick={() => navigate(`/track/${encodeURIComponent(upcomingBooking.publicId || upcomingBooking.id)}`)}>تتبع الحجز</button></div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="p-section-container">
+              <div className="p-section-header p-bookings-section-head">
+                <h3>سجل الحجوزات</h3>
+                <select className="p-modern-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="فلترة الحجوزات">
+                  <option value="all">الكل</option><option value="confirmed">مؤكد</option><option value="pending">انتظار</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option><option value="refunded">مسترجع</option><option value="partially_refunded">استرجاع جزئي</option><option value="no_show">لم تحضر</option>
+                </select>
+              </div>
+              <div className="p-bookings-list-modern">
+                {!bookingsFiltered.length && !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد حجوزات تطابق الفلتر.</div> : null}
+                {bookingsFiltered.map((booking) => (
+                  <article key={booking.id} className="p-list-item-modern p-booking-history-card">
+                    <div className="p-list-icon"><LuReceipt /></div>
+                    <div className="p-list-content">
+                      <div className="p-list-row-top"><span className="p-list-service">{booking.service}</span><span className={`p-list-status status-${statusKey(booking.status)}`}>{statusLabelAr(booking.status)}</span></div>
+                      <div className="p-list-row-bottom">
+                        <span><LuIdCard /> <bdi dir="ltr">{displayBookingRef(booking)}</bdi></span><span><LuCalendarDays /> {formatDateAr(booking.date)}</span><span><LuClock3 /> {formatTime12(booking.time, "-")}</span>
+                      </div>
+                      <div className="p-booking-financial-row">
+                        <span>الموظفة: <strong>{booking.employee || "غير محددة"}</strong></span>
+                        <span>السعر: <strong>{money(booking.finalPrice)}</strong></span>
+                        <span>الدفع: <strong>{paymentMethodLabel(booking.paymentMethod)} · {paymentStatusLabel(booking.paymentStatus)}</strong></span>
+                        {booking.packageSessionsUsed ? <span>الباقة: <strong>{booking.packageSessionsUsed} جلسة</strong></span> : null}
+                        {booking.refunded ? <span>المسترجع: <strong>{money(booking.refunded)}</strong></span> : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        {activeTab === "packages" ? (
+          <section className="p-section-container p-packages-page-section">
+            <div className="p-section-header"><h3>باقاتي</h3><button type="button" className="p-text-link" onClick={() => navigate("/offers")}>استعراض الباقات المتاحة</button></div>
+            <MyPackagesPanel
+              enabled={profileMode === "firebase" && !!firebaseUser}
+              onBrowse={() => navigate("/offers")}
+              onSelectAvailable={(packageId) => navigate(`/booking?scope=offers_packages&pick=${encodeURIComponent(`pkg:${packageId}`)}&autoAdd=1`)}
+            />
+          </section>
+        ) : null}
+
+        {activeTab === "offers" ? (
+          <section className="p-section-container">
+            <div className="p-section-header"><h3>العروض الخاصة</h3></div>
+            {!clientOffers.length && !portalLoading && !bookingsErr ? <div className="p-empty-state">لا توجد عروض متاحة حاليًا.</div> : null}
+            <div className="p-offers-grid p-offers-grid--full">
+              {clientOffers.map((offer) => (
+                <article className="p-offer-card p-offer-card--full" key={offer.id}>
+                  {offer.imageUrl ? <img src={offer.imageUrl} alt={offer.title} /> : <div className="p-offer-image-placeholder"><LuBadgePercent /></div>}
+                  <div className="p-offer-body">
+                    <div className="p-offer-title-row"><h4>{offer.title}</h4><span>{offer.discountType === "percent" ? `${offer.value}%` : money(offer.value / 100)}</span></div>
+                    {offer.description ? <p>{offer.description}</p> : null}
+                    {offer.priceAfterHalalas != null ? (
+                      <div className="p-offer-prices">{offer.priceBeforeHalalas != null ? <del>{money(offer.priceBeforeHalalas / 100)}</del> : null}<strong>{money(offer.priceAfterHalalas / 100)}</strong></div>
+                    ) : null}
+                    {offer.endsAt ? <small>ينتهي في {formatDateAr(offer.endsAt.slice(0, 10))}</small> : null}
+                    <button type="button" onClick={() => navigate(`/booking?scope=offers&pick=${encodeURIComponent(`offer:${offer.id}`)}`)}>{offer.ctaLabel || "احجزي الآن"}</button>
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
-          <MyPackagesPanel enabled={profileMode === "firebase" && !!firebaseUser} />
-        </>
         ) : null}
-
-        {/* ===== Achievement / Loyalty Section (Inspired by image) ===== */}
-        {activeTab === "loyalty" ? (
-        <div className="p-section-container">
-          <div className="p-section-header">
-            <h3>النقاط والولاء</h3>
-            <span className="p-badge-id-hero" onClick={copyMembershipId}><LuIdCard className="p-inline-icon" /> ID: {membershipId}</span>
-          </div>
-
-          <div className="p-points-card">
-            <div className="p-points-head">
-              <h4>رصيد النقاط</h4>
-              <span className="p-points-badge">Points</span>
-            </div>
-            <div className="p-points-value-row">
-              <strong>{loyalty.points}</strong>
-              <span>نقطة متاحة</span>
-            </div>
-            <div className="p-points-meta">
-              <span>حجوزات مكتملة محتسبة: {loyalty.completedCount}</span>
-              <span>متبقي {loyalty.pointsToNext} نقطة للمستوى التالي</span>
-            </div>
-          </div>
-
-          <div className="p-loyalty-card">
-            <div className="p-loyalty-head">
-              <h4>حالة الولاء</h4>
-              <div className="p-level-badge">Lv. {loyalty.level}</div>
-            </div>
-            <div className="p-loyalty-tier-line">
-              <span>التصنيف الحالي: {loyalty.loyaltyTitle}</span>
-              <span>{loyalty.progress}%</span>
-            </div>
-            <div className="p-progress-bar-container">
-              <div className="p-progress-bar-fill" style={{ width: `${loyalty.progress}%` }}></div>
-            </div>
-            <p className="p-loyalty-note">كلما زادت نقاطك ينتقل حسابك لمستوى أعلى تلقائيًا.</p>
-          </div>
-        </div>
-        ) : null}
-
-        {/* ===== Next Booking Card (Inspired by image) ===== */}
-        {activeTab === "bookings" ? (
-        <div className="p-section-container">
-          <div className="p-section-header">
-            <h3>الحجز القادم</h3>
-          </div>
-          {!upcomingBooking ? (
-            <div className="p-empty-state">لا يوجد حجز قادم حالياً <LuStar className="p-inline-icon" /></div>
-          ) : (
-            <div className="p-modern-booking-card">
-              <div className="p-booking-main-info">
-                <div className="p-booking-service-icon"><LuScissors /></div>
-                <div className="p-booking-details">
-                  <span className="p-booking-service-name">{upcomingBooking.service}</span>
-                  <span className="p-booking-employee-name">مع {upcomingBooking.employee || "موظفة ملكات"}</span>
-                </div>
-                <div className={`p-status-pill status-${statusKey(upcomingBooking.status)}`}>
-                  {statusLabelAr(upcomingBooking.status)}
-                </div>
-              </div>
-              <div className="p-booking-footer-info">
-                <div className="p-footer-item"><LuCalendarDays className="p-inline-icon" /> {formatDateAr(upcomingBooking.date)}</div>
-                <div className="p-footer-item"><LuClock3 className="p-inline-icon" /> {formatTime12(upcomingBooking.time, "-")}</div>
-              </div>
-              <div className="p-booking-actions-modern">
-                <button className="p-btn-modern primary" type="button" onClick={() => navigate("/track")}>تتبع الحجز</button>
-                <a className="p-btn-modern ghost" href={getWhatsAppLink(SUPPORT_PHONE, `مرحباً، استفسار عن حجز ${upcomingBooking.service}`)} target="_blank" rel="noreferrer">واتساب</a>
-              </div>
-            </div>
-          )}
-        </div>
-        ) : null}
-
-        {/* ===== My Bookings (List view for mobile) ===== */}
-        {activeTab === "bookings" ? (
-        <div className="p-section-container">
-          <div className="p-section-header">
-            <h3>سجل الحجوزات</h3>
-            <div className="p-filter-tools">
-              <select className="p-modern-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="all">الكل</option>
-                <option value="confirmed">مؤكد</option>
-                <option value="pending">انتظار</option>
-                <option value="completed">مكتمل</option>
-                <option value="cancelled">ملغي</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="p-bookings-list-modern">
-            {bookingsFiltered.length === 0 ? (
-              <div className="p-empty-state">لا توجد حجوزات تطابق البحث</div>
-            ) : (
-              bookingsFiltered.map((b) => (
-                <div key={b.id} className="p-list-item-modern">
-                  <div className="p-list-icon"><LuReceipt /></div>
-                  <div className="p-list-content">
-                    <div className="p-list-row-top">
-                      <span className="p-list-service">{b.service}</span>
-                      <span className={`p-list-status status-${statusKey(b.status)}`}>{statusLabelAr(b.status)}</span>
-                    </div>
-                    <div className="p-list-row-bottom">
-                      <span className="p-list-booking-ref">
-                        <LuIdCard className="p-inline-icon" /> رقم الحجز <bdi dir="ltr">{displayBookingRef(b)}</bdi>
-                      </span>
-                      <span><LuCalendarDays className="p-inline-icon" /> {formatDateAr(b.date)}</span>
-                      <span><LuClock3 className="p-inline-icon" /> {formatTime12(b.time, "-")}</span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        ) : null}
-
-        {activeTab === "bookings" ? (
-        <div className="p-section-container">
-          <div className="p-section-header">
-            <h3>العروض الخاصة</h3>
-          </div>
-          <div className="p-empty-state">قريبًا: عروض مخصصة للعميلات المميزات <LuStar className="p-inline-icon" /></div>
-        </div>
-        ) : null}
-
       </div>
 
-      <nav className="p-bottom-nav" aria-label="Profile quick navigation">
-        <button className={`p-bottom-item ${activeTab === "loyalty" ? "is-active" : ""}`} type="button" onClick={handleBottomLoyalty} aria-label="Loyalty">
-          <LuAward />
-        </button>
-        <button className={`p-bottom-item ${activeTab === "bookings" ? "is-active" : ""}`} type="button" onClick={handleBottomBookings} aria-label="Bookings">
-          <LuCalendarCheck />
-        </button>
-        <button
-          className={`p-bottom-center ${activeTab === "profile" ? "is-active" : ""}`}
-          type="button"
-          onClick={handleBottomProfile}
-          aria-label="Profile Home"
-        >
-          <LuHouse />
-        </button>
-        <a className="p-bottom-item is-instagram" href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-          <LuInstagram />
-        </a>
-        <button className="p-bottom-item" type="button" onClick={openEditProfile} aria-label="Settings">
-          <LuSettings />
-        </button>
+      <nav className="p-bottom-nav client-bottom-navigation" aria-label="تنقل بوابة العميلة">
+        <button className={`p-bottom-item ${activeTab === "profile" ? "is-active" : ""}`} type="button" onClick={handleBottomProfile} aria-label="الرئيسية"><LuHouse /></button>
+        <button className={`p-bottom-item ${activeTab === "bookings" ? "is-active" : ""}`} type="button" onClick={handleBottomBookings} aria-label="حجوزاتي"><LuCalendarCheck /></button>
+        <button className="p-bottom-center" type="button" onClick={() => navigate("/booking")} aria-label="حجز جديد"><LuScissors /></button>
+        <button className={`p-bottom-item ${activeTab === "packages" ? "is-active" : ""}`} type="button" onClick={handleBottomPackages} aria-label="باقاتي"><LuPackage /></button>
+        <button className={`p-bottom-item ${activeTab === "loyalty" ? "is-active" : ""}`} type="button" onClick={handleBottomLoyalty} aria-label="حسابي"><LuUser /></button>
       </nav>
 
       {/* ===== Edit Modal (Modernized) ===== */}

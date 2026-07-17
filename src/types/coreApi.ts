@@ -201,6 +201,16 @@ export type CoreDiscount = {
   categoryIds?: string[];
   sequenceSteps: Record<string, unknown>[];
   imageUrl?: string | null;
+  description?: string | null;
+  priceBeforeHalalas?: number | null;
+  priceAfterHalalas?: number | null;
+  published: boolean;
+  status: "draft" | "scheduled" | "active" | "expired" | "disabled" | string;
+  sortOrder: number;
+  ctaLabel?: string | null;
+  ctaUrl?: string | null;
+  targetScope: "all" | "specific" | string;
+  targetClientIds: string[];
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;

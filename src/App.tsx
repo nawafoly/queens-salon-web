@@ -325,7 +325,7 @@ const App: React.FC = () => {
     location.pathname.startsWith("/partner");
 
   const isProfilePage =
-    location.pathname === "/profile" || location.pathname === "/client";
+    location.pathname === "/profile" || location.pathname.startsWith("/client");
   const isAuthPage =
     location.pathname === "/login" ||
     location.pathname.startsWith("/hr") ||
@@ -726,7 +726,11 @@ const App: React.FC = () => {
 
         {/* Client */}
         <Route
-          path="/client"
+          path="/client/booking"
+          element={<Navigate to={IS_STAFF_APP ? "/hr" : "/booking"} replace />}
+        />
+        <Route
+          path="/client/*"
           element={
             IS_STAFF_APP ? (
               <Navigate to="/hr" replace />
@@ -796,13 +800,7 @@ const App: React.FC = () => {
         {/* Profile */}
         <Route
           path="/profile"
-          element={
-            IS_STAFF_APP ? (
-              <Navigate to="/hr" replace />
-            ) : (
-              renderClientRoute(<Profile />)
-            )
-          }
+          element={<Navigate to={IS_STAFF_APP ? "/hr" : "/client/profile"} replace />}
         />
 
         <Route path="/forgot-password" element={<ForgotPassword />} />

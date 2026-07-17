@@ -9,6 +9,10 @@ import { AppError } from './errors.js';
 import {
   ADMIN_ROLES,
   SALES_ROLES,
+  PACKAGE_LIMITS,
+  boundedInteger,
+  boundedText,
+  buildPurchasedPackageSnapshot,
   cleanText,
   normalizePaymentMethod,
   normalizeStringArray,
@@ -170,6 +174,8 @@ function transactionRow(row) {
     reservedAfter: Number(row.reserved_after || 0),
     usedBefore: Number(row.used_before || 0),
     usedAfter: Number(row.used_after || 0),
+    reason: row.reason || undefined,
+    createdByUid: row.created_by_uid || undefined,
     createdAt: row.created_at,
   };
 }
@@ -455,6 +461,155 @@ export async function clientWalletD1(ctx, data) {
   }
 }
 
+
+function catalogRow(row) {
+  return {
+    id: cleanText(row.id),
+    name: cleanText(row.name),
+    description: optionalText(row.description),
+    serviceIds: safeJsonArray(row.allowed_service_ids_json),
+    allowedServiceIds: safeJsonArray(row.allowed_service_ids_json),
+    sessionsCount: Number(row.total_sessions || 0),
+    price: Number(row.price || 0),
+    validityDays: row.validity_days == null ? undefined : Number(row.validity_days),
+    active: Number(row.active) === 1,
+    saleEnabled: Number(row.sale_enabled ?? 1) === 1,
+    imageUrl: optionalText(row.image_url),
+    terms: optionalText(row.terms),
+    startsAt: optionalText(row.starts_at),
+    endsAt: optionalText(row.ends_at),
+    audienceScope: cleanText(row.audience_scope || 'all'),
+    targetClientIds: safeJsonArray(row.target_client_ids_json),
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listPackageCatalogD1(ctx, data = {}) {
+  const includeInactive = cleanText(data.includeInactive).toLowerCase() === 'true';
+  if (includeInactive) requireRole(ctx.role, ADMIN_ROLES);
+  const now = timestampNow();
+  const rows = await dbAll(
+    packagesDb(ctx),
+    includeInactive
+      ? `SELECT * FROM package_catalog WHERE salon_id = ? ORDER BY sort_order, name, created_at DESC LIMIT 500`
+      : `SELECT * FROM package_catalog
+          WHERE salon_id = ? AND active = 1 AND COALESCE(sale_enabled, 1) = 1
+            AND (starts_at IS NULL OR starts_at = '' OR starts_at <= ?)
+            AND (ends_at IS NULL OR ends_at = '' OR ends_at >= ?)
+          ORDER BY sort_order, name, created_at DESC LIMIT 500`,
+    includeInactive ? [ctx.salonId] : [ctx.salonId, now, now]
+  );
+  return rows.map(catalogRow);
+}
+
+export async function listMyPackageCatalogD1(ctx) {
+  if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
+  const identity = await resolveD1ClientIdentity(ctx, {
+    clientId: ctx.identity?.claims?.clientId || "",
+    clientLookup: {
+      uid: ctx.identity?.uid,
+      authUid: ctx.identity?.uid,
+      firebaseUid: ctx.identity?.uid,
+    },
+  });
+  const rows = await listPackageCatalogD1(ctx, {});
+  const allowedIds = new Set([
+    identity.canonicalClientId,
+    ctx.identity?.uid,
+    ...(identity.aliasClientIds || []),
+  ].map(cleanText).filter(Boolean));
+  return rows.filter((row) => {
+    const scope = cleanText(row.audienceScope || "all").toLowerCase();
+    if (!scope || scope === "all") return true;
+    return (row.targetClientIds || []).some((id) => allowedIds.has(cleanText(id)));
+  });
+}
+
+export async function createPackageCatalogD1(ctx, data) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const snapshot = buildPurchasedPackageSnapshot(data);
+  const id = requiredDocumentId(data.id || `package_${crypto.randomUUID()}`, 'id');
+  const now = timestampNow();
+  const validityDays = snapshot.validityDays || null;
+  const active = data.active === false ? 0 : 1;
+  const saleEnabled = data.saleEnabled === false ? 0 : 1;
+  const sortOrder = boundedInteger(Number(data.sortOrder || 0), 'sortOrder', { min: 0, max: 1000000, allowZero: true });
+  await dbRun(
+    packagesDb(ctx),
+    `INSERT INTO package_catalog
+      (id, salon_id, name, total_sessions, price, allowed_service_ids_json, active, created_at, updated_at,
+       description, validity_days, image_url, terms, starts_at, ends_at, sale_enabled,
+       audience_scope, target_client_ids_json, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, ctx.salonId, snapshot.name, snapshot.sessionsCount, snapshot.price,
+      jsonArray(snapshot.allowedServiceIds), active, now, now,
+      snapshot.description || null, validityDays, optionalText(data.imageUrl) || null,
+      boundedText(data.terms, 'terms', 5000) || null, optionalText(data.startsAt) || null,
+      optionalText(data.endsAt) || null, saleEnabled, cleanText(data.audienceScope || 'all'),
+      jsonArray(data.targetClientIds || []), sortOrder,
+    ]
+  );
+  return catalogRow(await dbFirst(packagesDb(ctx), 'SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? LIMIT 1', [ctx.salonId, id]));
+}
+
+export async function updatePackageCatalogD1(ctx, data) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const id = requiredDocumentId(data.id || data.packageCatalogId, 'id');
+  const db = packagesDb(ctx);
+  const current = await dbFirst(db, 'SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? LIMIT 1', [ctx.salonId, id]);
+  if (!current) throw new AppError(404, 'packages_catalog:not_found');
+  const merged = {
+    name: data.name ?? current.name,
+    description: data.description ?? current.description,
+    sessionsCount: data.sessionsCount ?? current.total_sessions,
+    price: data.price ?? current.price,
+    allowedServiceIds: data.allowedServiceIds ?? data.serviceIds ?? safeJsonArray(current.allowed_service_ids_json),
+    validityDays: data.validityDays ?? current.validity_days,
+  };
+  const snapshot = buildPurchasedPackageSnapshot(merged);
+  const now = timestampNow();
+  await dbRun(
+    db,
+    `UPDATE package_catalog SET
+      name = ?, total_sessions = ?, price = ?, allowed_service_ids_json = ?, active = ?, updated_at = ?,
+      description = ?, validity_days = ?, image_url = ?, terms = ?, starts_at = ?, ends_at = ?,
+      sale_enabled = ?, audience_scope = ?, target_client_ids_json = ?, sort_order = ?
+     WHERE salon_id = ? AND id = ?`,
+    [
+      snapshot.name, snapshot.sessionsCount, snapshot.price, jsonArray(snapshot.allowedServiceIds),
+      data.active === undefined ? Number(current.active) : (data.active === false ? 0 : 1), now,
+      snapshot.description || null, snapshot.validityDays || null,
+      data.imageUrl === undefined ? current.image_url : optionalText(data.imageUrl) || null,
+      data.terms === undefined ? current.terms : boundedText(data.terms, 'terms', 5000) || null,
+      data.startsAt === undefined ? current.starts_at : optionalText(data.startsAt) || null,
+      data.endsAt === undefined ? current.ends_at : optionalText(data.endsAt) || null,
+      data.saleEnabled === undefined ? Number(current.sale_enabled ?? 1) : (data.saleEnabled === false ? 0 : 1),
+      data.audienceScope === undefined ? cleanText(current.audience_scope || 'all') : cleanText(data.audienceScope || 'all'),
+      data.targetClientIds === undefined ? cleanText(current.target_client_ids_json || '[]') : jsonArray(data.targetClientIds),
+      data.sortOrder === undefined ? Number(current.sort_order || 0) : boundedInteger(Number(data.sortOrder), 'sortOrder', { min: 0, max: 1000000, allowZero: true }),
+      ctx.salonId, id,
+    ]
+  );
+  return catalogRow(await dbFirst(db, 'SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? LIMIT 1', [ctx.salonId, id]));
+}
+
+export async function deletePackageCatalogD1(ctx, data) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const id = requiredDocumentId(data.id || data.packageCatalogId, 'id');
+  const db = packagesDb(ctx);
+  const sold = await dbFirst(db, 'SELECT COUNT(*) AS count FROM client_packages WHERE salon_id = ? AND package_catalog_id = ?', [ctx.salonId, id]);
+  if (Number(sold?.count || 0) > 0) {
+    await dbRun(db, 'UPDATE package_catalog SET active = 0, sale_enabled = 0, updated_at = ? WHERE salon_id = ? AND id = ?', [timestampNow(), ctx.salonId, id]);
+    return { id, deleted: false, archived: true };
+  }
+  const result = await dbRun(db, 'DELETE FROM package_catalog WHERE salon_id = ? AND id = ?', [ctx.salonId, id]);
+  if (changes(result) < 1) throw new AppError(404, 'packages_catalog:not_found');
+  return { id, deleted: true, archived: false };
+}
+
 export async function myWalletD1(ctx) {
   if (ctx.role !== "client") throw new AppError(403, "packages_auth:client_required");
   const identity = await resolveD1ClientIdentity(ctx, {
@@ -542,7 +697,9 @@ export async function purchasePackageD1(ctx, data) {
         totalSessions,
         totalSessions,
         data.purchasedAt || now,
-        data.expiresAt || null,
+        data.expiresAt || (Number(catalog.validity_days || 0) > 0
+          ? timestampFromMs(Date.parse(data.purchasedAt || now) + Number(catalog.validity_days) * 24 * 60 * 60 * 1000)
+          : null),
         invoiceId,
         now,
         now,
@@ -752,14 +909,323 @@ export async function releasePackageD1(ctx, data) {
   });
 }
 
-export async function consumeReservedD1(ctx, data) {
-  return balanceTransactionD1(ctx, data, {
-    type: "consume",
-    sessionsDelta: 0,
-    requireReserved: true,
-    apply: (before) => ({ ...before, reserved: before.reserved - 1, used: before.used + 1 }),
-  });
+function bookingSessionKey(row) {
+  const clientPackageId = cleanText(row?.client_package_id);
+  const cartItemId = cleanText(row?.cart_item_id);
+  const serviceId = cleanText(row?.service_id);
+  return `${clientPackageId}|${cartItemId || serviceId || cleanText(row?.id)}`;
 }
+
+function movementsForSessionSource(source, allRows, allSources) {
+  const packageId = cleanText(source.client_package_id);
+  const sourceCart = cleanText(source.cart_item_id);
+  const sourceService = cleanText(source.service_id);
+  const samePackageSources = allSources.filter((row) => cleanText(row.client_package_id) === packageId);
+  return allRows
+    .filter((row) => {
+      if (row.id === source.id || cleanText(row.client_package_id) !== packageId) return false;
+      const rowCart = cleanText(row.cart_item_id);
+      if (sourceCart && rowCart === sourceCart) return true;
+      if (!sourceCart && !rowCart && sourceService && cleanText(row.service_id) === sourceService) return true;
+      // Compatibility with the old single-session implementation which did not
+      // persist cart_item_id on consume/restore rows.
+      return samePackageSources.length === 1 && !rowCart;
+    })
+    .sort((a, b) => {
+      const dateDiff = cleanText(a.created_at).localeCompare(cleanText(b.created_at));
+      return dateDiff || cleanText(a.id).localeCompare(cleanText(b.id));
+    });
+}
+
+function currentSessionState(source, allRows, allSources) {
+  let state = cleanText(source.type) === 'redeem' ? 'used' : 'reserved';
+  let lastMovement = source;
+  for (const row of movementsForSessionSource(source, allRows, allSources)) {
+    const type = cleanText(row.type);
+    if (type === 'consume' || type === 'redeem' || type === 'reapply_used') state = 'used';
+    if (type === 'reserve' || type === 'reapply_reserved') state = 'reserved';
+    if (type === 'release' || type === 'restore') state = 'remaining';
+    lastMovement = row;
+  }
+  return { state, lastMovement };
+}
+
+async function bookingSessionLedger(ctx, bookingId) {
+  const rows = await dbAll(
+    packagesDb(ctx),
+    `SELECT * FROM package_transactions
+      WHERE salon_id = ? AND booking_id = ?
+      ORDER BY created_at ASC, id ASC`,
+    [ctx.salonId, bookingId]
+  );
+  const sources = rows.filter((row) => ['reserve', 'redeem'].includes(cleanText(row.type)));
+  return { rows, sources };
+}
+
+async function applySessionTransition(ctx, source, fromState, toState, type, operationSource, reason) {
+  const db = packagesDb(ctx);
+  const txId = await transactionId(type, operationSource);
+  const prior = await dbFirst(db, 'SELECT * FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
+  if (prior) return { ok: true, idempotent: true, packageTransactionId: txId };
+
+  const row = await directPackageRow(ctx, source.client_package_id);
+  const before = {
+    remaining: Number(row.remaining_sessions),
+    reserved: Number(row.reserved_sessions),
+    used: Number(row.used_sessions),
+  };
+  const after = { ...before };
+  if (fromState === 'reserved') {
+    if (before.reserved <= 0) throw new AppError(409, 'package_balance:no_reserved_session');
+    after.reserved -= 1;
+  } else if (fromState === 'used') {
+    if (before.used <= 0) throw new AppError(409, 'package_balance:no_used_session');
+    after.used -= 1;
+  } else if (fromState === 'remaining') {
+    if (before.remaining <= 0) throw new AppError(409, 'package_balance:insufficient_remaining');
+    after.remaining -= 1;
+  } else {
+    throw new AppError(409, 'package_balance:invalid_transition');
+  }
+
+  if (toState === 'reserved') after.reserved += 1;
+  else if (toState === 'used') after.used += 1;
+  else if (toState === 'remaining') after.remaining += 1;
+  else throw new AppError(409, 'package_balance:invalid_transition');
+
+  const status = after.remaining === 0 && after.reserved === 0 ? 'exhausted' : 'active';
+  const now = timestampNow();
+  const actorUid = cleanText(ctx.identity?.uid) || null;
+  const results = await dbBatch(db, [
+    {
+      sql: `UPDATE client_packages
+              SET remaining_sessions = ?, reserved_sessions = ?, used_sessions = ?, status = ?, updated_at = ?
+            WHERE salon_id = ? AND id = ?
+              AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?`,
+      params: [
+        after.remaining, after.reserved, after.used, status, now,
+        ctx.salonId, row.id, before.remaining, before.reserved, before.used,
+      ],
+    },
+    {
+      sql: `INSERT INTO package_transactions
+        (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
+         remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
+         service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      params: [
+        txId, ctx.salonId, row.id, row.canonical_client_id, type,
+        after.remaining - before.remaining,
+        before.remaining, after.remaining,
+        before.reserved, after.reserved,
+        before.used, after.used,
+        source.service_id || null,
+        source.booking_id || null,
+        source.cart_item_id || null,
+        now,
+        boundedText(reason, 'reason', PACKAGE_LIMITS.reason) || null,
+        actorUid,
+      ],
+    },
+  ]);
+  if (changes(results[0]) < 1 || changes(results[1]) < 1) {
+    throw new AppError(409, 'package_balance:conflict', 'Package balance changed; retry the operation');
+  }
+  return {
+    ok: true,
+    clientPackageId: row.id,
+    packageTransactionId: txId,
+    cartItemId: source.cart_item_id || '',
+    fromState,
+    toState,
+    remainingBefore: before.remaining,
+    remainingAfter: after.remaining,
+  };
+}
+
+export async function consumeReservedD1(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const bookingId = optionalText(data.bookingId);
+  if (!bookingId) {
+    // Backward compatibility for callers that still send a complete package
+    // identity instead of a booking reference.
+    return balanceTransactionD1(ctx, data, {
+      type: 'consume',
+      sessionsDelta: 0,
+      requireReserved: true,
+      apply: (before) => ({ ...before, reserved: before.reserved - 1, used: before.used + 1 }),
+    });
+  }
+
+  const ledger = await bookingSessionLedger(ctx, requiredExternalId(bookingId, 'bookingId'));
+  const sources = ledger.sources.filter((row) => cleanText(row.type) === 'reserve');
+  if (!sources.length) throw new AppError(404, 'packages_redemption:not_found');
+
+  const items = [];
+  for (const source of sources) {
+    const current = currentSessionState(source, ledger.rows, ledger.sources);
+    if (current.state !== 'reserved') {
+      items.push({ clientPackageId: source.client_package_id, cartItemId: source.cart_item_id || '', idempotent: true, state: current.state });
+      continue;
+    }
+    const sourceKey = `${bookingId}:${bookingSessionKey(source)}:${cleanText(current.lastMovement.id)}`;
+    const result = await applySessionTransition(
+      ctx,
+      source,
+      'reserved',
+      'used',
+      'consume',
+      sourceKey,
+      data.reason || 'booking_completed'
+    );
+    items.push(result);
+    ledger.rows.push({
+      id: result.packageTransactionId,
+      salon_id: ctx.salonId,
+      client_package_id: source.client_package_id,
+      type: 'consume',
+      booking_id: bookingId,
+      cart_item_id: source.cart_item_id,
+      created_at: timestampNow(),
+    });
+  }
+  clearD1WalletRuntimeCaches();
+  return { ok: true, bookingId, items, idempotent: items.every((item) => item.idempotent) };
+}
+
+
+async function directPackageRow(ctx, clientPackageId) {
+  const row = await dbFirst(
+    packagesDb(ctx),
+    'SELECT * FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1',
+    [ctx.salonId, requiredDocumentId(clientPackageId, 'clientPackageId')]
+  );
+  if (!row) throw new AppError(404, 'packages_d1:client_package_not_found');
+  assertPackageInvariant(row);
+  return row;
+}
+
+export async function adjustClientPackageD1(ctx, data) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const row = await directPackageRow(ctx, data.clientPackageId);
+  const delta = boundedInteger(Number(data.sessionsDelta), 'sessionsDelta', { min: -PACKAGE_LIMITS.adjustmentSessions, max: PACKAGE_LIMITS.adjustmentSessions });
+  const reason = boundedText(data.reason, 'reason', PACKAGE_LIMITS.reason, true);
+  const txId = await transactionId('admin_adjustment', data.operationId || `${row.id}:${delta}:${reason}`);
+  const existing = await dbFirst(packagesDb(ctx), 'SELECT id FROM package_transactions WHERE id = ? LIMIT 1', [txId]);
+  if (existing) return { ok: true, idempotent: true, clientPackageId: row.id, packageTransactionId: txId };
+  const before = { remaining: Number(row.remaining_sessions), reserved: Number(row.reserved_sessions), used: Number(row.used_sessions) };
+  const remaining = before.remaining + delta;
+  if (remaining < 0) throw new AppError(409, 'package_balance:insufficient_remaining');
+  const total = remaining + before.reserved + before.used;
+  const status = remaining === 0 && before.reserved === 0 ? 'exhausted' : 'active';
+  const now = timestampNow();
+  const results = await dbBatch(packagesDb(ctx), [
+    { sql: `UPDATE client_packages SET total_sessions = ?, remaining_sessions = ?, status = ?, updated_at = ? WHERE salon_id = ? AND id = ? AND remaining_sessions = ? AND reserved_sessions = ? AND used_sessions = ?`, params: [total, remaining, status, now, ctx.salonId, row.id, before.remaining, before.reserved, before.used] },
+    { sql: `INSERT INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) VALUES (?, ?, ?, ?, 'admin_adjustment', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, delta, before.remaining, remaining, before.reserved, before.reserved, before.used, before.used, now, reason, cleanText(ctx.identity?.uid) || null] },
+  ]);
+  if (changes(results[0]) < 1 || changes(results[1]) < 1) throw new AppError(409, 'package_balance:conflict');
+  clearD1WalletRuntimeCaches();
+  return { ok: true, clientPackageId: row.id, packageTransactionId: txId, remainingBefore: before.remaining, remainingAfter: remaining };
+}
+
+export async function cancelClientPackageD1(ctx, data) {
+  requireRole(ctx.role, ADMIN_ROLES);
+  const row = await directPackageRow(ctx, data.clientPackageId);
+  const reason = boundedText(data.reason, 'reason', PACKAGE_LIMITS.reason, true);
+  if (cleanText(row.status) === 'cancelled') return { ok: true, idempotent: true, clientPackageId: row.id };
+  if (Number(row.reserved_sessions || 0) > 0) throw new AppError(409, 'package_balance:reserved_sessions_exist');
+  const now = timestampNow();
+  const txId = await transactionId('cancel', data.operationId || row.id);
+  await dbBatch(packagesDb(ctx), [
+    { sql: `UPDATE client_packages SET status = 'cancelled', updated_at = ? WHERE salon_id = ? AND id = ?`, params: [now, ctx.salonId, row.id] },
+    { sql: `INSERT OR IGNORE INTO package_transactions (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta, remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after, service_id, booking_id, cart_item_id, invoice_id, created_at, reason, created_by_uid) VALUES (?, ?, ?, ?, 'cancel', 0, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`, params: [txId, ctx.salonId, row.id, row.canonical_client_id, row.remaining_sessions, row.remaining_sessions, row.reserved_sessions, row.reserved_sessions, row.used_sessions, row.used_sessions, now, reason, cleanText(ctx.identity?.uid) || null] },
+  ]);
+  clearD1WalletRuntimeCaches();
+  return { ok: true, clientPackageId: row.id, packageTransactionId: txId };
+}
+
+export async function restoreBookingSessionD1(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const bookingId = requiredExternalId(data.bookingId, 'bookingId');
+  const ledger = await bookingSessionLedger(ctx, bookingId);
+  if (!ledger.sources.length) throw new AppError(404, 'packages_redemption:not_found');
+
+  const items = [];
+  for (const source of ledger.sources) {
+    const current = currentSessionState(source, ledger.rows, ledger.sources);
+    if (!['reserved', 'used'].includes(current.state)) {
+      items.push({ clientPackageId: source.client_package_id, cartItemId: source.cart_item_id || '', idempotent: true, state: current.state });
+      continue;
+    }
+    const sourceKey = `${bookingId}:${bookingSessionKey(source)}:${cleanText(current.lastMovement.id)}`;
+    const result = await applySessionTransition(
+      ctx,
+      source,
+      current.state,
+      'remaining',
+      'restore',
+      sourceKey,
+      data.reason || 'booking_restore'
+    );
+    items.push(result);
+    ledger.rows.push({
+      id: result.packageTransactionId,
+      salon_id: ctx.salonId,
+      client_package_id: source.client_package_id,
+      type: 'restore',
+      booking_id: bookingId,
+      cart_item_id: source.cart_item_id,
+      created_at: timestampNow(),
+    });
+  }
+  clearD1WalletRuntimeCaches();
+  return { ok: true, bookingId, items, idempotent: items.every((item) => item.idempotent) };
+}
+
+export async function reapplyBookingSessionD1(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const bookingId = requiredExternalId(data.bookingId, 'bookingId');
+  const targetState = cleanText(data.targetState || data.target_state).toLowerCase();
+  if (!['reserved', 'used'].includes(targetState)) {
+    throw new AppError(400, 'packages_redemption:invalid_target_state');
+  }
+  const ledger = await bookingSessionLedger(ctx, bookingId);
+  if (!ledger.sources.length) throw new AppError(404, 'packages_redemption:not_found');
+
+  const items = [];
+  for (const source of ledger.sources) {
+    const current = currentSessionState(source, ledger.rows, ledger.sources);
+    const lastType = cleanText(current.lastMovement?.type);
+    if (current.state !== 'remaining' || lastType !== 'restore') {
+      items.push({ clientPackageId: source.client_package_id, cartItemId: source.cart_item_id || '', idempotent: true, state: current.state });
+      continue;
+    }
+    const type = targetState === 'used' ? 'reapply_used' : 'reapply_reserved';
+    const sourceKey = `${bookingId}:${bookingSessionKey(source)}:${cleanText(current.lastMovement.id)}`;
+    const result = await applySessionTransition(
+      ctx,
+      source,
+      'remaining',
+      targetState,
+      type,
+      sourceKey,
+      data.reason || 'refund_voided'
+    );
+    items.push(result);
+    ledger.rows.push({
+      id: result.packageTransactionId,
+      salon_id: ctx.salonId,
+      client_package_id: source.client_package_id,
+      type,
+      booking_id: bookingId,
+      cart_item_id: source.cart_item_id,
+      created_at: timestampNow(),
+    });
+  }
+  clearD1WalletRuntimeCaches();
+  return { ok: true, bookingId, targetState, items, idempotent: items.every((item) => item.idempotent) };
+}
+
 
 export async function listClientPackagesAdminD1(ctx) {
   requireRole(ctx.role, ADMIN_ROLES);
@@ -852,6 +1318,8 @@ export async function sessionDashboardAdminD1(ctx) {
     bookingId: row.booking_id || "",
     cartItemId: row.cart_item_id || "",
     invoiceId: row.invoice_id || "",
+    reason: row.reason || "",
+    createdByUid: row.created_by_uid || "",
     createdAt: row.created_at || "",
   }));
 

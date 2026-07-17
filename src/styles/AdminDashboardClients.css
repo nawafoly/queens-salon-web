@@ -923,6 +923,12 @@
   }
 
   .dashboard-skin .cl-record-modal .clients-table-card {
+    display: block !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-skin .cl-record-modal .cl-table-wrap {
     display: none !important;
   }
 
@@ -954,5 +960,201 @@
   .dashboard-skin .clients-page .cl-sort-wrap,
   .dashboard-skin .clients-page .cl-topClientCard {
     grid-column: auto;
+  }
+}
+
+
+/* Unified Core D1 client overview — scoped to the clients record modal only. */
+.dashboard-skin .cl-record-modal .cl-overview-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #dfe4eb;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-head h4,
+.dashboard-skin .cl-record-modal .cl-overview-box h5 {
+  margin: 0;
+  color: #14223b;
+  font-weight: 950;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-head p {
+  margin: 4px 0 0;
+  color: #687386;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-state {
+  min-height: 68px;
+  padding: 20px;
+  border: 1px dashed #cbd3de;
+  border-radius: 12px;
+  color: #546174;
+  background: #fff;
+  text-align: center;
+  font-weight: 800;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-state.error {
+  border-color: #efc3c8;
+  color: #a62f3e;
+  background: #fff6f7;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-metric {
+  display: grid;
+  gap: 7px;
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid #e0e5eb;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-metric span {
+  color: #778195;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-metric b {
+  color: #14223b;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-box {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e0e5eb;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-box:first-child {
+  grid-row: span 2;
+}
+
+.dashboard-skin .cl-record-modal .cl-loyalty-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.dashboard-skin .cl-record-modal .cl-loyalty-summary span {
+  padding: 8px 9px;
+  border-radius: 9px;
+  color: #5c687a;
+  background: #f5f7fa;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 39px;
+  padding: 8px 9px;
+  border-bottom: 1px solid #edf0f4;
+  color: #4f5b6d;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-list p {
+  margin: 0;
+  padding: 12px;
+  color: #778195;
+  text-align: center;
+  font-size: 0.72rem;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-list b.positive {
+  color: #21734f;
+}
+
+.dashboard-skin .cl-record-modal .cl-overview-list b.negative {
+  color: #b13042;
+}
+
+.dashboard-skin .cl-record-modal .cl-loyalty-adjust {
+  display: grid;
+  grid-template-columns: 120px minmax(180px, 1fr) auto;
+  gap: 7px;
+  padding-top: 4px;
+}
+
+.dashboard-skin .cl-record-modal .cl-loyalty-adjust input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 10px;
+  color: #17243b;
+  background: #fff;
+  font: inherit;
+}
+
+.dashboard-skin .cl-record-modal .cl-loyalty-message {
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #344258;
+  background: #f1f4f8;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .dashboard-skin .cl-record-modal .cl-overview-section {
+    padding: 11px;
+  }
+
+  .dashboard-skin .cl-record-modal .cl-overview-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-skin .cl-record-modal .cl-overview-grid,
+  .dashboard-skin .cl-record-modal .cl-overview-columns,
+  .dashboard-skin .cl-record-modal .cl-loyalty-summary,
+  .dashboard-skin .cl-record-modal .cl-loyalty-adjust {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-skin .cl-record-modal .cl-overview-box:first-child {
+    grid-row: auto;
   }
 }

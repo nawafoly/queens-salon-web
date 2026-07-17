@@ -431,3 +431,158 @@ test("dashboard exposes standalone attendance device security center in the V2 v
   assert.match(migration, /CREATE TABLE IF NOT EXISTS attendance_security_events/);
   assert.doesNotMatch(page, /firebase\/firestore/);
 });
+
+test("client portal uses authenticated Core D1 snapshot instead of fixed profile counters", () => {
+  const profile = readFileSync("src/pages/Profile.tsx", "utf8");
+  const service = readFileSync("src/services/ClientPortalService.ts", "utf8");
+  const worker = readFileSync("workers/core/index.js", "utf8");
+
+  assert.match(profile, /ClientPortalService\.snapshot\(\)/);
+  assert.match(profile, /const kpis = useMemo/);
+  assert.match(profile, /const total = bookings\.length/);
+  assert.match(profile, /setLoyaltyData\(snapshot\.loyalty\)/);
+  assert.doesNotMatch(profile, /points\s*:\s*300/);
+  assert.doesNotMatch(profile, /completed\s*:\s*6/);
+  assert.match(service, /\/api\/core\/client\/portal/);
+  assert.match(service, /\/api\/core\/client\/me/);
+  assert.match(worker, /client\/bookings/);
+  assert.match(worker, /client\/loyalty/);
+  assert.match(worker, /client\/offers/);
+  assert.match(worker, /getClientPortalSnapshot/);
+  assert.match(worker, /listSelfBookings/);
+  assert.match(worker, /getSelfLoyalty/);
+  assert.match(worker, /listSelfOffers/);
+});
+
+test("client mobile routes and bottom navigation expose packages instead of Instagram", () => {
+  const profile = readFileSync("src/pages/Profile.tsx", "utf8");
+  const app = readFileSync("src/App.tsx", "utf8");
+  const css = readFileSync("src/index.css", "utf8");
+
+  for (const route of [
+    "/client",
+    "/client/bookings",
+    "/client/packages",
+    "/client/offers",
+    "/client/profile",
+  ]) {
+    assert.match(profile + app, new RegExp(route.replaceAll("/", "\\/")));
+  }
+  assert.match(profile, /client-bottom-navigation/);
+  assert.match(profile, /باقاتي/);
+  assert.doesNotMatch(profile, /Instagram|انستغرام|إنستغرام/i);
+  assert.match(app, /path="\/client\/\*"/);
+  assert.match(css, /\.client-app-shell\s*\{[\s\S]*?max-width:\s*480px/);
+  assert.match(css, /min-height:\s*100dvh/);
+  assert.match(css, /safe-area-inset-bottom/);
+  assert.doesNotMatch(css, /^main\s*\{[\s\S]*?max-width:\s*480px/m);
+});
+
+test("client package wallet and catalog remain Packages D1-only", () => {
+  const panel = readFileSync("src/components/packages/MyPackagesPanel.tsx", "utf8");
+  const operations = readFileSync("src/services/PackageOperationsService.ts", "utf8");
+  const catalog = readFileSync("src/services/PackageService.ts", "utf8");
+  const settings = readFileSync("src/pages/settings/SettingsCatalog.tsx", "utf8");
+  const routes = readFileSync("workers/packages/routes.js", "utf8");
+
+  assert.match(panel, /PackageOperationsService\.myWallet/);
+  assert.match(panel, /PackageOperationsService\.myCatalog/);
+  assert.match(panel, /لا توجد لديك باقات نشطة حاليًا/);
+  assert.doesNotMatch(panel, /firebase\/firestore/);
+  assert.match(operations, /\/api\/packages\/my-wallet/);
+  assert.match(operations, /\/api\/packages\/my-catalog/);
+  assert.match(catalog, /PackageOperationsService\.listCatalog/);
+  assert.match(settings, /PackageService/);
+  assert.match(routes, /GET \/api\/packages\/my-catalog/);
+  assert.match(routes, /GET \/api\/packages\/admin\/catalog/);
+});
+
+test("package session state changes are booking-idempotent across completion cancellation and refunds", () => {
+  const packageRepo = readFileSync("workers/packages/d1.js", "utf8");
+  const packageRoutes = readFileSync("workers/packages/routes.js", "utf8");
+  const packageService = readFileSync("src/services/PackageOperationsService.ts", "utf8");
+  const bookingSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
+  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+
+  assert.match(packageRepo, /async function bookingSessionLedger/);
+  assert.match(packageRepo, /for \(const source of ledger\.sources\)/);
+  assert.match(packageRepo, /reapplyBookingSessionD1/);
+  assert.match(packageRoutes, /POST \/api\/packages\/redemption\/reapply/);
+  assert.match(packageService, /reapplyBookingSession/);
+  assert.match(bookingSource, /PackageOperationsService\.consumeReserved/);
+  assert.match(bookingSource, /PackageOperationsService\.restoreReserved/);
+  assert.match(dashboard, /PackageOperationsService\.restoreConsumed/);
+  assert.match(dashboard, /PackageOperationsService\.reapplyBookingSession/);
+  const restoreStart = packageService.indexOf("restoreConsumed(bookingId");
+  const restoreEnd = packageService.indexOf("reapplyBookingSession", restoreStart);
+  assert.doesNotMatch(packageService.slice(restoreStart, restoreEnd), /operationId|Math\.random/);
+});
+
+test("loyalty ledger earns only from completed bookings and reverses cumulative refunds deterministically", () => {
+  const portalRepo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
+  const migration = readFileSync("migrations/core/0010_client_portal_loyalty_offers.sql", "utf8");
+
+  assert.match(portalRepo, /status = 'completed' AND deleted_at IS NULL/);
+  assert.match(portalRepo, /DELETE FROM loyalty_point_transactions/);
+  assert.match(portalRepo, /loyalty_earn_/);
+  assert.match(portalRepo, /loyalty_refund_/);
+  assert.match(portalRepo, /refundedHalalas/);
+  assert.match(portalRepo, /targetReversal/);
+  assert.match(portalRepo, /Math\.min\(\s*completedBooking\.points/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS loyalty_point_transactions/);
+  assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS idx_core_loyalty_idempotency/);
+});
+
+test("client offers require publication, active dates, and matching target identity", () => {
+  const portalRepo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
+  const offersPage = readFileSync("src/pages/DashboardOffers.tsx", "utf8");
+  const offerService = readFileSync("src/services/CoreOfferService.ts", "utf8");
+
+  assert.match(portalRepo, /COALESCE\(published, 1\) = 1/);
+  assert.match(portalRepo, /starts_at IS NULL[\s\S]*starts_at <= \?/);
+  assert.match(portalRepo, /ends_at IS NULL[\s\S]*ends_at >= \?/);
+  assert.match(portalRepo, /target_scope/);
+  assert.match(portalRepo, /target_client_ids_json/);
+  assert.match(offersPage, /draft/);
+  assert.match(offersPage, /scheduled/);
+  assert.match(offersPage, /expired/);
+  assert.match(offersPage, /targetScope/);
+  assert.match(offerService, /published/);
+  assert.match(offerService, /targetClientIds/);
+});
+
+test("admin client overview is Core D1-backed, role-protected, and supports idempotent loyalty adjustments", () => {
+  const worker = readFileSync("workers/core/index.js", "utf8");
+  const repo = readFileSync("workers/core/repositories/client-portal.js", "utf8");
+  const service = readFileSync("src/services/CoreClientService.ts", "utf8");
+  const page = readFileSync("src/pages/DashboardClients.tsx", "utf8");
+
+  assert.match(worker, /clientOverview = \/\^\\\/api\\\/core\\\/clients/);
+  assert.match(worker, /client:admin-overview/);
+  assert.match(worker, /client:loyalty-adjustment/);
+  assert.match(worker, /requireRole\(ctx\.role, ADMIN_ROLES\)/);
+  assert.match(worker, /const isClientSelfRoute = new Set/);
+  assert.doesNotMatch(worker, /startsWith\("client:"\)/);
+  assert.match(repo, /getAdminClientOverview/);
+  assert.match(repo, /adjustClientLoyalty/);
+  assert.match(repo, /loyalty_adjustment_\$\{operationId\}/);
+  assert.match(repo, /INSERT OR IGNORE INTO loyalty_point_transactions/);
+  assert.match(service, /\/overview/);
+  assert.match(service, /\/loyalty-adjustments/);
+  assert.match(page, /CoreClientService\.overview/);
+  assert.match(page, /CoreClientService\.adjustLoyalty/);
+  assert.match(page, /السجل الموحد للعميلة/);
+  assert.match(page, /الدفعات والاسترجاعات/);
+  assert.match(page, /العروض المستخدمة/);
+});
+
+test("client offer CTA preselects the offer through the booking page supported query contract", () => {
+  const profile = readFileSync("src/pages/Profile.tsx", "utf8");
+  const booking = readFileSync("src/pages/Booking.tsx", "utf8");
+
+  assert.match(profile, /scope=offers&pick=/);
+  assert.match(profile, /offer:\$\{offer\.id\}/);
+  assert.match(booking, /params\.get\("scope"\)/);
+  assert.match(booking, /pickRaw/);
+  assert.match(booking, /offer:/);
+});

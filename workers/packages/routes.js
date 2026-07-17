@@ -18,6 +18,15 @@ import {
   clientWalletD1,
   consumeReservedD1,
   listClientPackagesAdminD1,
+  listPackageCatalogD1,
+  listMyPackageCatalogD1,
+  createPackageCatalogD1,
+  updatePackageCatalogD1,
+  deletePackageCatalogD1,
+  adjustClientPackageD1,
+  cancelClientPackageD1,
+  restoreBookingSessionD1,
+  reapplyBookingSessionD1,
   myWalletD1,
   packagesHealthD1,
   purchasePackageD1,
@@ -122,13 +131,16 @@ async function deleteClientPackageAdminD1(ctx, data) {
   return { id, deleted: true };
 }
 
-function endpointNotMigratedToD1() {
-  throw new AppError(501, "packages_d1:endpoint_not_migrated", "This package endpoint has no D1 implementation yet");
-}
-
 const routes = {
   // D1 ONLY — do not add Firestore fallback.
   "GET /api/packages/health": { d1: packagesHealthD1, public: true },
+  // Public catalog and authenticated catalog administration use the same D1 table.
+  "GET /api/packages/catalog": { d1: listPackageCatalogD1, public: true },
+  "GET /api/packages/my-catalog": { d1: listMyPackageCatalogD1 },
+  "GET /api/packages/admin/catalog": { d1: listPackageCatalogD1 },
+  "POST /api/packages/admin/catalog": { d1: createPackageCatalogD1 },
+  "PATCH /api/packages/admin/catalog": { d1: updatePackageCatalogD1 },
+  "DELETE /api/packages/admin/catalog": { d1: deletePackageCatalogD1 },
   // D1 ONLY — do not add Firestore fallback.
   "POST /api/packages/purchase": { d1: purchasePackageD1 },
   // D1 ONLY — do not add Firestore fallback.
@@ -142,13 +154,14 @@ const routes = {
   // D1 ONLY — do not add Firestore fallback.
   "POST /api/packages/redemption/consume": { d1: consumeReservedD1 },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/cancel": { d1: endpointNotMigratedToD1 },
+  "POST /api/packages/redemption/cancel": { d1: restoreBookingSessionD1 },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/redemption/restore": { d1: releasePackageD1 },
+  "POST /api/packages/redemption/restore": { d1: restoreBookingSessionD1 },
+  "POST /api/packages/redemption/reapply": { d1: reapplyBookingSessionD1 },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/cancel": { d1: endpointNotMigratedToD1 },
+  "POST /api/packages/cancel": { d1: cancelClientPackageD1 },
   // D1 ONLY — do not add Firestore fallback.
-  "POST /api/packages/adjust": { d1: endpointNotMigratedToD1 },
+  "POST /api/packages/adjust": { d1: adjustClientPackageD1 },
   // D1 ONLY — do not add Firestore fallback.
   "POST /api/packages/client-wallet": { d1: clientWalletD1 },
   // D1 ONLY — do not add Firestore fallback.

@@ -71,6 +71,16 @@ import {
 } from './repositories/catalog-admin.js';
 import { createRefund, listRefunds, patchRefund, voidRefund } from './repositories/refunds.js';
 import { listAudit, recordAudit } from './repositories/audit.js';
+import {
+  adjustClientLoyalty,
+  getAdminClientOverview,
+  getClientPortalSnapshot,
+  getSelfLoyalty,
+  getSelfProfile,
+  listSelfBookings,
+  listSelfOffers,
+  patchSelfProfile,
+} from './repositories/client-portal.js';
 
 import {
   getHrEmployee,
@@ -235,6 +245,26 @@ function match(url, method) {
     return rest && !rest.includes("/") ? rest : "";
   };
 
+  const clientPortalRoutes = new Map([
+    ["/api/core/client/portal", "client:portal"],
+    ["/api/core/client/me", "client:me"],
+    ["/api/core/client/bookings", "client:bookings"],
+    ["/api/core/client/loyalty", "client:loyalty"],
+    ["/api/core/client/offers", "client:offers"],
+  ]);
+  if (clientPortalRoutes.has(path)) {
+    return { name: clientPortalRoutes.get(path) };
+  }
+
+  const clientOverview = /^\/api\/core\/clients\/([^/]+)\/overview$/.exec(path);
+  if (clientOverview && method === "GET") {
+    return { name: "client:admin-overview", id: clientOverview[1] };
+  }
+  const loyaltyAdjustment = /^\/api\/core\/clients\/([^/]+)\/loyalty-adjustments$/.exec(path);
+  if (loyaltyAdjustment && method === "POST") {
+    return { name: "client:loyalty-adjustment", id: loyaltyAdjustment[1] };
+  }
+
   const bookingAction =
     /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
       path
@@ -298,7 +328,14 @@ function match(url, method) {
 
 async function dispatch(ctx, route, method, body, query) {
   const db = ctx.coreDb;
-  if (!ctx.guestAccess) requireRole(ctx.role);
+  const isClientSelfRoute = new Set([
+    "client:portal",
+    "client:me",
+    "client:bookings",
+    "client:loyalty",
+    "client:offers",
+  ]).has(route.name);
+  if (!ctx.guestAccess && !isClientSelfRoute) requireRole(ctx.role);
   const actorInfo = {
     uid: ctx.identity?.uid || "",
     email: ctx.identity?.claims?.email || "",
@@ -309,6 +346,55 @@ async function dispatch(ctx, route, method, body, query) {
   switch (route.name) {
     case "health":
       return { worker: "ok", d1: Boolean(db) };
+
+    case "client:portal":
+      if (method === "GET") return getClientPortalSnapshot(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:me":
+      if (method === "GET") return getSelfProfile(db, ctx.salonId, ctx.identity);
+      if (method === "PATCH") return patchSelfProfile(db, ctx.salonId, ctx.identity, body);
+      break;
+
+    case "client:bookings":
+      if (method === "GET") return listSelfBookings(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:loyalty":
+      if (method === "GET") return getSelfLoyalty(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:offers":
+      if (method === "GET") return listSelfOffers(db, ctx.salonId, ctx.identity);
+      break;
+
+    case "client:admin-overview":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return getAdminClientOverview(db, ctx.salonId, route.id);
+      break;
+
+    case "client:loyalty-adjustment": {
+      requireRole(ctx.role, ADMIN_ROLES);
+      const loyalty = await adjustClientLoyalty(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        ctx.identity?.uid || ""
+      );
+      await recordAudit(db, ctx.salonId, {
+        action: "client_loyalty_adjustment",
+        entityType: "client",
+        entityId: route.id,
+        description: body.reason,
+        after: {
+          points: Number(body.points),
+          balance: loyalty.balance,
+          operationId: body.operationId || body.operation_id,
+        },
+      }, actorInfo);
+      return loyalty;
+    }
 
     case "clients":
       if (method === "GET" && route.id) {

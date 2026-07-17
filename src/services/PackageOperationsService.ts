@@ -71,6 +71,8 @@ export type PackageSessionDashboardTransaction = {
   bookingId: string;
   cartItemId: string;
   invoiceId: string;
+  reason?: string;
+  createdByUid?: string;
   createdAt: string;
 };
 
@@ -103,6 +105,28 @@ export type PackageClientLookup = {
   mobile?: string;
   clientPhone?: string;
   phoneNumber?: string;
+};
+
+export type PackageCatalogRecord = {
+  id: string;
+  name: string;
+  description?: string;
+  serviceIds: string[];
+  allowedServiceIds: string[];
+  sessionsCount: number;
+  price: number;
+  validityDays?: number;
+  active: boolean;
+  saleEnabled: boolean;
+  imageUrl?: string;
+  terms?: string;
+  startsAt?: string;
+  endsAt?: string;
+  audienceScope?: string;
+  targetClientIds?: string[];
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type PackageClientWalletResult = {
@@ -262,6 +286,25 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
 
 export const PackageOperationsService = {
   newOperationId: operationId,
+  listCatalog(includeInactive = false) {
+    return invoke<PackageCatalogRecord[]>(
+      includeInactive ? "/api/packages/admin/catalog" : "/api/packages/catalog",
+      { salonId: "main", ...(includeInactive ? { includeInactive: true } : {}) },
+      "GET"
+    );
+  },
+  myCatalog() {
+    return invoke<PackageCatalogRecord[]>("/api/packages/my-catalog", { salonId: "main" }, "GET");
+  },
+  createCatalog(item: Omit<PackageCatalogRecord, "id"> & { id?: string }) {
+    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: "main", ...item }, "POST");
+  },
+  updateCatalog(id: string, patch: Partial<PackageCatalogRecord>) {
+    return invoke<PackageCatalogRecord>("/api/packages/admin/catalog", { salonId: "main", id, ...patch }, "PATCH");
+  },
+  deleteCatalog(id: string) {
+    return invoke<{ id: string; deleted: boolean; archived?: boolean }>("/api/packages/admin/catalog", { salonId: "main", id }, "DELETE");
+  },
   sessionDashboard() {
     return invoke<PackageSessionDashboardResult>("/api/packages/admin/session-dashboard", { salonId: "main" }, "GET");
   },
@@ -374,7 +417,12 @@ export const PackageOperationsService = {
   },
   restoreConsumed(bookingId: string, reason: string) {
     return invoke("/api/packages/redemption/restore", {
-      salonId: "main", bookingId, reason, operationId: operationId("package_restore"),
+      salonId: "main", bookingId, reason,
+    });
+  },
+  reapplyBookingSession(bookingId: string, targetState: "reserved" | "used", reason: string) {
+    return invoke("/api/packages/redemption/reapply", {
+      salonId: "main", bookingId, targetState, reason,
     });
   },
   consumeReserved(bookingId: string) {

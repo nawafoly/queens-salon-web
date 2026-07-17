@@ -48,6 +48,7 @@ import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreRefundService } from "../services/CoreRefundService";
 import { CoreInvoiceService } from "../services/CoreInvoiceService";
 import { CorePaymentService } from "../services/CorePaymentService";
+import { PackageOperationsService } from "../services/PackageOperationsService";
 import type { PaymentMethod } from "../types/finance";
 
 import type { UiRole } from "../services/userProfile";
@@ -145,6 +146,18 @@ function formatBookingAmount(value: unknown) {
     minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: 2,
   });
+}
+
+function bookingUsesSessionPackage(booking: Booking): boolean {
+  return Boolean(
+    booking.fromSessionPackage ||
+      booking.consumeOneSession ||
+      String(booking.sessionPackageId || "").trim()
+  );
+}
+
+function isFullBookingRefund(amount: number, bookingTotal: number): boolean {
+  return bookingTotal > 0 && amount >= bookingTotal - 0.005;
 }
 
 function BookingMoney({ value }: { value: unknown }) {
@@ -744,6 +757,9 @@ type Booking = {
     categoryNameAtBooking?: string;
   };
   packageId?: string | null;
+  fromSessionPackage?: boolean;
+  consumeOneSession?: boolean;
+  sessionPackageId?: string;
   packageSnapshot?: {
     packageId?: string;
     packageName?: string;
@@ -3994,6 +4010,25 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               id: refundId,
               idempotencyKey: `dashboard-refund:${bookingId}`,
             });
+
+        if (getDataSourceFlags().usePackagesD1 && bookingUsesSessionPackage(b)) {
+          const wasFullRefund = Boolean(
+            existingRefund && isFullBookingRefund(Number(existingRefund.amount || 0), bookingAmount)
+          );
+          const isFullRefund = isFullBookingRefund(amountInput, bookingAmount);
+          if (isFullRefund && !wasFullRefund) {
+            await PackageOperationsService.restoreConsumed(
+              bookingId,
+              `full_refund:${created.id}`
+            );
+          } else if (!isFullRefund && wasFullRefund) {
+            await PackageOperationsService.reapplyBookingSession(
+              bookingId,
+              b.status === "completed" ? "used" : "reserved",
+              `refund_reduced:${created.id}`
+            );
+          }
+        }
         setRefundMapByBookingId((prev) => ({
           ...prev,
           [bookingId]: {
@@ -4051,6 +4086,17 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundError("");
       if (getDataSourceFlags().useCoreD1) {
         await CoreRefundService.remove(existing.incomeId);
+        if (
+          getDataSourceFlags().usePackagesD1 &&
+          bookingUsesSessionPackage(b) &&
+          isFullBookingRefund(Number(existing.amount || 0), readBookingTotalAmount(b))
+        ) {
+          await PackageOperationsService.reapplyBookingSession(
+            bookingId,
+            b.status === "completed" ? "used" : "reserved",
+            `refund_voided:${existing.incomeId}`
+          );
+        }
       } else {
         await removeIncomeFS(existing.incomeId);
       }

@@ -41,7 +41,10 @@ import {
 } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
-import { CoreClientService } from "../services/CoreClientService";
+import {
+  CoreClientService,
+  type CoreClientOverview,
+} from "../services/CoreClientService";
 
 /** ✅ UiRole */
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
@@ -111,6 +114,19 @@ const statusLabel: Record<BookingStatus, string> = {
   cancelled: "ملغي",
   completed: "مكتمل",
 };
+
+function formatHalalas(value: unknown): string {
+  const amount = Number(value ?? 0) / 100;
+  return `${Number.isFinite(amount) ? amount.toLocaleString("ar-SA", { maximumFractionDigits: 2 }) : "0"} ريال`;
+}
+
+function formatDateTime(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
+}
 
 function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -309,6 +325,13 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
   const [sortBy, setSortBy] = useState<"latest" | "most">("latest");
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
   const [noteText, setNoteText] = useState("");
+  const [clientOverview, setClientOverview] = useState<CoreClientOverview | null>(null);
+  const [clientOverviewLoading, setClientOverviewLoading] = useState(false);
+  const [clientOverviewError, setClientOverviewError] = useState("");
+  const [loyaltyPoints, setLoyaltyPoints] = useState("");
+  const [loyaltyReason, setLoyaltyReason] = useState("");
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyMessage, setLoyaltyMessage] = useState("");
 
   // ✅ Imported clients (Firestore)
   const [importedMap, setImportedMap] = useState<Record<string, ImportedClientDoc>>({});
@@ -341,7 +364,14 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
   };
 
   const [preview, setPreview] = useState<ImportPreviewRow[]>([]);
-  const closeClientModal = useCallback(() => setSelectedClient(null), []);
+  const closeClientModal = useCallback(() => {
+    setSelectedClient(null);
+    setClientOverview(null);
+    setClientOverviewError("");
+    setLoyaltyPoints("");
+    setLoyaltyReason("");
+    setLoyaltyMessage("");
+  }, []);
 
   const sortOptions = useMemo(
     () => [
@@ -656,6 +686,62 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
       return name.includes(q) || phone.includes(q) || src.includes(q);
     });
   }, [clients, queryText]);
+
+  const loadClientOverview = useCallback(async (clientId: string) => {
+    setClientOverviewLoading(true);
+    setClientOverviewError("");
+    try {
+      const overview = await CoreClientService.overview(clientId);
+      setClientOverview(overview);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "تعذر تحميل السجل المالي للعميلة";
+      setClientOverview(null);
+      setClientOverviewError(message);
+    } finally {
+      setClientOverviewLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const clientId = String(selectedClient?.clientId || "").trim();
+    if (!selectedClient || !getDataSourceFlags().useCoreD1) {
+      setClientOverview(null);
+      setClientOverviewError("");
+      return;
+    }
+    if (!clientId) {
+      setClientOverview(null);
+      setClientOverviewError("هذه العميلة غير مرتبطة بعد بمعرف Core D1 موحد.");
+      return;
+    }
+    void loadClientOverview(clientId);
+  }, [selectedClient, loadClientOverview]);
+
+  const handleLoyaltyAdjustment = async () => {
+    const clientId = String(selectedClient?.clientId || "").trim();
+    const points = Number(loyaltyPoints);
+    const reason = loyaltyReason.trim();
+    if (!clientId || !Number.isInteger(points) || points === 0 || !reason) {
+      setLoyaltyMessage("أدخل عدد نقاط صحيحًا غير صفري وسبب التعديل.");
+      return;
+    }
+    setLoyaltySaving(true);
+    setLoyaltyMessage("");
+    try {
+      const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `loyalty_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const loyalty = await CoreClientService.adjustLoyalty(clientId, { points, reason, operationId });
+      setClientOverview((current) => current ? { ...current, loyalty } : current);
+      setLoyaltyPoints("");
+      setLoyaltyReason("");
+      setLoyaltyMessage("تم تسجيل حركة النقاط بنجاح.");
+    } catch (cause) {
+      setLoyaltyMessage(cause instanceof Error ? cause.message : "تعذر تعديل النقاط");
+    } finally {
+      setLoyaltySaving(false);
+    }
+  };
 
   const selectedBookings = useMemo(() => {
     if (!selectedClient) return [];
@@ -1313,6 +1399,139 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
                       </div>
                     </div>
 
+                    {getDataSourceFlags().useCoreD1 ? (
+                      <section className="cl-overview-section" aria-label="السجل المالي والولاء">
+                        <div className="cl-overview-head">
+                          <div>
+                            <h4>السجل الموحد للعميلة</h4>
+                            <p>الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.</p>
+                          </div>
+                          {selectedClient.clientId ? (
+                            <button
+                              type="button"
+                              className="cl-btn ghost"
+                              onClick={() => void loadClientOverview(selectedClient.clientId as string)}
+                              disabled={clientOverviewLoading}
+                            >
+                              {clientOverviewLoading ? "جارٍ التحديث..." : "تحديث"}
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {clientOverviewLoading ? (
+                          <div className="cl-overview-state">جارٍ تحميل السجل الحقيقي...</div>
+                        ) : clientOverviewError ? (
+                          <div className="cl-overview-state error">{clientOverviewError}</div>
+                        ) : clientOverview ? (
+                          <>
+                            <div className="cl-overview-grid">
+                              <div className="cl-overview-metric">
+                                <span>صافي المدفوع</span>
+                                <b>{formatHalalas(clientOverview.summary.netPaidHalalas)}</b>
+                              </div>
+                              <div className="cl-overview-metric">
+                                <span>الاسترجاعات</span>
+                                <b>{formatHalalas(clientOverview.summary.refundedHalalas)}</b>
+                              </div>
+                              <div className="cl-overview-metric">
+                                <span>الرصيد الحالي</span>
+                                <b>{clientOverview.loyalty.balance.toLocaleString("ar-SA")} نقطة</b>
+                              </div>
+                              <div className="cl-overview-metric">
+                                <span>آخر نشاط</span>
+                                <b>{formatDateTime(clientOverview.summary.lastActivityAt)}</b>
+                              </div>
+                            </div>
+
+                            <div className="cl-overview-columns">
+                              <div className="cl-overview-box">
+                                <h5>النقاط والولاء</h5>
+                                <div className="cl-loyalty-summary">
+                                  <span>المستوى: <b>{clientOverview.loyalty.levelLabel || "—"}</b></span>
+                                  <span>مكتسبة: <b>{clientOverview.loyalty.earned.toLocaleString("ar-SA")}</b></span>
+                                  <span>مستخدمة: <b>{clientOverview.loyalty.used.toLocaleString("ar-SA")}</b></span>
+                                  <span>معكوسة: <b>{clientOverview.loyalty.reversed.toLocaleString("ar-SA")}</b></span>
+                                </div>
+                                <div className="cl-overview-list">
+                                  {clientOverview.loyalty.transactions.slice(0, 5).map((tx) => (
+                                    <div key={tx.id}>
+                                      <span>{tx.reason || tx.type}</span>
+                                      <b className={tx.points < 0 ? "negative" : "positive"}>
+                                        {tx.points > 0 ? "+" : ""}{tx.points}
+                                      </b>
+                                    </div>
+                                  ))}
+                                  {clientOverview.loyalty.transactions.length === 0 ? <p>لا توجد حركات نقاط.</p> : null}
+                                </div>
+
+                                {(uiRole === "owner" || uiRole === "admin") ? (
+                                  <div className="cl-loyalty-adjust">
+                                    <input
+                                      type="number"
+                                      step="1"
+                                      value={loyaltyPoints}
+                                      onChange={(event) => setLoyaltyPoints(event.target.value)}
+                                      placeholder="مثال: 20 أو -20"
+                                      aria-label="عدد النقاط"
+                                    />
+                                    <input
+                                      value={loyaltyReason}
+                                      onChange={(event) => setLoyaltyReason(event.target.value)}
+                                      placeholder="سبب التعديل"
+                                      aria-label="سبب تعديل النقاط"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="cl-btn primary"
+                                      onClick={() => void handleLoyaltyAdjustment()}
+                                      disabled={loyaltySaving}
+                                    >
+                                      {loyaltySaving ? "جارٍ الحفظ..." : "تسجيل الحركة"}
+                                    </button>
+                                  </div>
+                                ) : null}
+                                {loyaltyMessage ? <div className="cl-loyalty-message">{loyaltyMessage}</div> : null}
+                              </div>
+
+                              <div className="cl-overview-box">
+                                <h5>الدفعات والاسترجاعات</h5>
+                                <div className="cl-overview-list">
+                                  {clientOverview.payments.slice(0, 4).map((payment, index) => (
+                                    <div key={String(payment.id || `payment-${index}`)}>
+                                      <span>دفعة · {String(payment.method || payment.provider || "غير محدد")}</span>
+                                      <b className="positive">{formatHalalas(payment.amount_halalas)}</b>
+                                    </div>
+                                  ))}
+                                  {clientOverview.refunds.slice(0, 4).map((refund, index) => (
+                                    <div key={String(refund.id || `refund-${index}`)}>
+                                      <span>استرجاع · {formatDateTime(refund.refunded_at || refund.created_at)}</span>
+                                      <b className="negative">-{formatHalalas(refund.amount_halalas)}</b>
+                                    </div>
+                                  ))}
+                                  {clientOverview.payments.length === 0 && clientOverview.refunds.length === 0 ? (
+                                    <p>لا توجد حركات مالية.</p>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              <div className="cl-overview-box">
+                                <h5>العروض المستخدمة</h5>
+                                <div className="cl-overview-list">
+                                  {clientOverview.offersUsed.map((offer, index) => (
+                                    <div key={String(offer.id || offer.code || index)}>
+                                      <span>{offer.title}</span>
+                                      <b>{formatDateTime(offer.usedAt)}</b>
+                                    </div>
+                                  ))}
+                                  {clientOverview.offersUsed.length === 0 ? <p>لم تُستخدم عروض مسجلة.</p> : null}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
+                      </section>
+                    ) : null}
+
                     {importedNote ? (
                       <div className="cl-notes" style={{ marginTop: 10 }}>
                         <div className="cl-notesHead">ملاحظة (من Excel)</div>
@@ -1444,7 +1663,9 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
               </div>
 
               <div className="cl-modalHint">
-                * السجل من الحجوزات + بيانات Excel محفوظة في Firestore (clients).
+                {getDataSourceFlags().useCoreD1
+                  ? "* الحجوزات والدفعات والاسترجاعات والنقاط من Core D1، والباقات والجلسات من Packages D1."
+                  : "* السجل من الحجوزات + بيانات Excel محفوظة في Firestore (clients)."}
               </div>
             </div>
           </Modal>
