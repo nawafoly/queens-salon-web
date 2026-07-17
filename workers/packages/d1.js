@@ -513,7 +513,7 @@ export async function listMyPackageCatalogD1(ctx) {
       authUid: ctx.identity?.uid,
       firebaseUid: ctx.identity?.uid,
     },
-  });
+  }, { allowCreate: true });
   const rows = await listPackageCatalogD1(ctx, {});
   const allowedIds = new Set([
     identity.canonicalClientId,
@@ -619,7 +619,7 @@ export async function myWalletD1(ctx) {
       authUid: ctx.identity?.uid,
       firebaseUid: ctx.identity?.uid,
     },
-  });
+  }, { allowCreate: true });
   return walletSummaryD1(ctx, identity);
 }
 

@@ -350,6 +350,8 @@ export const coreD1BookingDataSource: BookingDataSource = {
         serviceId: String(
           item.serviceId || item.serviceName || ""
         ).trim(),
+        serviceName:
+          String(item.serviceName || item.serviceSnapshot?.serviceNameAtBooking || "").trim() || undefined,
         staffId:
           String(item.employeeId || "").trim() || undefined,
         unitPriceHalalas: originalHalalasForBooking(item),

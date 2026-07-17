@@ -23,7 +23,7 @@ import {
 import { getClient } from './clients.js';
 import { AppError } from '../errors.js';
 import { auditInsertStatement, recordAudit } from './audit.js';
-import { getService, serviceIsActive } from './services.js';
+import { getService, resolveBookingService, serviceIsActive } from './services.js';
 import {
   getStaff,
   staffIsActive,
@@ -412,11 +412,14 @@ export async function createBooking(db, salonId, data, actor = "") {
 
   for (let index = 0; index < itemInputs.length; index += 1) {
     const item = itemInputs[index];
-    const service = await getService(
-      db,
-      salonId,
-      item.serviceId || item.service_id
-    );
+    const service = await resolveBookingService(db, salonId, {
+      serviceId: item.serviceId || item.service_id,
+      serviceName:
+        item.serviceName ||
+        item.service_name ||
+        item.serviceNameSnapshot ||
+        item.service_name_snapshot,
+    });
     if (!serviceIsActive(service)) {
       const error = new Error("service_inactive");
       error.code = "core_booking:service_inactive";

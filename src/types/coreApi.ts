@@ -257,6 +257,7 @@ export type CoreCreateBookingInput = {
   items: Array<{
     id?: string;
     serviceId: string;
+    serviceName?: string;
     staffId?: string;
     quantity?: number;
     unitPriceHalalas?: number;

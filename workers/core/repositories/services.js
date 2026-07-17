@@ -46,6 +46,33 @@ export async function getService(db, salonId, id) {
   return row;
 }
 
+export async function resolveBookingService(db, salonId, input = {}) {
+  const serviceId = requiredId(input.serviceId || input.service_id, "serviceId");
+  const direct = await dbFirst(
+    db,
+    "SELECT * FROM services WHERE salon_id = ? AND id = ? LIMIT 1",
+    [salonId, serviceId]
+  );
+  if (direct) return direct;
+
+  // A stale browser tab or a legacy Firestore offer may still carry an old ID.
+  // Resolve only by an exact service-name snapshot and only when it identifies
+  // one Core D1 service, then persist the canonical Core ID in the booking item.
+  const serviceName = cleanText(
+    input.serviceName || input.service_name || input.serviceNameSnapshot || input.service_name_snapshot
+  );
+  if (serviceName) {
+    const matches = await dbAll(
+      db,
+      "SELECT * FROM services WHERE salon_id = ? AND TRIM(name) = TRIM(?) LIMIT 2",
+      [salonId, serviceName]
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
+  rowNotFound("service");
+}
+
 export async function createService(db, salonId, data) {
   const now = nowIso();
   const row = {

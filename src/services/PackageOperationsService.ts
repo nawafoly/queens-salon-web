@@ -211,8 +211,14 @@ function callableErrorAr(error: any) {
   if (code.includes("invalid_document_id")) {
     return "معرّف الباقة غير صالح. حدّثي البيانات ثم حاولي مجددًا.";
   }
-  if (code.includes("packages_api:not_found") || status === 404) {
+  if (code.includes("packages_client:not_found")) {
+    return "تعذر ربط حساب العميلة بمحفظة الباقات. سجّلي الخروج ثم الدخول وحاولي مجددًا.";
+  }
+  if (code.includes("packages_api:not_found")) {
     return "واجهة إدارة الباقات على السيرفر غير محدثة. يجب نشر Packages Worker ثم المحاولة مجددًا.";
+  }
+  if (status === 404) {
+    return "تعذر العثور على سجل الباقة أو العميلة المطلوب.";
   }
   if (status === 401) return "يجب تسجيل الدخول مرة أخرى.";
   if (status === 403) return "ليست لديك صلاحية لتنفيذ هذه العملية.";

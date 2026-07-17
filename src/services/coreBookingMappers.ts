@@ -454,6 +454,7 @@ export function legacyBookingToCoreInput(
     items: [
       {
         serviceId: text(booking.serviceId || booking.serviceName),
+        serviceName: text(booking.serviceName || booking.serviceSnapshot?.serviceNameAtBooking) || undefined,
         staffId: text(booking.employeeId) || undefined,
         unitPriceHalalas: Math.max(0, Math.round(originalTotal * 100)),
         discountHalalas: Math.max(0, Math.round(discountAmount * 100)),

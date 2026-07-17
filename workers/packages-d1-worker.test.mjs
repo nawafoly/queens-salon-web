@@ -507,6 +507,31 @@ test("D1 health endpoint verifies packages database binding", async () => {
   assert.equal(body.data.storage, "d1");
 });
 
+test("signed-in client without a packages identity receives an empty wallet instead of 404", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "not found" } }), {
+    status: 404,
+    headers: { "Content-Type": "application/json" },
+  });
+  try {
+    const fake = new FakeD1();
+    const response = await worker.fetch(request("/api/packages/my-wallet?salonId=main", {
+      method: "GET",
+      token: "test:new-client-uid:client",
+    }), env(fake));
+    const body = await json(response);
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.data.canonicalClientId, "new-client-uid");
+    assert.deepEqual(body.data.packages, []);
+    assert.equal(fake.rows("clients").length, 1);
+    assert.equal(fake.rows("clients")[0].firebase_uid, "new-client-uid");
+  } finally {
+    globalThis.fetch = originalFetch;
+    __test.clearActorRoleCache();
+  }
+});
+
 test("client wallet reads active packages from D1", async () => {
   const fake = new FakeD1();
   seedBase(fake);

@@ -85,6 +85,12 @@ class FakeD1 {
       const [salonId, id] = params;
       return this.find("services", salonId, id) ? [this.find("services", salonId, id)] : [];
     }
+    if (normalized.startsWith("SELECT * FROM services WHERE salon_id = ? AND TRIM(name) = TRIM(?)")) {
+      const [salonId, name] = params;
+      return this.rows("services")
+        .filter((row) => row.salon_id === salonId && String(row.name || "").trim() === String(name || "").trim())
+        .slice(0, 2);
+    }
     if (normalized.startsWith("SELECT * FROM services WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("services").filter((row) => row.salon_id === salonId);
@@ -858,6 +864,33 @@ test("booking creation creates booking items and invoice", async () => {
   const secondBody = await json(secondResponse);
   assert.equal(secondResponse.status, 200, JSON.stringify(secondBody));
   assert.equal(secondBody.data.public_id, "MK-10424");
+});
+
+test("booking creation canonicalizes a stale service id by an exact Core service name", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: {
+      salonId: "main",
+      id: "booking-stale-service",
+      invoiceId: "invoice-stale-service",
+      clientId: "client-a",
+      staffId: "staff-a",
+      bookingDate: "2027-01-11",
+      startTime: "10:00",
+      items: [{
+        id: "item-stale-service",
+        serviceId: "legacy-firestore-service-id",
+        serviceName: "Service A",
+      }],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  const item = fake.rows("booking_items").find((row) => row.id === "item-stale-service");
+  assert.equal(item?.service_id, "svc-a");
+  assert.equal(item?.service_name_snapshot, "Service A");
 });
 
 test("booking list hydrates large dashboard results with bounded D1 reads", async () => {

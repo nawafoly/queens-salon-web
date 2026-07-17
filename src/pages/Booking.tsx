@@ -1069,6 +1069,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   // Catalog mode
   // =========================
+  // When Core D1 is enabled, the booking catalog must come from Core D1 as well.
+  // Mixing Core sections with Firestore service IDs creates bookings that Core cannot resolve.
+  const useCoreCatalog = getDataSourceFlags().useCoreD1;
   const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("firestore");
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [categoryLoading, setCategoryLoading] = useState(false);
@@ -1852,6 +1855,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (inFlight) return inFlight;
 
     const loadPromise: Promise<FsSectionCatalogCacheRow> = (async () => {
+      if (useCoreCatalog) {
+        const [categories, services] = await Promise.all([
+          listActiveCategoriesBySection(sectionId, SALON_ID, "core"),
+          listActiveServices({ sectionId }, SALON_ID, "core"),
+        ]);
+        const payload: FsSectionCatalogCacheRow = {
+          categories: Array.isArray(categories) ? categories : [],
+          services: Array.isArray(services) ? services : [],
+        };
+        fsSectionCatalogCacheRef.current[sectionId] = payload;
+        return payload;
+      }
+
       const catsCol = collection(db, "salons", SALON_ID, "service_categories");
 
       let catsSnap;
@@ -1930,7 +1946,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       try {
         setCatalogLoading(true);
         const [secs, packs] = await Promise.all([
-          listActiveSections(SALON_ID),
+          listActiveSections(SALON_ID, useCoreCatalog ? "core" : "auto"),
           listActivePackages(SALON_ID),
           loadSessionPackagesFromFirestore(),
         ]);
@@ -2691,10 +2707,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (cached) return cached;
 
     try {
-      const snap = await getDoc(doc(db, "salons", SALON_ID, "services", id));
-      if (!snap.exists()) return null;
-      const raw = snap.data() as any;
-      if (raw?.active === false) return null;
+      let raw: any = null;
+      if (useCoreCatalog) {
+        const rows = await listActiveServices({ sectionId: "" }, SALON_ID, "core");
+        raw = (rows || []).find((row: any) => String(row?.id || "").trim() === id) || null;
+      } else {
+        const snap = await getDoc(doc(db, "salons", SALON_ID, "services", id));
+        raw = snap.exists() ? snap.data() : null;
+      }
+      if (!raw || raw?.active === false) return null;
 
       const name = readDisplayLabel(raw, id);
       if (!name) return null;
@@ -3173,21 +3194,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       let sv = servicesFlat.find((s) => s.kind === "service" && String(s.id || "").trim() === serviceId) as any;
       if (!sv && !byIdCache.has(serviceId)) {
         try {
-          const snap = await getDoc(doc(db, "salons", SALON_ID, "services", serviceId));
-          if (snap.exists()) {
-            const d: any = snap.data() || {};
-            byIdCache.set(serviceId, {
-              id: serviceId,
-              name: readDisplayLabel(d, serviceId),
-              basePrice: Number((d as any)?.price ?? (d as any)?.["السعر"] ?? 0),
-              seasonPrice:
-                Number(String((d as any)?.seasonPrice ?? (d as any)?.["سعر_الموسم"] ?? 0).replace(/[^\d.]/g, "")) || 0,
-              durationMin: Number((d as any)?.durationMin ?? (d as any)?.["المدة"] ?? DEFAULT_SERVICE_DURATION_MIN),
-              sectionId: String((d as any)?.sectionId || "").trim() || undefined,
-            });
-          } else {
-            byIdCache.set(serviceId, null);
-          }
+          byIdCache.set(serviceId, await ensureServiceByIdForOffer(serviceId));
         } catch {
           byIdCache.set(serviceId, null);
         }

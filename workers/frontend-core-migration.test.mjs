@@ -61,6 +61,14 @@ test("booking pages route slot availability through the selected data source", (
   }
 });
 
+test("public booking loads categories and services from Core D1 during Core cutover", () => {
+  const source = readFileSync("src/pages/Booking.tsx", "utf8");
+  assert.match(source, /const useCoreCatalog = getDataSourceFlags\(\)\.useCoreD1/);
+  assert.match(source, /listActiveCategoriesBySection\(sectionId, SALON_ID, "core"\)/);
+  assert.match(source, /listActiveServices\(\{ sectionId \}, SALON_ID, "core"\)/);
+  assert.match(source, /listActiveSections\(SALON_ID, useCoreCatalog \? "core" : "auto"\)/);
+});
+
 test("Core availability service caches per staff day and supports invalidation", () => {
   const source = readFileSync(
     "src/services/CoreAvailabilityService.ts",
