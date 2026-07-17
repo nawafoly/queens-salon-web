@@ -733,6 +733,75 @@ export const setUserRole = onCall({ region: "us-central1" }, async (request) => 
 });
 
 /**
+ * ✅ Callable: adminDeleteUserAccount
+ * - Deletes the Firebase Authentication identity permanently.
+ * - Deletes only users/admin_users account documents.
+ * - Preserves employee, booking, attendance and payroll records.
+ */
+export const adminDeleteUserAccount = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "لازم تسجل دخول.");
+
+  const callerUid = request.auth.uid;
+  const targetUid = String((request.data as any)?.uid || "").trim();
+  if (!targetUid) throw new HttpsError("invalid-argument", "uid مطلوب.");
+  if (targetUid === callerUid) {
+    throw new HttpsError("failed-precondition", "لا يمكن حذف حسابك من هذه الصفحة.");
+  }
+
+  const caller = await admin.auth().getUser(callerUid);
+  const callerEmail = String(caller.email || "").toLowerCase().trim();
+  const callerRole = await getCallerRole(callerUid);
+  const isBootstrap = isBootstrapEmail(callerEmail);
+  if (!isBootstrap && !["owner", "admin"].includes(callerRole)) {
+    throw new HttpsError("permission-denied", "غير مصرح. فقط Owner/Admin.");
+  }
+
+  let targetUser: admin.auth.UserRecord | null = null;
+  try {
+    targetUser = await admin.auth().getUser(targetUid);
+  } catch (error: any) {
+    if (String(error?.code || "") !== "auth/user-not-found") throw error;
+  }
+
+  const targetEmail = String(targetUser?.email || "").toLowerCase().trim();
+  if (targetEmail === BOOTSTRAP_OWNER_EMAIL.toLowerCase()) {
+    throw new HttpsError("permission-denied", "لا يمكن حذف حساب المالك الأساسي.");
+  }
+
+  const usersRef = db.collection("salons").doc(SALON_ID).collection("users").doc(targetUid);
+  const adminRef = db.collection("salons").doc(SALON_ID).collection("admin_users").doc(targetUid);
+  const [userSnap, adminSnap] = await Promise.all([usersRef.get(), adminRef.get()]);
+  const targetRole = normalizeRole(
+    userSnap.data()?.role || adminSnap.data()?.role || targetUser?.customClaims?.role
+  );
+  if (targetRole === "owner" && callerRole !== "owner" && !isBootstrap) {
+    throw new HttpsError("permission-denied", "فقط المالك يستطيع حذف حساب مالك آخر.");
+  }
+
+  const batch = db.batch();
+  batch.delete(usersRef);
+  batch.delete(adminRef);
+  await batch.commit();
+
+  let authDeleted = false;
+  if (targetUser) {
+    await admin.auth().deleteUser(targetUid);
+    authDeleted = true;
+  }
+
+  logger.info("[adminDeleteUserAccount] account permanently deleted", {
+    callerUid,
+    targetUid,
+    targetEmail,
+    targetRole,
+    authDeleted,
+    employeeRecordsDeleted: false,
+  });
+
+  return { ok: true, uid: targetUid, authDeleted, firestoreDeleted: true };
+});
+
+/**
  * ✅ Callable: whoAmI
  */
 export const whoAmI = onCall({ region: "us-central1" }, async (request) => {

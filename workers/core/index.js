@@ -93,6 +93,7 @@ import {
 } from './repositories/payroll.js';
 import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
 import {
+  deleteAdminProfile,
   listAdminProfiles,
   resolveAssignedRole,
   upsertAdminProfile,
@@ -302,6 +303,7 @@ async function dispatch(ctx, route, method, body, query) {
     uid: ctx.identity?.uid || "",
     email: ctx.identity?.claims?.email || "",
     name: ctx.identity?.claims?.name || "",
+    role: ctx.role,
   };
 
   switch (route.name) {
@@ -559,6 +561,7 @@ async function dispatch(ctx, route, method, body, query) {
       requireRole(ctx.role, ADMIN_ROLES);
       if (method === "GET") return listAdminProfiles(db, ctx.salonId);
       if (["POST", "PATCH"].includes(method)) return upsertAdminProfile(db, ctx.salonId, route.id ? { ...body, firebaseUid: route.id } : body, actorInfo);
+      if (method === "DELETE" && route.id) return deleteAdminProfile(db, ctx.salonId, route.id, actorInfo);
       break;
 
     case "files":

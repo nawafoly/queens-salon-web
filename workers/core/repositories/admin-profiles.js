@@ -2,6 +2,7 @@
 // Firebase is allowed only for authentication token verification.
 
 import { activeFlag, cleanText, dbAll, dbBatch, dbFirst, nowIso, optionalText, requiredId } from '../d1.js';
+import { AppError } from '../errors.js';
 
 export async function resolveAssignedRole(db, salonId, firebaseUid, fallbackRole = 'guest') {
   if (!firebaseUid) return fallbackRole;
@@ -11,6 +12,7 @@ export async function resolveAssignedRole(db, salonId, firebaseUid, fallbackRole
   } else {
     rows = await dbAll(db, 'SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND active = 1', [salonId, firebaseUid]);
   }
+  if (rows.some((row) => cleanText(row.role).toLowerCase() === 'revoked')) return 'guest';
   const priority = ['owner', 'admin', 'reception', 'staff', 'client'];
   for (const role of priority) if (rows.some((row) => cleanText(row.role).toLowerCase() === role)) return role;
   return fallbackRole;
@@ -63,4 +65,39 @@ export async function upsertAdminProfile(db, salonId, data, actor = {}) {
   }
   await dbBatch(db, statements);
   return (await listAdminProfiles(db, salonId)).find((profile) => profile.firebase_uid === uid) || row;
+}
+
+
+export async function deleteAdminProfile(db, salonId, firebaseUid, actor = {}) {
+  const uid = requiredId(firebaseUid, 'firebaseUid');
+  const actorUid = cleanText(actor.uid);
+  const actorRole = cleanText(actor.role).toLowerCase();
+  if (actorUid && actorUid === uid) throw new AppError(409, 'core_admin:cannot_delete_self');
+
+  const existing = await dbFirst(db, 'SELECT * FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ? LIMIT 1', [salonId, uid]);
+  const targetRoles = await dbAll(db, 'SELECT role FROM role_assignments WHERE salon_id = ? AND firebase_uid = ? AND active = 1', [salonId, uid]);
+  const targetEmail = cleanText(existing?.email).toLowerCase();
+  const targetIsOwner = targetRoles.some((row) => cleanText(row.role).toLowerCase() === 'owner');
+  if (targetEmail === 'nawafaaa0@gmail.com') throw new AppError(403, 'core_admin:bootstrap_owner_protected');
+  if (targetIsOwner && actorRole !== 'owner') throw new AppError(403, 'core_admin:owner_delete_requires_owner');
+
+  const now = nowIso();
+  await dbBatch(db, [
+    { sql: 'DELETE FROM role_assignments WHERE salon_id = ? AND firebase_uid = ?', params: [salonId, uid] },
+    {
+      sql: `INSERT INTO role_assignments
+        (salon_id, firebase_uid, role, scope, active, assigned_by_uid, created_at, updated_at)
+        VALUES (?, ?, 'revoked', 'account_deleted', 1, ?, ?, ?)`,
+      params: [salonId, uid, optionalText(actor.uid) || null, now, now],
+    },
+    { sql: 'DELETE FROM admin_profiles WHERE salon_id = ? AND firebase_uid = ?', params: [salonId, uid] },
+  ]);
+
+  return {
+    firebase_uid: uid,
+    deleted: true,
+    revoked: true,
+    existed: Boolean(existing),
+    employee_id: existing?.employee_id || null,
+  };
 }

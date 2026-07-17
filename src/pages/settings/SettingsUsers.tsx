@@ -22,6 +22,7 @@ import {
 
 import { auth, db } from "../../services/firebase";
 import { writeAuditLog } from "../../services/logService";
+import { deleteAdminAccountPermanently } from "../../services/adminAccountDeletionService";
 import {
   APP_PERMISSION_CATALOG,
   APP_PERMISSION_GROUPS,
@@ -1805,79 +1806,51 @@ export default function SettingsUsers({
     }
 
     const ok = confirm(
-      `سيتم تعطيل حساب الدخول فقط دون تعديل ملف الموظفة أو إخفائها من الحجز.\n\nالحساب: ${row.email || uid}\n\nمتابعة؟`
+      `حذف نهائي لحساب الدخول من Firebase Authentication وCloudflare D1.\n\nالحساب: ${row.email || uid}\n\nلن يتم حذف ملف الموظفة أو الحجوزات أو الحضور أو الرواتب. لا يمكن استعادة الحساب بعد المتابعة.`
     );
     if (!ok) return;
 
     try {
       setUsersLoading(true);
       const actorUid = String((auth as any)?.currentUser?.uid || "").trim();
-
-      await setDoc(
-        doc(db, ...USERS_COLLECTION, uid),
-        {
-          active: false,
-          isActive: false,
-          deleted: true,
-          deletedAt: serverTimestamp(),
-          deletedBy: actorUid || "",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      await setDoc(
-        doc(db, "salons", SALON_ID, "admin_users", uid),
-        {
-          active: false,
-          isActive: false,
-          deleted: true,
-          deletedAt: serverTimestamp(),
-          deletedBy: actorUid || "",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.uid === uid
-            ? {
-                ...u,
-                active: false,
-                isActive: false,
-                deleted: true,
-                deletedAt: true,
-                deletedBy: actorUid || "",
-              }
-            : u
-        )
-      );
+      await deleteAdminAccountPermanently(uid);
+      setUsers((prev) => prev.filter((u) => u.uid !== uid));
+      if (selectedUserId === uid) setSelectedUserId("");
+      if (editDraft?.uid === uid) setEditDraft(null);
 
       void writeAuditLog({
         salonId: SALON_ID,
         action: "user_deleted",
         entityType: "user",
         entityId: uid,
-        description: "تم حذف الحساب منطقيًا دون تعديل ملف الموظفة",
+        description: "تم حذف حساب الدخول نهائيًا من Firebase وCloudflare",
         source: "dashboard",
         before: {
+          email: row.email || null,
           role: row.role,
           active: row.active,
           linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || null,
         },
         after: {
-          role: row.role,
-          active: false,
-          deletedAt: true,
+          accountDeletedPermanently: true,
+          authDeleted: true,
+          coreD1Deleted: true,
           staffFileChanged: false,
         },
+        meta: { actorUid },
       });
 
-      toastMsg("✅ تم حذف الحساب منطقيًا دون تعديل ملف الموظفة", 2400);
-    } catch (e) {
+      toastMsg("✅ تم حذف حساب الدخول نهائيًا من السيرفر", 2600);
+    } catch (e: any) {
       console.error("deleteUserAccount error:", e);
-      toastMsg("❌ تعذر حذف الحساب", 2800);
+      const message = String(e?.message || "");
+      if (message.includes("permission") || message.includes("صلاحية")) {
+        toastMsg("❌ ليست لديك صلاحية الحذف النهائي", 2800);
+      } else if (message.includes("login") || message.includes("جلسة")) {
+        toastMsg("❌ انتهت جلسة الدخول. سجّل الدخول ثم أعد المحاولة", 3000);
+      } else {
+        toastMsg("❌ تعذر إكمال الحذف النهائي. لم يتم حذف ملف الموظفة", 3000);
+      }
     } finally {
       setUsersLoading(false);
     }
