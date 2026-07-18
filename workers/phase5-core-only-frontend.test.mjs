@@ -18,6 +18,7 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const offersFacade = read("src/services/firestoreOffers.ts");
   const publicOffersPage = read("src/pages/Offers.tsx");
   const dashboardOffersPage = read("src/pages/DashboardOffers.tsx");
+  const dashboardClientsPage = read("src/pages/DashboardClients.tsx");
 
   for (const [name, source] of [
     ["ClientPackageService", clientPackageService],
@@ -111,4 +112,27 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   );
   assert.match(dashboardOffersPage, /PackageService/);
   assert.match(dashboardOffersPage, /CoreCatalogService/);
+
+  assert.equal(
+    dashboardClientsPage.includes("firebase/firestore"),
+    false,
+    "Dashboard clients must not import Firestore"
+  );
+  assert.equal(
+    dashboardClientsPage.includes("../services/firebase"),
+    false,
+    "Dashboard clients must not access Firebase data services"
+  );
+  assert.equal(
+    dashboardClientsPage.includes("getDataSourceFlags"),
+    false,
+    "Dashboard clients must not retain a Core/Firestore branch"
+  );
+  assert.equal(
+    dashboardClientsPage.includes("listAllBookings"),
+    false,
+    "Dashboard clients must use the explicit Core booking reader"
+  );
+  assert.match(dashboardClientsPage, /listCoreBookings/);
+  assert.match(dashboardClientsPage, /CoreClientService/);
 });

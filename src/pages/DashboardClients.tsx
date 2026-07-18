@@ -22,25 +22,12 @@ import * as XLSX from "xlsx";
 import Modal from "../components/Modal";
 import ClientPackagesPanel from "../components/packages/ClientPackagesPanel";
 
-// ✅ Firestore Bookings
+// Core D1 bookings and clients — no Firestore fallback.
 import {
-  listAllBookings,
+  listCoreBookings,
   type BookingDocWithId,
   type BookingStatus,
 } from "../services/firestoreBookings";
-
-// ✅ Firestore (for Clients import)
-import {
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  writeBatch,
-} from "firebase/firestore";
-import { db } from "../services/firebase";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
 import {
   CoreClientService,
   type CoreClientOverview,
@@ -246,7 +233,7 @@ function bookingNoOf(b: any) {
   // only convert if the source is numeric-only (legacy forms like "10080")
   if (/^\d+$/.test(upper)) return `MK-${upper}`;
 
-  // any random alphanumeric id (Firestore doc id) is NOT a booking number
+  // any random legacy alphanumeric id is NOT a booking number
   return "—";
 }
 
@@ -254,8 +241,6 @@ const NOTES_KEY = "dashboard_client_notes_v1";
 const SALON_IBAN = "SA4710000001400007036306";
 const SALON_BANK_NAME = "البنك الأهلي السعودي";
 
-const SALON_ID = "main";
-const CLIENTS_COLLECTION = ["salons", SALON_ID, "clients"] as const;
 
 function buildClientWhatsAppMessage(clientName: string) {
   const safeName = String(clientName || "").trim() || "عميلتنا الكريمة";
@@ -333,7 +318,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltyMessage, setLoyaltyMessage] = useState("");
 
-  // ✅ Imported clients (Firestore)
+  // ✅ Imported clients stored in Core D1
   const [importedMap, setImportedMap] = useState<Record<string, ImportedClientDoc>>({});
   const [importLoading, setImportLoading] = useState(false);
 
@@ -467,7 +452,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
     };
   }, []);
 
-  // ✅ جلب الحجوزات من Firestore
+  // ✅ جلب الحجوزات من Core D1
   useEffect(() => {
     if (!canViewClients) {
       // ما نحمّل بيانات أصلاً إذا غير مصرح
@@ -483,12 +468,12 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
         setLoading(true);
         setError(null);
 
-        const data = await listAllBookings();
+        const data = await listCoreBookings();
         if (!mounted) return;
 
         setBookings(Array.isArray(data) ? data : []);
       } catch (e: any) {
-        console.error("DashboardClients: listAllBookings failed", e);
+        console.error("DashboardClients: listCoreBookings failed", e);
         if (!mounted) return;
         setError(e?.message || "فشل تحميل الحجوزات من قاعدة البيانات");
         setBookings([]);
@@ -502,7 +487,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
     };
   }, [canViewClients]);
 
-  // ✅ جلب العملاء المستوردين (Firestore) - آمن وما يأثر على الحجوزات
+  // Core D1 is the only client source for this administrative route.
   useEffect(() => {
     if (!canViewClients) return;
 
@@ -511,48 +496,28 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
     (async () => {
       try {
         setImportLoading(true);
-        const next: Record<string, ImportedClientDoc> = {};
+        const rows = await CoreClientService.list();
+        if (!mounted) return;
 
-        if (getDataSourceFlags().useCoreD1) {
-          const rows = await CoreClientService.list();
-          if (!mounted) return;
-          rows.forEach((row) => {
-            const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
-            next[digits] = {
-              id: row.id,
-              clientId: row.id,
-              legacyClientDocId: row.legacyClientDocId || undefined,
-              name: row.name || undefined,
-              phone: row.phoneNormalized || undefined,
-              vip: Boolean(row.vip),
-              note: row.notes || undefined,
-              createdAt: row.createdAt,
-              updatedAt: row.updatedAt,
-            };
-          });
-        } else {
-          const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
-          const snap = await getDocs(q);
-          if (!mounted) return;
-          snap.docs.forEach((d) => {
-            const x = d.data() as any;
-            next[d.id] = {
-              id: d.id,
-              clientId: String(x?.clientId || "").trim() || undefined,
-              legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
-              name: String(x?.name || "").trim() || undefined,
-              phone: String(x?.phone || "").trim() || undefined,
-              vip: !!x?.vip,
-              note: String(x?.note || "").trim() || undefined,
-              createdAt: x?.createdAt,
-              updatedAt: x?.updatedAt,
-            };
-          });
-        }
+        const next: Record<string, ImportedClientDoc> = {};
+        rows.forEach((row) => {
+          const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
+          next[digits] = {
+            id: row.id,
+            clientId: row.id,
+            legacyClientDocId: row.legacyClientDocId || undefined,
+            name: row.name || undefined,
+            phone: row.phoneNormalized || undefined,
+            vip: Boolean(row.vip),
+            note: row.notes || undefined,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          };
+        });
 
         setImportedMap(next);
       } catch (e) {
-        console.error("DashboardClients: load imported clients failed", e);
+        console.error("DashboardClients: Core client load failed", e);
         setImportedMap({});
       } finally {
         if (mounted) setImportLoading(false);
@@ -704,7 +669,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
 
   useEffect(() => {
     const clientId = String(selectedClient?.clientId || "").trim();
-    if (!selectedClient || !getDataSourceFlags().useCoreD1) {
+    if (!selectedClient) {
       setClientOverview(null);
       setClientOverviewError("");
       return;
@@ -925,74 +890,43 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
         ])
       );
 
-      if (getDataSourceFlags().useCoreD1) {
-        for (const r of preview) {
-          const existing = existingByPhone.get(phoneDigits(r.phone));
-          if (existing?.clientId || existing?.id) {
-            await CoreClientService.patch(String(existing.clientId || existing.id), {
-              name: r.name || "عميلة",
-              phone: r.phone || "",
-              vip: Boolean(r.vip),
-              notes: r.note || "",
-            });
-          } else {
-            await CoreClientService.create({
-              id: crypto.randomUUID(),
-              name: r.name || "عميلة",
-              phone: r.phone || "",
-              vip: Boolean(r.vip),
-              notes: r.note || "",
-            });
-          }
+      for (const r of preview) {
+        const existing = existingByPhone.get(phoneDigits(r.phone));
+        if (existing?.clientId || existing?.id) {
+          await CoreClientService.patch(String(existing.clientId || existing.id), {
+            name: r.name || "عميلة",
+            phone: r.phone || "",
+            vip: Boolean(r.vip),
+            notes: r.note || "",
+          });
+        } else {
+          await CoreClientService.create({
+            id: crypto.randomUUID(),
+            name: r.name || "عميلة",
+            phone: r.phone || "",
+            vip: Boolean(r.vip),
+            notes: r.note || "",
+          });
         }
-        const rows = await CoreClientService.list();
-        const next: Record<string, ImportedClientDoc> = {};
-        rows.forEach((row) => {
-          const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
-          next[digits] = {
-            id: row.id, clientId: row.id,
-            legacyClientDocId: row.legacyClientDocId || undefined,
-            name: row.name || undefined, phone: row.phoneNormalized || undefined,
-            vip: Boolean(row.vip), note: row.notes || undefined,
-            createdAt: row.createdAt, updatedAt: row.updatedAt,
-          };
-        });
-        setImportedMap(next);
-      } else {
-        // Temporary legacy branch until production cutover is complete.
-        const batch = writeBatch(db);
-        preview.forEach((r) => {
-          const existing = existingByPhone.get(phoneDigits(r.phone));
-          const stableClientId = String((existing as any)?.clientId || "").trim() ||
-            (existing && !/^\d+$/.test(existing.id) ? existing.id : crypto.randomUUID());
-          const legacyClientDocId = existing && existing.id !== stableClientId ? existing.id : undefined;
-          const ref = existing
-            ? doc(db, ...CLIENTS_COLLECTION, existing.id)
-            : doc(db, ...CLIENTS_COLLECTION, stableClientId);
-          batch.set(ref, {
-            clientId: stableClientId,
-            ...(legacyClientDocId ? { legacyClientDocId } : {}),
-            name: r.name || "", phone: r.phone || "", vip: !!r.vip, note: r.note || "",
-            updatedAt: serverTimestamp(), createdAt: serverTimestamp(),
-          }, { merge: true });
-        });
-        await batch.commit();
-        const q = query(collection(db, ...CLIENTS_COLLECTION), orderBy("updatedAt", "desc"));
-        const snap = await getDocs(q);
-        const next: Record<string, ImportedClientDoc> = {};
-        snap.docs.forEach((d) => {
-          const x = d.data() as any;
-          next[d.id] = {
-            id: d.id, clientId: String(x?.clientId || "").trim() || undefined,
-            legacyClientDocId: String(x?.legacyClientDocId || "").trim() || undefined,
-            name: String(x?.name || "").trim() || undefined,
-            phone: String(x?.phone || "").trim() || undefined,
-            vip: !!x?.vip, note: String(x?.note || "").trim() || undefined,
-            createdAt: x?.createdAt, updatedAt: x?.updatedAt,
-          };
-        });
-        setImportedMap(next);
       }
+
+      const rows = await CoreClientService.list();
+      const next: Record<string, ImportedClientDoc> = {};
+      rows.forEach((row) => {
+        const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
+        next[digits] = {
+          id: row.id,
+          clientId: row.id,
+          legacyClientDocId: row.legacyClientDocId || undefined,
+          name: row.name || undefined,
+          phone: row.phoneNormalized || undefined,
+          vip: Boolean(row.vip),
+          note: row.notes || undefined,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        };
+      });
+      setImportedMap(next);
 
       setImportOpen(false);
       setPreview([]);
@@ -1399,8 +1333,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
                       </div>
                     </div>
 
-                    {getDataSourceFlags().useCoreD1 ? (
-                      <section className="cl-overview-section" aria-label="السجل المالي والولاء">
+                    <section className="cl-overview-section" aria-label="السجل المالي والولاء">
                         <div className="cl-overview-head">
                           <div>
                             <h4>السجل الموحد للعميلة</h4>
@@ -1529,8 +1462,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
                             </div>
                           </>
                         ) : null}
-                      </section>
-                    ) : null}
+                    </section>
 
                     {importedNote ? (
                       <div className="cl-notes" style={{ marginTop: 10 }}>
@@ -1663,9 +1595,7 @@ const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "gues
               </div>
 
               <div className="cl-modalHint">
-                {getDataSourceFlags().useCoreD1
-                  ? "* الحجوزات والدفعات والاسترجاعات والنقاط من Core D1، والباقات والجلسات من Packages D1."
-                  : "* السجل من الحجوزات + بيانات Excel محفوظة في Firestore (clients)."}
+                * الحجوزات والدفعات والاسترجاعات والنقاط من Core D1، والباقات والجلسات من Core D1.
               </div>
             </div>
           </Modal>
