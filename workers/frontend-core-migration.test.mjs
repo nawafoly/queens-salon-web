@@ -493,7 +493,10 @@ test("public booking repairs stale service IDs before creating a Core booking", 
 
   assert.match(booking, /function serviceNamesEquivalent/);
   assert.match(booking, /Repair an old local booking draft/);
-  assert.match(booking, /const canonicalId = resolveCanonicalServiceId/);
+  assert.match(booking, /let canonicalId = resolveCanonicalServiceId/);
+  assert.match(booking, /allCoreServicesForSubmit/);
+  assert.match(booking, /coreServiceByIdForSubmit/);
+  assert.match(booking, /await ensureServiceByIdForOffer\(canonicalId\)/);
   assert.match(booking, /serviceId:\s*canonicalId/);
   assert.match(booking, /const unresolvedService = items\.find/);
   assert.match(booking, /localStorage\.removeItem\("bookingDraft"\)/);

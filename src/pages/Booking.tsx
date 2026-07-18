@@ -6466,27 +6466,87 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    const items = (formData.items || []).map((item) => {
-      const previousId = String(item.serviceId || "").trim();
-      const canonicalId = resolveCanonicalServiceId(
-        previousId,
-        String(item.serviceName || "").trim()
-      );
-      const canonicalService = canonicalId ? getServiceById(canonicalId) : null;
-      return {
-        ...item,
-        serviceId: canonicalId,
-        serviceName: String(canonicalService?.name || item.serviceName || "").trim(),
-        serviceSectionId:
-          String(canonicalService?.sectionId || item.serviceSectionId || "").trim(),
-        serviceSectionTitle:
-          String(canonicalService?.sectionTitle || item.serviceSectionTitle || "").trim() || undefined,
-        serviceCategoryId:
-          String(canonicalService?.categoryId || item.serviceCategoryId || "").trim() || undefined,
-        serviceCategoryName:
-          String(canonicalService?.category || item.serviceCategoryName || "").trim() || undefined,
-      };
-    });
+    // `servicesFlat` contains only the section currently open in the picker.
+    // After adding an item the picker can reset, so submit must validate against
+    // the full Core catalog rather than the currently visible section only.
+    const allCoreServicesForSubmit = useCoreCatalog
+      ? await listActiveServices({ sectionId: "" }, SALON_ID, "core").catch(() => [])
+      : [];
+    const coreServiceByIdForSubmit = new Map(
+      (allCoreServicesForSubmit || [])
+        .map((service: any) => [
+          String(service?.id || "").trim(),
+          service,
+        ] as const)
+        .filter(([id]) => Boolean(id))
+    );
+
+    const items = await Promise.all(
+      (formData.items || []).map(async (item) => {
+        const previousId = String(item.serviceId || "").trim();
+        const previousName = String(item.serviceName || "").trim();
+        let canonicalId = resolveCanonicalServiceId(previousId, previousName);
+        let canonicalService = canonicalId ? getServiceById(canonicalId) : null;
+
+        if (useCoreCatalog && !canonicalService) {
+          const directCoreService =
+            coreServiceByIdForSubmit.get(canonicalId) ||
+            coreServiceByIdForSubmit.get(previousId) ||
+            null;
+
+          const normalizedNameMatches = previousName
+            ? (allCoreServicesForSubmit || []).filter((service: any) =>
+                serviceNamesEquivalent(
+                  previousName,
+                  readDisplayLabel(service, String(service?.id || "").trim())
+                )
+              )
+            : [];
+
+          const matchedCoreService =
+            directCoreService ||
+            (normalizedNameMatches.length === 1
+              ? normalizedNameMatches[0]
+              : null);
+
+          if (matchedCoreService) {
+            canonicalId = String(matchedCoreService?.id || "").trim();
+            canonicalService = canonicalId
+              ? await ensureServiceByIdForOffer(canonicalId)
+              : null;
+          }
+        }
+
+        return {
+          ...item,
+          serviceId: canonicalId,
+          serviceName: String(
+            canonicalService?.name || item.serviceName || ""
+          ).trim(),
+          serviceSectionId: String(
+            canonicalService?.sectionId || item.serviceSectionId || ""
+          ).trim(),
+          serviceSectionTitle:
+            String(
+              canonicalService?.sectionTitle ||
+                item.serviceSectionTitle ||
+                ""
+            ).trim() || undefined,
+          serviceCategoryId:
+            String(
+              canonicalService?.categoryId ||
+                item.serviceCategoryId ||
+                ""
+            ).trim() || undefined,
+          serviceCategoryName:
+            String(
+              canonicalService?.category ||
+                item.serviceCategoryName ||
+                ""
+            ).trim() || undefined,
+        };
+      })
+    );
     if (!items.length) {
       openModal({
         title: "اختيار الخدمات",
