@@ -38,7 +38,9 @@ function normalizeBaseUrl(value: string): string {
 
 export function getDataSourceFlags(): DataSourceFlags {
   const coreWorkerUrl = normalizeBaseUrl(envValue("VITE_CORE_WORKER_URL"));
-  const packagesWorkerUrl = normalizeBaseUrl(envValue("VITE_PACKAGES_WORKER_URL"));
+  const packagesWorkerUrl = normalizeBaseUrl(
+    envValue("VITE_PACKAGES_WORKER_URL") || coreWorkerUrl
+  );
 
   return {
     useCoreD1: envFlag("VITE_USE_CORE_D1"),
@@ -63,14 +65,16 @@ export function requireCoreWorkerUrl(): string {
   return flags.coreWorkerUrl;
 }
 
+/** @deprecated Packages are served by the unified Core Worker. */
 export function requirePackagesWorkerUrl(): string {
   const flags = getDataSourceFlags();
-  if (!flags.packagesWorkerUrl) {
+  const unifiedUrl = flags.coreWorkerUrl || flags.packagesWorkerUrl;
+  if (!unifiedUrl) {
     throw new Error(
-      "PACKAGES_D1_CONFIG_ERROR: VITE_USE_PACKAGES_D1=true requires VITE_PACKAGES_WORKER_URL."
+      "PACKAGES_D1_CONFIG_ERROR: unified packages require VITE_CORE_WORKER_URL."
     );
   }
-  return flags.packagesWorkerUrl;
+  return unifiedUrl;
 }
 
 export function getDataSourceDiagnostics(): DataSourceDiagnostics {

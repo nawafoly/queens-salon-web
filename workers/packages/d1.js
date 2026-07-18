@@ -39,8 +39,50 @@ export function clearD1WalletRuntimeCaches() {
 }
 
 function packagesDb(ctx) {
-  if (!ctx.packagesDb) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
-  return ctx.packagesDb;
+  const db = ctx.coreDb || ctx.packagesDb;
+  if (!db) throw new AppError(503, "packages_d1:not_configured", "Unified Core D1 database is not configured");
+  return db;
+}
+
+function usesUnifiedCoreClients(ctx) {
+  return Boolean(ctx?.unifiedCore || ctx?.coreDb);
+}
+
+function clientInsertStatement(ctx, row) {
+  const name = optionalText(row.name) || "عميلة";
+  if (usesUnifiedCoreClients(ctx)) {
+    return {
+      sql: `INSERT OR IGNORE INTO clients
+        (id, canonical_client_id, salon_id, name, phone_normalized, firebase_uid, legacy_ids_json, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      params: [
+        row.canonicalClientId,
+        row.canonicalClientId,
+        row.salonId,
+        name,
+        row.phoneNormalized || null,
+        row.firebaseUid || null,
+        jsonArray(row.legacyIds || []),
+        row.createdAt,
+        row.updatedAt,
+      ],
+    };
+  }
+  return {
+    sql: `INSERT OR IGNORE INTO clients
+      (canonical_client_id, salon_id, name, phone_normalized, firebase_uid, legacy_ids_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      row.canonicalClientId,
+      row.salonId,
+      name,
+      row.phoneNormalized || null,
+      row.firebaseUid || null,
+      jsonArray(row.legacyIds || []),
+      row.createdAt,
+      row.updatedAt,
+    ],
+  };
 }
 
 function normalizeLookupPhone(value) {
@@ -104,11 +146,11 @@ function placeholders(count) {
 function clientFromRow(row) {
   if (!row) return null;
   return {
-    canonicalClientId: cleanText(row.canonical_client_id),
+    canonicalClientId: cleanText(row.canonical_client_id || row.id),
     name: optionalText(row.name),
     phoneNormalized: optionalText(row.phone_normalized),
     firebaseUid: optionalText(row.firebase_uid),
-    legacyIds: safeJsonArray(row.legacy_ids_json),
+    legacyIds: safeJsonArray(row.legacy_ids_json || (row.legacy_client_doc_id ? JSON.stringify([row.legacy_client_doc_id]) : "[]")),
   };
 }
 
@@ -322,22 +364,17 @@ async function resolveD1ClientIdentity(ctx, data = {}, options = {}) {
   if (!client && options.allowCreate) {
     canonicalClientId = lookupIds[0] || (firebaseUid ? `uid_${firebaseUid}` : `phone_${phones[0]}`);
     const now = timestampNow();
-    await dbRun(
-      db,
-      `INSERT OR IGNORE INTO clients
-        (canonical_client_id, salon_id, name, phone_normalized, firebase_uid, legacy_ids_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        canonicalClientId,
-        ctx.salonId,
-        optionalText(lookup.name || data.clientName) || null,
-        phones[0] || null,
-        firebaseUid || null,
-        jsonArray(lookupIds.filter((value) => value !== canonicalClientId)),
-        now,
-        now,
-      ]
-    );
+    const insert = clientInsertStatement(ctx, {
+      canonicalClientId,
+      salonId: ctx.salonId,
+      name: optionalText(lookup.name || data.clientName) || "عميلة",
+      phoneNormalized: phones[0] || null,
+      firebaseUid: firebaseUid || null,
+      legacyIds: lookupIds.filter((value) => value !== canonicalClientId),
+      createdAt: now,
+      updatedAt: now,
+    });
+    await dbRun(db, insert.sql, insert.params);
     client = await loadClient(db, ctx.salonId, canonicalClientId);
   }
 
@@ -666,21 +703,16 @@ export async function purchasePackageD1(ctx, data) {
   const allowedServiceIdsJson = cleanText(catalog.allowed_service_ids_json) || "[]";
 
   const statements = [
-    {
-      sql: `INSERT OR IGNORE INTO clients
-        (canonical_client_id, salon_id, name, phone_normalized, firebase_uid, legacy_ids_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [
-        identity.canonicalClientId,
-        ctx.salonId,
-        identity.name || null,
-        identity.phoneNormalized || null,
-        identity.firebaseUid || null,
-        jsonArray(identity.legacyIds || []),
-        now,
-        now,
-      ],
-    },
+    clientInsertStatement(ctx, {
+      canonicalClientId: identity.canonicalClientId,
+      salonId: ctx.salonId,
+      name: identity.name || "عميلة",
+      phoneNormalized: identity.phoneNormalized || null,
+      firebaseUid: identity.firebaseUid || null,
+      legacyIds: identity.legacyIds || [],
+      createdAt: now,
+      updatedAt: now,
+    }),
     {
       sql: `INSERT INTO client_packages
         (id, salon_id, canonical_client_id, package_catalog_id, package_name_snapshot, allowed_service_ids_json,
@@ -1389,15 +1421,16 @@ export async function packagesHealthD1(ctx) {
   return {
     ok: Number(row?.ok || 0) === 1,
     storage: "d1",
-    binding: "PACKAGES_DB",
+    binding: ctx?.unifiedCore ? "CORE_DB" : "PACKAGES_DB",
   };
 }
 
 export async function expireClientPackagesD1(env, salonId = cleanText(env.SALON_ID || "main")) {
-  if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured");
+  const db = env.CORE_DB || env.PACKAGES_DB;
+  if (!db) throw new AppError(503, "packages_d1:not_configured");
   const now = timestampNow();
   const result = await dbRun(
-    env.PACKAGES_DB,
+    db,
     `UPDATE client_packages
         SET status = 'expired', updated_at = ?
       WHERE salon_id = ?

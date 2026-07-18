@@ -6,7 +6,7 @@
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { auth } from "./firebase";
-import { getDataSourceFlags, requirePackagesWorkerUrl } from "../config/dataSourceFlags";
+import { getDataSourceFlags, requireCoreWorkerUrl } from "../config/dataSourceFlags";
 
 export type PackagePurchaseResult = {
   ok: boolean;
@@ -129,16 +129,49 @@ export type PackageCatalogRecord = {
   updatedAt?: string;
 };
 
+export type PackageWalletTimestamp = {
+  seconds?: number;
+  _seconds?: number;
+};
+
+export type PackageWalletItem = {
+  id?: string;
+  packageNameSnapshot?: string;
+  allowedServiceIdsSnapshot?: string[];
+  totalSessions?: number;
+  remainingSessions?: number;
+  reservedSessions?: number;
+  usedSessions?: number;
+  purchasedAt?: string;
+  expiresAt?: string | PackageWalletTimestamp;
+  status?: string;
+  invoiceId?: string;
+  clientId?: string;
+  canonicalClientId?: string;
+  packageCatalogId?: string;
+  [key: string]: unknown;
+};
+
+export type PackageWalletTransaction = {
+  id?: string;
+  clientPackageId?: string;
+  type?: string;
+  bookingId?: string;
+  sessionsDelta?: number;
+  createdAt?: string;
+  [key: string]: unknown;
+};
+
 export type PackageClientWalletResult = {
   ok: boolean;
   clientId: string;
   canonicalClientId: string;
   legacyClientDocId?: string;
   aliasClientIds?: string[];
-  packages: any[];
-  transactions: any[];
+  packages: PackageWalletItem[];
+  transactions: PackageWalletTransaction[];
   services: Record<string, string>;
-  activePackages: any[];
+  activePackages: PackageWalletItem[];
   activePackageCount?: number;
   totalRemainingSessions: number;
   totalUsedSessions: number;
@@ -147,46 +180,73 @@ export type PackageClientWalletResult = {
   warnings?: Array<{ packageId?: string; reason?: string }>;
 };
 
+
+type ApiErrorLike = {
+  code?: unknown;
+  error?: unknown;
+  status?: unknown;
+  message?: unknown;
+};
+
+type ApiEnvelope<T> = {
+  ok?: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+};
+
+function asApiError(error: unknown): ApiErrorLike {
+  if (typeof error === "object" && error !== null) return error as ApiErrorLike;
+  return { message: String(error ?? "") };
+}
+
 function operationId(prefix: string) {
   const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   return `${prefix}_${random}`.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
-const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-packages-api.maedin.workers.dev";
+const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-core-api.maedin.workers.dev";
 
 function normalizePackagesWorkerBaseUrl(value: string) {
   const raw = String(value || "").trim();
   if (!raw) return "";
   try {
     const url = new URL(raw);
-    const packagePathIndex = url.pathname.indexOf("/api/packages");
+    const packagePathIndex = Math.max(
+      url.pathname.indexOf("/api/core/packages"),
+      url.pathname.indexOf("/api/packages")
+    );
     if (packagePathIndex >= 0) url.pathname = url.pathname.slice(0, packagePathIndex) || "/";
     url.search = "";
     url.hash = "";
     return url.toString().replace(/\/+$/, "");
   } catch {
-    return raw.replace(/\/api\/packages(?:\/.*)?$/i, "").replace(/\/+$/, "");
+    return raw
+      .replace(/\/api\/core\/packages(?:\/.*)?$/i, "")
+      .replace(/\/api\/packages(?:\/.*)?$/i, "")
+      .replace(/\/+$/, "");
   }
 }
 
 function packageWorkerBaseUrl() {
   const flags = getDataSourceFlags();
   const configured = flags.usePackagesD1
-    ? requirePackagesWorkerUrl()
-    : flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL;
+    ? requireCoreWorkerUrl()
+    : flags.coreWorkerUrl || flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL;
   // Some production environments stored the full /api/packages path as the
   // worker URL. Keep only the worker origin so request paths are never doubled.
   return normalizePackagesWorkerBaseUrl(configured);
 }
 
 function isDevRuntime() {
-  return Boolean((import.meta as any).env?.DEV);
+  return Boolean((import.meta as ImportMeta & { env?: Record<string, unknown> }).env?.DEV);
 }
 
-function errorDebugSuffix(error: any) {
-  const code = String(error?.code || error?.error || "").trim();
-  const status = Number(error?.status || 0);
-  const message = String(error?.message || "").trim();
+function errorDebugSuffix(error: unknown) {
+  const details = asApiError(error);
+  const code = String(details.code || details.error || "").trim();
+  const status = Number(details.status || 0);
+  const message = String(details.message || "").trim();
   const parts = [
     code ? `code=${code}` : "",
     status ? `status=${status}` : "",
@@ -195,10 +255,11 @@ function errorDebugSuffix(error: any) {
   return parts.length ? ` [${parts.join(" ")}]` : "";
 }
 
-function callableErrorAr(error: any) {
-  const code = String(error?.code || "");
-  const message = String(error?.message || "");
-  const status = Number(error?.status || 0);
+function callableErrorAr(error: unknown) {
+  const details = asApiError(error);
+  const code = String(details.code || "");
+  const message = String(details.message || "");
+  const status = Number(details.status || 0);
   if (code.includes("package_has_reserved_sessions")) {
     return "لا يمكن حذف الباقة لأنها تحتوي على جلسات محجوزة. ألغِ الحجز أو أعِد الجلسة أولًا.";
   }
@@ -215,7 +276,7 @@ function callableErrorAr(error: any) {
     return "تعذر ربط حساب العميلة بمحفظة الباقات. سجّلي الخروج ثم الدخول وحاولي مجددًا.";
   }
   if (code.includes("packages_api:not_found")) {
-    return "واجهة إدارة الباقات على السيرفر غير محدثة. يجب نشر Packages Worker ثم المحاولة مجددًا.";
+    return "واجهة الباقات داخل Core Worker غير محدثة. يجب نشر Core Worker ثم المحاولة مجددًا.";
   }
   if (status === 404) {
     return "تعذر العثور على سجل الباقة أو العميلة المطلوب.";
@@ -253,7 +314,10 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
     if (!user) throw Object.assign(new Error("Authentication is required"), { code: "unauthenticated" });
     const requestOnce = async (forceRefresh = false) => {
       const token = await user.getIdToken(forceRefresh);
-      const url = new URL(`${baseUrl}${path}`);
+      const unifiedPath = path.startsWith("/api/packages")
+        ? path.replace(/^\/api\/packages/, "/api/core/packages")
+        : path;
+      const url = new URL(`${baseUrl}${unifiedPath}`);
       if (method === "GET" || method === "DELETE") {
         Object.entries(payload).forEach(([key, value]) => {
           if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
@@ -267,26 +331,34 @@ async function invoke<T>(path: string, payload: Record<string, unknown> = {}, me
         },
         ...(["POST", "PATCH"].includes(method) ? { body: JSON.stringify(payload) } : {}),
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || body?.ok === false) {
-        const err: any = new Error(body?.message || body?.error || `HTTP ${response.status}`);
-        err.code = body?.error || `http-${response.status}`;
-        err.status = response.status;
-        throw err;
+      const body = await response.json().catch(() => ({})) as ApiEnvelope<T>;
+      if (!response.ok || body.ok === false) {
+        throw Object.assign(
+          new Error(body.message || body.error || `HTTP ${response.status}`),
+          {
+            code: body.error || `http-${response.status}`,
+            status: response.status,
+          }
+        );
       }
-      return (body?.data ?? body) as T;
+      return (body.data ?? body) as T;
     };
     try {
       return await requestOnce(false);
-    } catch (error: any) {
-      if (Number(error?.status || 0) === 401) return await requestOnce(true);
+    } catch (error: unknown) {
+      const details = asApiError(error);
+      if (Number(details.status || 0) === 401) return await requestOnce(true);
       throw error;
     }
-  } catch (error: any) {
-    const normalized = new Error(`${callableErrorAr(error)}${isDevRuntime() ? errorDebugSuffix(error) : ""}`);
-    (normalized as any).code = error?.code || error?.error;
-    (normalized as any).status = error?.status;
-    throw normalized;
+  } catch (error: unknown) {
+    const details = asApiError(error);
+    throw Object.assign(
+      new Error(`${callableErrorAr(error)}${isDevRuntime() ? errorDebugSuffix(error) : ""}`),
+      {
+        code: details.code || details.error,
+        status: details.status,
+      }
+    );
   }
 }
 
@@ -327,9 +399,10 @@ export const PackageOperationsService = {
         payload,
         "DELETE"
       );
-    } catch (error: any) {
-      const status = Number(error?.status || 0);
-      const code = String(error?.code || "");
+    } catch (error: unknown) {
+      const details = asApiError(error);
+      const status = Number(details.status || 0);
+      const code = String(details.code || "");
       if (status !== 404 && status !== 405 && !code.includes("packages_api:not_found")) throw error;
       return invoke<{ id: string; deleted: boolean }>(
         "/api/packages/admin/delete-client-package",

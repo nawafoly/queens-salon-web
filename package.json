@@ -8,7 +8,7 @@
     "dev:full": "node scripts/dev-with-partners.mjs",
     "dev:vite": "vite",
     "dev:partners": "wrangler dev --config wrangler.partners.jsonc --local --port 8787 --show-interactive-dev-session=false",
-    "dev:packages": "wrangler dev --config wrangler.packages.jsonc --local --port 8797 --show-interactive-dev-session=false",
+    "dev:packages": "npm run dev:core",
     "audit:client-identities": "node scripts/audit-client-identities.mjs",
     "repair:client-identities": "node scripts/repair-client-identities.mjs",
     "check:packages:d1-only": "node scripts/check-packages-d1-only.mjs",
@@ -42,7 +42,14 @@
     "test:hr:worker": "node --test workers/hr-core-worker.test.mjs",
     "verify:phase6": "npm run check:packages:d1-only && npm run check:core:d1-only && npm run check:frontend-core-migration && npm run check:hr:d1-only && npm run check:settings:d1-only && npm run check:files:r2-only && npm run test:packages:worker && npm run test:core:worker && npm run test:frontend:core && npm run test:hr:worker && npm run build",
     "test:attendance:worker": "node --test workers/attendance-security.test.mjs",
-    "verify:client-workers": "node scripts/verify-client-booking-workers.mjs"
+    "verify:client-workers": "node scripts/verify-client-booking-workers.mjs",
+    "test:core:packages": "node --test workers/core-packages-unification.test.mjs workers/packages-core-migration.test.mjs workers/core-client-dedup.test.mjs",
+    "verify:core:unified": "npm run check:packages:d1-only && npm run check:core:d1-only && npm run test:packages:worker && npm run test:core:worker && npm run test:core:packages && npm run test:frontend:core && npm run build",
+    "migrate:packages-to-core:dry": "node scripts/migrate-packages-d1-to-core.mjs",
+    "migrate:packages-to-core": "node scripts/migrate-packages-d1-to-core.mjs --apply",
+    "test:core:dedupe": "node --test workers/core-client-dedup.test.mjs",
+    "dedupe:core-clients:dry": "node scripts/dedupe-core-clients.mjs",
+    "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

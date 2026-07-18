@@ -1,6 +1,8 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
 import { resolveActorRole, verifyFirebaseIdToken } from '../packages/auth.js';
+import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
+import { expireClientPackagesD1 } from '../packages/d1.js';
 import {
   ADMIN_ROLES,
   OPERATIONS_ROLES,
@@ -738,6 +740,25 @@ async function dispatch(ctx, route, method, body, query) {
 }
 
 export async function handleRequest(request, env) {
+  const incomingUrl = new URL(request.url);
+  if (
+    incomingUrl.pathname === "/api/core/packages" ||
+    incomingUrl.pathname.startsWith("/api/core/packages/") ||
+    incomingUrl.pathname === "/api/packages" ||
+    incomingUrl.pathname.startsWith("/api/packages/")
+  ) {
+    const rewrittenUrl = new URL(incomingUrl);
+    if (rewrittenUrl.pathname.startsWith("/api/core/packages")) {
+      rewrittenUrl.pathname = rewrittenUrl.pathname.replace(/^\/api\/core\/packages/, "/api/packages");
+    }
+    const forwarded = new Request(rewrittenUrl.toString(), request);
+    return handleUnifiedPackagesRequest(forwarded, {
+      ...env,
+      PACKAGES_DB: env.CORE_DB,
+      PACKAGES_UNIFIED_CORE: "true",
+    });
+  }
+
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -788,5 +809,8 @@ export default {
         message: normalized.message,
       });
     }
+  },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }));
   },
 };

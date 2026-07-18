@@ -82,8 +82,9 @@ export async function createClient(db, salonId, data) {
   );
   if (existing) return existing;
 
+  const rowId = requiredId(data.id || generatedId("client"));
   const row = {
-    id: requiredId(data.id || generatedId("client")),
+    id: rowId,
     salon_id: salonId,
     name: requiredText(data.name, "name"),
     phone_normalized: phone,
@@ -93,6 +94,10 @@ export async function createClient(db, salonId, data) {
     notes: optionalText(data.notes || data.note) || null,
     vip: activeFlag(data.vip, 0),
     legacy_client_doc_id: optionalText(data.legacyClientDocId || data.legacy_client_doc_id) || null,
+    canonical_client_id: rowId,
+    legacy_ids_json: JSON.stringify(
+      [data.legacyClientDocId || data.legacy_client_doc_id].filter(Boolean)
+    ),
     created_at: now,
     updated_at: now,
   };
@@ -100,8 +105,9 @@ export async function createClient(db, salonId, data) {
   await dbRun(
     db,
     `INSERT INTO clients
-      (id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, salon_id, name, phone_normalized, email, firebase_uid, status, notes, vip, legacy_client_doc_id,
+       canonical_client_id, legacy_ids_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.salon_id,
@@ -113,6 +119,8 @@ export async function createClient(db, salonId, data) {
       row.notes,
       row.vip,
       row.legacy_client_doc_id,
+      row.canonical_client_id,
+      row.legacy_ids_json,
       row.created_at,
       row.updated_at,
     ]

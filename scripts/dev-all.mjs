@@ -17,19 +17,6 @@ const processes = [
     ],
   },
   {
-    name: "packages",
-    args: [
-      "wrangler",
-      "dev",
-      "--config",
-      "wrangler.packages.jsonc",
-      "--local",
-      "--port",
-      "8797",
-      "--show-interactive-dev-session=false",
-    ],
-  },
-  {
     name: "core",
     args: [
       "wrangler",

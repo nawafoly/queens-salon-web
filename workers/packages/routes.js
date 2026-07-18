@@ -83,7 +83,7 @@ export async function withActor(request, env, body) {
   const salonId = getSalonId(body || {}, env);
   if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
   const role = await resolveActorRole(env, salonId, identity);
-  return { identity, packagesDb: env.PACKAGES_DB, salonId, role };
+  return { identity, packagesDb: env.PACKAGES_DB, salonId, role, unifiedCore: env.PACKAGES_UNIFIED_CORE === "true" };
 }
 
 async function updateClientPackageAdminD1(ctx, data) {
@@ -194,7 +194,7 @@ export async function handleRequest(request, env) {
   if (!handler) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
   if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
   const ctx = routeRecord.public
-    ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null }
+    ? { packagesDb: env.PACKAGES_DB, salonId: getSalonId(body || {}, env), role: "guest", identity: null, unifiedCore: env.PACKAGES_UNIFIED_CORE === "true" }
     : await withActor(request, env, body);
   const data = await handler(ctx, body);
   if (["POST", "PATCH", "DELETE"].includes(request.method) && pathname !== "/api/packages/client-wallet") {

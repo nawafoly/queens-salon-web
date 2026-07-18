@@ -1878,8 +1878,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         }))
         .filter((x: any) => {
           const source = (wallet.packages || []).find((p: any) => `spkg:${p.id}` === x.id);
-          const expiry = Number(source?.expiresAt?.seconds || source?.expiresAt?._seconds || 0) * 1000;
-          return x.title && x.allowedServiceIds.length > 0 && source?.status === "active" && x.remainingSessions > 0 && (!expiry || expiry >= now);
+          const rawExpiry = source?.expiresAt;
+          const expiry = typeof rawExpiry === "string"
+            ? Date.parse(rawExpiry)
+            : Number(rawExpiry?.seconds || rawExpiry?._seconds || 0) * 1000;
+          return x.title && x.allowedServiceIds.length > 0 && source?.status === "active" && x.remainingSessions > 0 && (!Number.isFinite(expiry) || !expiry || expiry >= now);
         });
 
       setSessionPackageOptions(rows);

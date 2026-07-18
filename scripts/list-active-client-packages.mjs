@@ -1,4 +1,4 @@
-const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-packages-api.maedin.workers.dev";
+const DEFAULT_CORE_WORKER_URL = "https://queens-salon-core-api.maedin.workers.dev";
 
 const DISPLAY_FIELDS = [
   "clientName",
@@ -24,9 +24,9 @@ function requiredEnv(name) {
 
 function baseUrl() {
   return String(
-    process.env.PACKAGES_WORKER_URL ||
-    process.env.VITE_PACKAGES_WORKER_URL ||
-    DEFAULT_PACKAGES_WORKER_URL
+    process.env.CORE_WORKER_URL ||
+    process.env.VITE_CORE_WORKER_URL ||
+    DEFAULT_CORE_WORKER_URL
   ).trim().replace(/\/+$/, "");
 }
 
@@ -35,7 +35,7 @@ function publicRow(row) {
 }
 
 const token = requiredEnv("FIREBASE_ID_TOKEN");
-const url = new URL(`${baseUrl()}/api/packages/admin/list-client-packages`);
+const url = new URL(`${baseUrl()}/api/core/packages/admin/list-client-packages`);
 const salonId = String(process.env.SALON_ID || "").trim();
 if (salonId) url.searchParams.set("salonId", salonId);
 
