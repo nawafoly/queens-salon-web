@@ -6,7 +6,7 @@
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { auth } from "./firebase";
-import { getDataSourceFlags, requireCoreWorkerUrl } from "../config/dataSourceFlags";
+import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 
 export type PackagePurchaseResult = {
   ok: boolean;
@@ -205,8 +205,6 @@ function operationId(prefix: string) {
   return `${prefix}_${random}`.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
-const DEFAULT_PACKAGES_WORKER_URL = "https://queens-salon-core-api.maedin.workers.dev";
-
 function normalizePackagesWorkerBaseUrl(value: string) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -229,13 +227,7 @@ function normalizePackagesWorkerBaseUrl(value: string) {
 }
 
 function packageWorkerBaseUrl() {
-  const flags = getDataSourceFlags();
-  const configured = flags.usePackagesD1
-    ? requireCoreWorkerUrl()
-    : flags.coreWorkerUrl || flags.packagesWorkerUrl || DEFAULT_PACKAGES_WORKER_URL;
-  // Some production environments stored the full /api/packages path as the
-  // worker URL. Keep only the worker origin so request paths are never doubled.
-  return normalizePackagesWorkerBaseUrl(configured);
+  return normalizePackagesWorkerBaseUrl(requireCoreWorkerUrl());
 }
 
 function isDevRuntime() {

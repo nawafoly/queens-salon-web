@@ -11,7 +11,6 @@ import {
   type PackageSagaItem,
   type PackageSagaReservation,
 } from "../packageBookingSaga";
-import { getDataSourceFlags } from "../../config/dataSourceFlags";
 import {
   coreBookingToLegacy,
   coreServiceToLegacy,
@@ -156,14 +155,7 @@ async function createCoreBookingWithOptionalPackageSaga(
   createCoreBooking: (reservations: PackageSagaReservation[]) => ReturnType<typeof CoreBookingService.create>
 ) {
   if (!packageItems.length) return createCoreBooking([]);
-
-  if (!getDataSourceFlags().usePackagesD1) {
-    throw new Error(
-      "PACKAGES_D1_REQUIRED: package booking through Core D1 requires VITE_USE_PACKAGES_D1=true."
-    );
-  }
-
-  return createBookingWithPackageSaga({
+return createBookingWithPackageSaga({
     bookingId,
     packageItems,
     createCoreBooking,

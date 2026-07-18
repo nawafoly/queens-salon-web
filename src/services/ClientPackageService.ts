@@ -1,15 +1,11 @@
 import {
-  collection,
-  getDocs,
-  query,
-  Timestamp,
-  where,
-} from "firebase/firestore";
-import { db } from "./firebase";
-
-const SALON_ID = "main";
-const PACKAGES_PATH = ["salons", SALON_ID, "client_packages"] as const;
-const TRANSACTIONS_PATH = ["salons", SALON_ID, "client_package_transactions"] as const;
+  PackageOperationsService,
+  type PackageClientWalletResult,
+  type PackageSessionDashboardPackage,
+  type PackageSessionDashboardTransaction,
+  type PackageWalletItem,
+  type PackageWalletTransaction,
+} from "./PackageOperationsService";
 
 export type ClientPackageStatus = "active" | "exhausted" | "expired" | "cancelled";
 
@@ -36,15 +32,15 @@ export type ClientPackage = {
   reservedSessions: number;
   usedSessions: number;
   purchasePrice: number;
-  purchasedAt: Timestamp | any;
-  expiresAt?: Timestamp | any;
+  purchasedAt: unknown;
+  expiresAt?: unknown;
   status: ClientPackageStatus;
   invoiceId: string;
   invoiceDocumentId?: string;
   invoiceNumber?: string;
   catalogSnapshot: ClientPackageCatalogSnapshot;
-  createdAt?: Timestamp | any;
-  updatedAt?: Timestamp | any;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 };
 
 export type ClientPackageTransactionType =
@@ -74,107 +70,200 @@ export type ClientPackageTransaction = {
   idempotencyKey: string;
   reason?: string;
   createdBy: string;
-  createdAt: Timestamp | any;
+  createdAt: unknown;
 };
 
-function timestampMillis(value: any): number {
-  if (typeof value?.toMillis === "function") return value.toMillis();
-  if (typeof value?.seconds === "number") return value.seconds * 1000;
-  return 0;
+function text(value: unknown): string {
+  return String(value ?? "").trim();
 }
 
-function normalizeClientPackage(id: string, raw: any): ClientPackage {
-  const totalSessions = Math.max(0, Number(raw?.totalSessions || 0));
-  const usedSessions = Math.max(0, Number(raw?.usedSessions || 0));
-  const reservedSessions = Math.max(0, Number(raw?.reservedSessions || 0));
+function numberValue(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function statusValue(value: unknown): ClientPackageStatus {
+  const status = text(value);
+  if (
+    status === "active" ||
+    status === "exhausted" ||
+    status === "expired" ||
+    status === "cancelled"
+  ) {
+    return status;
+  }
+  return "active";
+}
+
+function normalizeWalletPackage(
+  raw: PackageWalletItem | PackageSessionDashboardPackage
+): ClientPackage {
+  const row = raw as PackageWalletItem & PackageSessionDashboardPackage & Record<string, unknown>;
+  const allowedServiceIds = Array.isArray(row.allowedServiceIdsSnapshot)
+    ? row.allowedServiceIdsSnapshot.map(text).filter(Boolean)
+    : Array.isArray(row.allowedServiceIds)
+      ? (row.allowedServiceIds as unknown[]).map(text).filter(Boolean)
+      : Array.isArray(row.serviceIds)
+        ? (row.serviceIds as unknown[]).map(text).filter(Boolean)
+        : [];
+
+  const totalSessions = Math.max(0, numberValue(row.totalSessions));
+  const usedSessions = Math.max(0, numberValue(row.usedSessions));
+  const reservedSessions = Math.max(0, numberValue(row.reservedSessions));
   const remainingSessions = Math.max(
     0,
-    Number(raw?.remainingSessions ?? totalSessions - usedSessions - reservedSessions)
+    numberValue(
+      row.remainingSessions ??
+        Math.max(0, totalSessions - usedSessions - reservedSessions)
+    )
   );
-  const allowedServiceIdsSnapshot = Array.isArray(raw?.allowedServiceIdsSnapshot)
-    ? raw.allowedServiceIdsSnapshot
-    : Array.isArray(raw?.serviceIds)
-      ? raw.serviceIds
-      : [];
-  const packageNameSnapshot = String(raw?.packageNameSnapshot || raw?.packageName || "").trim();
-  const purchasePrice = Math.max(0, Number(raw?.purchasePrice ?? raw?.pricePaid ?? 0));
-  const status: ClientPackageStatus =
-    raw?.status === "active" ||
-    raw?.status === "exhausted" ||
-    raw?.status === "expired" ||
-    raw?.status === "cancelled"
-      ? raw.status
-      : raw?.active === false
-        ? "cancelled"
-        : remainingSessions <= 0 && reservedSessions <= 0
-          ? "exhausted"
-          : "active";
+  const packageName = text(
+    row.packageNameSnapshot ?? row.packageName ?? row.name
+  );
 
   return {
-    id,
-    clientId: String(raw?.clientId || "").trim(),
-    legacyClientDocId: String(raw?.legacyClientDocId || "").trim() || undefined,
-    phoneSnapshot: String(raw?.phoneSnapshot || "").trim() || undefined,
-    packageCatalogId: String(raw?.packageCatalogId || raw?.packageId || "").trim(),
-    packageNameSnapshot,
+    id: text(row.id) || undefined,
+    clientId: text(row.canonicalClientId ?? row.clientId),
+    legacyClientDocId: text(row.legacyClientDocId) || undefined,
+    phoneSnapshot: text(row.phoneSnapshot ?? row.phone) || undefined,
+    packageCatalogId: text(row.packageCatalogId ?? row.packageId),
+    packageNameSnapshot: packageName,
     packageDescriptionSnapshot:
-      String(raw?.packageDescriptionSnapshot || "").trim() || undefined,
-    allowedServiceIdsSnapshot,
+      text(row.packageDescriptionSnapshot ?? row.description) || undefined,
+    allowedServiceIdsSnapshot: allowedServiceIds,
     totalSessions,
     remainingSessions,
     reservedSessions,
     usedSessions,
-    purchasePrice,
-    purchasedAt: raw?.purchasedAt || raw?.createdAt,
-    expiresAt: raw?.expiresAt,
-    status,
-    invoiceId: String(raw?.invoiceId || "").trim(),
-    invoiceDocumentId: String(raw?.invoiceDocumentId || "").trim() || undefined,
-    invoiceNumber: String(raw?.invoiceNumber || "").trim() || undefined,
-    catalogSnapshot: raw?.catalogSnapshot || {
-      name: packageNameSnapshot,
+    purchasePrice: Math.max(
+      0,
+      numberValue(row.purchasePrice ?? row.pricePaid ?? row.price)
+    ),
+    purchasedAt: row.purchasedAt ?? row.createdAt ?? "",
+    expiresAt: row.expiresAt,
+    status: statusValue(row.status),
+    invoiceId: text(row.invoiceId),
+    invoiceDocumentId: text(row.invoiceDocumentId) || undefined,
+    invoiceNumber: text(row.invoiceNumber) || undefined,
+    catalogSnapshot: {
+      name: packageName,
+      description:
+        text(row.packageDescriptionSnapshot ?? row.description) || undefined,
       sessionsCount: totalSessions,
-      price: purchasePrice,
-      allowedServiceIds: allowedServiceIdsSnapshot,
+      price: Math.max(
+        0,
+        numberValue(row.purchasePrice ?? row.pricePaid ?? row.price)
+      ),
+      allowedServiceIds,
+      validityDays:
+        row.validityDays == null
+          ? undefined
+          : Math.max(1, Math.floor(numberValue(row.validityDays))),
     },
-    createdAt: raw?.createdAt,
-    updatedAt: raw?.updatedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
+function normalizeTransaction(
+  raw: PackageWalletTransaction | PackageSessionDashboardTransaction
+): ClientPackageTransaction {
+  const row = raw as PackageWalletTransaction &
+    PackageSessionDashboardTransaction &
+    Record<string, unknown>;
+  return {
+    id: text(row.id) || undefined,
+    clientPackageId: text(row.clientPackageId),
+    clientId: text(row.canonicalClientId ?? row.clientId),
+    type: (text(row.type) || "admin_adjustment") as ClientPackageTransactionType,
+    bookingId: text(row.bookingId) || undefined,
+    invoiceId: text(row.invoiceId) || undefined,
+    serviceId: text(row.serviceId) || undefined,
+    sessionsDelta: numberValue(row.sessionsDelta),
+    remainingBefore: numberValue(row.remainingBefore),
+    remainingAfter: numberValue(row.remainingAfter),
+    reservedBefore: numberValue(row.reservedBefore),
+    reservedAfter: numberValue(row.reservedAfter),
+    usedBefore: numberValue(row.usedBefore),
+    usedAfter: numberValue(row.usedAfter),
+    idempotencyKey: text(row.idempotencyKey ?? row.id) || "core-d1",
+    reason: text(row.reason) || undefined,
+    createdBy: text(row.createdByUid ?? row.createdBy) || "core-d1",
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+const transactionCache = new Map<string, ClientPackageTransaction[]>();
+
+function cacheTransactions(rows: ClientPackageTransaction[]): void {
+  const grouped = new Map<string, ClientPackageTransaction[]>();
+  for (const row of rows) {
+    const key = text(row.clientPackageId);
+    if (!key) continue;
+    const current = grouped.get(key) ?? [];
+    current.push(row);
+    grouped.set(key, current);
+  }
+  grouped.forEach((value, key) => transactionCache.set(key, value));
+}
+
 export const ClientPackageService = {
+  normalizePackages(
+    rows: Array<PackageWalletItem | PackageSessionDashboardPackage>
+  ): ClientPackage[] {
+    return rows.map((row) => normalizeWalletPackage(row));
+  },
+
+  async getWalletByClient(clientIdRaw: string): Promise<PackageClientWalletResult> {
+    const clientId = text(clientIdRaw);
+    if (!clientId) {
+      return {
+        ok: true,
+        clientId: "",
+        canonicalClientId: "",
+        packages: [],
+        transactions: [],
+        services: {},
+        activePackages: [],
+        totalRemainingSessions: 0,
+        totalUsedSessions: 0,
+        totalReservedSessions: 0,
+      };
+    }
+    const wallet = await PackageOperationsService.clientWallet({ clientId });
+    cacheTransactions(
+      (wallet.transactions ?? []).map((row) => normalizeTransaction(row))
+    );
+    return wallet;
+  },
+
   async getAll(): Promise<ClientPackage[]> {
-    const snap = await getDocs(collection(db, ...PACKAGES_PATH));
-    return snap.docs
-      .map((doc) => normalizeClientPackage(doc.id, doc.data()))
-      .sort((a, b) => timestampMillis(b.purchasedAt) - timestampMillis(a.purchasedAt));
+    const dashboard = await PackageOperationsService.sessionDashboard();
+    const transactions = (dashboard.transactions ?? []).map((row) =>
+      normalizeTransaction(row)
+    );
+    cacheTransactions(transactions);
+    return this.normalizePackages(dashboard.packages ?? []);
   },
 
   async getByClient(clientIdRaw: string): Promise<ClientPackage[]> {
-    const clientId = String(clientIdRaw || "").trim();
-    if (!clientId) return [];
-    const snap = await getDocs(
-      query(collection(db, ...PACKAGES_PATH), where("clientId", "==", clientId))
-    );
-    return snap.docs
-      .map((doc) => normalizeClientPackage(doc.id, doc.data()))
-      .sort((a, b) => timestampMillis(b.purchasedAt) - timestampMillis(a.purchasedAt));
+    const wallet = await this.getWalletByClient(clientIdRaw);
+    return this.normalizePackages(wallet.packages ?? []);
   },
 
-  async getTransactions(clientPackageIdRaw: string): Promise<ClientPackageTransaction[]> {
-    const clientPackageId = String(clientPackageIdRaw || "").trim();
+  async getTransactions(
+    clientPackageIdRaw: string
+  ): Promise<ClientPackageTransaction[]> {
+    const clientPackageId = text(clientPackageIdRaw);
     if (!clientPackageId) return [];
-    const snap = await getDocs(
-      query(
-        collection(db, ...TRANSACTIONS_PATH),
-        where("clientPackageId", "==", clientPackageId)
-      )
-    );
-    return snap.docs
-      .map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<ClientPackageTransaction, "id">),
-      }))
-      .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
+    const cached = transactionCache.get(clientPackageId);
+    if (cached) return [...cached];
+
+    const dashboard = await PackageOperationsService.sessionDashboard();
+    const rows = (dashboard.transactions ?? [])
+      .map((row) => normalizeTransaction(row))
+      .filter((row) => row.clientPackageId === clientPackageId);
+    transactionCache.set(clientPackageId, rows);
+    return rows;
   },
 };

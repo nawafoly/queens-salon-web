@@ -15,11 +15,7 @@ import type {
   CorePayment,
   CoreStaffAvailability,
 } from "../types/coreApi";
-import {
-  getDataSourceFlags,
-  requireCoreWorkerUrl,
-} from "../config/dataSourceFlags";
-import { firestoreBookingDataSource } from "./bookingDataSources/firestoreBookingDataSource";
+import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 import { coreD1BookingDataSource } from "./bookingDataSources/coreD1BookingDataSource";
 
 export type BookingClientCandidate = CoreClient & {
@@ -100,10 +96,5 @@ export function resolveCoreBookingDataSource(): BookingDataSource {
 }
 
 export function resolveBookingDataSource(): BookingDataSource {
-  const flags = getDataSourceFlags();
-  if (flags.useCoreD1) {
-    // Explicit cutover only. Never fall back to Firestore after a D1 failure.
-    return resolveCoreBookingDataSource();
-  }
-  return firestoreBookingDataSource;
+  return resolveCoreBookingDataSource();
 }

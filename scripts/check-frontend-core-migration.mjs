@@ -20,6 +20,18 @@ const forbiddenChecks = [
       /doc\([^\n]*["']availability_days["']/,
     ],
   },
+  {
+    file: "src/services/firestoreOffers.ts",
+    forbidden: [/firebase\/firestore/, /getDataSourceFlags/],
+  },  {
+    file: "src/pages/Offers.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firebase/,
+      /onSnapshot/,
+      /service_packages/,
+    ],
+  },
 ];
 
 const requiredChecks = [
@@ -33,7 +45,7 @@ const requiredChecks = [
   },
   {
     file: "src/services/firestoreOffers.ts",
-    required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreOfferService/],
+    required: [/CoreOfferService/],
   },
   {
     file: "src/services/firestoreBookings.ts",

@@ -16,13 +16,34 @@ import {
   faEyeSlash,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ✅ Realtime from Firestore
-import { onSnapshot, collection, query, orderBy } from "firebase/firestore";
-import { db } from "../services/firebase";
 
 // ✅ Modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
-import type { ServicePackageDoc } from "../services/firestorePackages";
+import {
+  listOffers,
+  type Offer as CoreOffer,
+} from "../services/firestoreOffers";
+import { CoreCatalogService } from "../services/CoreCatalogService";
+import {
+  PackageService,
+  type Package as CorePackage,
+} from "../services/PackageService";
+
+type PublicPackageOffer = {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  active: boolean;
+  usageCount?: number;
+  startDate?: string;
+  endDate?: string;
+  serviceIds: string[];
+  services: Array<{ serviceId: string; serviceName: string }>;
+  finalPrice: number;
+  sessionsCount: number;
+  validityDays?: number;
+};
 
 type DiscountType = "percent" | "fixed";
 type OfferAppliesTo = "all" | "services";
@@ -122,15 +143,15 @@ function isActiveNow(o: UiOffer) {
   return true;
 }
 
-function isPackageActiveNow(p: ServicePackageDoc) {
+function isPackageActiveNow(p: PublicPackageOffer) {
   if (!p) return false;
   if (p.active === false) return false;
   if (!String(p.name || "").trim()) return false;
-  if (Number(p.totalDurationMin || 0) <= 0) return false;
+  if (Number(p.sessionsCount || 0) <= 0) return false;
 
   const today = todayISO();
-  const start = toISODate((p as any)?.startDate);
-  const end = toISODate((p as any)?.endDate);
+  const start = toISODate(p.startDate);
+  const end = toISODate(p.endDate);
   if (start && today < start) return false;
   if (end && today > end) return false;
   return true;
@@ -221,7 +242,7 @@ function normalizeOfferDoc(docId: string, raw: any): UiOffer {
 
 const Offers = () => {
   const [offers, setOffers] = useState<UiOffer[]>([]);
-  const [packageOffers, setPackageOffers] = useState<ServicePackageDoc[]>([]);
+  const [packageOffers, setPackageOffers] = useState<PublicPackageOffer[]>([]);
   const [serviceNameById, setServiceNameById] = useState<Record<string, string>>({});
   const [showEnded, setShowEnded] = useState(false);
 
@@ -288,88 +309,50 @@ const Offers = () => {
   };
 
   useEffect(() => {
-    const q1 = query(
-      collection(db, "salons", SALON_ID, "offers"),
-      orderBy("createdAt", "desc")
-    );
+    let cancelled = false;
 
-    const unsub1 = onSnapshot(
-      q1,
-      (snap) => {
-        const mapped = snap.docs.map((d) =>
-          normalizeOfferDoc(d.id, d.data())
-        );
+    listOffers(SALON_ID, "core")
+      .then((rows) => {
+        if (cancelled) return;
+        const mapped = rows
+          .map((row: CoreOffer) => normalizeOfferDoc(row.id, row))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setOffers(mapped);
-      },
-      (err) => {
-        console.warn(
-          "offers snapshot (orderBy) failed, fallback:",
-          err?.message || err
-        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Core offers load failed:", error);
+        setOffers([]);
+      });
 
-        const q2 = query(collection(db, "salons", SALON_ID, "offers"));
-        const unsub2 = onSnapshot(
-          q2,
-          (snap) => {
-            const mapped = snap.docs.map((d) =>
-              normalizeOfferDoc(d.id, d.data())
-            );
-            mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            setOffers(mapped);
-          },
-          (err2) => {
-            console.error("❌ offers snapshot error:", err2);
-            setOffers([]);
-          }
-        );
-
-        unsub1();
-        return unsub2;
-      }
-    );
-
-    return () => unsub1();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const q1 = query(
-      collection(db, "salons", SALON_ID, "services"),
-      orderBy("name", "asc")
-    );
+    let cancelled = false;
 
-    const unsub1 = onSnapshot(
-      q1,
-      (snap) => {
+    CoreCatalogService.listServices({ activeOnly: true })
+      .then((rows) => {
+        if (cancelled) return;
         const next: Record<string, string> = {};
-        snap.docs.forEach((d) => {
-          const id = String(d.id || "").trim();
-          const raw = d.data() as any;
-          const name = String(raw?.name || "").trim();
+        rows.forEach((service) => {
+          const id = String(service.id || "").trim();
+          const name = String(service.name || "").trim();
           if (id && name) next[id] = name;
         });
         setServiceNameById(next);
-      },
-      () => {
-        const q2 = query(collection(db, "salons", SALON_ID, "services"));
-        const unsub2 = onSnapshot(
-          q2,
-          (snap) => {
-            const next: Record<string, string> = {};
-            snap.docs.forEach((d) => {
-              const id = String(d.id || "").trim();
-              const raw = d.data() as any;
-              const name = String(raw?.name || "").trim();
-              if (id && name) next[id] = name;
-            });
-            setServiceNameById(next);
-          },
-          () => setServiceNameById({})
-        );
-        return unsub2;
-      }
-    );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Core services load failed:", error);
+        setServiceNameById({});
+      });
 
-    return () => unsub1();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const offerServiceNamesById = useMemo(() => {
@@ -386,32 +369,63 @@ const Offers = () => {
   }, [offers, serviceNameById]);
 
   useEffect(() => {
-    const q1 = query(
-      collection(db, "salons", SALON_ID, "service_packages"),
-      orderBy("updatedAt", "desc")
-    );
+    let cancelled = false;
 
-    const unsub1 = onSnapshot(
-      q1,
-      (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ServicePackageDoc[];
-        setPackageOffers(rows);
-      },
-      () => {
-        const q2 = query(collection(db, "salons", SALON_ID, "service_packages"));
-        const unsub2 = onSnapshot(
-          q2,
-          (snap) => {
-            const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ServicePackageDoc[];
-            setPackageOffers(rows);
-          },
-          () => setPackageOffers([])
+    Promise.all([
+      PackageService.getActive(),
+      CoreCatalogService.listServices({ activeOnly: true }),
+    ])
+      .then(([packages, services]) => {
+        if (cancelled) return;
+
+        const serviceNames = new Map(
+          services.map((service) => [
+            String(service.id || "").trim(),
+            String(service.name || "").trim(),
+          ])
         );
-        return unsub2;
-      }
-    );
 
-    return () => unsub1();
+        const rows: PublicPackageOffer[] = packages.map((pkg: CorePackage) => {
+          const serviceIds = Array.isArray(pkg.serviceIds)
+            ? pkg.serviceIds
+                .map((id) => String(id || "").trim())
+                .filter(Boolean)
+            : [];
+
+          return {
+            id: String(pkg.id || "").trim(),
+            name: String(pkg.name || "").trim(),
+            description: String(pkg.description || "").trim() || undefined,
+            imageUrl: String(pkg.imageUrl || "").trim() || undefined,
+            active: pkg.active !== false && pkg.saleEnabled !== false,
+            usageCount: 0,
+            startDate: String(pkg.startsAt || "").trim() || undefined,
+            endDate: String(pkg.endsAt || "").trim() || undefined,
+            serviceIds,
+            services: serviceIds.map((serviceId) => ({
+              serviceId,
+              serviceName: serviceNames.get(serviceId) || serviceId,
+            })),
+            finalPrice: Math.max(0, Number(pkg.price || 0)),
+            sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
+            validityDays:
+              pkg.validityDays == null
+                ? undefined
+                : Math.max(1, Number(pkg.validityDays)),
+          };
+        });
+
+        setPackageOffers(rows);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Core package catalog load failed:", error);
+        setPackageOffers([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const { activeNow, endedOrPaused, activeCount, maxPercent } = useMemo(() => {
@@ -666,18 +680,15 @@ const Offers = () => {
 
               <div className="cards-grid-2">
                 {activePackages.map((p, index) => {
-                  const pkgStart = toISODate((p as any)?.startDate);
-                  const pkgEnd = toISODate((p as any)?.endDate);
-                  const packageDescription = String((p as any).description || "").trim();
-                  const packageBaseTotal = Math.max(0, Number((p as any).baseTotalPrice || 0));
+                  const pkgStart = toISODate(p.startDate);
+                  const pkgEnd = toISODate(p.endDate);
+                  const packageDescription = String(p.description || "").trim();
                   const packageFinal = Math.max(0, Number(p.finalPrice || 0));
-                  const packageDuration = Math.max(0, Number(p.totalDurationMin || 0));
-                  const packageServiceNames =
-                    Array.isArray((p as any).services) && (p as any).services.length > 0
-                      ? (p as any).services
-                          .map((s: any) => String(s?.serviceName || "").trim())
-                          .filter(Boolean)
-                      : [];
+                  const packageServiceNames = Array.isArray(p.services)
+                    ? p.services
+                        .map((service) => String(service.serviceName || "").trim())
+                        .filter(Boolean)
+                    : [];
                   return (
                     <div key={`pkg-public-${p.id}`}>
                       <div
@@ -694,12 +705,15 @@ const Offers = () => {
                           <h3 className="offer-title">{String(p.name || "باكيج")}</h3>
 
                           <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
-                            <span className="discount-badge">خصم {Number(p.discountPercent || 0).toFixed(1)}%</span>
+                            <span className="discount-badge">
+                              {Math.max(1, Number(p.sessionsCount || 1))} جلسات
+                            </span>
                             <span className="save-badge">{packageFinal} ريال</span>
-                            {packageBaseTotal > packageFinal ? (
-                              <span className="save-badge is-previous">{packageBaseTotal} ريال</span>
+                            {p.validityDays ? (
+                              <span className="save-badge">
+                                صلاحية {p.validityDays} يوم
+                              </span>
                             ) : null}
-                            <span className="save-badge">{packageDuration} د</span>
                             <span className="status-pill active">فعال</span>
                             <span className="offer-scope-pill scope-services">باكيج متكامل</span>
                           </div>

@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  query as firestoreQuery,
-  serverTimestamp,
-  setDoc,
-  where,
-} from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
+import { CoreSettingsService } from "../../services/CoreSettingsService";
 import { PackageService, type Package } from "../../services/PackageService";
 import type { ClientPackage } from "../../services/ClientPackageService";
 import {
@@ -66,17 +56,6 @@ function money(value: unknown) {
 
 function normalizePhone(value: unknown) {
   return normalizeAdminPackagePhone(value);
-}
-
-function phoneLookupValues(value: unknown) {
-  const normalized = normalizePhone(value);
-  if (!normalized) return [];
-  const values = new Set([normalized]);
-  if (/^05\d{8}$/.test(normalized)) {
-    values.add(`966${normalized.slice(1)}`);
-    values.add(`+966${normalized.slice(1)}`);
-  }
-  return [...values];
 }
 
 function clientLookupPayload(client: any, fallbackPhone: string) {
@@ -309,12 +288,17 @@ export default function AdminPackageFlow(props: {
   useEffect(() => {
     Promise.all([
       PackageService.getActive(),
-      getDoc(doc(db, "salons", "main", "settings", "finance")),
+      CoreSettingsService.get<{ taxRate?: number; vatRate?: number }>("finance"),
     ])
       .then(([rows, finance]) => {
         setCatalog(rows);
-        const raw = finance.data() || {};
-        setTaxRate(Math.max(0, Math.min(100, Number(raw.taxRate ?? raw.vatRate ?? 0) || 0)));
+        const raw = finance?.value || {};
+        setTaxRate(
+          Math.max(
+            0,
+            Math.min(100, Number(raw.taxRate ?? raw.vatRate ?? 0) || 0)
+          )
+        );
       })
       .catch(() => setCatalog([]));
   }, []);
@@ -445,73 +429,72 @@ export default function AdminPackageFlow(props: {
 
   async function createClientProfile() {
     if (!clientName || !clientPhone) {
-      setError("أدخلي اسم العميلة ورقم الجوال أولًا.");
+      setError("ط£ط¯ط®ظ„ظٹ ط§ط³ظ… ط§ظ„ط¹ظ…ظٹظ„ط© ظˆط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط£ظˆظ„ظ‹ط§.");
       return;
     }
     const normalizedPhone = normalizePhone(clientPhone);
     if (!normalizedPhone) {
-      setError("رقم الجوال غير صالح.");
+      setError("ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط؛ظٹط± طµط§ظ„ط­.");
       return;
     }
 
-    const id = globalThis.crypto?.randomUUID?.() || `client_${Date.now()}`;
     setLoading(true);
     setError("");
     try {
-      const phoneMatches = new Map<string, { id: string; data: any }>();
-      const values = phoneLookupValues(clientPhone);
-      for (const field of ["phone", "mobile", "clientPhone", "phoneNumber"]) {
-        for (const value of values) {
-          const snap = await getDocs(
-            firestoreQuery(collection(db, "salons", "main", "clients"), where(field, "==", value), limit(3))
-          );
-          snap.docs.forEach((row) => phoneMatches.set(row.ref.path, { id: row.id, data: row.data() || {} }));
-        }
-      }
-      if (phoneMatches.size > 1) {
-        setError("يوجد أكثر من ملف عميلة بنفس رقم الجوال. افتحي تقرير تدقيق الهويات أولًا.");
-        return;
-      }
-      if (phoneMatches.size === 1) {
-        const existing = [...phoneMatches.values()][0];
-        const existingClientId = cleanText(existing.data.clientId || existing.id);
-        props.onClientCreated?.({
-          ...props.client,
-          id: existing.id,
-          clientId: existingClientId,
-          canonicalClientId: existingClientId,
-          name: cleanText(existing.data.name || existing.data.fullName || clientName),
-          fullName: cleanText(existing.data.fullName || existing.data.name || clientName),
-          phone: cleanText(existing.data.phone || existing.data.mobile || normalizedPhone),
-          mobile: cleanText(existing.data.mobile || existing.data.phone || normalizedPhone),
-          source: "client_profile",
-        });
-        await refresh();
+      const source = resolveCoreBookingDataSource();
+      const candidates = await source.searchClients(normalizedPhone);
+      const exactMatches = candidates.filter((candidate) => {
+        const candidatePhone = normalizePhone(
+          candidate.phoneNormalized ??
+            candidate.phone ??
+            candidate.mobile ??
+            ""
+        );
+        return candidatePhone === normalizedPhone;
+      });
+
+      if (exactMatches.length > 1) {
+        setError(
+          "ظٹظˆط¬ط¯ ط£ظƒط«ط± ظ…ظ† ظ…ظ„ظپ ط¹ظ…ظٹظ„ط© ط¨ظ†ظپط³ ط±ظ‚ظ… ط§ظ„ط¬ظˆط§ظ„ ط¯ط§ط®ظ„ Core D1. ط§ظپطھط­ظٹ طھظ‚ط±ظٹط± طھط¯ظ‚ظٹظ‚ ط§ظ„ظ‡ظˆظٹط§طھ ط£ظˆظ„ظ‹ط§."
+        );
         return;
       }
 
-      await setDoc(doc(db, "salons", "main", "clients", id), {
-        clientId: id,
-        name: clientName,
-        phone: normalizedPhone,
-        mobile: normalizedPhone,
-        source: "booking_internal",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      const resolved =
+        exactMatches[0] ??
+        (await source.createClient({
+          name: clientName,
+          phone: normalizedPhone,
+        }));
+
+      const canonicalClientId = cleanText(resolved.id);
       props.onClientCreated?.({
         ...props.client,
-        id,
-        clientId: id,
-        canonicalClientId: id,
-        name: clientName,
-        fullName: clientName,
-        phone: normalizedPhone,
-        mobile: normalizedPhone,
-        source: "client_profile",
+        id: canonicalClientId,
+        clientId: canonicalClientId,
+        canonicalClientId,
+        name: cleanText(resolved.name || clientName),
+        fullName: cleanText(resolved.name || clientName),
+        phone: cleanText(
+          resolved.phoneNormalized ??
+            resolved.phone ??
+            resolved.mobile ??
+            normalizedPhone
+        ),
+        mobile: cleanText(
+          resolved.phoneNormalized ??
+            resolved.phone ??
+            resolved.mobile ??
+            normalizedPhone
+        ),
+        source: "core-d1",
       });
-    } catch {
-      setError("تعذر إنشاء ملف العميلة.");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "طھط¹ط°ط± ط¥ظ†ط´ط§ط، ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„ط© ط¯ط§ط®ظ„ Core D1."
+      );
     } finally {
       setLoading(false);
     }

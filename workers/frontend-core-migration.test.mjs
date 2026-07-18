@@ -22,14 +22,17 @@ test("feature flags default to explicit false checks", () => {
   assert.match(source, /requirePackagesWorkerUrl/);
 });
 
-test("D1 resolver has no automatic failure fallback", () => {
+test("booking resolver is pinned to Core D1 without Firestore fallback", () => {
   const source = readFileSync(
     "src/services/bookingDataSource.ts",
     "utf8"
   );
-  assert.match(source, /if \(flags\.useCoreD1\)/);
-  assert.match(source, /return coreD1BookingDataSource/);
-  assert.doesNotMatch(source, /catch[\s\S]{0,100}firestoreBookingDataSource/);
+  assert.match(
+    source,
+    /resolveBookingDataSource\(\): BookingDataSource \{\s*return resolveCoreBookingDataSource\(\);/
+  );
+  assert.doesNotMatch(source, /firestoreBookingDataSource/);
+  assert.doesNotMatch(source, /if \(flags\.useCoreD1\)/);
 });
 
 test("core API client sends a bearer token without logging it", () => {
@@ -98,19 +101,24 @@ test("mixed package booking stores reservation references on Core booking items"
   assert.match(source, /startTime:/);
 });
 
-test("Phase 5 legacy facades use explicit Core D1 branches", () => {
-  const checks = [
+test("Phase 5 facades use the correct Core source strategy", () => {
+  const branchChecks = [
     ["src/services/firestoreIncome.ts", /CoreFinanceService/],
     ["src/services/firestoreExpenses.ts", /CoreFinanceService/],
-    ["src/services/firestoreOffers.ts", /CoreOfferService/],
     ["src/services/firestoreBookings.ts", /CoreBookingService/],
     ["src/services/logService.ts", /CoreAuditService/],
   ];
-  for (const [file, servicePattern] of checks) {
+
+  for (const [file, servicePattern] of branchChecks) {
     const source = readFileSync(file, "utf8");
     assert.match(source, /getDataSourceFlags\(\)\.useCoreD1/);
     assert.match(source, servicePattern);
   }
+
+  const offers = readFileSync("src/services/firestoreOffers.ts", "utf8");
+  assert.match(offers, /CoreOfferService/);
+  assert.doesNotMatch(offers, /firebase\/firestore/);
+  assert.doesNotMatch(offers, /getDataSourceFlags/);
 });
 
 test("Phase 5 migration adds admin operations without forcing unique client phones", () => {
