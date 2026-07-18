@@ -32,6 +32,15 @@ const forbiddenChecks = [
       /service_packages/,
     ],
   },
+  {
+    file: "src/pages/DashboardOffers.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firebase/,
+      /firestorePackages/,
+      /getDataSourceFlags/,
+    ],
+  },
 ];
 
 const requiredChecks = [
@@ -46,6 +55,10 @@ const requiredChecks = [
   {
     file: "src/services/firestoreOffers.ts",
     required: [/CoreOfferService/],
+  },
+  {
+    file: "src/pages/DashboardOffers.tsx",
+    required: [/PackageService/, /CoreCatalogService/],
   },
   {
     file: "src/services/firestoreBookings.ts",

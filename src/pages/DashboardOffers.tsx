@@ -17,21 +17,16 @@ import {
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/AdminDashboardOffers.css";
-import { db } from "../services/firebase";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreCatalogService } from "../services/CoreCatalogService";
+import {
+  PackageService,
+  type Package as CorePackage,
+} from "../services/PackageService";
 
-// ✅ Firestore
+// Core-only offers and package catalog.
 import { listOffers, upsertOffer, removeOffer } from "../services/firestoreOffers";
 import type { Offer, DiscountType, OfferAppliesTo, OfferSequenceStep } from "../services/firestoreOffers";
-import {
-  listAllPackages,
-  upsertPackage,
-  removePackage,
-  type ServicePackageDoc,
-  type PackageServiceItem,
-} from "../services/firestorePackages";
+type DashboardPackage = CorePackage & { id: string };
 
 type OfferForm = {
   title: string;
@@ -76,17 +71,22 @@ type PackageDraft = {
   description: string;
   imageUrl: string;
   active: boolean;
+  saleEnabled: boolean;
   startDate: string;
   endDate: string;
   serviceIds: string[];
-  finalPrice: number;
-  warnDiscountOverPercent: number;
+  sessionsCount: number;
+  price: number;
+  validityDays: number;
+  terms: string;
+  audienceScope: string;
+  targetClientIdsText: string;
+  sortOrder: number;
 };
 type PackageListMode = "all" | "selected" | "unselected";
 
 const MAX_IMAGE_MB = 2;
 const MAX_PACKAGE_IMAGE_MB = 2;
-const MAX_PACKAGE_DISCOUNT_WARN_PERCENT = 70;
 const SALON_ID = "main";
 
 // ✅ NEW: QS + 3 digits, no dash (مثال: QS123)
@@ -241,35 +241,36 @@ function isPackageLinkedOffer(o: any) {
   );
 }
 
-function isPackageExpiredByToday(p: any) {
-  const end = String(p?.endDate || "").trim();
+function isPackageExpiredByToday(p: CorePackage) {
+  const end = String(p?.endsAt || "").trim();
   if (!end) return false;
   return todayISO() > end;
 }
 
-function isPackageScheduledByToday(p: any) {
-  const start = String(p?.startDate || "").trim();
+function isPackageScheduledByToday(p: CorePackage) {
+  const start = String(p?.startsAt || "").trim();
   if (!start) return false;
   return todayISO() < start;
 }
 
-function isPackageActiveNow(p: any) {
-  if (!p || p.active === false) return false;
+function isPackageActiveNow(p: CorePackage) {
+  if (!p || p.active === false || p.saleEnabled === false) return false;
   if (isPackageScheduledByToday(p)) return false;
   if (isPackageExpiredByToday(p)) return false;
   return true;
 }
 
-function getPackageStatusLabel(p: any) {
+function getPackageStatusLabel(p: CorePackage) {
   if (isPackageExpiredByToday(p)) return "منتهي";
   if (p?.active === false) return "موقوف";
+  if (p?.saleEnabled === false) return "غير معروض للبيع";
   if (isPackageScheduledByToday(p)) return "مجدول";
   return "نشط";
 }
 
 const DashboardOffers: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
-  const [packagesCatalog, setPackagesCatalog] = useState<ServicePackageDoc[]>([]);
+  const [packagesCatalog, setPackagesCatalog] = useState<DashboardPackage[]>([]);
   const [packageServices, setPackageServices] = useState<PackageServiceRow[]>([]);
   const [sectionNameById, setSectionNameById] = useState<Record<string, string>>({});
   const [categoryNameById, setCategoryNameById] = useState<Record<string, string>>({});
@@ -285,11 +286,17 @@ const DashboardOffers: React.FC = () => {
     description: "",
     imageUrl: "",
     active: true,
+    saleEnabled: true,
     startDate: "",
     endDate: "",
     serviceIds: [],
-    finalPrice: 0,
-    warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
+    sessionsCount: 1,
+    price: 0,
+    validityDays: 30,
+    terms: "",
+    audienceScope: "all",
+    targetClientIdsText: "",
+    sortOrder: 0,
   });
 
   const [open, setOpen] = useState(false);
@@ -381,7 +388,7 @@ const DashboardOffers: React.FC = () => {
   }, [form.appliesTo]);
 
 
-  // ✅ قائمة خدمات من Firestore (نفس id المستخدم بالحجز)
+  // قائمة الخدمات من Core Catalog بنفس المعرّف المستخدم في الحجز
   const servicesFlat: FlatService[] = useMemo(() => {
     return (packageServices || [])
       .filter((s) => s.active !== false)
@@ -454,89 +461,84 @@ const DashboardOffers: React.FC = () => {
 
   const refresh = async () => {
     try {
-      const useCoreD1 = getDataSourceFlags().useCoreD1;
-      const [offersData, packagesData, servicesSource, sectionsSource, categoriesSource] = await Promise.all([
-        listOffers(SALON_ID),
-        listAllPackages(SALON_ID),
-        useCoreD1
-          ? CoreCatalogService.listServices({ activeOnly: false })
-          : getDocs(query(collection(db, "salons", SALON_ID, "services"), orderBy("name", "asc"))),
-        useCoreD1
-          ? CoreCatalogService.listSections(false)
-          : getDocs(collection(db, "salons", SALON_ID, "service_sections")),
-        useCoreD1
-          ? CoreCatalogService.listCategories(false)
-          : getDocs(collection(db, "salons", SALON_ID, "service_categories")),
+      const [
+        offersData,
+        packagesData,
+        servicesSource,
+        sectionsSource,
+        categoriesSource,
+      ] = await Promise.all([
+        listOffers(SALON_ID, "core"),
+        PackageService.getAll(),
+        CoreCatalogService.listServices({ activeOnly: false }),
+        CoreCatalogService.listSections(false),
+        CoreCatalogService.listCategories(false),
       ]);
-      const safePackagesRaw = Array.isArray(packagesData) ? packagesData : [];
-      const expiredStillFlaggedActive = safePackagesRaw.filter(
-        (p: any) => p?.active !== false && isPackageExpiredByToday(p)
+
+      const safePackages = (Array.isArray(packagesData) ? packagesData : [])
+        .filter((pkg): pkg is DashboardPackage => Boolean(String(pkg?.id || "").trim()))
+        .map((pkg) => ({ ...pkg, id: String(pkg.id || "").trim() }));
+
+      const packageIds = new Set(safePackages.map((pkg) => pkg.id));
+      const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter(
+        (offer: any) => {
+          const offerId = String(offer?.id || "").trim();
+          if (offerId && packageIds.has(offerId)) return false;
+          return !isPackageLinkedOffer(offer);
+        }
       );
-      const safePackages = safePackagesRaw.map((p: any) =>
-        p?.active !== false && isPackageExpiredByToday(p) ? ({ ...(p as any), active: false } as ServicePackageDoc) : p
-      );
-      if (expiredStillFlaggedActive.length) {
-        void Promise.all(
-          expiredStillFlaggedActive.map((pkg: any) =>
-            upsertPackage({ ...(pkg as any), active: false } as ServicePackageDoc, SALON_ID).catch(() => undefined)
-          )
-        );
-      }
-      const packageIds = new Set(
-        safePackages
-          .map((p: any) => String(p?.id || "").trim())
-          .filter(Boolean)
-      );
-      const filteredOffers = (Array.isArray(offersData) ? offersData : []).filter((o: any) => {
-        const offerId = String(o?.id || "").trim();
-        if (offerId && packageIds.has(offerId)) return false;
-        return !isPackageLinkedOffer(o);
-      });
+
       setOffers(filteredOffers);
       setPackagesCatalog(safePackages);
+
       const secMap: Record<string, string> = {};
-      const sectionRows = useCoreD1
-        ? (sectionsSource as Awaited<ReturnType<typeof CoreCatalogService.listSections>>).map((row) => ({ id: row.id, data: row }))
-        : (sectionsSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, data: d.data() as any }));
-      sectionRows.forEach(({ id, data }: any) => {
-        const label = useCoreD1 ? String(data.name || "").trim() : pickDocLabel(data, "");
+      sectionsSource.forEach((row) => {
+        const id = String(row.id || "").trim();
+        const label = String(row.name || "").trim();
         if (id && label) secMap[id] = label;
       });
       setSectionNameById(secMap);
 
       const catMap: Record<string, string> = {};
-      const categoryRows = useCoreD1
-        ? (categoriesSource as Awaited<ReturnType<typeof CoreCatalogService.listCategories>>).map((row) => ({ id: row.id, data: row }))
-        : (categoriesSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, data: d.data() as any }));
-      categoryRows.forEach(({ id, data }: any) => {
-        const label = useCoreD1 ? String(data.name || "").trim() : pickDocLabel(data, "");
+      categoriesSource.forEach((row) => {
+        const id = String(row.id || "").trim();
+        const label = String(row.name || "").trim();
         if (id && label) catMap[id] = label;
       });
       setCategoryNameById(catMap);
 
-      const serviceRowsRaw = useCoreD1
-        ? (servicesSource as Awaited<ReturnType<typeof CoreCatalogService.listServices>>).map((row) => ({
-            id: row.id, name: row.name, sectionId: row.sectionId, categoryId: row.categoryId,
-            durationMin: row.durationMinutes, price: Number(row.priceHalalas || 0) / 100, active: row.active,
-          }))
-        : (servicesSource as Awaited<ReturnType<typeof getDocs>>).docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      const srvRows: PackageServiceRow[] = serviceRowsRaw
-        .map((x: any) => ({
-          id: String(x.id || "").trim(),
-          name: String(x.name || "").trim(),
-          sectionId: String(x.sectionId || "").trim(),
-          sectionTitle: String(secMap[String(x.sectionId || "").trim()] || x.sectionTitle || x.sectionId || "").trim(),
-          categoryId: String(x.categoryId || "").trim(),
-          categoryName: String(catMap[String(x.categoryId || "").trim()] || x.categoryName || x.category || "").trim() || undefined,
-          durationMin: Math.max(0, Number(x.durationMin || 0)),
-          price: Math.max(0, Number(x.price || 0)),
-          active: x.active !== false,
+      const srvRows: PackageServiceRow[] = servicesSource
+        .map((row) => ({
+          id: String(row.id || "").trim(),
+          name: String(row.name || "").trim(),
+          sectionId: String(row.sectionId || "").trim(),
+          sectionTitle: String(
+            secMap[String(row.sectionId || "").trim()] ||
+              row.sectionId ||
+              ""
+          ).trim(),
+          categoryId: String(row.categoryId || "").trim(),
+          categoryName:
+            String(
+              catMap[String(row.categoryId || "").trim()] ||
+                row.categoryId ||
+                ""
+            ).trim() || undefined,
+          durationMin: Math.max(0, Number(row.durationMinutes || 0)),
+          price: Math.max(0, Number(row.priceHalalas || 0) / 100),
+          active: row.active !== false,
         }))
-        .filter((x) => x.id && x.name && x.active !== false);
+        .filter((row) => row.id && row.name && row.active !== false);
+
       setPackageServices(srvRows);
-    } catch (e: any) {
-      console.error("❌ listOffers error:", e?.code, e?.message, e);
-      showNotice("تعذر تحميل العروض من قاعدة البيانات.");
+    } catch (error: any) {
+      console.error(
+        "Core offers/packages load failed:",
+        error?.code,
+        error?.message,
+        error
+      );
+      showNotice("تعذر تحميل العروض أو الباقات من Core API.");
     }
   };
 
@@ -588,9 +590,13 @@ const DashboardOffers: React.FC = () => {
   }, [offers]);
   const packageStats = useMemo(() => {
     const total = packagesCatalog.length;
-    const activeNowCount = packagesCatalog.filter((p: any) => isPackageActiveNow(p)).length;
-    const used = packagesCatalog.filter((p: any) => Number((p as any)?.usageCount || 0) > 0).length;
-    return { total, activeNowCount, used };
+    const activeNowCount = packagesCatalog.filter((pkg) =>
+      isPackageActiveNow(pkg)
+    ).length;
+    const saleEnabledCount = packagesCatalog.filter(
+      (pkg) => pkg.saleEnabled !== false
+    ).length;
+    return { total, activeNowCount, saleEnabledCount };
   }, [packagesCatalog]);
 
   const openAdd = () => {
@@ -878,22 +884,18 @@ const DashboardOffers: React.FC = () => {
     const picked = (packageDraft.serviceIds || [])
       .map((id) => packageServiceMap.get(String(id || "").trim()))
       .filter(Boolean) as PackageServiceRow[];
-    const baseTotalPrice = picked.reduce((sum, s) => sum + Math.max(0, Number(s.price || 0)), 0);
-    const totalDurationMin = picked.reduce((sum, s) => sum + Math.max(0, Number(s.durationMin || 0)), 0);
-    const finalPrice = Math.max(0, Number(packageDraft.finalPrice || 0));
-    const discountAmount = Math.max(0, baseTotalPrice - finalPrice);
-    const discountPercent = baseTotalPrice > 0 ? (discountAmount / baseTotalPrice) * 100 : 0;
-    const warnOver = Math.max(0, Number(packageDraft.warnDiscountOverPercent || 0));
+
     return {
       picked,
-      baseTotalPrice,
-      totalDurationMin,
-      finalPrice,
-      discountAmount,
-      discountPercent,
-      warnOver,
-      isHighDiscount: warnOver > 0 && discountPercent > warnOver,
-      suggestedPrice: baseTotalPrice > 0 ? Math.max(0, Math.round(baseTotalPrice * (1 - warnOver / 100))) : 0,
+      price: Math.max(0, Number(packageDraft.price || 0)),
+      sessionsCount: Math.max(
+        1,
+        Math.floor(Number(packageDraft.sessionsCount || 1))
+      ),
+      validityDays: Math.max(
+        1,
+        Math.floor(Number(packageDraft.validityDays || 1))
+      ),
     };
   }, [packageDraft, packageServiceMap]);
   const filteredPackageServices = useMemo(() => {
@@ -984,11 +986,17 @@ const DashboardOffers: React.FC = () => {
       description: "",
       imageUrl: "",
       active: true,
+      saleEnabled: true,
       startDate: "",
       endDate: "",
       serviceIds: [],
-      finalPrice: 0,
-      warnDiscountOverPercent: MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
+      sessionsCount: 1,
+      price: 0,
+      validityDays: 30,
+      terms: "",
+      audienceScope: "all",
+      targetClientIdsText: "",
+      sortOrder: 0,
     });
   };
   const startCreatePackage = () => {
@@ -1013,25 +1021,38 @@ const DashboardOffers: React.FC = () => {
     }
     openAdd();
   };
-  const openPackageForEdit = (pkg: ServicePackageDoc) => {
+  const openPackageForEdit = (pkg: DashboardPackage) => {
     close();
     setEditingPackageId(String(pkg.id || "").trim());
     setPackageFormOpen(true);
-    setPackagePickedImageName(String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : "");
+    setPackagePickedImageName(
+      String(pkg.imageUrl || "").trim() ? "تم اختيار صورة" : ""
+    );
     setPackageDraft({
       id: String(pkg.id || "").trim(),
       name: String(pkg.name || "").trim(),
       description: String(pkg.description || "").trim(),
       imageUrl: String(pkg.imageUrl || "").trim(),
       active: pkg.active !== false,
-      startDate: String((pkg as any).startDate || "").trim(),
-      endDate: String((pkg as any).endDate || "").trim(),
+      saleEnabled: pkg.saleEnabled !== false,
+      startDate: String(pkg.startsAt || "").trim(),
+      endDate: String(pkg.endsAt || "").trim(),
       serviceIds: Array.isArray(pkg.serviceIds) ? pkg.serviceIds : [],
-      finalPrice: Math.max(0, Number(pkg.finalPrice || 0)),
-      warnDiscountOverPercent: Math.max(0, Number(pkg.warnDiscountOverPercent || MAX_PACKAGE_DISCOUNT_WARN_PERCENT)),
+      sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
+      price: Math.max(0, Number(pkg.price || 0)),
+      validityDays: Math.max(1, Number(pkg.validityDays || 30)),
+      terms: String(pkg.terms || "").trim(),
+      audienceScope: String(pkg.audienceScope || "all").trim() || "all",
+      targetClientIdsText: Array.isArray(pkg.targetClientIds)
+        ? pkg.targetClientIds.join(", ")
+        : "",
+      sortOrder: Math.max(0, Number(pkg.sortOrder || 0)),
     });
     window.requestAnimationFrame(() => {
-      packageFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      packageFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     });
   };
   const toggleDraftServiceId = (serviceId: string) => {
@@ -1055,100 +1076,155 @@ const DashboardOffers: React.FC = () => {
   };
   const savePackageDraft = async () => {
     const isUpdateMode = Boolean(String(editingPackageId || "").trim());
-    const prevPkg = isUpdateMode
-      ? packagesCatalog.find((x) => String((x as any)?.id || "").trim() === String(editingPackageId || "").trim())
-      : null;
-    const wasExpiredByDate = prevPkg ? isPackageExpiredByToday(prevPkg) : false;
-    const nextStartDate = String(packageDraft.startDate || "").trim();
-    const nextEndDate = String(packageDraft.endDate || "").trim();
-    const nowIso = todayISO();
-    const shouldReactivateByDateExtension =
-      isUpdateMode &&
-      wasExpiredByDate &&
-      (!nextEndDate || nextEndDate >= nowIso) &&
-      (!nextStartDate || nextStartDate <= nowIso);
-    const nextActive = shouldReactivateByDateExtension ? true : packageDraft.active !== false;
     const name = String(packageDraft.name || "").trim();
-    if (!name) return showNotice("اكتب اسم الباكيج");
-    if (packageDraft.startDate && packageDraft.endDate && packageDraft.startDate > packageDraft.endDate) {
-      return showNotice("تاريخ بداية الباكيج لازم يكون قبل تاريخ الانتهاء");
-    }
-    if (packageDraft.endDate && packageDraft.endDate < todayISO()) return showNotice("تاريخ انتهاء الباكيج يجب أن يكون اليوم أو بعده");
-    if (!packageComputed.picked.length) return showNotice("اختر خدمة واحدة على الأقل");
-    if (packageComputed.totalDurationMin <= 0) return showNotice("مدة الباكيج غير صحيحة");
-    const id = String(packageDraft.id || "").trim() || buildId(`pkg_${name}`);
-    const services: PackageServiceItem[] = packageComputed.picked.map((s) => ({
-      serviceId: String(s.id || "").trim(),
-      serviceName: String(s.name || "").trim(),
-      sectionId: String(s.sectionId || "").trim() || undefined,
-      categoryId: String(s.categoryId || "").trim() || undefined,
-      price: Math.max(0, Number(s.price || 0)),
-      durationMin: Math.max(0, Number(s.durationMin || 0)),
-    }));
-    await upsertPackage(
-      {
-        id,
-        name,
-        description: String(packageDraft.description || "").trim() || undefined,
-        imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
-        active: nextActive,
-        startDate: String(packageDraft.startDate || "").trim() || undefined,
-        endDate: String(packageDraft.endDate || "").trim() || undefined,
-        serviceIds: services.map((x) => x.serviceId),
-        services,
-        baseTotalPrice: packageComputed.baseTotalPrice,
-        totalDurationMin: packageComputed.totalDurationMin,
-        finalPrice: packageComputed.finalPrice,
-        discountAmount: packageComputed.discountAmount,
-        discountPercent: packageComputed.discountPercent,
-        warnDiscountOverPercent: packageComputed.warnOver || MAX_PACKAGE_DISCOUNT_WARN_PERCENT,
-      },
-      SALON_ID
+    const startDate = String(packageDraft.startDate || "").trim();
+    const endDate = String(packageDraft.endDate || "").trim();
+    const sessionsCount = Math.max(
+      1,
+      Math.floor(Number(packageDraft.sessionsCount || 1))
     );
-    // مهم: لا ننشئ عرض تلقائي عند حفظ الباكج.
-    // تنظيف أي عرض قديم لنفس المعرف (من الإصدارات السابقة) بالخلفية.
-    void removeOffer(id, SALON_ID).catch(() => {
-      // ignore (قد يكون العرض غير موجود أو مستخدم سابقا)
-    });
-    if (isUpdateMode) {
-      resetPackageDraft();
-      setPackageFormOpen(false);
-      void refresh();
-      return;
+    const price = Math.max(0, Number(packageDraft.price || 0));
+    const validityDays = Math.max(
+      1,
+      Math.floor(Number(packageDraft.validityDays || 1))
+    );
+
+    if (!name) return showNotice("اكتب اسم الباقة");
+    if (startDate && endDate && startDate > endDate) {
+      return showNotice("تاريخ بداية الباقة يجب أن يكون قبل تاريخ الانتهاء");
     }
-    await refresh();
-    resetPackageDraft();
+    if (endDate && endDate < todayISO()) {
+      return showNotice("تاريخ انتهاء الباقة يجب أن يكون اليوم أو بعده");
+    }
+    if (!packageComputed.picked.length) {
+      return showNotice("اختر خدمة واحدة على الأقل");
+    }
+    if (sessionsCount <= 0) {
+      return showNotice("عدد الجلسات يجب أن يكون أكبر من صفر");
+    }
+    if (price < 0) {
+      return showNotice("سعر الباقة لا يمكن أن يكون سالبًا");
+    }
+
+    const id =
+      String(packageDraft.id || "").trim() || buildId(`pkg_${name}`);
+    const targetClientIds = packageDraft.targetClientIdsText
+      .split(/[،,\n]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const payload: CorePackage = {
+      id,
+      name,
+      description:
+        String(packageDraft.description || "").trim() || undefined,
+      imageUrl: String(packageDraft.imageUrl || "").trim() || undefined,
+      active: packageDraft.active !== false,
+      saleEnabled: packageDraft.saleEnabled !== false,
+      startsAt: startDate || undefined,
+      endsAt: endDate || undefined,
+      serviceIds: packageComputed.picked.map((service) =>
+        String(service.id || "").trim()
+      ),
+      allowedServiceIds: packageComputed.picked.map((service) =>
+        String(service.id || "").trim()
+      ),
+      sessionsCount,
+      price,
+      validityDays,
+      terms: String(packageDraft.terms || "").trim() || undefined,
+      audienceScope:
+        String(packageDraft.audienceScope || "all").trim() || "all",
+      targetClientIds,
+      sortOrder: Math.max(
+        0,
+        Math.floor(Number(packageDraft.sortOrder || 0))
+      ),
+    };
+
+    try {
+      if (isUpdateMode) {
+        await PackageService.update(editingPackageId, payload);
+      } else {
+        await PackageService.add(payload);
+      }
+
+      // لا ننشئ عرضًا موازيًا للباقة. ننظف فقط أي سجل قديم حمل نفس المعرف.
+      void removeOffer(id, SALON_ID).catch(() => undefined);
+
+      await refresh();
+      resetPackageDraft();
+      if (isUpdateMode) setPackageFormOpen(false);
+      showNotice(
+        isUpdateMode ? "تم تحديث الباقة بنجاح" : "تم حفظ الباقة بنجاح",
+        "success"
+      );
+    } catch (error: any) {
+      console.error(
+        "Core package save failed:",
+        error?.code,
+        error?.message,
+        error
+      );
+      showNotice("تعذر حفظ الباقة في Core API.");
+    }
   };
+
   const deletePackageById = async (idRaw: string) => {
     const id = String(idRaw || "").trim();
     if (!id) return;
-    if (!confirm("هل أنت متأكد من حذف هذا الباكيج؟")) return;
-    await removePackage(id, SALON_ID);
+    if (!confirm("هل أنت متأكد من حذف هذه الباقة؟")) return;
+
     try {
-      await removeOffer(id, SALON_ID);
-    } catch {
-      // ignore (قد يكون غير موجود أو مستخدم)
+      await PackageService.remove(id);
+      await removeOffer(id, SALON_ID).catch(() => undefined);
+      await refresh();
+      if (editingPackageId === id) resetPackageDraft();
+      showNotice("تم حذف الباقة", "success");
+    } catch (error: any) {
+      console.error(
+        "Core package delete failed:",
+        error?.code,
+        error?.message,
+        error
+      );
+      showNotice("تعذر حذف الباقة من Core API.");
     }
-    await refresh();
-    if (editingPackageId === id) resetPackageDraft();
   };
-  const togglePackageActive = async (pkg: ServicePackageDoc) => {
+
+  const togglePackageActive = async (pkg: DashboardPackage) => {
     const id = String(pkg.id || "").trim();
     if (!id) return;
+
     if (isPackageExpiredByToday(pkg)) {
       openPackageForEdit(pkg);
-      showNotice("الباكيج منتهي. عدّل تاريخ الانتهاء لتاريخ اليوم أو بعده ثم احفظه لتفعيله من جديد.");
+      showNotice(
+        "الباقة منتهية. عدّل تاريخ الانتهاء إلى اليوم أو بعده ثم احفظها."
+      );
       return;
     }
-    await upsertPackage(
-      {
-        ...(pkg as any),
-        id,
-        active: !(pkg.active !== false),
-      } as ServicePackageDoc,
-      SALON_ID
-    );
-    await refresh();
+
+    const currentlyAvailable =
+      pkg.active !== false && pkg.saleEnabled !== false;
+
+    try {
+      await PackageService.update(id, {
+        ...pkg,
+        active: currentlyAvailable ? false : true,
+        saleEnabled: currentlyAvailable
+          ? pkg.saleEnabled !== false
+          : true,
+      });
+      await refresh();
+    } catch (error: any) {
+      console.error(
+        "Core package status update failed:",
+        error?.code,
+        error?.message,
+        error
+      );
+      showNotice("تعذر تحديث حالة الباقة.");
+    }
   };
 
   return (
@@ -1207,8 +1283,8 @@ const DashboardOffers: React.FC = () => {
               <strong>{packageStats.activeNowCount}</strong>
             </div>
             <div className="offers-kpi">
-              <span>مستخدم</span>
-              <strong>{packageStats.used}</strong>
+              <span>معروض للبيع</span>
+              <strong>{packageStats.saleEnabledCount}</strong>
             </div>
           </div>
         </div>
@@ -1250,20 +1326,26 @@ const DashboardOffers: React.FC = () => {
                       <div className="pkg-offer-value">{Array.isArray(p.serviceIds) ? p.serviceIds.length : 0}</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">السعر النهائي</div>
-                      <div className="pkg-offer-value">{Math.round(Number(p.finalPrice || 0))} ر.س</div>
+                      <div className="pkg-offer-label">السعر</div>
+                      <div className="pkg-offer-value">{Math.round(Number(p.price || 0))} ر.س</div>
                     </div>
                     <div className="pkg-offer-row">
-                      <div className="pkg-offer-label">الخصم</div>
-                      <div className="pkg-offer-value">{Number(p.discountPercent || 0).toFixed(1)}%</div>
+                      <div className="pkg-offer-label">عدد الجلسات</div>
+                      <div className="pkg-offer-value">{Math.max(1, Number(p.sessionsCount || 1))}</div>
+                    </div>
+                    <div className="pkg-offer-row">
+                      <div className="pkg-offer-label">الصلاحية</div>
+                      <div className="pkg-offer-value">
+                        {p.validityDays ? `${p.validityDays} يوم` : "—"}
+                      </div>
                     </div>
                     <div className="pkg-offer-row">
                       <div className="pkg-offer-label">يبدأ</div>
-                      <div className="pkg-offer-value">{String((p as any).startDate || "").trim() || "—"}</div>
+                      <div className="pkg-offer-value">{String(p.startsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
                       <div className="pkg-offer-label">ينتهي</div>
-                      <div className="pkg-offer-value">{String((p as any).endDate || "").trim() || "—"}</div>
+                      <div className="pkg-offer-value">{String(p.endsAt || "").trim() || "—"}</div>
                     </div>
                     <div className="pkg-offer-row">
                       <div className="pkg-offer-label">الحالة</div>
@@ -1347,21 +1429,69 @@ const DashboardOffers: React.FC = () => {
             <input value={packageDraft.name} placeholder="مثال: باكيج العناية الشامل" onChange={(e) => setPackageDraft((p) => ({ ...p, name: e.target.value }))} />
           </div>
           <div className="pkgm__field">
-            <label>سعر الباكيج النهائي</label>
-            <input type="number" min={0} value={packageDraft.finalPrice} onChange={(e) => setPackageDraft((p) => ({ ...p, finalPrice: Math.max(0, Number(e.target.value || 0)) }))} />
+            <label>سعر الباقة</label>
+            <input
+              type="number"
+              min={0}
+              value={packageDraft.price}
+              onChange={(e) =>
+                setPackageDraft((p) => ({
+                  ...p,
+                  price: Math.max(0, Number(e.target.value || 0)),
+                }))
+              }
+            />
           </div>
           <div className="pkgm__field">
-            <label>تاريخ بداية الباكيج</label>
+            <label>عدد الجلسات</label>
+            <input
+              type="number"
+              min={1}
+              value={packageDraft.sessionsCount}
+              onChange={(e) =>
+                setPackageDraft((p) => ({
+                  ...p,
+                  sessionsCount: Math.max(
+                    1,
+                    Math.floor(Number(e.target.value || 1))
+                  ),
+                }))
+              }
+            />
+          </div>
+          <div className="pkgm__field">
+            <label>مدة الصلاحية بالأيام</label>
+            <input
+              type="number"
+              min={1}
+              value={packageDraft.validityDays}
+              onChange={(e) =>
+                setPackageDraft((p) => ({
+                  ...p,
+                  validityDays: Math.max(
+                    1,
+                    Math.floor(Number(e.target.value || 1))
+                  ),
+                }))
+              }
+            />
+          </div>
+          <div className="pkgm__field">
+            <label>تاريخ بداية الباقة</label>
             <input type="date" value={packageDraft.startDate} onChange={(e) => setPackageDraft((p) => ({ ...p, startDate: e.target.value }))} />
           </div>
           <div className="pkgm__field">
-            <label>تاريخ انتهاء الباكيج</label>
+            <label>تاريخ انتهاء الباقة</label>
             <input type="date" value={packageDraft.endDate} onChange={(e) => setPackageDraft((p) => ({ ...p, endDate: e.target.value }))} />
           </div>
         </div>
         <div className="pkgm__field">
-          <label>وصف العرض</label>
-          <textarea value={packageDraft.description} placeholder="وصف مختصر للعرض" onChange={(e) => setPackageDraft((p) => ({ ...p, description: e.target.value }))} />
+          <label>وصف الباقة</label>
+          <textarea value={packageDraft.description} placeholder="وصف مختصر للباقة" onChange={(e) => setPackageDraft((p) => ({ ...p, description: e.target.value }))} />
+        </div>
+        <div className="pkgm__field">
+          <label>الشروط</label>
+          <textarea value={packageDraft.terms} placeholder="شروط استخدام الباقة" onChange={(e) => setPackageDraft((p) => ({ ...p, terms: e.target.value }))} />
         </div>
         <div className="pkgm__row pkgm__row--center">
           <label className="dash-pill dash-pill-outline" style={{ cursor: "pointer" }}>
@@ -1384,23 +1514,35 @@ const DashboardOffers: React.FC = () => {
           )}
           <label className="of-checkline" style={{ marginInlineStart: "auto" }}>
             <input type="checkbox" checked={packageDraft.active !== false} onChange={() => setPackageDraft((p) => ({ ...p, active: !p.active }))} />
-            <span>مفعل في صفحة الحجز</span>
+            <span>الباقة مفعلة</span>
+          </label>
+          <label className="of-checkline">
+            <input
+              type="checkbox"
+              checked={packageDraft.saleEnabled !== false}
+              onChange={() =>
+                setPackageDraft((p) => ({
+                  ...p,
+                  saleEnabled: !p.saleEnabled,
+                }))
+              }
+            />
+            <span>معروضة للبيع والحجز</span>
           </label>
         </div>
         <div className="pkgm__row">
           <div className="pkgm__field" style={{ maxWidth: 240 }}>
-            <label>تنبيه إذا الخصم تجاوز (%)</label>
+            <label>ترتيب الظهور</label>
             <input
               type="number"
               min={0}
-              max={95}
-              value={packageDraft.warnDiscountOverPercent}
+              value={packageDraft.sortOrder}
               onChange={(e) =>
                 setPackageDraft((p) => ({
                   ...p,
-                  warnDiscountOverPercent: Math.max(
+                  sortOrder: Math.max(
                     0,
-                    Math.min(95, Number(e.target.value || 0))
+                    Math.floor(Number(e.target.value || 0))
                   ),
                 }))
               }
@@ -1518,12 +1660,6 @@ const DashboardOffers: React.FC = () => {
             </div>
           )}
         </div>
-        {packageComputed.isHighDiscount && (
-          <div className="pkgm__warn">
-            الخصم الحالي {packageComputed.discountPercent.toFixed(1)}% أعلى من الحد ({packageComputed.warnOver}%).
-            سعر مقترح: {packageComputed.suggestedPrice} ر.س. يمكنك الحفظ كما هو.
-          </div>
-        )}
       </div>
       )}
 
