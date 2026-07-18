@@ -66,7 +66,10 @@ test("public booking loads categories and services from Core D1 during Core cuto
   assert.match(source, /const useCoreCatalog = getDataSourceFlags\(\)\.useCoreD1/);
   assert.match(source, /listActiveCategoriesBySection\(sectionId, SALON_ID, "core"\)/);
   assert.match(source, /listActiveServices\(\{ sectionId \}, SALON_ID, "core"\)/);
-  assert.match(source, /listActiveSections\(SALON_ID, useCoreCatalog \? "core" : "auto"\)/);
+  assert.match(
+    source,
+    /listActiveSections\(\s*SALON_ID,\s*useCoreCatalog\s*\?\s*"core"\s*:\s*"auto"\s*\)/
+  );
 });
 
 test("Core availability service caches per staff day and supports invalidation", () => {
@@ -170,14 +173,33 @@ test("dashboard bookings uses Core D1 without touching Firestore in Core mode", 
   assert.doesNotMatch(coreListBranch, /readFirestoreBookings/);
 
   const watchStart = service.indexOf("export function watchAllBookings");
-  const watchEnd = service.indexOf("export async function listUserBookings", watchStart);
+  assert.ok(watchStart >= 0, "watchAllBookings must exist");
+
+  const possibleWatchEnds = [
+    service.indexOf("export async function listUserBookings", watchStart),
+    service.indexOf("export function listUserBookings", watchStart),
+    service.indexOf("export async function getBookingById", watchStart),
+  ].filter((index) => index > watchStart);
+  const watchEnd = possibleWatchEnds.length
+    ? Math.min(...possibleWatchEnds)
+    : service.length;
   const watchBlock = service.slice(watchStart, watchEnd);
-  const coreWatchBranch = watchBlock.match(
-    /if \(getDataSourceFlags\(\)\.useCoreD1\) \{([\s\S]*?)\n\s*\}\n\s*return watchFirestoreBookings/
-  )?.[1] || "";
-  assert.match(coreWatchBranch, /const rows = await listCoreBookings\(scope\)/);
-  assert.match(coreWatchBranch, /setInterval\(loadCore, 8_000\)/);
-  assert.doesNotMatch(coreWatchBranch, /watchFirestoreBookings/);
+
+  assert.match(watchBlock, /getDataSourceFlags\(\)\.useCoreD1/);
+  assert.match(watchBlock, /const rows = await listCoreBookings\(scope\)/);
+  assert.match(watchBlock, /setInterval\(loadCore,\s*8_000\)/);
+
+  const coreRowsIndex = watchBlock.indexOf(
+    "const rows = await listCoreBookings(scope)"
+  );
+  const firestoreWatcherIndex = watchBlock.indexOf(
+    "return watchFirestoreBookings"
+  );
+  assert.ok(coreRowsIndex >= 0, "Core watcher must load bookings from Core D1");
+  assert.ok(
+    firestoreWatcherIndex < 0 || coreRowsIndex < firestoreWatcherIndex,
+    "Core D1 watcher must be selected before the legacy Firestore watcher"
+  );
 
   assert.match(dashboard, /const scope = useCoreD1 \? undefined : \{ statuses: LIVE_ACTIVE_STATUSES \}/);
   assert.match(dashboard, /if \(useCoreD1\) setHistoryBookingsSource\(\[\]\)/);
@@ -663,4 +685,39 @@ test("Core worker binds authenticated bookings to the verified client identity",
   assert.match(source, /resolveSelfClient/);
   assert.match(source, /clientId:\s*selfClient\.id/);
   assert.match(source, /source:\s*"client"/);
+});
+test("public catalog surfaces never require Firestore authentication in Core mode", () => {
+  const booking = readFileSync("src/pages/Booking.tsx", "utf8");
+  assert.match(booking, /const secs = await listActiveSections/);
+  assert.match(booking, /Promise\.allSettled/);
+  assert.match(booking, /useCoreCatalog\s*\?\s*Promise\.resolve<ServicePackageDoc\[]>\(\[\]\)/);
+  assert.doesNotMatch(
+    booking,
+    /Promise\.all\(\[\s*listActiveSections[\s\S]{0,300}listActivePackages/
+  );
+
+  for (const file of [
+    "src/pages/Services.tsx",
+    "src/pages/Pricing.tsx",
+    "src/components/HomeServices.tsx",
+  ]) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, /CoreCatalogService/);
+    assert.doesNotMatch(source, /firebase\/firestore/);
+  }
+
+  const settings = readFileSync("src/services/AppSettingsService.ts", "utf8");
+  assert.match(settings, /flags\.useSettingsD1 \|\| flags\.useCoreD1/);
+});
+test("public booking staff loading is Core-only and cannot keep a stale spinner", () => {
+  const source = readFileSync("src/pages/Booking.tsx", "utf8");
+  assert.match(source, /CoreStaffService\.list/);
+  assert.match(source, /listActiveStaffAll\(SALON_ID, useCoreCatalog \? "core" : "auto"\)/);
+  assert.match(source, /staffRequestVersionRef/);
+  assert.match(source, /Always finish the newest request/);
+  assert.doesNotMatch(
+    source,
+    /finally\s*\{\s*if \(!cancelled\)\s*\{\s*setStaffLoadingByService/
+  );
+  assert.match(source, /if \(useCoreCatalog\)[\s\S]{0,500}setStaffDisplayById\(next\)/);
 });

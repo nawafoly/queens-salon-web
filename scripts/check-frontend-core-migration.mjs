@@ -61,7 +61,11 @@ const requiredChecks = [
   },
   {
     file: "src/services/AppSettingsService.ts",
-    required: [/getDataSourceFlags\(\)\.useSettingsD1/, /CoreSettingsService/],
+    required: [
+      /function useCoreSettingsStore/,
+      /flags\.useSettingsD1\s*\|\|\s*flags\.useCoreD1/,
+      /CoreSettingsService/,
+    ],
   },
   {
     file: "src/services/CoreHrService.ts",

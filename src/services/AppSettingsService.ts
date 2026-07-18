@@ -481,6 +481,11 @@ function sanitize(input: any): AppSettings {
   };
 }
 
+function useCoreSettingsStore(): boolean {
+  const flags = getDataSourceFlags();
+  return flags.useSettingsD1 || flags.useCoreD1;
+}
+
 function cacheWrite(settings: AppSettings) {
   if (STRICT_FIREBASE) return;
   try {
@@ -528,7 +533,7 @@ export const AppSettingsService = {
   },
 
   async fetchRemote(): Promise<AppSettings> {
-    if (getDataSourceFlags().useSettingsD1) {
+    if (useCoreSettingsStore()) {
       const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
       if (!setting) {
         throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app was not migrated to Core D1.");
@@ -556,7 +561,7 @@ export const AppSettingsService = {
   },
 
   subscribe(cb: (settings: AppSettings) => void) {
-    if (getDataSourceFlags().useSettingsD1) {
+    if (useCoreSettingsStore()) {
       let active = true;
       const load = async () => {
         try {
@@ -567,6 +572,7 @@ export const AppSettingsService = {
           if (active) cb(remote);
         } catch (error) {
           console.error("Core D1 settings subscription error:", error);
+          if (active) cb(cacheRead() || defaultSettings);
         }
       };
       void load();
@@ -618,7 +624,7 @@ export const AppSettingsService = {
       ...settings,
       updatedAt: new Date().toISOString(),
     });
-    if (getDataSourceFlags().useSettingsD1) {
+    if (useCoreSettingsStore()) {
       await CoreSettingsService.save(DOC_PATH.id, payload, "public");
       cacheWrite(payload);
       return payload;

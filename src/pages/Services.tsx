@@ -29,9 +29,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 // ✅ نستعمل نفس شكل كرت العروض 1:1
 
-// ✅ Firestore
-import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
-import { db } from "../services/firebase";
+// Public catalog is served by Core D1 and does not require Firebase Auth.
+import { CoreCatalogService } from "../services/CoreCatalogService";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { isSeasonActiveNow, pickEffectivePrice } from "../helpers/seasonPricing";
 
@@ -100,7 +99,7 @@ function normalizeSectionRow(raw: any, id = ""): SectionRow {
     id: String(id || raw?.id || "").trim(),
     name: String(raw?.name || "").trim(),
     active: Boolean(raw?.active ?? true),
-    order: Number(raw?.order ?? 0),
+    order: Number(raw?.order ?? raw?.sortOrder ?? 0),
   };
 }
 
@@ -110,7 +109,7 @@ function normalizeCategoryRow(raw: any, id = ""): CategoryRow {
     sectionId: String(raw?.sectionId || "").trim(),
     name: String(raw?.name || "").trim(),
     active: Boolean(raw?.active ?? true),
-    order: Number(raw?.order ?? 0),
+    order: Number(raw?.order ?? raw?.sortOrder ?? 0),
   };
 }
 
@@ -125,7 +124,7 @@ function normalizeServiceRow(raw: any, id = ""): ServiceRow {
     name: String(raw?.name || "").trim(),
     sectionId: String(raw?.sectionId || "").trim(),
     categoryId: raw?.categoryId ? String(raw.categoryId).trim() : undefined,
-    price: Math.max(0, Number(raw?.price ?? 0)),
+    price: Math.max(0, Number(raw?.price ?? (Number(raw?.priceHalalas ?? 0) / 100))),
     seasonPrice,
     active: Boolean(raw?.active ?? true),
   };
@@ -395,31 +394,22 @@ export default function Services() {
       setError(null);
 
       try {
-        // ✅ Fetch in parallel to reduce page-open latency.
-        const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
-        const catsRef = collection(db, "salons", SALON_ID, "service_categories");
-        const servicesRef = collection(db, "salons", SALON_ID, "services");
-
-        const sectionsQ = query(sectionsRef, orderBy("order", "asc"));
-        const catsQ = query(catsRef, orderBy("order", "asc"));
-        const servicesQ = query(servicesRef, where("active", "==", true));
-
-        const [sectionsSnap, catsSnap, servicesSnap] = await Promise.all([
-          getDocs(sectionsQ),
-          getDocs(catsQ),
-          getDocs(servicesQ),
+        const [sectionDocs, categoryDocs, serviceDocs] = await Promise.all([
+          CoreCatalogService.listSections(true),
+          CoreCatalogService.listCategories(true),
+          CoreCatalogService.listServices({ activeOnly: true }),
         ]);
 
-        const sectionsRows: SectionRow[] = sectionsSnap.docs
-          .map((d) => normalizeSectionRow(d.data(), d.id))
+        const sectionsRows: SectionRow[] = sectionDocs
+          .map((row: any) => normalizeSectionRow(row, row.id))
           .filter((x) => x.id && x.name);
 
-        const catsRows: CategoryRow[] = catsSnap.docs
-          .map((d) => normalizeCategoryRow(d.data(), d.id))
+        const catsRows: CategoryRow[] = categoryDocs
+          .map((row: any) => normalizeCategoryRow(row, row.id))
           .filter((x) => x.id && x.sectionId && x.name);
 
-        const servicesRows: ServiceRow[] = servicesSnap.docs
-          .map((d) => normalizeServiceRow(d.data(), d.id))
+        const servicesRows: ServiceRow[] = serviceDocs
+          .map((row: any) => normalizeServiceRow(row, row.id))
           .filter((x) => x.id && x.sectionId && x.name);
 
         if (!mounted) return;
@@ -438,7 +428,7 @@ export default function Services() {
         });
       } catch (e: any) {
         if (!mounted) return;
-        console.error("Services load error:", e);
+        console.error("Core public services load error:", e);
         if (!hasCached) {
           setError(e?.message || "صار خطأ أثناء تحميل الخدمات");
         }

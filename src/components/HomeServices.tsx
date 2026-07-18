@@ -13,9 +13,8 @@ import servicesImg from "../assets/images/services.png";
 import homeServicesImg from "../assets/images/home-services.png";
 import hairColorTreatmentsImg from "../assets/images/hair-color-treatments.png";
 
-// ✅ Firestore
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "../services/firebase";
+// Public catalog is served by Core D1 and does not require Firebase Auth.
+import { CoreCatalogService } from "../services/CoreCatalogService";
 
 const SALON_ID = "main";
 
@@ -60,27 +59,20 @@ export default function HomeServices() {
       setError(null);
 
       try {
-        // ✅ Sections فقط: هذا غالبًا ما يحتاج Index إضافي
-        const ref = collection(db, "salons", SALON_ID, "service_sections");
-        const qy = query(ref, orderBy("order", "asc"));
-        const snap = await getDocs(qy);
-
-        const list: SectionRow[] = snap.docs.map((d) => {
-          const x = d.data() as any;
-          return {
-            id: d.id,
-            name: String(x?.name || ""),
-            active: x?.active !== false,
-            order: Number(x?.order ?? 0),
-          };
-        });
+        const rows = await CoreCatalogService.listSections(true);
+        const list: SectionRow[] = rows.map((x: any) => ({
+          id: String(x?.id || "").trim(),
+          name: String(x?.name || "").trim(),
+          active: x?.active !== false,
+          order: Number(x?.sortOrder ?? x?.order ?? 0),
+        }));
 
         if (!alive) return;
 
         setRows(list.filter((s) => s.active !== false && s.name.trim()));
       } catch (e: any) {
         if (!alive) return;
-        console.error("HomeServices load error:", e);
+        console.error("Core home services load error:", e);
         setError(e?.message || "صار خطأ أثناء تحميل الأقسام");
       } finally {
         if (alive) setLoading(false);

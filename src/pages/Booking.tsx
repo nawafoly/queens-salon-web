@@ -129,6 +129,8 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../services/firebase";
 import { PackageOperationsService } from "../services/PackageOperationsService";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { CoreStaffService } from "../services/CoreStaffService";
+import { coreStaffToLegacy } from "../services/coreBookingMappers";
 
 // ✅ Firebase Auth (للقراءة فقط)
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -1583,6 +1585,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const staffByResolverCacheRef = useRef<Record<string, StaffPublicWithId[]>>({});
   const staffByResolverInFlightRef = useRef<Record<string, Promise<StaffPublicWithId[]>>>({});
   const staffByServiceLoadedAtRef = useRef<Record<string, number>>({});
+  const staffRequestVersionRef = useRef<Record<string, number>>({});
   const staffDisplayLoadedIdsRef = useRef<Set<string>>(new Set());
 
   const TAKEN_TIMES_CACHE_TTL_MS = 15_000;
@@ -1997,27 +2000,45 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     async function loadSectionsFirstTime() {
       try {
         setCatalogLoading(true);
-        const [secs, packs] = await Promise.all([
-          listActiveSections(SALON_ID, useCoreCatalog ? "core" : "auto"),
-          listActivePackages(SALON_ID),
-          loadSessionPackagesFromFirestore(),
-        ]);
-        if (cancelled) return;
 
-        setFsPackages(Array.isArray(packs) ? packs : []);
+        // The public catalog is a Core D1 concern. Never couple it to an
+        // optional legacy Firestore package read: anonymous users are allowed
+        // to read Core public routes but may not read Firestore.
+        const secs = await listActiveSections(
+          SALON_ID,
+          useCoreCatalog ? "core" : "auto"
+        );
+        if (cancelled) return;
 
         setCatalogMode("firestore");
         const safeSections = Array.isArray(secs) ? secs : [];
         setFsSections(safeSections);
 
-        // Warm up section catalog cache in the background so section/category/service
-        // dropdowns open faster when user starts picking.
+        // Warm the Core-backed section cache independently.
         safeSections
           .map((s: any) => String(s?.id || "").trim())
           .filter(Boolean)
           .forEach((sid) => {
             void loadSectionCatalogFromFirestore(sid);
           });
+
+        const legacyPackagesPromise = useCoreCatalog
+          ? Promise.resolve<ServicePackageDoc[]>([])
+          : listActivePackages(SALON_ID);
+
+        const [legacyPackagesResult] = await Promise.allSettled([
+          legacyPackagesPromise,
+          loadSessionPackagesFromFirestore(),
+        ]);
+
+        if (!cancelled) {
+          setFsPackages(
+            legacyPackagesResult.status === "fulfilled" &&
+              Array.isArray(legacyPackagesResult.value)
+              ? legacyPackagesResult.value
+              : []
+          );
+        }
       } catch {
         if (!cancelled) {
           setCatalogMode("firestore");
@@ -3045,7 +3066,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const getAllActiveStaffCached = async (forceRefresh = false) => {
     const isFresh = Date.now() - Number(staffAllCacheLoadedAtRef.current || 0) < STAFF_DISPLAY_CACHE_TTL_MS;
     if (!forceRefresh && isFresh && Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
-    const all = await listActiveStaffAll(SALON_ID);
+    const all = await listActiveStaffAll(SALON_ID, useCoreCatalog ? "core" : "auto");
     staffAllCacheRef.current = Array.isArray(all) ? all : [];
     staffAllCacheLoadedAtRef.current = Date.now();
     return staffAllCacheRef.current;
@@ -3085,6 +3106,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (!wantedKeys.length) return [] as StaffPublicWithId[];
 
     const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
+      if (useCoreCatalog && target?.kind !== "package") {
+        const directCoreRows = await CoreStaffService.list({
+          activeOnly: true,
+          serviceId: sid,
+        });
+        const directStaff = directCoreRows
+          .map(coreStaffToLegacy)
+          .filter((st: any) => st?.showOnBooking !== false);
+
+        // staff_services is the authoritative assignment table in Core D1.
+        // Keep the legacy specialty matcher only as migration compatibility.
+        if (directStaff.length) return directStaff;
+      }
+
       const all = await getAllActiveStaffCached(forceRefresh);
       const visibleStaff = (all || []).filter(
         (st: any) => st?.showOnBooking !== false
@@ -3168,6 +3203,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (useCoreCatalog) {
+      const next: Record<string, any> = {};
+      Object.values(staffByService)
+        .flat()
+        .forEach((staff: any) => {
+          const id = String(staff?.id || "").trim();
+          if (id) next[id] = staff;
+        });
+      setStaffDisplayById(next);
+      return;
+    }
+
     const ids = Array.from(
       new Set(
         Object.values(staffByService)
@@ -4328,19 +4376,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           continue;
         }
 
+        const requestVersion =
+          Number(staffRequestVersionRef.current[sid] || 0) + 1;
+        staffRequestVersionRef.current[sid] = requestVersion;
+
         try {
           setStaffLoadingByService((p) => ({ ...p, [sid]: true }));
           setStaffErrorByService((p) => ({ ...p, [sid]: "" }));
           const res = await listStaffForService(sid, sv, true);
 
-          if (cancelled) return;
+          if (staffRequestVersionRef.current[sid] !== requestVersion) {
+            continue;
+          }
 
-          // تصفية إضافية: تأكد إن الموظفة فعلاً عندها هذي التخصص (Firestore قد يرجع الكل أحياناً)
-          const normalized = (res || []).filter((st: any) => {
-            const name = String(st?.name || "").trim();
-            if (!name) return false;
-            return true;
-          });
+          const normalized = (res || []).filter((st: any) =>
+            Boolean(String(st?.name || "").trim())
+          );
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
           staffByServiceLoadedAtRef.current[sid] = Date.now();
@@ -4348,24 +4399,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           if (!normalized.length) {
             setStaffErrorByService((p) => ({
               ...p,
-              [sid]: `ما فيه موظفات لهذه الخدمة حالياً.`,
+              [sid]: "ما فيه موظفات مرتبطة بهذه الخدمة حالياً.",
             }));
           }
         } catch (e: any) {
-          const msg = String(e?.message || "");
-          let err = "تعذر تحميل قائمة الموظفات.";
-          if (msg.toLowerCase().includes("requires an index")) {
-            err = "Firestore يحتاج Index للاستعلام. افتح Console واضغط Create index.";
-          }
-          if (msg.toLowerCase().includes("missing or insufficient permissions")) {
-            err = "صلاحيات قراءة الموظفات غير كافية (staff_public).";
+          if (staffRequestVersionRef.current[sid] !== requestVersion) {
+            continue;
           }
 
+          const msg = String(e?.message || e || "").trim();
           setStaffByService((p) => ({ ...p, [sid]: [] }));
           staffByServiceLoadedAtRef.current[sid] = Date.now();
-          setStaffErrorByService((p) => ({ ...p, [sid]: err }));
+          setStaffErrorByService((p) => ({
+            ...p,
+            [sid]: msg
+              ? `تعذر تحميل الموظفات: ${msg}`
+              : "تعذر تحميل قائمة الموظفات من Core D1.",
+          }));
         } finally {
-          if (!cancelled) {
+          // Always finish the newest request. Do not gate this with the
+          // effect's cancelled flag; that was leaving a permanent spinner.
+          if (staffRequestVersionRef.current[sid] === requestVersion) {
             setStaffLoadingByService((p) => ({ ...p, [sid]: false }));
           }
         }

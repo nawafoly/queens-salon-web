@@ -16,9 +16,8 @@ import Modal from "../components/Modal";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { pickEffectivePrice } from "../helpers/seasonPricing";
 
-// ✅ Firestore
-import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
-import { db } from "../services/firebase";
+// Public catalog is served by Core D1 and does not require Firebase Auth.
+import { CoreCatalogService } from "../services/CoreCatalogService";
 
 interface PriceItem {
   name: string;
@@ -240,7 +239,7 @@ const Pricing: FC = () => {
     return () => unsub();
   }, []);
 
-  // ===== Fetch from Firestore =====
+  // ===== Fetch from Core D1 =====
   useEffect(() => {
     let mounted = true;
 
@@ -248,21 +247,43 @@ const Pricing: FC = () => {
       try {
         setLoadingFs(true);
 
-        const sectionsRef = collection(db, "salons", SALON_ID, "service_sections");
-        const servicesRef = collection(db, "salons", SALON_ID, "services");
+        const [sectionRows, categoryRows, serviceRows] = await Promise.all([
+          CoreCatalogService.listSections(true),
+          CoreCatalogService.listCategories(true),
+          CoreCatalogService.listServices({ activeOnly: true }),
+        ]);
 
-        // Sections
-        const sectionsSnap = await getDocs(query(sectionsRef, orderBy("order", "asc")));
-        const sections: FsSectionDoc[] = sectionsSnap.docs.map((d) => ({
-          id: d.id,
-          data: d.data() as FsSection,
+        const categoryById = new Map(
+          categoryRows.map((row: any) => [
+            String(row?.id || "").trim(),
+            String(row?.name || "").trim(),
+          ])
+        );
+
+        const sections: FsSectionDoc[] = sectionRows.map((row: any) => ({
+          id: String(row?.id || "").trim(),
+          data: {
+            name: String(row?.name || "").trim(),
+            active: row?.active !== false,
+            order: Number(row?.sortOrder ?? 0),
+          },
         }));
 
-        // Services (active only)
-        const servicesSnap = await getDocs(query(servicesRef, where("active", "==", true)));
-        const services: FsServiceDoc[] = servicesSnap.docs.map((d) => ({
-          id: d.id,
-          data: d.data() as FsService,
+        const services: FsServiceDoc[] = serviceRows.map((row: any) => ({
+          id: String(row?.id || "").trim(),
+          data: {
+            name: String(row?.name || "").trim(),
+            active: row?.active !== false,
+            sectionId: String(row?.sectionId || "").trim(),
+            price: Math.max(0, Number(row?.priceHalalas || 0) / 100),
+            seasonPrice:
+              row?.seasonPrice === null || row?.seasonPrice === undefined
+                ? null
+                : Number(row.seasonPrice || 0),
+            categoryName:
+              categoryById.get(String(row?.categoryId || "").trim()) || "الخدمات",
+            note: row?.note ? String(row.note) : undefined,
+          },
         }));
 
         if (!sections.length || !services.length) {
@@ -333,7 +354,7 @@ const Pricing: FC = () => {
 
         if (mounted) setFsSections(Object.keys(built).length ? built : null);
       } catch (e) {
-        console.error("Pricing Firestore load error:", e);
+        console.error("Core pricing load error:", e);
         if (mounted) setFsSections(null);
       } finally {
         if (mounted) setLoadingFs(false);
