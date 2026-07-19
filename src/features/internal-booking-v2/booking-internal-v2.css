@@ -360,3 +360,15 @@
   .bk2-session-adjust-fields{grid-template-columns:1fr}
   .bk2-session-balance-preview{gap:8px;padding:12px 8px}
 }
+
+.bk2-past-date-warning{
+  margin:0;
+  padding:10px 12px;
+  border:1px solid #e8bd77;
+  border-radius:10px;
+  background:#fff8e8;
+  color:#7a4b00;
+  font-size:14px;
+  font-weight:800;
+  line-height:1.55;
+}

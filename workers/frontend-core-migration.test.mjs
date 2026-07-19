@@ -230,6 +230,24 @@ test("internal booking V2 loads authoritative Core staff without hardcoded staff
   assert.doesNotMatch(v2Source, /Wessam|وسام/i);
 });
 
+test("backdated dates are exposed only by internal booking V2 and require confirmation", () => {
+  const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+  const publicBooking = readFileSync("src/pages/Booking.tsx", "utf8");
+  const coreService = readFileSync("src/services/CoreBookingService.ts", "utf8");
+  const coreDataSource = readFileSync("src/services/bookingDataSources/coreD1BookingDataSource.ts", "utf8");
+
+  assert.match(v2, /type="date"[\s\S]{0,180}value=\{bookingDate\}/);
+  assert.doesNotMatch(v2, /type="date"[\s\S]{0,120}min=\{todayISO\(\)\}/);
+  assert.match(v2, /isPastBookingDate/);
+  assert.match(v2, /أنت تقوم بإنشاء حجز بتاريخ سابق/);
+  assert.match(v2, /تأكيد وإنشاء الحجز/);
+  assert.match(v2, /submittingRef\.current/);
+  assert.match(publicBooking, /id="bookingDate"[\s\S]{0,220}min=\{todayISO\(\)\}/);
+  assert.match(publicBooking, /const isPast = cell\.iso < todayISO\(\)/);
+  assert.match(coreService, /\/api\/core\/internal\/bookings/);
+  assert.match(coreDataSource, /CoreBookingService\.createInternal/);
+});
+
 test("Core invoice printing is not Firestore-only and supports success reprint rows", () => {
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
   const coreInvoice = readFileSync("src/services/CoreInvoiceService.ts", "utf8");

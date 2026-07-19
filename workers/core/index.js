@@ -278,6 +278,10 @@ function match(url, method) {
     return { name: "client:loyalty-adjustment", id: loyaltyAdjustment[1] };
   }
 
+  if (path === "/api/core/internal/bookings" && method === "POST") {
+    return { name: "bookings:internal" };
+  }
+
   const bookingAction =
     /^\/api\/core\/bookings\/([^/]+)\/(complete|cancel|reschedule)$/.exec(
       path
@@ -462,7 +466,27 @@ async function dispatch(ctx, route, method, body, query) {
         return createClient(db, ctx.salonId, body);
       }
       if (method === "PATCH" && route.id) {
-        return patchClient(db, ctx.salonId, route.id, body);
+        const updatesIdentity = ["name", "phone", "phoneNormalized"].some(
+          (field) => Object.prototype.hasOwnProperty.call(body || {}, field)
+        );
+        if (updatesIdentity) requireRole(ctx.role, ADMIN_ROLES);
+        const before = await getClient(db, ctx.salonId, route.id);
+        const updated = await patchClient(db, ctx.salonId, route.id, body);
+        await recordAudit(db, ctx.salonId, {
+          action: "client_profile_updated",
+          entityType: "client",
+          entityId: updated.id,
+          description: "Client record updated through the authenticated Core API.",
+          before: {
+            name: before.name,
+            phone: before.phone_normalized,
+          },
+          after: {
+            name: updated.name,
+            phone: updated.phone_normalized,
+          },
+        }, actorInfo);
+        return updated;
       }
       break;
 
@@ -536,6 +560,19 @@ async function dispatch(ctx, route, method, body, query) {
         return deleteBooking(db, ctx.salonId, route.id, actorInfo);
       }
       break;
+
+    case "bookings:internal":
+      // This route is deliberately non-public. actor() verifies the Firebase
+      // token and dispatch() applies the existing operational-role guard before
+      // this branch is reached. Never trust a browser-supplied isAdmin flag or
+      // source value when allowing a backdated booking.
+      return createBooking(
+        db,
+        ctx.salonId,
+        { ...body, source: "internal", channel: "internal" },
+        actorInfo,
+        { allowPastDates: true }
+      );
 
     case "booking:complete":
       return completeBooking(db, ctx.salonId, route.id);

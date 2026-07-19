@@ -59,6 +59,26 @@ function compareDateTime(leftDate, leftTime, rightDate, rightTime) {
   return `${leftDate}T${leftTime}`.localeCompare(`${rightDate}T${rightTime}`);
 }
 
+function salonTodayISO(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const read = (type) => parts.find((part) => part.type === type)?.value || "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
+function assertBookingDateAllowed(bookingDate, allowPastDates) {
+  if (allowPastDates || bookingDate >= salonTodayISO()) return;
+  throw new AppError(
+    400,
+    "core_booking:past_date_not_allowed",
+    "Past booking dates are only allowed through the authenticated internal booking route"
+  );
+}
+
 function parseBookingReferenceNumber(value) {
   const match = cleanText(value).toUpperCase().match(/^MK-(\d+)$/);
   if (!match) return 0;
@@ -367,7 +387,7 @@ export async function getBooking(db, salonId, id) {
   };
 }
 
-export async function createBooking(db, salonId, data, actor = "") {
+export async function createBooking(db, salonId, data, actor = "", options = {}) {
   const actorUid = typeof actor === "string" ? actor : actor?.uid || "";
   const requestedBookingId = optionalText(data.id);
   if (requestedBookingId) {
@@ -384,6 +404,8 @@ export async function createBooking(db, salonId, data, actor = "") {
     data.bookingDate || data.booking_date || data.date,
     "bookingDate"
   );
+  const allowPastDates = options?.allowPastDates === true;
+  assertBookingDateAllowed(parentDate, allowPastDates);
   const parentStart = validTime(
     data.startTime || data.start_time || data.time,
     "startTime"
@@ -447,6 +469,7 @@ export async function createBooking(db, salonId, data, actor = "") {
       item.bookingDate || item.booking_date || item.date || cursorDate,
       `items[${index}].bookingDate`
     );
+    assertBookingDateAllowed(bookingDate, allowPastDates);
     const startTime = validTime(
       item.startTime || item.start_time || item.time ||
         (bookingDate === cursorDate ? cursorTime : parentStart),
@@ -699,6 +722,9 @@ export async function createBooking(db, salonId, data, actor = "") {
       invoiceId: invoiceId || null,
       status: bookingStatus,
       paymentStatus: "unpaid",
+      bookingDate: firstRow.booking_date,
+      startTime: firstRow.start_time,
+      backdated: firstRow.booking_date < salonTodayISO(),
       subtotalHalalas: subtotal,
       discountHalalas: discount,
       totalHalalas: total,

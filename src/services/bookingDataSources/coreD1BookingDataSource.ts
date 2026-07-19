@@ -82,6 +82,12 @@ function isPackageCovered(booking: BookingDoc): boolean {
   );
 }
 
+function createBookingThroughTrustedChannel(input: Parameters<typeof CoreBookingService.create>[0]) {
+  return input.source === "internal"
+    ? CoreBookingService.createInternal(input)
+    : CoreBookingService.create(input);
+}
+
 function readBookingDiscountSnapshot(booking: BookingDoc): Record<string, unknown> | undefined {
   const snapshot = (booking as BookingDoc & { discountSnapshot?: unknown }).discountSnapshot;
   return snapshot && typeof snapshot === "object" ? snapshot as Record<string, unknown> : undefined;
@@ -292,7 +298,7 @@ export const coreD1BookingDataSource: BookingDataSource = {
         packageItems,
         (reservations) => {
           const reservation = reservations[0];
-          return CoreBookingService.create({
+          return createBookingThroughTrustedChannel({
             ...coreInput,
             items: coreInput.items.map((item, index) => ({
               ...item,
@@ -380,7 +386,7 @@ export const coreD1BookingDataSource: BookingDataSource = {
               reservation.result.packageTransactionId,
             ])
           );
-          return CoreBookingService.create({
+          return createBookingThroughTrustedChannel({
             ...coreInput,
             items: coreInput.items.map((item, index) => ({
               ...item,

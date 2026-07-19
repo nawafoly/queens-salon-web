@@ -15,6 +15,11 @@ import {
   rowNotFound,
   updateById,
 } from '../d1.js';
+import { AppError } from '../errors.js';
+
+function normalizedClientName(value) {
+  return cleanText(value).replace(/\s+/gu, ' ');
+}
 
 export async function listClients(db, salonId, query = {}) {
   const rows = await dbAll(
@@ -129,15 +134,42 @@ export async function createClient(db, salonId, data) {
 }
 
 export async function patchClient(db, salonId, id, data) {
-  return updateById(db, "clients", salonId, requiredId(id), {
+  const current = await getClient(db, salonId, id);
+  const hasPhoneUpdate =
+    data.phone !== undefined || data.phoneNormalized !== undefined;
+  const requestedPhone = data.phoneNormalized ?? data.phone;
+  const phone = hasPhoneUpdate ? normalizePhone(requestedPhone) : undefined;
+
+  if (hasPhoneUpdate && !phone) {
+    throw new AppError(
+      400,
+      'core_client:invalid_phone',
+      'A valid Saudi mobile number is required.'
+    );
+  }
+
+  if (phone) {
+    const existingRows = await listClients(db, salonId);
+    const duplicate = existingRows.find(
+      (row) =>
+        row.id !== current.id && cleanText(row.phone_normalized) === phone
+    );
+    if (duplicate) {
+      throw new AppError(
+        409,
+        'core_client:phone_conflict',
+        'Another client already uses this mobile number.'
+      );
+    }
+  }
+
+  return updateById(db, "clients", salonId, current.id, {
     name:
       data.name === undefined
         ? undefined
-        : requiredText(data.name, "name"),
+        : requiredText(normalizedClientName(data.name), "name"),
     phone_normalized:
-      data.phone === undefined && data.phoneNormalized === undefined
-        ? undefined
-        : normalizePhone(data.phoneNormalized || data.phone),
+      hasPhoneUpdate ? phone : undefined,
     email:
       data.email === undefined
         ? undefined

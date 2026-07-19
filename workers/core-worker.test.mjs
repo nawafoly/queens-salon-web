@@ -586,6 +586,18 @@ function request(path, { method = "GET", token = "test:owner1:owner", body } = {
   });
 }
 
+function riyadhDateOffset(days) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const read = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  const date = new Date(Date.UTC(read("year"), read("month") - 1, read("day") + days, 12));
+  return date.toISOString().slice(0, 10);
+}
+
 async function json(response) {
   return response.json();
 }
@@ -786,6 +798,70 @@ test("client CRUD uses D1", async () => {
   assert.equal(body.data.name, "Client A");
 });
 
+test("client profile update validates identity and keeps existing bookings linked", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  await createCoreBooking(fake, { id: "booking-client-profile" });
+  fake.seed("clients", {
+    id: "client-b",
+    salon_id: "main",
+    name: "Client B",
+    phone_normalized: "0500000002",
+    status: "active",
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
+  });
+
+  let response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    body: { name: "  نورة   الحربي  ", phone: "+966 55-123-4567" },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.name, "نورة الحربي");
+  assert.equal(body.data.phone_normalized, "0551234567");
+
+  response = await worker.fetch(request("/api/core/bookings/booking-client-profile"), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.client_id, "client-a");
+  assert.equal(body.data.client_name, "نورة الحربي");
+  assert.equal(body.data.client_phone, "0551234567");
+
+  response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    body: { phone: "0500000002" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_client:phone_conflict");
+
+  response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    body: { name: "    " },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_validation:invalid_text");
+
+  response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    body: { phone: "123" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_client:invalid_phone");
+
+  response = await worker.fetch(request("/api/core/clients/client-a", {
+    method: "PATCH",
+    token: "test:reception1:reception",
+    body: { name: "غير مسموح" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(fake.find("bookings", "main", "booking-client-profile").client_id, "client-a");
+});
+
 test("service CRUD uses D1", async () => {
   const fake = new FakeD1();
   let response = await worker.fetch(request("/api/core/services", {
@@ -864,6 +940,102 @@ test("booking creation creates booking items and invoice", async () => {
   const secondBody = await json(secondResponse);
   assert.equal(secondResponse.status, 200, JSON.stringify(secondBody));
   assert.equal(secondBody.data.public_id, "MK-10424");
+});
+
+test("backdated booking creation requires the authenticated internal route", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const bookingDate = riyadhDateOffset(-1);
+  const baseBody = {
+    salonId: "main",
+    clientId: "client-a",
+    staffId: "staff-a",
+    source: "internal",
+    bookingDate,
+    startTime: "10:00",
+    items: [{ serviceId: "svc-a" }],
+  };
+
+  let response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    token: "",
+    body: { ...baseBody, id: "booking-past-guest" },
+  }), env(fake));
+  let body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:past_date_not_allowed");
+
+  response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    body: { ...baseBody, id: "booking-past-public-owner" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:past_date_not_allowed");
+
+  response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    token: "test:client-user:client",
+    body: { ...baseBody, id: "booking-past-client" },
+  }), env(fake));
+  body = await json(response);
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(body.error, "core_auth:insufficient_permissions");
+
+  const startedAt = Date.now();
+  response = await worker.fetch(request("/api/core/internal/bookings", {
+    method: "POST",
+    body: {
+      ...baseBody,
+      id: "booking-past-internal",
+      invoiceId: "invoice-past-internal",
+      source: "client",
+      items: [{ id: "item-past-internal", serviceId: "svc-a" }],
+    },
+  }), env(fake));
+  body = await json(response);
+  const finishedAt = Date.now();
+  assert.equal(response.status, 200, JSON.stringify(body));
+
+  const booking = fake.find("bookings", "main", "booking-past-internal");
+  const item = fake.find("booking_items", "main", "item-past-internal");
+  const invoice = fake.find("invoices", "main", "invoice-past-internal");
+  const audit = fake.rows("audit_logs").find(
+    (row) => row.action === "booking_created" && row.entity_id === "booking-past-internal"
+  );
+  assert.equal(booking.booking_date, bookingDate);
+  assert.equal(booking.source, "internal");
+  assert.equal(booking.created_by_uid, "owner1");
+  assert.equal(item.booking_date, bookingDate);
+  assert.equal(invoice.booking_id, booking.id);
+  assert.ok(Date.parse(booking.created_at) >= startedAt && Date.parse(booking.created_at) <= finishedAt);
+  assert.ok(Date.parse(invoice.created_at) >= startedAt && Date.parse(invoice.created_at) <= finishedAt);
+  assert.ok(audit, "backdated creation must remain visible in the audit log");
+  assert.equal(JSON.parse(audit.after_json).bookingDate, bookingDate);
+  assert.equal(JSON.parse(audit.after_json).backdated, true);
+});
+
+test("public booking rejects a past item date even when its parent date is future", async () => {
+  const fake = new FakeD1();
+  seedCore(fake);
+  const response = await worker.fetch(request("/api/core/bookings", {
+    method: "POST",
+    token: "",
+    body: {
+      salonId: "main",
+      id: "booking-future-parent-past-item",
+      clientId: "client-a",
+      staffId: "staff-a",
+      source: "internal",
+      bookingDate: "2099-01-10",
+      startTime: "10:00",
+      items: [{ id: "item-past", serviceId: "svc-a", bookingDate: "2020-01-10" }],
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assert.equal(body.error, "core_booking:past_date_not_allowed");
+  assert.equal(fake.rows("bookings").length, 0);
 });
 
 test("booking creation canonicalizes a stale service id by an exact Core service name", async () => {

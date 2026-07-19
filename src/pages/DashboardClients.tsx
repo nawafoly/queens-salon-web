@@ -1,1706 +1,398 @@
-// src/pages/DashboardClients.tsx
 import "../styles/AdminDashboardClients.css";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faSearch,
-  faFileCsv,
-  faUsers,
-  faXmark,
-  faCircleInfo,
-  faFileArrowUp,
-  faCopy,
-} from "@fortawesome/free-solid-svg-icons";
-import { faWhatsapp } from "@fortawesome/free-brands-svg-icons";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
+import {
+  CustomersEmptyState,
+  CustomersFilters,
+  CustomersMobileList,
+  CustomersPageHeader,
+  CustomersSearchToolbar,
+  CustomersStatsGrid,
+  CustomersTable,
+} from "../features/customers/CustomersPageSections";
+import CustomerRecordModal from "../features/customers/CustomerRecordModal";
+import CustomersImportModal from "../features/customers/CustomersImportModal";
+import {
+  customerLastVisitTimestamp,
+  customerPhoneDigits,
+  formatCustomerLastVisit,
+  formatCustomerPhone,
+  getCustomerSourceLabel,
+  getCustomerStatusLabel,
+  isCustomerActive,
+  normalizeCustomerName,
+  normalizeCustomerSearchText,
+} from "../features/customers/customerFormatters";
+import type {
+  CustomerLastVisitFilter,
+  CustomerRow,
+  CustomerSegment,
+  CustomerSort,
+  CustomerSource,
+  CustomerStats,
+} from "../features/customers/customerTypes";
+import { PackageOperationsService } from "../services/PackageOperationsService";
+import { CoreClientService } from "../services/CoreClientService";
+import { listCoreBookings, type BookingDocWithId } from "../services/firestoreBookings";
+import type { CoreClient } from "../types/coreApi";
 
 /**
- * ✅ قاعدة الاستيراد:
- * - ستايل المودالات الموحّد أولاً
- * - ثم ستايل الصفحة الخاص
+ * CustomerRecordModal owns the Core-backed detail workflow formerly embedded here:
+ * CoreClientService.overview, CoreClientService.adjustLoyalty, السجل الموحد للعميلة,
+ * الدفعات والاسترجاعات، والعروض المستخدمة.
  */
-import Modal from "../components/Modal";
-import ClientPackagesPanel from "../components/packages/ClientPackagesPanel";
 
-// Core D1 bookings and clients — no Firestore fallback.
-import {
-  listCoreBookings,
-  type BookingDocWithId,
-  type BookingStatus,
-} from "../services/firestoreBookings";
-import {
-  CoreClientService,
-  type CoreClientOverview,
-} from "../services/CoreClientService";
-
-/** ✅ UiRole */
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
-/** ✅ Settings (LocalStorage) */
 type AppSettings = {
-  policies?: {
-    allowStaffViewClients?: boolean; // ✅ NEW: تحكم فتح صفحة العميلات للـ staff
-  };
+  policies?: { allowStaffViewClients?: boolean };
 };
 
 const SETTINGS_KEY = "dashboard_settings_v1";
-
-const defaultSettings: AppSettings = {
-  // ✅ قرارك رقم 1: منع staff افتراضيًا
-  policies: {
-    allowStaffViewClients: false,
-  },
-};
+const DEFAULT_SETTINGS: AppSettings = { policies: { allowStaffViewClients: false } };
 
 function loadSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return defaultSettings;
-
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     return {
-      ...defaultSettings,
+      ...DEFAULT_SETTINGS,
       ...parsed,
-      policies: { ...defaultSettings.policies, ...(parsed?.policies || {}) },
+      policies: { ...DEFAULT_SETTINGS.policies, ...(parsed?.policies || {}) },
     };
   } catch {
-    return defaultSettings;
+    return DEFAULT_SETTINGS;
   }
 }
 
-type ClientRow = {
-  key: string; // identifier
-  clientId?: string;
-  legacyClientDocId?: string;
-  name: string;
-  phone: string;
-  bookingsCount: number;
-  lastVisitDate: string; // YYYY-MM-DD
-  lastVisitTime: string;
-  // ✅ from imported clients collection
-  vip?: boolean;
-  importedNote?: string;
-  source?: "bookings" | "imported" | "both";
-};
-
-type ImportedClientDoc = {
-  id: string;
-  clientId?: string;
-  legacyClientDocId?: string;
-  name?: string;
-  phone?: string; // normalized phone string
-  vip?: boolean;
-  note?: string;
-  createdAt?: any;
-  updatedAt?: any;
-};
-
-const statusLabel: Record<BookingStatus, string> = {
-  confirmed: "مؤكد",
-  pending: "في الانتظار",
-  cancelled: "ملغي",
-  completed: "مكتمل",
-};
-
-function formatHalalas(value: unknown): string {
-  const amount = Number(value ?? 0) / 100;
-  return `${Number.isFinite(amount) ? amount.toLocaleString("ar-SA", { maximumFractionDigits: 2 }) : "0"} ريال`;
+function bookingClientId(booking: BookingDocWithId): string {
+  const row = booking as BookingDocWithId & { clientId?: unknown; userId?: unknown };
+  return String(row.clientId ?? row.userId ?? "").trim();
 }
 
-function formatDateTime(value: unknown): string {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "—";
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
+function bookingCreatedAt(booking?: BookingDocWithId): string {
+  if (!booking) return "";
+  const row = booking as BookingDocWithId & { createdAt?: unknown; createdAtMs?: unknown };
+  const raw = String(row.createdAt ?? "").trim();
+  if (raw && Number.isFinite(Date.parse(raw))) return new Date(raw).toISOString();
+  const timestamp = Number(row.createdAtMs || 0);
+  return timestamp > 0 ? new Date(timestamp).toISOString() : "";
 }
 
-function downloadXLSX(filename: string, rows: any[][], sheetName = "Sheet1") {
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, filename);
+function sortBookingsNewest(first: BookingDocWithId, second: BookingDocWithId): number {
+  const date = String(second.date || "").localeCompare(String(first.date || ""));
+  return date || String(second.time || "").localeCompare(String(first.time || ""));
 }
 
-/** ✅ تنظيف الجوال (للعرض) */
-function cleanPhone(v: any) {
-  return String(v ?? "").trim();
+function riyadhDateKey(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
-/** ✅ استخراج أرقام فقط (للمطابقة والتخزين) */
-function phoneDigits(v: any) {
-  const s = String(v ?? "").trim();
-  const d = s.replace(/[^\d]/g, "");
-  return d;
+function downloadXLSX(filename: string, rows: unknown[][], sheetName: string) {
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  XLSX.writeFile(workbook, filename);
 }
 
-/** ✅ توحيد الجوال السعودي بشكل بسيط */
-function normalizeSaudiPhone(raw: any) {
-  const d = phoneDigits(raw);
-  if (!d) return { phone: "", digits: "" };
-
-  // حالات شائعة:
-  // 05xxxxxxxx -> digits = 05...
-  // 9665xxxxxxxx -> digits = 9665...
-  // 5xxxxxxxx -> digits = 5...
-  let digits = d;
-
-  // لو يبدأ 00966
-  if (digits.startsWith("00966")) digits = "966" + digits.slice(5);
-
-  // لو يبدأ 9660 (خطأ شائع)
-  if (digits.startsWith("9660")) digits = "966" + digits.slice(4);
-
-  // لو يبدأ 0 وتاليه 5 -> نخليه كما هو للعرض، لكن key بنحوله
-  // key الأفضل: 9665xxxxxxxx
-  let keyDigits = digits;
-
-  if (digits.length === 10 && digits.startsWith("05")) {
-    keyDigits = "966" + digits.slice(1); // 9665xxxxxxxx
-  } else if (digits.length === 9 && digits.startsWith("5")) {
-    keyDigits = "966" + digits; // 9665xxxxxxxx
-  } else if (digits.length === 12 && digits.startsWith("966")) {
-    keyDigits = digits;
-  }
-
-  // للعرض نخليه 05xxxxxxxx إذا ممكن
-  let display = digits;
-  if (keyDigits.startsWith("9665") && keyDigits.length === 12) {
-    display = "0" + keyDigits.slice(3); // 05xxxxxxxx
-  }
-
-  return { phone: display, digits: keyDigits };
+function customerMatchesBooking(customer: CustomerRow, booking: BookingDocWithId): boolean {
+  const clientId = bookingClientId(booking);
+  if (customer.clientId && clientId) return customer.clientId === clientId;
+  const customerPhone = customerPhoneDigits(customer.phone);
+  const bookingPhone = customerPhoneDigits(booking.clientPhone);
+  if (customerPhone && bookingPhone) return customerPhone === bookingPhone;
+  return normalizeCustomerSearchText(customer.name) === normalizeCustomerSearchText(booking.clientName);
 }
 
-/** ✅ Normalize Arabic text for stable key matching (notes / dedupe) */
-function normalizeArabic(raw: any) {
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
+type DashboardClientsProps = { currentRole?: UiRole };
 
-  return s
-    .toLowerCase()
-    // remove Arabic diacritics + tatweel
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
-    // normalize Alef/Ya/Ha variants
-    .replace(/[أإآٱ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    // normalize whitespace
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function makeClientKey(name: string, phone: string) {
-  // ✅ نحاول نخلي المفتاح دايم بالجوال لو موجود
-  const norm = normalizeSaudiPhone(phone);
-  const pd = norm.digits;
-  return pd ? `p:${pd}` : `n:${name.trim().toLowerCase()}`;
-}
-
-function noteKeyForClient(c: Pick<ClientRow, "key" | "name" | "phone"> | null | undefined) {
-  if (!c) return "";
-  const norm = normalizeSaudiPhone(c.phone);
-  if (norm.digits) return `p:${norm.digits}`;
-  const normalizedName = normalizeArabic(c.name || "");
-  if (normalizedName) return `n:${normalizedName}`;
-  return String(c.key || "").trim();
-}
-
-function formatTime12(time24: string) {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "-");
-  const h24 = Number(m[1]);
-  const mm = m[2];
-  const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
-}
-
-function bookingNoOf(b: any) {
-  const candidates = [
-    b?.publicId,
-    b?.bookingNumber,
-    b?.bookingNo,
-  ];
-  const raw = candidates
-    .map((x) => String(x || "").trim())
-    .find(Boolean) || "";
-
-  if (!raw) return "—";
-
-  const upper = raw.toUpperCase();
-  if (/^MK-\d+$/.test(upper)) return upper;
-
-  // only convert if the source is numeric-only (legacy forms like "10080")
-  if (/^\d+$/.test(upper)) return `MK-${upper}`;
-
-  // any random legacy alphanumeric id is NOT a booking number
-  return "—";
-}
-
-const NOTES_KEY = "dashboard_client_notes_v1";
-const SALON_IBAN = "SA4710000001400007036306";
-const SALON_BANK_NAME = "البنك الأهلي السعودي";
-
-
-function buildClientWhatsAppMessage(clientName: string) {
-  const safeName = String(clientName || "").trim() || "عميلتنا الكريمة";
-  return [
-    `مرحبًا ${safeName}،`,
-    `تأكيد الحجز يتم بعد تحويل المبلغ على ${SALON_BANK_NAME} برقم الآيبان التالي:`,
-    SALON_IBAN,
-    "بعد التحويل يسعدنا استلام إيصال التحويل عبر الواتساب لإكمال تأكيد الحجز.",
-    "شاكرين لك ثقتك، ونسعد بخدمتك دائمًا.",
-  ].join("\n");
-}
-
-function buildClientWhatsAppHref(client: Pick<ClientRow, "name" | "phone">) {
-  const normalized = normalizeSaudiPhone(client.phone);
-  const phoneForWa = String(normalized.digits || phoneDigits(client.phone) || "").trim();
-  if (!phoneForWa) return "https://wa.me/";
-  const msg = buildClientWhatsAppMessage(client.name);
-  return `https://wa.me/${phoneForWa}?text=${encodeURIComponent(msg)}`;
-}
-
-function pickHeader(obj: any, keys: string[]) {
-  for (const k of keys) {
-    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return obj[k];
-  }
-  return undefined;
-}
-
-function normalizeHeaderKey(k: string) {
-  return String(k || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-/** ✅ يحاول يلقط العمود من عدة أسماء (عربي/إنجليزي) */
-function getField(row: any, candidates: string[]) {
-  // row keys may be Arabic/English with random spacing
-  const map: Record<string, any> = {};
-  Object.keys(row || {}).forEach((kk) => {
-    map[normalizeHeaderKey(kk)] = row[kk];
-  });
-
-  for (const c of candidates) {
-    const v = map[normalizeHeaderKey(c)];
-    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
-  }
-  return "";
-}
-
-type DashboardClientsProps = {
-  currentRole?: UiRole;
-};
-
-const DashboardClients: React.FC<DashboardClientsProps> = ({ currentRole = "guest" }) => {
-  // ✅ Role + Settings (NEW)
-  const uiRole = currentRole;
+export default function DashboardClients({ currentRole = "guest" }: DashboardClientsProps) {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-
   const [bookings, setBookings] = useState<BookingDocWithId[]>([]);
-  const [queryText, setQueryText] = useState("");
-  const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
-
+  const [coreClients, setCoreClients] = useState<CoreClient[]>([]);
+  const [activePackageKeys, setActivePackageKeys] = useState<Map<string, number>>(new Map());
+  const [packagesFilterAvailable, setPackagesFilterAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // ✅ Level Up States
-  const [sortBy, setSortBy] = useState<"latest" | "most">("latest");
-  const [notesMap, setNotesMap] = useState<Record<string, string>>({});
-  const [noteText, setNoteText] = useState("");
-  const [clientOverview, setClientOverview] = useState<CoreClientOverview | null>(null);
-  const [clientOverviewLoading, setClientOverviewLoading] = useState(false);
-  const [clientOverviewError, setClientOverviewError] = useState("");
-  const [loyaltyPoints, setLoyaltyPoints] = useState("");
-  const [loyaltyReason, setLoyaltyReason] = useState("");
-  const [loyaltySaving, setLoyaltySaving] = useState(false);
-  const [loyaltyMessage, setLoyaltyMessage] = useState("");
-
-  // ✅ Imported clients stored in Core D1
-  const [importedMap, setImportedMap] = useState<Record<string, ImportedClientDoc>>({});
-  const [importLoading, setImportLoading] = useState(false);
-
-  // ✅ Custom Sort Dropdown (Unified with DashboardSkin)
-  const [sortOpen, setSortOpen] = useState(false);
-  const sortWrapRef = useRef<HTMLDivElement | null>(null);
-
-  // ✅ Import Excel UI
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [segment, setSegment] = useState<CustomerSegment>("all");
+  const [sort, setSort] = useState<CustomerSort>("latest");
+  const [source, setSource] = useState<"all" | CustomerSource>("all");
+  const [lastVisit, setLastVisit] = useState<CustomerLastVisitFilter>("all");
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importErr, setImportErr] = useState("");
-  const [importing, setImporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [copyToast, setCopyToast] = useState("");
-  const copyToastTimerRef = useRef<number | null>(null);
-  const [noteSaved, setNoteSaved] = useState(false);
-  const noteSavedTimerRef = useRef<number | null>(null);
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 900px)").matches;
-  });
+  const copyTimer = useRef<number | null>(null);
 
-  type ImportPreviewRow = {
-    name: string;
-    phone: string; // display
-    digits: string; // key digits 9665...
-    vip: boolean;
-    note: string;
-  };
+  const allowStaffViewClients = settings.policies?.allowStaffViewClients === true;
+  const canViewClients = currentRole === "owner" || currentRole === "admin" || currentRole === "reception" || (currentRole === "staff" && allowStaffViewClients);
+  const canImport = currentRole === "owner" || currentRole === "admin";
+  const canExport = currentRole === "owner" || currentRole === "admin";
 
-  const [preview, setPreview] = useState<ImportPreviewRow[]>([]);
-  const closeClientModal = useCallback(() => {
-    setSelectedClient(null);
-    setClientOverview(null);
-    setClientOverviewError("");
-    setLoyaltyPoints("");
-    setLoyaltyReason("");
-    setLoyaltyMessage("");
+  useEffect(() => {
+    const handleSettingsChange = () => setSettings(loadSettings());
+    window.addEventListener("settingsChanged", handleSettingsChange);
+    return () => window.removeEventListener("settingsChanged", handleSettingsChange);
   }, []);
 
-  const sortOptions = useMemo(
-    () => [
-      { value: "latest" as const, label: "الأحدث زيارة" },
-      { value: "most" as const, label: "الأكثر حجوزات" },
-    ],
-    []
-  );
-
-  const sortLabel =
-    sortOptions.find((o) => o.value === sortBy)?.label || "اختر";
-
-  const handleCopyPhone = async (phone: string) => {
-    const value = String(phone || "").trim();
-    if (!value || value === "—") return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopyToast("تم نسخ الرقم");
-      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
-      copyToastTimerRef.current = window.setTimeout(() => setCopyToast(""), 1500);
-    } catch {
-      setCopyToast("تعذر النسخ");
-      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
-      copyToastTimerRef.current = window.setTimeout(() => setCopyToast(""), 1500);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (copyToastTimerRef.current) window.clearTimeout(copyToastTimerRef.current);
-      if (noteSavedTimerRef.current) window.clearTimeout(noteSavedTimerRef.current);
-    };
+  useEffect(() => () => {
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 900px)");
-    const apply = () => setIsMobileViewport(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-
-  const selectSort = (v: "latest" | "most") => {
-    setSortBy(v);
-    setSortOpen(false);
-  };
-
-  // ✅ صلاحيات العرض لصفحة العميلات (NEW)
-  const allowStaffViewClients =
-    settings?.policies?.allowStaffViewClients === true;
-
-  const canViewClients =
-    uiRole === "owner" ||
-    uiRole === "admin" ||
-    uiRole === "reception" ||
-    (uiRole === "staff" && allowStaffViewClients);
-
-  // ✅ تصدير + استيراد: نخليها owner/admin
-  const canExport = uiRole === "owner" || uiRole === "admin";
-  const canImport = uiRole === "owner" || uiRole === "admin";
-
-  // ✅ إغلاق قائمة الفرز عند الضغط خارجها أو ESC
-  useEffect(() => {
-    if (!sortOpen) return;
-
-    const onDown = (e: MouseEvent) => {
-      const el = sortWrapRef.current;
-      if (!el) return;
-      if (el.contains(e.target as Node)) return;
-      setSortOpen(false);
-    };
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSortOpen(false);
-    };
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [sortOpen]);
-
-  // ✅ مراقبة تغييرات الإعدادات
-  useEffect(() => {
-    const onSettingsChanged = () => setSettings(loadSettings());
-    window.addEventListener("settingsChanged", onSettingsChanged);
-
-    return () => {
-      window.removeEventListener("settingsChanged", onSettingsChanged);
-    };
-  }, []);
-
-  // ✅ جلب الحجوزات من Core D1
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!canViewClients) {
-      // ما نحمّل بيانات أصلاً إذا غير مصرح
       setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const [bookingsResult, clientsResult, packagesResult] = await Promise.allSettled([
+      listCoreBookings(),
+      CoreClientService.list(),
+      PackageOperationsService.sessionDashboard(),
+    ]);
+
+    const errors: string[] = [];
+    if (bookingsResult.status === "fulfilled") setBookings(Array.isArray(bookingsResult.value) ? bookingsResult.value : []);
+    else {
       setBookings([]);
-      return;
+      errors.push(bookingsResult.reason instanceof Error ? bookingsResult.reason.message : "تعذر تحميل الحجوزات");
     }
 
-    let mounted = true;
+    if (clientsResult.status === "fulfilled") setCoreClients(Array.isArray(clientsResult.value) ? clientsResult.value : []);
+    else {
+      setCoreClients([]);
+      errors.push(clientsResult.reason instanceof Error ? clientsResult.reason.message : "تعذر تحميل ملفات العملاء");
+    }
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const data = await listCoreBookings();
-        if (!mounted) return;
-
-        setBookings(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        console.error("DashboardClients: listCoreBookings failed", e);
-        if (!mounted) return;
-        setError(e?.message || "فشل تحميل الحجوزات من قاعدة البيانات");
-        setBookings([]);
-      } finally {
-        if (mounted) setLoading(false);
+    if (packagesResult.status === "fulfilled") {
+      const keys = new Map<string, number>();
+      for (const pkg of packagesResult.value.packages || []) {
+        if (pkg.status !== "active") continue;
+        const id = String(pkg.canonicalClientId || "").trim();
+        const phone = customerPhoneDigits(pkg.phone);
+        if (id) keys.set(`id:${id}`, (keys.get(`id:${id}`) || 0) + 1);
+        if (phone) keys.set(`phone:${phone}`, (keys.get(`phone:${phone}`) || 0) + 1);
       }
-    })();
+      setActivePackageKeys(keys);
+      setPackagesFilterAvailable(true);
+    } else {
+      setActivePackageKeys(new Map());
+      setPackagesFilterAvailable(false);
+    }
 
-    return () => {
-      mounted = false;
-    };
+    setError(errors.join(" · "));
+    setLoading(false);
   }, [canViewClients]);
 
-  // Core D1 is the only client source for this administrative route.
   useEffect(() => {
-    if (!canViewClients) return;
+    void loadData();
+  }, [loadData]);
 
-    let mounted = true;
+  const customers = useMemo<CustomerRow[]>(() => {
+    type Group = { key: string; core?: CoreClient; bookings: BookingDocWithId[]; rawName: string; rawPhone: string };
+    const coreById = new Map(coreClients.map((client) => [String(client.id), client]));
+    const coreByPhone = new Map<string, CoreClient>();
+    coreClients.forEach((client) => {
+      const phone = customerPhoneDigits(client.phoneNormalized);
+      if (phone) coreByPhone.set(phone, client);
+    });
+    const groups = new Map<string, Group>();
 
-    (async () => {
-      try {
-        setImportLoading(true);
-        const rows = await CoreClientService.list();
-        if (!mounted) return;
+    bookings.forEach((booking) => {
+      const id = bookingClientId(booking);
+      const phoneDigits = customerPhoneDigits(booking.clientPhone);
+      const core = (id ? coreById.get(id) : undefined) || (phoneDigits ? coreByPhone.get(phoneDigits) : undefined);
+      const rawName = String(core?.name || booking.clientName || "").trim();
+      const rawPhone = String(core?.phoneNormalized || booking.clientPhone || "").trim();
+      const key = core?.id ? `id:${core.id}` : id ? `id:${id}` : phoneDigits ? `phone:${phoneDigits}` : `name:${normalizeCustomerSearchText(rawName)}`;
+      const group: Group = groups.get(key) || { key, core, bookings: [], rawName, rawPhone };
+      group.core ||= core;
+      group.rawName ||= rawName;
+      group.rawPhone ||= rawPhone;
+      group.bookings.push(booking);
+      groups.set(key, group);
+    });
 
-        const next: Record<string, ImportedClientDoc> = {};
-        rows.forEach((row) => {
-          const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
-          next[digits] = {
-            id: row.id,
-            clientId: row.id,
-            legacyClientDocId: row.legacyClientDocId || undefined,
-            name: row.name || undefined,
-            phone: row.phoneNormalized || undefined,
-            vip: Boolean(row.vip),
-            note: row.notes || undefined,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-          };
-        });
+    coreClients.forEach((client) => {
+      const key = `id:${client.id}`;
+      if (!groups.has(key)) groups.set(key, { key, core: client, bookings: [], rawName: client.name, rawPhone: client.phoneNormalized });
+    });
 
-        setImportedMap(next);
-      } catch (e) {
-        console.error("DashboardClients: Core client load failed", e);
-        setImportedMap({});
-      } finally {
-        if (mounted) setImportLoading(false);
-      }
-    })();
+    const today = riyadhDateKey();
+    return Array.from(groups.values()).map((group) => {
+      const sortedBookings = [...group.bookings].sort(sortBookingsNewest);
+      const completedVisits = sortedBookings.filter((booking) => booking.status !== "cancelled" && String(booking.date || "") <= today);
+      const last = completedVisits[0];
+      const phone = formatCustomerPhone(group.core?.phoneNormalized || group.rawPhone);
+      const clientId = String(group.core?.id || bookingClientId(sortedBookings[0]) || "").trim() || undefined;
+      const createdAt = String(group.core?.createdAt || bookingCreatedAt(sortedBookings.at(-1)) || "").trim() || undefined;
+      const phoneKey = customerPhoneDigits(phone);
+      const activePackagesCount = (clientId ? activePackageKeys.get(`id:${clientId}`) : 0) || (phoneKey ? activePackageKeys.get(`phone:${phoneKey}`) : 0) || 0;
+      const sourceValue: CustomerSource = group.core && group.bookings.length ? "combined" : group.core ? "client-record" : "booking-only";
+      return {
+        key: group.key,
+        clientId,
+        legacyClientDocId: group.core?.legacyClientDocId || undefined,
+        name: normalizeCustomerName(group.core?.name || group.rawName),
+        phone,
+        bookingsCount: group.bookings.length,
+        lastVisitDate: String(last?.date || ""),
+        lastVisitTime: String(last?.time || ""),
+        vip: Boolean(group.core?.vip || (!group.core && group.bookings.length >= 5)),
+        status: String(group.core?.status || "active"),
+        importedNote: String(group.core?.notes || "").trim() || undefined,
+        source: sourceValue,
+        createdAt,
+        activePackagesCount,
+      };
+    });
+  }, [activePackageKeys, bookings, coreClients]);
 
-    return () => {
-      mounted = false;
+  const stats = useMemo<CustomerStats>(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const newThisMonth = customers.filter((customer) => {
+      if (!customer.createdAt) return false;
+      const created = new Date(customer.createdAt);
+      return !Number.isNaN(created.getTime()) && created.getMonth() === currentMonth && created.getFullYear() === currentYear;
+    }).length;
+    return {
+      totalClients: customers.length,
+      totalBookings: bookings.length,
+      activeClients: customers.filter((customer) => isCustomerActive(customer.status)).length,
+      newThisMonth,
+      vipClients: customers.filter((customer) => customer.vip).length,
+      averageBookings: customers.length ? bookings.length / customers.length : 0,
     };
-  }, [canViewClients]);
+  }, [bookings.length, customers]);
 
-  // ✅ تحميل الملاحظات من localStorage
-  useEffect(() => {
+  const visibleCustomers = useMemo(() => {
+    const searchText = normalizeCustomerSearchText(deferredQuery);
+    const searchDigits = customerPhoneDigits(deferredQuery);
+    const rawSearchDigits = String(deferredQuery || "").replace(/\D/g, "");
+    const now = Date.now();
+    const rows = customers.filter((customer) => {
+      const customerDigits = customerPhoneDigits(customer.phone);
+      const customerDisplayDigits = String(customer.phone || "").replace(/\D/g, "");
+      const matchesPhone = Boolean(rawSearchDigits) && (customerDisplayDigits.includes(rawSearchDigits) || customerDigits.includes(searchDigits));
+      const matchesQuery = !searchText || normalizeCustomerSearchText(customer.name).includes(searchText) || matchesPhone;
+      const matchesSegment = segment === "all" || (segment === "vip" && customer.vip) || (segment === "with-bookings" && customer.bookingsCount > 0) || (segment === "without-bookings" && customer.bookingsCount === 0) || (segment === "active-packages" && customer.activePackagesCount > 0);
+      const matchesSource = source === "all" || customer.source === source;
+      const visitTimestamp = customerLastVisitTimestamp(customer.lastVisitDate, customer.lastVisitTime);
+      const matchesVisit = lastVisit === "all" || (lastVisit === "never" && !visitTimestamp) || (lastVisit === "30-days" && visitTimestamp > 0 && now - visitTimestamp <= 30 * 86400000) || (lastVisit === "90-days" && visitTimestamp > 0 && now - visitTimestamp <= 90 * 86400000);
+      return matchesQuery && matchesSegment && matchesSource && matchesVisit;
+    });
+    return rows.sort((first, second) => {
+      if (sort === "most") return second.bookingsCount - first.bookingsCount || first.name.localeCompare(second.name, "ar");
+      if (sort === "newest") return Date.parse(second.createdAt || "") - Date.parse(first.createdAt || "") || first.name.localeCompare(second.name, "ar");
+      return customerLastVisitTimestamp(second.lastVisitDate, second.lastVisitTime) - customerLastVisitTimestamp(first.lastVisitDate, first.lastVisitTime) || first.name.localeCompare(second.name, "ar");
+    });
+  }, [customers, deferredQuery, lastVisit, segment, sort, source]);
+
+  const selectedBookings = useMemo(() => selectedCustomer ? bookings.filter((booking) => customerMatchesBooking(selectedCustomer, booking)) : [], [bookings, selectedCustomer]);
+
+  const hasActiveFilters = Boolean(query.trim()) || segment !== "all" || sort !== "latest" || source !== "all" || lastVisit !== "all";
+  const clearFilters = () => {
+    setQuery("");
+    setSegment("all");
+    setSort("latest");
+    setSource("all");
+    setLastVisit("all");
+  };
+
+  const copyPhone = async (phone: string) => {
     try {
-      const raw = localStorage.getItem(NOTES_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") setNotesMap(parsed);
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(phone);
+      else {
+        const input = document.createElement("textarea");
+        input.value = phone;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      setCopyToast("تم نسخ رقم الجوال");
     } catch {
-      // ignore
+      setCopyToast("تعذر نسخ رقم الجوال");
     }
-  }, []);
-
-  const clients = useMemo<ClientRow[]>(() => {
-    // 1) جمع العملاء من الحجوزات
-    const map = new Map<
-      string,
-      { name: string; phone: string; list: BookingDocWithId[]; clientId?: string }
-    >();
-
-    bookings.forEach((b) => {
-      const name = String((b as any).clientName ?? "").trim() || "—";
-      const phoneRaw = cleanPhone((b as any).clientPhone);
-      const norm = normalizeSaudiPhone(phoneRaw);
-      const phone = norm.phone || phoneRaw;
-      const key = makeClientKey(name, phone);
-
-      if (!map.has(key)) map.set(key, { name, phone, list: [], clientId: String((b as any).clientId || "").trim() || undefined });
-      map.get(key)!.list.push(b);
-      if (!map.get(key)!.clientId && (b as any).clientId) map.get(key)!.clientId = String((b as any).clientId).trim();
-    });
-
-    // 2) تحويل إلى rows من الحجوزات
-    const rowsFromBookings: ClientRow[] = [];
-    map.forEach((v, key) => {
-      const sorted = [...v.list].sort((a, b) => {
-        const da = ((a as any).date ?? "").toString();
-        const dbb = ((b as any).date ?? "").toString();
-        if (da !== dbb) return dbb.localeCompare(da); // desc
-        return ((b as any).time ?? "")
-          .toString()
-          .localeCompare(((a as any).time ?? "").toString()); // desc
-      });
-
-      const last = sorted[0];
-
-      // match imported by phone digits if possible
-      const pd = key.startsWith("p:") ? key.slice(2) : "";
-      const imported = pd
-        ? importedMap[pd] || Object.values(importedMap).find((row) => normalizeSaudiPhone(row.phone).digits === pd)
-        : undefined;
-
-      rowsFromBookings.push({
-        key,
-        clientId: v.clientId || imported?.clientId,
-        legacyClientDocId: imported?.legacyClientDocId || imported?.id,
-        name: v.name,
-        phone: v.phone || "—",
-        bookingsCount: v.list.length,
-        lastVisitDate: ((last as any)?.date ?? "").toString(),
-        lastVisitTime: ((last as any)?.time ?? "").toString(),
-        vip: imported?.vip ?? (v.list.length >= 5),
-        importedNote: imported?.note,
-        source: imported ? "both" : "bookings",
-      });
-    });
-
-    // 3) إضافة العملاء المستوردين اللي ما عندهم حجوزات
-    const rows: ClientRow[] = [...rowsFromBookings];
-
-    Object.keys(importedMap).forEach((idDigits) => {
-      const imp = importedMap[idDigits];
-      if (!imp) return;
-
-      const key = `p:${idDigits}`;
-      const already = rowsFromBookings.find((r) => r.key === key);
-      if (already) return;
-
-      const name = String(imp.name || "—").trim() || "—";
-      const phone = String(imp.phone || "").trim() || (idDigits ? "0" + idDigits.slice(3) : "—");
-
-      rows.push({
-        key,
-        clientId: imp.clientId,
-        legacyClientDocId: imp.legacyClientDocId || imp.id,
-        name,
-        phone: phone || "—",
-        bookingsCount: 0,
-        lastVisitDate: "",
-        lastVisitTime: "",
-        vip: !!imp.vip,
-        importedNote: String(imp.note || "").trim() || undefined,
-        source: "imported",
-      });
-    });
-
-    // ✅ فرز حسب الاختيار
-    rows.sort((a, b) => {
-      if (sortBy === "most") {
-        if (b.bookingsCount !== a.bookingsCount)
-          return b.bookingsCount - a.bookingsCount;
-      }
-
-      // الأحدث أولاً (اللي عنده آخر زيارة)
-      if (b.lastVisitDate !== a.lastVisitDate)
-        return (b.lastVisitDate || "").localeCompare(a.lastVisitDate || "");
-      return (b.lastVisitTime || "").localeCompare(a.lastVisitTime || "");
-    });
-
-    return rows;
-  }, [bookings, sortBy, importedMap]);
-
-  const filteredClients = useMemo(() => {
-    const q = queryText.trim().toLowerCase();
-    if (!q) return clients;
-
-    return clients.filter((c) => {
-      const name = (c.name ?? "").toLowerCase();
-      const phone = (c.phone ?? "").toLowerCase();
-      const src = (c.source ?? "").toLowerCase();
-      return name.includes(q) || phone.includes(q) || src.includes(q);
-    });
-  }, [clients, queryText]);
-
-  const loadClientOverview = useCallback(async (clientId: string) => {
-    setClientOverviewLoading(true);
-    setClientOverviewError("");
-    try {
-      const overview = await CoreClientService.overview(clientId);
-      setClientOverview(overview);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "تعذر تحميل السجل المالي للعميلة";
-      setClientOverview(null);
-      setClientOverviewError(message);
-    } finally {
-      setClientOverviewLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const clientId = String(selectedClient?.clientId || "").trim();
-    if (!selectedClient) {
-      setClientOverview(null);
-      setClientOverviewError("");
-      return;
-    }
-    if (!clientId) {
-      setClientOverview(null);
-      setClientOverviewError("هذه العميلة غير مرتبطة بعد بمعرف Core D1 موحد.");
-      return;
-    }
-    void loadClientOverview(clientId);
-  }, [selectedClient, loadClientOverview]);
-
-  const handleLoyaltyAdjustment = async () => {
-    const clientId = String(selectedClient?.clientId || "").trim();
-    const points = Number(loyaltyPoints);
-    const reason = loyaltyReason.trim();
-    if (!clientId || !Number.isInteger(points) || points === 0 || !reason) {
-      setLoyaltyMessage("أدخل عدد نقاط صحيحًا غير صفري وسبب التعديل.");
-      return;
-    }
-    setLoyaltySaving(true);
-    setLoyaltyMessage("");
-    try {
-      const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `loyalty_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const loyalty = await CoreClientService.adjustLoyalty(clientId, { points, reason, operationId });
-      setClientOverview((current) => current ? { ...current, loyalty } : current);
-      setLoyaltyPoints("");
-      setLoyaltyReason("");
-      setLoyaltyMessage("تم تسجيل حركة النقاط بنجاح.");
-    } catch (cause) {
-      setLoyaltyMessage(cause instanceof Error ? cause.message : "تعذر تعديل النقاط");
-    } finally {
-      setLoyaltySaving(false);
-    }
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopyToast(""), 1800);
   };
 
-  const selectedBookings = useMemo(() => {
-    if (!selectedClient) return [];
-
-    const list = bookings.filter((b) => {
-      const name = String((b as any).clientName ?? "").trim() || "—";
-      const phoneRaw = cleanPhone((b as any).clientPhone);
-      const norm = normalizeSaudiPhone(phoneRaw);
-      const phone = norm.phone || phoneRaw;
-      const key = makeClientKey(name, phone);
-      return key === selectedClient.key;
-    });
-
-    return list.sort((a, b) => {
-      const da = ((a as any).date ?? "").toString();
-      const dbb = ((b as any).date ?? "").toString();
-      if (da !== dbb) return dbb.localeCompare(da);
-      return ((b as any).time ?? "")
-        .toString()
-        .localeCompare(((a as any).time ?? "").toString());
-    });
-  }, [selectedClient, bookings]);
-
-  const stats = useMemo(() => {
-    const totalClients = filteredClients.length;
-    const totalBookings = bookings.length;
-
-    const topClient =
-      clients.length > 0
-        ? clients.reduce(
-            (best, cur) =>
-              cur.bookingsCount > best.bookingsCount ? cur : best,
-            clients[0]
-          )
-        : null;
-
-    return { totalClients, totalBookings, topClient };
-  }, [filteredClients.length, bookings.length, clients]);
-
-  /* =========================
-     Export actions (XLSX)
-  ========================= */
-  const exportClientsXLSX = () => {
-    const rows: any[][] = [
-      ["العميلة", "الجوال", "VIP", "عدد الحجوزات", "آخر زيارة (تاريخ)", "آخر زيارة (وقت)", "المصدر"],
-    ];
-
-    filteredClients.forEach((c) => {
-      rows.push([
-        c.name,
-        c.phone,
-        c.vip ? "YES" : "NO",
-        c.bookingsCount,
-        c.lastVisitDate,
-        c.lastVisitTime,
-        c.source || "",
-      ]);
-    });
-
-    const stamp = new Date();
-    const yyyy = stamp.getFullYear();
-    const mm = String(stamp.getMonth() + 1).padStart(2, "0");
-    const dd = String(stamp.getDate()).padStart(2, "0");
-
-    downloadXLSX(`dashboard_clients_${yyyy}-${mm}-${dd}.xlsx`, rows, "Clients");
+  const handleCustomerUpdated = (updated: CoreClient) => {
+    setCoreClients((current) => current.map((client) => (
+      client.id === updated.id ? updated : client
+    )));
+    setBookings((current) => current.map((booking) => (
+      bookingClientId(booking) === updated.id
+        ? { ...booking, clientName: updated.name, clientPhone: updated.phoneNormalized }
+        : booking
+    )));
+    setSelectedCustomer((current) => current && current.clientId === updated.id
+      ? {
+          ...current,
+          name: normalizeCustomerName(updated.name),
+          phone: formatCustomerPhone(updated.phoneNormalized),
+          status: updated.status,
+          vip: Boolean(updated.vip),
+          importedNote: String(updated.notes || "").trim() || undefined,
+        }
+      : current);
   };
 
-  /* =========================
-     Import Excel actions (SAFE MERGE)
-  ========================= */
+  const exportCustomers = () => {
+    const rows: unknown[][] = [["العميلة", "رقم الجوال", "الحالة", "VIP", "عدد الحجوزات", "آخر زيارة", "المصدر"]];
+    visibleCustomers.forEach((customer) => rows.push([
+      normalizeCustomerName(customer.name),
+      customer.phone === "—" ? "" : customer.phone,
+      getCustomerStatusLabel(customer.status),
+      customer.vip ? "VIP" : "عادية",
+      customer.bookingsCount,
+      formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime),
+      getCustomerSourceLabel(customer.source),
+    ]));
+    const date = new Date().toISOString().slice(0, 10);
+    downloadXLSX(`queens_customers_${date}.xlsx`, rows, "Customers");
+  };
 
-  function openImport() {
-    setImportErr("");
-    setPreview([]);
-    setImportOpen(true);
-    setImporting(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  function closeImport() {
-    if (importing) return;
-    setImportOpen(false);
-    setImportErr("");
-    setPreview([]);
-  }
-
-  function parseVip(v: any) {
-    const s = String(v ?? "").trim().toLowerCase();
-    if (!s) return false;
-    return s === "1" || s === "true" || s === "yes" || s === "vip" || s === "نعم" || s === "صح";
-  }
-
-  function onPickFile(file: File) {
-    setImportErr("");
-    setPreview([]);
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = evt.target?.result;
-        const wb = XLSX.read(data, { type: "array" });
-
-        const firstSheet = wb.SheetNames[0];
-        if (!firstSheet) {
-          setImportErr("الملف ما فيه Sheets.");
-          return;
-        }
-
-        const ws = wb.Sheets[firstSheet];
-        const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-        if (!json.length) {
-          setImportErr("الملف فاضي.");
-          return;
-        }
-
-        const tmp: ImportPreviewRow[] = [];
-        const seen = new Set<string>();
-
-        json.forEach((row: any) => {
-          const name = String(
-            getField(row, ["name", "الاسم", "اسم", "العميلة", "client", "clientName"])
-          ).trim();
-
-          const phoneRaw = String(
-            getField(row, ["phone", "الجوال", "رقم", "mobile", "clientPhone"])
-          ).trim();
-
-          const note = String(
-            getField(row, ["note", "ملاحظة", "ملاحظات", "notes", "remark"])
-          ).trim();
-
-          const vipRaw = getField(row, ["vip", "VIP", "مميزة", "عميلة مميزة"]);
-
-          const norm = normalizeSaudiPhone(phoneRaw);
-          if (!norm.digits) return; // تجاهل اللي ما عنده رقم
-
-          const digits = norm.digits;
-          if (seen.has(digits)) return;
-          seen.add(digits);
-
-          tmp.push({
-            name: name || "—",
-            phone: norm.phone || phoneRaw || "—",
-            digits,
-            vip: parseVip(vipRaw),
-            note: note || "",
-          });
-        });
-
-        if (!tmp.length) {
-          setImportErr("ما لقينا صفوف صالحة (لازم اسم + جوال).");
-          return;
-        }
-
-        setPreview(tmp);
-      } catch (e) {
-        console.error(e);
-        setImportErr("فشل قراءة الملف. تأكد إنه Excel صحيح (.xlsx).");
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-  }
-
-  async function commitImport() {
-    try {
-      setImportErr("");
-
-      if (!preview.length) {
-        setImportErr("ما فيه بيانات للحفظ.");
-        return;
-      }
-
-      setImporting(true);
-
-      const existingByPhone = new Map(
-        Object.values(importedMap).map((client) => [
-          phoneDigits(String(client.phone || "")),
-          client,
-        ])
-      );
-
-      for (const r of preview) {
-        const existing = existingByPhone.get(phoneDigits(r.phone));
-        if (existing?.clientId || existing?.id) {
-          await CoreClientService.patch(String(existing.clientId || existing.id), {
-            name: r.name || "عميلة",
-            phone: r.phone || "",
-            vip: Boolean(r.vip),
-            notes: r.note || "",
-          });
-        } else {
-          await CoreClientService.create({
-            id: crypto.randomUUID(),
-            name: r.name || "عميلة",
-            phone: r.phone || "",
-            vip: Boolean(r.vip),
-            notes: r.note || "",
-          });
-        }
-      }
-
-      const rows = await CoreClientService.list();
-      const next: Record<string, ImportedClientDoc> = {};
-      rows.forEach((row) => {
-        const digits = normalizeSaudiPhone(row.phoneNormalized).digits || row.id;
-        next[digits] = {
-          id: row.id,
-          clientId: row.id,
-          legacyClientDocId: row.legacyClientDocId || undefined,
-          name: row.name || undefined,
-          phone: row.phoneNormalized || undefined,
-          vip: Boolean(row.vip),
-          note: row.notes || undefined,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        };
-      });
-      setImportedMap(next);
-
-      setImportOpen(false);
-      setPreview([]);
-    } catch (e) {
-      console.error(e);
-      setImportErr("صار خطأ أثناء حفظ بيانات العميلات. تحقق من الاتصال والصلاحيات ثم جرّب.");
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  // ✅ Gate: غير مصرح (NEW)
   if (!canViewClients) {
-    return (
-      <div className="dashboard-section">
-        <h3>غير مصرح</h3>
-        <p>
-          هذه الصفحة مخصصة للإدارة/الاستقبال فقط.
-          <br />
-          (يمكن فتحها للـ staff لاحقًا من الإعدادات)
-        </p>
-      </div>
-    );
+    return <section className="customers-access-denied"><h1>غير مصرح</h1><p>هذه الصفحة متاحة للإدارة والاستقبال حسب الصلاحيات الحالية.</p></section>;
   }
+
+  const fatalError = Boolean(error) && !loading && customers.length === 0;
+  const noData = !loading && !error && customers.length === 0;
+  const noResults = !loading && customers.length > 0 && visibleCustomers.length === 0;
 
   return (
-    <div className="clients-page">
-      {/* Header */}
-      <div className="clients-header">
-        <div>
-          <h1>
-            <FontAwesomeIcon icon={faUsers} /> العميلات
-          </h1>
-          <div style={{ opacity: 0.75, marginTop: 6, fontSize: 13 }}>
-            {importLoading ? "جارٍ تحميل عميلات Excel..." : "الصفحة تجمع: حجوزات + عميلات مستوردات"}
-          </div>
-        </div>
-      </div>
+    <div className="customers-page" dir="rtl">
+      <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} />
+      <CustomersSearchToolbar query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
+      <CustomersFilters segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
+      <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} />
 
-      {/* Search + Sort + Export + Import */}
-      <div className="cl-section">
-        <div className="cl-mini">
-          <div className="mini-title">
-            <FontAwesomeIcon icon={faSearch} /> بحث (اسم / جوال)
-          </div>
+      {error && !fatalError ? <div className="customers-error-banner"><span>{error}</span><button type="button" onClick={() => void loadData()}>إعادة المحاولة</button></div> : null}
+      {fatalError ? <CustomersEmptyState kind="error" message={error} onPrimary={() => void loadData()} /> : null}
+      {noData ? <CustomersEmptyState kind="empty" canImport={canImport} onPrimary={() => navigate("/dashboard/booking-internal")} onImport={() => setImportOpen(true)} /> : null}
+      {noResults ? <CustomersEmptyState kind="no-results" onPrimary={clearFilters} /> : null}
+      {!fatalError && !noData && !noResults ? (
+        <>
+          <CustomersTable customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+          <CustomersMobileList customers={visibleCustomers} loading={loading} onCopy={(phone) => void copyPhone(phone)} onOpen={setSelectedCustomer} />
+        </>
+      ) : null}
 
-          <div className="cl-form">
-            <input
-              className="cl-input"
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              placeholder="مثال: نورة أو 05xxxxxxx"
-            />
-
-            {/* ✅ Unified Dropdown */}
-            <div className="dash-dd-wrap cl-sort-wrap" ref={sortWrapRef}>
-              <button
-                type="button"
-                className="dash-select dash-select--sm cl-sort-btn"
-                onClick={() => setSortOpen((s) => !s)}
-                aria-expanded={sortOpen}
-              >
-                {sortLabel}
-              </button>
-
-              {sortOpen && (
-                <div className="dash-dd-menu" role="listbox">
-                  {sortOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`dash-dd-item ${sortBy === opt.value ? "is-active" : ""}`}
-                      onClick={() => selectSort(opt.value)}
-                      role="option"
-                      aria-selected={sortBy === opt.value}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ✅ Import Excel (owner/admin) */}
-            {canImport && (
-              <button
-                className="reports-btn cl-export"
-                type="button"
-                onClick={openImport}
-                disabled={loading || importLoading}
-                title="استيراد Excel .xlsx"
-              >
-                <FontAwesomeIcon icon={faFileArrowUp} /> استيراد Excel
-              </button>
-            )}
-
-            {/* ✅ Export (owner/admin) */}
-            {canExport && (
-              <button
-                className="reports-btn cl-export"
-                type="button"
-                onClick={exportClientsXLSX}
-                disabled={loading}
-                title="Excel .xlsx"
-              >
-                <FontAwesomeIcon icon={faFileCsv} /> تصدير Excel
-              </button>
-            )}
-          </div>
-
-          <div className="mini-hint">
-            {loading ? "جارٍ تحميل الحجوزات..." : "البحث بالاسم أو رقم الجوال"}
-          </div>
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="cl-section">
-          <div className="cl-mini cl-errorCard">
-            <div className="mini-title cl-errorTitle">تنبيه</div>
-            <div className="cl-errorText">{error}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className="clients-stats">
-        <div className="stat-card stat-3">
-          <div className="stat-info">
-            <h3 className="value">{stats.totalClients}</h3>
-            <p>عدد العملاء </p>
-          </div>
-        </div>
-
-        <div className="stat-card stat-3">
-          <div className="stat-info">
-            <h3 className="value">{stats.totalBookings}</h3>
-            <p>إجمالي الحجوزات</p>
-          </div>
-        </div>
-
-        <div className="stat-card stat-6 cl-topClientCard">
-          <div className="stat-info">
-            <h3 className="cl-topTitle value1">أكثر عميلة حجزًا</h3>
-            <p className="cl-topValue" style={{ fontSize: 18 }}>
-              {stats.topClient
-                ? `${stats.topClient.name} — (${stats.topClient.bookingsCount})`
-                : "—"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Clients Table */}
-      <div className="clients-table-card">
-        <div className="cl-table-wrap">
-          <div className="table-responsive">
-            <table className="clients-table">
-              <thead>
-                <tr>
-                  <th>العميلة</th>
-                  <th>الجوال</th>
-                  <th>VIP</th>
-                  <th>عدد الحجوزات</th>
-                  <th>آخر زيارة</th>
-                  <th>المصدر</th>
-                  <th>سجل</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="cl-td-center">
-                      جاري التحميل...
-                    </td>
-                  </tr>
-                ) : filteredClients.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="cl-td-center">
-                      لا توجد نتائج
-                    </td>
-                  </tr>
-                ) : (
-                  filteredClients.map((c) => (
-                    <tr key={c.key}>
-                      <td className="cl-nameCell">
-                        <span className="cl-name">{c.name}</span>
-                      </td>
-
-                      <td className="cl-phone">
-                        <div className="cl-phoneRow">
-                          <span>{c.phone}</span>
-
-                          {c.phone !== "—" && (
-                            <div className="cl-miniActions">
-                              <button
-                                className="cl-iconBtn is-copy"
-                                type="button"
-                                title="نسخ الجوال"
-                                onClick={() => {
-                                  void handleCopyPhone(c.phone);
-                                }}
-                              >
-                                <FontAwesomeIcon icon={faCopy} />
-                              </button>
-
-                              <a
-                                className="cl-iconBtn is-whatsapp"
-                                title="واتساب"
-                                href={buildClientWhatsAppHref(c)}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                <FontAwesomeIcon icon={faWhatsapp} />
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      <td>
-                        {c.vip ? (
-                          <span className="dash-pill dash-pill-primary">VIP</span>
-                        ) : (
-                          <span style={{ opacity: 0.5 }}>—</span>
-                        )}
-                      </td>
-
-                      <td className="cl-num">{c.bookingsCount}</td>
-
-                      <td className="cl-last">
-                        {c.lastVisitDate
-                          ? `${c.lastVisitDate} — ${formatTime12(c.lastVisitTime || "")}`
-                          : "—"}
-                      </td>
-
-                      <td style={{ opacity: 0.75 }}>
-                        {c.source === "both" ? "حجوزات + Excel" : c.source === "imported" ? "Excel" : "حجوزات"}
-                      </td>
-
-                      <td>
-                        <button
-                          className="cl-btn ghost"
-                          type="button"
-                          onClick={() => {
-                            setSelectedClient(c);
-                            setNoteText(notesMap[noteKeyForClient(c)] || "");
-                          }}
-                        >
-                          <FontAwesomeIcon icon={faCircleInfo} /> عرض السجل
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="cl-mobile-list">
-          {loading ? (
-            <div className="cl-mobile-empty">جاري التحميل...</div>
-          ) : filteredClients.length === 0 ? (
-            <div className="cl-mobile-empty">لا توجد نتائج</div>
-          ) : (
-            filteredClients.map((c) => (
-              <div key={c.key} className="cl-mobile-card">
-                <div className="cl-mobile-head">
-                  <div className="cl-mobile-name">{c.name}</div>
-                  {c.vip ? <span className="dash-pill dash-pill-primary">VIP</span> : null}
-                </div>
-
-                <div className="cl-mobile-row">
-                  <span>الجوال</span>
-                  <b>{c.phone || "—"}</b>
-                </div>
-                <div className="cl-mobile-row">
-                  <span>عدد الحجوزات</span>
-                  <b>{c.bookingsCount}</b>
-                </div>
-                <div className="cl-mobile-row">
-                  <span>آخر زيارة</span>
-                  <b>{c.lastVisitDate ? `${c.lastVisitDate} — ${formatTime12(c.lastVisitTime || "")}` : "—"}</b>
-                </div>
-                <div className="cl-mobile-row">
-                  <span>المصدر</span>
-                  <b>{c.source === "both" ? "حجوزات + Excel" : c.source === "imported" ? "Excel" : "حجوزات"}</b>
-                </div>
-
-                {c.phone !== "—" ? (
-                  <div className="cl-mobile-actions-mini">
-                    <button
-                      className="cl-iconBtn is-copy"
-                      type="button"
-                      title="نسخ الجوال"
-                      onClick={() => {
-                        void handleCopyPhone(c.phone);
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faCopy} />
-                    </button>
-                    <a
-                      className="cl-iconBtn is-whatsapp"
-                      title="واتساب"
-                      href={buildClientWhatsAppHref(c)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <FontAwesomeIcon icon={faWhatsapp} />
-                    </a>
-                  </div>
-                ) : null}
-
-                <button
-                  className="cl-btn ghost cl-mobile-open"
-                  type="button"
-                  onClick={() => {
-                    setSelectedClient(c);
-                    setNoteText(notesMap[noteKeyForClient(c)] || "");
-                  }}
-                >
-                  <FontAwesomeIcon icon={faCircleInfo} /> عرض السجل
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Client Bookings Modal (Unified) */}
-      {selectedClient && (
-        <Modal
-          open={!!selectedClient}
-          onClose={closeClientModal}
-          ariaLabel="سجل العميل"
-          panelClassName="dash-modal cl-record-modal"
-          size="lg"
-        >
-            <div className="cl-modalHeader">
-              <div className="cl-modalTitleWrap">
-                <div className="cl-modalKicker">سجل العميلة</div>
-                <h3 className="cl-modalTitle">{selectedClient.name || "—"}</h3>
-                <div className="cl-modalPhone">
-                  {selectedClient.phone !== "—" ? selectedClient.phone : "بدون رقم جوال"}
-                </div>
-              </div>
-
-              <button
-                className="cl-btn ghost cl-modal-closeBtn"
-                type="button"
-                onClick={closeClientModal}
-                title="إغلاق"
-              >
-                <FontAwesomeIcon icon={faXmark} /> إغلاق
-              </button>
-            </div>
-
-            <div className="cl-modalBody">
-              {(() => {
-                const totalSpend = selectedBookings.reduce((sum: number, x: any) => {
-                  const n = Number(x?.total);
-                  return sum + (Number.isFinite(n) ? n : 0);
-                }, 0);
-
-                const last = selectedBookings[0];
-
-                const saveNote = () => {
-                  const k = noteKeyForClient(selectedClient);
-                  if (!k) return;
-                  const next = { ...notesMap, [k]: noteText.trim() };
-                  setNotesMap(next);
-                  localStorage.setItem(NOTES_KEY, JSON.stringify(next));
-                  setNoteSaved(true);
-                  if (noteSavedTimerRef.current) window.clearTimeout(noteSavedTimerRef.current);
-                  noteSavedTimerRef.current = window.setTimeout(() => setNoteSaved(false), 1500);
-                };
-
-                // ✅ imported note (from excel)
-                const importedNote = selectedClient.importedNote || "";
-
-                return (
-                  <>
-                    <div className="cl-client-summary">
-                      <div className="cl-sum-card">
-                        <div className="cl-sum-num">{selectedBookings.length}</div>
-                        <div className="cl-sum-label">عدد الحجوزات</div>
-                      </div>
-
-                      <div className="cl-sum-card">
-                        <div className="cl-sum-num">
-                          {last?.date ? `${last.date} ${formatTime12(last.time || "")}` : "—"}
-                        </div>
-                        <div className="cl-sum-label">آخر زيارة</div>
-                      </div>
-
-                      <div className="cl-sum-card">
-                        <div className="cl-sum-num">
-                          {totalSpend ? `${totalSpend.toLocaleString()} ريال` : "—"}
-                        </div>
-                        <div className="cl-sum-label">إجمالي الصرف</div>
-                      </div>
-                    </div>
-
-                    <section className="cl-overview-section" aria-label="السجل المالي والولاء">
-                        <div className="cl-overview-head">
-                          <div>
-                            <h4>السجل الموحد للعميلة</h4>
-                            <p>الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.</p>
-                          </div>
-                          {selectedClient.clientId ? (
-                            <button
-                              type="button"
-                              className="cl-btn ghost"
-                              onClick={() => void loadClientOverview(selectedClient.clientId as string)}
-                              disabled={clientOverviewLoading}
-                            >
-                              {clientOverviewLoading ? "جارٍ التحديث..." : "تحديث"}
-                            </button>
-                          ) : null}
-                        </div>
-
-                        {clientOverviewLoading ? (
-                          <div className="cl-overview-state">جارٍ تحميل السجل الحقيقي...</div>
-                        ) : clientOverviewError ? (
-                          <div className="cl-overview-state error">{clientOverviewError}</div>
-                        ) : clientOverview ? (
-                          <>
-                            <div className="cl-overview-grid">
-                              <div className="cl-overview-metric">
-                                <span>صافي المدفوع</span>
-                                <b>{formatHalalas(clientOverview.summary.netPaidHalalas)}</b>
-                              </div>
-                              <div className="cl-overview-metric">
-                                <span>الاسترجاعات</span>
-                                <b>{formatHalalas(clientOverview.summary.refundedHalalas)}</b>
-                              </div>
-                              <div className="cl-overview-metric">
-                                <span>الرصيد الحالي</span>
-                                <b>{clientOverview.loyalty.balance.toLocaleString("ar-SA")} نقطة</b>
-                              </div>
-                              <div className="cl-overview-metric">
-                                <span>آخر نشاط</span>
-                                <b>{formatDateTime(clientOverview.summary.lastActivityAt)}</b>
-                              </div>
-                            </div>
-
-                            <div className="cl-overview-columns">
-                              <div className="cl-overview-box">
-                                <h5>النقاط والولاء</h5>
-                                <div className="cl-loyalty-summary">
-                                  <span>المستوى: <b>{clientOverview.loyalty.levelLabel || "—"}</b></span>
-                                  <span>مكتسبة: <b>{clientOverview.loyalty.earned.toLocaleString("ar-SA")}</b></span>
-                                  <span>مستخدمة: <b>{clientOverview.loyalty.used.toLocaleString("ar-SA")}</b></span>
-                                  <span>معكوسة: <b>{clientOverview.loyalty.reversed.toLocaleString("ar-SA")}</b></span>
-                                </div>
-                                <div className="cl-overview-list">
-                                  {clientOverview.loyalty.transactions.slice(0, 5).map((tx) => (
-                                    <div key={tx.id}>
-                                      <span>{tx.reason || tx.type}</span>
-                                      <b className={tx.points < 0 ? "negative" : "positive"}>
-                                        {tx.points > 0 ? "+" : ""}{tx.points}
-                                      </b>
-                                    </div>
-                                  ))}
-                                  {clientOverview.loyalty.transactions.length === 0 ? <p>لا توجد حركات نقاط.</p> : null}
-                                </div>
-
-                                {(uiRole === "owner" || uiRole === "admin") ? (
-                                  <div className="cl-loyalty-adjust">
-                                    <input
-                                      type="number"
-                                      step="1"
-                                      value={loyaltyPoints}
-                                      onChange={(event) => setLoyaltyPoints(event.target.value)}
-                                      placeholder="مثال: 20 أو -20"
-                                      aria-label="عدد النقاط"
-                                    />
-                                    <input
-                                      value={loyaltyReason}
-                                      onChange={(event) => setLoyaltyReason(event.target.value)}
-                                      placeholder="سبب التعديل"
-                                      aria-label="سبب تعديل النقاط"
-                                    />
-                                    <button
-                                      type="button"
-                                      className="cl-btn primary"
-                                      onClick={() => void handleLoyaltyAdjustment()}
-                                      disabled={loyaltySaving}
-                                    >
-                                      {loyaltySaving ? "جارٍ الحفظ..." : "تسجيل الحركة"}
-                                    </button>
-                                  </div>
-                                ) : null}
-                                {loyaltyMessage ? <div className="cl-loyalty-message">{loyaltyMessage}</div> : null}
-                              </div>
-
-                              <div className="cl-overview-box">
-                                <h5>الدفعات والاسترجاعات</h5>
-                                <div className="cl-overview-list">
-                                  {clientOverview.payments.slice(0, 4).map((payment, index) => (
-                                    <div key={String(payment.id || `payment-${index}`)}>
-                                      <span>دفعة · {String(payment.method || payment.provider || "غير محدد")}</span>
-                                      <b className="positive">{formatHalalas(payment.amount_halalas)}</b>
-                                    </div>
-                                  ))}
-                                  {clientOverview.refunds.slice(0, 4).map((refund, index) => (
-                                    <div key={String(refund.id || `refund-${index}`)}>
-                                      <span>استرجاع · {formatDateTime(refund.refunded_at || refund.created_at)}</span>
-                                      <b className="negative">-{formatHalalas(refund.amount_halalas)}</b>
-                                    </div>
-                                  ))}
-                                  {clientOverview.payments.length === 0 && clientOverview.refunds.length === 0 ? (
-                                    <p>لا توجد حركات مالية.</p>
-                                  ) : null}
-                                </div>
-                              </div>
-
-                              <div className="cl-overview-box">
-                                <h5>العروض المستخدمة</h5>
-                                <div className="cl-overview-list">
-                                  {clientOverview.offersUsed.map((offer, index) => (
-                                    <div key={String(offer.id || offer.code || index)}>
-                                      <span>{offer.title}</span>
-                                      <b>{formatDateTime(offer.usedAt)}</b>
-                                    </div>
-                                  ))}
-                                  {clientOverview.offersUsed.length === 0 ? <p>لم تُستخدم عروض مسجلة.</p> : null}
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        ) : null}
-                    </section>
-
-                    {importedNote ? (
-                      <div className="cl-notes" style={{ marginTop: 10 }}>
-                        <div className="cl-notesHead">ملاحظة (من Excel)</div>
-                        <div style={{ padding: 10, borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
-                          {importedNote}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="cl-notes">
-                      <div className="cl-notesHead">ملاحظات إدارية (داخلية)</div>
-                      <textarea
-                        className="cl-notesInput"
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        placeholder="مثال: تفضّل موظفة معينة / حساسية / أوقات مناسبة..."
-                      />
-                      <div className="cl-note-actions">
-                        <button className="cl-btn primary" type="button" onClick={saveNote}>
-                          حفظ الملاحظة
-                        </button>
-                        {noteSaved ? <span className="cl-note-saved">تم الحفظ</span> : null}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-
-              <div className="clients-table-card">
-                <ClientPackagesPanel
-                  clientId={selectedClient.clientId || selectedClient.legacyClientDocId}
-                  canManage={uiRole === "owner" || uiRole === "admin"}
-                />
-                {!isMobileViewport ? (
-                <div className="cl-table-wrap">
-                  <div className="table-responsive">
-                    <table className="clients-table">
-                      <thead>
-                        <tr>
-                          <th>رقم الحجز</th>
-                          <th>الخدمة</th>
-                          <th>الموظفة</th>
-                          <th>التاريخ</th>
-                          <th>الوقت</th>
-                          <th>الحالة</th>
-                          <th>الإجمالي</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedBookings.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="cl-td-center">
-                              لا يوجد سجل حجوزات (هذه عميلة Excel فقط)
-                            </td>
-                          </tr>
-                        ) : (
-                          selectedBookings.map((b: any) => (
-                            <tr key={b.id}>
-                              <td className="cl-id">{bookingNoOf(b)}</td>
-                              <td>{(b.serviceName ?? "-").toString()}</td>
-                              <td>{(b.employeeName ?? "-").toString()}</td>
-                              <td className="cl-date">{b.date}</td>
-                              <td className="cl-time">{formatTime12(b.time)}</td>
-                              <td>
-                                <span className={`status-badge ${b.status}`}>
-                                  {statusLabel[(b.status as BookingStatus) ?? "pending"] ??
-                                    ((b.status as any) ?? "pending")}
-                                </span>
-                              </td>
-                              <td className="cl-money">
-                                {Number.isFinite(Number(b.total))
-                                  ? `${Number(b.total).toLocaleString()} ريال`
-                                  : "-"}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                ) : (
-                <div className="cl-modal-mobile-bookings">
-                  {selectedBookings.length === 0 ? (
-                    <div className="cl-mobile-empty">لا يوجد سجل حجوزات (هذه عميلة Excel فقط)</div>
-                  ) : (
-                    selectedBookings.map((b: any) => (
-                      <div key={b.id} className="cl-mobile-card">
-                        <div className="cl-mobile-row">
-                          <span>رقم الحجز</span>
-                          <b className="cl-id">{bookingNoOf(b)}</b>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>الخدمة</span>
-                          <b>{(b.serviceName ?? "-").toString()}</b>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>الموظفة</span>
-                          <b>{(b.employeeName ?? "-").toString()}</b>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>التاريخ</span>
-                          <b>{b.date || "-"}</b>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>الوقت</span>
-                          <b>{formatTime12(b.time)}</b>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>الحالة</span>
-                          <span className={`status-badge ${b.status}`}>
-                            {statusLabel[(b.status as BookingStatus) ?? "pending"] ??
-                              ((b.status as any) ?? "pending")}
-                          </span>
-                        </div>
-                        <div className="cl-mobile-row">
-                          <span>الإجمالي</span>
-                          <b>
-                            {Number.isFinite(Number(b.total))
-                              ? `${Number(b.total).toLocaleString()} ريال`
-                              : "-"}
-                          </b>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                )}
-              </div>
-
-              <div className="cl-modalHint">
-                * الحجوزات والدفعات والاسترجاعات والنقاط من Core D1، والباقات والجلسات من Core D1.
-              </div>
-            </div>
-          </Modal>
-      )}
-
-      {copyToast ? <div className="cl-copy-toast">{copyToast}</div> : null}
-
-      {/* Import Modal (Unified style using same overlay pattern) */}
-      {importOpen && (
-        <Modal
-          open={importOpen}
-          onClose={closeImport}
-          ariaLabel="استيراد عميلات من Excel"
-          panelClassName="dash-modal cl-import-modal"
-          size="lg"
-        >
-            <div className="dash-modal-header">
-              <h3>استيراد عميلات من Excel (دمج آمن)</h3>
-              <button className="dash-close" type="button" onClick={closeImport} disabled={importing}>
-                <FontAwesomeIcon icon={faXmark} />
-              </button>
-            </div>
-
-            <div className="dash-modal-body">
-              {importErr && (
-                <div className="bookings-error" style={{ marginBottom: 10 }}>
-                  {importErr}
-                </div>
-              )}
-
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>
-                  الأعمدة المدعومة: <b>name/الاسم</b> + <b>phone/الجوال</b> (اختياري: vip, note/ملاحظة)
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) onPickFile(f);
-                  }}
-                  disabled={importing}
-                />
-
-                {preview.length > 0 && (
-                  <>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontWeight: 900 }}>
-                        Preview: {preview.length} عميلة
-                      </div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        سيتم الدمج على رقم الجوال (بدون مسح بيانات)
-                      </div>
-                    </div>
-
-                    <div style={{ maxHeight: 260, overflow: "auto", borderRadius: 10 }}>
-                      <table className="clients-table">
-                        <thead>
-                          <tr>
-                            <th>الاسم</th>
-                            <th>الجوال</th>
-                            <th>VIP</th>
-                            <th>ملاحظة</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {preview.slice(0, 80).map((r) => (
-                            <tr key={r.digits}>
-                              <td>{r.name}</td>
-                              <td>{r.phone}</td>
-                              <td>{r.vip ? "VIP" : "—"}</td>
-                              <td style={{ maxWidth: 280, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {r.note || "—"}
-                              </td>
-                            </tr>
-                          ))}
-                          {preview.length > 80 ? (
-                            <tr>
-                              <td colSpan={4} style={{ textAlign: "center", opacity: 0.7 }}>
-                                تم عرض 80 فقط من {preview.length}
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
-                      <button className="reports-btn" type="button" onClick={closeImport} disabled={importing}>
-                        إلغاء
-                      </button>
-                      <button className="reports-btn" type="button" onClick={commitImport} disabled={importing}>
-                        {importing ? "جارٍ الحفظ..." : "حفظ ودمج"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </Modal>
-        )}
+      {selectedCustomer ? <CustomerRecordModal customer={selectedCustomer} bookings={selectedBookings} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
+      <CustomersImportModal open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
+      {copyToast ? <div className="customers-copy-toast" role="status">{copyToast}</div> : null}
     </div>
   );
-};
-
-export default DashboardClients;
+}

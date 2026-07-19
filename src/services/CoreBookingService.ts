@@ -37,6 +37,17 @@ export const CoreBookingService = {
     return mapCoreBooking(row);
   },
 
+  async createInternal(input: CoreCreateBookingInput): Promise<CoreBooking> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/internal/bookings",
+      {
+        method: "POST",
+        body: input as unknown as Record<string, unknown>,
+      }
+    );
+    return mapCoreBooking(row);
+  },
+
   async patch(
     id: string,
     input: Partial<{

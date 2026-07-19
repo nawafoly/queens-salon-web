@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
+import ConfirmModal from "../../components/ConfirmModal";
 import "./booking-internal-v2.css";
 import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
@@ -411,6 +412,8 @@ export default function BookingInternalV2() {
   const [submitError, setSubmitError] = useState("");
   const [postSaveWarning, setPostSaveWarning] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [showPastDateConfirmation, setShowPastDateConfirmation] = useState(false);
   const [createdBookingIds, setCreatedBookingIds] = useState<string[]>([]);
   const [createdBookingReference, setCreatedBookingReference] = useState("");
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -706,6 +709,7 @@ export default function BookingInternalV2() {
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
   const canContinue = Boolean(selectedClient);
+  const isPastBookingDate = Boolean(bookingDate && bookingDate < todayISO());
   const bookingConfig = mergeBookingConfig(appSettings?.booking);
   const dayHours = bookingConfig.businessHours?.[weekdayKey(bookingDate)] || { enabled: true, start: "12:00", end: "22:00" };
   const slotStepMin = Math.max(5, Number(bookingConfig.slotStepMin || 10));
@@ -896,6 +900,7 @@ export default function BookingInternalV2() {
   }, [couponInput, discountItems]);
 
   const submitBooking = useCallback(async () => {
+    if (submittingRef.current) return;
     setSubmitError("");
     setPostSaveWarning("");
     setCreatedBookingIds([]);
@@ -919,6 +924,7 @@ export default function BookingInternalV2() {
       setSubmitError(`مجموع الدفع المختلط يجب أن يساوي ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س.`); return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const staleSelections: Array<{ service: CatalogService; staff: StaffRow; serviceKey: string }> = [];
@@ -1148,9 +1154,24 @@ export default function BookingInternalV2() {
         setSubmitError(`تعذر حفظ الحجز: ${message || "خطأ غير معروف"}`);
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+
+  const requestSubmitBooking = useCallback(() => {
+    if (submittingRef.current) return;
+    if (isPastBookingDate) {
+      setShowPastDateConfirmation(true);
+      return;
+    }
+    void submitBooking();
+  }, [isPastBookingDate, submitBooking]);
+
+  const confirmPastDateBooking = useCallback(() => {
+    setShowPastDateConfirmation(false);
+    void submitBooking();
+  }, [submitBooking]);
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({
@@ -1207,6 +1228,7 @@ export default function BookingInternalV2() {
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
+    setBookingDate(todayISO()); setShowPastDateConfirmation(false);
     setStep(1); setPaymentMethod("cash"); setPaymentType("full"); setPaidAmount("");
     setCashAmount(""); setCardAmount(""); setTransferAmount(""); setBookingNote("");
     setCreatedBookingIds([]); setCreatedBookingReference(""); setSubmitError(""); setPostSaveWarning("");
@@ -1398,7 +1420,17 @@ export default function BookingInternalV2() {
 
                   <label className="bk2-date-field">
                     <span>تاريخ الحجز</span>
-                    <input type="date" min={todayISO()} value={bookingDate} onChange={(event) => setBookingDate(event.target.value)} />
+                    <input
+                      type="date"
+                      value={bookingDate}
+                      onChange={(event) => setBookingDate(event.target.value)}
+                      aria-describedby={isPastBookingDate ? "bk2-past-date-warning" : undefined}
+                    />
+                    {isPastBookingDate ? (
+                      <p id="bk2-past-date-warning" className="bk2-past-date-warning" role="status">
+                        أنت تقوم بإنشاء حجز بتاريخ سابق
+                      </p>
+                    ) : null}
                   </label>
                   {!dayHours.enabled ? <p className="bk2-status-line">الصالون مغلق في هذا اليوم حسب إعدادات الدوام.</p> : null}
                   {staffLoading ? <p className="bk2-status-line is-loading">جاري تحميل الموظفات...</p> : null}
@@ -1634,7 +1666,7 @@ export default function BookingInternalV2() {
                         <div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA")} ر.س</strong></div>
                       </div>
                       {submitError ? <p className="bk2-inline-warning">{submitError}</p> : null}
-                      <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>العودة للموعد</button><button type="button" className="is-primary" onClick={() => void submitBooking()} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س` : `حفظ الحجز وتحصيل ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س`}</button></div>
+                      <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>العودة للموعد</button><button type="button" className="is-primary" onClick={requestSubmitBooking} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س` : `حفظ الحجز وتحصيل ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س`}</button></div>
                     </>
                   )}
                 </section>
@@ -1696,6 +1728,16 @@ export default function BookingInternalV2() {
           </div>
         </>
       )}
+      <ConfirmModal
+        open={showPastDateConfirmation}
+        title="تأكيد الحجز بتاريخ سابق"
+        message="تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟"
+        confirmText="تأكيد وإنشاء الحجز"
+        cancelText="إلغاء"
+        showCancel
+        onConfirm={confirmPastDateBooking}
+        onCancel={() => setShowPastDateConfirmation(false)}
+      />
     </div>
   );
 }

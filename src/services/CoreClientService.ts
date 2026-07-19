@@ -192,4 +192,15 @@ export const CoreClientService = {
     );
     return mapCoreClient(row);
   },
+
+  async updateProfile(
+    id: string,
+    input: { name: string; phone: string }
+  ): Promise<CoreClient> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/clients/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: input }
+    );
+    return mapCoreClient(row);
+  },
 };
