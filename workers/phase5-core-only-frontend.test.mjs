@@ -256,6 +256,14 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.match(packageSessionsManager, /إضافة جلسة لعميلة/);
   assert.match(packageSessionsManager, /CoreClientService\.create/);
   assert.match(packageSessionsManager, /grantClientSessions/);
+  assert.match(packageSessionsManager, /PackageOperationsService\.adjust/);
+  assert.match(packageSessionsManager, /تعديل جلسات الباقة/);
+  assert.match(packageSessionsManager, /سبب التعديل/);
+  assert.equal(
+    packageSessionsManager.includes("window.prompt"),
+    false,
+    "Package session editing must use an in-app dialog instead of browser prompts"
+  );
   assert.match(
     packageOperations,
     /\/api\/packages\/admin\/grant-sessions/

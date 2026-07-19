@@ -442,6 +442,10 @@ test("internal booking exposes packages and sessions management from Packages D1
   assert.match(panel, /سجل الجلسات/);
   assert.match(panel, /تحتاج متابعة/);
   assert.match(panel, /PackageOperationsService\.sessionDashboard/);
+  assert.match(panel, /PackageOperationsService\.adjust/);
+  assert.match(panel, /تعديل جلسات الباقة/);
+  assert.match(panel, /الرصيد بعد التعديل/);
+  assert.doesNotMatch(panel, /window\.prompt/);
   assert.match(service, /\/api\/packages\/admin\/session-dashboard/);
   assert.match(service, /normalizePackagesWorkerBaseUrl/);
   assert.match(service, /indexOf\("\/api\/packages"\)/);

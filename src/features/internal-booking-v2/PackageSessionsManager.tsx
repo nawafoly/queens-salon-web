@@ -7,6 +7,7 @@ import {
   FiTrash2,
   FiPackage,
   FiPlus,
+  FiMinus,
   FiRefreshCw,
   FiX,
   FiSearch,
@@ -130,6 +131,21 @@ export default function PackageSessionsManager() {
     expiresAt: "",
     reason: "",
   });
+  const [adjustPackage, setAdjustPackage] = useState<PackageSessionDashboardPackage | null>(null);
+  const [adjustSaving, setAdjustSaving] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
+  const [adjustForm, setAdjustForm] = useState({
+    operation: "add" as "add" | "subtract",
+    sessionsCount: "1",
+    reason: "",
+  });
+  const [detailsPackage, setDetailsPackage] = useState<PackageSessionDashboardPackage | null>(null);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [detailsForm, setDetailsForm] = useState({
+    packageName: "",
+    expiresAt: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -235,33 +251,80 @@ export default function PackageSessionsManager() {
     [dashboard.transactions, selectedClientId]
   );
 
-  const editPackage = async (pkg: PackageSessionDashboardPackage) => {
-    if (mutationLoading) return;
-    const packageName = window.prompt("اسم الباقة", pkg.packageName || "");
-    if (packageName === null) return;
-    const remainingRaw = window.prompt("عدد الجلسات المتبقية", String(pkg.remainingSessions));
-    if (remainingRaw === null) return;
-    const remainingSessions = Number(remainingRaw);
-    if (!packageName.trim() || !Number.isInteger(remainingSessions) || remainingSessions < 0) {
-      window.alert("تحققي من اسم الباقة وعدد الجلسات المتبقية.");
+  const openAdjustmentDialog = (pkg: PackageSessionDashboardPackage) => {
+    if (mutationLoading || adjustSaving) return;
+    setAdjustError("");
+    setAdjustForm({ operation: "add", sessionsCount: "1", reason: "" });
+    setAdjustPackage(pkg);
+  };
+
+  const submitAdjustment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!adjustPackage || adjustSaving) return;
+
+    const sessionsCount = Number(adjustForm.sessionsCount);
+    const reason = adjustForm.reason.trim();
+    if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
+      setAdjustError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
       return;
     }
-    const expiresAt = window.prompt("تاريخ الانتهاء بصيغة YYYY-MM-DD، أو اتركيه فارغًا", String(pkg.expiresAt || "").slice(0, 10));
-    if (expiresAt === null) return;
+    if (!reason) {
+      setAdjustError("اكتبي سبب التعديل ليظهر في سجل الجلسات.");
+      return;
+    }
+    if (adjustForm.operation === "subtract" && sessionsCount > adjustPackage.remainingSessions) {
+      setAdjustError("لا يمكن خصم عدد أكبر من الجلسات المتبقية.");
+      return;
+    }
+
+    const sessionsDelta = adjustForm.operation === "add" ? sessionsCount : -sessionsCount;
     try {
-      setMutationLoading(true);
-      await PackageOperationsService.updateClientPackage({
-        clientPackageId: pkg.id,
-        packageName: packageName.trim(),
-        remainingSessions,
-        expiresAt: expiresAt.trim() || undefined,
-        status: pkg.status,
-      });
+      setAdjustSaving(true);
+      setAdjustError("");
+      await PackageOperationsService.adjust(adjustPackage.id, sessionsDelta, reason);
+      setAdjustPackage(null);
       await load();
     } catch (error: any) {
-      window.alert(String(error?.message || "تعذر تعديل الباقة."));
+      setAdjustError(String(error?.message || "تعذر تعديل رصيد الجلسات."));
     } finally {
-      setMutationLoading(false);
+      setAdjustSaving(false);
+    }
+  };
+
+  const openPackageDetailsDialog = (pkg: PackageSessionDashboardPackage) => {
+    if (mutationLoading || detailsSaving) return;
+    setDetailsError("");
+    setDetailsForm({
+      packageName: pkg.packageName || "",
+      expiresAt: String(pkg.expiresAt || "").slice(0, 10),
+    });
+    setDetailsPackage(pkg);
+  };
+
+  const submitPackageDetails = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!detailsPackage || detailsSaving) return;
+    const packageName = detailsForm.packageName.trim();
+    if (!packageName) {
+      setDetailsError("اكتبي اسم الباقة.");
+      return;
+    }
+    try {
+      setDetailsSaving(true);
+      setDetailsError("");
+      await PackageOperationsService.updateClientPackage({
+        clientPackageId: detailsPackage.id,
+        packageName,
+        remainingSessions: detailsPackage.remainingSessions,
+        expiresAt: detailsForm.expiresAt || undefined,
+        status: detailsPackage.status,
+      });
+      setDetailsPackage(null);
+      await load();
+    } catch (error: any) {
+      setDetailsError(String(error?.message || "تعذر تعديل بيانات الباقة."));
+    } finally {
+      setDetailsSaving(false);
     }
   };
 
@@ -510,7 +573,19 @@ export default function PackageSessionsManager() {
                 <td><strong>{pkg.packageName}</strong><small>{pkg.invoiceId ? `فاتورة ${pkg.invoiceId}` : "بدون رقم فاتورة"}</small></td>
                 <td>{pkg.totalSessions}</td><td>{pkg.usedSessions}</td><td><b>{pkg.remainingSessions}</b></td><td>{pkg.reservedSessions}</td><td>{dateText(pkg.expiresAt)}</td>
                 <td><span className={`bk2-session-status is-${pkg.status}`}>{statusLabel(pkg.status)}</span></td>
-                <td><button type="button" onClick={() => void editPackage(pkg)} disabled={mutationLoading}><FiEdit3 /> تعديل</button> <button type="button" onClick={() => void deletePackage(pkg)} disabled={mutationLoading}><FiTrash2 /> حذف</button></td>
+                <td>
+                  <div className="bk2-session-row-actions">
+                    <button type="button" className="is-adjust" onClick={() => openAdjustmentDialog(pkg)} disabled={mutationLoading || adjustSaving}>
+                      <FiActivity /> تعديل الجلسات
+                    </button>
+                    <button type="button" onClick={() => openPackageDetailsDialog(pkg)} disabled={mutationLoading || detailsSaving}>
+                      <FiEdit3 /> بيانات الباقة
+                    </button>
+                    <button type="button" className="is-delete" onClick={() => void deletePackage(pkg)} disabled={mutationLoading}>
+                      <FiTrash2 /> حذف
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -566,6 +641,171 @@ export default function PackageSessionsManager() {
             {!selectedClientTransactions.length ? <p>لا توجد حركات مسجلة.</p> : null}
           </div>
         </aside>
+      ) : null}
+
+      {adjustPackage ? (
+        <div
+          className="bk2-session-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !adjustSaving) setAdjustPackage(null);
+          }}
+        >
+          <form
+            className="bk2-session-dialog bk2-session-dialog--adjust"
+            onSubmit={submitAdjustment}
+            aria-label="تعديل رصيد جلسات الباقة"
+          >
+            <button
+              type="button"
+              className="bk2-session-dialog-close"
+              onClick={() => setAdjustPackage(null)}
+              disabled={adjustSaving}
+              aria-label="إغلاق"
+            >
+              <FiX />
+            </button>
+
+            <div className="bk2-session-dialog-icon is-adjust">
+              <FiActivity />
+            </div>
+            <h3>تعديل جلسات الباقة</h3>
+            <p>التعديل يطبّق على الباقة الحالية فقط، ويُحفظ كحركة إدارية في سجل الجلسات.</p>
+
+            <dl className="bk2-session-adjust-summary">
+              <div><dt>العميلة</dt><dd>{adjustPackage.clientName || "عميلة بدون اسم"}</dd></div>
+              <div><dt>الجوال</dt><dd dir="ltr">{adjustPackage.phone || "—"}</dd></div>
+              <div><dt>الباقة</dt><dd>{adjustPackage.packageName}</dd></div>
+              <div><dt>الرصيد الحالي</dt><dd>{adjustPackage.remainingSessions} جلسات</dd></div>
+              <div><dt>المحجوز</dt><dd>{adjustPackage.reservedSessions} جلسات</dd></div>
+            </dl>
+
+            <div className="bk2-session-adjust-operation" role="group" aria-label="نوع التعديل">
+              <button
+                type="button"
+                className={adjustForm.operation === "add" ? "is-active" : ""}
+                onClick={() => setAdjustForm((current) => ({ ...current, operation: "add" }))}
+                disabled={adjustSaving}
+              >
+                <FiPlus /> إضافة جلسات
+              </button>
+              <button
+                type="button"
+                className={adjustForm.operation === "subtract" ? "is-active is-subtract" : ""}
+                onClick={() => setAdjustForm((current) => ({ ...current, operation: "subtract" }))}
+                disabled={adjustSaving}
+              >
+                <FiMinus /> خصم جلسات
+              </button>
+            </div>
+
+            <div className="bk2-session-grant-grid bk2-session-adjust-fields">
+              <label>
+                <span>عدد الجلسات *</span>
+                <input
+                  autoFocus
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={adjustForm.sessionsCount}
+                  onChange={(event) => setAdjustForm((current) => ({ ...current, sessionsCount: event.target.value }))}
+                  disabled={adjustSaving}
+                />
+              </label>
+              <label className="is-wide">
+                <span>سبب التعديل *</span>
+                <textarea
+                  rows={3}
+                  value={adjustForm.reason}
+                  onChange={(event) => setAdjustForm((current) => ({ ...current, reason: event.target.value }))}
+                  placeholder="مثال: تعويض جلسة أو تصحيح رصيد"
+                  disabled={adjustSaving}
+                />
+              </label>
+            </div>
+
+            {(() => {
+              const count = Number(adjustForm.sessionsCount);
+              const validCount = Number.isInteger(count) && count > 0 ? count : 0;
+              const delta = adjustForm.operation === "add" ? validCount : -validCount;
+              const after = Math.max(0, adjustPackage.remainingSessions + delta);
+              return (
+                <div className={`bk2-session-balance-preview ${adjustForm.operation === "subtract" ? "is-subtract" : ""}`}>
+                  <span><small>الرصيد الحالي</small><strong>{adjustPackage.remainingSessions}</strong></span>
+                  <b>{delta > 0 ? `+${delta}` : delta}</b>
+                  <span><small>الرصيد بعد التعديل</small><strong>{after}</strong></span>
+                </div>
+              );
+            })()}
+
+            {adjustError ? <div className="bk2-session-grant-message is-error">{adjustError}</div> : null}
+
+            <div className="bk2-session-dialog-actions">
+              <button type="button" className="is-cancel" onClick={() => setAdjustPackage(null)} disabled={adjustSaving}>
+                إلغاء
+              </button>
+              <button type="submit" className="is-primary" disabled={adjustSaving}>
+                {adjustSaving ? "جاري الحفظ..." : "حفظ تعديل الجلسات"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {detailsPackage ? (
+        <div
+          className="bk2-session-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !detailsSaving) setDetailsPackage(null);
+          }}
+        >
+          <form
+            className="bk2-session-dialog"
+            onSubmit={submitPackageDetails}
+            aria-label="تعديل بيانات الباقة"
+          >
+            <button
+              type="button"
+              className="bk2-session-dialog-close"
+              onClick={() => setDetailsPackage(null)}
+              disabled={detailsSaving}
+              aria-label="إغلاق"
+            >
+              <FiX />
+            </button>
+            <div className="bk2-session-dialog-icon"><FiEdit3 /></div>
+            <h3>بيانات الباقة</h3>
+            <p>عدّلي اسم الباقة أو تاريخ الانتهاء فقط. رصيد الجلسات له إجراء مستقل ومحفوظ في السجل.</p>
+            <div className="bk2-session-grant-grid">
+              <label className="is-wide">
+                <span>اسم الباقة *</span>
+                <input
+                  autoFocus
+                  value={detailsForm.packageName}
+                  onChange={(event) => setDetailsForm((current) => ({ ...current, packageName: event.target.value }))}
+                  disabled={detailsSaving}
+                />
+              </label>
+              <label className="is-wide">
+                <span>تاريخ الانتهاء</span>
+                <input
+                  type="date"
+                  value={detailsForm.expiresAt}
+                  onChange={(event) => setDetailsForm((current) => ({ ...current, expiresAt: event.target.value }))}
+                  disabled={detailsSaving}
+                />
+              </label>
+            </div>
+            {detailsError ? <div className="bk2-session-grant-message is-error">{detailsError}</div> : null}
+            <div className="bk2-session-dialog-actions">
+              <button type="button" className="is-cancel" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>إلغاء</button>
+              <button type="submit" className="is-primary" disabled={detailsSaving}>
+                {detailsSaving ? "جاري الحفظ..." : "حفظ بيانات الباقة"}
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
 
       {grantOpen ? (

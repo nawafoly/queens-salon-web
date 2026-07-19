@@ -1,11 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../services/firebase";
+import { resolveBookingDataSource } from "../services/bookingDataSource";
+import type { BookingDocWithId } from "../services/firestoreBookings";
 import defaultLogo from "../assets/images/ssunnamed.png";
 
-const SALON_ID = "main";
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;
 const MAX_PROMO_VIDEOS = 12;
+const QUEUE_REFRESH_MS = 8_000;
+
+const copy = {
+  dash: "\u2014",
+  am: "\u0635",
+  pm: "\u0645",
+  loading: "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u062d\u062c\u0648\u0632\u0627\u062a \u0627\u0644\u064a\u0648\u0645...",
+  loadError:
+    "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u062d\u062c\u0648\u0632\u0627\u062a \u0627\u0644\u064a\u0648\u0645 \u0645\u0646 \u062e\u062f\u0645\u0629 \u0627\u0644\u062d\u062c\u0632. \u062d\u062f\u062b \u0627\u0644\u0634\u0627\u0634\u0629 \u0623\u0648 \u062a\u0623\u0643\u062f \u0645\u0646 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644.",
+  videoError:
+    "\u062a\u0639\u0630\u0631 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0641\u064a\u062f\u064a\u0648. \u062a\u0623\u0643\u062f \u0645\u0646 \u0635\u064a\u063a\u0629 MP4 (H.264 + AAC).",
+  empty:
+    "\u0644\u0627 \u062a\u0648\u062c\u062f \u062d\u062c\u0648\u0632\u0627\u062a \u0641\u0639\u0627\u0644\u0629 \u0644\u0639\u0631\u0636\u0647\u0627 \u0627\u0644\u0622\u0646.",
+  booking: "\u062d\u062c\u0632",
+  current: "\u0627\u0644\u062d\u0627\u0644\u064a",
+  upcoming: "\u0642\u0627\u062f\u0645",
+  client: "\u0627\u0644\u0639\u0645\u064a\u0644\u0629",
+  employee: "\u0627\u0644\u0645\u0648\u0638\u0641\u0629",
+  time: "\u0627\u0644\u0648\u0642\u062a",
+  endsAfter: "\u064a\u0646\u062a\u0647\u064a \u0628\u0639\u062f",
+  remaining: "\u0628\u0627\u0642\u064a",
+};
 
 type QueueBooking = {
   id: string;
@@ -25,14 +46,20 @@ function todayISO(d = new Date()): string {
 }
 
 function toMinutes(time24: string): number {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  const m = String(time24 || "")
+    .trim()
+    .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!m) return Number.POSITIVE_INFINITY;
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
 function toDateTimeMs(dateISO: string, time24: string): number {
-  const dm = String(dateISO || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const tm = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  const dm = String(dateISO || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const tm = String(time24 || "")
+    .trim()
+    .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!dm || !tm) return Number.NaN;
   return new Date(
     Number(dm[1]),
@@ -52,21 +79,43 @@ function msToMinSec(ms: number): string {
   return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+function queueBookingFromDoc(row: BookingDocWithId, fallbackDate: string): QueueBooking {
+  const raw = row as BookingDocWithId & {
+    customerName?: unknown;
+    name?: unknown;
+    staffName?: unknown;
+    trackPublicId?: unknown;
+    mk?: unknown;
+  };
+
+  return {
+    id: String(row.id),
+    publicId: String(raw.publicId || raw.trackPublicId || raw.mk || row.id || ""),
+    clientName: String(raw.clientName || raw.customerName || raw.name || copy.dash),
+    employeeName: String(raw.employeeName || raw.staffName || copy.dash),
+    date: String(raw.date || fallbackDate),
+    time: String(raw.time || raw.startTime || ""),
+    status: String(raw.status || "").toLowerCase().trim(),
+  };
+}
+
 function bookingNoOf(raw: string): string {
   const v = String(raw || "").trim().toUpperCase();
-  if (!v) return "—";
+  if (!v) return copy.dash;
   if (/^MK-\d+$/.test(v)) return v;
   if (/^\d+$/.test(v)) return `MK-${v}`;
   return v;
 }
 
 function formatTime12(time24: string): string {
-  const m = String(time24 || "").trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  if (!m) return String(time24 || "—");
+  const m = String(time24 || "")
+    .trim()
+    .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return String(time24 || copy.dash);
   const h24 = Number(m[1]);
   const mm = m[2];
   const h12 = h24 % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? "م" : "ص"}`;
+  return `${String(h12).padStart(2, "0")}:${mm} ${h24 >= 12 ? copy.pm : copy.am}`;
 }
 
 function countdownLabel(targetMs: number, nowMs: number): string {
@@ -75,7 +124,9 @@ function countdownLabel(targetMs: number, nowMs: number): string {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
@@ -93,7 +144,7 @@ async function checkFileExists(path: string): Promise<boolean> {
     const head = await fetch(path, { method: "HEAD", cache: "no-store" });
     if (head.ok) return true;
   } catch {
-    // ignore and fallback to GET
+    // Ignore and fall back to GET.
   }
   try {
     const res = await fetch(path, { method: "GET", cache: "no-store" });
@@ -129,7 +180,7 @@ export default function DashboardQueueTv() {
       setVideoErrorStreak(0);
       setVideoUnavailable(false);
     };
-    loadPromoPlaylist();
+    void loadPromoPlaylist();
     return () => {
       cancelled = true;
     };
@@ -167,37 +218,53 @@ export default function DashboardQueueTv() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
-    const col = collection(db, "salons", SALON_ID, "bookings");
-    const q = query(col, where("date", "==", todayKey));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const rows: QueueBooking[] = snap.docs
-          .map((d) => {
-            const x = d.data() as any;
-            return {
-              id: String(d.id),
-              publicId: String(x?.publicId || x?.trackPublicId || x?.mk || d.id || ""),
-              clientName: String(x?.clientName || x?.name || "—"),
-              employeeName: String(x?.employeeName || "—"),
-              date: String(x?.date || todayKey),
-              time: String(x?.time || ""),
-              status: String(x?.status || "").toLowerCase().trim(),
-            };
-          })
+    let active = true;
+    let firstLoad = true;
+    let inFlight = false;
+
+    const loadBookings = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      if (firstLoad) {
+        setLoading(true);
+        setError("");
+      }
+      try {
+        const rows = await resolveBookingDataSource().searchBookings({ date: todayKey });
+        if (!active) return;
+        const next = rows
+          .map((row) => queueBookingFromDoc(row, todayKey))
           .filter((b) => !["cancelled", "canceled", "rejected"].includes(b.status))
           .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
-        setBookings(rows);
+        setBookings(next);
+        setError("");
+      } catch (loadError) {
+        if (!active) return;
+        console.error("[DashboardQueueTv] Booking load failed", loadError);
+        setError(copy.loadError);
+      } finally {
+        inFlight = false;
+        if (!active) return;
         setLoading(false);
-      },
-      () => {
-        setError("تعذر تحميل حجوزات اليوم مباشرة. تأكد من صلاحيات القراءة.");
-        setLoading(false);
+        firstLoad = false;
       }
-    );
-    return () => unsub();
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadBookings();
+    };
+
+    void loadBookings();
+    const timer = window.setInterval(() => void loadBookings(), QUEUE_REFRESH_MS);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [todayKey]);
 
   const todayQueue = useMemo(() => {
@@ -268,51 +335,56 @@ export default function DashboardQueueTv() {
           }}
         />
         {videoUnavailable ? (
-          <div className="dashboard-tv-video-fallback">تعذر تشغيل الفيديو. تأكد من صيغة MP4 (H.264 + AAC).</div>
+          <div className="dashboard-tv-video-fallback">{copy.videoError}</div>
         ) : null}
       </section>
 
       <section className="dashboard-tv-queue-card">
-        {loading ? <div className="dashboard-tv-empty">جاري تحميل حجوزات اليوم...</div> : null}
+        {loading ? <div className="dashboard-tv-empty">{copy.loading}</div> : null}
         {!loading && error ? <div className="dashboard-tv-empty">{error}</div> : null}
 
         {!loading && !error ? (
           <>
             {!todayQueue.length ? (
-              <div className="dashboard-tv-empty">لا توجد حجوزات فعالة لعرضها الآن.</div>
+              <div className="dashboard-tv-empty">{copy.empty}</div>
             ) : (
               <div className="dashboard-tv-booking-list">
                 {todayQueue.map((row, idx) => (
-                  <article key={row.id} className={`dashboard-tv-booking-card ${row.state === "current" ? "is-current" : "is-upcoming"}`}>
+                  <article
+                    key={row.id}
+                    className={`dashboard-tv-booking-card ${
+                      row.state === "current" ? "is-current" : "is-upcoming"
+                    }`}
+                  >
                     <div className="dashboard-tv-booking-head">
-                      <h4>حجز {idx + 1}</h4>
+                      <h4>
+                        {copy.booking} {idx + 1}
+                      </h4>
                       <span
                         className={`dashboard-tv-state-chip ${
                           row.state === "current" ? "is-current" : "is-upcoming"
                         }`}
                       >
-                        {row.state === "current" ? "الحالي" : "قادم"}
+                        {row.state === "current" ? copy.current : copy.upcoming}
                       </span>
                     </div>
                     <div className="dashboard-tv-booking-main">
                       <div className="dashboard-tv-booking-id">{bookingNoOf(row.publicId)}</div>
                       <div className="dashboard-tv-kv-row">
-                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0639\u0645\u064a\u0644\u0629"}</span>
+                        <span className="dashboard-tv-kv-label">{copy.client}</span>
                         <b className="dashboard-tv-kv-value">{row.clientName || "-"}</b>
                       </div>
                       <div className="dashboard-tv-kv-row">
-                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0645\u0648\u0638\u0641\u0629"}</span>
+                        <span className="dashboard-tv-kv-label">{copy.employee}</span>
                         <b className="dashboard-tv-kv-value">{row.employeeName || "-"}</b>
                       </div>
                       <div className="dashboard-tv-kv-row">
-                        <span className="dashboard-tv-kv-label">{"\u0627\u0644\u0648\u0642\u062a"}</span>
+                        <span className="dashboard-tv-kv-label">{copy.time}</span>
                         <b className="dashboard-tv-kv-value">{formatTime12(row.time)}</b>
                       </div>
                       <div className="dashboard-tv-kv-row">
                         <span className="dashboard-tv-kv-label">
-                          {row.state === "current"
-                            ? "\u064a\u0646\u062a\u0647\u064a \u0628\u0639\u062f"
-                            : "\u0628\u0627\u0642\u064a"}
+                          {row.state === "current" ? copy.endsAfter : copy.remaining}
                         </span>
                         <b className="dashboard-tv-kv-value">
                           {row.state === "current"
@@ -331,5 +403,3 @@ export default function DashboardQueueTv() {
     </div>
   );
 }
-
-
