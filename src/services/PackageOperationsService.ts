@@ -18,6 +18,18 @@ export type PackagePurchaseResult = {
   clientId: string;
 };
 
+export type PackageAdminGrantResult = {
+  ok: boolean;
+  idempotent?: boolean;
+  clientPackageId: string;
+  clientId: string;
+  canonicalClientId: string;
+  packageCatalogId: string;
+  packageName: string;
+  sessionsCount: number;
+  expiresAt?: string | null;
+};
+
 export type PackageRedemptionResult = {
   ok: boolean;
   idempotent?: boolean;
@@ -93,6 +105,8 @@ export type PackageSessionDashboardResult = {
 };
 
 export type PackageClientLookup = {
+  name?: string;
+  fullName?: string;
   id?: string;
   docId?: string;
   uid?: string;
@@ -410,6 +424,33 @@ export const PackageOperationsService = {
     return invoke<PackageClientWalletResult>("/api/packages/client-wallet", {
       salonId: "main",
       ...args,
+    });
+  },
+  grantClientSessions(args: {
+    clientId?: string;
+    clientName: string;
+    phone: string;
+    packageCatalogId: string;
+    sessionsCount: number;
+    expiresAt?: string;
+    reason?: string;
+  }) {
+    const operation = operationId("package_admin_grant");
+    return invoke<PackageAdminGrantResult>("/api/packages/admin/grant-sessions", {
+      salonId: "main",
+      operationId: operation,
+      clientId: args.clientId,
+      clientName: args.clientName,
+      clientLookup: {
+        name: args.clientName,
+        fullName: args.clientName,
+        phone: args.phone,
+        mobile: args.phone,
+      },
+      packageCatalogId: args.packageCatalogId,
+      sessionsCount: args.sessionsCount,
+      expiresAt: args.expiresAt,
+      reason: args.reason,
     });
   },
   purchase(args: {

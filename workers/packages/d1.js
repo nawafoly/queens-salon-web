@@ -660,6 +660,172 @@ export async function myWalletD1(ctx) {
   return walletSummaryD1(ctx, identity);
 }
 
+
+export async function grantClientSessionsAdminD1(ctx, data) {
+  requireRole(ctx.role, SALES_ROLES);
+  const db = packagesDb(ctx);
+  const packageCatalogId = requiredDocumentId(data.packageCatalogId, "packageCatalogId");
+  const sessionsCount = boundedInteger(Number(data.sessionsCount || 1), "sessionsCount", {
+    min: 1,
+    max: PACKAGE_LIMITS.sessions,
+  });
+  const operationSource = requiredExternalId(data.operationId, "operationId");
+  const reason =
+    boundedText(data.reason, "reason", PACKAGE_LIMITS.reason) ||
+    "إضافة جلسة إدارية";
+  const expiresAt = optionalText(data.expiresAt);
+  if (expiresAt && !Number.isFinite(Date.parse(expiresAt))) {
+    throw new AppError(400, "packages_d1:expires_at_invalid");
+  }
+
+  const identity = await resolveD1ClientIdentity(
+    ctx,
+    {
+      clientId: data.clientId,
+      clientName: data.clientName,
+      clientLookup: {
+        ...(data.clientLookup && typeof data.clientLookup === "object"
+          ? data.clientLookup
+          : {}),
+        name:
+          optionalText(data.clientName) ||
+          optionalText(data.clientLookup?.name) ||
+          undefined,
+        phone:
+          optionalText(data.phone) ||
+          optionalText(data.clientLookup?.phone) ||
+          optionalText(data.clientLookup?.mobile) ||
+          undefined,
+      },
+    },
+    { allowCreate: true }
+  );
+
+  const catalog = await dbFirst(
+    db,
+    "SELECT * FROM package_catalog WHERE salon_id = ? AND id = ? AND active = 1 LIMIT 1",
+    [ctx.salonId, packageCatalogId]
+  );
+  if (!catalog) {
+    throw new AppError(
+      404,
+      "packages_catalog:not_found",
+      "Package catalog item was not found"
+    );
+  }
+
+  const clientPackageId = (
+    await transactionId("admin_grant_package", operationSource)
+  ).replace(/^admin_grant_package:/, "pkg_");
+  const transactionDocumentId = await transactionId(
+    "admin_grant",
+    operationSource
+  );
+
+  const existing = await dbFirst(
+    db,
+    "SELECT * FROM client_packages WHERE salon_id = ? AND id = ? LIMIT 1",
+    [ctx.salonId, clientPackageId]
+  );
+  if (existing) {
+    if (
+      cleanText(existing.canonical_client_id) !== identity.canonicalClientId ||
+      cleanText(existing.package_catalog_id) !== packageCatalogId
+    ) {
+      throw new AppError(409, "packages_idempotency:admin_grant_conflict");
+    }
+    return {
+      ok: true,
+      idempotent: true,
+      clientPackageId,
+      clientId: identity.canonicalClientId,
+      canonicalClientId: identity.canonicalClientId,
+      packageCatalogId,
+      packageName: cleanText(existing.package_name_snapshot),
+      sessionsCount: Number(existing.total_sessions || 0),
+      expiresAt: optionalText(existing.expires_at) || null,
+    };
+  }
+
+  const now = timestampNow();
+  const validityDays = Number(catalog.validity_days || 0);
+  const resolvedExpiry =
+    expiresAt ||
+    (validityDays > 0
+      ? timestampFromMs(Date.parse(now) + validityDays * 24 * 60 * 60 * 1000)
+      : null);
+  const packageName = cleanText(catalog.name) || "جلسة";
+  const allowedServiceIdsJson =
+    cleanText(catalog.allowed_service_ids_json) || "[]";
+
+  await dbBatch(db, [
+    clientInsertStatement(ctx, {
+      canonicalClientId: identity.canonicalClientId,
+      salonId: ctx.salonId,
+      name:
+        optionalText(data.clientName) ||
+        identity.name ||
+        "عميلة",
+      phoneNormalized: identity.phoneNormalized || null,
+      firebaseUid: identity.firebaseUid || null,
+      legacyIds: identity.legacyIds || [],
+      createdAt: now,
+      updatedAt: now,
+    }),
+    {
+      sql: `INSERT INTO client_packages
+        (id, salon_id, canonical_client_id, package_catalog_id, package_name_snapshot, allowed_service_ids_json,
+         total_sessions, remaining_sessions, reserved_sessions, used_sessions, status, purchased_at, expires_at,
+         invoice_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, ?, NULL, ?, ?)`,
+      params: [
+        clientPackageId,
+        ctx.salonId,
+        identity.canonicalClientId,
+        packageCatalogId,
+        packageName,
+        allowedServiceIdsJson,
+        sessionsCount,
+        sessionsCount,
+        now,
+        resolvedExpiry,
+        now,
+        now,
+      ],
+    },
+    {
+      sql: `INSERT INTO package_transactions
+        (id, salon_id, client_package_id, canonical_client_id, type, sessions_delta,
+         remaining_before, remaining_after, reserved_before, reserved_after, used_before, used_after,
+         service_id, booking_id, cart_item_id, invoice_id, reason, created_by_uid, created_at)
+       VALUES (?, ?, ?, ?, 'admin_grant', ?, 0, ?, 0, 0, 0, 0, NULL, NULL, NULL, NULL, ?, ?, ?)`,
+      params: [
+        transactionDocumentId,
+        ctx.salonId,
+        clientPackageId,
+        identity.canonicalClientId,
+        sessionsCount,
+        sessionsCount,
+        reason,
+        cleanText(ctx.identity?.uid) || null,
+        now,
+      ],
+    },
+  ]);
+
+  clearD1WalletRuntimeCaches();
+  return {
+    ok: true,
+    clientPackageId,
+    clientId: identity.canonicalClientId,
+    canonicalClientId: identity.canonicalClientId,
+    packageCatalogId,
+    packageName,
+    sessionsCount,
+    expiresAt: resolvedExpiry,
+  };
+}
+
 export async function purchasePackageD1(ctx, data) {
   requireRole(ctx.role, SALES_ROLES);
   const db = packagesDb(ctx);

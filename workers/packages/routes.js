@@ -33,6 +33,7 @@ import {
   redeemPackageD1,
   releasePackageD1,
   reservePackageD1,
+  grantClientSessionsAdminD1,
   sessionDashboardAdminD1,
 } from './d1.js';
 
@@ -170,6 +171,7 @@ const routes = {
   "GET /api/packages/admin/list-client-packages": { d1: listClientPackagesAdminD1 },
   // D1 ONLY — administrative packages and session dashboard.
   "GET /api/packages/admin/session-dashboard": { d1: sessionDashboardAdminD1 },
+  "POST /api/packages/admin/grant-sessions": { d1: grantClientSessionsAdminD1 },
   "PATCH /api/packages/admin/client-package": { d1: updateClientPackageAdminD1 },
   "DELETE /api/packages/admin/client-package": { d1: deleteClientPackageAdminD1 },
   // POST alias avoids browser/proxy inconsistencies with authenticated DELETE

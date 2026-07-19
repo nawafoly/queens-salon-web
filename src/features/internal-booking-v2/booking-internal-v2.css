@@ -292,3 +292,41 @@
   .bk2-session-dialog{padding:22px 18px}
   .bk2-session-dialog-actions{grid-template-columns:1fr}
 }
+
+
+/* Manual client session grant */
+.bk2-sessions-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.bk2-sessions-add{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 17px;border:1px solid var(--bk2-maroon);border-radius:12px;background:var(--bk2-maroon);color:#fff;font-weight:900;white-space:nowrap;box-shadow:0 9px 22px rgba(91,0,22,.16);cursor:pointer}
+.bk2-sessions-add:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(91,0,22,.2)}
+.bk2-session-dialog--grant{width:min(100%,650px)}
+.bk2-session-dialog-icon.is-grant{background:#eef9f3;color:#14764b}
+.bk2-session-grant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.bk2-session-grant-grid label{display:grid;gap:7px;min-width:0}
+.bk2-session-grant-grid label.is-wide{grid-column:1/-1}
+.bk2-session-grant-grid label>span{color:#5d6678;font-size:.79rem;font-weight:900}
+.bk2-session-grant-grid input,
+.bk2-session-grant-grid select,
+.bk2-session-grant-grid textarea{width:100%;box-sizing:border-box;border:1px solid #dfe3ea;border-radius:11px;background:#fff;color:#1d2430;font:inherit;outline:0;transition:.15s ease}
+.bk2-session-grant-grid input,
+.bk2-session-grant-grid select{min-height:46px;padding:0 12px}
+.bk2-session-grant-grid textarea{padding:11px 12px;resize:vertical}
+.bk2-session-grant-grid input:focus,
+.bk2-session-grant-grid select:focus,
+.bk2-session-grant-grid textarea:focus{border-color:#9b3b52;box-shadow:0 0 0 3px rgba(123,0,29,.08)}
+.bk2-session-grant-grid input:disabled,
+.bk2-session-grant-grid select:disabled,
+.bk2-session-grant-grid textarea:disabled{background:#f5f6f8;color:#8c94a2}
+.bk2-session-grant-message{margin-top:14px;padding:12px 13px;border:1px solid;border-radius:11px;font-weight:850;line-height:1.65}
+.bk2-session-grant-message.is-error{border-color:#efbdc8;background:#fff5f7;color:#8f1732}
+.bk2-session-grant-message.is-success{border-color:#b7e4cb;background:#f0fbf5;color:#126841}
+.bk2-session-dialog-actions .is-primary{border:1px solid var(--bk2-maroon);background:var(--bk2-maroon);color:#fff}
+@media(max-width:760px){
+  .bk2-sessions-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .bk2-sessions-actions .bk2-sessions-add,
+  .bk2-sessions-actions .bk2-sessions-refresh{width:100%}
+  .bk2-session-grant-grid{grid-template-columns:1fr}
+  .bk2-session-grant-grid label.is-wide{grid-column:auto}
+}
+@media(max-width:460px){
+  .bk2-sessions-actions{grid-template-columns:1fr}
+}

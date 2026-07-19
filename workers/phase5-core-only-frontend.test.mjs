@@ -20,6 +20,11 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const dashboardOffersPage = read("src/pages/DashboardOffers.tsx");
   const dashboardClientsPage = read("src/pages/DashboardClients.tsx");
   const dashboardBookingsPage = read("src/pages/DashboardBookings.tsx");
+  const packageSessionsManager = read(
+    "src/features/internal-booking-v2/PackageSessionsManager.tsx"
+  );
+  const packageRoutes = read("workers/packages/routes.js");
+  const packageD1 = read("workers/packages/d1.js");
 
   for (const [name, source] of [
     ["ClientPackageService", clientPackageService],
@@ -162,4 +167,18 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.match(dashboardBookingsPage, /CoreClientService\.overview/);
   assert.match(dashboardBookingsPage, /CoreAuditService\.list/);
   assert.match(dashboardBookingsPage, /CoreRefundService/);
+
+  assert.match(packageSessionsManager, /إضافة جلسة لعميلة/);
+  assert.match(packageSessionsManager, /CoreClientService\.create/);
+  assert.match(packageSessionsManager, /grantClientSessions/);
+  assert.match(
+    packageOperations,
+    /\/api\/packages\/admin\/grant-sessions/
+  );
+  assert.match(
+    packageRoutes,
+    /POST \/api\/packages\/admin\/grant-sessions/
+  );
+  assert.match(packageD1, /grantClientSessionsAdminD1/);
+  assert.match(packageD1, /'admin_grant'/);
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   FiActivity,
   FiAlertTriangle,
@@ -6,16 +6,20 @@ import {
   FiEdit3,
   FiTrash2,
   FiPackage,
+  FiPlus,
   FiRefreshCw,
+  FiX,
   FiSearch,
   FiUsers,
 } from "react-icons/fi";
 import {
   PackageOperationsService,
+  type PackageCatalogRecord,
   type PackageSessionDashboardPackage,
   type PackageSessionDashboardResult,
   type PackageSessionDashboardTransaction,
 } from "../../services/PackageOperationsService";
+import { CoreClientService } from "../../services/CoreClientService";
 
 type SessionsTab = "overview" | "subscribers" | "packages" | "ledger" | "expiring";
 
@@ -75,6 +79,7 @@ function transactionLabel(type: string) {
     restore: "استرجاع جلسة",
     cancel: "إلغاء باقة",
     admin_adjustment: "تعديل إداري",
+    admin_grant: "إضافة جلسة يدوية",
     admin_restore: "استرجاع إداري",
   };
   return labels[type] || type || "حركة جلسة";
@@ -84,6 +89,16 @@ function matchesSearch(search: string, values: unknown[]) {
   const needle = search.trim().toLocaleLowerCase("ar");
   if (!needle) return true;
   return values.some((value) => String(value || "").toLocaleLowerCase("ar").includes(needle));
+}
+
+function normalizeSaudiPhone(value: string) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
+  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
+  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
+  if (/^05\d{8}$/.test(digits)) return digits;
+  return "";
 }
 
 function packageNeedsAttention(pkg: PackageSessionDashboardPackage) {
@@ -102,6 +117,19 @@ export default function PackageSessionsManager() {
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [mutationLoading, setMutationLoading] = useState(false);
+  const [catalog, setCatalog] = useState<PackageCatalogRecord[]>([]);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantSaving, setGrantSaving] = useState(false);
+  const [grantError, setGrantError] = useState("");
+  const [grantSuccess, setGrantSuccess] = useState("");
+  const [grantForm, setGrantForm] = useState({
+    clientName: "",
+    phone: "",
+    packageCatalogId: "",
+    sessionsCount: "1",
+    expiresAt: "",
+    reason: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,6 +151,26 @@ export default function PackageSessionsManager() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    PackageOperationsService.listCatalog()
+      .then((rows: PackageCatalogRecord[]) => {
+        if (cancelled) return;
+        const next = Array.isArray(rows) ? rows.filter((row) => row.active !== false) : [];
+        setCatalog(next);
+        setGrantForm((current) => ({
+          ...current,
+          packageCatalogId: current.packageCatalogId || next[0]?.id || "",
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const visiblePackages = useMemo(
     () => dashboard.packages.filter((pkg) => matchesSearch(search, [
@@ -232,6 +280,94 @@ export default function PackageSessionsManager() {
     }
   };
 
+  const openGrantDialog = () => {
+    setGrantError("");
+    setGrantSuccess("");
+    setGrantForm((current) => ({
+      ...current,
+      packageCatalogId: current.packageCatalogId || catalog[0]?.id || "",
+      sessionsCount: current.sessionsCount || "1",
+    }));
+    setGrantOpen(true);
+  };
+
+  const submitGrant = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (grantSaving) return;
+
+    const clientName = grantForm.clientName.trim();
+    const phone = normalizeSaudiPhone(grantForm.phone);
+    const packageCatalogId = grantForm.packageCatalogId.trim();
+    const sessionsCount = Number(grantForm.sessionsCount);
+
+    if (!clientName) {
+      setGrantError("أدخلي اسم العميلة.");
+      return;
+    }
+    if (!phone) {
+      setGrantError("أدخلي رقم جوال سعودي صحيح.");
+      return;
+    }
+    if (!packageCatalogId) {
+      setGrantError("اختاري الباقة أو الخدمة المرتبطة بالجلسة.");
+      return;
+    }
+    if (!Number.isInteger(sessionsCount) || sessionsCount < 1 || sessionsCount > 1000) {
+      setGrantError("عدد الجلسات يجب أن يكون رقمًا صحيحًا من 1 إلى 1000.");
+      return;
+    }
+
+    try {
+      setGrantSaving(true);
+      setGrantError("");
+      const clientCandidates = await CoreClientService.list(phone);
+      const exactClients = clientCandidates.filter(
+        (client) => normalizeSaudiPhone(String(client.phoneNormalized || "")) === phone
+      );
+      if (exactClients.length > 1) {
+        throw new Error(
+          "يوجد أكثر من ملف عميلة بنفس رقم الجوال. يجب دمج الملفات المكررة أولًا."
+        );
+      }
+      const client =
+        exactClients[0] ||
+        (await CoreClientService.create({
+          name: clientName,
+          phone,
+        }));
+
+      const result = await PackageOperationsService.grantClientSessions({
+        clientId: client.id,
+        clientName,
+        phone,
+        packageCatalogId,
+        sessionsCount,
+        expiresAt: grantForm.expiresAt || undefined,
+        reason: grantForm.reason.trim() || "إضافة جلسة للعميلة من لوحة الإدارة",
+      });
+      setGrantSuccess(
+        `تمت إضافة ${result.sessionsCount} جلسة إلى ${clientName} بنجاح.`
+      );
+      setSearch(phone);
+      setActiveTab("packages");
+      await load();
+      setGrantForm({
+        clientName: "",
+        phone: "",
+        packageCatalogId: catalog[0]?.id || "",
+        sessionsCount: "1",
+        expiresAt: "",
+        reason: "",
+      });
+    } catch (grantCause: any) {
+      setGrantError(
+        String(grantCause?.message || "تعذر إضافة الجلسة للعميلة.")
+      );
+    } finally {
+      setGrantSaving(false);
+    }
+  };
+
   const tabs: Array<{ id: SessionsTab; label: string }> = [
     { id: "overview", label: "نظرة عامة" },
     { id: "subscribers", label: "العميلات المشتركات" },
@@ -248,10 +384,16 @@ export default function PackageSessionsManager() {
           <h2>الباقات والجلسات</h2>
           <p>إدارة اشتراكات العميلات، أرصدة الجلسات، والانتهاء وسجل الحركات من مصدر واحد.</p>
         </div>
-        <button type="button" className="bk2-sessions-refresh" onClick={() => void load()} disabled={loading}>
-          <FiRefreshCw className={loading ? "is-spinning" : ""} />
-          {loading ? "جاري التحديث" : "تحديث البيانات"}
-        </button>
+        <div className="bk2-sessions-actions">
+          <button type="button" className="bk2-sessions-add" onClick={openGrantDialog}>
+            <FiPlus />
+            إضافة جلسة لعميلة
+          </button>
+          <button type="button" className="bk2-sessions-refresh" onClick={() => void load()} disabled={loading}>
+            <FiRefreshCw className={loading ? "is-spinning" : ""} />
+            {loading ? "جاري التحديث" : "تحديث البيانات"}
+          </button>
+        </div>
       </div>
 
       <div className="bk2-sessions-tabs" role="tablist" aria-label="أقسام إدارة الجلسات">
@@ -424,6 +566,174 @@ export default function PackageSessionsManager() {
             {!selectedClientTransactions.length ? <p>لا توجد حركات مسجلة.</p> : null}
           </div>
         </aside>
+      ) : null}
+
+      {grantOpen ? (
+        <div
+          className="bk2-session-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !grantSaving) {
+              setGrantOpen(false);
+            }
+          }}
+        >
+          <form
+            className="bk2-session-dialog bk2-session-dialog--grant"
+            onSubmit={submitGrant}
+            aria-label="إضافة جلسة لعميلة"
+          >
+            <button
+              type="button"
+              className="bk2-session-dialog-close"
+              onClick={() => setGrantOpen(false)}
+              disabled={grantSaving}
+              aria-label="إغلاق"
+            >
+              <FiX />
+            </button>
+
+            <div className="bk2-session-dialog-icon is-grant">
+              <FiPlus />
+            </div>
+            <h3>إضافة جلسة لعميلة</h3>
+            <p>
+              أدخلي بيانات العميلة وحددي الباقة وعدد الجلسات. إذا لم يكن لها ملف،
+              سيتم إنشاؤه تلقائيًا داخل Core D1.
+            </p>
+
+            <div className="bk2-session-grant-grid">
+              <label>
+                <span>اسم العميلة *</span>
+                <input
+                  autoFocus
+                  value={grantForm.clientName}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      clientName: event.target.value,
+                    }))
+                  }
+                  placeholder="مثال: غادة العليان"
+                  disabled={grantSaving}
+                />
+              </label>
+
+              <label>
+                <span>رقم الجوال *</span>
+                <input
+                  dir="ltr"
+                  inputMode="tel"
+                  value={grantForm.phone}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                  placeholder="05xxxxxxxx"
+                  disabled={grantSaving}
+                />
+              </label>
+
+              <label className="is-wide">
+                <span>الباقة أو الخدمة المرتبطة *</span>
+                <select
+                  value={grantForm.packageCatalogId}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      packageCatalogId: event.target.value,
+                    }))
+                  }
+                  disabled={grantSaving || !catalog.length}
+                >
+                  {!catalog.length ? (
+                    <option value="">لا توجد باقات نشطة</option>
+                  ) : null}
+                  {catalog.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} · {item.sessionsCount} جلسات في الكتالوج
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>عدد الجلسات المراد إضافتها *</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={grantForm.sessionsCount}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      sessionsCount: event.target.value,
+                    }))
+                  }
+                  disabled={grantSaving}
+                />
+              </label>
+
+              <label>
+                <span>تاريخ الانتهاء</span>
+                <input
+                  type="date"
+                  value={grantForm.expiresAt}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      expiresAt: event.target.value,
+                    }))
+                  }
+                  disabled={grantSaving}
+                />
+              </label>
+
+              <label className="is-wide">
+                <span>ملاحظة</span>
+                <textarea
+                  rows={3}
+                  value={grantForm.reason}
+                  onChange={(event) =>
+                    setGrantForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
+                  placeholder="سبب الإضافة أو أي ملاحظة داخلية"
+                  disabled={grantSaving}
+                />
+              </label>
+            </div>
+
+            {grantError ? (
+              <div className="bk2-session-grant-message is-error">{grantError}</div>
+            ) : null}
+            {grantSuccess ? (
+              <div className="bk2-session-grant-message is-success">{grantSuccess}</div>
+            ) : null}
+
+            <div className="bk2-session-dialog-actions">
+              <button
+                type="button"
+                className="is-cancel"
+                onClick={() => setGrantOpen(false)}
+                disabled={grantSaving}
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                className="is-primary"
+                disabled={grantSaving || !catalog.length}
+              >
+                {grantSaving ? "جاري الإضافة..." : "حفظ وإضافة الجلسة"}
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
 
       {loading && !dashboard.packages.length ? <div className="bk2-session-loading">جاري تحميل بيانات الباقات والجلسات...</div> : null}
