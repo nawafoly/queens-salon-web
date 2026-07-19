@@ -21,7 +21,7 @@ const processes = [
   {
     name: "vite",
     command: npx,
-    args: ["vite"],
+    args: ["vite", "--mode", "web"],
   },
 ];
 
@@ -139,3 +139,4 @@ process.on("SIGTERM", () => {
   stopAll("SIGTERM");
   setTimeout(() => process.exit(143), 250);
 });
+
