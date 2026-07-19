@@ -3,16 +3,16 @@ import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiS
 import "./booking-internal-v2.css";
 import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
-import { createBookingGroup, getStaffAvailability, listActiveCategoriesBySection, listActiveSections, listActiveServices, listActiveStaffAll, updateBookingDetails } from "../../services/bookingDataSourceCompat";
-import { SALON_ID } from "../../helpers/bookingSharedConstants";
+import { CoreSettingsService } from "../../services/CoreSettingsService";
+import { CoreOfferService } from "../../services/CoreOfferService";
+import type { CoreDiscount } from "../../types/coreApi";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
 import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../../helpers/timeSlots";
 import { formatTime12 } from "../../helpers/timeDisplay";
 import { filterStaffForInternalBookingTarget, isAvailabilityRangeFree, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
 import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isStaffAvailableForDate } from "../../helpers/staffAvailability";
-import { AppSettingsService } from "../../services/AppSettingsService";
-import { findActiveOfferByCode, isOfferActiveNow, listOffers, type Offer } from "../../services/firestoreOffers";
+
 import { todayISO } from "../../helpers/bookingDateUtils";
 import {
   buildDiscountSnapshot,
@@ -45,6 +45,61 @@ type ScheduleSelection = { staffId: string; staffName: string; time: string };
 type PaymentMethod = "cash" | "card" | "transfer" | "mixed";
 type PaymentType = "full" | "partial" | "none";
 type DiscountMode = "none" | "fixed" | "percent" | "offer" | "coupon";
+type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+type BookingBusinessHoursDay = { enabled: boolean; start: string; end: string };
+type InternalBookingConfig = {
+  slotStepMin: number;
+  bufferMin: number;
+  businessHours: Record<WeekdayKey, BookingBusinessHoursDay>;
+};
+type InternalBookingAppSettings = {
+  booking?: Partial<Omit<InternalBookingConfig, "businessHours">> & {
+    businessHours?: Partial<Record<WeekdayKey, BookingBusinessHoursDay>>;
+  };
+};
+
+const DEFAULT_BOOKING_CONFIG: InternalBookingConfig = {
+  slotStepMin: 5,
+  bufferMin: 0,
+  businessHours: {
+    sat: { enabled: true, start: "12:00", end: "22:00" },
+    sun: { enabled: true, start: "12:00", end: "22:00" },
+    mon: { enabled: true, start: "12:00", end: "22:00" },
+    tue: { enabled: true, start: "12:00", end: "22:00" },
+    wed: { enabled: true, start: "12:00", end: "22:00" },
+    thu: { enabled: true, start: "12:00", end: "22:00" },
+    fri: { enabled: false, start: "12:00", end: "22:00" },
+  },
+};
+
+function mergeBookingConfig(raw: InternalBookingAppSettings["booking"]): InternalBookingConfig {
+  const businessHours = { ...DEFAULT_BOOKING_CONFIG.businessHours };
+  for (const key of Object.keys(businessHours) as WeekdayKey[]) {
+    const day = raw?.businessHours?.[key];
+    if (!day) continue;
+    businessHours[key] = {
+      enabled: typeof day.enabled === "boolean" ? day.enabled : businessHours[key].enabled,
+      start: String(day.start || businessHours[key].start),
+      end: String(day.end || businessHours[key].end),
+    };
+  }
+  return {
+    slotStepMin: Math.max(5, Number(raw?.slotStepMin || DEFAULT_BOOKING_CONFIG.slotStepMin)),
+    bufferMin: Math.max(0, Number(raw?.bufferMin || DEFAULT_BOOKING_CONFIG.bufferMin)),
+    businessHours,
+  };
+}
+
+function isCoreOfferActiveNow(offer: CoreDiscount, now = new Date()) {
+  if (!offer.active || offer.deletedAt || offer.published === false) return false;
+  const today = now.toISOString().slice(0, 10);
+  const startsAt = String(offer.startsAt || "").slice(0, 10);
+  const endsAt = String(offer.endsAt || "").slice(0, 10);
+  if (startsAt && today < startsAt) return false;
+  if (endsAt && today > endsAt) return false;
+  if (offer.usageLimit != null && offer.usedCount >= offer.usageLimit) return false;
+  return true;
+}
 
 const QUICK_CLIENT_HISTORY_KEY = "internal_quick_clients_history_v1";
 
@@ -284,7 +339,7 @@ function staffId(staff: any) {
   return String(staff?.id || staff?.employeeId || staff?.uid || "").trim();
 }
 
-function offerValueLabel(offer: Offer) {
+function offerValueLabel(offer: CoreDiscount) {
   const type = String((offer as any)?.discountType || (offer as any)?.type || "").trim();
   const value = Number((offer as any)?.value || 0);
   if (type === "percent") return `${value}%`;
@@ -344,7 +399,8 @@ export default function BookingInternalV2() {
   const [availableTimes, setAvailableTimes] = useState<Record<string, string[]>>({});
   const [timesLoading, setTimesLoading] = useState<Record<string, boolean>>({});
   const [scheduleMessage, setScheduleMessage] = useState("");
-  const [appSettings, setAppSettings] = useState(() => AppSettingsService.getCached());
+  const [appSettings, setAppSettings] = useState<InternalBookingAppSettings>({ booking: DEFAULT_BOOKING_CONFIG });
+  const [settingsReady, setSettingsReady] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentType, setPaymentType] = useState<PaymentType>("full");
   const [paidAmount, setPaidAmount] = useState("");
@@ -362,12 +418,12 @@ export default function BookingInternalV2() {
   const [manualFixedDiscount, setManualFixedDiscount] = useState("");
   const [manualPercentDiscount, setManualPercentDiscount] = useState("");
   const [manualMaxDiscount, setManualMaxDiscount] = useState("");
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [offers, setOffers] = useState<CoreDiscount[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersMessage, setOffersMessage] = useState("");
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [couponInput, setCouponInput] = useState("");
-  const [couponOffer, setCouponOffer] = useState<Offer | null>(null);
+  const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
 
@@ -459,14 +515,34 @@ export default function BookingInternalV2() {
     return () => window.clearTimeout(timer);
   }, [query, searchClients]);
 
-  useEffect(() => AppSettingsService.subscribe(setAppSettings), []);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCoreSettings() {
+      try {
+        const setting = await CoreSettingsService.get<InternalBookingAppSettings>("app");
+        if (!setting) throw new Error("SETTINGS_D1_NOT_FOUND");
+        if (!cancelled) {
+          setAppSettings(setting.value || { booking: DEFAULT_BOOKING_CONFIG });
+          setSettingsReady(true);
+        }
+      } catch (error) {
+        console.error("[BookingInternalV2] settings load failed", error);
+        if (!cancelled) {
+          setSettingsReady(false);
+          setScheduleMessage("تعذر تحميل إعدادات الحجز من Core D1. أعيدي المحاولة قبل حفظ الحجز.");
+        }
+      }
+    }
+    void loadCoreSettings();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     async function loadStaff() {
       setStaffLoading(true);
       try {
-        const rows = await listActiveStaffAll(SALON_ID, "core");
+        const rows = await resolveCoreBookingDataSource().getActiveStaff();
         if (!cancelled) setAllStaff(Array.isArray(rows) ? (rows as StaffRow[]) : []);
       } catch (error) {
         console.error("[BookingInternalV2] staff load failed", error);
@@ -485,12 +561,12 @@ export default function BookingInternalV2() {
       setOffersLoading(true);
       setOffersMessage("");
       try {
-        const rows = await listOffers(SALON_ID, "core");
+        const rows = await CoreOfferService.list({ active: true });
         if (cancelled) return;
         const activeRows = (Array.isArray(rows) ? rows : [])
           .filter((offer: any) => !offer?.deletedAt)
-          .filter((offer) => isOfferActiveNow(offer))
-          .sort((a: any, b: any) => String(a.title || "").localeCompare(String(b.title || ""), "ar"));
+          .filter((offer) => isCoreOfferActiveNow(offer))
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
         setOffers(activeRows);
         if (!activeRows.length) setOffersMessage("لا توجد عروض نشطة حالياً.");
       } catch (error) {
@@ -513,7 +589,7 @@ export default function BookingInternalV2() {
       setCatalogLoading(true);
       setCatalogMessage("");
       try {
-        const rows = await listActiveSections(SALON_ID, "core");
+        const rows = await resolveCoreBookingDataSource().getServiceSections();
         if (cancelled) return;
         const safe = Array.isArray(rows) ? (rows as CatalogSection[]) : [];
         setSections(safe);
@@ -542,8 +618,8 @@ export default function BookingInternalV2() {
       setCatalogMessage("");
       try {
         const [cats, rows] = await Promise.all([
-          listActiveCategoriesBySection(selectedSectionId, SALON_ID, "core"),
-          listActiveServices({ sectionId: selectedSectionId }, SALON_ID, "core"),
+          resolveCoreBookingDataSource().getServiceCategories(selectedSectionId),
+          resolveCoreBookingDataSource().getServices(selectedSectionId),
         ]);
         if (cancelled) return;
         setCategories(Array.isArray(cats) ? (cats as CatalogCategory[]) : []);
@@ -610,7 +686,7 @@ export default function BookingInternalV2() {
         source: "offer" as DiscountSnapshotSource,
         sourceId: String((selectedOffer as any)?.id || ""),
         code: String((selectedOffer as any)?.code || ""),
-        title: String((selectedOffer as any)?.title || ""),
+        title: String(selectedOffer.name || ""),
         offer: selectedOffer,
       };
     }
@@ -619,7 +695,7 @@ export default function BookingInternalV2() {
         source: "coupon" as DiscountSnapshotSource,
         sourceId: String((couponOffer as any)?.id || ""),
         code: normalizeDiscountCode(couponInput || (couponOffer as any)?.code),
-        title: String((couponOffer as any)?.title || ""),
+        title: String(couponOffer.name || ""),
         offer: couponOffer,
       };
     }
@@ -630,7 +706,7 @@ export default function BookingInternalV2() {
   const discountAmount = halalasToSar(discountResult.discountHalalas);
   const discountMessage = discountResult.ok ? "" : discountReasonText(discountResult.reason);
   const canContinue = Boolean(selectedClient);
-  const bookingConfig = appSettings?.booking || AppSettingsService.getDefaults().booking!;
+  const bookingConfig = mergeBookingConfig(appSettings?.booking);
   const dayHours = bookingConfig.businessHours?.[weekdayKey(bookingDate)] || { enabled: true, start: "12:00", end: "22:00" };
   const slotStepMin = Math.max(5, Number(bookingConfig.slotStepMin || 10));
   const bufferMin = Math.max(0, Number(bookingConfig.bufferMin || 0));
@@ -732,7 +808,7 @@ export default function BookingInternalV2() {
       });
       const duration = Math.max(1, serviceDuration(service) || 30);
       const endingOk = filterSlotsByServiceEnd(staffSlots, dayHours.end || "22:00", duration, bufferMin, 0);
-      const availability = await getStaffAvailability({
+      const availability = await resolveCoreBookingDataSource().getStaffAvailability({
         staffId: employeeId,
         employeeKey: resolveEmployeeKey({ employeeUid: String(staff?.uid || staff?.employeeUid || ""), employeeId: employeeId }),
         employeeUid: String(staff?.uid || ""),
@@ -740,7 +816,7 @@ export default function BookingInternalV2() {
         date: bookingDate,
         slotStepMin,
         bufferMin,
-      }, "core");
+      });
       const free = endingOk
         .map((slot: any) => String(slot.value24 || "").trim())
         .filter(Boolean)
@@ -791,7 +867,8 @@ export default function BookingInternalV2() {
     }
     setCouponChecking(true);
     try {
-      const offer = await findActiveOfferByCode(SALON_ID, code, "core");
+      const offer = (await CoreOfferService.list({ active: true, code }))
+        .find((row) => normalizeDiscountCode(row.code || row.codeKey) === code && isCoreOfferActiveNow(row)) || null;
       if (!offer) {
         setCouponMessage("الكوبون غير صحيح أو منتهي أو غير نشط.");
         return;
@@ -800,7 +877,7 @@ export default function BookingInternalV2() {
         source: "coupon",
         sourceId: String((offer as any)?.id || ""),
         code,
-        title: String((offer as any)?.title || ""),
+        title: String(offer.name || ""),
         offer,
       });
       if (!preview.ok || !preview.snapshot) {
@@ -824,6 +901,7 @@ export default function BookingInternalV2() {
     setCreatedBookingIds([]);
     setCreatedBookingReference("");
     if (!selectedClient) { setSubmitError("اختاري العميلة أولًا."); setStep(1); return; }
+    if (!settingsReady) { setSubmitError("إعدادات الحجز لم تُحمّل من Core D1 بعد. أعيدي فتح الصفحة أو حاولي مرة أخرى."); return; }
     if (!cart.length) { setSubmitError("أضيفي خدمة واحدة على الأقل."); setStep(2); return; }
     if (!allScheduled) { setSubmitError("أكملي الموظفة والوقت لجميع الخدمات بدون تعارض."); setStep(3); return; }
     if (discountMode !== "none" && !discountResult.ok) {
@@ -850,7 +928,7 @@ export default function BookingInternalV2() {
         const staff = allStaff.find((row) => staffId(row) === selection?.staffId);
         if (!selection?.time || !staff) continue;
 
-        const availability = await getStaffAvailability({
+        const availability = await resolveCoreBookingDataSource().getStaffAvailability({
           staffId: selection.staffId,
           employeeKey: resolveEmployeeKey({
             employeeUid: String(staff?.uid || staff?.employeeUid || ""),
@@ -862,7 +940,7 @@ export default function BookingInternalV2() {
           slotStepMin,
           bufferMin,
           forceFresh: true,
-        }, "core");
+        });
 
         if (!isAvailabilityRangeFree({
           startTime: selection.time,
@@ -979,7 +1057,7 @@ export default function BookingInternalV2() {
             },
       } as any;
 
-      const created = await createBookingGroup({ parent, items: itemRows }, "core");
+      const created = await resolveCoreBookingDataSource().createBookingGroup({ parent, items: itemRows });
       const bookingId = String(created.parentId || "");
       const savedIds = [bookingId, ...(created.itemIds || [])].filter(Boolean);
       setCreatedBookingReference(
@@ -1034,13 +1112,13 @@ export default function BookingInternalV2() {
             await recordPaymentWithRetry(method, amount);
           }
 
-          await updateBookingDetails(bookingId, {
+          await resolveCoreBookingDataSource().updateBooking(bookingId, {
             paymentType,
             paidAmount: effectivePaidAmount,
             remainingAmount,
             paymentMethod,
             status,
-          } as any, "core");
+          } as any);
         } catch (financialError: any) {
           console.error("[BookingInternalV2] financial posting failed after booking creation", financialError);
           setPostSaveWarning(
@@ -1072,7 +1150,7 @@ export default function BookingInternalV2() {
     } finally {
       setSubmitting(false);
     }
-  }, [selectedClient, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
 
   const printCreatedBookingInvoice = useCallback(() => {
     const rows = buildInternalV2InvoiceRows({
@@ -1476,7 +1554,7 @@ export default function BookingInternalV2() {
                                     source: "offer",
                                     sourceId: String((offer as any)?.id || ""),
                                     code: String((offer as any)?.code || ""),
-                                    title: String((offer as any)?.title || ""),
+                                    title: String(offer.name || ""),
                                     offer,
                                   });
                                   const selected = selectedOfferId === String((offer as any)?.id || "");
@@ -1487,7 +1565,7 @@ export default function BookingInternalV2() {
                                       className={selected ? "is-active" : ""}
                                       onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}
                                     >
-                                      <strong>{offer.title}</strong>
+                                      <strong>{offer.name}</strong>
                                       <span>{offerValueLabel(offer)} · {preview.ok ? `خصم متوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA")} ر.س` : discountReasonText(preview.reason)}</span>
                                       {Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>خدمات محددة: {offer.serviceIds.length}</small> : null}
                                       {Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>تصنيفات محددة: {(offer as any).categoryIds.length}</small> : null}

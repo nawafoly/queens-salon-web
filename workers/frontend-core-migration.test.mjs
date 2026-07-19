@@ -220,16 +220,13 @@ test("dashboard bookings uses Core D1 without touching Firestore in Core mode", 
   assert.match(dashboard, /تحديث البيانات/);
 });
 
-test("internal booking V2 staff source merges staff_public and employees without hardcoded staff names", () => {
-  const staffSource = readFileSync("src/services/firestoreStaffPublic.ts", "utf8");
+test("internal booking V2 loads authoritative Core staff without hardcoded staff names", () => {
   const v2Source = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
-  assert.match(staffSource, /readStaffRowsFromCollection\(sid,\s*"staff_public"\)/);
-  assert.match(staffSource, /readStaffRowsFromCollection\(sid,\s*"employees"\)/);
-  assert.match(staffSource, /function mergeStaffRows/);
-  assert.match(staffSource, /employeeProfile/);
+  assert.match(v2Source, /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/);
   assert.match(v2Source, /filterStaffForInternalBookingTarget/);
   assert.match(v2Source, /isStaffOperationallyActiveForDate/);
   assert.match(v2Source, /isStaffAvailableForDate/);
+  assert.doesNotMatch(v2Source, /firestoreStaffPublic|staff_public|bookingDataSourceCompat/);
   assert.doesNotMatch(v2Source, /Wessam|وسام/i);
 });
 
@@ -267,8 +264,9 @@ test("internal booking V2 uses shared discount snapshot flow instead of hardcode
   const migration = readFileSync("migrations/core/0006_booking_discount_snapshots.sql", "utf8");
 
   assert.match(v2Source, /buildDiscountSnapshot/);
-  assert.match(v2Source, /listOffers/);
-  assert.match(v2Source, /findActiveOfferByCode/);
+  assert.match(v2Source, /CoreOfferService\.list/);
+  assert.match(v2Source, /isCoreOfferActiveNow/);
+  assert.match(v2Source, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);
   assert.match(v2Source, /discountSnapshot/);
   assert.match(v2Source, /discountMode === "offer"/);
   assert.match(v2Source, /discountMode === "coupon"/);
@@ -353,24 +351,24 @@ test("Core booking responses carry invoice paid totals and V2 retries idempotent
 });
 
 
-test("internal booking V2 is pinned to Core D1 and cannot read the Firestore booking counter", () => {
+test("internal booking V2 is direct Core-only and cannot read Firestore operational data", () => {
   const v2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
-  const compat = readFileSync("src/services/bookingDataSourceCompat.ts", "utf8");
   const availabilityHelper = readFileSync("src/helpers/bookingAvailabilityUtils.ts", "utf8");
   const envWeb = readFileSync(".env.web", "utf8");
-  assert.match(v2, /resolveCoreBookingDataSource/);
-  assert.match(v2, /createBookingGroup\(\{ parent, items: itemRows \}, "core"\)/);
-  assert.match(v2, /listActiveStaffAll\(SALON_ID, "core"\)/);
-  assert.match(v2, /listOffers\(SALON_ID, "core"\)/);
-  assert.match(v2, /getStaffAvailability\([\s\S]*?forceFresh:\s*true[\s\S]*?\}, "core"\)/);
+  assert.match(v2, /resolveCoreBookingDataSource\(\)\.createBookingGroup\(\{ parent, items: itemRows \}\)/);
+  assert.match(v2, /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/);
+  assert.match(v2, /CoreOfferService\.list\(\{ active: true/);
+  assert.match(v2, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);
+  assert.match(v2, /resolveCoreBookingDataSource\(\)\.getStaffAvailability\([\s\S]*?forceFresh:\s*true[\s\S]*?\}\)/);
+  assert.match(v2, /resolveCoreBookingDataSource\(\)\.updateBooking/);
   assert.match(v2, /isAvailabilityRangeFree/);
   assert.match(v2, /setStep\(3\)/);
   assert.match(availabilityHelper, /export function isAvailabilityRangeFree/);
   assert.match(availabilityHelper, /rangesOverlap/);
   assert.match(availabilityHelper, /lockedTimes/);
-  assert.doesNotMatch(v2, /getDataSourceFlags\(\)\.useCoreD1/);
-  assert.doesNotMatch(v2, /firebase\/firestore/);
-  assert.match(compat, /mode === "core" \? resolveCoreBookingDataSource\(\)/);
+  assert.doesNotMatch(v2, /getDataSourceFlags|bookingDataSourceCompat|AppSettingsService|firestoreOffers/);
+  assert.doesNotMatch(v2, /firebase\/firestore|firebase\/storage|services\/firebase/);
+  assert.match(v2, /firebase\/auth/);
   assert.match(envWeb, /VITE_CORE_WORKER_URL=https:\/\/queens-salon-core-api\.maedin\.workers\.dev/);
 });
 

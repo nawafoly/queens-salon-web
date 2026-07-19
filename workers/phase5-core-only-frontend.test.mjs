@@ -22,6 +22,9 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const dashboardBookingsPage = read("src/pages/DashboardBookings.tsx");
   const dashboardReportsPage = read("src/pages/DashboardReports.tsx");
   const publicBookingPage = read("src/pages/Booking.tsx");
+  const internalBookingV2 = read(
+    "src/features/internal-booking-v2/BookingInternalV2.tsx"
+  );
   const packageSessionsManager = read(
     "src/features/internal-booking-v2/PackageSessionsManager.tsx"
   );
@@ -227,6 +230,28 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.match(publicBookingPage, /PackageService\.getActive/);
   assert.match(publicBookingPage, /uploadFileToR2/);
   assert.match(publicBookingPage, /listActiveSections\(SALON_ID, "core"\)/);
+
+  for (const forbidden of [
+    "firebase/firestore",
+    "firebase/storage",
+    "services/firebase",
+    "bookingDataSourceCompat",
+    "AppSettingsService",
+    "firestoreOffers",
+    "getDataSourceFlags",
+  ]) {
+    assert.equal(
+      internalBookingV2.includes(forbidden),
+      false,
+      `Internal booking V2 must not depend on ${forbidden}`
+    );
+  }
+  assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/);
+  assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/);
+  assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.createBookingGroup/);
+  assert.match(internalBookingV2, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);
+  assert.match(internalBookingV2, /CoreOfferService\.list/);
+  assert.match(internalBookingV2, /firebase\/auth/);
 
   assert.match(packageSessionsManager, /إضافة جلسة لعميلة/);
   assert.match(packageSessionsManager, /CoreClientService\.create/);

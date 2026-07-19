@@ -18,6 +18,18 @@ const forbiddenChecks = [
     ],
   },
   {
+    file: "src/features/internal-booking-v2/BookingInternalV2.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /firebase\/storage/,
+      /services\/firebase/,
+      /bookingDataSourceCompat/,
+      /AppSettingsService/,
+      /firestoreOffers/,
+      /getDataSourceFlags/,
+    ],
+  },
+  {
     file: "src/pages/BookingInternal.tsx",
     forbidden: [
       /from\s+["']\.\.\/services\/firestoreBookings["']/,
@@ -141,6 +153,17 @@ const requiredChecks = [
       /CoreClientService\.overview/,
       /CoreAuditService\.list/,
       /CoreRefundService/,
+    ],
+  },
+  {
+    file: "src/features/internal-booking-v2/BookingInternalV2.tsx",
+    required: [
+      /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/,
+      /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/,
+      /resolveCoreBookingDataSource\(\)\.createBookingGroup/,
+      /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/,
+      /CoreOfferService\.list/,
+      /firebase\/auth/,
     ],
   },
   {
