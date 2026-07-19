@@ -13,38 +13,20 @@ import {
   faPrint,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
 
-import {
-  collection,
-  doc,
-  documentId,
-  getDoc,
-  getDocs,
-  orderBy,
-  query as fsQuery,
-  limit as fsLimit,
-  where,
-} from "firebase/firestore";
-
-import {
-  listBookings,
-  getBookingById,
-  watchAllBookings, // ✅ Realtime
-  updateBookingStatus,
-  updateBookingsStatusBatch,
-  createDashboardBooking,
-  updateBookingDetails as updateBookingFields,
-  deleteBooking,
-  type BookingPaymentType,
-  type BookingStatus,
+import type {
+  BookingPaymentType,
+  BookingStatus,
 } from "../services/firestoreBookings";
 import type { StaffPublicWithId } from "../services/firestoreStaffPublic";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
-import { removeIncomeFS, upsertIncomeFS } from "../services/firestoreIncome";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
+import { coreD1BookingDataSource } from "../services/bookingDataSources/coreD1BookingDataSource";
+import { CoreBookingService } from "../services/CoreBookingService";
+import { coreBookingToLegacy } from "../services/coreBookingMappers";
+import { CoreAuditService } from "../services/CoreAuditService";
+import { CoreClientService } from "../services/CoreClientService";
 import { CoreRefundService } from "../services/CoreRefundService";
 import { CoreInvoiceService } from "../services/CoreInvoiceService";
 import { CorePaymentService } from "../services/CorePaymentService";
@@ -56,7 +38,7 @@ import type { UiRole } from "../services/userProfile";
 // ✅ NEW: resolve service name (make it readable)
 import { resolveServiceName } from "../services/serviceResolver";
 
-// ✅ NEW: AppSettings from Firestore (source of truth)
+// ✅ AppSettings through the unified Core settings adapter
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 import { SALON_ID } from "../helpers/bookingSharedConstants";
 
@@ -75,7 +57,6 @@ import {
   buildFallbackCreatedActivity,
   buildFallbackUpdatedActivity,
   channelLabel,
-  chunkItems,
   dateISOFromMillisLocal,
   deriveLastUpdateForBooking,
   digitsOnly,
@@ -89,9 +70,7 @@ import {
   mergeBookingLists,
   normalizeArabicName,
   normalizeBookingActivityAuditRaw,
-  normalizeBookingActivityEventRaw,
   normalizeBookingPaymentType,
-  normalizeBookingTrackFallback,
   parseBookingDateTimeMs,
   paymentAmountsDisplayLines,
   paymentBreakdownText,
@@ -109,7 +88,6 @@ import {
   todayISOLocal,
   type BookingActivityItem,
   type BookingLastUpdate,
-  type BookingTrackFallbackContact,
   type DashboardBookingDisplaySection,
   type DashboardBookingServiceItem as BookingServiceItem,
 } from "./DashboardBookings.helpers";
@@ -463,7 +441,6 @@ function resolvePaymentMethodFromBreakdown(
 }
 
 async function enrichCoreBookingForInvoicePrint(booking: Booking): Promise<Booking> {
-  if (!getDataSourceFlags().useCoreD1) return booking;
   const bookingId = String(booking?.id || "").trim();
   if (!bookingId) return booking;
 
@@ -823,6 +800,94 @@ type Booking = {
 
 type BookingDisplaySection = DashboardBookingDisplaySection<Booking>;
 
+async function getCoreBookingById(id: string): Promise<Booking | null> {
+  try {
+    return coreBookingToLegacy(await CoreBookingService.get(id)) as Booking;
+  } catch {
+    return null;
+  }
+}
+
+async function updateCoreBookingFields(id: string, patch: Partial<Booking>) {
+  await coreD1BookingDataSource.updateBooking(id, patch as any);
+}
+
+async function updateCoreBookingStatus(id: string, status: BookingStatus) {
+  await coreD1BookingDataSource.updateBookingStatus(id, status);
+}
+
+async function deleteCoreBooking(id: string) {
+  await CoreBookingService.remove(id);
+}
+
+async function updateCoreBookingsStatusBatch(args: {
+  bookingIds: string[];
+  status: BookingStatus;
+  note?: string;
+  filterSummary?: string;
+}) {
+  const bookingIds = Array.from(
+    new Set(args.bookingIds.map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  const successes: string[] = [];
+  const failures: Array<{ bookingId: string; message: string }> = [];
+
+  for (const bookingId of bookingIds) {
+    try {
+      await updateCoreBookingStatus(bookingId, args.status);
+      successes.push(bookingId);
+    } catch (error: any) {
+      failures.push({
+        bookingId,
+        message: String(error?.message || error || "UNKNOWN_ERROR"),
+      });
+    }
+  }
+
+  try {
+    await CoreAuditService.record({
+      action: "booking_bulk_status_updated",
+      entityType: "booking",
+      entityId: `bulk_${Date.now()}`,
+      description: args.note || `Bulk booking status update to ${args.status}`,
+      source: "dashboard",
+      actorUid: auth.currentUser?.uid || undefined,
+      actorEmail: auth.currentUser?.email || undefined,
+      actorName: auth.currentUser?.displayName || undefined,
+      after: {
+        status: args.status,
+        bookingIds,
+        successCount: successes.length,
+        failedCount: failures.length,
+      },
+      meta: {
+        filterSummary: args.filterSummary || "",
+        successes,
+        failures,
+      },
+    });
+  } catch {
+    // Operational update succeeded; audit failure must not block the dashboard.
+  }
+
+  return {
+    requestedCount: bookingIds.length,
+    successCount: successes.length,
+    failedCount: failures.length,
+    successes,
+    failures,
+  };
+}
+
+function parseCoreAuditJson(value: string | null | undefined) {
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
 type ClientLoyaltyInfo = {
   points: number;
   loyaltyScore: number;
@@ -869,36 +934,6 @@ function normalizeIncomePaymentMethod(raw: any): PaymentMethod {
   if (s.includes("شبكة") || s.includes("مدى") || s.includes("بطاق")) return "card";
   if (s.includes("تحويل")) return "transfer";
   return "transfer";
-}
-
-function parseRefundRecordFromIncomeDoc(
-  id: string,
-  raw: Record<string, unknown>
-): RefundRecord | null {
-  const bookingId = String(raw?.bookingId || "").trim();
-  if (!bookingId) return null;
-
-  const amount = Number(raw?.amount || 0);
-  if (!Number.isFinite(amount) || amount >= 0) return null;
-
-  const source = String(raw?.source || "").trim().toLowerCase();
-  if (source !== "استرجاع" && source !== "refund") return null;
-
-  const noteRaw = String(raw?.note || "").trim();
-  const noteWithoutPrefix = noteRaw.replace(/^استرجاع للحجز\s+[^\-]+-\s*/i, "");
-  const [reason, details] = noteWithoutPrefix
-    .split("|")
-    .map((part) => String(part || "").trim());
-
-  return {
-    incomeId: String(id || `refund_${bookingId}`),
-    bookingId,
-    amount: Math.abs(amount),
-    method: normalizeIncomePaymentMethod(raw?.method),
-    reason: reason || noteWithoutPrefix || noteRaw,
-    details: details || "",
-    date: String(raw?.date || ""),
-  };
 }
 
 type SensitiveBookingAction =
@@ -2006,9 +2041,9 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         paidAmount: round2(paidAmount),
         remainingAmount,
       } as any;
-      await updateBookingFields(target.id, patch);
+      await updateCoreBookingFields(target.id, patch);
       if (statusAfterEdit && statusAfterEdit !== target.status) {
-        await updateBookingStatus(target.id, statusAfterEdit);
+        await updateCoreBookingStatus(target.id, statusAfterEdit);
       }
 
       const resolvedStatus = statusAfterEdit || target.status;
@@ -2159,7 +2194,6 @@ type DashboardBookingsProps = {
 };
 
 export default function DashboardBookings({ currentRole = "guest" }: DashboardBookingsProps) {
-  const useCoreD1 = getDataSourceFlags().useCoreD1;
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveBookingsSource, setLiveBookingsSource] = useState<Booking[]>([]);
@@ -2219,10 +2253,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     date: todayISOLocal(),
   });
   const saveHintTimerRef = useRef<number | null>(null);
-  const bookingTrackFallbackCacheRef = useRef<Record<string, BookingTrackFallbackContact>>({});
-  const bookingTrackFallbackRequestRef = useRef(0);
-  const historyBookingsCacheRef = useRef<Record<string, Booking[]>>({});
-  const historyBookingsRequestRef = useRef(0);
   const employeeFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
   const serviceFilterLabelCacheRef = useRef<Map<string, string>>(new Map());
   const [editTarget, setEditTarget] = useState<Booking | null>(null);
@@ -2361,35 +2391,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadUserNames = async () => {
-      try {
-        const snap = await getDocs(collection(db, "salons", "main", "users"));
-        snap.docs.forEach((d) => {
-          if (d?.ref?.path) {
-            FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadUserNames", "getDocs");
-          }
-        });
-        const next: Record<string, string> = {};
-        snap.docs.forEach((d) => {
-          const data: any = d.data() || {};
-          const uid = String(d.id || data?.uid || "").trim();
-          const name = String(data?.displayName || data?.name || "").trim();
-          const email = String(data?.email || "").trim();
-          const fallback = email ? email.split("@")[0] : "";
-          const finalName = name || fallback;
-          if (uid && finalName) next[uid] = finalName;
-        });
-        if (!cancelled) setUserNamesByUid(next);
-      } catch {
-        if (!cancelled) setUserNamesByUid({});
-      }
-    };
-    void loadUserNames();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const uid = String(auth.currentUser?.uid || authUserUid || "").trim();
+    const email = String(auth.currentUser?.email || "").trim();
+    const name = String(
+      auth.currentUser?.displayName || authUserDisplayName || (email ? email.split("@")[0] : "")
+    ).trim();
+    setUserNamesByUid(uid && name ? { [uid]: name } : {});
+  }, [authUserDisplayName, authUserUid]);
 
   useEffect(() => {
     const loaded = loadNotesMap();
@@ -2399,196 +2407,65 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    let firstLoad = true;
 
-    const handleLiveError = (loadError: unknown) => {
-      if (!active) return;
-      console.error("[DashboardBookings] booking source load failed", loadError);
-      setError(
-        useCoreD1
-          ? "تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى."
-          : "خطأ في تحميل الحجوزات"
-      );
-      setLoading(false);
+    const loadCoreBookings = async () => {
+      if (firstLoad) setLoading(true);
+      try {
+        const data = (await CoreBookingService.list()).map(coreBookingToLegacy);
+        if (!active) return;
+        setLiveBookingsSource(data as Booking[]);
+        setHistoryBookingsSource([]);
+        setError("");
+      } catch (loadError) {
+        if (!active) return;
+        console.error("[DashboardBookings] Core booking load failed", loadError);
+        setError("تعذر تحميل الحجوزات من Core D1. اضغط تحديث البيانات وحاول مرة أخرى.");
+      } finally {
+        if (active) setLoading(false);
+        firstLoad = false;
+      }
     };
 
-    const scope = useCoreD1 ? undefined : { statuses: LIVE_ACTIVE_STATUSES };
-    const unsub = watchAllBookings((data) => {
-      if (!active) return;
-      setLiveBookingsSource(data as Booking[]);
-      if (useCoreD1) setHistoryBookingsSource([]);
-      setError("");
-      setLoading(false);
-    }, handleLiveError, scope);
+    void loadCoreBookings();
+    const timer = window.setInterval(() => void loadCoreBookings(), 8_000);
+    const handleFocus = () => void loadCoreBookings();
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       active = false;
-      unsub();
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [bookingsRefreshKey, useCoreD1]);
-
-  useEffect(() => {
-    if (useCoreD1) {
-      setHistoryBookingsSource([]);
-      return;
-    }
-
-    let cancelled = false;
-    const requestId = historyBookingsRequestRef.current + 1;
-    historyBookingsRequestRef.current = requestId;
-
-    const cached = historyBookingsCacheRef.current[explicitHistoryScope.cacheKey];
-    if (cached) {
-      setHistoryBookingsSource(cached);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setHistoryBookingsSource([]);
-    void listBookings(explicitHistoryScope.scope)
-      .then((rows) => {
-        if (cancelled || historyBookingsRequestRef.current !== requestId) return;
-        const nextRows = rows as Booking[];
-        historyBookingsCacheRef.current[explicitHistoryScope.cacheKey] = nextRows;
-        setHistoryBookingsSource(nextRows);
-      })
-      .catch(() => {
-        if (cancelled || historyBookingsRequestRef.current !== requestId) return;
-        setHistoryBookingsSource([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [explicitHistoryScope, useCoreD1]);
+  }, [bookingsRefreshKey]);
 
   useEffect(() => {
     const baseList = mergedBookingSources.map((b: any) => ({
       ...b,
-      customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "",
-      phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "",
+      customerName: String(b?.customerName || b?.clientName || b?.name || "").trim() || "غير متوفر",
+      phone: String(b?.phone || b?.clientPhone || b?.customerPhone || "").trim() || "غير متوفر",
       services: extractServicesFromAny(b),
     }));
-    const applyTrackFallback = (row: Booking) => {
-      const fallback = bookingTrackFallbackCacheRef.current[String(row.id || "").trim()];
-      return {
-        ...row,
-        customerName: row.customerName || fallback?.customerName || "غير متوفر",
-        phone: row.phone || fallback?.phone || "غير متوفر",
-      };
-    };
-    setBookings(baseList.map((x) => applyTrackFallback(x)));
-
-    const missingIds = Array.from(
-      new Set(
-        baseList
-          .filter(
-            (x) =>
-              (!String(x.customerName || "").trim() || !String(x.phone || "").trim()) &&
-              !bookingTrackFallbackCacheRef.current[String(x.id || "").trim()]
-          )
-          .map((x) => String(x.id || "").trim())
-          .filter(Boolean)
-      )
-    );
-    if (!missingIds.length) return;
-
-    let active = true;
-    const requestId = bookingTrackFallbackRequestRef.current + 1;
-    bookingTrackFallbackRequestRef.current = requestId;
-    const trackCol = collection(db, "salons", "main", "booking_tracks");
-
-    void Promise.allSettled(
-      chunkItems(missingIds, 10).map(async (ids) => {
-        const q = fsQuery(trackCol, where(documentId(), "in", ids));
-        const snap = await getDocs(q);
-        snap.docs.forEach((d) => {
-          if (d?.ref?.path) {
-            FirestoreReadStats.bump(d.ref.path, "DashboardBookings.missingTrackFallback", "getDocs");
-          }
-        });
-
-        const resolved: Record<string, BookingTrackFallbackContact> = Object.fromEntries(
-          ids.map((id) => [id, { customerName: "غير متوفر", phone: "غير متوفر" }])
-        );
-
-        snap.docs.forEach((docSnap) => {
-          resolved[docSnap.id] = normalizeBookingTrackFallback(docSnap.data());
-        });
-
-        return resolved;
-      })
-    ).then((results) => {
-      if (!active || bookingTrackFallbackRequestRef.current !== requestId) return;
-
-      let hasResolvedBatch = false;
-      const nextCache = { ...bookingTrackFallbackCacheRef.current };
-      results.forEach((result) => {
-        if (result.status !== "fulfilled") return;
-        hasResolvedBatch = true;
-        Object.assign(nextCache, result.value);
-      });
-      if (!hasResolvedBatch) return;
-
-      bookingTrackFallbackCacheRef.current = nextCache;
-      setBookings(
-        baseList.map((x) => {
-          const fallback = nextCache[String(x.id || "").trim()];
-          return {
-            ...x,
-            customerName: x.customerName || fallback?.customerName || "غير متوفر",
-            phone: x.phone || fallback?.phone || "غير متوفر",
-          };
-        })
-      );
-    });
-
-    return () => {
-      active = false;
-      bookingTrackFallbackRequestRef.current += 1;
-    };
+    setBookings(baseList);
   }, [mergedBookingSources]);
 
   const loadRefundState = useCallback(async () => {
-    if (getDataSourceFlags().useCoreD1) {
-      const refunds = await CoreRefundService.list();
-      const next: Record<string, RefundRecord> = {};
-      refunds.forEach((refund) => {
-        const bookingId = String(refund.bookingId || "").trim();
-        if (!bookingId || String(refund.status || "").toLowerCase() === "voided") return;
-        const reasonText = String(refund.reason || "").trim();
-        const [reason, ...detailParts] = reasonText.split("|").map((part) => part.trim());
-        next[bookingId] = {
-          incomeId: refund.id,
-          bookingId,
-          amount: Number(refund.amountHalalas || 0) / 100,
-          method: normalizeIncomePaymentMethod(refund.method),
-          reason: reason || reasonText,
-          details: detailParts.join(" | "),
-          date: String(refund.refundedAt || "").slice(0, 10),
-        };
-      });
-      setRefundMapByBookingId(next);
-      return;
-    }
-
-    const refundQuery = fsQuery(
-      collection(db, "salons", "main", "income"),
-      where("amount", "<", 0)
-    );
-    const snap = await getDocs(refundQuery);
-    snap.docs.forEach((d) => {
-      if (d?.ref?.path) {
-        FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadRefundState", "getDocs");
-      }
-    });
-
+    const refunds = await CoreRefundService.list();
     const next: Record<string, RefundRecord> = {};
-    snap.docs.forEach((docSnap) => {
-      const parsed = parseRefundRecordFromIncomeDoc(docSnap.id, docSnap.data() as Record<string, unknown>);
-      if (!parsed) return;
-      next[parsed.bookingId] = parsed;
+    refunds.forEach((refund) => {
+      const bookingId = String(refund.bookingId || "").trim();
+      if (!bookingId || String(refund.status || "").toLowerCase() === "voided") return;
+      const reasonText = String(refund.reason || "").trim();
+      const [reason, ...detailParts] = reasonText.split("|").map((part) => part.trim());
+      next[bookingId] = {
+        incomeId: refund.id,
+        bookingId,
+        amount: Number(refund.amountHalalas || 0) / 100,
+        method: normalizeIncomePaymentMethod(refund.method),
+        reason: reason || reasonText,
+        details: detailParts.join(" | "),
+        date: String(refund.refundedAt || "").slice(0, 10),
+      };
     });
     setRefundMapByBookingId(next);
   }, []);
@@ -2614,107 +2491,76 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         setClientLoyalty(null);
         return;
       }
+
       setClientLoyaltyLoading(true);
       try {
-        const phoneRaw = String(selectedBooking.phone || "");
+        const phoneRaw = String(selectedBooking.phone || "").trim();
         const phoneDigits = digitsOnly(phoneRaw);
         const nameNorm = normalizeArabicName(String(selectedBooking.customerName || ""));
         const relatedBooking = bookings.find((booking) => {
           if (booking.id === selectedBooking.id) return false;
-          const relatedUserId = String(booking.userId || "").trim();
-          if (!relatedUserId) return false;
-
-          const samePhone =
-            !!phoneDigits && digitsOnly(String(booking.phone || "")) === phoneDigits;
+          const samePhone = !!phoneDigits && digitsOnly(String(booking.phone || "")) === phoneDigits;
           const sameName =
-            !!nameNorm &&
-            normalizeArabicName(String(booking.customerName || "")) === nameNorm;
-
+            !!nameNorm && normalizeArabicName(String(booking.customerName || "")) === nameNorm;
           return samePhone || sameName;
         });
 
-        const userIdCandidates = Array.from(
+        const clientIdCandidates = Array.from(
           new Set(
             [selectedBooking.userId, relatedBooking?.userId]
               .map((value) => String(value || "").trim())
               .filter(Boolean)
           )
         );
-
         const cacheKeys = Array.from(
-          new Set(
-            [
-              ...userIdCandidates.map((value) => `uid:${value}`),
-              phoneDigits ? `phoneDigits:${phoneDigits}` : "",
-              phoneRaw ? `phoneRaw:${phoneRaw}` : "",
-            ].filter(Boolean)
-          )
+          new Set([
+            ...clientIdCandidates.map((value) => `client:${value}`),
+            phoneDigits ? `phone:${phoneDigits}` : "",
+          ].filter(Boolean))
         );
-
         const cachedKey = cacheKeys.find((key) => clientLoyaltyCacheRef.current[key]);
         if (cachedKey) {
           setClientLoyalty(clientLoyaltyCacheRef.current[cachedKey]);
           return;
         }
 
-        let found: any = null;
-        let foundUserId = "";
-
-        for (const userId of userIdCandidates) {
-          const userRef = doc(db, "users", userId);
-          FirestoreReadStats.bump(userRef.path, "DashboardBookings.loadClientLoyalty", "getDoc");
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) continue;
-          found = userSnap.data();
-          foundUserId = userSnap.id;
-          break;
-        }
-
-        if (!found && phoneDigits) {
-          const q1 = fsQuery(
-            collection(db, "users"),
-            where("role", "==", "client"),
-            where("phone", "==", phoneDigits),
-            fsLimit(1)
-          );
-          const s1 = await getDocs(q1);
-          s1.docs.forEach((d) => {
-            if (d?.ref?.path) {
-              FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadClientLoyalty", "getDocs");
-            }
-          });
-          if (!s1.empty) {
-            found = s1.docs[0].data();
-            foundUserId = s1.docs[0].id;
+        let overview = null as Awaited<ReturnType<typeof CoreClientService.overview>> | null;
+        for (const clientId of clientIdCandidates) {
+          try {
+            overview = await CoreClientService.overview(clientId);
+            break;
+          } catch {
+            // Try the next canonical client id.
           }
         }
 
-        if (!found && phoneRaw && phoneRaw !== "غير متوفر") {
-          const q2 = fsQuery(
-            collection(db, "users"),
-            where("role", "==", "client"),
-            where("phone", "==", phoneRaw),
-            fsLimit(1)
-          );
-          const s2 = await getDocs(q2);
-          s2.docs.forEach((d) => {
-            if (d?.ref?.path) {
-              FirestoreReadStats.bump(d.ref.path, "DashboardBookings.loadClientLoyalty", "getDocs");
-            }
+        if (!overview) {
+          const candidates = await CoreClientService.list(phoneDigits || phoneRaw || nameNorm);
+          const client = candidates.find((candidate) => {
+            const samePhone =
+              !!phoneDigits && digitsOnly(String(candidate.phoneNormalized || "")) === phoneDigits;
+            const sameName =
+              !!nameNorm && normalizeArabicName(String(candidate.name || "")) === nameNorm;
+            return samePhone || sameName;
           });
-          if (!s2.empty) {
-            found = s2.docs[0].data();
-            foundUserId = s2.docs[0].id;
-          }
+          if (client) overview = await CoreClientService.overview(client.id);
         }
 
         if (cancelled) return;
-
-        const nextInfo = found ? toClientLoyaltyInfo(found) : createEmptyClientLoyaltyInfo();
-        const finalCacheKeys = Array.from(
-          new Set([...cacheKeys, foundUserId ? `uid:${foundUserId}` : ""].filter(Boolean))
+        const nextInfo = overview
+          ? {
+              points: Number(overview.loyalty.balance || 0),
+              loyaltyScore: Number(overview.loyalty.earned || 0),
+              isVip: Boolean(overview.client.vip),
+            }
+          : createEmptyClientLoyaltyInfo();
+        const finalKeys = Array.from(
+          new Set([
+            ...cacheKeys,
+            overview?.client.id ? `client:${overview.client.id}` : "",
+          ].filter(Boolean))
         );
-        finalCacheKeys.forEach((key) => {
+        finalKeys.forEach((key) => {
           clientLoyaltyCacheRef.current[key] = nextInfo;
         });
         setClientLoyalty(nextInfo);
@@ -2724,7 +2570,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         if (!cancelled) setClientLoyaltyLoading(false);
       }
     };
-    loadClientLoyalty();
+
+    void loadClientLoyalty();
     return () => {
       cancelled = true;
     };
@@ -2748,46 +2595,33 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         const activityItems: BookingActivityItem[] = [];
         const partialErrors: string[] = [];
 
-        const auditResult = await getDocs(
-          fsQuery(
-            collection(db, "salons", "main", "logs"),
-            where("entityId", "==", selectedBooking.id),
-            where("entityType", "==", "booking")
-          )
-        ).catch((error) => ({ error }));
-
-        if (cancelled) return;
-
-        const auditDocs = Array.isArray((auditResult as any)?.docs) ? (auditResult as any).docs : [];
-        if (auditDocs.length) {
+        try {
+          const auditRows = await CoreAuditService.list({
+            entityType: "booking",
+            entityId: selectedBooking.id,
+            limit: 100,
+          });
           activityItems.push(
-            ...auditDocs
-              .map((d: any) => normalizeBookingActivityAuditRaw(d.id, d.data() as Record<string, unknown>))
-              .filter((entry: any): entry is Record<string, unknown> => !!entry)
-              .map((entry: any) => mapBookingActivityItem(entry, selectedBooking, userNamesByUid))
-          );
-        } else if ((auditResult as any)?.error) {
-          partialErrors.push("تعذر تحميل سجل العمليات العامة لهذا الحجز.");
-        }
-
-        if (!auditDocs.length) {
-          const eventsResult = await getDocs(
-            collection(db, "salons", "main", "booking_logs", selectedBooking.id, "events")
-          ).catch((error) => ({ error }));
-
-          if (Array.isArray((eventsResult as any)?.docs)) {
-            activityItems.push(
-              ...(eventsResult as any).docs.map((d: any) =>
-                mapBookingActivityItem(
-                  normalizeBookingActivityEventRaw(d.id, d.data() as Record<string, unknown>),
-                  selectedBooking,
-                  userNamesByUid
-                )
+            ...auditRows
+              .map((row) =>
+                normalizeBookingActivityAuditRaw(row.id, {
+                  action: row.action,
+                  description: row.description || "",
+                  userUid: row.actorUid || null,
+                  userEmail: row.actorEmail || null,
+                  userName: row.actorName || null,
+                  createdAt: row.createdAt,
+                  before: parseCoreAuditJson(row.beforeJson),
+                  after: parseCoreAuditJson(row.afterJson),
+                  meta: parseCoreAuditJson(row.metaJson),
+                  source: row.source || "dashboard",
+                })
               )
-            );
-          } else if ((eventsResult as any)?.error) {
-            partialErrors.push("تعذر تحميل سجل الحجز المباشر لهذا الحجز.");
-          }
+              .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+              .map((entry) => mapBookingActivityItem(entry, selectedBooking, userNamesByUid))
+          );
+        } catch {
+          partialErrors.push("تعذر تحميل سجل العمليات لهذا الحجز.");
         }
 
         const lifecycleItems = buildBookingLifecycleActivityItems(selectedBooking, userNamesByUid);
@@ -3364,7 +3198,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       return;
     }
     try {
-      await updateBookingStatus(id, newStatus);
+      await updateCoreBookingStatus(id, newStatus);
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
         status: newStatus,
@@ -3458,58 +3292,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setConfirmSaving(true);
       setConfirmError("");
 
-      await updateBookingFields(confirmTarget.id, {
+      await updateCoreBookingFields(confirmTarget.id, {
         paymentMethod,
         paymentBreakdown,
         paymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
       } as any);
-      await updateBookingStatus(confirmTarget.id, "confirmed");
+      await updateCoreBookingStatus(confirmTarget.id, "confirmed");
 
-      // Ensure confirmed bookings with partial/full paid amount are reflected in income immediately.
-      try {
-        const bookingId = String(confirmTarget.id || "").trim();
-        const syncMethod = detectPaymentMethod({
-          ...confirmTarget,
-          status: "confirmed",
-          paymentMethod: paymentMethod || undefined,
-          paymentBreakdown: paymentBreakdown || undefined,
-          paymentType,
-          paidAmount: round2(paidAmount),
-          remainingAmount,
-        } as Booking);
-
-        if (bookingId && Number(paidAmount) > 0) {
-          const incomeNote =
-            syncMethod === "mixed"
-              ? paymentMethodDisplayText({
-                  ...confirmTarget,
-                  paymentMethod: "mixed",
-                  paymentBreakdown: paymentBreakdown || undefined,
-                } as Booking)
-              : paymentType === "partial"
-              ? `عربون: ${round2(paidAmount)} ر.س | المتبقي: ${remainingAmount} ر.س`
-              : undefined;
-
-          const incomeDate = safeISODate(String(confirmTarget.date || "")) || todayISOLocal();
-          await upsertIncomeFS({
-            id: bookingId,
-            bookingId,
-            date: incomeDate,
-            amount: round2(paidAmount),
-            method: syncMethod,
-            paymentBreakdown: paymentBreakdown || undefined,
-            source: "booking",
-            note: incomeNote,
-            createdAt: Date.now(),
-          });
-        } else if (bookingId) {
-          await removeIncomeFS(bookingId);
-        }
-      } catch (syncErr) {
-        console.warn("confirm->income sync failed:", syncErr);
-      }
+      // Core booking reconciliation already updates invoice and payment state.
 
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
@@ -3541,7 +3333,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (!cancelTarget?.id) return;
     setCancelBusy(true);
     try {
-      await updateBookingStatus(cancelTarget.id, "cancelled");
+      await updateCoreBookingStatus(cancelTarget.id, "cancelled");
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
         status: "cancelled" as BookingStatus,
@@ -3572,7 +3364,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     if (!bookingId) return;
 
     try {
-      await deleteBooking(bookingId);
+      await deleteCoreBooking(bookingId);
       setBookings((current) => current.filter((row) => String(row.id || "").trim() !== bookingId));
       setSelectedBooking((current) =>
         current && String(current.id || "").trim() === bookingId ? null : current
@@ -3817,9 +3609,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         paidAmount: round2(paidAmount),
         remainingAmount,
       } as any;
-      await updateBookingFields(editTarget.id, patch);
+      await updateCoreBookingFields(editTarget.id, patch);
       if (statusAfterEdit && statusAfterEdit !== editTarget.status) {
-        await updateBookingStatus(editTarget.id, statusAfterEdit);
+        await updateCoreBookingStatus(editTarget.id, statusAfterEdit);
       }
 
       const resolvedStatus = statusAfterEdit || editTarget.status;
@@ -3985,86 +3777,59 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const details = String(refundDraft.details || "").trim();
     const note = details ? `${reason} | ${details}` : reason;
     const method = (refundDraft.method || "transfer") as PaymentMethod;
-    const refundAmount = -Math.abs(amountInput);
-
     try {
       setRefundBusyId(bookingId);
       setRefundSaving(true);
       setRefundError("");
       const refundDate = refundDraft.date || todayISOLocal();
       const refundId = `refund_${bookingId}`;
-      if (getDataSourceFlags().useCoreD1) {
-        const existingRefund = refundMapByBookingId[bookingId];
-        const payload = {
-          bookingId,
-          clientId: String(b.userId || "").trim() || undefined,
-          amountHalalas: Math.round(Math.abs(amountInput) * 100),
-          method,
-          reason: note,
-          refundedAt: `${refundDate}T12:00:00.000Z`,
-        };
-        const created = existingRefund?.incomeId
-          ? await CoreRefundService.patch(existingRefund.incomeId, payload)
-          : await CoreRefundService.create({
-              ...payload,
-              id: refundId,
-              idempotencyKey: `dashboard-refund:${bookingId}`,
-            });
+      const existingRefund = refundMapByBookingId[bookingId];
+      const payload = {
+        bookingId,
+        clientId: String(b.userId || "").trim() || undefined,
+        amountHalalas: Math.round(Math.abs(amountInput) * 100),
+        method,
+        reason: note,
+        refundedAt: `${refundDate}T12:00:00.000Z`,
+      };
+      const created = existingRefund?.incomeId
+        ? await CoreRefundService.patch(existingRefund.incomeId, payload)
+        : await CoreRefundService.create({
+            ...payload,
+            id: refundId,
+            idempotencyKey: `dashboard-refund:${bookingId}`,
+          });
 
-        if (getDataSourceFlags().usePackagesD1 && bookingUsesSessionPackage(b)) {
-          const wasFullRefund = Boolean(
-            existingRefund && isFullBookingRefund(Number(existingRefund.amount || 0), bookingAmount)
+      if (bookingUsesSessionPackage(b)) {
+        const wasFullRefund = Boolean(
+          existingRefund && isFullBookingRefund(Number(existingRefund.amount || 0), bookingAmount)
+        );
+        const isFullRefund = isFullBookingRefund(amountInput, bookingAmount);
+        if (isFullRefund && !wasFullRefund) {
+          await PackageOperationsService.restoreConsumed(
+            bookingId,
+            `full_refund:${created.id}`
           );
-          const isFullRefund = isFullBookingRefund(amountInput, bookingAmount);
-          if (isFullRefund && !wasFullRefund) {
-            await PackageOperationsService.restoreConsumed(
-              bookingId,
-              `full_refund:${created.id}`
-            );
-          } else if (!isFullRefund && wasFullRefund) {
-            await PackageOperationsService.reapplyBookingSession(
-              bookingId,
-              b.status === "completed" ? "used" : "reserved",
-              `refund_reduced:${created.id}`
-            );
-          }
+        } else if (!isFullRefund && wasFullRefund) {
+          await PackageOperationsService.reapplyBookingSession(
+            bookingId,
+            b.status === "completed" ? "used" : "reserved",
+            `refund_reduced:${created.id}`
+          );
         }
-        setRefundMapByBookingId((prev) => ({
-          ...prev,
-          [bookingId]: {
-            incomeId: created.id,
-            bookingId,
-            amount: Number(created.amountHalalas || 0) / 100,
-            method: normalizeIncomePaymentMethod(created.method),
-            reason,
-            details,
-            date: String(created.refundedAt || refundDate).slice(0, 10),
-          },
-        }));
-      } else {
-        await upsertIncomeFS({
-          id: refundId,
-          date: refundDate,
-          amount: refundAmount,
-          method,
-          source: "استرجاع",
-          note: `استرجاع للحجز ${bookingRef(b)} - ${note}`,
-          bookingId,
-          createdAt: Date.now(),
-        });
-        setRefundMapByBookingId((prev) => ({
-          ...prev,
-          [bookingId]: {
-            incomeId: refundId,
-            bookingId,
-            amount: Math.abs(refundAmount),
-            method,
-            reason,
-            details,
-            date: refundDate,
-          },
-        }));
       }
+      setRefundMapByBookingId((prev) => ({
+        ...prev,
+        [bookingId]: {
+          incomeId: created.id,
+          bookingId,
+          amount: Number(created.amountHalalas || 0) / 100,
+          method: normalizeIncomePaymentMethod(created.method),
+          reason,
+          details,
+          date: String(created.refundedAt || refundDate).slice(0, 10),
+        },
+      }));
       setRefundTarget(null);
     } catch {
       setRefundError("تعذر تسجيل الاسترجاع.");
@@ -4084,21 +3849,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       setRefundBusyId(bookingId);
       setRefundSaving(true);
       setRefundError("");
-      if (getDataSourceFlags().useCoreD1) {
-        await CoreRefundService.remove(existing.incomeId);
-        if (
-          getDataSourceFlags().usePackagesD1 &&
-          bookingUsesSessionPackage(b) &&
-          isFullBookingRefund(Number(existing.amount || 0), readBookingTotalAmount(b))
-        ) {
-          await PackageOperationsService.reapplyBookingSession(
-            bookingId,
-            b.status === "completed" ? "used" : "reserved",
-            `refund_voided:${existing.incomeId}`
-          );
-        }
-      } else {
-        await removeIncomeFS(existing.incomeId);
+      await CoreRefundService.remove(existing.incomeId);
+      if (
+        bookingUsesSessionPackage(b) &&
+        isFullBookingRefund(Number(existing.amount || 0), readBookingTotalAmount(b))
+      ) {
+        await PackageOperationsService.reapplyBookingSession(
+          bookingId,
+          b.status === "completed" ? "used" : "reserved",
+          `refund_voided:${existing.incomeId}`
+        );
       }
       setRefundMapByBookingId((prev) => {
         const next = { ...prev };
@@ -4365,7 +4125,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setBulkError("");
     setBulkResultMessage("");
     try {
-      const result = await updateBookingsStatusBatch({
+      const result = await updateCoreBookingsStatusBatch({
         bookingIds,
         status: bulkTargetStatus,
         filterSummary: filterSummaryText,
@@ -4415,7 +4175,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     try {
       let sourceBooking = booking;
       try {
-        const latest = await getBookingById(bookingId);
+        const latest = await getCoreBookingById(bookingId);
         if (latest) sourceBooking = latest as Booking;
       } catch (readError) {
         console.warn("Could not refresh booking before invoice print; using current row data.", readError);
@@ -4915,7 +4675,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [bulkTargetBookings]);
 
   const refreshBookingData = useCallback(() => {
-    historyBookingsCacheRef.current = {};
     setError("");
     setLoading(true);
     setBookingsRefreshKey((current) => current + 1);

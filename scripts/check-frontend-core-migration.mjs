@@ -42,6 +42,18 @@ const forbiddenChecks = [
     ],
   },
   {
+    file: "src/pages/DashboardBookings.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firestoreIncome/,
+      /getDataSourceFlags/,
+      /watchAllBookings/,
+      /collection\(db/,
+      /getDocs\(/,
+      /getDoc\(/,
+    ],
+  },
+  {
     file: "src/pages/DashboardClients.tsx",
     forbidden: [
       /firebase\/firestore/,
@@ -84,7 +96,13 @@ const requiredChecks = [
   },
   {
     file: "src/pages/DashboardBookings.tsx",
-    required: [/CoreRefundService/, /getDataSourceFlags\(\)\.useCoreD1/],
+    required: [
+      /CoreBookingService\.list/,
+      /coreD1BookingDataSource\.updateBooking/,
+      /CoreClientService\.overview/,
+      /CoreAuditService\.list/,
+      /CoreRefundService/,
+    ],
   },
   {
     file: "src/pages/BookingInternal.tsx",

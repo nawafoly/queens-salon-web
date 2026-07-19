@@ -19,6 +19,7 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const publicOffersPage = read("src/pages/Offers.tsx");
   const dashboardOffersPage = read("src/pages/DashboardOffers.tsx");
   const dashboardClientsPage = read("src/pages/DashboardClients.tsx");
+  const dashboardBookingsPage = read("src/pages/DashboardBookings.tsx");
 
   for (const [name, source] of [
     ["ClientPackageService", clientPackageService],
@@ -135,4 +136,30 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   );
   assert.match(dashboardClientsPage, /listCoreBookings/);
   assert.match(dashboardClientsPage, /CoreClientService/);
+
+  assert.equal(
+    dashboardBookingsPage.includes("firebase/firestore"),
+    false,
+    "Dashboard bookings must not import Firestore"
+  );
+  assert.equal(
+    dashboardBookingsPage.includes("getDataSourceFlags"),
+    false,
+    "Dashboard bookings must not retain a Core/Firestore branch"
+  );
+  assert.equal(
+    dashboardBookingsPage.includes("../services/firestoreIncome"),
+    false,
+    "Dashboard bookings must not synchronize income through Firestore"
+  );
+  assert.equal(
+    dashboardBookingsPage.includes("watchAllBookings"),
+    false,
+    "Dashboard bookings must poll the authoritative Core API directly"
+  );
+  assert.match(dashboardBookingsPage, /CoreBookingService\.list/);
+  assert.match(dashboardBookingsPage, /coreD1BookingDataSource\.updateBooking/);
+  assert.match(dashboardBookingsPage, /CoreClientService\.overview/);
+  assert.match(dashboardBookingsPage, /CoreAuditService\.list/);
+  assert.match(dashboardBookingsPage, /CoreRefundService/);
 });

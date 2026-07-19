@@ -130,16 +130,19 @@ test("Phase 5 migration adds admin operations without forcing unique client phon
   assert.doesNotMatch(migration, /CREATE\s+UNIQUE\s+INDEX[^;]*clients[^;]*phone_normalized/is);
 });
 
-test("dashboard refund workflows use Core refunds in D1 mode", () => {
-  for (const file of ["src/pages/DashboardBookings.tsx", "src/pages/BookingInternal.tsx"]) {
-    const source = readFileSync(file, "utf8");
-    assert.match(source, /CoreRefundService/);
-    assert.match(source, /getDataSourceFlags\(\)\.useCoreD1/);
-  }
+test("dashboard refund workflows use Core refunds without a Firestore branch", () => {
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+  const internal = readFileSync("src/pages/BookingInternal.tsx", "utf8");
+
+  assert.match(dashboard, /CoreRefundService/);
+  assert.doesNotMatch(dashboard, /getDataSourceFlags\(\)\.useCoreD1/);
+  assert.doesNotMatch(dashboard, /firebase\/firestore/);
   assert.match(dashboard, /CoreRefundService\.create/);
   assert.match(dashboard, /CoreRefundService\.remove/);
   assert.match(dashboard, /idempotencyKey:\s*`dashboard-refund:/);
+
+  assert.match(internal, /CoreRefundService/);
+  assert.match(internal, /getDataSourceFlags\(\)\.useCoreD1/);
 });
 
 test("Core migration preserves explicit halala fields", () => {
@@ -209,8 +212,9 @@ test("dashboard bookings uses Core D1 without touching Firestore in Core mode", 
     "Core D1 watcher must be selected before the legacy Firestore watcher"
   );
 
-  assert.match(dashboard, /const scope = useCoreD1 \? undefined : \{ statuses: LIVE_ACTIVE_STATUSES \}/);
-  assert.match(dashboard, /if \(useCoreD1\) setHistoryBookingsSource\(\[\]\)/);
+  assert.match(dashboard, /CoreBookingService\.list\(\)/);
+  assert.match(dashboard, /setInterval\(\(\) => void loadCoreBookings\(\), 8_000\)/);
+  assert.doesNotMatch(dashboard, /watchAllBookings|getDataSourceFlags|firebase\/firestore/);
   assert.match(dashboard, /تحديث البيانات/);
 });
 
@@ -243,7 +247,7 @@ test("Core invoice printing is not Firestore-only and supports success reprint r
   const printBlockStart = dashboard.indexOf("const handlePrintBookingInvoice");
   const printBlockEnd = dashboard.indexOf("const renderBookingSection");
   const printBlock = dashboard.slice(printBlockStart, printBlockEnd);
-  assert.match(printBlock, /getBookingById/);
+  assert.match(printBlock, /getCoreBookingById/);
   assert.doesNotMatch(printBlock, /getDoc\(/);
 
   assert.match(v2Source, /buildInternalV2InvoiceRows/);
