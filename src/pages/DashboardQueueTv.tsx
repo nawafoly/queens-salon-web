@@ -79,6 +79,69 @@ function msToMinSec(ms: number): string {
   return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+const decoderByteMaps = new Map<string, Map<string, number>>();
+
+function byteMapForEncoding(encoding: string): Map<string, number> | null {
+  try {
+    const cached = decoderByteMaps.get(encoding);
+    if (cached) return cached;
+
+    const decoder = new TextDecoder(encoding);
+    const map = new Map<string, number>();
+    for (let byte = 0; byte <= 255; byte += 1) {
+      const char = decoder.decode(new Uint8Array([byte]));
+      if (char && char !== "\ufffd" && !map.has(char)) {
+        map.set(char, byte);
+      }
+    }
+    decoderByteMaps.set(encoding, map);
+    return map;
+  } catch {
+    return null;
+  }
+}
+
+function decodeMojibakeCandidate(value: string, sourceEncoding: string): string {
+  const map = byteMapForEncoding(sourceEncoding);
+  if (!map) return "";
+
+  const bytes: number[] = [];
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    const byte = code <= 0x7f ? code : map.get(char);
+    if (byte === undefined) return "";
+    bytes.push(byte);
+  }
+
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes));
+  } catch {
+    return "";
+  }
+}
+
+function textDisplayScore(value: string): number {
+  const arabic = (value.match(/[\u0600-\u06ff]/g) || []).length;
+  const brokenLatin = (value.match(/[\u00d8\u00d9\u00c3\u00c2\u00e2\ufffd]/g) || []).length;
+  const brokenArabicPairs = (value.match(/[\u0637\u0638][^\s]/g) || []).length;
+  return arabic * 2 - brokenLatin * 6 - brokenArabicPairs * 3;
+}
+
+function repairDisplayText(value: unknown, fallback = copy.dash): string {
+  const text = String(value ?? "").trim();
+  if (!text) return fallback;
+
+  const candidates = [
+    text,
+    decodeMojibakeCandidate(text, "windows-1256"),
+    decodeMojibakeCandidate(text, "windows-1252"),
+  ].filter(Boolean);
+
+  return candidates.reduce((best, candidate) =>
+    textDisplayScore(candidate) > textDisplayScore(best) ? candidate : best
+  );
+}
+
 function queueBookingFromDoc(row: BookingDocWithId, fallbackDate: string): QueueBooking {
   const raw = row as BookingDocWithId & {
     customerName?: unknown;
@@ -91,8 +154,8 @@ function queueBookingFromDoc(row: BookingDocWithId, fallbackDate: string): Queue
   return {
     id: String(row.id),
     publicId: String(raw.publicId || raw.trackPublicId || raw.mk || row.id || ""),
-    clientName: String(raw.clientName || raw.customerName || raw.name || copy.dash),
-    employeeName: String(raw.employeeName || raw.staffName || copy.dash),
+    clientName: repairDisplayText(raw.clientName || raw.customerName || raw.name),
+    employeeName: repairDisplayText(raw.employeeName || raw.staffName),
     date: String(raw.date || fallbackDate),
     time: String(raw.time || raw.startTime || ""),
     status: String(raw.status || "").toLowerCase().trim(),
