@@ -1,0 +1,317 @@
+﻿src/App.tsx:5:import { doc, onSnapshot } from "firebase/firestore";
+src/components/ChatBot.tsx:5:import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+src/components/Testimonials.tsx:18:} from "firebase/firestore";
+src/components/packages/AdminPackageFlow.tsx:12:} from "firebase/firestore";
+src/components/packages/AdminPackageFlow.tsx:14:import { PackageService, type Package } from "../../services/PackageService";
+src/components/packages/AdminPackageFlow.tsx:15:import type { ClientPackage } from "../../services/ClientPackageService";
+src/components/packages/AdminPackageFlow.tsx:311:      PackageService.getActive(),
+src/components/packages/ClientPackagesPanel.tsx:2:import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+src/components/packages/ClientPackagesPanel.tsx:4:import { ClientPackageService, type ClientPackage, type ClientPackageTransaction } from "../../services/ClientPackageService";
+src/components/packages/ClientPackagesPanel.tsx:25:        ClientPackageService.getByClient(clientId),
+src/components/packages/ClientPackagesPanel.tsx:30:      const txPairs = await Promise.all(rows.map(async (p) => [String(p.id), await ClientPackageService.getTransactions(String(p.id))] as const));
+src/config/dataSourceFlags.ts:46:    useCoreD1: envFlag("VITE_USE_CORE_D1"),
+src/config/dataSourceFlags.ts:47:    usePackagesD1: envFlag("VITE_USE_PACKAGES_D1"),
+src/config/dataSourceFlags.ts:62:      "CORE_D1_CONFIG_ERROR: VITE_USE_CORE_D1=true requires VITE_CORE_WORKER_URL."
+src/features/internal-booking-v2/BookingInternalV2.tsx:15:import { findActiveOfferByCode, isOfferActiveNow, listOffers, type Offer } from "../../services/firestoreOffers";
+src/helpers/EmployeeService.ts:2:  import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+src/helpers/bookingCartUtils.ts:1:import type { PackageServiceItem } from "../services/firestorePackages";
+src/helpers/bookingCartUtils.ts:17:  packageServices?: PackageServiceItem[];
+src/helpers/bookingCartUtils.ts:51:  meta: PackageServiceItem;
+src/helpers/bookingCartUtils.ts:57:export function distributePackageServicePrices<ServiceDoc extends ServiceDocLike>(args: {
+src/helpers/bookingCartUtils.ts:79:    const meta = pkgServices[idx] || ({} as PackageServiceItem);
+src/helpers/bookingDiscountUtils.ts:1:import type { Offer } from "../services/firestoreOffers";
+src/helpers/dashboardService.ts:13:} from "firebase/firestore";
+src/pages/About.tsx:22:import { collection, getDocs } from "firebase/firestore";
+src/pages/Booking.tsx:124:} from "firebase/firestore";
+src/pages/Booking.tsx:140:import type { Offer as FsOffer } from "../services/firestoreOffers";
+src/pages/Booking.tsx:147:} from "../services/firestoreOffers";
+src/pages/Booking.tsx:150:import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
+src/pages/Booking.tsx:166:} from "../services/firestoreCatalog";
+src/pages/Booking.tsx:171:  type PackageServiceItem,
+src/pages/Booking.tsx:442:  packageServices?: PackageServiceItem[];
+src/pages/Booking.tsx:560:function sumPackageServicePrices(items?: PackageServiceItem[] | null) {
+src/pages/Booking.tsx:570:  return sumPackageServicePrices(pkg?.services);
+src/pages/Booking.tsx:582:  return sumPackageServicePrices(item?.packageServices);
+src/pages/Booking.tsx:1065:  // ظ£à NEW: bufferMin from settings (same contract as firestoreBookings)
+src/pages/Booking.tsx:1146:  const [sessionPackageServicePicker, setSessionPackageServicePicker] = useState<string[]>([]);
+src/pages/Booking.tsx:1148:  const [sessionPackageServicesLoading, setSessionPackageServicesLoading] = useState(false);
+src/pages/Booking.tsx:1149:  const [sessionPackageServicesError, setSessionPackageServicesError] = useState("");
+src/pages/Booking.tsx:1504:    setSessionPackageServicePicker([]);
+src/pages/Booking.tsx:1506:    setSessionPackageServicesLoading(false);
+src/pages/Booking.tsx:1507:    setSessionPackageServicesError("");
+src/pages/Booking.tsx:2850:    async function loadAllowedSessionPackageServices() {
+src/pages/Booking.tsx:2868:          setSessionPackageServicesError("┘╪د ╪ز┘ê╪ش╪» ╪«╪»┘à╪د╪ز ┘à╪ز╪د╪ص╪ر ╪»╪د╪«┘ ┘ç╪░┘ç ╪د┘╪ذ╪د┘é╪ر.");
+src/pages/Booking.tsx:2869:          setSessionPackageServicesLoading(false);
+src/pages/Booking.tsx:2870:          setSessionPackageServicePicker([]);
+src/pages/Booking.tsx:2876:        setSessionPackageServicesLoading(true);
+src/pages/Booking.tsx:2877:        setSessionPackageServicesError("");
+src/pages/Booking.tsx:2879:        setSessionPackageServicePicker([]);
+src/pages/Booking.tsx:2896:        setSessionPackageServicePicker(
+src/pages/Booking.tsx:2900:          setSessionPackageServicesError("╪ز╪╣╪░╪▒ ╪ز╪ص┘à┘è┘ ╪د┘╪«╪»┘à╪د╪ز ╪د┘┘à╪│┘à┘ê╪ص ╪ذ┘ç╪د ╪»╪د╪«┘ ┘ç╪░┘ç ╪د┘╪ذ╪د┘é╪ر.");
+src/pages/Booking.tsx:2905:        setSessionPackageServicePicker([]);
+src/pages/Booking.tsx:2906:        setSessionPackageServicesError("╪ز╪╣╪░╪▒ ╪ز╪ص┘à┘è┘ ╪«╪»┘à╪د╪ز ╪د┘╪ذ╪د┘é╪ر ╪ص╪د┘┘è╪د┘ï.");
+src/pages/Booking.tsx:2908:        if (!cancelled) setSessionPackageServicesLoading(false);
+src/pages/Booking.tsx:2912:    void loadAllowedSessionPackageServices();
+src/pages/Booking.tsx:3567:        allowedServicesSnapshot: PackageServiceItem[];
+src/pages/Booking.tsx:6008:      setSessionPackageServicePicker([]);
+src/pages/Booking.tsx:6010:      setSessionPackageServicesError("");
+src/pages/Booking.tsx:6011:      setSessionPackageServicesLoading(false);
+src/pages/Booking.tsx:8854:                              {sessionPackageServicesLoading ? (
+src/pages/Booking.tsx:8860:                                    const isSelected = sessionPackageServicePicker.includes(serviceId);
+src/pages/Booking.tsx:8867:                                          setSessionPackageServicePicker((prev) =>
+src/pages/Booking.tsx:8895:                                {sessionPackageServicePicker.length > 0
+src/pages/Booking.tsx:8899:                              {sessionPackageServicesError ? (
+src/pages/Booking.tsx:8900:                                <div className="booking-choice-note is-error">{sessionPackageServicesError}</div>
+src/pages/Booking.tsx:8966:                                  ? !servicePicker || sessionPackageServicePicker.length <= 0
+src/pages/Booking.tsx:8986:                                const pickedSessionServiceIds = [...sessionPackageServicePicker];
+src/pages/Booking.tsx:8987:                                const allowedServicesSnapshot: PackageServiceItem[] = sessionPackageAllowedServices.map((sv) => ({
+src/pages/Booking.tsx:9032:                                : pickerScope === "session_packages" && sessionPackageServicePicker.length > 1
+src/pages/Booking.tsx:9033:                                  ? `╪ح╪╢╪د┘╪ر ${sessionPackageServicePicker.length} ╪«╪»┘à╪د╪ز`
+src/pages/BookingInternal.tsx:84:  distributePackageServicePrices,
+src/pages/BookingInternal.tsx:176:} from "firebase/firestore";
+src/pages/BookingInternal.tsx:190:import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
+src/pages/BookingInternal.tsx:212:} from "../services/firestoreCatalog";
+src/pages/BookingInternal.tsx:217:  type PackageServiceItem,
+src/pages/BookingInternal.tsx:225:} from "../services/firestoreOffers";
+src/pages/BookingInternal.tsx:269:  packageServices?: PackageServiceItem[];
+src/pages/BookingInternal.tsx:3818:      const distributed = distributePackageServicePrices({
+src/pages/Checkout.tsx:10:} from "../services/firestoreBookings";
+src/pages/Checkout.tsx:11:import { incrementOfferUsage } from "../services/firestoreOffers";
+src/pages/Contact.tsx:23:} from "firebase/firestore";
+src/pages/Dashboard.tsx:61:import { collection, getDocs } from "firebase/firestore";
+src/pages/Dashboard.tsx:73:} from "../services/firestoreBookings";
+src/pages/DashboardAdminProfile.tsx:3:import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+src/pages/DashboardBookings.helpers.ts:1:import type { BookingPaymentType, BookingStatus } from "../services/firestoreBookings";
+src/pages/DashboardBookings.helpers.ts:42:type DashboardBookingPackageService = {
+src/pages/DashboardBookings.helpers.ts:59:  services?: DashboardBookingPackageService[];
+src/pages/DashboardBookings.tsx:30:} from "firebase/firestore";
+src/pages/DashboardBookings.tsx:43:} from "../services/firestoreBookings";
+src/pages/DashboardBookings.tsx:44:import type { StaffPublicWithId } from "../services/firestoreStaffPublic";
+src/pages/DashboardBookings.tsx:698:  const firstPackageService =
+src/pages/DashboardBookings.tsx:707:        firstPackageService?.serviceId ||
+src/pages/DashboardBookings.tsx:713:        firstPackageService?.serviceName ||
+src/pages/DashboardBookings.tsx:719:        firstPackageService?.sectionId ||
+src/pages/DashboardBookings.tsx:725:        firstPackageService?.categoryId ||
+src/pages/DashboardClients.tsx:30:} from "../services/firestoreBookings";
+src/pages/DashboardClients.tsx:41:} from "firebase/firestore";
+src/pages/DashboardDayAudit.tsx:2:import { collection, onSnapshot } from "firebase/firestore";
+src/pages/DashboardEmployees.tsx:20:} from "firebase/firestore";
+src/pages/DashboardEmployees.tsx:85:} from "../services/firestoreBookings";
+src/pages/DashboardExpenses.tsx:18:import { listAllBookings } from "../services/firestoreBookings";
+src/pages/DashboardExpenses.tsx:31:import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+src/pages/DashboardIncome.tsx:19:import { doc, getDoc } from "firebase/firestore";
+src/pages/DashboardIncome.tsx:27:import { listCoreBookings } from "../services/firestoreBookings";
+src/pages/DashboardLogs.tsx:11:} from "firebase/firestore";
+src/pages/DashboardLoyalty.tsx:12:} from "firebase/firestore";
+src/pages/DashboardOffers.tsx:21:import { collection, getDocs, orderBy, query } from "firebase/firestore";
+src/pages/DashboardOffers.tsx:26:import { listOffers, upsertOffer, removeOffer } from "../services/firestoreOffers";
+src/pages/DashboardOffers.tsx:27:import type { Offer, DiscountType, OfferAppliesTo, OfferSequenceStep } from "../services/firestoreOffers";
+src/pages/DashboardOffers.tsx:33:  type PackageServiceItem,
+src/pages/DashboardOffers.tsx:62:type PackageServiceRow = {
+src/pages/DashboardOffers.tsx:273:  const [packageServices, setPackageServices] = useState<PackageServiceRow[]>([]);
+src/pages/DashboardOffers.tsx:276:  const [packageServiceSearch, setPackageServiceSearch] = useState("");
+src/pages/DashboardOffers.tsx:523:      const srvRows: PackageServiceRow[] = serviceRowsRaw
+src/pages/DashboardOffers.tsx:536:      setPackageServices(srvRows);
+src/pages/DashboardOffers.tsx:873:    const m = new Map<string, PackageServiceRow>();
+src/pages/DashboardOffers.tsx:880:      .filter(Boolean) as PackageServiceRow[];
+src/pages/DashboardOffers.tsx:899:  const filteredPackageServices = useMemo(() => {
+src/pages/DashboardOffers.tsx:907:  const selectedPackageServices = useMemo(
+src/pages/DashboardOffers.tsx:908:    () => filteredPackageServices.filter((s) => packageDraft.serviceIds.includes(s.id)),
+src/pages/DashboardOffers.tsx:909:    [filteredPackageServices, packageDraft.serviceIds]
+src/pages/DashboardOffers.tsx:911:  const unselectedPackageServices = useMemo(
+src/pages/DashboardOffers.tsx:912:    () => filteredPackageServices.filter((s) => !packageDraft.serviceIds.includes(s.id)),
+src/pages/DashboardOffers.tsx:913:    [filteredPackageServices, packageDraft.serviceIds]
+src/pages/DashboardOffers.tsx:915:  const groupPackageServices = (rows: PackageServiceRow[]) => {
+src/pages/DashboardOffers.tsx:916:    const groups = new Map<string, { title: string; services: PackageServiceRow[] }>();
+src/pages/DashboardOffers.tsx:946:  const selectedPackageGroups = useMemo(() => groupPackageServices(selectedPackageServices), [selectedPackageServices, sectionNameById]);
+src/pages/DashboardOffers.tsx:947:  const unselectedPackageGroups = useMemo(() => groupPackageServices(unselectedPackageServices), [unselectedPackageServices, sectionNameById]);
+src/pages/DashboardOffers.tsx:963:  const selectAllVisiblePackageServices = () => {
+src/pages/DashboardOffers.tsx:964:    const visibleIds = filteredPackageServices.map((s) => s.id);
+src/pages/DashboardOffers.tsx:971:  const clearVisiblePackageServices = () => {
+src/pages/DashboardOffers.tsx:972:    const visibleIds = new Set(filteredPackageServices.map((s) => s.id));
+src/pages/DashboardOffers.tsx:1080:    const services: PackageServiceItem[] = packageComputed.picked.map((s) => ({
+src/pages/DashboardOffers.tsx:1414:            onChange={(e) => setPackageServiceSearch(e.target.value)}
+src/pages/DashboardOffers.tsx:1418:            <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={selectAllVisiblePackageServices}>
+src/pages/DashboardOffers.tsx:1421:            <button type="button" className="dash-pill dash-pill-outline dash-pill-sm" onClick={clearVisiblePackageServices}>
+src/pages/DashboardOffers.tsx:1433:            ╪د┘┘â┘ ({filteredPackageServices.length})
+src/pages/DashboardOffers.tsx:1440:            ╪د┘┘à╪ص╪»╪» ({selectedPackageServices.length})
+src/pages/DashboardOffers.tsx:1447:            ╪║┘è╪▒ ╪د┘┘à╪ص╪»╪» ({unselectedPackageServices.length})
+src/pages/DashboardOffers.tsx:1514:          {!filteredPackageServices.length && <div className="pkgm__empty">┘╪د ╪ز┘ê╪ش╪» ╪«╪»┘à╪د╪ز ┘à╪╖╪د╪ذ┘é╪ر ┘┘╪ذ╪ص╪س</div>}
+src/pages/DashboardOffers.tsx:1515:          {filteredPackageServices.length > 0 && !visibleSelectedGroups.length && !visibleUnselectedGroups.length && (
+src/pages/DashboardPending.tsx:7:import { doc, onSnapshot } from "firebase/firestore";
+src/pages/DashboardQueueTv.tsx:2:import { collection, onSnapshot, query, where } from "firebase/firestore";
+src/pages/DashboardReports.tsx:5:import { collection, getDocs } from "firebase/firestore";
+src/pages/DashboardReports.tsx:8:import { listCoreBookings } from "../services/firestoreBookings";
+src/pages/DashboardSettings.tsx:8:import { doc, getDoc } from "firebase/firestore";
+src/pages/DashboardStaff.tsx:14:} from "firebase/firestore";
+src/pages/DashboardStaff.tsx:15:import type { Timestamp } from "firebase/firestore";
+src/pages/DashboardStaff.tsx:19:import { updateBookingStatus as updateBookingStatusFS } from "../services/firestoreBookings";
+src/pages/Offers.tsx:20:import { onSnapshot, collection, query, orderBy } from "firebase/firestore";
+src/pages/Success.tsx:27:import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
+src/pages/Success.tsx:29:import { getBookingById, getTrackById, getTrackByPublicId } from "../services/firestoreBookings";
+src/pages/Track.tsx:7:import { getBookingById, getTrackByPublicId } from "../services/firestoreBookings";
+src/pages/Track.tsx:10:import { doc, onSnapshot } from "firebase/firestore";
+src/pages/dashboardEmployees/shared.ts:2:import { collection, doc } from "firebase/firestore";
+src/pages/dashboardEmployees/shared.ts:5:import { type BookingStatus } from "../../services/firestoreBookings";
+src/pages/hr/EmployeeMessages.tsx:2:import { getDocs, limit, orderBy, query } from "firebase/firestore";
+src/pages/hr/EmployeeOverview.tsx:35:} from "../../services/firestoreBookings";
+src/pages/hr/shared.ts:3:import { getDoc, getDocs, limit, query, where } from "firebase/firestore";
+src/pages/settings/SettingsBookings.tsx:9:} from "firebase/firestore";
+src/pages/settings/SettingsCatalog.tsx:13:} from "firebase/firestore";
+src/pages/settings/SettingsCatalog.tsx:18:  PackageService,
+src/pages/settings/SettingsCatalog.tsx:19:  normalizePackageServiceIds,
+src/pages/settings/SettingsCatalog.tsx:20:} from "../../services/PackageService";
+src/pages/settings/SettingsCatalog.tsx:166:  setPackageServiceIds: (value: string[]) => void;
+src/pages/settings/SettingsCatalog.tsx:183:  setters.setPackageServiceIds([]);
+src/pages/settings/SettingsCatalog.tsx:216:  const [packageServiceIds, setPackageServiceIds] = useState<string[]>([]);
+src/pages/settings/SettingsCatalog.tsx:231:  const [packageServiceSearch, setPackageServiceSearch] = useState("");
+src/pages/settings/SettingsCatalog.tsx:232:  const [packageServiceSectionFilter, setPackageServiceSectionFilter] =
+src/pages/settings/SettingsCatalog.tsx:234:  const [packageServiceView, setPackageServiceView] =
+src/pages/settings/SettingsCatalog.tsx:345:  const selectedPackageServiceIds = useMemo(
+src/pages/settings/SettingsCatalog.tsx:346:    () => normalizePackageServiceIds(packageServiceIds),
+src/pages/settings/SettingsCatalog.tsx:349:  const selectedPackageServices = useMemo(
+src/pages/settings/SettingsCatalog.tsx:351:      selectedPackageServiceIds
+src/pages/settings/SettingsCatalog.tsx:354:    [selectedPackageServiceIds, serviceById]
+src/pages/settings/SettingsCatalog.tsx:356:  const filteredPackageServices = useMemo(() => {
+src/pages/settings/SettingsCatalog.tsx:368:          ? selectedPackageServiceIds.includes(service.id)
+src/pages/settings/SettingsCatalog.tsx:388:        const aSelected = selectedPackageServiceIds.includes(a.id);
+src/pages/settings/SettingsCatalog.tsx:389:        const bSelected = selectedPackageServiceIds.includes(b.id);
+src/pages/settings/SettingsCatalog.tsx:408:    selectedPackageServiceIds,
+src/pages/settings/SettingsCatalog.tsx:413:      selectedPackageServices.reduce(
+src/pages/settings/SettingsCatalog.tsx:417:    [selectedPackageServices]
+src/pages/settings/SettingsCatalog.tsx:676:        PackageService.getAll(),
+src/pages/settings/SettingsCatalog.tsx:735:            serviceIds: normalizePackageServiceIds([
+src/pages/settings/SettingsCatalog.tsx:754:            targetClientIds: normalizePackageServiceIds(pkg.targetClientIds || []),
+src/pages/settings/SettingsCatalog.tsx:774:    const serviceIds = normalizePackageServiceIds(packageServiceIds);
+src/pages/settings/SettingsCatalog.tsx:823:        await PackageService.update(editingTargetId, payload);
+src/pages/settings/SettingsCatalog.tsx:826:        await PackageService.add(payload);
+src/pages/settings/SettingsCatalog.tsx:849:      setPackageServiceIds,
+src/pages/settings/SettingsCatalog.tsx:864:    setPackageServiceSearch("");
+src/pages/settings/SettingsCatalog.tsx:865:    setPackageServiceSectionFilter("all");
+src/pages/settings/SettingsCatalog.tsx:866:    setPackageServiceView("all");
+src/pages/settings/SettingsCatalog.tsx:873:    setPackageServiceIds(normalizePackageServiceIds(pkg.serviceIds));
+src/pages/settings/SettingsCatalog.tsx:886:    setPackageServiceSearch("");
+src/pages/settings/SettingsCatalog.tsx:887:    setPackageServiceSectionFilter("all");
+src/pages/settings/SettingsCatalog.tsx:888:    setPackageServiceView("selected");
+src/pages/settings/SettingsCatalog.tsx:891:  const togglePackageService = (serviceId: string) => {
+src/pages/settings/SettingsCatalog.tsx:895:    setPackageServiceIds((prev) => {
+src/pages/settings/SettingsCatalog.tsx:896:      const current = normalizePackageServiceIds(prev);
+src/pages/settings/SettingsCatalog.tsx:899:        : normalizePackageServiceIds([...current, id]);
+src/pages/settings/SettingsCatalog.tsx:903:  const selectVisiblePackageServices = () => {
+src/pages/settings/SettingsCatalog.tsx:904:    setPackageServiceIds((prev) =>
+src/pages/settings/SettingsCatalog.tsx:905:      normalizePackageServiceIds([
+src/pages/settings/SettingsCatalog.tsx:907:        ...filteredPackageServices.map((service) => service.id),
+src/pages/settings/SettingsCatalog.tsx:912:  const clearPackageServices = () => {
+src/pages/settings/SettingsCatalog.tsx:913:    setPackageServiceIds([]);
+src/pages/settings/SettingsCatalog.tsx:914:    setPackageServiceView("all");
+src/pages/settings/SettingsCatalog.tsx:948:      await PackageService.update(pkg.id, { active: !(pkg.active !== false) });
+src/pages/settings/SettingsCatalog.tsx:970:      const result = await PackageService.remove(pkg.id);
+src/pages/settings/SettingsCatalog.tsx:1954:              onChange={(e) => setPackageServiceSearch(e.target.value)}
+src/pages/settings/SettingsCatalog.tsx:1960:              onChange={(e) => setPackageServiceSectionFilter(e.target.value)}
+src/pages/settings/SettingsCatalog.tsx:1975:                onClick={() => setPackageServiceView("all")}
+src/pages/settings/SettingsCatalog.tsx:1984:                onClick={() => setPackageServiceView("selected")}
+src/pages/settings/SettingsCatalog.tsx:1986:                ╪د┘┘à╪«╪ز╪د╪▒╪ر ({selectedPackageServiceIds.length})
+src/pages/settings/SettingsCatalog.tsx:1993:              <strong>{selectedPackageServiceIds.length}</strong>
+src/pages/settings/SettingsCatalog.tsx:2001:                  !filteredPackageServices.length ? "is-disabled" : ""
+src/pages/settings/SettingsCatalog.tsx:2003:                disabled={!filteredPackageServices.length}
+src/pages/settings/SettingsCatalog.tsx:2004:                onClick={selectVisiblePackageServices}
+src/pages/settings/SettingsCatalog.tsx:2011:                  !selectedPackageServiceIds.length ? "is-disabled" : ""
+src/pages/settings/SettingsCatalog.tsx:2013:                disabled={!selectedPackageServiceIds.length}
+src/pages/settings/SettingsCatalog.tsx:2014:                onClick={clearPackageServices}
+src/pages/settings/SettingsCatalog.tsx:2023:              {filteredPackageServices.length ? (
+src/pages/settings/SettingsCatalog.tsx:2024:                filteredPackageServices.map((s) => {
+src/pages/settings/SettingsCatalog.tsx:2025:                  const checked = selectedPackageServiceIds.includes(s.id);
+src/pages/settings/SettingsCatalog.tsx:2044:                        onChange={() => togglePackageService(s.id)}
+src/pages/settings/SettingsCatalog.tsx:2068:                <span>{selectedPackageServices.length} ╪╣┘╪╡╪▒</span>
+src/pages/settings/SettingsCatalog.tsx:2070:              {selectedPackageServices.length ? (
+src/pages/settings/SettingsCatalog.tsx:2072:                  {selectedPackageServices.map((service) => (
+src/pages/settings/SettingsCatalog.tsx:2091:                          onClick={() => togglePackageService(service.id)}
+src/pages/settings/SettingsCatalog.tsx:2137:            const linkedNames = normalizePackageServiceIds(
+src/pages/settings/SettingsContact.tsx:13:} from "firebase/firestore";
+src/pages/settings/SettingsUsers.tsx:21:} from "firebase/firestore";
+src/services/AppSettingsService.ts:4:import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+src/services/ClientPackageService.ts:7:} from "firebase/firestore";
+src/services/ClientPackageService.ts:145:export const ClientPackageService = {
+src/services/ExpenseService.ts:12:} from "firebase/firestore";
+src/services/FinanceSettingsService.ts:8:} from "firebase/firestore";
+src/services/PackageService.ts:30:export function normalizePackageServiceIds(values: unknown): string[] {
+src/services/PackageService.ts:44:  const serviceIds = normalizePackageServiceIds(raw.allowedServiceIds || raw.serviceIds || []);
+src/services/PackageService.ts:61:    targetClientIds: normalizePackageServiceIds(raw.targetClientIds || []),
+src/services/PackageService.ts:91:export const PackageService = {
+src/services/attendanceSettingsService.ts:8:} from "firebase/firestore";
+src/services/authAccess.ts:1:import { doc, getDoc } from "firebase/firestore";
+src/services/authService.ts:11:import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+src/services/bookingDataSource.ts:5:} from "./firestoreBookings";
+src/services/bookingDataSource.ts:10:} from "./firestoreCatalog";
+src/services/bookingDataSource.ts:11:import type { StaffPublicWithId } from "./firestoreStaffPublic";
+src/services/bookingDataSource.ts:22:import { firestoreBookingDataSource } from "./bookingDataSources/firestoreBookingDataSource";
+src/services/bookingDataSource.ts:108:  return firestoreBookingDataSource;
+src/services/bookingDataSourceCompat.ts:4:} from "./firestoreBookings";
+src/services/bookingDataSourceCompat.ts:9:} from "./firestoreCatalog";
+src/services/bookingDataSourceCompat.ts:10:import type { StaffPublicWithId } from "./firestoreStaffPublic";
+src/services/bookingDataSources/coreD1BookingDataSource.ts:26:} from "../firestoreBookings";
+src/services/bookingDataSources/coreD1BookingDataSource.ts:162:      "PACKAGES_D1_REQUIRED: package booking through Core D1 requires VITE_USE_PACKAGES_D1=true."
+src/services/bookingDataSources/firestoreBookingDataSource.ts:11:} from "firebase/firestore";
+src/services/bookingDataSources/firestoreBookingDataSource.ts:21:} from "../firestoreBookings";
+src/services/bookingDataSources/firestoreBookingDataSource.ts:26:} from "../firestoreCatalog";
+src/services/bookingDataSources/firestoreBookingDataSource.ts:27:import { listActiveStaffAll } from "../firestoreStaffPublic";
+src/services/bookingDataSources/firestoreBookingDataSource.ts:108:export const firestoreBookingDataSource: BookingDataSource = {
+src/services/coreBookingMappers.ts:13:import type { BookingDoc, BookingDocWithId } from "./firestoreBookings";
+src/services/coreBookingMappers.ts:14:import type { SectionDoc, ServiceDoc } from "./firestoreCatalog";
+src/services/coreBookingMappers.ts:15:import type { StaffPublicWithId } from "./firestoreStaffPublic";
+src/services/employeeDirectory.ts:1:import { collection, getDocs } from "firebase/firestore";
+src/services/employeeHub.ts:15:} from "firebase/firestore";
+src/services/employeeLifecycleService.ts:1:import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+src/services/firebase.ts:4:import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+src/services/firestoreAttendance.ts:12:} from "firebase/firestore";
+src/services/firestoreAvailabilityBackfill.ts:13:} from "firebase/firestore";
+src/services/firestoreAvailabilityDays.ts:4:import type { DocumentData } from "firebase/firestore";
+src/services/firestoreBookings.ts:1:// src/services/firestoreBookings.ts
+src/services/firestoreBookings.ts:19:} from "firebase/firestore";
+src/services/firestoreBookings.ts:69:export type PackageServiceSnapshot = {
+src/services/firestoreBookings.ts:85:  services: PackageServiceSnapshot[];
+src/services/firestoreBookings.ts:353:function normalizePackageServices(values: any): PackageServiceSnapshot[] {
+src/services/firestoreBookings.ts:356:  const byId = new Map<string, PackageServiceSnapshot>();
+src/services/firestoreBookings.ts:458:          services: normalizePackageServices(raw.packageSnapshot.services),
+src/services/firestoreBookings.ts:1426:        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.unlockSlotsByBookingId", "getDocs");
+src/services/firestoreBookings.ts:1480:  FirestoreReadStats.bump(bookingRef.path, "firestoreBookings.lockSlotsFromBooking", "getDoc");
+src/services/firestoreBookings.ts:1782:    FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
+src/services/firestoreBookings.ts:1796:      "firestoreBookings.createBooking.runTransaction",
+src/services/firestoreBookings.ts:1802:      FirestoreReadStats.bump(r.path, "firestoreBookings.createBooking.runTransaction", "tx.get");
+src/services/firestoreBookings.ts:2270:    FirestoreReadStats.bump(counterRef.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
+src/services/firestoreBookings.ts:2284:      FirestoreReadStats.bump(r.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
+src/services/firestoreBookings.ts:2293:      FirestoreReadStats.bump(r.path, "firestoreBookings.createGroupBooking.runTransaction", "tx.get");
+src/services/firestoreBookings.ts:2752:      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.readFirestoreBookings", "getDocs");
+src/services/firestoreBookings.ts:2789:      const source = "firestoreBookings.watchFirestoreBookings";
+src/services/firestoreBookings.ts:2868:      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listUserBookings", "getDocs");
+src/services/firestoreBookings.ts:2903:      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+src/services/firestoreBookings.ts:2913:      FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+src/services/firestoreBookings.ts:2925:        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+src/services/firestoreBookings.ts:2934:        FirestoreReadStats.bump(d.ref.path, "firestoreBookings.listEmployeeBookings", "getDocs");
+src/services/firestoreBookings.ts:2970:    const src = `firestoreBookings.watchEmployeeBookings.${String(label || "").trim() || "unknown"}`;
+src/services/firestoreBookings.ts:3764:          FirestoreReadStats.bump(d.ref.path, "firestoreBookings.updateBookingDetails", "getDocs");
+src/services/firestoreCatalog.ts:1:// src/services/firestoreCatalog.ts
+src/services/firestoreCatalog.ts:12:  } from "firebase/firestore";
+src/services/firestoreDebug.ts:16:} from "firebase/firestore";
+src/services/firestoreExpenses.ts:16:} from "firebase/firestore";
+src/services/firestoreIncome.ts:16:} from "firebase/firestore";
+src/services/firestoreLeaveBalance.ts:1:import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
+src/services/firestoreOffers.ts:1:// src/services/firestoreOffers.ts
+src/services/firestoreOffers.ts:17:} from "firebase/firestore";
+src/services/firestorePackages.ts:12:} from "firebase/firestore";
+src/services/firestorePackages.ts:16:export type PackageServiceItem = {
+src/services/firestorePackages.ts:35:  services: PackageServiceItem[];
+src/services/firestorePackages.ts:98:function normalizePackageItem(raw: any): PackageServiceItem {
+src/services/firestorePackages.ts:110:  const services: PackageServiceItem[] = Array.isArray(raw?.services)
+src/services/firestorePackages.ts:115:    : services.map((x: PackageServiceItem) => x.serviceId).filter(Boolean);
+src/services/firestorePackages.ts:121:        services.reduce((sum: number, x: PackageServiceItem) => sum + Number(x.price || 0), 0)
+src/services/firestorePackages.ts:128:        services.reduce((sum: number, x: PackageServiceItem) => sum + Number(x.durationMin || 0), 0)
+src/services/firestoreStaffPublic.ts:1:// src/services/firestoreStaffPublic.ts
+src/services/firestoreStaffPublic.ts:3:import { collection, getDocs } from "firebase/firestore";
+src/services/hrCollections.ts:1:ي╗┐import { collection, doc } from "firebase/firestore";
+src/services/logService.ts:11:} from "firebase/firestore";
+src/services/serviceResolver.ts:4:import { doc, getDoc } from "firebase/firestore";
+src/services/staffAccountLinkService.ts:7:} from "firebase/firestore";
+src/services/userProfile.ts:14:} from "firebase/firestore";
+src/types/bookingShared.ts:1:import type { PackageServiceItem } from "../services/firestorePackages";
+src/types/bookingShared.ts:29:    services: PackageServiceItem[];
