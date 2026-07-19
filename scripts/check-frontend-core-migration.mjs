@@ -7,6 +7,12 @@ const forbiddenChecks = [
     forbidden: [
       /from\s+["']\.\.\/services\/firestoreBookings["']/,
       /import\s+\*\s+as\s+firestoreBookings/,
+      /firebase\/firestore/,
+      /firebase\/storage/,
+      /services\/firebase/,
+      /firestorePackages/,
+      /createOrLoadUserProfile/,
+      /getDataSourceFlags/,
       /collection\([^\n]*["']booking_slots["']/,
       /doc\([^\n]*["']availability_days["']/,
     ],
@@ -78,6 +84,16 @@ const forbiddenChecks = [
 ];
 
 const requiredChecks = [
+  {
+    file: "src/pages/Booking.tsx",
+    required: [
+      /CoreSettingsService/,
+      /ClientPortalService\.snapshot/,
+      /PackageService\.getActive/,
+      /uploadFileToR2/,
+      /listActiveSections\(SALON_ID, "core"\)/,
+    ],
+  },
   {
     file: "src/services/firestoreIncome.ts",
     required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreFinanceService/],

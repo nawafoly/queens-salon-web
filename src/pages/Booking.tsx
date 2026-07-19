@@ -108,27 +108,11 @@ import {
 import {
   pickEffectivePrice as resolveEffectiveSeasonPrice,
 } from "../helpers/seasonPricing";
-import { AppSettingsService } from "../services/AppSettingsService";
+import { CoreSettingsService } from "../services/CoreSettingsService";
+import { ClientPortalService } from "../services/ClientPortalService";
+import { uploadFileToR2 } from "../services/r2Upload";
 
-// ✅ Firestore slot availability check
-import {
-  doc,
-  getDoc,
-  getDocs,
-  collection,
-  query,
-  where,
-  orderBy,
-  setDoc,
-  limit,
-} from "firebase/firestore";
-
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-// ✅ انتبه: لازم firebase.ts يصدّر storage
-import { db, storage } from "../services/firebase";
 import { PackageOperationsService } from "../services/PackageOperationsService";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreStaffService } from "../services/CoreStaffService";
 import { coreStaffToLegacy } from "../services/coreBookingMappers";
 
@@ -136,8 +120,8 @@ import { coreStaffToLegacy } from "../services/coreBookingMappers";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 
-// ✅ Firestore Offers
-import type { Offer as FsOffer } from "../services/firestoreOffers";
+// Core offers compatibility facade
+import type { Offer as CoreOfferDoc } from "../services/firestoreOffers";
 import {
   findActiveOfferByCode,
   offerAppliesToService,
@@ -146,7 +130,7 @@ import {
   incrementOfferUsage,
 } from "../services/firestoreOffers";
 
-// ✅ Staff Public (Firestore)
+// Core staff shape compatibility type
 import { type StaffPublicWithId } from "../services/firestoreStaffPublic";
 import {
   listActiveStaffAll,
@@ -158,27 +142,96 @@ import {
   getStaffAvailability,
 } from "../services/bookingDataSourceCompat";
 
-// ✅ Catalog from Firestore (Sections/Categories/Services)
+// Core catalog compatibility types
 import type {
   SectionDoc,
   CategoryDoc,
   ServiceDoc,
 } from "../services/firestoreCatalog";
-import {
-  listActivePackages,
-  incrementPackageUsage,
-  type ServicePackageDoc,
-  type PackageServiceItem,
-} from "../services/firestorePackages";
-import { pricingSections } from "./Pricing";
 
-// Booking writes are selected explicitly by the Phase 3 data-source flag.
-import { createOrLoadUserProfile } from "../services/userProfile";
+import {
+  PackageService,
+  type Package as CorePackage,
+} from "../services/PackageService";
 
 // ✅ Custom modal بدل alert
 import ConfirmModal from "../components/ConfirmModal";
 import Modal from "../components/Modal";
 import type { BookingFormData, CartItem } from "../types/bookingShared";
+
+type PackageServiceItem = {
+  serviceId: string;
+  serviceName: string;
+  price: number;
+  durationMin: number;
+  sectionId?: string;
+  categoryId?: string;
+};
+
+type ServicePackageDoc = {
+  id: string;
+  name: string;
+  active: boolean;
+  startDate?: string;
+  endDate?: string;
+  serviceIds: string[];
+  services: PackageServiceItem[];
+  baseTotalPrice: number;
+  finalPrice: number;
+  totalDurationMin: number;
+  sessionsCount?: number;
+};
+
+function mapCorePackageForBooking(
+  pkg: CorePackage,
+  services: ServiceDoc[]
+): ServicePackageDoc {
+  const serviceMap = new Map(
+    (Array.isArray(services) ? services : []).map((service: any) => [
+      String(service?.id || "").trim(),
+      service,
+    ])
+  );
+  const serviceIds = Array.isArray(pkg.serviceIds)
+    ? pkg.serviceIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
+  const packageServices: PackageServiceItem[] = serviceIds.map((serviceId) => {
+    const service: any = serviceMap.get(serviceId) || {};
+    return {
+      serviceId,
+      serviceName: String(service?.["الاسم"] ?? service?.name ?? serviceId).trim(),
+      price: Math.max(0, Number(service?.["السعر"] ?? service?.price ?? 0)),
+      durationMin: Math.max(
+        1,
+        Number(service?.["المدة"] ?? service?.durationMin ?? DEFAULT_SERVICE_DURATION_MIN)
+      ),
+      sectionId: String(service?.sectionId || "").trim() || undefined,
+      categoryId: String(service?.categoryId || "").trim() || undefined,
+    };
+  });
+  const baseTotalPrice = packageServices.reduce(
+    (sum, row) => sum + Math.max(0, Number(row.price || 0)),
+    0
+  );
+  const totalDurationMin = packageServices.reduce(
+    (sum, row) => sum + Math.max(1, Number(row.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
+    0
+  );
+
+  return {
+    id: String(pkg.id || "").trim(),
+    name: String(pkg.name || "").trim(),
+    active: pkg.active !== false && pkg.saleEnabled !== false,
+    startDate: String(pkg.startsAt || "").trim() || undefined,
+    endDate: String(pkg.endsAt || "").trim() || undefined,
+    serviceIds,
+    services: packageServices,
+    baseTotalPrice,
+    finalPrice: Math.max(0, Number(pkg.price || 0)),
+    totalDurationMin: Math.max(DEFAULT_SERVICE_DURATION_MIN, totalDurationMin),
+    sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
+  };
+}
 
 function isServicePackageAvailableForBooking(pkg: ServicePackageDoc | any) {
   if (!pkg || pkg.active === false) return false;
@@ -426,8 +479,8 @@ type FlatService = {
   sectionTitle: string;
 
   // ✅ التصنيف
-  categoryId?: string; // Firestore فقط
-  category: string; // اسم التصنيف للعرض (Firestore/Pricing)
+  categoryId?: string; // Core catalog
+  category: string; // اسم التصنيف للعرض
   name: string;
 
   // ✅ حقول تسعير/عرض
@@ -435,7 +488,7 @@ type FlatService = {
   basePrice: number;
   seasonPrice?: number; // ✅ سعر الموسم (اختياري)
 
-  // ✅ مدة من Firestore إذا كانت موجودة
+  // مدة الخدمة من Core
   durationMin?: number;
   packageId?: string;
   packageServiceIds?: string[];
@@ -443,12 +496,12 @@ type FlatService = {
   packageBaseTotalPrice?: number;
 
   // ✅ معرفة مصدر الخدمة
-  source: "firestore" | "pricing";
+  source: "core";
 };
 
 type CategoryOption = { id: string; name: string };
 type PickerScope = "services" | "offers_packages" | "offers" | "session_packages";
-type FsSectionCatalogCacheRow = {
+type CoreSectionCatalogCacheRow = {
   categories: CategoryDoc[];
   services: ServiceDoc[];
 };
@@ -506,7 +559,7 @@ function buildStaffWindowLabel(window: ResolvedStaffWorkingWindowRange, index: n
   return `الفترة ${index + 1}: ${range}`;
 }
 
-function calcDiscount(basePrice: number, offer: FsOffer) {
+function calcDiscount(basePrice: number, offer: CoreOfferDoc) {
   const value = Number((offer as any).value || 0);
 
   if ((offer as any).discountType === "percent") {
@@ -941,7 +994,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   // ✅ Settings (live)
   // =========================
-  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
+  const [appSettings, setAppSettings] = useState<any>({});
   const booking = (appSettings as any)?.booking || {};
   const seasonPricing = (appSettings as any)?.catalogSeasonPricing || {};
 
@@ -1081,10 +1134,32 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, [selectedDayOpen, openTime, closeTime, slotStepMin]);
 
   useEffect(() => {
-    const unsub = AppSettingsService.subscribe((remote: any) => {
-      setAppSettings(remote || {});
+    let cancelled = false;
+
+    void Promise.allSettled([
+      CoreSettingsService.get<any>("app"),
+      CoreSettingsService.get<{ hairGuideUrl?: string }>("booking"),
+    ]).then(([appResult, bookingResult]) => {
+      if (cancelled) return;
+
+      if (appResult.status === "fulfilled") {
+        setAppSettings(appResult.value?.value || {});
+      } else {
+        console.error("Core app settings load failed:", appResult.reason);
+        setAppSettings({});
+      }
+
+      const bookingSetting =
+        bookingResult.status === "fulfilled" ? bookingResult.value : null;
+      const remoteGuide = String(
+        bookingSetting?.value?.hairGuideUrl || ""
+      ).trim();
+      setHairGuideUrl(remoteGuide || hairGuideImg);
     });
-    return () => unsub();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1121,21 +1196,20 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // Catalog mode
   // =========================
   // When Core D1 is enabled, the booking catalog must come from Core D1 as well.
-  // Mixing Core sections with Firestore service IDs creates bookings that Core cannot resolve.
-  const useCoreCatalog = getDataSourceFlags().useCoreD1;
-  const [catalogMode, setCatalogMode] = useState<"firestore" | "pricing">("firestore");
+  // The public booking catalog is pinned to Core D1.
+  const [catalogMode, setCatalogMode] = useState<"core">("core");
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [categoryLoading, setCategoryLoading] = useState(false);
 
-  const [fsSections, setFsSections] = useState<SectionDoc[]>([]);
-  const [fsCategories, setFsCategories] = useState<CategoryDoc[]>([]);
-  const [fsServices, setFsServices] = useState<ServiceDoc[]>([]);
-  const [fsPackages, setFsPackages] = useState<ServicePackageDoc[]>([]);
+  const [coreSections, setCoreSections] = useState<SectionDoc[]>([]);
+  const [coreCategories, setCoreCategories] = useState<CategoryDoc[]>([]);
+  const [coreServices, setCoreServices] = useState<ServiceDoc[]>([]);
+  const [corePackages, setCorePackages] = useState<ServicePackageDoc[]>([]);
   const [sessionPackageOptions, setSessionPackageOptions] = useState<SessionPackageOption[]>([]);
-  const [sequenceOffers, setSequenceOffers] = useState<FsOffer[]>([]);
-  const fsSectionCatalogCacheRef = useRef<Record<string, FsSectionCatalogCacheRow>>({});
-  const fsSectionCatalogInFlightRef = useRef<
-    Record<string, Promise<FsSectionCatalogCacheRow>>
+  const [sequenceOffers, setSequenceOffers] = useState<CoreOfferDoc[]>([]);
+  const coreSectionCatalogCacheRef = useRef<Record<string, CoreSectionCatalogCacheRow>>({});
+  const coreSectionCatalogInFlightRef = useRef<
+    Record<string, Promise<CoreSectionCatalogCacheRow>>
   >({});
   const serviceByIdCacheRef = useRef<Record<string, FlatService>>({});
 
@@ -1267,10 +1341,17 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setSignedUid(u.uid);
 
       try {
-        const p = await createOrLoadUserProfile(u);
+        const snapshot = await ClientPortalService.snapshot();
+        const p = {
+          uid: u.uid,
+          name: snapshot.profile.name,
+          phone: snapshot.profile.phoneNormalized,
+          email: snapshot.profile.email,
+          role: "client",
+        };
 
-        const name = String((p as any)?.name || "").trim();
-        const phone = phone10Digits((p as any)?.phone || "");
+        const name = String(p.name || "").trim();
+        const phone = phone10Digits(p.phone || "");
 
         if (!cancelled) {
           setFormData((prev) => ({
@@ -1312,7 +1393,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       setSessionPackageOptions([]);
       return;
     }
-    void loadSessionPackagesFromFirestore();
+    void loadSessionPackagesFromCore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedUid]);
 
@@ -1798,57 +1879,85 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // =========================
   useEffect(() => {
     let cancelled = false;
-    setHairGuideUrl(hairGuideImg);
 
-    const auth = getAuth();
-    const unsubAuth = onAuthStateChanged(auth, async (u) => {
+    const readLocalRole = () => {
       try {
-        if (!u || (u as any).isAnonymous) {
-          if (!cancelled) setIsOwner(false);
-          return;
-        }
-
-        const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-        const userSnap = await getDoc(userRef);
-        const role = String((userSnap.data() as any)?.role || "").toLowerCase();
-
-        if (!cancelled) setIsOwner(role === "owner" || role === "admin");
+        const authUser = JSON.parse(localStorage.getItem("auth_user") || "null");
+        return String(
+          authUser?.role ||
+            localStorage.getItem("userRole") ||
+            ""
+        )
+          .trim()
+          .toLowerCase();
       } catch {
-        if (!cancelled) setIsOwner(false);
+        return String(localStorage.getItem("userRole") || "")
+          .trim()
+          .toLowerCase();
       }
-    });
+    };
+
+    const updateOwnerState = () => {
+      const user = getAuth().currentUser;
+      const role = readLocalRole();
+      if (!cancelled) {
+        setIsOwner(
+          Boolean(user && !(user as any).isAnonymous) &&
+            (role === "owner" || role === "admin")
+        );
+      }
+    };
+
+    const unsubAuth = onAuthStateChanged(getAuth(), updateOwnerState);
+    window.addEventListener("authChanged", updateOwnerState);
+    updateOwnerState();
 
     return () => {
       cancelled = true;
       unsubAuth();
+      window.removeEventListener("authChanged", updateOwnerState);
     };
   }, []);
 
   async function uploadHairGuide(file: File) {
     setUploadingGuide(true);
     try {
-      const path = `salons/${SALON_ID}/booking/hair-guide_${Date.now()}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
+      const currentUser = getAuth().currentUser;
+      if (!currentUser || (currentUser as any).isAnonymous || !isOwner) {
+        throw new Error("غير مصرح لك بتحديث دليل أطوال الشعر.");
+      }
 
-      const url = await getDownloadURL(storageRef);
+      const uploaded = await uploadFileToR2({
+        file,
+        keyPrefix: `salons/${SALON_ID}/booking`,
+        ownerId: currentUser.uid,
+      });
+      const url = String(uploaded.storageUrl || "").trim();
+      if (!url) throw new Error("لم يرجع رابط الصورة بعد الرفع.");
 
-      // update settings
-      const guideRef = doc(db, "salons", SALON_ID, "settings", "booking");
-      await setDoc(guideRef, { hairGuideUrl: url }, { merge: true });
+      const currentSetting =
+        await CoreSettingsService.get<Record<string, unknown>>("booking");
+      await CoreSettingsService.save(
+        "booking",
+        {
+          ...(currentSetting?.value || {}),
+          hairGuideUrl: url,
+        },
+        "public"
+      );
 
       setHairGuideUrl(url);
 
       openModal({
         title: "تم",
-        message: "تم رفع صورة دليل أطوال الشعر وتحديثها.",
+        message: "تم رفع صورة دليل أطوال الشعر إلى R2 وتحديثها.",
         variant: "success",
         confirmText: "تمام",
       });
     } catch (e: any) {
       openModal({
         title: "فشل الرفع",
-        message: `صار خطأ أثناء رفع الصورة\n\ncode: ${String(e?.code || "-")}\nmessage: ${String(e?.message || "-")}`,
+        message: `صار خطأ أثناء رفع الصورة\n\nmessage: ${String(e?.message || "-")}`,
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -1857,7 +1966,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
   }
 
-  const loadSessionPackagesFromFirestore = async () => {
+  const loadSessionPackagesFromCore = async () => {
     try {
       const currentUser = getAuth().currentUser;
       if (!currentUser || (currentUser as any).isAnonymous) {
@@ -1890,109 +1999,48 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
       setSessionPackageOptions(rows);
     } catch (e) {
-      console.error("loadSessionPackagesFromFirestore error:", e);
+      console.error("loadSessionPackagesFromCore error:", e);
       setSessionPackageOptions([]);
     }
   };
 
-  const loadSectionCatalogFromFirestore = async (
+  const loadSectionCatalogFromCore = async (
     sectionIdRaw: string
-  ): Promise<FsSectionCatalogCacheRow> => {
+  ): Promise<CoreSectionCatalogCacheRow> => {
     const sectionId = String(sectionIdRaw || "").trim();
     if (!sectionId || sectionId === PACKAGE_SECTION_ID) {
       return { categories: [], services: [] };
     }
 
-    const cached = fsSectionCatalogCacheRef.current[sectionId];
+    const cached = coreSectionCatalogCacheRef.current[sectionId];
     if (cached) return cached;
 
-    const inFlight = fsSectionCatalogInFlightRef.current[sectionId];
+    const inFlight = coreSectionCatalogInFlightRef.current[sectionId];
     if (inFlight) return inFlight;
 
-    const loadPromise: Promise<FsSectionCatalogCacheRow> = (async () => {
-      if (useCoreCatalog) {
-        const [categories, services] = await Promise.all([
-          listActiveCategoriesBySection(sectionId, SALON_ID, "core"),
-          listActiveServices({ sectionId }, SALON_ID, "core"),
-        ]);
-        const payload: FsSectionCatalogCacheRow = {
-          categories: Array.isArray(categories) ? categories : [],
-          services: Array.isArray(services) ? services : [],
-        };
-        fsSectionCatalogCacheRef.current[sectionId] = payload;
-        return payload;
-      }
-
-      const catsCol = collection(db, "salons", SALON_ID, "service_categories");
-
-      let catsSnap;
-      try {
-        catsSnap = await getDocs(
-          query(
-            catsCol,
-            where("sectionId", "==", sectionId),
-            orderBy("order", "asc")
-          )
-        );
-      } catch {
-        // fallback if no order index
-        catsSnap = await getDocs(query(catsCol, where("sectionId", "==", sectionId)));
-      }
-
-      const safeCats: any[] = catsSnap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
-        .filter((c) => String((c as any)?.["الاسم"] ?? c?.name ?? "").trim())
-        .filter((c) => c?.active !== false);
-
-      const catIds = safeCats
-        .map((c: any) => String(c.categoryId ?? c.key ?? c.id ?? "").trim())
-        .filter(Boolean);
-
-      const colRef = collection(db, "salons", SALON_ID, "services");
-      const merged: any[] = [];
-
-      if (catIds.length === 0) {
-        const snap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
-        snap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-      } else {
-        const chunks: string[][] = [];
-        for (let i = 0; i < catIds.length; i += 10) {
-          chunks.push(catIds.slice(i, i + 10));
-        }
-
-        const snaps = await Promise.all(
-          chunks.map((arr) => getDocs(query(colRef, where("categoryId", "in", arr))))
-        );
-        snaps.forEach((sn) => {
-          sn.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-        });
-
-        const secSnap = await getDocs(query(colRef, where("sectionId", "==", sectionId)));
-        secSnap.docs.forEach((d) => merged.push({ id: d.id, ...(d.data() as any) }));
-      }
-
-      const uniq = new Map<string, any>();
-      merged.forEach((x) => uniq.set(String(x.id), x));
-      const activeOnly = Array.from(uniq.values()).filter((x) => x?.active !== false);
-
-      const payload: FsSectionCatalogCacheRow = {
-        categories: safeCats as CategoryDoc[],
-        services: activeOnly as ServiceDoc[],
+    const loadPromise: Promise<CoreSectionCatalogCacheRow> = (async () => {
+      const [categories, services] = await Promise.all([
+        listActiveCategoriesBySection(sectionId, SALON_ID, "core"),
+        listActiveServices({ sectionId }, SALON_ID, "core"),
+      ]);
+      const payload: CoreSectionCatalogCacheRow = {
+        categories: Array.isArray(categories) ? categories : [],
+        services: Array.isArray(services) ? services : [],
       };
-      fsSectionCatalogCacheRef.current[sectionId] = payload;
+      coreSectionCatalogCacheRef.current[sectionId] = payload;
       return payload;
     })();
 
-    fsSectionCatalogInFlightRef.current[sectionId] = loadPromise;
+    coreSectionCatalogInFlightRef.current[sectionId] = loadPromise;
     try {
       return await loadPromise;
     } finally {
-      delete fsSectionCatalogInFlightRef.current[sectionId];
+      delete coreSectionCatalogInFlightRef.current[sectionId];
     }
   };
 
   // =========================
-  // Load sections
+  // Load Core sections and package catalog
   // =========================
   useEffect(() => {
     let cancelled = false;
@@ -2001,80 +2049,69 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       try {
         setCatalogLoading(true);
 
-        // The public catalog is a Core D1 concern. Never couple it to an
-        // optional legacy Firestore package read: anonymous users are allowed
-        // to read Core public routes but may not read Firestore.
-        const secs = await listActiveSections(
-          SALON_ID,
-          useCoreCatalog ? "core" : "auto"
-        );
+        const [sections, packages, allServices] = await Promise.all([
+          listActiveSections(SALON_ID, "core"),
+          PackageService.getActive(),
+          listActiveServices({ sectionId: "" }, SALON_ID, "core"),
+        ]);
         if (cancelled) return;
 
-        setCatalogMode("firestore");
-        const safeSections = Array.isArray(secs) ? secs : [];
-        setFsSections(safeSections);
+        setCatalogMode("core");
+        const safeSections = Array.isArray(sections) ? sections : [];
+        setCoreSections(safeSections);
 
-        // Warm the Core-backed section cache independently.
         safeSections
-          .map((s: any) => String(s?.id || "").trim())
+          .map((section: any) => String(section?.id || "").trim())
           .filter(Boolean)
-          .forEach((sid) => {
-            void loadSectionCatalogFromFirestore(sid);
+          .forEach((sectionId) => {
+            void loadSectionCatalogFromCore(sectionId);
           });
 
-        const legacyPackagesPromise = useCoreCatalog
-          ? Promise.resolve<ServicePackageDoc[]>([])
-          : listActivePackages(SALON_ID);
+        const normalizedPackages = (Array.isArray(packages) ? packages : [])
+          .map((pkg) => mapCorePackageForBooking(pkg, allServices))
+          .filter(isServicePackageAvailableForBooking);
 
-        const [legacyPackagesResult] = await Promise.allSettled([
-          legacyPackagesPromise,
-          loadSessionPackagesFromFirestore(),
-        ]);
-
+        setCorePackages(normalizedPackages);
+        void loadSessionPackagesFromCore();
+      } catch (error) {
         if (!cancelled) {
-          setFsPackages(
-            legacyPackagesResult.status === "fulfilled" &&
-              Array.isArray(legacyPackagesResult.value)
-              ? legacyPackagesResult.value
-              : []
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setCatalogMode("firestore");
-          setFsSections([]);
-          setFsPackages([]);
+          console.error("Core booking catalog load failed:", error);
+          setCatalogMode("core");
+          setCoreSections([]);
+          setCoreCategories([]);
+          setCoreServices([]);
+          setCorePackages([]);
         }
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
     }
 
-    loadSectionsFirstTime();
+    void loadSectionsFirstTime();
     return () => {
       cancelled = true;
     };
   }, []);
 
   // =========================
-  // Load cats + services for section (Firestore)
+  // Load categories and services for the selected Core section
   // =========================
   useEffect(() => {
     let cancelled = false;
 
     async function loadCatalogForSection() {
-      if (catalogMode !== "firestore") return;
+      if (catalogMode !== "core") return;
 
       if (!selectedSectionId) {
-        setFsCategories([]);
-        setFsServices([]);
+        setCoreCategories([]);
+        setCoreServices([]);
         setCategoryLoading(false);
         return;
       }
 
       if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) {
-        setFsCategories([]);
-        setFsServices([]);
+        setCoreCategories([]);
+        setCoreServices([]);
         setCategoryLoading(false);
         return;
       }
@@ -2082,15 +2119,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       try {
         setCatalogLoading(true);
         setCategoryLoading(true);
-        const payload = await loadSectionCatalogFromFirestore(String(selectedSectionId || "").trim());
+        const payload = await loadSectionCatalogFromCore(String(selectedSectionId || "").trim());
         if (cancelled) return;
-        setFsCategories(Array.isArray(payload.categories) ? payload.categories : []);
-        setFsServices(Array.isArray(payload.services) ? payload.services : []);
+        setCoreCategories(Array.isArray(payload.categories) ? payload.categories : []);
+        setCoreServices(Array.isArray(payload.services) ? payload.services : []);
       } catch {
         if (!cancelled) {
-          setFsCategories([]);
-          setFsServices([]);
-          setCatalogMode("firestore");
+          setCoreCategories([]);
+          setCoreServices([]);
+          setCatalogMode("core");
           setCategoryLoading(false);
         }
       } finally {
@@ -2108,32 +2145,32 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, [catalogMode, selectedSectionId]);
 
   // =========================
-  // FS services filtered
+  // Core services filtered
   // =========================
-  const fsServicesFiltered = useMemo(() => {
-    if (catalogMode !== "firestore") return [];
+  const coreServicesFiltered = useMemo(() => {
+    if (catalogMode !== "core") return [];
     if (!selectedSectionId) return [];
 
     const sid = String(selectedSectionId || "").trim();
 
     // لو ما فيه تصنيفات، فلتر بالقسم بس
-    if (!fsCategories.length) {
-      return fsServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
+    if (!coreCategories.length) {
+      return coreServices.filter((s: any) => String(s.sectionId || "").trim() === sid);
     }
 
     // لو فيه تصنيفات، تأكد إن الخدمة تتبع تصنيف داخل هذا القسم
     const catIdsInSection = new Set(
-      fsCategories
+      coreCategories
         .filter((c: any) => String(c.sectionId || "").trim() === sid)
         .map((c: any) => String(c.id || "").trim())
         .filter(Boolean)
     );
 
-    return fsServices.filter((s: any) => {
+    return coreServices.filter((s: any) => {
       const catId = String(s.categoryId || "").trim();
       return catIdsInSection.has(catId);
     });
-  }, [catalogMode, fsServices, fsCategories, selectedSectionId]);
+  }, [catalogMode, coreServices, coreCategories, selectedSectionId]);
 
   // =========================
   // One source services list
@@ -2142,12 +2179,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const servicesFlat: FlatService[] = useMemo(() => {
     const packageRows: FlatService[] =
-    catalogMode === "firestore"
-      ? (fsPackages || []).map((pkg) => {
+    catalogMode === "core"
+      ? (corePackages || []).map((pkg) => {
         const finalPriceNum = resolvePackageDocFinalPrice(pkg);
         const baseTotalPriceNum = resolvePackageDocBaseTotalPrice(pkg);
         const packagePrice = finalPriceNum > 0 ? finalPriceNum : baseTotalPriceNum;
-  
+
         return {
           id: `pkg:${String(pkg.id)}`,
           kind: "package" as const,
@@ -2165,28 +2202,28 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             : [],
           packageServices: Array.isArray(pkg.services) ? pkg.services : [],
           packageBaseTotalPrice: baseTotalPriceNum,
-          source: "firestore" as const,
+          source: "core" as const,
         };
       })
       : [];
 
-    if (catalogMode === "firestore" && fsSections.length > 0) {
+    if (catalogMode === "core" && coreSections.length > 0) {
       const secMap = new Map<string, string>();
-      fsSections.forEach((s: any) =>
+      coreSections.forEach((s: any) =>
         secMap.set(String(s.id), readDisplayLabel(s, String(s.id || "")))
       );
 
       const catMap = new Map<string, string>();
-      fsCategories.forEach((c: any) =>
+      coreCategories.forEach((c: any) =>
         catMap.set(String(c.id), readDisplayLabel(c, String(c.id || "")))
       );
 
       const catById = new Map<string, any>();
-      fsCategories.forEach((c: any) => catById.set(String(c.id), c));
+      coreCategories.forEach((c: any) => catById.set(String(c.id), c));
 
-      const hasCats = fsCategories.length > 0;
+      const hasCats = coreCategories.length > 0;
 
-      const list = (selectedSectionId ? fsServicesFiltered : []).map((x: any) => {
+      const list = (selectedSectionId ? coreServicesFiltered : []).map((x: any) => {
         if (!hasCats) {
           const sectionId = String(x.sectionId || selectedSectionId || "").trim();
           const sectionTitle = secMap.get(sectionId) || sectionId || "-";
@@ -2229,7 +2266,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             basePrice: priceNum,
             seasonPrice,
             durationMin,
-            source: "firestore" as const,
+            source: "core" as const,
           };
         }
 
@@ -2269,68 +2306,36 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           basePrice: priceNum,
           seasonPrice,
           durationMin,
-          source: "firestore" as const,
+          source: "core" as const,
         };
       });
 
       return [...list, ...packageRows];
     }
 
-    const out: FlatService[] = [];
-    Object.entries(pricingSections).forEach(([sectionId, section]) => {
-      const sectionTitle = String(section?.title || sectionId).trim();
-      (section?.services || []).forEach((cat: any, catIdx: number) => {
-        const catName = String(cat?.category || "").trim() || "عام";
-        (cat?.items || []).forEach((it: any, itemIdx: number) => {
-          const itemName = String(it?.name || "").trim();
-          if (!itemName) return;
-
-          const priceTextRaw = String(it?.price || "").trim();
-          const basePrice = extractMinPrice(priceTextRaw);
-
-          out.push({
-            id: `${sectionId}-${catIdx}-${itemIdx}`,
-            kind: "service" as const,
-            sectionId,
-            sectionTitle,
-            categoryId: "",
-            category: catName,
-            name: `${catName} - ${itemName}`,
-            priceText: priceTextRaw || `${basePrice} ريال`,
-            basePrice,
-            durationMin: DEFAULT_SERVICE_DURATION_MIN,
-            source: "pricing" as const,
-          });
-        });
-      });
-    });
-
-    return [...out, ...packageRows];
-  }, [catalogMode, fsSections, fsCategories, fsServicesFiltered, selectedSectionId, fsPackages]);
+    return packageRows;
+  }, [catalogMode, coreSections, coreCategories, coreServicesFiltered, selectedSectionId, corePackages]);
 
   const sectionOptions = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
-      const rows = fsSections.map((s: any) => ({
+    if (catalogMode === "core" && coreSections.length > 0) {
+      const rows = coreSections.map((s: any) => ({
         id: String(s.id),
         title: readDisplayLabel(s, String(s?.id || "").trim()),
       }));
-      if ((fsPackages || []).length > 0) {
+      if ((corePackages || []).length > 0) {
         rows.push({ id: PACKAGE_SECTION_ID, title: PACKAGE_SECTION_TITLE });
       }
       return rows;
     }
 
-    return Object.entries(pricingSections)
-      .map(([id, sec]) => ({
-        id: String(id || "").trim(),
-        title: String(sec?.title || "").trim(),
-      }))
-      .filter((x) => x.id && x.title);
-  }, [catalogMode, fsSections, fsPackages]);
+    return (corePackages || []).length > 0
+      ? [{ id: PACKAGE_SECTION_ID, title: PACKAGE_SECTION_TITLE }]
+      : [];
+  }, [catalogMode, coreSections, corePackages]);
 
   const sectionOptionsSafe = useMemo(() => {
-    if (catalogMode === "firestore" && fsSections.length > 0) {
-      const rows = fsSections
+    if (catalogMode === "core" && coreSections.length > 0) {
+      const rows = coreSections
         .map((s: any) => ({
           id: String(s?.id || "").trim(),
           title: readDisplayLabel(s, String(s?.id || "").trim()),
@@ -2339,17 +2344,17 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return rows;
     }
     return sectionOptions.filter((x) => x.id && x.title && x.id !== PACKAGE_SECTION_ID);
-  }, [catalogMode, fsSections, fsPackages, sectionOptions]);
+  }, [catalogMode, coreSections, corePackages, sectionOptions]);
 
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
     if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
 
-    if (catalogMode === "firestore" && fsSections.length > 0) {
-      if (fsCategories.length) {
+    if (catalogMode === "core" && coreSections.length > 0) {
+      if (coreCategories.length) {
         const sid = String(selectedSectionId).trim();
 
-        const cats = fsCategories
+        const cats = coreCategories
           .filter((c: any) => String(c.sectionId || "").trim() === sid)
           .map((c: any) => ({
             id: String(c.id),
@@ -2364,7 +2369,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
       // fallback if no categories but services have category field
       const sid = String(selectedSectionId).trim();
-      const base = fsServices
+      const base = coreServices
         .filter((s: any) => String(s.sectionId || "").trim() === sid)
         .map((s: any) =>
           String(
@@ -2386,14 +2391,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     const seen = new Set<string>();
     return cats.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
-  }, [catalogMode, fsSections.length, fsCategories, fsServices, servicesFlat, selectedSectionId]);
+  }, [catalogMode, coreSections.length, coreCategories, coreServices, servicesFlat, selectedSectionId]);
 
   const categoryOptionsSafe: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
     if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
-    if (catalogMode === "firestore" && fsCategories.length > 0) {
+    if (catalogMode === "core" && coreCategories.length > 0) {
       const sid = String(selectedSectionId).trim();
-      const rows = fsCategories
+      const rows = coreCategories
         .filter((c: any) => String(c?.sectionId || "").trim() === sid)
         .map((c: any) => ({
           id: String(c?.id || "").trim(),
@@ -2406,7 +2411,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       }
     }
     return categoryOptions.filter((x) => x.id && x.name);
-  }, [selectedSectionId, catalogMode, fsCategories, categoryOptions]);
+  }, [selectedSectionId, catalogMode, coreCategories, categoryOptions]);
 
   const selectedSectionOption = useMemo(
     () =>
@@ -2453,7 +2458,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   const sectionLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    (fsSections || []).forEach((s: any) => {
+    (coreSections || []).forEach((s: any) => {
       const id = String(s?.id || "").trim();
       if (!id) return;
       const label = readDisplayLabel(s, id);
@@ -2461,18 +2466,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     });
     map.set(PACKAGE_SECTION_ID, PACKAGE_SECTION_TITLE);
     return map;
-  }, [fsSections]);
+  }, [coreSections]);
 
   const categoryLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    (fsCategories || []).forEach((c: any) => {
+    (coreCategories || []).forEach((c: any) => {
       const id = String(c?.id || "").trim();
       if (!id) return;
       const label = readDisplayLabel(c, id);
       if (label) map.set(id, label);
     });
     return map;
-  }, [fsCategories]);
+  }, [coreCategories]);
 
   const packageOptions = useMemo(() => {
     const rows = servicesFlat
@@ -2575,22 +2580,37 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (!hasPackage) {
       void (async () => {
         try {
-          const snap = await getDoc(doc(db, "salons", SALON_ID, "service_packages", packageDocId));
-          if (!snap.exists()) return;
-          const raw = snap.data() as any;
-          const fetchedPackage = { id: packageDocId, ...(raw || {}) } as ServicePackageDoc;
+          const [packages, services] = await Promise.all([
+            PackageService.getActive(),
+            listActiveServices({ sectionId: "" }, SALON_ID, "core"),
+          ]);
+          const sourcePackage = (packages || []).find(
+            (pkg) => String(pkg.id || "").trim() === packageDocId
+          );
+          if (!sourcePackage) return;
+
+          const fetchedPackage = mapCorePackageForBooking(
+            sourcePackage,
+            services
+          );
           if (!isServicePackageAvailableForBooking(fetchedPackage)) {
             setOfferLandingMsg("هذا الباكيج غير متاح حالياً أو انتهت صلاحيته.");
             return;
           }
-          setFsPackages((prev) => {
-            if ((prev || []).some((x) => String((x as any)?.id || "").trim() === packageDocId)) return prev;
+          setCorePackages((prev) => {
+            if (
+              (prev || []).some(
+                (item) => String(item?.id || "").trim() === packageDocId
+              )
+            ) {
+              return prev;
+            }
             return [...(prev || []), fetchedPackage];
           });
-          setCatalogMode("firestore");
+          setCatalogMode("core");
           if (autoAdd) setAutoAddPackageId(packagePickerId);
-        } catch {
-          // no-op
+        } catch (error) {
+          console.error("Core package deep-link load failed:", error);
         }
       })();
     }
@@ -2710,8 +2730,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const all = servicesFlat.filter((s) => String(s.sectionId || "").trim() === sid);
     if (!sel) return all;
 
-    if (catalogMode === "firestore") {
-      const hasCats = fsCategories.length > 0;
+    if (catalogMode === "core") {
+      const hasCats = coreCategories.length > 0;
       if (hasCats) {
         return all.filter((s) => String(s.categoryId || "").trim() === sel);
       }
@@ -2719,7 +2739,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     }
 
     return all.filter((s) => String(s.category || "").trim() === sel);
-  }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode, fsCategories.length]);
+  }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode, coreCategories.length]);
 
   const servicesGrouped = useMemo(() => {
     const map = new Map<string, FlatService[]>();
@@ -2780,14 +2800,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (cached) return cached;
 
     try {
-      let raw: any = null;
-      if (useCoreCatalog) {
-        const rows = await listActiveServices({ sectionId: "" }, SALON_ID, "core");
-        raw = (rows || []).find((row: any) => String(row?.id || "").trim() === id) || null;
-      } else {
-        const snap = await getDoc(doc(db, "salons", SALON_ID, "services", id));
-        raw = snap.exists() ? snap.data() : null;
-      }
+      const rows = await listActiveServices(
+        { sectionId: "" },
+        SALON_ID,
+        "core"
+      );
+      const raw: any =
+        (rows || []).find(
+          (row: any) => String(row?.id || "").trim() === id
+        ) || null;
       if (!raw || raw?.active === false) return null;
 
       const name = readDisplayLabel(raw, id);
@@ -2834,7 +2855,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         basePrice: Number.isFinite(priceNum) ? priceNum : 0,
         seasonPrice,
         durationMin,
-        source: "firestore",
+        source: "core",
       };
 
       serviceByIdCacheRef.current[id] = normalized;
@@ -2953,10 +2974,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   };
 
   // Repair an old local booking draft after the Core catalog arrives. Old
-  // drafts can contain Firestore IDs even though the visible service name still
+  // Old drafts can contain stale service IDs even though the visible service name still
   // identifies one canonical Core service.
   useEffect(() => {
-    if (!useCoreCatalog || !servicesFlat.length) return;
+    if (!servicesFlat.length) return;
     setFormData((current) => {
       const currentItems = Array.isArray(current.items) ? current.items : [];
       let changed = false;
@@ -2984,7 +3005,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // servicesFlat is the synchronization boundary; resolver helpers are
     // intentionally derived from the same catalog snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useCoreCatalog, servicesFlat]);
+  }, [servicesFlat]);
 
   const normalizeSpecialty = (v: string) =>
     String(v || "")
@@ -3066,7 +3087,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const getAllActiveStaffCached = async (forceRefresh = false) => {
     const isFresh = Date.now() - Number(staffAllCacheLoadedAtRef.current || 0) < STAFF_DISPLAY_CACHE_TTL_MS;
     if (!forceRefresh && isFresh && Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
-    const all = await listActiveStaffAll(SALON_ID, useCoreCatalog ? "core" : "auto");
+    const all = await listActiveStaffAll(SALON_ID, "core");
     staffAllCacheRef.current = Array.isArray(all) ? all : [];
     staffAllCacheLoadedAtRef.current = Date.now();
     return staffAllCacheRef.current;
@@ -3106,7 +3127,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (!wantedKeys.length) return [] as StaffPublicWithId[];
 
     const loadPromise: Promise<StaffPublicWithId[]> = (async () => {
-      if (useCoreCatalog && target?.kind !== "package") {
+      if (target?.kind !== "package") {
         const directCoreRows = await CoreStaffService.list({
           activeOnly: true,
           serviceId: sid,
@@ -3202,62 +3223,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (useCoreCatalog) {
-      const next: Record<string, any> = {};
-      Object.values(staffByService)
-        .flat()
-        .forEach((staff: any) => {
-          const id = String(staff?.id || "").trim();
-          if (id) next[id] = staff;
-        });
-      setStaffDisplayById(next);
-      return;
-    }
-
-    const ids = Array.from(
-      new Set(
-        Object.values(staffByService)
-          .flat()
-          .map((st: any) => String(st?.id || "").trim())
-          .filter(Boolean)
-      )
-    ).filter((id) => !staffDisplayLoadedIdsRef.current.has(id));
-
-    if (!ids.length) return;
-
-    ids.forEach((id) => staffDisplayLoadedIdsRef.current.add(id));
-
-    async function hydrateStaffDisplay() {
-      const rows = await Promise.all(
-        ids.map(async (id) => {
-          try {
-            const refDoc = doc(db, "salons", SALON_ID, "staff_public", id);
-            const snap = await getDoc(refDoc);
-            if (!snap.exists()) return null;
-            return { id, ...(snap.data() as Record<string, any>) };
-          } catch {
-            return null;
-          }
-        })
-      );
-
-      if (cancelled) return;
-      setStaffDisplayById((prev) => {
-        const next = { ...prev };
-        rows.forEach((row) => {
-          const id = String(row?.id || "").trim();
-          if (id && row) next[id] = { ...(prev[id] || {}), ...row };
-        });
-        return next;
+    const next: Record<string, any> = {};
+    Object.values(staffByService)
+      .flat()
+      .forEach((staff: any) => {
+        const id = String(staff?.id || "").trim();
+        if (id) next[id] = staff;
       });
-    }
-
-    void hydrateStaffDisplay();
-    return () => {
-      cancelled = true;
-    };
+    setStaffDisplayById(next);
   }, [staffByService]);
 
   const isToolsOptionEligibleForService = (sv: FlatService | null) => {
@@ -4365,7 +4338,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             priceText: String(fromCart?.priceText || "").trim(),
             basePrice: Number(fromCart?.basePrice || 0),
             durationMin: Number(fromCart?.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            source: "firestore",
+            source: "core",
           } as FlatService);
         const resolverKey = buildStaffResolverKey(sid, sv);
         const cachedRows = staffByResolverCacheRef.current[resolverKey];
@@ -5662,7 +5635,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         try {
           const empKey = resolveEmployeeKey(it);
 
-          // 1) جلب المحجوز من Firestore (employeeKey + employeeId) بدون fallback
+          // 1) جلب المحجوز من Core للموظفة والتاريخ
           const takenFs = await collectTakenTimesForEmployeeDay({
             salonId: SALON_ID,
             employeeKey: empKey,
@@ -5762,7 +5735,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             slotStepMin,
             durationMin,
             bufferMin,
-            takenAll, // Firestore + cart
+            takenAll, // Core + cart
           });
 
           // disabled = كل وقت داخل slotsForThisService لكنه مو أخضر
@@ -6313,7 +6286,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   // =========================
   // ✅ Slot check for one item
-  // ✅ FIX: فحص تعارض السلة قبل Firestore (employeeKey)
+  // ✅ FIX: فحص تعارض السلة قبل طلب Core
   // =========================
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
@@ -6469,9 +6442,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     // `servicesFlat` contains only the section currently open in the picker.
     // After adding an item the picker can reset, so submit must validate against
     // the full Core catalog rather than the currently visible section only.
-    const allCoreServicesForSubmit = useCoreCatalog
-      ? await listActiveServices({ sectionId: "" }, SALON_ID, "core").catch(() => [])
-      : [];
+    const allCoreServicesForSubmit = await listActiveServices(
+      { sectionId: "" },
+      SALON_ID,
+      "core"
+    ).catch(() => []);
     const coreServiceByIdForSubmit = new Map(
       (allCoreServicesForSubmit || [])
         .map((service: any) => [
@@ -6488,7 +6463,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         let canonicalId = resolveCanonicalServiceId(previousId, previousName);
         let canonicalService = canonicalId ? getServiceById(canonicalId) : null;
 
-        if (useCoreCatalog && !canonicalService) {
+        if (!canonicalService) {
           const directCoreService =
             coreServiceByIdForSubmit.get(canonicalId) ||
             coreServiceByIdForSubmit.get(previousId) ||
@@ -6557,7 +6532,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    if (useCoreCatalog) {
+    {
       const unresolvedService = items.find((item) => {
         const id = String(item.serviceId || "").trim();
         return !id || !getServiceById(id);
@@ -6768,75 +6743,19 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
-    const sessionPackageItems = items.filter((item) => isSessionPackageCartItem(item));
-    const dataSourceFlags = getDataSourceFlags();
-    const useDualD1PackageSaga =
-      dataSourceFlags.useCoreD1 && dataSourceFlags.usePackagesD1;
-    if (sessionPackageItems.length && !useDualD1PackageSaga) {
-      if (!signedUid) {
-        openModal({ title: "التحقق مطلوب", message: "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك.", variant: "danger", confirmText: "حسنًا" });
-        return;
-      }
-      if (items.length !== 1 || sessionPackageItems.length !== 1) {
-        openModal({ title: "حجز جلسة واحدة", message: "استخدام رصيد الباقة يتم لخدمة واحدة في كل عملية لضمان خصم الجلسة وحجز الموعد معًا بأمان.", variant: "danger", confirmText: "حسنًا" });
-        return;
-      }
-      const item = sessionPackageItems[0];
-      const walletOption = sessionPackageOptions.find((p) => p.id === `spkg:${String(item.sessionPackageId || item.packageId || "").trim()}`);
-      const packageBalanceBefore = Math.max(0, Number(walletOption?.remainingSessions || walletOption?.sessionsCount || 0));
-      setIsLoading(true);
-      try {
-        const result = await PackageOperationsService.redeem({
-          clientId: "",
-          clientPackageId: String(item.sessionPackageId || item.packageId || "").trim(),
-          serviceId: String(item.serviceId || "").trim(),
-          employeeId: String(item.employeeId || "").trim(),
-          date: String(item.date || bookingDate || "").trim(),
-          time: String(item.time || "").trim(),
-        });
-        const created = {
-          id: result.bookingId,
-          bookingId: result.bookingId,
-          trackId: result.bookingId,
-          publicId: result.publicId,
-          bookingPublicId: result.publicId,
-          clientPackageId: result.clientPackageId,
-          clientName: customerName,
-          clientPhone: phone,
-          serviceId: item.serviceId,
-          serviceName: item.serviceName,
-          employeeId: item.employeeId,
-          employeeName: item.employeeName,
-          date: item.date || bookingDate,
-          time: item.time,
-          total: 0,
-          finalPrice: 0,
-          paidAmount: 0,
-          paymentType: "none",
-          lineType: "package_redemption",
-          packageRedemptionState: "reserved",
-          packageName: item.sessionPackageName,
-          packageBalanceBefore,
-          packageBalanceAfter: Math.max(0, packageBalanceBefore - 1),
-          status: "confirmed",
-        };
-        localStorage.setItem("allBookings", JSON.stringify([created]));
-        localStorage.setItem("currentBooking", JSON.stringify(created));
-        localStorage.setItem("booking_success_mode", "created");
-        localStorage.removeItem("bookingDraft");
-        setFormData((prev) => ({ ...prev, items: [] }));
-        setSessionPackageOptions((prev) => prev.map((p) => p.id === `spkg:${result.clientPackageId}` ? { ...p, remainingSessions: Math.max(0, Number(p.remainingSessions || 0) - 1), sessionsCount: Math.max(0, Number(p.sessionsCount || 0) - 1) } : p));
-        resetSessionPackageSelection();
-        const successNav = buildSuccessNavigationPayload([created], "created");
-        navigate(successNav.to, { state: { ...successNav.state, packageReceipt: true, settlementLabel: "تمت التسوية من رصيد الباقة", packageName: item.sessionPackageName, packageBalanceBefore, packageBalanceAfter: Math.max(0, packageBalanceBefore - 1) } });
-      } catch (error: any) {
-        openModal({ title: "تعذر استخدام رصيد الباقة", message: String(error?.message || "تعذر إنشاء الحجز."), variant: "danger", confirmText: "حسنًا" });
-      } finally {
-        setIsLoading(false);
-      }
+    const sessionPackageItems = items.filter((item) =>
+      isSessionPackageCartItem(item)
+    );
+    if (sessionPackageItems.length && !signedUid) {
+      openModal({
+        title: "التحقق مطلوب",
+        message:
+          "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك.",
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
       return;
     }
-
 
     setIsLoading(true);
 
@@ -7684,38 +7603,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (sequenceOfferId) usedOfferIds.add(sequenceOfferId);
       }
 
-      const usedPackageIds = new Set<string>();
-      for (const row of createdBookings) {
-        const packageIdRaw = String((row as any)?.packageId || "").trim();
-        if (!packageIdRaw) continue;
-        const packageKind = String((row as any)?.packageSnapshot?.kind || "").trim().toLowerCase();
-        if (packageKind === "session_package") continue;
-        const lower = packageIdRaw.toLowerCase();
-        if (lower.startsWith("offer:")) continue;
-        if (lower.startsWith("package:")) {
-          const cleaned = packageIdRaw.slice("package:".length).trim();
-          if (cleaned) usedPackageIds.add(cleaned);
-          continue;
-        }
-        usedPackageIds.add(packageIdRaw);
-      }
-
-      await Promise.all([
-        ...Array.from(usedOfferIds).map(async (offerId) => {
+      await Promise.all(
+        Array.from(usedOfferIds).map(async (offerId) => {
           try {
             await incrementOfferUsage(SALON_ID, offerId);
           } catch {
-            // ignore usage counter failures
+            // Usage counters are non-blocking.
           }
-        }),
-        ...Array.from(usedPackageIds).map(async (packageId) => {
-          try {
-            await incrementPackageUsage(SALON_ID, packageId);
-          } catch {
-            // ignore usage counter failures
-          }
-        }),
-      ]);
+        })
+      );
 
       const normalizedCreatedBookings = (createdBookings || []).map((row: any) => ({
         ...row,
@@ -7732,7 +7628,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       localStorage.setItem("currentBooking", JSON.stringify(normalizedCreatedBookings[0] || null));
       localStorage.setItem("booking_success_mode", "created");
       localStorage.removeItem("bookingDraft");
-      
+
       {
         const successNav = buildSuccessNavigationPayload(normalizedCreatedBookings, "created");
         navigate(successNav.to, { state: successNav.state });
@@ -7886,7 +7782,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const sv = getServiceById(firstServiceId);
         if (sv?.sectionId) setSelectedSectionId(sv.sectionId);
 
-        if (catalogMode === "firestore") {
+        if (catalogMode === "core") {
           if (sv?.categoryId) setSelectedCategory(String(sv.categoryId));
           else setSelectedCategory("");
         } else {

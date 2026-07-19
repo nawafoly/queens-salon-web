@@ -21,6 +21,7 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const dashboardClientsPage = read("src/pages/DashboardClients.tsx");
   const dashboardBookingsPage = read("src/pages/DashboardBookings.tsx");
   const dashboardReportsPage = read("src/pages/DashboardReports.tsx");
+  const publicBookingPage = read("src/pages/Booking.tsx");
   const packageSessionsManager = read(
     "src/features/internal-booking-v2/PackageSessionsManager.tsx"
   );
@@ -200,6 +201,32 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
     /CoreSettingsService\.get<any>\("app"\)/
   );
   assert.match(dashboardReportsPage, /normalizeCoreStaffPayrollRows/);
+
+  assert.equal(
+    publicBookingPage.includes("firebase/firestore"),
+    false,
+    "Public booking must not import Firestore"
+  );
+  assert.equal(
+    publicBookingPage.includes("firebase/storage"),
+    false,
+    "Public booking must not import Firebase Storage"
+  );
+  assert.equal(
+    publicBookingPage.includes("firestorePackages"),
+    false,
+    "Public booking must not use the legacy package catalog"
+  );
+  assert.equal(
+    publicBookingPage.includes("getDataSourceFlags"),
+    false,
+    "Public booking must not retain a Core/Firestore branch"
+  );
+  assert.match(publicBookingPage, /CoreSettingsService/);
+  assert.match(publicBookingPage, /ClientPortalService\.snapshot/);
+  assert.match(publicBookingPage, /PackageService\.getActive/);
+  assert.match(publicBookingPage, /uploadFileToR2/);
+  assert.match(publicBookingPage, /listActiveSections\(SALON_ID, "core"\)/);
 
   assert.match(packageSessionsManager, /إضافة جلسة لعميلة/);
   assert.match(packageSessionsManager, /CoreClientService\.create/);

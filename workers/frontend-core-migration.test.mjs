@@ -64,15 +64,17 @@ test("booking pages route slot availability through the selected data source", (
   }
 });
 
-test("public booking loads categories and services from Core D1 during Core cutover", () => {
+test("public booking loads catalog, packages, settings and files from Core-only services", () => {
   const source = readFileSync("src/pages/Booking.tsx", "utf8");
-  assert.match(source, /const useCoreCatalog = getDataSourceFlags\(\)\.useCoreD1/);
   assert.match(source, /listActiveCategoriesBySection\(sectionId, SALON_ID, "core"\)/);
   assert.match(source, /listActiveServices\(\{ sectionId \}, SALON_ID, "core"\)/);
-  assert.match(
-    source,
-    /listActiveSections\(\s*SALON_ID,\s*useCoreCatalog\s*\?\s*"core"\s*:\s*"auto"\s*\)/
-  );
+  assert.match(source, /listActiveSections\(SALON_ID, "core"\)/);
+  assert.match(source, /PackageService\.getActive\(\)/);
+  assert.match(source, /CoreSettingsService\.get<any>\("app"\)/);
+  assert.match(source, /ClientPortalService\.snapshot\(\)/);
+  assert.match(source, /uploadFileToR2/);
+  assert.doesNotMatch(source, /firebase\/firestore|firebase\/storage/);
+  assert.doesNotMatch(source, /firestorePackages|createOrLoadUserProfile|getDataSourceFlags/);
 });
 
 test("Core availability service caches per staff day and supports invalidation", () => {
@@ -709,15 +711,13 @@ test("Core worker binds authenticated bookings to the verified client identity",
   assert.match(source, /clientId:\s*selfClient\.id/);
   assert.match(source, /source:\s*"client"/);
 });
-test("public catalog surfaces never require Firestore authentication in Core mode", () => {
+test("public catalog surfaces never require Firestore authentication", () => {
   const booking = readFileSync("src/pages/Booking.tsx", "utf8");
-  assert.match(booking, /const secs = await listActiveSections/);
-  assert.match(booking, /Promise\.allSettled/);
-  assert.match(booking, /useCoreCatalog\s*\?\s*Promise\.resolve<ServicePackageDoc\[]>\(\[\]\)/);
-  assert.doesNotMatch(
-    booking,
-    /Promise\.all\(\[\s*listActiveSections[\s\S]{0,300}listActivePackages/
-  );
+  assert.match(booking, /listActiveSections\(SALON_ID, "core"\)/);
+  assert.match(booking, /PackageService\.getActive\(\)/);
+  assert.match(booking, /loadSectionCatalogFromCore/);
+  assert.doesNotMatch(booking, /firebase\/firestore|firebase\/storage/);
+  assert.doesNotMatch(booking, /getDoc\(|getDocs\(|collection\(db|firestorePackages/);
 
   for (const file of [
     "src/pages/Services.tsx",
@@ -735,12 +735,13 @@ test("public catalog surfaces never require Firestore authentication in Core mod
 test("public booking staff loading is Core-only and cannot keep a stale spinner", () => {
   const source = readFileSync("src/pages/Booking.tsx", "utf8");
   assert.match(source, /CoreStaffService\.list/);
-  assert.match(source, /listActiveStaffAll\(SALON_ID, useCoreCatalog \? "core" : "auto"\)/);
+  assert.match(source, /listActiveStaffAll\(SALON_ID, "core"\)/);
   assert.match(source, /staffRequestVersionRef/);
   assert.match(source, /Always finish the newest request/);
   assert.doesNotMatch(
     source,
     /finally\s*\{\s*if \(!cancelled\)\s*\{\s*setStaffLoadingByService/
   );
-  assert.match(source, /if \(useCoreCatalog\)[\s\S]{0,500}setStaffDisplayById\(next\)/);
+  assert.match(source, /setStaffDisplayById\(next\)/);
+  assert.doesNotMatch(source, /staff_public|firebase\/firestore/);
 });
