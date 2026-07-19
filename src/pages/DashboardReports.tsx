@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import "../styles/AdminDashboardReports.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../services/firebase";
-import { AppSettingsService } from "../services/AppSettingsService";
+import { CoreHrService } from "../services/CoreHrService";
+import { CoreSettingsService } from "../services/CoreSettingsService";
 import { listCoreBookings } from "../services/firestoreBookings";
 import { listAllIncomeCore } from "../services/firestoreIncome";
 import { listAllExpensesCore } from "../services/firestoreExpenses";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
 import type { PaymentMethod } from "../types/finance";
 import {
   buildPayrollExpenseRowsForMonths,
@@ -88,7 +86,6 @@ type BookingMeta = {
   employeeName: string;
 };
 
-const SALON_ID = "main";
 const MONTHS_AR = [
   "يناير",
   "فبراير",
@@ -431,34 +428,186 @@ function monthRangeFromKey(monthKey: string) {
   return { from: toIsoDate(start), to: toIsoDate(end) };
 }
 
-function normalizeStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
+const WEEKDAY_KEY_BY_NUMBER = {
+  0: "sun",
+  1: "mon",
+  2: "tue",
+  3: "wed",
+  4: "thu",
+  5: "fri",
+  6: "sat",
+} as const;
+
+function readRecordValue(record: Record<string, any>, ...keys: string[]) {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) return record[key];
+  }
+  return undefined;
+}
+
+function normalizeCoreStaffPayrollRows(rows: any[]): StaffPayrollSource[] {
   return (Array.isArray(rows) ? rows : [])
-    .map((x) => {
-      const id = String(x?.id || "").trim();
+    .map((employee) => {
+      const id = String(employee?.id || "").trim();
       if (!id) return null;
+
+      const employment =
+        employee?.employment && typeof employee.employment === "object"
+          ? (employee.employment as Record<string, any>)
+          : {};
+      const schedules = Array.isArray(employee?.schedules)
+        ? employee.schedules
+        : [];
+
+      const customWorkingHours: Record<
+        string,
+        { enabled: boolean; start: string; end: string }
+      > = {};
+      schedules.forEach((schedule: any) => {
+        if (schedule?.active === false) return;
+        const weekday = Number(schedule?.weekday);
+        const key =
+          WEEKDAY_KEY_BY_NUMBER[
+            weekday as keyof typeof WEEKDAY_KEY_BY_NUMBER
+          ];
+        if (!key) return;
+        const start = String(
+          schedule?.startTime || schedule?.start_time || ""
+        ).trim();
+        const end = String(
+          schedule?.endTime || schedule?.end_time || ""
+        ).trim();
+        if (!start || !end) return;
+        customWorkingHours[key] = { enabled: true, start, end };
+      });
+
+      const profileStatus = String(employee?.status || "")
+        .trim()
+        .toLowerCase();
+      const employmentStatus = String(
+        readRecordValue(
+          employment,
+          "employmentStatus",
+          "employment_status",
+          "status"
+        ) || ""
+      )
+        .trim()
+        .toLowerCase();
+      const inactiveStatuses = new Set([
+        "inactive",
+        "terminated",
+        "deleted",
+        "archived",
+        "resigned",
+      ]);
+
+      const baseSalaryHalalas = Number(
+        readRecordValue(
+          employment,
+          "baseSalaryHalalas",
+          "base_salary_halalas"
+        ) || 0
+      );
+      const monthlySalary = Number.isFinite(baseSalaryHalalas)
+        ? Math.max(0, baseSalaryHalalas / 100)
+        : 0;
+
       return {
         id,
-        name: String(x?.name || "").trim() || id,
-        active: x?.active !== false,
-        employmentEndDate: String(x?.employmentEndDate || "").trim() || undefined,
-        useCustomWorkingHours: !!x?.useCustomWorkingHours,
-        customWorkingHours: x?.customWorkingHours || {},
-        customWorkingHourOverrides: Array.isArray(x?.customWorkingHourOverrides)
-          ? x.customWorkingHourOverrides
-          : [],
-        monthlySalary: Number(x?.monthlySalary ?? 0) || 0,
+        name: String(employee?.name || "").trim() || id,
+        active:
+          !inactiveStatuses.has(profileStatus) &&
+          !inactiveStatuses.has(employmentStatus),
+        employmentEndDate:
+          String(
+            readRecordValue(
+              employment,
+              "employmentEndDate",
+              "employment_end_date",
+              "endDate",
+              "end_date"
+            ) || ""
+          ).trim() || undefined,
+        useCustomWorkingHours: Object.keys(customWorkingHours).length > 0,
+        customWorkingHours,
+        customWorkingHourOverrides: [],
+        monthlySalary,
         overtimeMethod:
-          String(x?.overtimeMethod || "").trim() === "invoice_percentage"
+          String(
+            readRecordValue(
+              employment,
+              "overtimeMethod",
+              "overtime_method"
+            ) || ""
+          ).trim() === "invoice_percentage"
             ? "invoice_percentage"
             : "hours_from_salary",
-        overtimeDaysPerMonth: Number(x?.overtimeDaysPerMonth ?? 30) || 30,
-        overtimeBaseHoursPerDay: Number(x?.overtimeBaseHoursPerDay ?? 8) || 8,
-        overtimeSeasonBaseHoursPerDay: Number(x?.overtimeSeasonBaseHoursPerDay ?? 6) || 6,
-        autoSeasonOvertimeBasis: x?.autoSeasonOvertimeBasis === true,
+        overtimeDaysPerMonth:
+          Number(
+            readRecordValue(
+              employment,
+              "overtimeDaysPerMonth",
+              "overtime_days_per_month",
+              "expectedWorkDays",
+              "expected_work_days"
+            ) ?? 30
+          ) || 30,
+        overtimeBaseHoursPerDay:
+          Number(
+            readRecordValue(
+              employment,
+              "overtimeBaseHoursPerDay",
+              "overtime_base_hours_per_day"
+            ) ?? 8
+          ) || 8,
+        overtimeSeasonBaseHoursPerDay:
+          Number(
+            readRecordValue(
+              employment,
+              "overtimeSeasonBaseHoursPerDay",
+              "overtime_season_base_hours_per_day"
+            ) ?? 6
+          ) || 6,
+        autoSeasonOvertimeBasis:
+          readRecordValue(
+            employment,
+            "autoSeasonOvertimeBasis",
+            "auto_season_overtime_basis"
+          ) === true ||
+          Number(
+            readRecordValue(
+              employment,
+              "autoSeasonOvertimeBasis",
+              "auto_season_overtime_basis"
+            )
+          ) === 1,
         overtimeHoursBasis:
-          String(x?.overtimeHoursBasis || "").trim() === "season" ? "season" : "regular",
-        overtimePercent: Number(x?.overtimePercent ?? 0) || 0,
-        overtimeInvoicePercent: Number(x?.overtimeInvoicePercent ?? 0) || 0,
+          String(
+            readRecordValue(
+              employment,
+              "overtimeHoursBasis",
+              "overtime_hours_basis"
+            ) || ""
+          ).trim() === "season"
+            ? "season"
+            : "regular",
+        overtimePercent:
+          Number(
+            readRecordValue(
+              employment,
+              "overtimePercent",
+              "overtime_percent"
+            ) ?? 0
+          ) || 0,
+        overtimeInvoicePercent:
+          Number(
+            readRecordValue(
+              employment,
+              "overtimeInvoicePercent",
+              "overtime_invoice_percent"
+            ) ?? 0
+          ) || 0,
       } as StaffPayrollSource;
     })
     .filter(Boolean) as StaffPayrollSource[];
@@ -594,50 +743,6 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
 }
 
-function loadCollectionOnce(
-  ref: any,
-  onNext: (snap: any) => void,
-  onError?: (err: any) => void
-) {
-  let active = true;
-  void getDocs(ref)
-    .then((snap) => {
-      if (!active) return;
-      onNext(snap);
-    })
-    .catch((err) => {
-      if (!active) return;
-      onError?.(err);
-    });
-  return () => {
-    active = false;
-  };
-}
-
-function loadAppSettingsOnce(
-  onNext: (settings: any) => void,
-  onError?: (err: any) => void
-) {
-  let active = true;
-  void AppSettingsService.fetchRemote()
-    .then((remote) => {
-      if (!active) return;
-      FirestoreReadStats.bump(
-        `salons/${SALON_ID}/settings/app`,
-        "DashboardReports.settings.fetchRemote",
-        "getDoc"
-      );
-      onNext(remote || {});
-    })
-    .catch((err) => {
-      if (!active) return;
-      onError?.(err);
-    });
-  return () => {
-    active = false;
-  };
-}
-
 export default function DashboardReports() {
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [selectedMonth, setSelectedMonth] = useState(toMonthKey(new Date()));
@@ -652,7 +757,7 @@ export default function DashboardReports() {
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [staffRows, setStaffRows] = useState<StaffPayrollSource[]>([]);
-  const [appSettings, setAppSettings] = useState<any>(() => AppSettingsService.getCached?.() || {});
+  const [appSettings, setAppSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastSyncMs, setLastSyncMs] = useState<number>(Date.now());
   const [loadErr, setLoadErr] = useState("");
@@ -794,41 +899,41 @@ export default function DashboardReports() {
     refreshFinancialData();
     const refreshTimer = globalThis.setInterval(refreshFinancialData, 12_000);
 
-    const staffQ = collection(db, "salons", SALON_ID, "staff_public");
-    const unsubStaff = loadCollectionOnce(
-      staffQ,
-      (snap) => {
-        const source = "DashboardReports.staff_public.getDocs";
-        snap.docs.forEach((d: any) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "getDocs");
-        });
-        setStaffRows(normalizeStaffPayrollRows(snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }))));
+    const loadStaffData = async () => {
+      try {
+        const employees = await CoreHrService.listEmployees();
+        if (!active) return;
+        setStaffRows(normalizeCoreStaffPayrollRows(employees));
         setLastSyncMs(Date.now());
-        readyOnce("staff");
-      },
-      (error) => {
-        appendLoadError("تعذر تحميل الموظفات", error);
-        readyOnce("staff");
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل الموظفات", error);
+      } finally {
+        if (active) readyOnce("staff");
       }
-    );
+    };
 
-    const unsubSettings = loadAppSettingsOnce(
-      (remote: any) => {
-        setAppSettings(remote || {});
+    const loadSettingsData = async () => {
+      try {
+        const setting = await CoreSettingsService.get<any>("app");
+        if (!active) return;
+        if (!setting) {
+          throw new Error("SETTINGS_D1_NOT_FOUND");
+        }
+        setAppSettings(setting.value || {});
         setLastSyncMs(Date.now());
-        readyOnce("settings");
-      },
-      (error) => {
-        appendLoadError("تعذر تحميل الإعدادات", error);
-        readyOnce("settings");
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل الإعدادات", error);
+      } finally {
+        if (active) readyOnce("settings");
       }
-    );
+    };
+
+    void loadStaffData();
+    void loadSettingsData();
 
     return () => {
       active = false;
       globalThis.clearInterval(refreshTimer);
-      unsubStaff();
-      try { unsubSettings?.(); } catch { /* noop */ }
     };
   }, []);
 

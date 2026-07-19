@@ -20,6 +20,7 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   const dashboardOffersPage = read("src/pages/DashboardOffers.tsx");
   const dashboardClientsPage = read("src/pages/DashboardClients.tsx");
   const dashboardBookingsPage = read("src/pages/DashboardBookings.tsx");
+  const dashboardReportsPage = read("src/pages/DashboardReports.tsx");
   const packageSessionsManager = read(
     "src/features/internal-booking-v2/PackageSessionsManager.tsx"
   );
@@ -167,6 +168,38 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
   assert.match(dashboardBookingsPage, /CoreClientService\.overview/);
   assert.match(dashboardBookingsPage, /CoreAuditService\.list/);
   assert.match(dashboardBookingsPage, /CoreRefundService/);
+
+  assert.equal(
+    dashboardReportsPage.includes("firebase/firestore"),
+    false,
+    "Dashboard reports must not import Firestore"
+  );
+  assert.equal(
+    dashboardReportsPage.includes("../services/firebase"),
+    false,
+    "Dashboard reports must not access Firebase data services"
+  );
+  assert.equal(
+    dashboardReportsPage.includes("AppSettingsService"),
+    false,
+    "Dashboard reports must read settings from Core D1 directly"
+  );
+  assert.equal(
+    dashboardReportsPage.includes("FirestoreReadStats"),
+    false,
+    "Dashboard reports must not track Firestore reads"
+  );
+  assert.equal(
+    dashboardReportsPage.includes("staff_public"),
+    false,
+    "Dashboard reports must not read legacy staff_public"
+  );
+  assert.match(dashboardReportsPage, /CoreHrService\.listEmployees\(\)/);
+  assert.match(
+    dashboardReportsPage,
+    /CoreSettingsService\.get<any>\("app"\)/
+  );
+  assert.match(dashboardReportsPage, /normalizeCoreStaffPayrollRows/);
 
   assert.match(packageSessionsManager, /إضافة جلسة لعميلة/);
   assert.match(packageSessionsManager, /CoreClientService\.create/);

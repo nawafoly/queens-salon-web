@@ -310,16 +310,24 @@ test("Core refunds are exposed as negative revenue and excluded from expenses", 
   assert.match(cleanupMigration, /DELETE FROM expense_entries/i);
 });
 
-test("dashboard reports read bookings and finance from explicit Core D1 sources", () => {
+test("dashboard reports read finance, staff and settings from explicit Core D1 sources", () => {
   const reports = readFileSync("src/pages/DashboardReports.tsx", "utf8");
   assert.match(reports, /listCoreBookings\(\)/);
   assert.match(reports, /listAllIncomeCore\(\)/);
   assert.match(reports, /listAllExpensesCore\(\)/);
+  assert.match(reports, /CoreHrService\.listEmployees\(\)/);
+  assert.match(reports, /CoreSettingsService\.get<any>\("app"\)/);
+  assert.match(reports, /normalizeCoreStaffPayrollRows/);
   assert.match(reports, /return Number\(item\.amount \|\| 0\)/);
+  assert.doesNotMatch(reports, /firebase\/firestore/);
+  assert.doesNotMatch(reports, /services\/firebase/);
+  assert.doesNotMatch(reports, /AppSettingsService/);
+  assert.doesNotMatch(reports, /FirestoreReadStats/);
+  assert.doesNotMatch(reports, /staff_public/);
   assert.doesNotMatch(reports, /listAllIncomeFS\(/);
   assert.doesNotMatch(reports, /listAllExpensesFS\(/);
-  assert.doesNotMatch(reports, /const bookingsQ = collection\(db, "salons", SALON_ID, "bookings"\)/);
-  assert.doesNotMatch(reports, /const incomeQ = collection\(db, "salons", SALON_ID, "income"\)/);
+  assert.doesNotMatch(reports, /collection\(db/);
+  assert.doesNotMatch(reports, /getDocs\(/);
 });
 
 test("dashboard income totals each payment row without replacing it with the full booking paid total", () => {

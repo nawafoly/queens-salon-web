@@ -63,6 +63,18 @@ const forbiddenChecks = [
       /CLIENTS_COLLECTION/,
     ],
   },
+  {
+    file: "src/pages/DashboardReports.tsx",
+    forbidden: [
+      /firebase\/firestore/,
+      /services\/firebase/,
+      /AppSettingsService/,
+      /FirestoreReadStats/,
+      /staff_public/,
+      /collection\(db/,
+      /getDocs\(/,
+    ],
+  },
 ];
 
 const requiredChecks = [
@@ -85,6 +97,17 @@ const requiredChecks = [
   {
     file: "src/pages/DashboardClients.tsx",
     required: [/listCoreBookings/, /CoreClientService/],
+  },
+  {
+    file: "src/pages/DashboardReports.tsx",
+    required: [
+      /listCoreBookings\(\)/,
+      /listAllIncomeCore\(\)/,
+      /listAllExpensesCore\(\)/,
+      /CoreHrService\.listEmployees\(\)/,
+      /CoreSettingsService\.get<any>\("app"\)/,
+      /normalizeCoreStaffPayrollRows/,
+    ],
   },
   {
     file: "src/services/firestoreBookings.ts",
