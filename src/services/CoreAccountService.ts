@@ -90,9 +90,12 @@ export const CoreAccountService = {
     return coreApiRequest<CoreAuthMe>("/api/auth/me");
   },
 
-  list(includeDeleted = false) {
+  list(includeDeleted = false, scope: "all" | "internal" = "all") {
     return coreApiRequest<CoreAccount[]>("/api/admin/accounts", {
-      query: includeDeleted ? { includeDeleted: true } : undefined,
+      query: {
+        ...(includeDeleted ? { includeDeleted: true } : {}),
+        ...(scope === "internal" ? { scope: "internal" } : {}),
+      },
     });
   },
 

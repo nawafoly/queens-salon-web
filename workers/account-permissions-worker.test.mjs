@@ -80,6 +80,7 @@ async function seedAccounts(db) {
     ["user-admin-target", "uid-admin-target", "admin-target@example.com", "Admin Target", "admin", "active"],
     ["user-disabled", "uid-disabled", "disabled@example.com", "Disabled", "admin", "disabled"],
     ["user-pending", "uid-pending", "pending@example.com", "Pending", "pending", "pending"],
+    ["user-client", "uid-client", "client@example.com", "Client", "client", "active"],
     ["user-deleted", "uid-deleted", "deleted@example.com", "Deleted", "staff", "deleted"],
   ];
   for (const row of rows) {
@@ -113,6 +114,27 @@ test("/api/auth/me is D1-authoritative and rejects non-active app_users", async 
     assert.equal(response.status, 403, JSON.stringify(body));
     assert.equal(body.error, code);
   }
+});
+
+test("internal account scope excludes client identities from account management", async (t) => {
+  const { env: testEnv } = await setup(t);
+
+  let response = await worker.fetch(req("/api/admin/accounts"), testEnv);
+  let body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.ok(body.data.some((account) => account.id === "user-client"));
+
+  response = await worker.fetch(
+    req("/api/admin/accounts?scope=internal&includeDeleted=true"),
+    testEnv
+  );
+  body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.ok(!body.data.some((account) => ["client", "guest"].includes(account.role)));
+  assert.ok(body.data.some((account) => account.id === "user-staff"));
+  assert.ok(body.data.some((account) => account.id === "user-deleted"));
 });
 
 test("account APIs enforce owner protection, last-owner safety and permission-grant boundaries", async (t) => {

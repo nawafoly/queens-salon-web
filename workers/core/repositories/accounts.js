@@ -328,10 +328,14 @@ async function accountBeforeBundle(db, salonId, target) {
 
 export async function listAccounts(db, salonId, query = {}) {
   const includeDeleted = cleanText(query.includeDeleted || query.include_deleted).toLowerCase() === 'true';
+  const scope = cleanText(query.scope).toLowerCase();
+  const internalOnly = scope === 'internal';
   const rows = await dbAll(
     db,
     `SELECT * FROM app_users
-      WHERE salon_id = ? ${includeDeleted ? '' : "AND status <> 'deleted' AND deleted_at IS NULL"}
+      WHERE salon_id = ?
+        ${includeDeleted ? '' : "AND status <> 'deleted' AND deleted_at IS NULL"}
+        ${internalOnly ? "AND primary_role NOT IN ('client', 'guest')" : ''}
       ORDER BY
         CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 WHEN 'disabled' THEN 2 ELSE 3 END,
         display_name COLLATE NOCASE,

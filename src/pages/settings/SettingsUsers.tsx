@@ -214,7 +214,7 @@ export default function SettingsUsers({
     try {
       const [mePayload, accountRows, roleRows, permissionRows] = await Promise.all([
         CoreAccountService.me(),
-        CoreAccountService.list(true),
+        CoreAccountService.list(true, "internal"),
         CoreAccountService.roles().catch(() => FALLBACK_ROLES),
         CoreAccountService.permissions().catch(() => []),
       ]);
