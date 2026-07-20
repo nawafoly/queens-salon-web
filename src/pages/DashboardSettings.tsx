@@ -4,13 +4,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-
-import { auth, db } from "../services/firebase";
 import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 import { readStoredAuthSession } from "../services/localAuthSession";
+import { normalizeAuthRole } from "../services/authAccess";
 import PermissionRoute from "../components/PermissionRoute";
 import { usePermissions } from "../security/PermissionContext";
 
@@ -35,28 +32,17 @@ import {
 type UiRole =
   | "owner"
   | "admin"
+  | "hr"
+  | "accountant"
   | "reception"
   | "staff"
   | "pending"
   | "client"
   | "guest";
 
-function mapFirestoreRoleToUi(roleRaw: string): UiRole {
-  const role = String(roleRaw || "").toLowerCase().trim();
-  if (role === "owner") return "owner";
-  if (role === "admin") return "admin";
-  if (role === "reception") return "reception";
-  if (role === "staff") return "staff";
-  if (role === "pending") return "pending";
-  if (role === "client") return "client";
-  return "guest";
+function mapRoleToUi(roleRaw: unknown): UiRole {
+  return normalizeAuthRole(roleRaw);
 }
-
-/* =========================
-   Collections
-========================= */
-const SALON_ID = "main";
-const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
 type DashboardSettingsProps = {
   initialRole?: UiRole | string;
@@ -76,10 +62,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   authReady,
   settings: settingsProp,
 }) => {
-  const [uiRole, setUiRole] = useState<UiRole>(mapFirestoreRoleToUi(initialRole ?? "guest"));
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const [uiRole, setUiRole] = useState<UiRole>(mapRoleToUi(initialRole ?? readStoredAuthSession()?.role ?? "guest"));
+  const { hasPermission, hasAnyPermission, role: permissionRole } = usePermissions();
   const [authLoading, setAuthLoading] = useState(() =>
-    typeof authReady === "boolean" ? !authReady : true
+    typeof authReady === "boolean" ? !authReady : false
   );
 
   const canManageGeneralSettings = hasPermission("settings.general.manage");
@@ -205,10 +191,8 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   );
 
   useEffect(() => {
-    if (typeof initialRole !== "undefined") {
-      setUiRole(mapFirestoreRoleToUi(initialRole));
-    }
-  }, [initialRole]);
+    setUiRole(mapRoleToUi(initialRole ?? permissionRole ?? readStoredAuthSession()?.role ?? "guest"));
+  }, [initialRole, permissionRole]);
 
   useEffect(() => {
     if (typeof authReady === "boolean") {
@@ -225,52 +209,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const allowAdminManageUsers = Boolean(
     (settings as any)?.policies?.allowAdminManageUsers
   );
-
-
-  /* =========================
-     Auth & Role
-     - فقط قراءة الدور من salons/main/users/{uid}
-  ========================= */
-  useEffect(() => {
-    if (typeof initialRole !== "undefined" && typeof authReady === "boolean") {
-      return;
-    }
-
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setAuthLoading(true);
-
-      try {
-        const localSession = readStoredAuthSession();
-
-        if (!user) {
-          if (localSession?.role) {
-            setUiRole(localSession.role as UiRole);
-          } else {
-            setUiRole("guest");
-          }
-          return;
-        }
-
-        const userRef = doc(db, ...USERS_COLLECTION, user.uid);
-        const snap = await getDoc(userRef);
-
-        if (!snap.exists()) {
-          setUiRole("guest");
-          return;
-        }
-
-        const data = snap.data() as any;
-        setUiRole(mapFirestoreRoleToUi(data?.role));
-      } catch (e) {
-        console.error("Settings role load error:", e);
-        setUiRole("guest");
-      } finally {
-        setAuthLoading(false);
-      }
-    });
-
-    return () => unsub();
-  }, [initialRole, authReady]);
 
   // App settings subscribe
   useEffect(() => {

@@ -17,10 +17,7 @@ import { writeAuditLog } from "./logService";
 import { normalizeAuthRole } from "./authAccess";
 import { writeStoredAuthSession } from "./localAuthSession";
 import {
-  buildPermissionOverrides,
   PERMISSION_SCHEMA_VERSION,
-  getEffectiveAppPermissions,
-  getRoleAppPermissions,
   normalizePermissionOverrides,
   type AppPermission,
   type PermissionOverrides,
@@ -30,6 +27,7 @@ export type UiRole =
   | "owner"
   | "admin"
   | "hr"
+  | "accountant"
   | "reception"
   | "staff"
   | "client"
@@ -62,8 +60,9 @@ export type UserProfile = {
 
 const SALON_ID = "main";
 
-// ✅ salons/main/users/{uid} (Source of Truth)
+// Legacy client profile mirror. D1 app_users is the operational identity source.
 function salonUserRef(uid: string) {
+  // Legacy client profile only; D1 app_users owns operational identity.
   return doc(db, "salons", SALON_ID, "users", uid);
 }
 
@@ -203,7 +202,7 @@ async function consumeInvite(params: {
 
 /**
  * ✅ createOrLoadUserProfile (FINAL ✅ + Invites ✅)
- * - Source of Truth: salons/main/users/{uid}
+ * - Legacy client profile mirror: salons/main/users/{uid}
  * - If missing users doc:
  *    1) إن وجد invite بالإيميل => role/active منها
  *    2) غير ذلك => client (AUTO)
@@ -231,12 +230,7 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
     const active = data?.active !== false && data?.isActive !== false;
     const role = normalizeRole(data?.role);
     const permissionOverrides = normalizePermissionOverrides(data?.permissionOverrides);
-    const permissions = getEffectiveAppPermissions({
-      role,
-      permissions: data?.permissions,
-      permissionOverrides,
-      permissionVersion: data?.permissionVersion,
-    });
+    const permissions: AppPermission[] = [];
 
     const dataName = safeStr(data?.name).trim();
     const dataDisplayName = safeStr(data?.displayName).trim();
@@ -337,9 +331,6 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
       if (invite) {
         inviteId = invite.id;
         inviteData = invite.data;
-        const invRole = normalizeRole(inviteData?.role);
-        if (invRole !== "guest") role = invRole;
-
         active = inviteData?.active !== false;
 
         // ✅ لو الدعوة غير مفعلة => Pending
@@ -351,20 +342,8 @@ export async function createOrLoadUserProfile(user: User): Promise<UserProfile> 
   }
 
   const name = authDisplayName || buildPersistedDefaultName(role);
-  const permissionOverrides = normalizePermissionOverrides(inviteData?.permissionOverrides);
-  const invitePermissions =
-    inviteData
-      ? getEffectiveAppPermissions({
-          role,
-          permissions: inviteData.permissions,
-          permissionOverrides,
-          permissionVersion: (inviteData as any)?.permissionVersion,
-        })
-      : [];
-  const permissions = invitePermissions.length ? invitePermissions : getRoleAppPermissions(role);
-  const finalPermissionOverrides = invitePermissions.length
-    ? permissionOverrides
-    : buildPermissionOverrides(role, permissions);
+  const permissions: AppPermission[] = [];
+  const finalPermissionOverrides = normalizePermissionOverrides(undefined);
 
   const membershipId =
     role === "client"
@@ -508,7 +487,7 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
 }
 
 export function canAccessDashboard(role: UiRole): boolean {
-  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
+  return role === "owner" || role === "admin" || role === "hr" || role === "accountant" || role === "reception" || role === "staff";
 }
 
 // ✅ DEV ONLY: quick whoami

@@ -43,7 +43,7 @@ import type { CoreClient } from "../types/coreApi";
  * الدفعات والاسترجاعات، والعروض المستخدمة.
  */
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "guest";
 
 type AppSettings = {
   policies?: { allowStaffViewClients?: boolean };
@@ -132,7 +132,7 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
   const copyTimer = useRef<number | null>(null);
 
   const allowStaffViewClients = settings.policies?.allowStaffViewClients === true;
-  const canViewClients = currentRole === "owner" || currentRole === "admin" || currentRole === "reception" || (currentRole === "staff" && allowStaffViewClients);
+  const canViewClients = currentRole === "owner" || currentRole === "admin" || currentRole === "hr" || currentRole === "accountant" || currentRole === "reception" || (currentRole === "staff" && allowStaffViewClients);
   const canImport = currentRole === "owner" || currentRole === "admin";
   const canExport = currentRole === "owner" || currentRole === "admin";
 

@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-packages-api",
   "main": "workers/packages/index.js",
@@ -17,6 +17,12 @@
       "database_name": "queens-salon-packages",
       "database_id": "43355998-5b66-4004-9483-7f2ca946a208",
       "migrations_dir": "migrations/packages"
+    },
+    {
+      "binding": "CORE_DB",
+      "database_name": "queens-salon-core",
+      "database_id": "d0565103-0b29-490d-8c10-c955e8d65c4a",
+      "migrations_dir": "migrations/core"
     }
   ],
   "vars": {

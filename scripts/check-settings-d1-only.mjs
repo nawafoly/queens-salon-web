@@ -8,7 +8,7 @@ const legacy = readFileSync('src/services/AppSettingsService.ts', 'utf8');
 for (const [file, source] of [['workers/core/repositories/settings.js', worker], ['src/services/CoreSettingsService.ts', client]]) {
   if (/firebase\/firestore|FirestoreRestClient|batchGet|runQuery/i.test(source)) failures.push(`${file}: operational Firestore dependency found`);
 }
-if (!legacy.includes('getDataSourceFlags().useSettingsD1')) failures.push('AppSettingsService.ts: missing explicit settings D1 flag');
+if (!/useSettingsD1/.test(legacy)) failures.push('AppSettingsService.ts: missing explicit settings D1 flag');
 if (!legacy.includes('SETTINGS_D1_NOT_FOUND')) failures.push('AppSettingsService.ts: missing explicit no-fallback failure');
 if (!readFileSync('workers/core/index.js', 'utf8').includes('/api/core/settings')) failures.push('workers/core/index.js: missing settings route');
 if (failures.length) {

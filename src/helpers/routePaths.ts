@@ -7,7 +7,7 @@ export function resolveInternalPostLoginRoute(
 
   if (normalized === "staff") return "/employee/overview";
   if (normalized === "hr") return "/admin";
-  if (normalized === "owner" || normalized === "admin" || normalized === "reception") {
+  if (normalized === "owner" || normalized === "admin" || normalized === "accountant" || normalized === "reception") {
     return "/dashboard";
   }
   if (normalized === "pending") return "/dashboard-pending";

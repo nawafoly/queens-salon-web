@@ -2,9 +2,11 @@ export type UserRole =
   | "owner"
   | "admin"
   | "hr"
+  | "accountant"
   | "reception"
   | "staff"
   | "pending"
+  | "client"
   | "guest";
 
 export type LegacyPermission =
@@ -88,6 +90,20 @@ export type AppPermission =
   | "settings.content.manage"
   | "admin_accounts.view"
   | "admin_accounts.manage"
+  | "accounts.read"
+  | "accounts.create"
+  | "accounts.update"
+  | "accounts.disable"
+  | "accounts.restore"
+  | "accounts.delete"
+  | "accounts.reset_password"
+  | "roles.read"
+  | "roles.assign"
+  | "roles.manage"
+  | "permissions.read"
+  | "employee_links.read"
+  | "employee_links.manage"
+  | "audit.read"
   | "permissions.manage";
 
 export type Permission = LegacyPermission | AppPermission;
@@ -176,6 +192,7 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "messages.view", label: "عرض الرسائل", hint: "عرض الرسائل الداخلية المرتبطة بالعمل.", group: "reports", action: "view", sensitive: true },
   { key: "messages.manage", label: "إدارة الرسائل", hint: "إرسال وإدارة ومراجعة الرسائل الداخلية.", group: "reports", action: "manage", sensitive: true },
   { key: "logs.view", label: "عرض سجل الحركات", hint: "عرض السجل التدقيقي للعمليات الحساسة.", group: "reports", action: "view", sensitive: true },
+  { key: "audit.read", label: "قراءة سجل التدقيق", hint: "قراءة سجل العمليات الحساسة من D1.", group: "reports", action: "view", sensitive: true },
 
   { key: "catalog.manage", label: "إدارة الكتالوج", hint: "إدارة الخدمات والأقسام والفئات والباقات.", group: "content", action: "manage" },
   { key: "offers.manage", label: "إدارة العروض والكوبونات", hint: "إنشاء وتعديل العروض والكوبونات.", group: "content", action: "manage" },
@@ -187,7 +204,20 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "settings.content.manage", label: "إعدادات المحتوى", hint: "تعديل إعدادات ظهور المحتوى العام.", group: "system", action: "manage" },
   { key: "admin_accounts.view", label: "عرض الحسابات الإدارية", hint: "عرض الحسابات والأدوار والصلاحيات.", group: "system", action: "view", sensitive: true },
   { key: "admin_accounts.manage", label: "إدارة الحسابات الإدارية", hint: "إنشاء وتعطيل وتعديل الحسابات الإدارية.", group: "system", action: "manage", sensitive: true },
+  { key: "accounts.read", label: "قراءة الحسابات", hint: "عرض حسابات التطبيق من D1.", group: "system", action: "view", sensitive: true },
+  { key: "accounts.create", label: "إنشاء حساب", hint: "إنشاء سجل حساب تشغيلي في D1.", group: "system", action: "create", sensitive: true },
+  { key: "accounts.update", label: "تعديل حساب", hint: "تعديل بيانات الحساب والدور والحالة.", group: "system", action: "update", sensitive: true },
+  { key: "accounts.disable", label: "تعطيل حساب", hint: "منع الحساب من الدخول للمنصة.", group: "system", action: "manage", sensitive: true },
+  { key: "accounts.restore", label: "استعادة حساب", hint: "إعادة تفعيل حساب معطل.", group: "system", action: "manage", sensitive: true },
+  { key: "accounts.delete", label: "حذف حساب", hint: "حذف منطقي لسجل الحساب في D1.", group: "system", action: "delete", sensitive: true },
+  { key: "accounts.reset_password", label: "إرسال رابط إعادة كلمة المرور", hint: "إرسال رابط Firebase بعد تحقق صلاحية Cloudflare.", group: "system", action: "use", sensitive: true },
+  { key: "roles.read", label: "قراءة الأدوار", hint: "عرض كتالوج الأدوار.", group: "system", action: "view", sensitive: true },
+  { key: "roles.assign", label: "إسناد الأدوار", hint: "تغيير دور حساب ضمن صلاحيات المنفذ.", group: "system", action: "manage", sensitive: true },
+  { key: "roles.manage", label: "إدارة الأدوار", hint: "إدارة إعدادات الأدوار وصلاحياتها.", group: "system", action: "manage", sensitive: true },
+  { key: "permissions.read", label: "قراءة الصلاحيات", hint: "عرض كتالوج الصلاحيات.", group: "system", action: "view", sensitive: true },
   { key: "permissions.manage", label: "إدارة الصلاحيات", hint: "منح وسحب الصلاحيات التفصيلية. أعلى صلاحية إدارية.", group: "system", action: "manage", sensitive: true },
+  { key: "employee_links.read", label: "قراءة روابط الموظفات", hint: "عرض ربط الحساب بملف الموظفة.", group: "system", action: "view", sensitive: true },
+  { key: "employee_links.manage", label: "إدارة روابط الموظفات", hint: "ربط وفصل الحساب عن ملف الموظفة.", group: "system", action: "manage", sensitive: true },
 
   // مفاتيح توافق مؤقتة مع أجزاء الواجهة القديمة. لا تظهر في المحرر الجديد.
   { key: "employees.manage", label: "إدارة الموظفين (توافق)", hint: "مفتاح قديم للتوافق حتى اكتمال ترحيل الواجهات.", group: "workforce", action: "manage", visible: false },
@@ -224,9 +254,11 @@ const ROLE_PERMISSIONS: Record<UserRole, LegacyPermission[]> = {
     "REPORTS_VIEW",
   ],
   hr: ["BOOKINGS_VIEW", "EMPLOYEES_MANAGE", "REPORTS_VIEW", "USERS_MANAGE"],
+  accountant: ["REPORTS_VIEW"],
   reception: ["BOOKINGS_VIEW", "BOOKINGS_UPDATE_STATUS", "BOOKINGS_ADD_NOTES"],
   staff: ["BOOKINGS_VIEW"],
   pending: [],
+  client: [],
   guest: [],
 };
 
@@ -292,6 +324,18 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "settings.booking.manage",
     "settings.content.manage",
     "admin_accounts.view",
+    "accounts.read",
+    "accounts.create",
+    "accounts.update",
+    "accounts.disable",
+    "accounts.restore",
+    "accounts.reset_password",
+    "roles.read",
+    "roles.assign",
+    "permissions.read",
+    "employee_links.read",
+    "employee_links.manage",
+    "audit.read",
   ],
   hr: [
     "workspace.employee_portal.view",
@@ -319,6 +363,24 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "messages.manage",
     "admin_accounts.view",
     "admin_accounts.manage",
+    "accounts.read",
+    "accounts.update",
+    "roles.read",
+    "permissions.read",
+    "employee_links.read",
+    "employee_links.manage",
+  ],
+  accountant: [
+    "workspace.dashboard.view",
+    "workspace.employee_portal.view",
+    "income.view",
+    "income.manage",
+    "expenses.view",
+    "expenses.manage",
+    "reports.view",
+    "reports.export",
+    "logs.view",
+    "audit.read",
   ],
   reception: [
     "workspace.dashboard.view",
@@ -340,6 +402,7 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
   ],
   staff: [...COMMON_INTERNAL],
   pending: [],
+  client: [],
   guest: [],
 };
 
@@ -361,8 +424,10 @@ export function getUserRole(rawRole?: string): UserRole {
     raw === "مسؤول موارد بشرية" ||
     raw === "مسؤولة موارد بشرية"
   ) return "hr";
+  if (raw === "accountant" || raw === "accounting" || raw === "finance" || raw === "محاسب" || raw === "المحاسب") return "accountant";
   if (raw === "reception" || raw === "receptionist" || raw === "frontdesk" || raw === "desk") return "reception";
   if (raw === "staff") return "staff";
+  if (raw === "client") return "client";
 
   return "guest";
 }

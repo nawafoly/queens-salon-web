@@ -6,7 +6,7 @@
 // Any Firestore migration code must remain isolated in one-time migration scripts.
 
 import { AppError } from './errors.js';
-import { authenticateRequest, resolveActorRole } from './auth.js';
+import { authenticateRequest, resolveActorContext } from './auth.js';
 import {
   DEFAULT_ALLOWED_ORIGINS,
   cleanText,
@@ -83,8 +83,19 @@ export async function withActor(request, env, body) {
   const identity = await authenticateRequest(request, env);
   const salonId = getSalonId(body || {}, env);
   if (!env.PACKAGES_DB) throw new AppError(503, "packages_d1:not_configured", "Packages D1 database is not configured");
-  const role = await resolveActorRole(env, salonId, identity);
-  return { identity, packagesDb: env.PACKAGES_DB, salonId, role, unifiedCore: env.PACKAGES_UNIFIED_CORE === "true" };
+  const auth = await resolveActorContext(env, salonId, identity);
+  return {
+    identity,
+    packagesDb: env.PACKAGES_DB,
+    coreDb: env.CORE_DB,
+    salonId,
+    role: auth.role,
+    permissions: auth.permissions,
+    user: auth.user,
+    employeeLink: auth.employeeLink,
+    employeeId: auth.employeeId,
+    unifiedCore: env.PACKAGES_UNIFIED_CORE === "true",
+  };
 }
 
 async function updateClientPackageAdminD1(ctx, data) {

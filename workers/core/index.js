@@ -1,6 +1,5 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 
-import { resolveActorRole, verifyFirebaseIdToken } from '../packages/auth.js';
 import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
 import { expireClientPackagesD1 } from '../packages/d1.js';
 import {
@@ -12,6 +11,7 @@ import {
   requiredId,
 } from './d1.js';
 import { AppError, normalizeError } from './errors.js';
+import { getAuthContext } from './auth-context.js';
 import {
   createClient,
   getClient,
@@ -109,9 +109,27 @@ import { getSetting, listSettings, upsertSetting } from './repositories/settings
 import {
   deleteAdminProfile,
   listAdminProfiles,
-  resolveAssignedRole,
   upsertAdminProfile,
 } from './repositories/admin-profiles.js';
+import {
+  createAccount,
+  deleteAccount,
+  deleteEmployeeLink,
+  getAccountDetail,
+  getPermissionCatalog,
+  getRoleCatalog,
+  listAccounts,
+  replaceAccountPermissions,
+  replaceEmployeeLink,
+  requireAnyPermission,
+  requirePermission,
+  restoreAccount,
+  sendPasswordReset,
+  serializeAuthMe,
+  touchAccountLogin,
+  updateAccount,
+  disableAccount,
+} from './repositories/accounts.js';
 import {
   createFileMetadata,
   getFileContent,
@@ -187,8 +205,7 @@ function isPublicRoute(route, method) {
   );
 }
 
-async function actor(request, env, data, allowGuest) {
-  const db = requireDb(env);
+async function actor(request, env, data, allowGuest, options = {}) {
   const sid = salonId(data || {}, env);
   const authorization =
     request.headers.get("Authorization") || "";
@@ -199,55 +216,21 @@ async function actor(request, env, data, allowGuest) {
         identity: { uid: "", claims: {} },
         role: "guest",
         salonId: sid,
-        coreDb: db,
+        coreDb: requireDb(env),
         guestAccess: true,
+        permissions: [],
+        employeeLink: null,
+        employeeId: "",
       };
     }
     throw new AppError(401, "core_auth:login_required");
   }
 
-  const projectId = cleanText(env.FIREBASE_PROJECT_ID);
-  if (!projectId) {
-    throw new AppError(503, "core_auth:project_not_configured");
-  }
-
-  const idToken = authorization.slice("Bearer ".length).trim();
-  const identity = await verifyFirebaseIdToken(
-    idToken,
-    projectId,
-    env
-  );
-
-  // Core D1 role assignments remain authoritative when present, but new or
-  // migrated admin accounts may not have been seeded into D1 yet. Resolve the
-  // signed-in user's own Firebase profile as the secure fallback, matching the
-  // Packages Worker authorization model instead of silently downgrading the
-  // user to guest/client.
-  const testClaimRole = cleanText(
-    identity.claims?.role || identity.claims?.coreRole
-  ).toLowerCase();
-  const profileRole =
-    env.PACKAGES_AUTH_TEST_MODE === "true" &&
-    ["owner", "admin", "hr", "reception", "staff", "client"].includes(testClaimRole)
-      ? testClaimRole
-      : await resolveActorRole(env, sid, {
-          ...identity,
-          idToken,
-        });
-  const role = await resolveAssignedRole(
-    db,
-    sid,
-    identity.uid,
-    profileRole
-  );
-
-  return {
-    identity,
-    role,
+  return getAuthContext(request, env, {
     salonId: sid,
-    coreDb: db,
-    guestAccess: false,
-  };
+    allowPublicFallback: Boolean(allowGuest),
+    touchLogin: options.touchLogin === true,
+  });
 }
 
 function match(url, method) {
@@ -257,6 +240,28 @@ function match(url, method) {
     const rest = path.slice(prefix.length + 1);
     return rest && !rest.includes("/") ? rest : "";
   };
+
+  if ((path === "/api/auth/me" || path === "/api/core/auth/me") && method === "GET") {
+    return { name: "auth:me" };
+  }
+
+  const accountAction = /^\/api\/(?:core\/)?admin\/accounts\/([^/]+)\/(disable|restore|permissions|employee-link|reset-password)$/.exec(path);
+  if (accountAction) {
+    return { name: `admin:account:${accountAction[2]}`, id: accountAction[1] };
+  }
+  const accountDetail = /^\/api\/(?:core\/)?admin\/accounts\/([^/]+)$/.exec(path);
+  if (accountDetail) {
+    return { name: "admin:account", id: accountDetail[1] };
+  }
+  if (path === "/api/admin/accounts" || path === "/api/core/admin/accounts") {
+    return { name: "admin:accounts" };
+  }
+  if (path === "/api/admin/roles" || path === "/api/core/admin/roles") {
+    return { name: "admin:roles" };
+  }
+  if (path === "/api/admin/permissions" || path === "/api/core/admin/permissions") {
+    return { name: "admin:permissions" };
+  }
 
   const clientPortalRoutes = new Map([
     ["/api/core/client/portal", "client:portal"],
@@ -370,7 +375,7 @@ function publicStaffIsVisible(row) {
   return Number(row?.active) === 1 && Number(row?.show_on_booking ?? 1) === 1 && cleanText(row?.employment_status || "active") !== "terminated";
 }
 
-async function dispatch(ctx, route, method, body, query) {
+async function dispatch(ctx, route, method, body, query, env) {
   const db = ctx.coreDb;
   const isClientSelfRoute = new Set([
     "client:portal",
@@ -379,20 +384,105 @@ async function dispatch(ctx, route, method, body, query) {
     "client:loyalty",
     "client:offers",
   ]).has(route.name);
+  const isAuthSelfRoute = route.name === "auth:me";
   const publicRoute = isPublicRoute(route, method);
   const publicConsumer = publicRoute && (ctx.guestAccess || !OPERATIONS_ROLES.has(ctx.role));
-  if (!ctx.guestAccess && !isClientSelfRoute && !publicRoute) requireRole(ctx.role);
+  if (!ctx.guestAccess && !isAuthSelfRoute && !isClientSelfRoute && !publicRoute) requireRole(ctx.role);
   const readQuery = publicConsumer ? publicBookingQuery(route.name, query) : query;
   const actorInfo = {
     uid: ctx.identity?.uid || "",
     email: ctx.identity?.claims?.email || "",
-    name: ctx.identity?.claims?.name || "",
+    name: ctx.user?.display_name || ctx.identity?.claims?.name || "",
     role: ctx.role,
+    userId: ctx.user?.id || "",
+    ip: ctx.requestMeta?.ip || "",
+    userAgent: ctx.requestMeta?.userAgent || "",
   };
 
   switch (route.name) {
     case "health":
       return { worker: "ok", d1: Boolean(db) };
+
+    case "auth:me":
+      await touchAccountLogin(db, ctx.user.id);
+      return serializeAuthMe(db, ctx.salonId, ctx.user);
+
+    case "admin:accounts":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["accounts.read", "admin_accounts.view"]);
+        return listAccounts(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requireAnyPermission(ctx, ["accounts.create", "admin_accounts.manage"]);
+        return createAccount(db, ctx.salonId, body, ctx);
+      }
+      break;
+
+    case "admin:account":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["accounts.read", "admin_accounts.view"]);
+        return getAccountDetail(db, ctx.salonId, route.id);
+      }
+      if (method === "PATCH") {
+        requireAnyPermission(ctx, ["accounts.update", "admin_accounts.manage"]);
+        return updateAccount(db, ctx.salonId, route.id, body, ctx);
+      }
+      if (method === "DELETE") {
+        requirePermission(ctx, "accounts.delete");
+        return deleteAccount(db, ctx.salonId, route.id, ctx);
+      }
+      break;
+
+    case "admin:account:disable":
+      requireAnyPermission(ctx, ["accounts.disable", "admin_accounts.manage"]);
+      if (method === "POST") return disableAccount(db, ctx.salonId, route.id, ctx);
+      break;
+
+    case "admin:account:restore":
+      requireAnyPermission(ctx, ["accounts.restore", "admin_accounts.manage"]);
+      if (method === "POST") return restoreAccount(db, ctx.salonId, route.id, ctx);
+      break;
+
+    case "admin:account:permissions":
+      if (method === "GET") {
+        requirePermission(ctx, "permissions.read");
+        return getAccountDetail(db, ctx.salonId, route.id);
+      }
+      if (method === "PUT") {
+        requirePermission(ctx, "permissions.manage");
+        return replaceAccountPermissions(db, ctx.salonId, route.id, body, ctx);
+      }
+      break;
+
+    case "admin:account:employee-link":
+      if (method === "GET") {
+        requirePermission(ctx, "employee_links.read");
+        return (await getAccountDetail(db, ctx.salonId, route.id)).employeeLink;
+      }
+      if (method === "PUT") {
+        requirePermission(ctx, "employee_links.manage");
+        return replaceEmployeeLink(db, ctx.salonId, route.id, body, ctx);
+      }
+      if (method === "DELETE") {
+        requirePermission(ctx, "employee_links.manage");
+        return deleteEmployeeLink(db, ctx.salonId, route.id, ctx);
+      }
+      break;
+
+    case "admin:account:reset-password":
+      requireAnyPermission(ctx, ["accounts.reset_password", "admin_accounts.manage"]);
+      if (method === "POST") return sendPasswordReset(db, ctx.salonId, route.id, env, ctx);
+      break;
+
+    case "admin:roles":
+      requirePermission(ctx, "roles.read");
+      if (method === "GET") return getRoleCatalog(db, ctx.salonId);
+      break;
+
+    case "admin:permissions":
+      requirePermission(ctx, "permissions.read");
+      if (method === "GET") return getPermissionCatalog(db);
+      break;
 
     case "client:portal":
       if (method === "GET") return getClientPortalSnapshot(db, ctx.salonId, ctx.identity);
@@ -811,7 +901,9 @@ export async function handleRequest(request, env) {
   const body =
     request.method === "GET" || request.method === "DELETE" || rawContentRoute ? {} : await readJson(request);
   const allowGuest = isPublicRoute(route, request.method);
-  const ctx = await actor(request, env, body, allowGuest);
+  const ctx = await actor(request, env, body, allowGuest, {
+    touchLogin: route.name === "auth:me",
+  });
   if (rawContentRoute) {
     const response = request.method === "PUT"
       ? await putFileContent(ctx.coreDb, ctx.salonId, route.id, request, env)
@@ -828,7 +920,8 @@ export async function handleRequest(request, env) {
     route,
     request.method,
     body,
-    Object.fromEntries(url.searchParams.entries())
+    Object.fromEntries(url.searchParams.entries()),
+    env
   );
 
   return jsonResponse(request, env, 200, { ok: true, data });

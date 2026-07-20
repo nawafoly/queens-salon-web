@@ -1,21 +1,14 @@
 import { importX509, jwtVerify } from 'jose';
 import { AppError } from './errors.js';
-import { cleanText, decodeJwtPart, optionalText, salonPath } from './validation.js';
+import { cleanText, decodeJwtPart, optionalText } from './validation.js';
 
 const FIREBASE_CERTS_URL =
   "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 
-const VALID_ROLES = new Set(["owner", "admin", "hr", "reception", "staff", "client"]);
-const DEFAULT_BOOTSTRAP_OWNER_EMAILS = new Set([
-  "nawafaaa0@gmail.com",
-  "nawafaaa6@gmail.com",
-  "alolayan3@gmail.com",
-]);
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
-const ROLE_CACHE_GUEST_TTL_MS = 30 * 1000;
+const VALID_ROLES = new Set(["owner", "admin", "hr", "accountant", "reception", "staff", "client"]);
 
 let firebaseCertificateCache = { certificates: null, expiresAt: 0 };
-const actorRoleCache = new Map();
+const actorContextCache = new Map();
 
 function normalizeRole(value) {
   const role = cleanText(value).toLowerCase();
@@ -26,126 +19,108 @@ function normalizeRole(value) {
   return VALID_ROLES.has(role) ? role : "";
 }
 
-function bootstrapOwnerEmails(env) {
-  const configured = cleanText(env.PACKAGES_BOOTSTRAP_OWNER_EMAILS);
-  if (!configured) return DEFAULT_BOOTSTRAP_OWNER_EMAILS;
-  return new Set(
-    configured
-      .split(",")
-      .map((email) => cleanText(email).toLowerCase())
-      .filter(Boolean)
-  );
-}
-
-function roleFromClaims(identity) {
-  return normalizeRole(identity?.claims?.role || identity?.claims?.packagesRole);
-}
-
-function fromDocumentValue(value) {
-  if (!value || typeof value !== "object") return undefined;
-  if ("stringValue" in value) return value.stringValue;
-  if ("booleanValue" in value) return value.booleanValue;
-  if ("integerValue" in value) return Number(value.integerValue);
-  if ("doubleValue" in value) return Number(value.doubleValue);
-  if ("nullValue" in value) return null;
-  return undefined;
-}
-
-function documentData(body) {
-  const out = {};
-  for (const [key, value] of Object.entries(body?.fields || {})) {
-    out[key] = fromDocumentValue(value);
+function requireCoreDb(env) {
+  if (!env.CORE_DB) {
+    throw new AppError(503, "packages_auth:core_db_not_configured", "Core D1 database is not configured");
   }
-  return out;
+  return env.CORE_DB;
 }
 
-function roleDocumentUrl(projectId, path) {
-  const encodedPath = path
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodedPath}`;
+async function dbFirst(db, sql, params = []) {
+  return db.prepare(sql).bind(...params).first();
 }
 
-async function readOwnRoleDocument(projectId, path, idToken) {
-  const response = await fetch(roleDocumentUrl(projectId, path), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${idToken}` },
-  });
-  if (response.status === 404 || response.status === 403) return null;
-  if (response.status === 401) throw new AppError(401, "packages_auth:invalid_token");
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new AppError(
-      503,
-      "packages_auth:role_lookup_failed",
-      body?.error?.message || "Unable to resolve account role"
-    );
+async function dbAll(db, sql, params = []) {
+  const result = await db.prepare(sql).bind(...params).all();
+  return result?.results || result || [];
+}
+
+function assertAccountCanAuthenticate(account) {
+  if (!account) throw new AppError(403, "ACCOUNT_NOT_PROVISIONED");
+  if (account.status === "disabled") throw new AppError(403, "ACCOUNT_DISABLED");
+  if (account.status === "pending") throw new AppError(403, "ACCOUNT_PENDING");
+  if (account.status === "deleted" || account.deleted_at) throw new AppError(403, "ACCOUNT_DELETED");
+}
+
+async function loadEffectivePermissions(db, salonId, account) {
+  if (normalizeRole(account.primary_role) === "owner") {
+    const rows = await dbAll(db, "SELECT permission_key FROM permissions ORDER BY permission_key");
+    return rows.map((row) => cleanText(row.permission_key)).filter(Boolean);
   }
-  return documentData(body);
+  const [roleRows, directRows] = await Promise.all([
+    dbAll(db, "SELECT permission_key FROM role_permissions WHERE salon_id = ? AND role_key = ?", [salonId, account.primary_role]),
+    dbAll(db, "SELECT permission_key, effect FROM user_permissions WHERE salon_id = ? AND user_id = ?", [salonId, account.id]),
+  ]);
+  const effective = new Set(roleRows.map((row) => cleanText(row.permission_key)).filter(Boolean));
+  for (const row of directRows) {
+    const permission = cleanText(row.permission_key);
+    if (!permission) continue;
+    if (row.effect === "deny") effective.delete(permission);
+    else if (row.effect === "allow") effective.add(permission);
+  }
+  return [...effective].sort();
 }
 
 export function clearActorRoleCache() {
-  actorRoleCache.clear();
+  actorContextCache.clear();
 }
 
 /**
- * Resolve authorization from the verified Firebase identity.
- * Package balances and ledgers remain D1-only. This reads only the signed-in
- * user's own Firebase profile when the ID token does not carry a custom role.
+ * Resolve package authorization from the unified Core D1 account registry.
+ * Firebase is used only to verify identity. Roles, status, permissions, and
+ * employee linkage are sourced exclusively from Core D1 in production.
  */
-export async function resolveActorRole(env, salonId, identity) {
-  const email = cleanText(identity?.email || identity?.claims?.email).toLowerCase();
-  if (email && bootstrapOwnerEmails(env).has(email)) return "owner";
-
-  const claimRole = roleFromClaims(identity);
-  if (claimRole === "owner" || claimRole === "admin") return claimRole;
-
+export async function resolveActorContext(env, salonId, identity) {
   const uid = cleanText(identity?.uid);
-  const idToken = cleanText(identity?.idToken);
-  const projectId = cleanText(env.FIREBASE_PROJECT_ID);
-  if (!uid || !idToken || !projectId) return claimRole || "client";
+  if (!uid) throw new AppError(401, "packages_auth:login_required");
 
-  const cacheKey = `${projectId}\u0000${salonId}\u0000${uid}`;
-  const cached = actorRoleCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.role;
-
-  // Match the project's Firestore security model: the signed-in user may read
-  // their root users/{uid} document and their root admin_users/{email} document.
-  // Salon-scoped paths remain compatibility fallbacks for older data.
-  const paths = [
-    `users/${uid}`,
-    ...(email ? [`admin_users/${email}`] : []),
-    salonPath(salonId, "users", uid),
-    salonPath(salonId, "admin_users", uid),
-    ...(email ? [salonPath(salonId, "admin_users", email)] : []),
-  ];
-
-  for (const path of paths) {
-    const data = await readOwnRoleDocument(projectId, path, idToken);
-    if (!data) continue;
-    if (data.active === false || data.disabled === true || data.deleted === true) {
-      actorRoleCache.set(cacheKey, { role: "guest", expiresAt: Date.now() + ROLE_CACHE_GUEST_TTL_MS });
-      return "guest";
-    }
-    const role = normalizeRole(data.role || data.roleKey || data.userRole || data.accountRole || data.type);
-    if (role) {
-      actorRoleCache.set(cacheKey, { role, expiresAt: Date.now() + ROLE_CACHE_TTL_MS });
-      return role;
-    }
+  // Test tokens are isolated to the worker test environment. Production never
+  // trusts custom claims or email allow-lists for authorization.
+  if (env.PACKAGES_AUTH_TEST_MODE === "true" && identity?.testMode) {
+    const role = normalizeRole(identity?.claims?.role) || "client";
+    return {
+      user: { id: uid, firebase_uid: uid, primary_role: role, status: "active" },
+      role,
+      permissions: [],
+      employeeLink: null,
+      employeeId: "",
+    };
   }
 
-  const fallbackRole = claimRole || "client";
-  actorRoleCache.set(cacheKey, { role: fallbackRole, expiresAt: Date.now() + ROLE_CACHE_GUEST_TTL_MS });
-  return fallbackRole;
+  const cacheKey = `${salonId}\u0000${uid}`;
+  const cached = actorContextCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.context;
+
+  const db = requireCoreDb(env);
+  const account = await dbFirst(
+    db,
+    "SELECT * FROM app_users WHERE salon_id = ? AND firebase_uid = ? LIMIT 1",
+    [salonId, uid]
+  );
+  assertAccountCanAuthenticate(account);
+
+  const [permissions, employeeLink] = await Promise.all([
+    loadEffectivePermissions(db, salonId, account),
+    dbFirst(
+      db,
+      "SELECT * FROM user_employee_links WHERE salon_id = ? AND user_id = ? AND link_status = 'active' LIMIT 1",
+      [salonId, account.id]
+    ),
+  ]);
+
+  const context = {
+    user: account,
+    role: normalizeRole(account.primary_role) || "client",
+    permissions,
+    employeeLink: employeeLink || null,
+    employeeId: cleanText(employeeLink?.employee_id),
+  };
+  actorContextCache.set(cacheKey, { context, expiresAt: Date.now() + 30_000 });
+  return context;
 }
 
-// Legacy helper retained for migration-only callers.
-export async function resolveRole(db, salonId, identity) {
-  const snap = await db.getDoc(salonPath(salonId, "users", identity.uid));
-  const data = snap.data || {};
-  if (data.active === false) return "guest";
-  return normalizeRole(data.role || identity.claims?.role) || "guest";
+export async function resolveActorRole(env, salonId, identity) {
+  return (await resolveActorContext(env, salonId, identity)).role;
 }
 
 export function maxAgeMilliseconds(cacheControl) {

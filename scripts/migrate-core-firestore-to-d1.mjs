@@ -45,6 +45,12 @@ const LOCAL_VALIDATION_TABLES = [
   "salon_settings",
   "admin_profiles",
   "role_assignments",
+  "roles",
+  "permissions",
+  "role_permissions",
+  "app_users",
+  "user_permissions",
+  "user_employee_links",
   "notification_records",
 ];
 const SNAPSHOT_SECRET_KEY_PATTERN =
@@ -58,6 +64,116 @@ const DAY_TO_WEEKDAY = {
   fri: 5,
   sat: 6,
 };
+
+const EMPLOYEE_TYPE_ADMINISTRATIVE = "administrative";
+const EMPLOYEE_TYPE_SERVICE_PROVIDER = "service_provider";
+
+const EMPLOYEE_IDENTITY_OVERRIDES = new Map([
+  ["51XqZbYHQWWbwIwoKvIFGgePBKm2", {
+    employee_type: EMPLOYEE_TYPE_ADMINISTRATIVE,
+    job_title: "programmer",
+    firebase_uid: "51XqZbYHQWWbwIwoKvIFGgePBKm2",
+    name: "نواف العليان",
+    email: "alolayan3@gmail.com",
+  }],
+  ["tia8CSOIfZfD60LTuPa90cdnI0L2", {
+    employee_type: EMPLOYEE_TYPE_ADMINISTRATIVE,
+    job_title: "technical_manager",
+    firebase_uid: "tia8CSOIfZfD60LTuPa90cdnI0L2",
+    name: "غادة العليان",
+    email: "nawafaaa0@gmail.com",
+  }],
+  ["J4a1wCCP2gYT445xJeOjMKfUqM12", {
+    employee_type: EMPLOYEE_TYPE_ADMINISTRATIVE,
+    job_title: "accountant",
+    firebase_uid: "J4a1wCCP2gYT445xJeOjMKfUqM12",
+    name: "ريفال",
+    email: "refal@malikat.com",
+  }],
+  ["t36cUYFVA4fBlrmwUjkRhUJY0f12", {
+    employee_type: EMPLOYEE_TYPE_SERVICE_PROVIDER,
+    firebase_uid: "t36cUYFVA4fBlrmwUjkRhUJY0f12",
+    name: "نوف",
+    email: "nawafaaa6@malikat.com",
+  }],
+]);
+
+const ACCOUNT_IDENTITY_OVERRIDES = new Map([
+  ["0YYs6i4o5QgN0n2Lg16gBx0OEKg2", { skip: true }],
+  ["51XqZbYHQWWbwIwoKvIFGgePBKm2", {
+    email: "alolayan3@gmail.com",
+    display_name: "نواف العليان",
+    primary_role: "owner",
+    status: "active",
+    employee_id: "51XqZbYHQWWbwIwoKvIFGgePBKm2",
+  }],
+  ["tia8CSOIfZfD60LTuPa90cdnI0L2", {
+    email: "nawafaaa0@gmail.com",
+    display_name: "غادة العليان",
+    primary_role: "owner",
+    status: "active",
+    employee_id: "tia8CSOIfZfD60LTuPa90cdnI0L2",
+  }],
+  ["J4a1wCCP2gYT445xJeOjMKfUqM12", {
+    email: "refal@malikat.com",
+    display_name: "ريفال",
+    primary_role: "accountant",
+    status: "active",
+    employee_id: "J4a1wCCP2gYT445xJeOjMKfUqM12",
+  }],
+  ["t36cUYFVA4fBlrmwUjkRhUJY0f12", {
+    email: "nawafaaa6@malikat.com",
+    display_name: "نوف",
+    primary_role: "staff",
+    status: "active",
+    employee_id: "t36cUYFVA4fBlrmwUjkRhUJY0f12",
+  }],
+  ["sWCJcEXXfehavKroHRQvv9M3UXm1", {
+    email: "nawaf@gmail.com",
+    primary_role: "client",
+    status: "active",
+    employee_id: "",
+  }],
+  ["vwczkxZaKASzyPD269soM7KoTcq1", {
+    status: "deleted",
+    employee_id: "",
+  }],
+  ["Ltv60Mp2RTTqSs7QLlVOtWSQ3Gp1", {
+    status: "deleted",
+    employee_id: "",
+  }],
+]);
+
+function employeeClassification(row, employeeId) {
+  const override = EMPLOYEE_IDENTITY_OVERRIDES.get(clean(employeeId));
+  if (override) return override;
+  const employment = row?.employment && typeof row.employment === "object" ? row.employment : {};
+  const sourceType = clean(
+    employment.employeeType || employment.employee_type || row?.employeeType || row?.employee_type
+  ).toLowerCase();
+  if ([EMPLOYEE_TYPE_ADMINISTRATIVE, EMPLOYEE_TYPE_SERVICE_PROVIDER].includes(sourceType)) {
+    return { employee_type: sourceType };
+  }
+  const jobTitle = clean(employment.jobTitle || row?.jobTitle || employment.title || row?.title).toLowerCase();
+  const role = clean(row?.role || row?.roleKey).toLowerCase();
+  const name = clean(row?.personal?.name || row?.name || row?.displayName).toLowerCase();
+  const administrativeText = `${jobTitle} ${role} ${name}`;
+  const administrativeMarkers = [
+    "developer", "programmer", "مبرمج", "hr", "human resources", "موارد بشرية",
+    "accountant", "accounting", "محاسب", "محاسبة", "reception", "receptionist",
+    "استقبال", "technical manager", "technical_manager", "مدير فني", "مديرة فنية",
+    "غادة العليان", "نواف العليان", "أحمد العليان", "احمد العليان", "ريفال"
+  ];
+  return {
+    employee_type: administrativeMarkers.some((marker) => administrativeText.includes(marker))
+      ? EMPLOYEE_TYPE_ADMINISTRATIVE
+      : EMPLOYEE_TYPE_SERVICE_PROVIDER,
+  };
+}
+
+function accountIdentityOverride(uid) {
+  return ACCOUNT_IDENTITY_OVERRIDES.get(clean(uid)) || null;
+}
 
 function arg(name) {
   const prefix = `${name}=`;
@@ -422,6 +538,416 @@ const LOCK_INACTIVE_STATUSES = new Set([
   "rejected",
 ]);
 
+const REQUIRED_OPERATIONAL_PERMISSION_KEYS = [
+  "accounts.read",
+  "accounts.create",
+  "accounts.update",
+  "accounts.disable",
+  "accounts.restore",
+  "accounts.delete",
+  "accounts.reset_password",
+  "roles.read",
+  "roles.assign",
+  "roles.manage",
+  "permissions.read",
+  "permissions.manage",
+  "employee_links.read",
+  "employee_links.manage",
+  "audit.read",
+];
+
+const LEGACY_PERMISSION_KEYS = [
+  "BOOKINGS_VIEW",
+  "BOOKINGS_UPDATE_STATUS",
+  "BOOKINGS_ADD_NOTES",
+  "EMPLOYEES_MANAGE",
+  "SERVICES_MANAGE",
+  "OFFERS_MANAGE",
+  "REPORTS_VIEW",
+  "SETTINGS_MANAGE",
+  "USERS_MANAGE",
+];
+
+const ROLE_SEED = [
+  { role_key: "owner", label: "Owner", rank: 100, protected: 1, assignable: 1 },
+  { role_key: "admin", label: "Admin", rank: 80, protected: 0, assignable: 1 },
+  { role_key: "hr", label: "HR", rank: 60, protected: 0, assignable: 1 },
+  { role_key: "accountant", label: "Accountant", rank: 55, protected: 0, assignable: 1 },
+  { role_key: "reception", label: "Reception", rank: 40, protected: 0, assignable: 1 },
+  { role_key: "staff", label: "Staff", rank: 30, protected: 0, assignable: 1 },
+  { role_key: "pending", label: "Pending", rank: 10, protected: 0, assignable: 1 },
+  { role_key: "client", label: "Client", rank: 5, protected: 0, assignable: 1 },
+  { role_key: "guest", label: "Guest", rank: 0, protected: 0, assignable: 0 },
+];
+
+function normalizeAccountRole(value) {
+  const role = clean(value).toLowerCase();
+  if (role === "administrator" || role === "manager" || role === "super_admin" || role === "super-admin") return "admin";
+  if (role === "human resources" || role === "humanresources" || role === "human_resources" || role === "human-resources") return "hr";
+  if (role === "employee") return "staff";
+  if (role === "receptionist" || role === "frontdesk" || role === "desk") return "reception";
+  if (role === "finance" || role === "accounting") return "accountant";
+  if (ROLE_SEED.some((item) => item.role_key === role)) return role;
+  return "";
+}
+
+function normalizeAccountStatus(row, role) {
+  const explicit = clean(row.status || row.accountStatus || row.authStatus).toLowerCase();
+  if (explicit === "deleted" || row.deleted === true || row.deletedAt) return "deleted";
+  if (explicit === "disabled" || explicit === "auth_disabled" || explicit === "firebase_disabled") return "disabled";
+  if (role === "pending" || explicit === "pending") return "pending";
+  if (row.active === false || row.isActive === false || row.disabled === true) return "disabled";
+  return "active";
+}
+
+function permissionGroupForKey(key) {
+  const value = clean(key);
+  if (value.startsWith("workspace.")) return "workspace";
+  if (value.startsWith("bookings.")) return "bookings";
+  if (value.startsWith("clients.")) return "customers";
+  if (value.startsWith("income.") || value.startsWith("expenses.")) return "finance";
+  if (
+    value.startsWith("employees.") ||
+    value.startsWith("attendance.") ||
+    value.startsWith("payroll.") ||
+    value.startsWith("recruitment.")
+  ) return "workforce";
+  if (
+    value.startsWith("reports.") ||
+    value.startsWith("weekly_reports.") ||
+    value.startsWith("messages.") ||
+    value.startsWith("logs.") ||
+    value.startsWith("audit.")
+  ) return "reports";
+  if (value.startsWith("catalog.") || value.startsWith("offers.") || value.startsWith("content.") || value.startsWith("partners.")) return "content";
+  if (LEGACY_PERMISSION_KEYS.includes(value)) return "legacy";
+  return "system";
+}
+
+function sourcePermissionKeys() {
+  const keys = [];
+  try {
+    const source = readFileSync(resolve(process.cwd(), "src/helpers/permissions.ts"), "utf8");
+    for (const match of source.matchAll(/key:\s*"([^"]+)"/g)) keys.push(match[1]);
+  } catch {
+    // The migration can still run from a packaged artifact; required keys below
+    // keep the operational identity schema complete.
+  }
+  return uniqueClean([keys, REQUIRED_OPERATIONAL_PERMISSION_KEYS, LEGACY_PERMISSION_KEYS]);
+}
+
+function buildIdentityPermissionSeeds(salonId, now) {
+  const permissionKeys = sourcePermissionKeys();
+  const permissions = permissionKeys.map((permission_key) => ({
+    permission_key,
+    group_key: permissionGroupForKey(permission_key),
+    label: permission_key,
+    description: "Seeded by Core identity migration.",
+    sensitive:
+      /(^accounts\.|^roles\.|^permissions\.|^employee_links\.|^audit\.|delete|manage|payroll|income|expenses|logs)/.test(permission_key)
+        ? 1
+        : 0,
+    created_at: now,
+    updated_at: now,
+  }));
+  const roles = ROLE_SEED.map((role) => ({
+    id: `role_${salonId}_${role.role_key}`,
+    salon_id: salonId,
+    role_key: role.role_key,
+    label: role.label,
+    rank: role.rank,
+    protected: role.protected,
+    assignable: role.assignable,
+    created_at: now,
+    updated_at: now,
+  }));
+  const has = (key) => permissionKeys.includes(key);
+  const rolePermissionKeys = {
+    owner: permissionKeys,
+    admin: permissionKeys.filter((key) => !["bookings.delete", "employees.delete", "accounts.delete", "permissions.manage", "roles.manage"].includes(key)),
+    hr: [
+      "workspace.employee_portal.view",
+      "employees.view",
+      "employees.create",
+      "employees.update",
+      "employees.manage",
+      "employees.files.view",
+      "employees.files.manage",
+      "employees.schedule.manage",
+      "attendance.own.view",
+      "attendance.view",
+      "attendance.records.create",
+      "attendance.records.update",
+      "attendance.absences.manage",
+      "attendance.leaves.manage",
+      "attendance.export",
+      "payroll.view",
+      "payroll.manage",
+      "recruitment.view",
+      "recruitment.manage",
+      "reports.view",
+      "weekly_reports.manager_notes",
+      "messages.view",
+      "messages.manage",
+      "admin_accounts.view",
+      "admin_accounts.manage",
+      "accounts.read",
+      "accounts.update",
+      "employee_links.read",
+      "employee_links.manage",
+      "roles.read",
+      "permissions.read",
+    ].filter(has),
+    accountant: [
+      "workspace.dashboard.view",
+      "workspace.employee_portal.view",
+      "income.view",
+      "income.manage",
+      "expenses.view",
+      "expenses.manage",
+      "reports.view",
+      "reports.export",
+      "logs.view",
+      "audit.read",
+    ].filter(has),
+    reception: [
+      "workspace.dashboard.view",
+      "workspace.employee_portal.view",
+      "bookings.view",
+      "bookings.create",
+      "bookings.update",
+      "bookings.cancel",
+      "bookings.payment.manage",
+      "bookings.print",
+      "bookings.day_audit.manage",
+      "bookings.queue_tv.view",
+      "clients.view",
+      "clients.manage",
+      "employees.view",
+      "attendance.own.view",
+      "attendance.view",
+      "messages.view",
+    ].filter(has),
+    staff: ["workspace.employee_portal.view", "attendance.own.view", "messages.view"].filter(has),
+    pending: [],
+    client: [],
+    guest: [],
+  };
+  const role_permissions = [];
+  for (const [role_key, keys] of Object.entries(rolePermissionKeys)) {
+    for (const permission_key of uniqueClean(keys)) {
+      role_permissions.push({ salon_id: salonId, role_key, permission_key, created_at: now });
+    }
+  }
+  return { roles, permissions, role_permissions };
+}
+
+function buildAppIdentityTables({
+  input,
+  salonId,
+  now,
+  employeeProfiles,
+  report,
+  warningConflicts,
+}) {
+  const accountSources = [
+    ...rows(input, "users").map((row) => ({ ...row, __legacySource: "users" })),
+    ...rows(input, "admin_users").map((row) => ({ ...row, __legacySource: "admin_users" })),
+  ];
+  const employeeByUid = new Map();
+  const employeeByEmail = new Map();
+  for (const employee of employeeProfiles || []) {
+    const uid = clean(employee.firebase_uid);
+    const email = clean(employee.email).toLowerCase();
+    if (uid && !employeeByUid.has(uid)) employeeByUid.set(uid, employee);
+    if (email && !employeeByEmail.has(email)) employeeByEmail.set(email, employee);
+  }
+
+  report.identityAccountsRead = accountSources.length;
+  const byKey = new Map();
+  const uidEmails = new Map();
+  const emailUids = new Map();
+  const unknownRoles = [];
+
+  for (const row of accountSources) {
+    const legacySource = clean(row.__legacySource);
+    const legacyId = clean(row.id);
+    const sourceUid = clean(row.uid || row.firebaseUid || row.firebase_uid || row.authUid || row.linkedUid || legacyId);
+    const identityOverride = accountIdentityOverride(sourceUid);
+    if (identityOverride?.skip) {
+      report.identityAccountsSkipped += 1;
+      warningConflicts.push({ type: "account_skipped_obsolete_firebase_uid", legacySource, legacyId, firebaseUid: sourceUid });
+      continue;
+    }
+    const email = clean(identityOverride?.email || row.email || (legacyId.includes("@") ? legacyId : "")).toLowerCase();
+    const uid = sourceUid;
+    if (!uid && !email) {
+      report.identityAccountsSkipped += 1;
+      warningConflicts.push({ type: "account_skipped_missing_identity", legacySource, legacyId });
+      continue;
+    }
+    const role = normalizeAccountRole(row.role || row.roleKey || row.userRole || row.accountRole || row.type);
+    if (!role) {
+      unknownRoles.push({ legacySource, legacyId, role: clean(row.role || row.roleKey || row.userRole || row.accountRole || row.type) });
+    }
+    const normalizedRole = normalizeAccountRole(identityOverride?.primary_role) || role || (email.endsWith("@malikat.com") ? "pending" : "client");
+    const key = uid ? `uid:${uid}` : `email:${email}`;
+    const existing = byKey.get(key) || {};
+    const merged = { ...existing };
+    for (const [field, value] of Object.entries(row)) {
+      if (field === "__legacySource") continue;
+      if (value !== undefined && value !== null && clean(value) !== "") merged[field] = value;
+    }
+    merged.__legacySource = existing.__legacySource ? `${existing.__legacySource},${legacySource}` : legacySource;
+    merged.__legacyId = existing.__legacyId ? `${existing.__legacyId},${legacyId}` : legacyId;
+    merged.__uid = uid || existing.__uid || "";
+    merged.__email = email || existing.__email || "";
+    merged.__role = normalizedRole;
+    byKey.set(key, merged);
+
+    if (uid && email) {
+      if (!uidEmails.has(uid)) uidEmails.set(uid, new Set());
+      uidEmails.get(uid).add(email);
+      if (!emailUids.has(email)) emailUids.set(email, new Set());
+      emailUids.get(email).add(uid);
+    }
+  }
+
+  for (const [uid, emails] of uidEmails) {
+    if (emails.size > 1) warningConflicts.push({ type: "account_uid_many_emails", uid, emails: [...emails].sort() });
+  }
+  for (const [email, uids] of emailUids) {
+    if (uids.size > 1) warningConflicts.push({ type: "account_email_many_uids", email, uids: [...uids].sort() });
+  }
+  for (const conflict of unknownRoles) warningConflicts.push({ type: "account_unknown_role", ...conflict, fallbackRole: "pending_or_client" });
+  report.identityUnknownRoles = unknownRoles.length;
+
+  const appUsers = [];
+  const rawLinks = [];
+  for (const row of [...byKey.values()].sort(newestFirst)) {
+    const firebaseUid = clean(row.__uid);
+    const email = clean(row.__email).toLowerCase();
+    const appUserId = stableId("app_user", firebaseUid || email || row.__legacyId);
+    const identityOverride = accountIdentityOverride(firebaseUid);
+    const role = normalizeAccountRole(identityOverride?.primary_role || row.__role) || "pending";
+    const employeeId = clean(
+      identityOverride && Object.prototype.hasOwnProperty.call(identityOverride, "employee_id")
+        ? identityOverride.employee_id
+        : row.employeeId ||
+        row.employee_id ||
+        row.linkedEmployeeDocId ||
+        row.linked_employee_doc_id ||
+        row.employeeDocId ||
+        row.staffId ||
+        row.staff_id
+    );
+    const employee = employeeId
+      ? employeeProfiles.find((item) => item.id === employeeId)
+      : employeeByUid.get(firebaseUid) || employeeByEmail.get(email);
+    const resolvedEmployeeId = clean(employeeId || employee?.id);
+    if (resolvedEmployeeId && employee) {
+      const sourceName = clean(row.displayName || row.name);
+      if (sourceName && clean(employee.name) && sourceName !== clean(employee.name)) {
+        warningConflicts.push({
+          type: "account_employee_name_mismatch",
+          userId: appUserId,
+          employeeId: resolvedEmployeeId,
+          accountName: sourceName,
+          employeeName: clean(employee.name),
+        });
+      }
+      if (email && clean(employee.email).toLowerCase() && email !== clean(employee.email).toLowerCase()) {
+        warningConflicts.push({
+          type: "account_employee_email_mismatch",
+          userId: appUserId,
+          employeeId: resolvedEmployeeId,
+          accountEmail: email,
+          employeeEmail: clean(employee.email).toLowerCase(),
+        });
+      }
+    } else if (["owner", "admin", "hr", "accountant", "reception", "staff"].includes(role)) {
+      warningConflicts.push({
+        type: "account_no_employee_record",
+        userId: appUserId,
+        firebaseUid,
+        email,
+        role,
+      });
+    }
+    appUsers.push({
+      id: appUserId,
+      firebase_uid: firebaseUid,
+      salon_id: salonId,
+      email: clean(identityOverride?.email || email).toLowerCase(),
+      phone: clean(row.phone || row.mobile),
+      display_name: clean(identityOverride?.display_name || row.displayName || row.name || email || firebaseUid || "Account"),
+      primary_role: role,
+      status: clean(identityOverride?.status || normalizeAccountStatus(row, role)),
+      email_verified: row.emailVerified === true || row.email_verified === true ? 1 : 0,
+      last_login_at: clean(row.lastLoginAt || row.last_login_at),
+      created_at: clean(row.createdAt || now),
+      updated_at: clean(row.updatedAt || now),
+      deleted_at:
+        clean(identityOverride?.status || normalizeAccountStatus(row, role)) === "active"
+          ? ""
+          : clean(row.deletedAt),
+      legacy_source: clean(row.__legacySource),
+      legacy_id: clean(row.__legacyId),
+    });
+    const accountStatus = clean(identityOverride?.status || normalizeAccountStatus(row, role));
+    if (resolvedEmployeeId && accountStatus === "active") {
+      rawLinks.push({
+        id: stableId("user_employee_link", `${appUserId}:${resolvedEmployeeId}`),
+        salon_id: salonId,
+        user_id: appUserId,
+        employee_id: resolvedEmployeeId,
+        link_status: "active",
+        linked_by_user_id: "",
+        linked_at: clean(row.linkedAt || row.createdAt || now),
+        updated_at: now,
+        unlinked_at: "",
+        legacy_source: clean(row.__legacySource),
+        legacy_id: clean(row.__legacyId),
+      });
+    }
+  }
+
+  const chosenLinks = [];
+  const byUser = new Set();
+  const byEmployee = new Set();
+  for (const link of rawLinks.sort((a, b) => sortText(`${a.user_id}:${a.employee_id}`, `${b.user_id}:${b.employee_id}`))) {
+    if (byUser.has(link.user_id)) {
+      report.identityEmployeeLinkConflicts += 1;
+      warningConflicts.push({ type: "account_user_many_employees", userId: link.user_id, skippedEmployeeId: link.employee_id });
+      continue;
+    }
+    if (byEmployee.has(link.employee_id)) {
+      report.identityEmployeeLinkConflicts += 1;
+      warningConflicts.push({ type: "account_employee_many_users", employeeId: link.employee_id, skippedUserId: link.user_id });
+      continue;
+    }
+    byUser.add(link.user_id);
+    byEmployee.add(link.employee_id);
+    chosenLinks.push(link);
+  }
+
+  const accountUserIds = new Set(appUsers.map((user) => clean(user.firebase_uid)).filter(Boolean));
+  for (const employee of employeeProfiles || []) {
+    const employeeUid = clean(employee.firebase_uid);
+    if (employeeUid && !accountUserIds.has(employeeUid)) {
+      report.identityEmployeesWithoutAccount += 1;
+      warningConflicts.push({ type: "employee_no_account", employeeId: employee.id, firebaseUid: employeeUid });
+    }
+  }
+
+  report.identityAccountsInserted = appUsers.length;
+  report.identityEmployeeLinksRead = rawLinks.length;
+  report.identityEmployeeLinksInserted = chosenLinks.length;
+  report.identityAccountConflicts = warningConflicts.filter((item) => clean(item.type).startsWith("account_") || clean(item.type).startsWith("employee_no_account")).length;
+
+  return { appUsers, userEmployeeLinks: chosenLinks, userPermissions: [] };
+}
+
 function shouldCreateSlotLocks(status) {
   return !LOCK_INACTIVE_STATUSES.has(clean(status || "booked").toLowerCase());
 }
@@ -744,6 +1270,15 @@ function transform(input, salonId, options = {}) {
     mergedClientGroups: 0,
     clientCanonicalMappings: [],
     discountDecisions: [],
+    identityAccountsRead: 0,
+    identityAccountsInserted: 0,
+    identityAccountsSkipped: 0,
+    identityAccountConflicts: 0,
+    identityUnknownRoles: 0,
+    identityEmployeeLinksRead: 0,
+    identityEmployeeLinksInserted: 0,
+    identityEmployeeLinkConflicts: 0,
+    identityEmployeesWithoutAccount: 0,
   };
 
   const clientPackageRows = rows(input, "client_packages");
@@ -828,13 +1363,47 @@ function transform(input, salonId, options = {}) {
     rows(input, "employees"),
     rows(input, "staff_public")
   );
+
+  const nawafEmployeeId = "51XqZbYHQWWbwIwoKvIFGgePBKm2";
+  if (!staffSources.some((row) => clean(row?.id) === nawafEmployeeId)) {
+    const nawafIdentity = EMPLOYEE_IDENTITY_OVERRIDES.get(nawafEmployeeId);
+
+    staffSources.push({
+      id: nawafEmployeeId,
+      firebaseUid: nawafIdentity.firebase_uid,
+      authUid: nawafIdentity.firebase_uid,
+      uid: nawafIdentity.firebase_uid,
+      name: nawafIdentity.name,
+      email: nawafIdentity.email,
+      active: true,
+      employmentStatus: "active",
+      employeeType: nawafIdentity.employee_type,
+      jobTitle: nawafIdentity.job_title,
+      personal: {
+        name: nawafIdentity.name,
+        email: nawafIdentity.email,
+        uid: nawafIdentity.firebase_uid,
+      },
+      employment: {
+        status: "active",
+        employmentStatus: "active",
+        employeeType: nawafIdentity.employee_type,
+        jobTitle: nawafIdentity.job_title,
+        employmentSource: "identity_override",
+      },
+    });
+  }
+
   const staffMap = new Map();
   const staffServices = [];
   const staffSchedules = [];
+  const hrSourceSchedules = [];
 
   for (const row of staffSources) {
     const id = clean(row.id);
     if (!id) continue;
+    const classification = employeeClassification(row, id);
+    const isServiceProvider = classification.employee_type === EMPLOYEE_TYPE_SERVICE_PROVIDER;
     const specialties = Array.from(
       new Set(
         [
@@ -846,11 +1415,17 @@ function transform(input, salonId, options = {}) {
           .filter(Boolean)
       )
     );
-    staffMap.set(id, {
+    if (isServiceProvider) staffMap.set(id, {
       id,
       salon_id: salonId,
-      firebase_uid: clean(row.firebaseUid || row.authUid || row.uid || row.linkedUid),
-      name: clean(row.name || row.displayName || "Staff"),
+      firebase_uid: clean(
+        classification.firebase_uid ||
+        row.firebaseUid ||
+        row.authUid ||
+        row.uid ||
+        row.linkedUid
+      ),
+      name: clean(classification.name || row.name || row.displayName || "Staff"),
       phone_normalized: normalizePhone(row.phone || row.mobile),
       active:
         row.active === false || row.isActive === false || row.archived === true ? 0 : 1,
@@ -869,7 +1444,7 @@ function transform(input, salonId, options = {}) {
       updated_at: now,
     });
 
-    for (const serviceId of specialties) {
+    for (const serviceId of isServiceProvider ? specialties : []) {
       if (!serviceMap.has(serviceId)) continue;
       staffServices.push({
         salon_id: salonId,
@@ -884,7 +1459,7 @@ function transform(input, salonId, options = {}) {
       for (const [dayKey, weekday] of Object.entries(DAY_TO_WEEKDAY)) {
         const windows = scheduleWindows(custom[dayKey]);
         windows.forEach((window, index) => {
-          staffSchedules.push({
+          const scheduleRow = {
             id: `schedule_${id}_${weekday}_${index}`,
             salon_id: salonId,
             staff_id: id,
@@ -894,7 +1469,9 @@ function transform(input, salonId, options = {}) {
             active: 1,
             created_at: now,
             updated_at: now,
-          });
+          };
+          hrSourceSchedules.push(scheduleRow);
+          if (isServiceProvider) staffSchedules.push(scheduleRow);
         });
       }
     }
@@ -1268,12 +1845,13 @@ function transform(input, salonId, options = {}) {
     if (!id) continue;
     const personal = row.personal && typeof row.personal === "object" ? row.personal : {};
     const employment = row.employment && typeof row.employment === "object" ? row.employment : {};
+    const classification = employeeClassification(row, id);
     employeeProfiles.push({
       id,
       salon_id: salonId,
-      firebase_uid: clean(row.firebaseUid || row.authUid || row.uid || row.linkedUid || personal.uid),
-      name: clean(personal.name || row.name || row.displayName || "Employee"),
-      email: clean(personal.email || row.email),
+      firebase_uid: clean(classification.firebase_uid || row.firebaseUid || row.authUid || row.uid || row.linkedUid || personal.uid),
+      name: clean(classification.name || personal.name || row.name || row.displayName || "Employee"),
+      email: clean(classification.email || personal.email || row.email),
       phone_normalized: normalizePhone(personal.phone || row.phone || row.mobile),
       avatar_file_id: clean(row.avatarFileId || personal.avatar?.id),
       status: clean(employment.status || employment.employmentStatus || row.employmentStatus || (row.active === false ? "inactive" : "active")),
@@ -1284,7 +1862,8 @@ function transform(input, salonId, options = {}) {
       salon_id: salonId,
       employee_id: id,
       title: clean(employment.title || row.title),
-      job_title: clean(employment.jobTitle || row.jobTitle),
+      employee_type: clean(classification.employee_type || EMPLOYEE_TYPE_ADMINISTRATIVE),
+      job_title: clean(classification.job_title || employment.jobTitle || row.jobTitle),
       department: clean(employment.department || row.department),
       employment_source: clean(employment.employmentSource || row.employmentSource || "salon"),
       partner_id: clean(employment.partnerId || row.partnerId),
@@ -1312,7 +1891,7 @@ function transform(input, salonId, options = {}) {
       updated_at: now,
     });
   }
-  for (const schedule of staffSchedules) {
+  for (const schedule of hrSourceSchedules) {
     hrWorkSchedules.push({
       id: `hr_${schedule.id}`,
       salon_id: salonId,
@@ -1451,21 +2030,38 @@ function transform(input, salonId, options = {}) {
   for (const row of mergeRowsById(rows(input, "users"), rows(input, "admin_users"))) {
     const uid = clean(row.uid || row.firebaseUid || row.id);
     if (!uid) continue;
-    const role = clean(row.role || "client").toLowerCase();
+    const identityOverride = accountIdentityOverride(uid);
+    if (identityOverride?.skip) continue;
+    const role = normalizeAccountRole(identityOverride?.primary_role || row.role || "client") || "client";
+    const status = clean(identityOverride?.status || normalizeAccountStatus(row, role));
+    const employeeId = clean(
+      identityOverride && Object.prototype.hasOwnProperty.call(identityOverride, "employee_id")
+        ? identityOverride.employee_id
+        : row.employeeId || row.linkedEmployeeDocId
+    );
     adminProfiles.push({
       salon_id: salonId, firebase_uid: uid, username: clean(row.username),
-      display_name: clean(row.displayName || row.name), email: clean(row.email),
-      employee_id: clean(row.employeeId || row.linkedEmployeeDocId),
-      active: row.active === false || row.disabled === true ? 0 : 1,
+      display_name: clean(identityOverride?.display_name || row.displayName || row.name), email: clean(identityOverride?.email || row.email),
+      employee_id: employeeId,
+      active: status === "active" ? 1 : 0,
       created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
     });
     roleAssignments.push({
       salon_id: salonId, firebase_uid: uid, role, scope: "salon",
-      active: row.active === false || row.disabled === true ? 0 : 1,
+      active: status === "active" ? 1 : 0,
       assigned_by_uid: clean(row.updatedByUid || row.createdByUid),
       created_at: clean(row.createdAt || now), updated_at: clean(row.updatedAt || now),
     });
   }
+  const identitySeeds = buildIdentityPermissionSeeds(salonId, now);
+  const identityTables = buildAppIdentityTables({
+    input,
+    salonId,
+    now,
+    employeeProfiles,
+    report,
+    warningConflicts,
+  });
 
   const fileMetadata = rows(input, "employee_files").map((row) => ({
     id: clean(row.id), salon_id: salonId,
@@ -1523,6 +2119,12 @@ function transform(input, salonId, options = {}) {
       salon_settings: salonSettings,
       admin_profiles: adminProfiles,
       role_assignments: roleAssignments,
+      roles: identitySeeds.roles,
+      permissions: identitySeeds.permissions,
+      role_permissions: identitySeeds.role_permissions,
+      app_users: identityTables.appUsers,
+      user_permissions: identityTables.userPermissions,
+      user_employee_links: identityTables.userEmployeeLinks,
       file_metadata: fileMetadata,
       notification_records: notificationRecords,
     },
@@ -1558,6 +2160,12 @@ const SQL_TABLE_ORDER = [
   "payroll_periods",
   "payroll_entries",
   "salon_settings",
+  "roles",
+  "permissions",
+  "role_permissions",
+  "app_users",
+  "user_permissions",
+  "user_employee_links",
   "admin_profiles",
   "role_assignments",
   "file_metadata",
@@ -1593,6 +2201,12 @@ const SQL_PRIMARY_KEYS = {
   payroll_periods: ["id"],
   payroll_entries: ["id"],
   salon_settings: ["salon_id", "setting_key"],
+  roles: ["salon_id", "role_key"],
+  permissions: ["permission_key"],
+  role_permissions: ["salon_id", "role_key", "permission_key"],
+  app_users: ["id"],
+  user_permissions: ["salon_id", "user_id", "permission_key"],
+  user_employee_links: ["id"],
   admin_profiles: ["salon_id", "firebase_uid"],
   role_assignments: ["salon_id", "firebase_uid", "role", "scope"],
   file_metadata: ["id"],
@@ -1927,10 +2541,51 @@ function resolveAdminUniqueIndexConflictsForSql(adminProfiles, warningConflicts)
   resolveField("email", "idx_admin_profile_email");
 }
 
+function resolveAppUserUniqueIndexConflictsForSql(appUsers, warningConflicts) {
+  const resolveField = (field, uniqueIndex, keyPrefix = "") => {
+    const groups = new Map();
+    for (const user of appUsers || []) {
+      const value = clean(user[field]);
+      if (!value) continue;
+      const key = `${keyPrefix}${clean(user.salon_id)}\u0000${value.toLowerCase()}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(user);
+    }
+    for (const [key, group] of groups) {
+      if (group.length < 2) continue;
+      const sorted = [...group].sort((a, b) => {
+        const activeDelta = Number(b.status === "active") - Number(a.status === "active");
+        if (activeDelta) return activeDelta;
+        return newestFirst(a, b);
+      });
+      const keep = sorted[0];
+      for (const duplicate of sorted.slice(1)) {
+        const originalValue = duplicate[field];
+        duplicate[field] = "";
+        warningConflicts.push({
+          type: "sql_unique_index_conflict_resolved",
+          table: "app_users",
+          rowId: duplicate.id,
+          uniqueIndex,
+          conflictKey: key.replace(/\u0000/g, "|"),
+          keptRowId: keep.id,
+          field,
+          originalValue,
+          sqlValue: "NULL",
+          reason: `duplicate app_users ${field} conflicts with Core identity unique index`,
+        });
+      }
+    }
+  };
+  resolveField("email", "idx_app_users_salon_email");
+  resolveField("firebase_uid", "app_users.firebase_uid", "uid:");
+}
+
 function prepareTablesForSql(tables, warningConflicts = []) {
   const sqlTables = cloneTables(tables);
   resolveBookingUniqueIndexConflictsForSql(sqlTables.bookings, warningConflicts);
   resolveAdminUniqueIndexConflictsForSql(sqlTables.admin_profiles, warningConflicts);
+  resolveAppUserUniqueIndexConflictsForSql(sqlTables.app_users, warningConflicts);
   return sqlTables;
 }
 
@@ -2014,6 +2669,18 @@ function validateLocalImportReport({
   countQuery(
     "client_aliases_have_client",
     "SELECT COUNT(*) AS count FROM client_aliases a LEFT JOIN clients c ON c.id = a.canonical_client_id WHERE c.id IS NULL;"
+  );
+  countQuery(
+    "app_users_have_valid_role",
+    "SELECT COUNT(*) AS count FROM app_users u LEFT JOIN roles r ON r.salon_id = u.salon_id AND r.role_key = u.primary_role WHERE r.role_key IS NULL;"
+  );
+  countQuery(
+    "user_employee_links_have_user",
+    "SELECT COUNT(*) AS count FROM user_employee_links l LEFT JOIN app_users u ON u.salon_id = l.salon_id AND u.id = l.user_id WHERE l.link_status = 'active' AND u.id IS NULL;"
+  );
+  countQuery(
+    "user_employee_links_have_employee",
+    "SELECT COUNT(*) AS count FROM user_employee_links l LEFT JOIN employee_profiles ep ON ep.salon_id = l.salon_id AND ep.id = l.employee_id WHERE l.link_status = 'active' AND ep.id IS NULL;"
   );
   countQuery(
     "discount_codes_unique",
@@ -2402,6 +3069,15 @@ async function main() {
     console.log("discount conflict decisions");
     console.table(report.discountDecisions);
   }
+  console.log(`identityAccountsRead = ${report.identityAccountsRead}`);
+  console.log(`identityAccountsInserted = ${report.identityAccountsInserted}`);
+  console.log(`identityAccountsSkipped = ${report.identityAccountsSkipped}`);
+  console.log(`identityAccountConflicts = ${report.identityAccountConflicts}`);
+  console.log(`identityUnknownRoles = ${report.identityUnknownRoles}`);
+  console.log(`identityEmployeeLinksRead = ${report.identityEmployeeLinksRead}`);
+  console.log(`identityEmployeeLinksInserted = ${report.identityEmployeeLinksInserted}`);
+  console.log(`identityEmployeeLinkConflicts = ${report.identityEmployeeLinkConflicts}`);
+  console.log(`identityEmployeesWithoutAccount = ${report.identityEmployeesWithoutAccount}`);
   console.log(`sqlStatementsGenerated = ${sqlReport.sqlStatementsGenerated}`);
   console.log(`largestStatementBytes = ${sqlReport.largestStatementBytes}`);
   console.log(`largestStatementTable = ${sqlReport.largestStatementTable}`);

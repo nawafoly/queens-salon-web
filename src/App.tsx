@@ -2,7 +2,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
 
 import "react-toastify/dist/ReactToastify.css";
 
@@ -42,7 +41,7 @@ import PartnerPortal from "./pages/PartnerPortal";
 
 import Pay from "./pages/Pay";
 import PaymentCallback from "./pages/PaymentCallback";
-import { auth, db } from "./services/firebase";
+import { auth } from "./services/firebase";
 import type { UiRole } from "./services/userProfile";
 import { resolveDashboardLandingPath } from "./helpers/routePaths";
 import {
@@ -53,7 +52,9 @@ import {
 } from "./services/localAuthSession";
 import { isInternalAuthRole, normalizeAuthRole } from "./services/authAccess";
 import { IS_CUSTOMER_APP, IS_STAFF_APP } from "./config/appVariant";
-import { getEffectiveAppPermissions, type AppPermission } from "./helpers/permissions";
+import { normalizeAppPermissions, type AppPermission } from "./helpers/permissions";
+import { CoreAccountService } from "./services/CoreAccountService";
+import { CoreApiError } from "./services/coreApiClient";
 
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
@@ -76,6 +77,10 @@ function resolveLiveAccountState(
   role: UiRole,
   active: boolean
 ): LiveAccountState {
+  const accountStatus = String(profile?.status || profile?.accountStatus || "").trim().toLowerCase();
+  if (accountStatus === "deleted") return "deleted";
+  if (accountStatus === "disabled") return "disabled";
+  if (accountStatus === "pending") return "pending";
   const employmentStatus = String(profile?.employmentStatus || "").trim().toLowerCase();
   if (profile?.deleted === true || Boolean(profile?.deletedAt) || employmentStatus === "deleted") {
     return "deleted";
@@ -290,8 +295,8 @@ const App: React.FC = () => {
     ]
   );
   const effectivePermissions = useMemo(
-    () => getEffectiveAppPermissions(permissionSource),
-    [permissionSource]
+    () => normalizeAppPermissions(permissionSource.permissions),
+    [permissionSource.permissions]
   );
   const effectivePermissionSet = useMemo(
     () => new Set<AppPermission>(effectivePermissions),
@@ -355,17 +360,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let seq = 0;
-    let unsubUserDoc: (() => void) | null = null;
 
     const unsub = onAuthStateChanged(auth, (user) => {
       const currentSeq = ++seq;
-
-      try {
-        unsubUserDoc?.();
-      } catch {
-        // noop
-      }
-      unsubUserDoc = null;
 
       setAuthUser(user);
       setFirebaseAuthReady(true);
@@ -394,29 +391,27 @@ const App: React.FC = () => {
 
       setAuthReady(false);
 
-      unsubUserDoc = onSnapshot(
-        doc(db, "salons", "main", "users", user.uid),
-        (snap) => {
+      void (async () => {
+        try {
           if (currentSeq !== seq) return;
 
-          if (!snap.exists()) {
-            clearStoredAuthSession();
-            setStoredSession(null);
-            setUserRole("guest");
-            setUserName(user.displayName || "");
-            setUserActive(false);
-            setAccountState("active");
-            setAuthReady(true);
-            return;
-          }
+          const me = await CoreAccountService.me();
+          if (currentSeq !== seq) return;
 
-          const data = snap.data() as Record<string, unknown>;
-          const active = data?.active !== false && data?.isActive !== false;
-          const liveRole = normalizeAuthRole(data?.role);
+          const account = me.user;
+          const liveRole = normalizeAuthRole(account.role || account.primaryRole);
+          const active = account.active !== false && account.status === "active";
+          const data: Record<string, unknown> = {
+            ...account,
+            uid: account.firebaseUid || account.uid || user.uid,
+            role: liveRole,
+            permissions: me.permissions,
+            employeeLink: me.employeeLink,
+          };
           const liveAccountState = resolveLiveAccountState(data, liveRole, active);
 
           const liveName = String(
-            data?.displayName || data?.name || user.displayName || ""
+            account.displayName || user.displayName || ""
           ).trim();
 
           setUserRole(liveRole);
@@ -426,7 +421,7 @@ const App: React.FC = () => {
 
           writeLiveAuthCache({
             uid: user.uid,
-            email: String(data?.email || user.email || "").trim(),
+            email: String(account.email || user.email || "").trim(),
             name: liveName,
             role: liveRole,
             active,
@@ -434,28 +429,34 @@ const App: React.FC = () => {
           });
           setStoredSession(readStoredAuthSession());
           setAuthReady(true);
-        },
-        (error) => {
+        } catch (error) {
           if (currentSeq !== seq) return;
-          console.warn("[App] failed to watch live user access", error);
+          console.warn("[App] failed to load Core account access", error);
           clearStoredAuthSession();
           setStoredSession(null);
-          setUserRole("guest");
+          const code = error instanceof CoreApiError ? error.code : "";
+          if (code === "ACCOUNT_PENDING") {
+            setUserRole("pending");
+            setAccountState("pending");
+          } else if (code === "ACCOUNT_DISABLED") {
+            setUserRole("staff");
+            setAccountState("disabled");
+          } else if (code === "ACCOUNT_DELETED") {
+            setUserRole("staff");
+            setAccountState("deleted");
+          } else {
+            setUserRole("guest");
+            setAccountState("active");
+          }
           setUserName(user.displayName || "");
           setUserActive(false);
-          setAccountState("active");
           setAuthReady(true);
         }
-      );
+      })();
     });
 
     return () => {
       seq += 1;
-      try {
-        unsubUserDoc?.();
-      } catch {
-        // noop
-      }
       unsub();
     };
   }, []);

@@ -36,6 +36,10 @@ export function auditInsertStatement(salonId, data = {}, actor = {}) {
     actor_uid: optionalText(data.actorUid || data.actor_uid || actorField(actor, 'uid')) || null,
     actor_email: optionalText(data.actorEmail || data.actor_email || actorField(actor, 'email')) || null,
     actor_name: optionalText(data.actorName || data.actor_name || actorField(actor, 'name')) || null,
+    actor_user_id: optionalText(data.actorUserId || data.actor_user_id || actorField(actor, 'userId')) || null,
+    target_user_id: optionalText(data.targetUserId || data.target_user_id) || null,
+    ip: optionalText(data.ip || data.requestIp || data.request_ip || actorField(actor, 'ip')) || null,
+    user_agent: optionalText(data.userAgent || data.user_agent || actorField(actor, 'userAgent')) || null,
     before_json: safeJson(data.before),
     after_json: safeJson(data.after),
     meta_json: safeJson(data.meta),
@@ -47,8 +51,9 @@ export function auditInsertStatement(salonId, data = {}, actor = {}) {
     statement: {
       sql: `INSERT INTO audit_logs
       (id, salon_id, action, entity_type, entity_id, description, source,
-       actor_uid, actor_email, actor_name, before_json, after_json, meta_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       actor_uid, actor_email, actor_name, actor_user_id, target_user_id, ip, user_agent,
+       before_json, after_json, meta_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         row.id,
         row.salon_id,
@@ -60,6 +65,10 @@ export function auditInsertStatement(salonId, data = {}, actor = {}) {
         row.actor_uid,
         row.actor_email,
         row.actor_name,
+        row.actor_user_id,
+        row.target_user_id,
+        row.ip,
+        row.user_agent,
         row.before_json,
         row.after_json,
         row.meta_json,

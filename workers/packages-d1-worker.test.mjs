@@ -338,124 +338,119 @@ async function json(response) {
 
 
 
-test("actor role falls back to the signed-in user's own profile when token has no custom role", async () => {
-  __test.clearActorRoleCache();
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, init = {}) => {
-    calls.push({ url: String(url), authorization: init?.headers?.Authorization || "" });
-    return new Response(JSON.stringify({
-      fields: {
-        role: { stringValue: "owner" },
-        active: { booleanValue: true },
-      },
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-  };
-  try {
-    const role = await __test.resolveActorRole(
-      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
-      "main",
-      { uid: "owner-no-claim", email: "owner@example.com", claims: { role: "client" }, idToken: "verified-id-token" }
-    );
-    assert.equal(role, "owner");
-    assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /documents\/users\/owner-no-claim/);
-    assert.equal(calls[0].authorization, "Bearer verified-id-token");
-  } finally {
-    globalThis.fetch = originalFetch;
-    __test.clearActorRoleCache();
-  }
-});
-
-test("verified bootstrap owner email is authorized without a custom role claim", async () => {
-  __test.clearActorRoleCache();
-  const originalFetch = globalThis.fetch;
-  let called = false;
-  globalThis.fetch = async () => {
-    called = true;
-    throw new Error("profile lookup should not run for bootstrap owner");
-  };
-  try {
-    const role = await __test.resolveActorRole(
-      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
-      "main",
-      { uid: "bootstrap-owner", email: "nawafaaa0@gmail.com", claims: { role: "client" }, idToken: "verified-id-token" }
-    );
-    assert.equal(role, "owner");
-    assert.equal(called, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-    __test.clearActorRoleCache();
-  }
-});
-
-
-
-
-
-test("all Queens bootstrap owner emails bypass Firestore role lookup", async () => {
-  __test.clearActorRoleCache();
-  const originalFetch = globalThis.fetch;
-  let called = false;
-  globalThis.fetch = async () => {
-    called = true;
-    throw new Error("profile lookup should not run for a Queens bootstrap owner");
-  };
-  try {
-    for (const email of ["nawafaaa0@gmail.com", "nawafaaa6@gmail.com", "alolayan3@gmail.com"]) {
-      const role = await __test.resolveActorRole(
-        { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
-        "main",
-        { uid: `bootstrap-${email}`, email, claims: { role: "client" }, idToken: "verified-id-token" }
-      );
-      assert.equal(role, "owner");
-    }
-    assert.equal(called, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-    __test.clearActorRoleCache();
-  }
-});
-
-test("actor role reads root admin_users email document and roleKey", async () => {
-  __test.clearActorRoleCache();
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, init = {}) => {
-    const href = String(url);
-    calls.push({ url: href, authorization: init?.headers?.Authorization || "" });
-    if (href.includes("/documents/users/owner-from-admin-doc")) {
-      return new Response(JSON.stringify({ error: { message: "not found" } }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (href.includes("/documents/admin_users/owner%40example.com")) {
-      return new Response(JSON.stringify({
-        fields: {
-          roleKey: { stringValue: "owner" },
-          active: { booleanValue: true },
+function coreAuthDb({ accounts = [], rolePermissions = [], userPermissions = [], links = [], permissions = [] } = {}) {
+  return {
+    prepare(sql) {
+      const statement = {
+        params: [],
+        bind(...params) { this.params = params; return this; },
+        async first() {
+          const normalized = sql.replace(/\s+/g, " ").trim();
+          if (normalized.startsWith("SELECT * FROM app_users")) {
+            const [salonId, uid] = this.params;
+            return accounts.find((row) => row.salon_id === salonId && row.firebase_uid === uid) || null;
+          }
+          if (normalized.startsWith("SELECT * FROM user_employee_links")) {
+            const [salonId, userId] = this.params;
+            return links.find((row) => row.salon_id === salonId && row.user_id === userId && row.link_status === "active") || null;
+          }
+          throw new Error(`Unhandled auth first(): ${normalized}`);
         },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    return new Response(JSON.stringify({ error: { message: "forbidden" } }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
+        async all() {
+          const normalized = sql.replace(/\s+/g, " ").trim();
+          if (normalized.startsWith("SELECT permission_key FROM permissions")) {
+            return { results: permissions.map((permission_key) => ({ permission_key })) };
+          }
+          if (normalized.startsWith("SELECT permission_key FROM role_permissions")) {
+            const [salonId, role] = this.params;
+            return { results: rolePermissions.filter((row) => row.salon_id === salonId && row.role_key === role) };
+          }
+          if (normalized.startsWith("SELECT permission_key, effect FROM user_permissions")) {
+            const [salonId, userId] = this.params;
+            return { results: userPermissions.filter((row) => row.salon_id === salonId && row.user_id === userId) };
+          }
+          throw new Error(`Unhandled auth all(): ${normalized}`);
+        },
+      };
+      return statement;
+    },
   };
+}
+
+function activeAccount(uid, role = "client", overrides = {}) {
+  return {
+    id: `account-${uid}`,
+    salon_id: "main",
+    firebase_uid: uid,
+    primary_role: role,
+    status: "active",
+    deleted_at: null,
+    ...overrides,
+  };
+}
+
+test("actor role is loaded from Core D1 and ignores token role claims", async () => {
+  __test.clearActorRoleCache();
+  const CORE_DB = coreAuthDb({ accounts: [activeAccount("d1-admin", "admin")] });
+  const role = await __test.resolveActorRole(
+    { CORE_DB },
+    "main",
+    { uid: "d1-admin", email: "admin@example.com", claims: { role: "client" }, idToken: "verified-id-token" }
+  );
+  assert.equal(role, "admin");
+});
+
+test("bootstrap owner emails no longer bypass Core D1 authorization", async () => {
+  __test.clearActorRoleCache();
+  const CORE_DB = coreAuthDb({ accounts: [activeAccount("known-client", "client")] });
+  const role = await __test.resolveActorRole(
+    { CORE_DB },
+    "main",
+    { uid: "known-client", email: "nawafaaa0@gmail.com", claims: { role: "owner" }, idToken: "verified-id-token" }
+  );
+  assert.equal(role, "client");
+});
+
+test("unprovisioned package user is rejected instead of falling back to client", async () => {
+  __test.clearActorRoleCache();
+  await assert.rejects(
+    () => __test.resolveActorRole(
+      { CORE_DB: coreAuthDb() },
+      "main",
+      { uid: "missing-user", email: "missing@example.com", claims: { role: "owner" }, idToken: "verified-id-token" }
+    ),
+    (error) => error?.status === 403 && error?.code === "ACCOUNT_NOT_PROVISIONED"
+  );
+});
+
+test("disabled package account is rejected from Core D1", async () => {
+  __test.clearActorRoleCache();
+  const CORE_DB = coreAuthDb({ accounts: [activeAccount("disabled-user", "staff", { status: "disabled" })] });
+  await assert.rejects(
+    () => __test.resolveActorRole(
+      { CORE_DB },
+      "main",
+      { uid: "disabled-user", claims: {}, idToken: "verified-id-token" }
+    ),
+    (error) => error?.status === 403 && error?.code === "ACCOUNT_DISABLED"
+  );
+});
+
+test("package authorization never performs Firestore profile lookup", async () => {
+  __test.clearActorRoleCache();
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => { called = true; throw new Error("unexpected external lookup"); };
   try {
     const role = await __test.resolveActorRole(
-      { FIREBASE_PROJECT_ID: "waves-hotel-dashboard" },
+      { CORE_DB: coreAuthDb({ accounts: [activeAccount("staff-user", "staff")] }) },
       "main",
-      { uid: "owner-from-admin-doc", email: "owner@example.com", claims: { role: "client" }, idToken: "verified-id-token" }
+      { uid: "staff-user", claims: {}, idToken: "verified-id-token" }
     );
-    assert.equal(role, "owner");
-    assert.equal(calls.length, 2);
-    assert.match(calls[1].url, /documents\/admin_users\/owner%40example.com/);
-    assert.equal(calls[1].authorization, "Bearer verified-id-token");
+    assert.equal(role, "staff");
+    assert.equal(called, false);
   } finally {
     globalThis.fetch = originalFetch;
-    __test.clearActorRoleCache();
   }
 });
 

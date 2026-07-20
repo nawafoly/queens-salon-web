@@ -1,11 +1,12 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { CoreAccountService } from "./CoreAccountService";
+import { CoreApiError } from "./coreApiClient";
 import type { UiRole } from "./userProfile";
 
 export const INTERNAL_AUTH_ROLES = [
   "owner",
   "admin",
   "hr",
+  "accountant",
   "reception",
   "staff",
   "pending",
@@ -18,6 +19,7 @@ export function normalizeAuthRole(raw: unknown): UiRole {
 
   if (role === "administrator" || role === "super_admin" || role === "super-admin") return "admin";
   if (role === "employee") return "staff";
+  if (role === "finance" || role === "accounting") return "accountant";
   if (role === "owner-role" || role === "malik" || role === "owner" || role === "المالك" || role === "مالك") {
     return "owner";
   }
@@ -43,6 +45,7 @@ export function normalizeAuthRole(raw: unknown): UiRole {
     role === "owner" ||
     role === "admin" ||
     role === "hr" ||
+    role === "accountant" ||
     role === "reception" ||
     role === "staff" ||
     role === "client" ||
@@ -95,33 +98,52 @@ export async function readVerifiedUserAccess(uid: string): Promise<VerifiedUserA
     };
   }
 
-  const snapshot = await getDoc(doc(db, "salons", "main", "users", normalizedUid));
-  if (!snapshot.exists()) {
+  try {
+    const me = await CoreAccountService.me();
+    const account = me.user;
+    if (cleanText(account.firebaseUid || account.uid) !== normalizedUid) {
+      return {
+        exists: false,
+        uid: normalizedUid,
+        role: "guest",
+        active: false,
+        email: "",
+        displayName: "",
+        phone: "",
+        profile: null,
+      };
+    }
+    const role = normalizeAuthRole(account.role || account.primaryRole);
+    const profile = {
+      ...account,
+      uid: account.firebaseUid || account.uid,
+      role,
+      permissions: me.permissions,
+      employeeLink: me.employeeLink,
+    } as Record<string, unknown>;
     return {
-      exists: false,
-      uid: normalizedUid,
-      role: "guest",
-      active: false,
-      email: "",
-      displayName: "",
-      phone: "",
-      profile: null,
+      exists: true,
+      uid: account.firebaseUid || account.uid,
+      role,
+      active: account.active,
+      email: account.email,
+      displayName: account.displayName,
+      phone: account.phone,
+      profile,
     };
+  } catch (error) {
+    if (error instanceof CoreApiError) {
+      return {
+        exists: false,
+        uid: normalizedUid,
+        role: error.code === "ACCOUNT_PENDING" ? "pending" : "guest",
+        active: false,
+        email: "",
+        displayName: "",
+        phone: "",
+        profile: { coreError: error.code, status: error.status },
+      };
+    }
+    throw error;
   }
-
-  const profile = snapshot.data() as Record<string, unknown>;
-  const storedRole = normalizeAuthRole(profile?.role);
-  const active = profile?.active !== false && profile?.isActive !== false;
-  const role = storedRole;
-
-  return {
-    exists: true,
-    uid: normalizedUid,
-    role,
-    active,
-    email: cleanText(profile?.email),
-    displayName: cleanText(profile?.displayName || profile?.name),
-    phone: cleanText(profile?.phone),
-    profile,
-  };
 }

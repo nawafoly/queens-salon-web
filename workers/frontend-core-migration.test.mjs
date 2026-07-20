@@ -726,10 +726,56 @@ test("client audit calls are not sent to the administrative Core audit endpoint"
 
 test("Core worker binds authenticated bookings to the verified client identity", () => {
   const source = readFileSync("workers/core/index.js", "utf8");
-  assert.match(source, /resolveActorRole/);
+  const authContext = readFileSync("workers/core/auth-context.js", "utf8");
+  assert.match(source, /getAuthContext/);
+  assert.match(authContext, /getAccountByFirebaseUid/);
   assert.match(source, /resolveSelfClient/);
   assert.match(source, /clientId:\s*selfClient\.id/);
   assert.match(source, /source:\s*"client"/);
+});
+
+test("front-end operational identity comes from Core app_users and permissions", () => {
+  const app = readFileSync("src/App.tsx", "utf8");
+  const permissionContext = readFileSync("src/security/PermissionContext.tsx", "utf8");
+  const settingsUsers = readFileSync("src/pages/settings/SettingsUsers.tsx", "utf8");
+  const dashboard = readFileSync("src/pages/Dashboard.tsx", "utf8");
+  const dashboardSettings = readFileSync("src/pages/DashboardSettings.tsx", "utf8");
+  const authAccess = readFileSync("src/services/authAccess.ts", "utf8");
+  const coreAccountService = readFileSync("src/services/CoreAccountService.ts", "utf8");
+
+  assert.match(coreAccountService, /\/api\/auth\/me/);
+  assert.match(coreAccountService, /\/api\/admin\/accounts/);
+  assert.match(app, /CoreAccountService\.me/);
+  assert.match(app, /permissions:\s*me\.permissions/);
+  assert.match(app, /normalizeAppPermissions\(permissionSource\.permissions\)/);
+  assert.doesNotMatch(app, /firebase\/firestore|getDoc\(|onSnapshot\(doc\(db/);
+
+  assert.match(permissionContext, /normalizeAppPermissions\(permissions\)/);
+  assert.doesNotMatch(permissionContext, /getEffectiveAppPermissions/);
+
+  assert.match(settingsUsers, /CoreAccountService/);
+  assert.match(settingsUsers, /CoreAccountService\.linkEmployee/);
+  assert.doesNotMatch(settingsUsers, /firebase\/firestore|collection\(db|doc\(db|getDocs\(|setDoc\(|deleteDoc\(/);
+
+  assert.match(dashboard, /readVerifiedUserAccess/);
+  assert.doesNotMatch(dashboard, /createOrLoadUserProfile/);
+  assert.match(dashboardSettings, /normalizeAuthRole/);
+  assert.doesNotMatch(dashboardSettings, /firebase\/firestore|onAuthStateChanged|doc\(db|getDoc\(/);
+
+  assert.match(authAccess, /CoreAccountService\.me/);
+  assert.doesNotMatch(authAccess, /firebase\/firestore|FirestoreRestClient|batchGet|runQuery/);
+});
+
+test("Core auth path does not read Firestore role profiles", () => {
+  const coreAuth = readFileSync("workers/core/auth-context.js", "utf8");
+  const packageAuth = readFileSync("workers/packages/auth.js", "utf8");
+  const accountRepo = readFileSync("workers/core/repositories/accounts.js", "utf8");
+
+  assert.match(coreAuth, /getAccountByFirebaseUid/);
+  assert.match(coreAuth, /assertAccountCanAuthenticate/);
+  assert.match(accountRepo, /SELECT \* FROM app_users WHERE salon_id = \? AND firebase_uid = \?/);
+  assert.doesNotMatch(packageAuth, /documents\/users|documents\/admin_users|firestore\.googleapis/);
+  assert.doesNotMatch(packageAuth, /readOwnRoleDocument|documentData|roleDocumentUrl/);
 });
 test("public catalog surfaces never require Firestore authentication", () => {
   const booking = readFileSync("src/pages/Booking.tsx", "utf8");

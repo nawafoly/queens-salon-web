@@ -3,7 +3,7 @@
 import { AppError } from './errors.js';
 
 export const ADMIN_ROLES = new Set(["owner", "admin"]);
-export const OPERATIONS_ROLES = new Set(["owner", "admin", "reception", "staff"]);
+export const OPERATIONS_ROLES = new Set(["owner", "admin", "hr", "accountant", "reception", "staff"]);
 
 export function cleanText(value) {
   return String(value ?? "").trim();

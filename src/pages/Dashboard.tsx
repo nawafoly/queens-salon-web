@@ -81,10 +81,10 @@ import { listAllIncomeFS } from "../services/firestoreIncome";
 
 import {
   canAccessDashboard,
-  createOrLoadUserProfile,
   type UiRole as ProfileRole,
   type UserProfile,
 } from "../services/userProfile";
+import { readVerifiedUserAccess } from "../services/authAccess";
 
 // ✅ NEW: App Settings from Firestore (settings/app)
 import { AppSettingsService } from "../services/AppSettingsService";
@@ -1291,7 +1291,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 };
 
 // ✅ Roles
-type UiRole = "owner" | "admin" | "reception" | "staff";
+type UiRole = "owner" | "admin" | "accountant" | "reception" | "staff";
 
 interface UserInfo {
   name: string;
@@ -1310,7 +1310,7 @@ type DashboardProps = {
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
   const r = String(role || "").toLowerCase().trim() as ProfileRole;
 
-  if (r === "owner" || r === "admin" || r === "reception" || r === "staff") {
+  if (r === "owner" || r === "admin" || r === "accountant" || r === "reception" || r === "staff") {
     return r;
   }
   return null;
@@ -1339,7 +1339,7 @@ function isProgrammerProfile(userInfo: UserInfo | null) {
 
 function isDashboardUiRole(role: unknown): role is UiRole {
   const r = String(role || "").toLowerCase().trim();
-  return r === "owner" || r === "admin" || r === "reception" || r === "staff";
+  return r === "owner" || r === "admin" || r === "accountant" || r === "reception" || r === "staff";
 }
 
 function getDashboardStoredName() {
@@ -1798,47 +1798,45 @@ const Dashboard: React.FC<DashboardProps> = ({
           return;
         }
 
-        step = "profile:createOrLoadUserProfile";
-        let profile: UserProfile | null = null;
-
-        try {
-          profile = await createOrLoadUserProfile(user);
-        } catch (e: any) {
-          const msg = String(e?.message || "");
-          console.warn("createOrLoadUserProfile failed:", msg);
-
-          if (msg.includes("Missing or insufficient permissions")) {
-            profile = null;
-          } else {
-            throw e;
-          }
-        }
+        step = "account:readVerifiedUserAccess";
+        const isMalikatAuth = isMalikatAdminEmail(user.email);
+        const access = await readVerifiedUserAccess(user.uid);
+        const sourceProfile = access.profile || {};
+        const profile: UserProfile | null = access.exists && access.active !== false
+          ? {
+              uid: user.uid,
+              email: access.email || user.email || "",
+              name:
+                access.displayName ||
+                String(sourceProfile.name || sourceProfile.displayName || "").trim() ||
+                user.displayName ||
+                user.email ||
+                "مستخدم",
+              phone: access.phone || String(sourceProfile.phone || ""),
+              city: String(sourceProfile.city || ""),
+              birthdate: String(sourceProfile.birthdate || ""),
+              avatarUrl: String(sourceProfile.avatarUrl || ""),
+              clientId: String(sourceProfile.clientId || "") || undefined,
+              role: access.role,
+              active: access.active,
+              permissions: Array.isArray(sourceProfile.permissions)
+                ? (sourceProfile.permissions as UserProfile["permissions"])
+                : undefined,
+              permissionOverrides:
+                sourceProfile.permissionOverrides && typeof sourceProfile.permissionOverrides === "object"
+                  ? (sourceProfile.permissionOverrides as UserProfile["permissionOverrides"])
+                  : undefined,
+              permissionVersion: Number(sourceProfile.permissionVersion || 0) || undefined,
+            }
+          : null;
 
         if (!profile) {
           step = "profile:fallback";
-
-          const fallbackRole: UiRole =
-            "staff";
-
-          const fallbackName =
-            localStorage.getItem("userName") ||
-            user.displayName ||
-            user.email ||
-            "موظفة";
-
-          setUserInfo({
-            name: fallbackName,
-            role: fallbackRole,
-            email: user.email || "",
-          });
-          markDashboardBootstrapped();
-
-          await refreshDashboard(fallbackRole);
+          navigate(isMalikatAuth ? "/dashboard-pending" : "/profile");
           return;
         }
 
         step = `profile:loaded role=${profile?.role || "-"}`;
-        const isMalikatAuth = isMalikatAdminEmail(user.email);
 
         step = "profile:canAccessDashboard";
         if (!canAccessDashboard(profile.role)) {
@@ -2191,6 +2189,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         return "المالكة";
       case "admin":
         return "خدمة عملاء ملكات";
+      case "accountant":
+        return "المحاسبة";
       case "reception":
         return "موظفة الاستقبال";
       case "staff":

@@ -14,7 +14,7 @@
     "check:packages:d1-only": "node scripts/check-packages-d1-only.mjs",
     "check:core:d1-only": "node scripts/check-core-d1-only.mjs",
     "test:packages:worker": "node --experimental-strip-types --test workers/packages-d1-worker.test.mjs workers/package-cart-eligibility.test.mjs",
-    "test:core:worker": "node --test workers/core-worker.test.mjs",
+    "test:core:worker": "node --test workers/core-worker.test.mjs workers/account-permissions-worker.test.mjs",
     "test:packages:worker:integration": "node scripts/verify-packages-worker-integration.mjs",
     "build": "tsc -b && vite build --mode web",
     "lint": "eslint .",

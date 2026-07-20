@@ -27,7 +27,7 @@ import {
 } from "../services/authService";
 import { writeAuditLog } from "../services/logService";
 
-// ✅ User profile/roles (Firestore SoT) - للعميلات
+// Client-facing session data. Operational roles are verified through Core D1.
 import {
   clearStoredAuthSession,
   writeStoredAuthSession,

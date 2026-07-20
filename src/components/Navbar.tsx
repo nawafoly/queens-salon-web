@@ -8,8 +8,8 @@ import { resolveDashboardLandingPath } from "../helpers/routePaths";
 import { type User as FirebaseUser } from "firebase/auth";
 import { logoutFirebase } from "../services/authService";
 
-type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "pending" | "guest";
-const KNOWN_ROLES: UiRole[] = ["owner", "admin", "hr", "reception", "staff", "client", "pending", "guest"];
+type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "pending" | "guest";
+const KNOWN_ROLES: UiRole[] = ["owner", "admin", "hr", "accountant", "reception", "staff", "client", "pending", "guest"];
 
 function normalizeRole(role: any): UiRole {
   const r = String(role || "").toLowerCase().trim();
@@ -21,7 +21,7 @@ function normalizeRole(role: any): UiRole {
 }
 
 function isInternalPortalRole(role: UiRole) {
-  return role === "owner" || role === "admin" || role === "hr" || role === "reception" || role === "staff";
+  return role === "owner" || role === "admin" || role === "hr" || role === "accountant" || role === "reception" || role === "staff";
 }
 
 type NavbarProps = {

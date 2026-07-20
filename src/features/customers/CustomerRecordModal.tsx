@@ -16,7 +16,7 @@ import {
 } from "./customerFormatters";
 import type { CustomerRow } from "./customerTypes";
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
+type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff" | "client" | "guest";
 type Feedback = { type: "success" | "error"; text: string } | null;
 
 const NOTES_KEY = "dashboard_client_notes_v1";

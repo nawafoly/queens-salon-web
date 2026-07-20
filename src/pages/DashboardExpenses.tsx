@@ -111,7 +111,7 @@ function downloadTextFile(filename: string, content: string) {
 function firebaseMsg(e: any) {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions")) {
-    return "⚠️ لا توجد صلاحيات كافية. تأكد من Firestore Rules + role داخل salons/main/users/{uid} + تسجيل الدخول.";
+    return "⚠️ لا توجد صلاحيات كافية. تأكد من صلاحيات Core D1 وتسجيل الدخول.";
   }
   if (msg.includes("not-found")) {
     return "⚠️ المسار غير موجود. تأكد من اسم الـ collection ومسار السيرفس.";

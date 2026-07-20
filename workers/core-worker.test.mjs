@@ -37,14 +37,113 @@ class FakeD1 {
       "service_sections",
       "refunds",
       "audit_logs",
+      "roles",
+      "permissions",
+      "role_permissions",
+      "app_users",
+      "user_permissions",
+      "user_employee_links",
+      "employee_profiles",
     ].map((table) => [table, new Map()]));
+    this.seedIdentity();
   }
 
   key(table, row) {
     if (table === "client_aliases") return `${row.salon_id}\u0000${row.alias_id}`;
     if (table === "staff_services") return `${row.salon_id}\u0000${row.staff_id}\u0000${row.service_id}`;
     if (table === "booking_slot_locks") return `${row.salon_id}\u0000${row.staff_id}\u0000${row.booking_date}\u0000${row.slot_time}`;
+    if (table === "roles") return `${row.salon_id}\u0000${row.role_key}`;
+    if (table === "role_permissions") return `${row.salon_id}\u0000${row.role_key}\u0000${row.permission_key}`;
+    if (table === "user_employee_links") return `${row.salon_id}\u0000${row.id}`;
+    if (table === "employee_profiles") return `${row.salon_id}\u0000${row.id}`;
     return row.id;
+  }
+
+  seedIdentity() {
+    const now = "2027-01-01T00:00:00.000Z";
+    const roleRows = [
+      ["owner", 100],
+      ["admin", 80],
+      ["hr", 60],
+      ["accountant", 55],
+      ["reception", 40],
+      ["staff", 30],
+      ["pending", 10],
+      ["client", 5],
+      ["guest", 0],
+    ];
+    for (const [role_key, rank] of roleRows) {
+      this.seed("roles", { id: role_key, salon_id: "main", role_key, label: role_key, rank, protected: role_key === "owner" ? 1 : 0, assignable: role_key !== "guest" ? 1 : 0, created_at: now, updated_at: now });
+    }
+    const permissionKeys = [
+      "accounts.read",
+      "accounts.create",
+      "accounts.update",
+      "accounts.disable",
+      "accounts.restore",
+      "accounts.delete",
+      "accounts.reset_password",
+      "roles.read",
+      "roles.assign",
+      "roles.manage",
+      "permissions.read",
+      "permissions.manage",
+      "employee_links.read",
+      "employee_links.manage",
+      "audit.read",
+      "admin_accounts.view",
+      "admin_accounts.manage",
+      "bookings.view",
+      "bookings.create",
+      "bookings.update",
+      "bookings.delete",
+      "finance.view",
+      "finance.manage",
+      "reports.view",
+    ];
+    for (const permission_key of permissionKeys) {
+      this.seed("permissions", { permission_key, group_key: permission_key.split(".")[0], label: permission_key, description: "", sensitive: permission_key.includes("delete") ? 1 : 0, created_at: now, updated_at: now });
+    }
+    const grantRole = (role_key, permissions) => {
+      for (const permission_key of permissions) {
+        this.seed("role_permissions", { salon_id: "main", role_key, permission_key, created_at: now });
+      }
+    };
+    grantRole("admin", permissionKeys.filter((key) => !["accounts.delete", "permissions.manage", "roles.manage"].includes(key)));
+    grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
+    grantRole("accountant", ["finance.view", "finance.manage", "reports.view", "audit.read"]);
+    grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update"]);
+    grantRole("staff", ["bookings.view"]);
+
+    const accounts = [
+      ["user-owner1", "owner1", "owner@example.com", "Owner", "owner", "active"],
+      ["user-admin1", "admin1", "admin@example.com", "Admin", "admin", "active"],
+      ["user-hr1", "hr1", "hr@example.com", "HR", "hr", "active"],
+      ["user-accountant1", "accountant1", "accountant@example.com", "Accountant", "accountant", "active"],
+      ["user-reception1", "reception1", "reception@example.com", "Reception", "reception", "active"],
+      ["user-staff1", "staff1", "staff@example.com", "Staff", "staff", "active"],
+      ["user-client1", "client1", "client@example.com", "Client", "client", "active"],
+      ["user-client-user", "client-user", "client-user@example.com", "Client User", "client", "active"],
+    ];
+    for (const [id, firebase_uid, email, display_name, primary_role, status] of accounts) {
+      this.seed("app_users", {
+        id,
+        firebase_uid,
+        salon_id: "main",
+        email,
+        phone: null,
+        display_name,
+        primary_role,
+        status,
+        email_verified: 1,
+        last_login_at: null,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+        legacy_source: "test",
+        legacy_id: null,
+      });
+    }
   }
 
   seed(table, row) {
@@ -67,6 +166,91 @@ class FakeD1 {
   async all(sql, params = []) {
     this.allQueryCount += 1;
     const normalized = sql.replace(/\s+/g, " ").trim();
+    if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ? AND firebase_uid = ?")) {
+      const [salonId, uid] = params;
+      return this.rows("app_users").filter((row) => row.salon_id === salonId && row.firebase_uid === uid).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.rows("app_users").filter((row) => row.salon_id === salonId && row.id === id).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ? AND email = ?")) {
+      const [salonId, email] = params;
+      return this.rows("app_users").filter((row) => row.salon_id === salonId && row.email === email).slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ?")) {
+      const [salonId] = params;
+      let rows = this.rows("app_users").filter((row) => row.salon_id === salonId);
+      if (normalized.includes("status <> 'deleted'")) rows = rows.filter((row) => row.status !== "deleted" && !row.deleted_at);
+      return rows;
+    }
+    if (normalized.startsWith("SELECT COUNT(*) AS count FROM app_users")) {
+      const [salonId, excludeId] = params;
+      return [{
+        count: this.rows("app_users").filter((row) =>
+          row.salon_id === salonId &&
+          row.primary_role === "owner" &&
+          row.status === "active" &&
+          !row.deleted_at &&
+          row.id !== excludeId
+        ).length,
+      }];
+    }
+    if (normalized === "SELECT * FROM permissions ORDER BY group_key, permission_key") {
+      return this.rows("permissions").sort((a, b) => `${a.group_key}\u0000${a.permission_key}`.localeCompare(`${b.group_key}\u0000${b.permission_key}`));
+    }
+    if (normalized === "SELECT permission_key FROM permissions") {
+      return this.rows("permissions").map((row) => ({ permission_key: row.permission_key }));
+    }
+    if (normalized === "SELECT COUNT(*) AS count FROM permissions") {
+      return [{ count: this.rows("permissions").length }];
+    }
+    if (normalized.startsWith("SELECT * FROM roles WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("roles").filter((row) => row.salon_id === salonId).sort((a, b) => Number(b.rank || 0) - Number(a.rank || 0));
+    }
+    if (normalized.startsWith("SELECT role_key FROM roles WHERE salon_id = ? LIMIT 1")) {
+      const [salonId] = params;
+      return this.rows("roles").filter((row) => row.salon_id === salonId).slice(0, 1).map((row) => ({ role_key: row.role_key }));
+    }
+    if (normalized.startsWith("SELECT permission_key FROM role_permissions WHERE salon_id = ? AND role_key = ?")) {
+      const [salonId, roleKey] = params;
+      return this.rows("role_permissions")
+        .filter((row) => row.salon_id === salonId && row.role_key === roleKey)
+        .map((row) => ({ permission_key: row.permission_key }))
+        .sort((a, b) => a.permission_key.localeCompare(b.permission_key));
+    }
+    if (normalized.startsWith("SELECT permission_key, effect FROM user_permissions WHERE salon_id = ? AND user_id = ?")) {
+      const [salonId, userId] = params;
+      return this.rows("user_permissions")
+        .filter((row) => row.salon_id === salonId && row.user_id === userId)
+        .map((row) => ({ permission_key: row.permission_key, effect: row.effect }))
+        .sort((a, b) => a.permission_key.localeCompare(b.permission_key));
+    }
+    if (normalized.startsWith("SELECT l.*, ep.name AS employee_name")) {
+      const [salonId, userId] = params;
+      return this.rows("user_employee_links")
+        .filter((row) => row.salon_id === salonId && row.user_id === userId && row.link_status === "active")
+        .slice(0, 1)
+        .map((row) => {
+          const employee = this.find("employee_profiles", salonId, row.employee_id) || this.find("staff", salonId, row.employee_id) || {};
+          return {
+            ...row,
+            employee_name: employee.name || "",
+            employee_email: employee.email || "",
+            employee_phone: employee.phone_normalized || "",
+          };
+        });
+    }
+    if (normalized.startsWith("SELECT id, name, email, phone_normalized FROM employee_profiles WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("employee_profiles", salonId, id) ? [this.find("employee_profiles", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT id, name, NULL AS email, phone_normalized FROM staff WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      const row = this.find("staff", salonId, id);
+      return row ? [{ id: row.id, name: row.name, email: null, phone_normalized: row.phone_normalized }] : [];
+    }
     if (normalized.startsWith("SELECT * FROM clients WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("clients", salonId, id) ? [this.find("clients", salonId, id)] : [];
@@ -282,6 +466,35 @@ class FakeD1 {
 
   async run(sql, params = []) {
     const normalized = sql.replace(/\s+/g, " ").trim();
+    if (normalized.startsWith("INSERT INTO user_employee_links")) {
+      const [
+        id,
+        salon_id,
+        user_id,
+        employee_id,
+        linked_by_user_id,
+        linked_at,
+        updated_at,
+        legacy_source,
+        legacy_id,
+      ] = params;
+      const existing = this.rows("user_employee_links").find((row) => row.id === id && row.salon_id === salon_id);
+      this.seed("user_employee_links", {
+        ...(existing || {}),
+        id,
+        salon_id,
+        user_id,
+        employee_id,
+        link_status: "active",
+        linked_by_user_id,
+        linked_at,
+        updated_at,
+        unlinked_at: null,
+        legacy_source,
+        legacy_id,
+      });
+      return { meta: { changes: 1 } };
+    }
     const insertMatch = normalized.match(/^INSERT(?: OR REPLACE)? INTO ([a-z_]+) \((.+?)\) VALUES/i);
     if (insertMatch && this.tables[insertMatch[1]]) {
       const table = insertMatch[1];
@@ -325,6 +538,37 @@ class FakeD1 {
     if (normalized.startsWith("INSERT INTO services")) {
       const [id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at] = params;
       return this.insert("services", { id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at });
+    }
+    if (normalized.startsWith("UPDATE app_users SET last_login_at = ?")) {
+      const [last_login_at, updated_at, id] = params;
+      const row = this.rows("app_users").find((item) => item.id === id);
+      if (!row) return { meta: { changes: 0 } };
+      this.seed("app_users", { ...row, last_login_at, updated_at });
+      return { meta: { changes: 1 } };
+    }
+    if (normalized.startsWith("UPDATE app_users SET")) return this.dynamicUpdate("app_users", normalized, params);
+    if (normalized.startsWith("DELETE FROM user_permissions WHERE salon_id = ? AND user_id = ?")) {
+      const [salonId, userId] = params;
+      let removed = 0;
+      for (const [key, row] of this.tables.user_permissions.entries()) {
+        if (row.salon_id === salonId && row.user_id === userId) {
+          this.tables.user_permissions.delete(key);
+          removed += 1;
+        }
+      }
+      return { meta: { changes: removed } };
+    }
+    if (normalized.startsWith("UPDATE user_employee_links SET link_status = 'unlinked'")) {
+      const [unlinked_at, updated_at, salonId, lookup] = params;
+      const byEmployee = normalized.includes("employee_id = ?");
+      let changes = 0;
+      for (const row of this.rows("user_employee_links")) {
+        if (row.salon_id !== salonId || row.link_status !== "active") continue;
+        if (byEmployee ? row.employee_id !== lookup : row.user_id !== lookup && row.id !== lookup) continue;
+        this.seed("user_employee_links", { ...row, link_status: "unlinked", unlinked_at, updated_at });
+        changes += 1;
+      }
+      return { meta: { changes } };
     }
     if (normalized.startsWith("UPDATE clients SET")) return this.dynamicUpdate("clients", normalized, params);
     if (normalized.startsWith("UPDATE services SET")) return this.dynamicUpdate("services", normalized, params);
@@ -539,6 +783,10 @@ class FakeD1 {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("INSERT INTO audit_logs")) {
         results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("INSERT INTO app_users") || sql.startsWith("INSERT INTO user_permissions") || sql.startsWith("INSERT INTO user_employee_links")) {
+        results.push(await this.run(statement.sql, params));
+      } else if (sql.startsWith("DELETE FROM user_permissions") || sql.startsWith("UPDATE user_employee_links SET")) {
+        results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
         results.push(await this.run(statement.sql, params));
       } else if (sql.startsWith("UPDATE refunds SET amount_halalas")) {
@@ -676,6 +924,21 @@ function parseInsertRows(line) {
   });
 }
 
+function migrationTableCount(stdout, table) {
+  const plainOutput = stripVTControlCharacters(stdout);
+  const line = plainOutput.split(/\r?\n/).find((row) => {
+    const trimmed = row.trim();
+    return trimmed.includes(table) && !/^(INSERT|UPDATE|DELETE)\b/i.test(trimmed);
+  });
+  assert.ok(line, `missing ${table} count`);
+  const tokens = line.replace(/[^\w]+/g, " ").trim().split(/\s+/);
+  const tableIndex = tokens.indexOf(table);
+  assert.notEqual(tableIndex, -1, `missing ${table} count token`);
+  const count = tokens.slice(tableIndex + 1).find((token) => /^\d+$/.test(token));
+  assert.ok(count, `missing ${table} numeric count`);
+  return Number(count);
+}
+
 function fakeLocalValidationQueryRows({ counts = {}, danglingBookingClients = 0 } = {}) {
   return (sql) => {
     const normalized = sql.replace(/\s+/g, " ").trim();
@@ -689,6 +952,9 @@ function fakeLocalValidationQueryRows({ counts = {}, danglingBookingClients = 0 
     if (normalized.includes("LEFT JOIN services s ON s.id = bi.service_id")) return [{ count: 0 }];
     if (normalized.includes("LEFT JOIN bookings b ON b.id = l.booking_id")) return [{ count: 0 }];
     if (normalized.includes("LEFT JOIN clients c ON c.id = a.canonical_client_id")) return [{ count: 0 }];
+    if (normalized.includes("FROM app_users u LEFT JOIN roles r")) return [{ count: 0 }];
+    if (normalized.includes("FROM user_employee_links l LEFT JOIN app_users u")) return [{ count: 0 }];
+    if (normalized.includes("FROM user_employee_links l LEFT JOIN employee_profiles ep")) return [{ count: 0 }];
     if (normalized.includes("FROM (SELECT salon_id, UPPER(TRIM(COALESCE(code_key, code)))")) return [{ count: 0 }];
     if (normalized.includes("FROM clients WHERE id =")) return [{ count: 1 }];
     const countMatch = /^SELECT COUNT\(\*\) AS count FROM ([a-z_]+);?$/.exec(normalized);
@@ -2018,6 +2284,27 @@ test("core migration dry-run parses fixture and prints counts", () => {
   assert.match(result.stdout, /payments/);
 });
 
+test("core migration emits D1 operational identity and permission tables", () => {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-core-firestore-to-d1.mjs",
+    "--input=scripts/fixtures/core-migration-fixture.json",
+    "--today=2026-07-16",
+    "--dump-sql",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /INSERT OR REPLACE INTO roles /);
+  assert.match(result.stdout, /INSERT OR REPLACE INTO permissions /);
+  assert.match(result.stdout, /INSERT OR REPLACE INTO role_permissions /);
+  assert.match(result.stdout, /INSERT OR REPLACE INTO app_users /);
+  assert.equal(migrationTableCount(result.stdout, "user_employee_links"), 0);
+  assert.match(result.stdout, /accounts\.update/);
+  assert.match(result.stdout, /permissions\.manage/);
+  assert.doesNotMatch(result.stdout, /salons\/main\/users/);
+});
+
 test("core migration dry-run resolves client, slot lock, and QS953 conflicts without blocking", () => {
   const result = spawnSync(process.execPath, [
     "scripts/migrate-core-firestore-to-d1.mjs",
@@ -2030,7 +2317,7 @@ test("core migration dry-run resolves client, slot lock, and QS953 conflicts wit
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /blockingConflicts = 0/);
   assert.match(result.stdout, /warningConflicts = \d+/);
-  assert.match(stripVTControlCharacters(result.stdout), /booking_slot_locks\s+│ 6/);
+  assert.equal(migrationTableCount(result.stdout, "booking_slot_locks"), 6);
   assert.match(result.stdout, /slotLocksSkippedPast = 6/);
   assert.match(result.stdout, /mergedClients = 1/);
   assert.match(result.stdout, /client-legacy/);
@@ -2775,7 +3062,7 @@ test("client identity endpoints never trust browser-supplied Firebase UID", asyn
   assert.equal(fake.find("clients", "main", guestBody.data.id)?.firebase_uid, null);
 });
 
-test("reception role can use operational client search without a D1 role seed", async () => {
+test("reception app_user can use operational client search through D1 role authority", async () => {
   const fake = new FakeD1();
   seedCore(fake);
   const response = await worker.fetch(
