@@ -356,6 +356,53 @@
 .attendance-security-result.is-allowed { background: #eaf8f0; color: #16764e; }
 .attendance-security-result.is-rejected { background: #fff0f2; color: #b4233b; }
 
+.attendance-discipline-table-wrap {
+  margin-top: 18px;
+}
+
+.attendance-discipline-table th,
+.attendance-discipline-table td {
+  white-space: nowrap;
+}
+
+.attendance-discipline-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 950;
+}
+
+.attendance-discipline-status.is-ok {
+  background: #eaf8f0;
+  color: #16764e;
+}
+
+.attendance-discipline-status.is-warning {
+  background: #fff8e8;
+  color: #9a6411;
+}
+
+.attendance-discipline-status.is-danger {
+  background: #fff0f2;
+  color: #b4233b;
+}
+
+.attendance-discipline-status.is-muted {
+  background: #f0f2f6;
+  color: #657086;
+}
+
+.attendance-security-table tbody tr.is-discipline-warning {
+  background: #fffdf7;
+}
+
+.attendance-security-table tbody tr.is-discipline-danger {
+  background: #fffafb;
+}
+
 .attendance-security-row-action {
   min-height: 36px;
   display: inline-flex;
