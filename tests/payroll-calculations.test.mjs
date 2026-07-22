@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculatePayrollSnapshot,
+  evaluatePayrollSetup,
   preserveLockedPayrollSnapshot,
 } from "../src/helpers/hr/payrollCalculations.ts";
 
@@ -67,4 +68,50 @@ test("approved payroll keeps its snapshot after a later base salary change", () 
   const selected = preserveLockedPayrollSnapshot(approved, recalculated);
   assert.equal(selected.baseSalaryHalalas, 550000);
   assert.equal(selected.dailyRateHalalas, 18333);
+});
+
+test("missing base salary marks payroll setup incomplete", () => {
+  const result = snapshot({ baseSalaryHalalas: undefined });
+  assert.equal(result.payrollSetupComplete, false);
+  assert.ok(result.payrollSetupMissing.includes("baseSalary"));
+});
+
+test("monthly hours are not inferred from attendance summary", () => {
+  const result = snapshot({ monthlyHours: undefined, dailyScheduledHours: undefined });
+  assert.equal(result.monthlyHours, 0);
+  assert.equal(result.hourlyRateHalalas, 0);
+  assert.equal(result.payrollSetupComplete, false);
+  assert.ok(result.payrollSetupMissing.includes("monthlyHours"));
+});
+
+test("configured daily hours can complete setup without monthlyHours", () => {
+  const result = snapshot({ monthlyHours: undefined, dailyScheduledHours: 8 });
+  assert.equal(result.monthlyHours, 0);
+  assert.equal(result.payrollSetupComplete, true);
+  assert.equal(result.monthlyHoursSource, "configured_daily_hours");
+  assert.equal(result.hourlyRateHalalas, Math.round(result.dailyRateHalalas / 8));
+});
+
+test("enabled overtime is ignored when payroll setup is incomplete", () => {
+  const result = snapshot({
+    baseSalaryHalalas: 0,
+    overtimeEnabled: true,
+    overtimeMultiplier: 1.5,
+  });
+  assert.equal(result.payrollSetupComplete, false);
+  assert.equal(result.overtimeEnabled, false);
+  assert.equal(result.financialOvertimeHours, 0);
+  assert.equal(result.overtimeValueHalalas, 0);
+});
+
+test("setup evaluator reports core missing salary settings", () => {
+  const setup = evaluatePayrollSetup({
+    employeeId: "emp-1",
+    baseSalaryHalalas: 0,
+    workDays: 0,
+    monthlyHours: 0,
+    overtimeMultiplier: 1.5,
+  });
+  assert.deepEqual(setup.missing, ["baseSalary", "workDays", "monthlyHours"]);
+  assert.equal(setup.complete, false);
 });

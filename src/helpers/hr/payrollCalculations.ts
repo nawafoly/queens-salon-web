@@ -33,6 +33,25 @@ export type PayrollAttendanceSummarySnapshot = {
   incompleteDays: number;
 };
 
+export type PayrollSetupMissingKey =
+  | "employeeId"
+  | "baseSalary"
+  | "workDays"
+  | "monthlyHours"
+  | "overtimeMultiplier";
+
+export type PayrollMonthlyHoursSource =
+  | "configured_monthly_hours"
+  | "configured_daily_hours"
+  | "saved_snapshot"
+  | "missing";
+
+export type PayrollSetupSnapshot = {
+  complete: boolean;
+  missing: PayrollSetupMissingKey[];
+  monthlyHoursSource: PayrollMonthlyHoursSource;
+};
+
 export type PayrollCalculationInput = {
   employeeId: string;
   employeeName: string;
@@ -48,6 +67,7 @@ export type PayrollCalculationInput = {
   deductions?: PayrollManualItem[];
   overtimeEnabled?: boolean;
   overtimeMultiplier?: number;
+  monthlyHoursSource?: PayrollMonthlyHoursSource | null;
   status?: PayrollStatus;
   notes?: string | null;
 };
@@ -81,6 +101,9 @@ export type PayrollSnapshot = {
   totalDeductionsHalalas: number;
   netSalaryHalalas: number;
   finalSalaryHalalas: number;
+  payrollSetupComplete: boolean;
+  payrollSetupMissing: PayrollSetupMissingKey[];
+  monthlyHoursSource: PayrollMonthlyHoursSource;
   status: PayrollStatus;
   notes?: string | null;
 };
@@ -121,16 +144,75 @@ export function assertManualPayrollItem(item: Pick<PayrollManualItem, "amountHal
   }
 }
 
+export function evaluatePayrollSetup(input: {
+  employeeId?: string | null;
+  baseSalaryHalalas?: unknown;
+  workDays?: unknown;
+  monthlyHours?: unknown;
+  dailyScheduledHours?: unknown;
+  overtimeMultiplier?: unknown;
+  monthlyHoursSource?: PayrollMonthlyHoursSource | null;
+}): PayrollSetupSnapshot {
+  const missing: PayrollSetupMissingKey[] = [];
+  const employeeId = String(input.employeeId || "").trim();
+  const baseSalaryHalalas = money(input.baseSalaryHalalas);
+  const workDays = hours(input.workDays);
+  const monthlyHours = hours(input.monthlyHours);
+  const dailyScheduledHours = hours(input.dailyScheduledHours);
+  const rawOvertimeMultiplier = input.overtimeMultiplier;
+  const overtimeMultiplier =
+    rawOvertimeMultiplier === undefined || rawOvertimeMultiplier === null || rawOvertimeMultiplier === ""
+      ? 1.5
+      : Number(rawOvertimeMultiplier);
+
+  if (!employeeId) missing.push("employeeId");
+  if (baseSalaryHalalas <= 0) missing.push("baseSalary");
+  if (workDays <= 0) missing.push("workDays");
+  if (monthlyHours <= 0 && dailyScheduledHours <= 0) missing.push("monthlyHours");
+  if (!Number.isFinite(overtimeMultiplier) || overtimeMultiplier <= 0) {
+    missing.push("overtimeMultiplier");
+  }
+
+  const configuredSource =
+    input.monthlyHoursSource && input.monthlyHoursSource !== "missing"
+      ? input.monthlyHoursSource
+      : null;
+  const monthlyHoursSource: PayrollMonthlyHoursSource =
+    monthlyHours > 0
+      ? configuredSource || "configured_monthly_hours"
+      : dailyScheduledHours > 0
+        ? "configured_daily_hours"
+        : "missing";
+
+  return {
+    complete: missing.length === 0,
+    missing,
+    monthlyHoursSource,
+  };
+}
+
 export function calculatePayrollSnapshot(input: PayrollCalculationInput): PayrollSnapshot {
   const baseSalaryHalalas = money(input.baseSalaryHalalas);
   const allowancesHalalas = money(input.allowancesHalalas);
-  const workDays = positive(input.workDays, 1);
+  const workDays = hours(input.workDays);
   const monthlyHours = hours(input.monthlyHours);
-  const dailyScheduledHours = positive(
-    input.dailyScheduledHours,
-    monthlyHours > 0 ? monthlyHours / workDays : 0
-  );
-  const dailyRateHalalas = roundHalalas(baseSalaryHalalas / workDays);
+  const explicitDailyScheduledHours = hours(input.dailyScheduledHours);
+  const dailyScheduledHours =
+    explicitDailyScheduledHours > 0
+      ? explicitDailyScheduledHours
+      : monthlyHours > 0 && workDays > 0
+        ? Math.round((monthlyHours / workDays) * 100) / 100
+        : 0;
+  const payrollSetup = evaluatePayrollSetup({
+    employeeId: input.employeeId,
+    baseSalaryHalalas,
+    workDays,
+    monthlyHours,
+    dailyScheduledHours: explicitDailyScheduledHours,
+    overtimeMultiplier: input.overtimeMultiplier,
+    monthlyHoursSource: input.monthlyHoursSource,
+  });
+  const dailyRateHalalas = workDays > 0 ? roundHalalas(baseSalaryHalalas / workDays) : 0;
   const hourlyRateHalalas =
     monthlyHours > 0
       ? roundHalalas(baseSalaryHalalas / monthlyHours)
@@ -177,7 +259,11 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     attendanceSummary.totalMissingHours * hourlyRateHalalas
   );
   const detectedExtraHours = attendanceSummary.totalExtraHours;
-  const overtimeEnabled = input.overtimeEnabled === true;
+  const overtimeEnabled =
+    input.overtimeEnabled === true &&
+    payrollSetup.complete &&
+    detectedExtraHours > 0 &&
+    hourlyRateHalalas > 0;
   const financialOvertimeHours = overtimeEnabled ? detectedExtraHours : 0;
   const overtimeMultiplier = positive(input.overtimeMultiplier, 1.5);
   const overtimeValueHalalas = roundHalalas(
@@ -220,6 +306,9 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     totalDeductionsHalalas,
     netSalaryHalalas,
     finalSalaryHalalas: netSalaryHalalas,
+    payrollSetupComplete: payrollSetup.complete,
+    payrollSetupMissing: payrollSetup.missing,
+    monthlyHoursSource: payrollSetup.monthlyHoursSource,
     status: input.status || "draft",
     notes: input.notes || null,
   };

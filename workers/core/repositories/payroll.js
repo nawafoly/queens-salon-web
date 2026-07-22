@@ -58,6 +58,15 @@ function parseJsonArray(value) {
   }
 }
 
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(cleanText(value) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function cleanStatus(value) {
   const status = cleanText(value || 'draft');
   if (['draft', 'reviewed', 'approved', 'paid'].includes(status)) return status;
@@ -77,6 +86,36 @@ function appendAudit(row, action, actor = {}) {
     at: nowIso(),
   });
   return JSON.stringify(entries);
+}
+
+function payrollSetupMissing(row = {}) {
+  const missing = [];
+  const scheduleSnapshot = parseJsonObject(row.schedule_snapshot_json);
+  const scheduleMissing = Array.isArray(scheduleSnapshot.payrollSetupMissing)
+    ? scheduleSnapshot.payrollSetupMissing.map((item) => cleanText(item)).filter(Boolean)
+    : [];
+  const dailyScheduledHours = numberValue(
+    scheduleSnapshot.dailyScheduledHours ?? scheduleSnapshot.daily_scheduled_hours,
+    0
+  );
+
+  if (!cleanText(row.employee_id)) missing.push('employeeId');
+  if (numberValue(row.base_salary_halalas, 0) <= 0) missing.push('baseSalary');
+  if (numberValue(row.work_days, 0) <= 0) missing.push('workDays');
+  if (numberValue(row.monthly_hours, 0) <= 0 && dailyScheduledHours <= 0) missing.push('monthlyHours');
+  if (numberValue(row.overtime_multiplier, 1.5) <= 0) missing.push('overtimeMultiplier');
+
+  for (const key of scheduleMissing) {
+    if (!missing.includes(key)) missing.push(key);
+  }
+  return missing;
+}
+
+function assertPayrollSetupComplete(row) {
+  const missing = payrollSetupMissing(row);
+  if (missing.length) {
+    throw new AppError(409, 'core_payroll:setup_incomplete');
+  }
 }
 
 export async function listPayrollPeriods(db, salonId) {
@@ -205,6 +244,9 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     created_at: existing?.created_at || now,
     updated_at: now,
   };
+  if (['approved', 'paid'].includes(status)) {
+    assertPayrollSetupComplete(row);
+  }
   await dbRun(db, `INSERT INTO payroll_entries
     (id, salon_id, period_id, employee_id, payroll_month, employee_name, job_title,
      base_salary_halalas, allowances_halalas, work_days, monthly_hours, daily_rate_halalas,
@@ -295,6 +337,7 @@ export async function togglePayrollOvertime(db, salonId, id, data, actor = {}) {
 export async function approvePayrollEntry(db, salonId, id, actor = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
+  assertPayrollSetupComplete(existing);
   const now = nowIso();
   await dbRun(
     db,
@@ -310,6 +353,8 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}) {
 export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (cleanText(existing.status) === 'paid') return existing;
+  if (cleanText(existing.status) !== 'approved') throw new AppError(409, 'core_payroll:not_approved');
+  assertPayrollSetupComplete(existing);
   const now = nowIso();
   await dbRun(
     db,

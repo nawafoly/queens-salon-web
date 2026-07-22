@@ -156,6 +156,24 @@
   color: #606a7e;
 }
 
+.payroll-alert.is-warning {
+  align-items: flex-start;
+  border-color: #f2d291;
+  background: #fff9eb;
+  color: #8a5a0a;
+}
+
+.payroll-alert > div {
+  display: grid;
+  gap: 4px;
+}
+
+.payroll-alert small {
+  color: inherit;
+  font-weight: 800;
+  opacity: .86;
+}
+
 .payroll-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -205,7 +223,7 @@
 
 .payroll-table {
   width: 100%;
-  min-width: 1820px;
+  min-width: 1180px;
   border-collapse: collapse;
 }
 
@@ -228,6 +246,20 @@
   font-weight: 950;
 }
 
+.payroll-table th:first-child,
+.payroll-table td:first-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -1px 0 0 var(--payroll-border);
+}
+
+.payroll-table th:first-child {
+  z-index: 3;
+  background: #f8f9fb;
+}
+
 .payroll-table td strong,
 .payroll-table td small {
   display: block;
@@ -236,6 +268,46 @@
 .payroll-table td small {
   margin-top: 4px;
   color: #8a92a3;
+}
+
+.payroll-table td a {
+  color: var(--payroll-maroon);
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.payroll-employee-cell {
+  min-width: 170px;
+}
+
+.payroll-setup-cell {
+  min-width: 190px;
+  white-space: normal;
+}
+
+.payroll-setup-cell small {
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.payroll-setup-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 950;
+}
+
+.payroll-setup-badge.is-complete {
+  background: #eaf8f0;
+  color: #16764e;
+}
+
+.payroll-setup-badge.is-incomplete {
+  background: #fff4e5;
+  color: #9a5b00;
 }
 
 .payroll-status {
@@ -310,13 +382,32 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  min-width: 360px;
+  min-width: 320px;
 }
 
-.payroll-row-actions button {
+.payroll-row-actions button,
+.payroll-action-link {
   min-height: 32px;
   padding: 0 9px;
   font-size: .72rem;
+}
+
+.payroll-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #f2d291;
+  border-radius: 8px;
+  background: #fff9eb;
+  color: #8a5a0a;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.payroll-action-link--inline {
+  width: fit-content;
+  margin-top: 12px;
 }
 
 .payroll-empty {

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  FiAlertTriangle,
   FiCheckCircle,
   FiClock,
   FiDollarSign,
+  FiEdit3,
   FiEye,
   FiPlus,
   FiRefreshCw,
@@ -20,6 +22,7 @@ import {
   loadPayrollMonth,
   markPayrollEntryPaid,
   payrollMonthBounds,
+  rebuildPayrollEntryFromEmployeeSettings,
   savePayrollDrafts,
   togglePayrollOvertime,
   updatePayrollEntryAdjustments,
@@ -34,6 +37,7 @@ import {
   riyalsToHalalas,
   type PayrollManualItem,
   type PayrollManualItemKind,
+  type PayrollSetupMissingKey,
   type PayrollStatus,
 } from "../helpers/hr/payrollCalculations";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
@@ -50,12 +54,22 @@ type AdjustmentDraft = {
   note: string;
 };
 
+const UNDEFINED_VALUE_LABEL = "غير محدد";
+
 const STATUS_LABELS: Record<string, string> = {
   all: "كل الحالات",
   draft: "مسودة",
   reviewed: "تمت المراجعة",
   approved: "معتمد",
   paid: "مدفوع",
+};
+
+const SETUP_MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
+  employeeId: "معرف الموظفة غير محدد",
+  baseSalary: "الراتب الأساسي غير محدد",
+  workDays: "أيام العمل غير محددة",
+  monthlyHours: "ساعات الشهر غير محددة",
+  overtimeMultiplier: "معامل الأوفر تايم غير محدد",
 };
 
 const ADDITION_KINDS: Array<{ value: PayrollManualItemKind; label: string }> = [
@@ -130,6 +144,49 @@ function itemKindLabel(kind: string) {
   return [...ADDITION_KINDS, ...DEDUCTION_KINDS].find((item) => item.value === kind)?.label || kind;
 }
 
+function setupMissingLabels(entry: PayrollEntryView) {
+  return entry.payrollSetupMissing.map((key) => SETUP_MISSING_LABELS[key] || key);
+}
+
+function setupMissing(entry: PayrollEntryView, key: PayrollSetupMissingKey) {
+  return entry.payrollSetupMissing.includes(key);
+}
+
+function formatBaseSalary(entry: PayrollEntryView) {
+  return setupMissing(entry, "baseSalary")
+    ? "بيانات الراتب غير مكتملة"
+    : formatPayrollMoney(entry.baseSalaryHalalas);
+}
+
+function formatSetupMoney(entry: PayrollEntryView, value: unknown) {
+  return entry.payrollSetupComplete ? formatPayrollMoney(value) : UNDEFINED_VALUE_LABEL;
+}
+
+function formatMonthlyHours(entry: PayrollEntryView) {
+  return entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "ساعات الشهر غير محددة";
+}
+
+function employeePayrollPath(entry: PayrollEntryView) {
+  return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll`;
+}
+
+function payrollActionErrorMessage(error: unknown, fallback: string) {
+  const message = String((error as any)?.message || error || "");
+  if (message === "payroll_setup_incomplete") {
+    return "لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.";
+  }
+  if (message === "payroll_not_approved") {
+    return "لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.";
+  }
+  if (message === "core_payroll:setup_incomplete") {
+    return "لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.";
+  }
+  if (message === "core_payroll:not_approved") {
+    return "لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.";
+  }
+  return String((error as any)?.message || fallback);
+}
+
 export default function DashboardPayroll() {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission("payroll.manage");
@@ -162,9 +219,16 @@ export default function DashboardPayroll() {
           status: statusFilter === "all" ? undefined : statusFilter,
         }),
       ]);
+      const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
+      const hydratedEntries = payroll.entries.map((entry) => {
+        const employee = employeesById.get(entry.employeeId);
+        return employee
+          ? rebuildPayrollEntryFromEmployeeSettings({ entry, employee, year, month })
+          : entry;
+      });
       setEmployees(employeeRows);
-      setEntries(payroll.entries);
-      setMessage(payroll.entries.length ? "تم تحميل مسيرات الرواتب المحفوظة." : "لا توجد مسيرات محفوظة لهذا الشهر بعد.");
+      setEntries(hydratedEntries);
+      setMessage(hydratedEntries.length ? "تم تحميل مسيرات الرواتب المحفوظة." : "لا توجد مسيرات محفوظة لهذا الشهر بعد.");
     } catch (loadError: any) {
       setError(String(loadError?.message || "تعذر تحميل إدارة الرواتب."));
     } finally {
@@ -191,16 +255,32 @@ export default function DashboardPayroll() {
     return visibleEntries.reduce(
       (acc, entry) => {
         acc.count += 1;
-        acc.base += entry.baseSalaryHalalas;
-        acc.additions += entry.totalAdditionsHalalas;
-        acc.deductions += entry.totalDeductionsHalalas;
-        acc.net += entry.netSalaryHalalas;
+        if (entry.payrollSetupComplete) {
+          acc.complete += 1;
+          acc.base += entry.baseSalaryHalalas;
+          acc.additions += entry.totalAdditionsHalalas;
+          acc.deductions += entry.totalDeductionsHalalas;
+          acc.net += entry.netSalaryHalalas;
+        } else {
+          acc.incomplete += 1;
+        }
         if (entry.status === "draft") acc.drafts += 1;
         if (entry.status === "approved") acc.approved += 1;
         if (entry.status === "paid") acc.paid += 1;
         return acc;
       },
-      { count: 0, base: 0, additions: 0, deductions: 0, net: 0, drafts: 0, approved: 0, paid: 0 }
+      {
+        count: 0,
+        complete: 0,
+        incomplete: 0,
+        base: 0,
+        additions: 0,
+        deductions: 0,
+        net: 0,
+        drafts: 0,
+        approved: 0,
+        paid: 0,
+      }
     );
   }, [visibleEntries]);
 
@@ -274,6 +354,14 @@ export default function DashboardPayroll() {
 
   const handleToggleOvertime = async (entry: PayrollEntryView, checked: boolean) => {
     if (!canManage || isPayrollSnapshotLocked(entry.status)) return;
+    if (checked && !entry.payrollSetupComplete) {
+      setError("لا يمكن احتساب الأوفر تايم قبل إكمال بيانات الراتب.");
+      return;
+    }
+    if (checked && entry.detectedExtraHours <= 0) {
+      setError("لا توجد ساعات زائدة مكتشفة لهذا السجل.");
+      return;
+    }
     const next = rebuildEntry(entry, { overtimeEnabled: checked });
     setEntries((current) => replaceEntry(current, next));
     if (!entry.id) return;
@@ -339,13 +427,17 @@ export default function DashboardPayroll() {
 
   const handleApprove = async (entry: PayrollEntryView) => {
     if (!canManage || entry.status === "paid") return;
+    if (!entry.payrollSetupComplete) {
+      setError("لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.");
+      return;
+    }
     setBusy(`approve:${entry.employeeId}`);
     try {
       const saved = await approvePayrollEntry(entry);
       setEntries((current) => replaceEntry(current, saved));
       setMessage("تم اعتماد الراتب.");
     } catch (actionError: any) {
-      setError(String(actionError?.message || "تعذر اعتماد الراتب."));
+      setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
     } finally {
       setBusy("");
     }
@@ -353,13 +445,21 @@ export default function DashboardPayroll() {
 
   const handlePaid = async (entry: PayrollEntryView) => {
     if (!canManage) return;
+    if (!entry.payrollSetupComplete) {
+      setError("لا يمكن تسجيل الراتب كمدفوع قبل إكمال بيانات الراتب.");
+      return;
+    }
+    if (entry.status !== "approved") {
+      setError("لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.");
+      return;
+    }
     setBusy(`paid:${entry.employeeId}`);
     try {
       const saved = await markPayrollEntryPaid(entry);
       setEntries((current) => replaceEntry(current, saved));
       setMessage("تم تسجيل الراتب كمدفوع.");
     } catch (actionError: any) {
-      setError(String(actionError?.message || "تعذر تسجيل الدفع."));
+      setError(payrollActionErrorMessage(actionError, "تعذر تسجيل الدفع."));
     } finally {
       setBusy("");
     }
@@ -428,7 +528,9 @@ export default function DashboardPayroll() {
 
       <div className="payroll-summary-grid">
         <article><span><FiShield /></span><small>عدد الموظفات</small><strong>{summary.count}</strong></article>
-        <article><span><FiDollarSign /></span><small>إجمالي الرواتب الأساسية</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
+        <article><span><FiCheckCircle /></span><small>إعدادات مكتملة</small><strong>{summary.complete}</strong></article>
+        <article><span><FiAlertTriangle /></span><small>إعدادات غير مكتملة</small><strong>{summary.incomplete}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي الرواتب المكتملة</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
         <article><span><FiPlus /></span><small>إجمالي الإضافات</small><strong>{formatPayrollMoney(summary.additions)}</strong></article>
         <article><span><FiX /></span><small>إجمالي الخصومات</small><strong>{formatPayrollMoney(summary.deductions)}</strong></article>
         <article><span><FiDollarSign /></span><small>إجمالي صافي الرواتب</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
@@ -442,20 +544,13 @@ export default function DashboardPayroll() {
           <thead>
             <tr>
               <th>الموظفة</th>
+              <th>حالة إعداد الراتب</th>
               <th>الراتب الأساسي</th>
-              <th>أيام العمل</th>
-              <th>ساعات الشهر</th>
-              <th>راتب اليوم</th>
-              <th>راتب الساعة</th>
-              <th>التأخير الفعلي</th>
-              <th>التعويض بعد الدوام</th>
               <th>نقص الساعات</th>
-              <th>الساعات الزائدة المكتشفة</th>
+              <th>الساعات الزائدة</th>
               <th>احتساب الأوفر تايم</th>
-              <th>قيمة الأوفر تايم</th>
               <th>الإضافات</th>
               <th>الخصومات</th>
-              <th>السلف</th>
               <th>صافي الراتب</th>
               <th>الحالة</th>
               <th>الإجراءات</th>
@@ -464,16 +559,42 @@ export default function DashboardPayroll() {
           <tbody>
             {visibleEntries.map((entry) => {
               const locked = isPayrollSnapshotLocked(entry.status);
+              const canToggleOvertime =
+                canManage &&
+                !locked &&
+                entry.payrollSetupComplete &&
+                entry.detectedExtraHours > 0;
+              const canApprove =
+                canManage &&
+                entry.payrollSetupComplete &&
+                entry.status !== "paid";
+              const canMarkPaid =
+                canManage &&
+                entry.payrollSetupComplete &&
+                entry.status === "approved";
+              const missingLabels = setupMissingLabels(entry);
               return (
                 <tr key={`${entry.employeeId}:${entry.payrollMonth}`}>
-                  <td><strong>{entry.employeeName}</strong><small>{entry.jobTitle || entry.employeeId}</small></td>
-                  <td>{formatPayrollMoney(entry.baseSalaryHalalas)}</td>
-                  <td>{entry.workDays}</td>
-                  <td>{formatAttendanceHours(entry.monthlyHours)}</td>
-                  <td>{formatPayrollMoney(entry.dailyRateHalalas)}</td>
-                  <td>{formatPayrollMoney(entry.hourlyRateHalalas)}</td>
-                  <td>{formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</td>
-                  <td>{formatAttendanceHours(entry.attendanceSummary.totalCompensatedLateHours)}</td>
+                  <td className="payroll-employee-cell">
+                    <strong>{entry.employeeName}</strong>
+                    <small>{entry.jobTitle || entry.employeeId}</small>
+                  </td>
+                  <td className="payroll-setup-cell">
+                    <span className={`payroll-setup-badge ${entry.payrollSetupComplete ? "is-complete" : "is-incomplete"}`}>
+                      {entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل"}
+                    </span>
+                    {!entry.payrollSetupComplete ? (
+                      <small>{missingLabels.join("، ")}</small>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong>{formatBaseSalary(entry)}</strong>
+                    {!entry.payrollSetupComplete ? (
+                      <small>
+                        <a href={employeePayrollPath(entry)}>إعداد الراتب</a>
+                      </small>
+                    ) : null}
+                  </td>
                   <td>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
                   <td>
@@ -481,17 +602,16 @@ export default function DashboardPayroll() {
                       <input
                         type="checkbox"
                         checked={entry.overtimeEnabled}
-                        disabled={!canManage || locked}
+                        disabled={!canToggleOvertime}
                         onChange={(event) => void handleToggleOvertime(entry, event.target.checked)}
                       />
                       <span />
                     </label>
+                    <small>{entry.overtimeEnabled ? "محتسب" : "غير محتسب"}</small>
                   </td>
-                  <td>{formatPayrollMoney(entry.overtimeValueHalalas)}</td>
                   <td>{formatPayrollMoney(entry.totalAdditionsHalalas)}</td>
                   <td>{formatPayrollMoney(entry.totalDeductionsHalalas)}</td>
-                  <td>{formatPayrollMoney(entry.advancesHalalas)}</td>
-                  <td><strong>{formatPayrollMoney(entry.netSalaryHalalas)}</strong></td>
+                  <td><strong>{formatSetupMoney(entry, entry.netSalaryHalalas)}</strong></td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
                     <div className="payroll-row-actions">
@@ -499,8 +619,11 @@ export default function DashboardPayroll() {
                       <button type="button" disabled={!canManage || locked} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
                       <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
                       <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
-                      <button type="button" disabled={!canManage || entry.status === "paid"} onClick={() => void handleApprove(entry)}>اعتماد</button>
-                      <button type="button" disabled={!canManage || entry.status === "paid"} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
+                      {!entry.payrollSetupComplete ? (
+                        <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+                      ) : null}
+                      <button type="button" disabled={!canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
+                      <button type="button" disabled={!canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
                     </div>
                   </td>
                 </tr>
@@ -569,6 +692,7 @@ function PayrollDetailsModal({
   onClose: () => void;
   onAdd: (mode: AdjustmentMode) => void;
 }) {
+  const missingLabels = setupMissingLabels(entry);
   return (
     <div className="payroll-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="payroll-modal payroll-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -581,15 +705,33 @@ function PayrollDetailsModal({
           <button type="button" onClick={onClose}><FiX /></button>
         </header>
 
+        {!entry.payrollSetupComplete ? (
+          <div className="payroll-alert is-warning">
+            <FiAlertTriangle />
+            <div>
+              <strong>لا يمكن اعتماد هذا الراتب لأن بيانات الراتب غير مكتملة.</strong>
+              <small>{missingLabels.join("، ")}</small>
+            </div>
+          </div>
+        ) : null}
+
         <div className="payroll-detail-grid">
           <section>
             <h3>إعدادات الراتب</h3>
             <dl>
-              <div><dt>الراتب الأساسي</dt><dd>{formatPayrollMoney(entry.baseSalaryHalalas)}</dd></div>
-              <div><dt>عدد أيام العمل</dt><dd>{entry.workDays}</dd></div>
-              <div><dt>ساعات الشهر</dt><dd>{formatAttendanceHours(entry.monthlyHours)}</dd></div>
+              <div><dt>حالة الإعداد</dt><dd>{entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل"}</dd></div>
+              <div><dt>الراتب الأساسي</dt><dd>{formatBaseSalary(entry)}</dd></div>
+              <div><dt>عدد أيام العمل</dt><dd>{setupMissing(entry, "workDays") ? UNDEFINED_VALUE_LABEL : entry.workDays}</dd></div>
+              <div><dt>ساعات الشهر</dt><dd>{formatMonthlyHours(entry)}</dd></div>
+              <div><dt>ساعات اليوم المعتمدة</dt><dd>{entry.dailyScheduledHours > 0 ? formatAttendanceHours(entry.dailyScheduledHours) : UNDEFINED_VALUE_LABEL}</dd></div>
+              <div><dt>راتب اليوم</dt><dd>{formatSetupMoney(entry, entry.dailyRateHalalas)}</dd></div>
+              <div><dt>راتب الساعة</dt><dd>{formatSetupMoney(entry, entry.hourlyRateHalalas)}</dd></div>
               <div><dt>معامل الأوفر تايم</dt><dd>{entry.overtimeMultiplier}</dd></div>
+              <div><dt>مصدر الساعات</dt><dd>{entry.monthlyHoursSource === "configured_monthly_hours" ? "ساعات شهر محددة" : entry.monthlyHoursSource === "configured_daily_hours" ? "دوام يومي معتمد" : entry.monthlyHoursSource === "saved_snapshot" ? "Snapshot محفوظ" : "غير محدد"}</dd></div>
             </dl>
+            {!entry.payrollSetupComplete ? (
+              <a className="payroll-action-link payroll-action-link--inline" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+            ) : null}
           </section>
 
           <section>
@@ -602,6 +744,7 @@ function PayrollDetailsModal({
               <div><dt>إجمالي التأخير الفعلي</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</dd></div>
               <div><dt>إجمالي التعويض بعد الدوام</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalCompensatedLateHours)}</dd></div>
               <div><dt>إجمالي نقص الساعات</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</dd></div>
+              <div><dt>أيام ناقصة البصمة</dt><dd>{entry.attendanceSummary.incompleteDays}</dd></div>
               <div><dt>إجمالي الساعات الزائدة المكتشفة</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
             </dl>
           </section>
@@ -609,10 +752,12 @@ function PayrollDetailsModal({
           <section>
             <h3>الاستحقاقات</h3>
             <dl>
-              <div><dt>الراتب الأساسي</dt><dd>{formatPayrollMoney(entry.baseSalaryHalalas)}</dd></div>
+              <div><dt>الراتب الأساسي</dt><dd>{formatBaseSalary(entry)}</dd></div>
               <div><dt>البدلات</dt><dd>{formatPayrollMoney(entry.allowancesHalalas)}</dd></div>
               <div><dt>المكافآت والإضافات</dt><dd>{formatPayrollMoney(entry.manualAdditionsHalalas)}</dd></div>
-              <div><dt>قيمة الأوفر تايم</dt><dd>{formatPayrollMoney(entry.overtimeValueHalalas)}</dd></div>
+              <div><dt>الساعات الزائدة المكتشفة</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
+              <div><dt>احتساب الأوفر تايم</dt><dd>{entry.overtimeEnabled ? "مفعل" : "غير مفعل"}</dd></div>
+              <div><dt>قيمة الأوفر تايم</dt><dd>{formatSetupMoney(entry, entry.overtimeValueHalalas)}</dd></div>
             </dl>
             <button type="button" onClick={() => onAdd("addition")}><FiPlus />إضافة استحقاق</button>
           </section>
@@ -620,20 +765,20 @@ function PayrollDetailsModal({
           <section>
             <h3>الخصومات</h3>
             <dl>
-              <div><dt>خصم نقص الساعات</dt><dd>{formatPayrollMoney(entry.missingHoursDeductionHalalas)}</dd></div>
+              <div><dt>خصم نقص الساعات</dt><dd>{formatSetupMoney(entry, entry.missingHoursDeductionHalalas)}</dd></div>
               <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
               <div><dt>خصومات يدوية وجزاءات</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
-              <div><dt>إجمالي الخصومات</dt><dd>{formatPayrollMoney(entry.totalDeductionsHalalas)}</dd></div>
+              <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>
             </dl>
             <button type="button" onClick={() => onAdd("deduction")}><FiPlus />إضافة خصم</button>
           </section>
         </div>
 
         <section className="payroll-net-panel">
-          <div><span>grossSalary</span><strong>{formatPayrollMoney(entry.grossSalaryHalalas)}</strong></div>
+          <div><span>grossSalary</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
           <div><span>totalAdditions</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
-          <div><span>totalDeductions</span><strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong></div>
-          <div className="is-net"><span>netSalary</span><strong>{formatPayrollMoney(entry.netSalaryHalalas)}</strong></div>
+          <div><span>totalDeductions</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
+          <div className="is-net"><span>netSalary</span><strong>{formatSetupMoney(entry, entry.netSalaryHalalas)}</strong></div>
         </section>
 
         <section className="payroll-adjustment-list">

@@ -7,7 +7,12 @@ import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-emp
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
 import { createAbsence } from './core/repositories/absences.js';
-import { upsertPayrollEntry, upsertPayrollPeriod } from './core/repositories/payroll.js';
+import {
+  approvePayrollEntry,
+  markPayrollEntryPaid,
+  upsertPayrollEntry,
+  upsertPayrollPeriod,
+} from './core/repositories/payroll.js';
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
 import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
@@ -103,6 +108,42 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     baseSalaryHalalas: 450000, allowancesHalalas: 50000, finalSalaryHalalas: 480000,
   }, actor);
   assert.equal(payroll.final_salary_halalas, 480000);
+  await assert.rejects(
+    () => approvePayrollEntry(db, 'main', payroll.id, actor),
+    { code: 'core_payroll:setup_incomplete' }
+  );
+
+  const readyPayroll = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-ready',
+    periodId: period.id,
+    employeeId: 'emp-1',
+    payrollMonth: '2026-08',
+    baseSalaryHalalas: 450000,
+    allowancesHalalas: 50000,
+    workDays: 26,
+    monthlyHours: 208,
+    dailyRateHalalas: 17308,
+    hourlyRateHalalas: 2163,
+    grossSalaryHalalas: 500000,
+    finalSalaryHalalas: 500000,
+    netSalaryHalalas: 500000,
+    scheduleSnapshot: {
+      workDays: 26,
+      monthlyHours: 208,
+      dailyScheduledHours: 8,
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+      monthlyHoursSource: 'configured_monthly_hours',
+    },
+  }, actor);
+  await assert.rejects(
+    () => markPayrollEntryPaid(db, 'main', readyPayroll.id, actor),
+    { code: 'core_payroll:not_approved' }
+  );
+  const approvedPayroll = await approvePayrollEntry(db, 'main', readyPayroll.id, actor);
+  assert.equal(approvedPayroll.status, 'approved');
+  const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
+  assert.equal(paidPayroll.status, 'paid');
 });
 
 test('Phase 6 settings and protected R2 file flow work without Firestore', async (t) => {
