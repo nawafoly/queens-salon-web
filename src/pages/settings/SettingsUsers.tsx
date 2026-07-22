@@ -23,6 +23,7 @@ import { SettingsPageHeader, SettingsState } from "./SettingsFrame";
 type UiRole = UserRole;
 type AccountStatusFilter = "all" | "active" | "disabled" | "pending" | "deleted";
 type LinkFilter = "all" | "linked" | "unlinked";
+type AccountTypeFilter = "all" | "administrative" | "operational";
 
 type SettingsUsersProps = {
   initialRole?: UiRole | string;
@@ -108,6 +109,14 @@ function getRoleTone(role: unknown) {
   return ROLE_TONES[cleanText(role).toLowerCase()] || ROLE_TONES.guest;
 }
 
+function isAdministrativeRole(role: unknown) {
+  return ["owner", "admin", "hr", "accountant"].includes(normalizeRole(role));
+}
+
+function isOperationalRole(role: unknown) {
+  return ["reception", "staff", "pending"].includes(normalizeRole(role));
+}
+
 function statusLabel(status: unknown) {
   const value = cleanText(status).toLowerCase();
   if (value === "active") return "نشط";
@@ -181,7 +190,9 @@ export default function SettingsUsers({
   const [roleFilter, setRoleFilter] = useState<UiRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<AccountStatusFilter>("all");
   const [linkFilter, setLinkFilter] = useState<LinkFilter>("all");
+  const [accountTypeFilter, setAccountTypeFilter] = useState<AccountTypeFilter>("all");
   const [permissionSearch, setPermissionSearch] = useState("");
+  const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("all");
   const [permissionsExpanded, setPermissionsExpanded] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
@@ -247,6 +258,8 @@ export default function SettingsUsers({
     return accounts.filter((account) => {
       const role = normalizeRole(account.role || account.primaryRole);
       if (roleFilter !== "all" && role !== roleFilter) return false;
+      if (accountTypeFilter === "administrative" && !isAdministrativeRole(role)) return false;
+      if (accountTypeFilter === "operational" && !isOperationalRole(role)) return false;
       if (statusFilter !== "all" && account.status !== statusFilter) return false;
       const linked = Boolean(account.employeeLink?.employeeId);
       if (linkFilter === "linked" && !linked) return false;
@@ -262,7 +275,7 @@ export default function SettingsUsers({
         account.employeeLink?.employee?.name || "",
       ].some((value) => cleanText(value).toLowerCase().includes(needle));
     });
-  }, [accounts, linkFilter, roleFilter, search, statusFilter]);
+  }, [accountTypeFilter, accounts, linkFilter, roleFilter, search, statusFilter]);
 
   useEffect(() => {
     if (!filteredAccounts.length) {
@@ -307,14 +320,23 @@ export default function SettingsUsers({
     return APP_PERMISSION_GROUPS.map((group) => ({
       ...group,
       permissions: permissionRows.filter((permission) => permissionGroup(permission, remotePermissions) === group.key),
-    })).filter((group) => group.permissions.length > 0);
-  }, [permissionRows, remotePermissions]);
+    })).filter((group) => {
+      if (permissionGroupFilter !== "all" && group.key !== permissionGroupFilter) return false;
+      return group.permissions.length > 0;
+    });
+  }, [permissionGroupFilter, permissionRows, remotePermissions]);
 
   const stats = useMemo(() => {
+    const total = accounts.length;
     const active = accounts.filter((account) => account.status === "active").length;
     const pending = accounts.filter((account) => account.status === "pending").length;
+    const disabled = accounts.filter((account) => account.status === "disabled").length;
+    const deleted = accounts.filter((account) => account.status === "deleted").length;
     const linked = accounts.filter((account) => account.employeeLink?.employeeId).length;
-    return { active, pending, linked };
+    const unlinked = accounts.filter((account) => !account.employeeLink?.employeeId).length;
+    const administrative = accounts.filter((account) => isAdministrativeRole(account.role || account.primaryRole)).length;
+    const operational = accounts.filter((account) => isOperationalRole(account.role || account.primaryRole)).length;
+    return { total, active, pending, disabled, deleted, linked, unlinked, administrative, operational };
   }, [accounts]);
 
   function canEditTarget(account: CoreAccount | null) {
@@ -467,9 +489,12 @@ export default function SettingsUsers({
           hint={pageHint}
           badges={
             <>
+              <span className="accounts-chip accounts-chip--soft">الإجمالي: {stats.total}</span>
               <span className="accounts-chip accounts-chip--mint">نشطة: {stats.active}</span>
               <span className="accounts-chip accounts-chip--amber">مراجعة: {stats.pending}</span>
+              <span className="accounts-chip accounts-chip--gray">معطلة: {stats.disabled}</span>
               <span className="accounts-chip accounts-chip--blue">مرتبطة: {stats.linked}</span>
+              <span className="accounts-chip accounts-chip--soft">غير مرتبطة: {stats.unlinked}</span>
             </>
           }
           actions={
@@ -512,6 +537,14 @@ export default function SettingsUsers({
                 <option value="pending">قيد المراجعة</option>
                 <option value="disabled">معطل</option>
                 <option value="deleted">محذوف</option>
+              </select>
+            </label>
+            <label className="accounts-filter">
+              <span>نوع الحساب</span>
+              <select value={accountTypeFilter} onChange={(event) => setAccountTypeFilter(event.target.value as AccountTypeFilter)}>
+                <option value="all">الكل</option>
+                <option value="administrative">إداري</option>
+                <option value="operational">تشغيلي / موظفات</option>
               </select>
             </label>
             <label className="accounts-filter">
@@ -662,6 +695,15 @@ export default function SettingsUsers({
                       <label className="accounts-search">
                         <span>بحث داخل الصلاحيات</span>
                         <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="accounts.update أو الحجوزات" />
+                      </label>
+                      <label className="accounts-filter accounts-filter--permission-group">
+                        <span>مجموعة الصلاحيات</span>
+                        <select value={permissionGroupFilter} onChange={(event) => setPermissionGroupFilter(event.target.value as typeof permissionGroupFilter)}>
+                          <option value="all">كل المجموعات</option>
+                          {APP_PERMISSION_GROUPS.map((group) => (
+                            <option key={group.key} value={group.key}>{group.label}</option>
+                          ))}
+                        </select>
                       </label>
                       <div className="accounts-permissions__grid">
                         {permissionGroups.map((group) => (

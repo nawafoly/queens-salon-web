@@ -589,6 +589,7 @@ export default function DashboardEmployees() {
   const [modalTab, setModalTab] = useState<EmployeeModalTab>("basic");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const selectedEmployeeIdentityRef = useRef<EmployeeIdentity | null>(null);
+  const closingEmployeeDetailRef = useRef(false);
   const [activeTab, setActiveTab] = useState<EmployeeSplitTab>("basic");
   const [mode, setMode] = useState<EmployeeMode>("view");
   const [activeStatsSubTab, setActiveStatsSubTab] = useState<"payroll" | "stats">("payroll");
@@ -1323,6 +1324,7 @@ export default function DashboardEmployees() {
   };
 
   const openEdit = (x: StaffPublicUi, updateRoute = true) => {
+    closingEmployeeDetailRef.current = false;
     selectedEmployeeIdentityRef.current = employeeIdentityOf(x);
     setSelectedEmployeeId(x.id);
     setActiveTab("basic");
@@ -1404,7 +1406,7 @@ export default function DashboardEmployees() {
   };
 
   useEffect(() => {
-    if (!routeEmployeeId || !list.length) return;
+    if (closingEmployeeDetailRef.current || !routeEmployeeId || !list.length) return;
     const matched = list.find((item) => employeeMatchesRouteId(item, routeEmployeeId));
     if (!matched) {
       if (!loading) {
@@ -1424,14 +1426,19 @@ export default function DashboardEmployees() {
   };
 
   const closeEmployeeDetail = () => {
-    navigate("/admin/employees");
+    closingEmployeeDetailRef.current = true;
     selectedEmployeeIdentityRef.current = null;
     setSelectedEmployeeId(null);
     setEditId(null);
     setIsOpen(false);
     setMode("edit");
     resetForm();
+    navigate("/admin/employees", { replace: true });
   };
+
+  useEffect(() => {
+    if (!routeEmployeeId) closingEmployeeDetailRef.current = false;
+  }, [routeEmployeeId]);
 
   const loadServiceOptions = useCallback(async (): Promise<ServiceOption[]> => {
     try {
@@ -1531,14 +1538,27 @@ export default function DashboardEmployees() {
               rawDocId ||
               linkedUid
           );
-          const isEmployeeCandidate =
-            administrative ||
-            source === "staff_public" ||
+
+          // حساب الدخول لا يتحول تلقائيًا إلى موظفة. تفضيل users هو مصدر الحقيقة،
+          // ثم نرجع لعلامة السجل، وبعدها فقط نحافظ على الموظفات التشغيليات القديمة.
+          const userVisibility =
+            typeof linkedUser?.includeInEmployeeManagement === "boolean"
+              ? linkedUser.includeInEmployeeManagement
+              : undefined;
+          const recordVisibility =
+            typeof data?.includeInEmployeeManagement === "boolean"
+              ? data.includeInEmployeeManagement
+              : undefined;
+          const legacyOperationalDefault =
             role === "staff" ||
-            combined?.employeeProfileEnabled === true ||
-            combined?.includeInEmployeeManagement === true ||
-            (source === "employees" && !!employeeId);
-          if (!isEmployeeCandidate || !employeeId) return;
+            (!administrative && source === "staff_public") ||
+            (!administrative &&
+              source === "employees" &&
+              combined?.employeeProfileEnabled !== false);
+          const includeInEmployeeManagement =
+            userVisibility ?? recordVisibility ?? legacyOperationalDefault;
+
+          if (!includeInEmployeeManagement || !employeeId) return;
 
           const payrollCfg = normalizePayrollConfig(combined);
           const specialties = canonicalizeSpecialties(combined?.specialties, serviceLookup);
@@ -1595,8 +1615,8 @@ export default function DashboardEmployees() {
             resourceIds: Array.isArray(combined?.resourceIds)
               ? combined.resourceIds.map(cleanText).filter(Boolean)
               : [],
-            employeeProfileEnabled: combined?.employeeProfileEnabled !== false,
-            includeInEmployeeManagement: combined?.includeInEmployeeManagement === true,
+            employeeProfileEnabled: includeInEmployeeManagement,
+            includeInEmployeeManagement,
             source,
             profileIncomplete: source !== "staff_public",
             employeeKind: administrative

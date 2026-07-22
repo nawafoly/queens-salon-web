@@ -28544,3 +28544,975 @@ body.scatalog-modal-open {
     padding-inline: 7px !important;
   }
 }
+
+/* =====================================================================
+   Account editor V4 — focused corporate workspace
+   ===================================================================== */
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 {
+  position: relative !important;
+  z-index: 1 !important;
+  width: min(1180px, calc(100vw - 40px)) !important;
+  height: min(900px, calc(100dvh - 40px)) !important;
+  max-height: calc(100dvh - 40px) !important;
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid #dfe5ee !important;
+  border-radius: 24px !important;
+  background: #f4f6f9 !important;
+  box-shadow: 0 32px 90px rgba(15, 23, 42, .26) !important;
+  color: #172033 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 * {
+  box-sizing: border-box;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  min-height: 0 !important;
+  padding: 21px 24px 17px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #e4e8ef !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__titleBlock {
+  min-width: 0;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #a67518 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  letter-spacing: .02em;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__header h2 {
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: clamp(24px, 2.2vw, 34px) !important;
+  line-height: 1.2 !important;
+  font-weight: 950 !important;
+  letter-spacing: -.025em !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__header p {
+  max-width: 780px;
+  margin: 6px 0 0 !important;
+  color: #6f7b8f !important;
+  font-size: 11px !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__close {
+  flex: 0 0 40px !important;
+  width: 40px !important;
+  height: 40px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border: 1px solid #dfe4ec !important;
+  border-radius: 12px !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 22px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__close:hover {
+  border-color: #cbd3df !important;
+  background: #eef2f7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identity {
+  display: grid !important;
+  grid-template-columns: minmax(250px, 1fr) minmax(520px, 1.45fr) !important;
+  align-items: center !important;
+  gap: 22px !important;
+  padding: 15px 24px !important;
+  border-bottom: 1px solid #e5e9f0 !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identityMain {
+  min-width: 0;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__avatar {
+  flex: 0 0 50px !important;
+  width: 50px !important;
+  height: 50px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #e8d29b !important;
+  border-radius: 15px !important;
+  background: linear-gradient(145deg, #fff8e8, #f1e4c4) !important;
+  color: #7a5410 !important;
+  font-size: 23px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identityMain > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identityMain strong {
+  min-width: 0;
+  color: #152036 !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identityMain span {
+  min-width: 0;
+  color: #7c8798 !important;
+  font-size: 10px !important;
+  direction: ltr;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid #e5e9f0;
+  border-radius: 11px;
+  background: #f8fafc;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts span {
+  color: #8a95a6 !important;
+  font-size: 8px !important;
+  font-weight: 850 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts strong {
+  min-width: 0;
+  color: #233047 !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 .is-success {
+  color: #087557 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 .is-danger {
+  color: #b4232b !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 .is-muted {
+  color: #758195 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 10px 24px !important;
+  border-bottom: 1px solid #e3e8ef !important;
+  background: #f8fafc !important;
+  overflow-x: auto !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button {
+  flex: 0 0 auto !important;
+  min-height: 38px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 13px !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: #667287 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button span {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 7px;
+  background: #e9edf3;
+  color: #7b8798;
+  font-size: 8px;
+  font-weight: 950;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button:hover {
+  background: #eef2f7 !important;
+  color: #263349 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button.is-active {
+  border-color: #d7c18a !important;
+  background: #fff8e9 !important;
+  color: #6f4a08 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button.is-active span {
+  background: #c79223;
+  color: #fff;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__content {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 18px 24px 24px !important;
+  overflow: auto !important;
+  overscroll-behavior: contain !important;
+  background: #f4f6f9 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__section {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 17px !important;
+  padding: 20px !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 17px !important;
+  background: #fff !important;
+  box-shadow: 0 12px 32px -30px rgba(15, 23, 42, .65) !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__sectionHead {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid #edf0f4 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__sectionHead > div {
+  min-width: 0;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__sectionHead span,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionsHead > div:first-child > span {
+  color: #a67416 !important;
+  font-size: 9px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__sectionHead h3 {
+  margin: 4px 0 0 !important;
+  color: #172033 !important;
+  font-size: 20px !important;
+  line-height: 1.3 !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__sectionHead p {
+  margin: 5px 0 0 !important;
+  color: #768297 !important;
+  font-size: 10px !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__selfBadge {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #bce5d6;
+  border-radius: 999px;
+  background: #edf9f4;
+  color: #087557;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__formGrid,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__accessGrid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field {
+  min-width: 0 !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 7px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field > span,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools label > span,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__statusControl > div > span {
+  color: #536075 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field input,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field select,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field textarea,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools input,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools select {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 45px !important;
+  padding: 10px 12px !important;
+  border: 1px solid #d9e0e9 !important;
+  border-radius: 11px !important;
+  outline: 0 !important;
+  background: #fbfcfd !important;
+  color: #1e2a40 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 11px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field input:focus,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field select:focus,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field textarea:focus,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools input:focus,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools select:focus {
+  border-color: #c79a3d !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(199, 154, 61, .12) !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field input[readonly] {
+  background: #f1f4f7 !important;
+  color: #697588 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field input:disabled,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field select:disabled,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field textarea:disabled {
+  opacity: .65 !important;
+  cursor: not-allowed !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field textarea {
+  min-height: 96px !important;
+  resize: vertical !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field small {
+  color: #8a95a5 !important;
+  font-size: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__field--wide {
+  grid-column: 1 / -1 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__notice,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__warning {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 7px !important;
+  padding: 11px 13px !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 11px !important;
+  background: #f8fafc !important;
+  color: #647084 !important;
+  font-size: 9px !important;
+  line-height: 1.75 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__notice strong {
+  flex: 0 0 auto;
+  color: #243148 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__warning {
+  border-color: #efd9a6 !important;
+  background: #fff9eb !important;
+  color: #7b5b1b !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle {
+  display: grid !important;
+  grid-template-columns: 58px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 15px !important;
+  padding: 18px !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 15px !important;
+  background: #f8fafc !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle.is-on {
+  border-color: #b9dfd2 !important;
+  background: #f2fbf7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeIcon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #e9eef4;
+  color: #526074;
+  font-size: 23px;
+  font-weight: 950;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle.is-on .account-editor-v4__employeeIcon {
+  background: #dff3eb;
+  color: #087557;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeCopy {
+  min-width: 0;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeCopy > span {
+  color: #8290a2 !important;
+  font-size: 8px !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeCopy h4 {
+  margin: 4px 0 3px !important;
+  color: #1c2940 !important;
+  font-size: 16px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeCopy p {
+  margin: 0 !important;
+  color: #728095 !important;
+  font-size: 9px !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__switch {
+  flex: 0 0 auto !important;
+  min-width: 104px !important;
+  height: 43px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 9px !important;
+  padding: 5px 8px !important;
+  border: 1px solid #d7dee8 !important;
+  border-radius: 999px !important;
+  background: #eef2f6 !important;
+  color: #667287 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__switch i {
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 9px rgba(15, 23, 42, .16);
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__switch.is-on,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle.is-on .account-editor-v4__switch {
+  border-color: #83c9b2 !important;
+  background: #15936e !important;
+  color: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__switch:disabled {
+  opacity: .55 !important;
+  cursor: not-allowed !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid article {
+  padding: 15px !important;
+  border: 1px solid #e1e6ed !important;
+  border-radius: 13px !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid span {
+  color: #a67518 !important;
+  font-size: 8px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid h4 {
+  margin: 5px 0 4px !important;
+  color: #223047 !important;
+  font-size: 13px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid p {
+  margin: 0 !important;
+  color: #778397 !important;
+  font-size: 9px !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__statusControl {
+  min-width: 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  min-height: 73px !important;
+  padding: 12px 14px !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 12px !important;
+  background: #fbfcfd !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__statusControl > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__statusControl strong {
+  color: #1e2b42 !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__statusControl small {
+  color: #7e8a9b !important;
+  font-size: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissions {
+  display: grid !important;
+  gap: 14px !important;
+  padding-top: 2px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionsHead {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  padding: 15px !important;
+  border: 1px solid #e1e6ed !important;
+  border-radius: 13px !important;
+  background: #f8fafc !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionsHead h4 {
+  margin: 4px 0 0 !important;
+  color: #172033 !important;
+  font-size: 17px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionsHead p {
+  margin: 4px 0 0 !important;
+  color: #778397 !important;
+  font-size: 9px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionStats {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionStats b {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 7px 9px !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  color: #778397 !important;
+  font-size: 8px !important;
+  font-weight: 850 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionStats strong {
+  color: #1e2b42 !important;
+  font-size: 10px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 210px !important;
+  gap: 10px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroups {
+  display: grid !important;
+  gap: 11px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroup {
+  overflow: hidden !important;
+  border: 1px solid #dfe5ed !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 12px 14px !important;
+  border-bottom: 1px solid #edf0f4 !important;
+  background: #f8fafc !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead h5 {
+  margin: 0 !important;
+  color: #223047 !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead p {
+  margin: 3px 0 0 !important;
+  color: #818da0 !important;
+  font-size: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead > div:last-child {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead > div:last-child > strong {
+  color: #7b8799 !important;
+  font-size: 9px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead button,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionFooter button {
+  min-height: 34px !important;
+  padding: 7px 11px !important;
+  border: 1px solid #d8dfe8 !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  color: #314057 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead button:disabled,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionFooter button:disabled {
+  opacity: .45 !important;
+  cursor: not-allowed !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGrid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  padding: 10px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission {
+  min-width: 0 !important;
+  min-height: 78px !important;
+  display: grid !important;
+  grid-template-columns: 9px minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 9px !important;
+  padding: 10px !important;
+  border: 1px solid #e1e6ed !important;
+  border-radius: 11px !important;
+  background: #fbfcfd !important;
+  color: #354158 !important;
+  box-shadow: none !important;
+  text-align: right !important;
+  font: inherit !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > i {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 2px solid #cbd3df;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > span strong {
+  color: #253249 !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > span small {
+  color: #8894a5 !important;
+  font-size: 7px !important;
+  direction: ltr;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > span em {
+  color: #788497 !important;
+  font-size: 8px !important;
+  font-style: normal !important;
+  line-height: 1.45 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission > b {
+  align-self: start;
+  padding: 4px 6px;
+  border-radius: 7px;
+  background: #eef2f6;
+  color: #7c8797;
+  font-size: 7px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission.is-on {
+  border-color: #a9d7c7 !important;
+  background: #f2fbf7 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission.is-on > i {
+  border-color: #15936e;
+  background: #15936e;
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission.is-on > b {
+  background: #dff4ec;
+  color: #087557;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission.is-sensitive {
+  border-inline-start: 3px solid #d9a53b !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permission:disabled {
+  opacity: .62 !important;
+  cursor: not-allowed !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__empty {
+  padding: 22px !important;
+  border: 1px dashed #ccd4df !important;
+  border-radius: 12px !important;
+  color: #7f8b9c !important;
+  text-align: center !important;
+  font-size: 10px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionFooter {
+  display: flex !important;
+  justify-content: flex-start !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 68px !important;
+  padding: 12px 24px !important;
+  border-top: 1px solid #dfe5ed !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer > div:first-child strong {
+  color: #253249 !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer > div:first-child span {
+  color: #8691a1 !important;
+  font-size: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer > div:last-child {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__cancel,
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__save {
+  min-height: 42px !important;
+  padding: 9px 17px !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 10px !important;
+  font-weight: 950 !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__cancel {
+  border: 1px solid #d9e0e9 !important;
+  background: #fff !important;
+  color: #536075 !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__save {
+  border: 1px solid #152036 !important;
+  background: #152036 !important;
+  color: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__save:disabled {
+  opacity: .55 !important;
+  cursor: wait !important;
+}
+
+@media (max-width: 980px) {
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identity {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts {
+    grid-template-columns: repeat(4, minmax(110px, 1fr)) !important;
+    overflow-x: auto !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .accounts-modal {
+    padding: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4 {
+    width: calc(100vw - 16px) !important;
+    height: calc(100dvh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 17px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__header {
+    padding: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__header h2 {
+    font-size: 24px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__identity,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__content,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer {
+    padding-inline: 14px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__tabs button {
+    flex: 1 0 auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__section {
+    padding: 15px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__formGrid,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__accessGrid,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__compareGrid,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionTools,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGrid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle {
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeIcon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__employeeToggle .account-editor-v4__switch {
+    grid-column: 1 / -1;
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionsHead,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__permissionGroupHead,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__footer > div:last-child {
+    width: 100%;
+  }
+
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__cancel,
+  .dashboard-skin.madan-admin-shell .accounts-page--settings .account-editor-v4__save {
+    flex: 1 1 0;
+  }
+}
