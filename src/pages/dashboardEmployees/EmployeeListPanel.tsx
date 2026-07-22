@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
   faArrowLeft,
+  faEnvelope,
+  faPhone,
   faMagnifyingGlass,
   faPlus,
   faXmark,
@@ -281,50 +283,71 @@ export default function EmployeeListPanel({
                 aria-label={`فتح ملف ${name}`}
               >
                 <div className="employees-card__top">
-                  <EmployeeAvatar
-                    className="employees-card__avatar"
-                    src={staff.avatarUrl}
-                    name={name}
-                    alt={name}
-                  />
+                  <div className="employees-card__identity">
+                    <EmployeeAvatar
+                      className="employees-card__avatar"
+                      src={staff.avatarUrl}
+                      name={name}
+                      alt={name}
+                    />
+                    <div className="employees-card__body">
+                      <h3>{name}</h3>
+                      <div className="employees-card__meta">
+                        <span>{cleanText(staff.title) || department}</span>
+                        {shortEmployeeId ? <span className="employees-card__employee-id">#{shortEmployeeId}</span> : null}
+                        {staff.employmentSource === "partner" ? (
+                          <span className="employees-card__partner">
+                            شريك{staff.partnerName ? ` · ${staff.partnerName}` : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                   <span className={`employees-status employees-status--${status.className}`}>
                     {status.label}
                   </span>
                 </div>
 
-                <div className="employees-card__body">
-                  <h3>{name}</h3>
-                  <p>{cleanText(staff.title) || department}</p>
-                  <div className="employees-card__contact">
-                    <span>{email || "لا يوجد بريد"}</span>
-                    <span>{phone || "لا يوجد جوال"}</span>
-                  </div>
-                </div>
-
-                <div className="employees-card__chips">
-                  <span className={specialtyIds.length ? "is-ready" : "is-empty"}>
-                    {specialtyIds.length ? `${specialtyIds.length} خدمة` : "بدون خدمات"}
+                <div className="employees-card__contact">
+                  <span title={email || "لا يوجد بريد"}>
+                    <FontAwesomeIcon icon={faEnvelope} />
+                    <b>{email || "لا يوجد بريد"}</b>
                   </span>
-                  <span className={needsCompletion ? "is-warning" : "is-ready"}>
-                    {sourceLabelOf(staff)}
+                  <span title={phone || "لا يوجد جوال"}>
+                    <FontAwesomeIcon icon={faPhone} />
+                    <b>{phone || "لا يوجد جوال"}</b>
                   </span>
-                  {staff.employmentSource === "partner" ? (
-                    <span className="is-partner">
-                      شريك{staff.partnerName ? ` · ${staff.partnerName}` : ""}
-                    </span>
-                  ) : null}
                 </div>
 
                 <div className="employees-card__footer">
-                  <div
-                    className="employees-card__kpi"
-                    style={{ "--employees-card-kpi": `${kpi}%` } as CSSProperties}
-                  >
-                    <b>{kpiLabel}</b>
-                    <span>أداء الشهر</span>
+                  <div className="employees-card__metric">
+                    <span>الخدمات</span>
+                    <strong className={specialtyIds.length ? "is-ready" : "is-empty"}>
+                      {specialtyIds.length ? specialtyIds.length : "—"}
+                    </strong>
                   </div>
-                  <div className="employees-card__open">
-                    <span>{shortEmployeeId || "ملف الموظفة"}</span>
+
+                  <div className="employees-card__metric employees-card__metric--profile">
+                    <span>حالة الملف</span>
+                    <strong className={needsCompletion ? "is-warning" : "is-ready"}>
+                      {needsCompletion ? "يحتاج إكمال" : "مكتمل"}
+                    </strong>
+                  </div>
+
+                  <div className="employees-card__kpi">
+                    <div className="employees-card__kpi-label">
+                      <span>أداء الشهر</span>
+                      <b>{kpiLabel}</b>
+                    </div>
+                    <i aria-hidden="true">
+                      <span
+                        style={{ "--employees-card-kpi": `${kpi}%` } as CSSProperties}
+                      />
+                    </i>
+                  </div>
+
+                  <div className="employees-card__open" aria-hidden="true">
+                    <span>عرض</span>
                     <i>
                       <FontAwesomeIcon icon={faArrowLeft} />
                     </i>

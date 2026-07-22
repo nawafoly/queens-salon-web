@@ -116,6 +116,8 @@ type UserRow = {
   archived?: boolean;
   deleted?: boolean;
   removedFromStaff?: boolean;
+  includeInEmployeeManagement?: boolean;
+  employeeProfileEnabled?: boolean;
   employmentStatus?: string;
   accountStatus?: string;
   authStatus?: string;
@@ -155,7 +157,8 @@ type UserRow = {
 
 type AccountState = "active" | "inactive" | "pending" | "archived" | "deleted";
 type AccountStatusFilter = "all" | AccountState;
-type AccountLinkFilter = "all" | "linked" | "unlinked" | "incomplete";
+type AccountLinkFilter = "all" | "visible" | "hidden" | "incomplete";
+type AccountTypeFilter = "all" | "administrative" | "operational";
 
 type EditUserDraft = {
   uid: string;
@@ -164,6 +167,7 @@ type EditUserDraft = {
   phone: string;
   role: UiRole;
   active: boolean;
+  includeInEmployeeManagement: boolean;
   notes: string;
   permissions: AppPermission[];
 };
@@ -306,11 +310,14 @@ export default function SettingsUsers({
   const [roleFilter, setRoleFilter] = useState<UiRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<AccountStatusFilter>("all");
   const [linkFilter, setLinkFilter] = useState<AccountLinkFilter>("all");
+  const [accountTypeFilter, setAccountTypeFilter] = useState<AccountTypeFilter>("all");
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditUserDraft | null>(null);
   const [permissionSearch, setPermissionSearch] = useState("");
   const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("all");
+  const [editSection, setEditSection] = useState<"profile" | "employee" | "access">("profile");
+  const [visibilitySavingUid, setVisibilitySavingUid] = useState("");
 
   const [createForm, setCreateForm] = useState({
     displayName: "",
@@ -319,6 +326,7 @@ export default function SettingsUsers({
     phone: "",
     notes: "",
     role: "staff" as UiRole,
+    includeInEmployeeManagement: true,
   });
 
   const [createLoading, setCreateLoading] = useState(false);
@@ -382,6 +390,18 @@ export default function SettingsUsers({
     return ["owner", "admin", "hr", "reception", "staff"].includes(role);
   }
 
+  function isAdministrativeRole(role: UiRole) {
+    return ["owner", "admin", "hr", "reception"].includes(role);
+  }
+
+  function isOperationalRole(role: UiRole) {
+    return role === "staff";
+  }
+
+  function defaultEmployeeManagementVisibility(role: UiRole) {
+    return isOperationalRole(role);
+  }
+
   function isManagedAccountRole(role: UiRole) {
     return ["owner", "admin", "hr", "reception", "staff", "pending"].includes(role);
   }
@@ -430,15 +450,32 @@ export default function SettingsUsers({
     );
   }
 
+  function isVisibleInEmployeeManagement(row: Pick<UserRow, "includeInEmployeeManagement" | "role">) {
+    if (typeof row.includeInEmployeeManagement === "boolean") {
+      return row.includeInEmployeeManagement;
+    }
+    return defaultEmployeeManagementVisibility(row.role);
+  }
+
   function isIncompleteAccount(row: UserRow) {
-    return !cleanText(row.displayName) || !cleanText(row.email) || !hasLinkedEmployee(row);
+    return (
+      !cleanText(row.displayName) ||
+      !cleanText(row.email) ||
+      (isVisibleInEmployeeManagement(row) && !hasLinkedEmployee(row))
+    );
   }
 
   function matchesLinkFilter(row: UserRow, filter: AccountLinkFilter) {
     if (filter === "all") return true;
-    if (filter === "linked") return hasLinkedEmployee(row);
-    if (filter === "unlinked") return !hasLinkedEmployee(row);
+    if (filter === "visible") return isVisibleInEmployeeManagement(row);
+    if (filter === "hidden") return !isVisibleInEmployeeManagement(row);
     return isIncompleteAccount(row);
+  }
+
+  function matchesAccountTypeFilter(row: UserRow, filter: AccountTypeFilter) {
+    if (filter === "all") return true;
+    if (filter === "administrative") return isAdministrativeRole(row.role);
+    return isOperationalRole(row.role);
   }
 
   const toastMsg = (msg: string, ms = 2200) => {
@@ -617,6 +654,7 @@ export default function SettingsUsers({
     displayName: string;
     permissions?: AppPermission[];
     permissionOverrides?: PermissionOverrides;
+    includeInEmployeeManagement?: boolean;
     createIfMissing?: boolean;
     writeStaff?: boolean;
   }) => {
@@ -644,6 +682,10 @@ export default function SettingsUsers({
     const nextRole = toFirestoreRole(args.role);
     const isEmployeeRole = ["owner", "admin", "hr", "reception", "staff"].includes(args.role);
     const isPublicStaffRole = args.role === "staff";
+    const includeInEmployeeManagement =
+      typeof args.includeInEmployeeManagement === "boolean"
+        ? args.includeInEmployeeManagement
+        : defaultEmployeeManagementVisibility(args.role);
     const effectivePermissions = getEffectiveAppPermissions({
       role: args.role as any,
       permissions: args.permissions,
@@ -665,8 +707,8 @@ export default function SettingsUsers({
       status: activeStatus,
       accountStatus: activeStatus,
       authStatus: "active",
-      employeeProfileEnabled: isEmployeeRole,
-      includeInEmployeeManagement: isEmployeeRole,
+      employeeProfileEnabled: includeInEmployeeManagement,
+      includeInEmployeeManagement,
       disabledAt: null,
       disabledBy: null,
       archivedAt: null,
@@ -703,8 +745,14 @@ export default function SettingsUsers({
         ...(!cleanText(existing?.email) && email ? { email } : {}),
         name: displayName,
         role: nextRole,
-        showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
-        showOnBooking: isPublicStaffRole ? existing?.showOnBooking === true : false,
+        showOnAbout:
+          includeInEmployeeManagement && isPublicStaffRole
+            ? existing?.showOnAbout !== false
+            : false,
+        showOnBooking:
+          includeInEmployeeManagement && isPublicStaffRole
+            ? existing?.showOnBooking === true
+            : false,
         ...preservedStaffFields,
         ...restoredStatePatch,
       },
@@ -719,8 +767,14 @@ export default function SettingsUsers({
         name: displayName,
         role: nextRole,
         ...permissionPayload,
-        showOnAbout: isPublicStaffRole ? existing?.showOnAbout !== false : false,
-        showOnBooking: isPublicStaffRole ? existing?.showOnBooking === true : false,
+        showOnAbout:
+          includeInEmployeeManagement && isPublicStaffRole
+            ? existing?.showOnAbout !== false
+            : false,
+        showOnBooking:
+          includeInEmployeeManagement && isPublicStaffRole
+            ? existing?.showOnBooking === true
+            : false,
         ...preservedStaffFields,
         ...restoredStatePatch,
       },
@@ -741,6 +795,8 @@ export default function SettingsUsers({
           isActive: args.active,
           accountStatus: "active",
           authStatus: "active",
+          includeInEmployeeManagement,
+          employeeProfileEnabled: includeInEmployeeManagement,
           employeeId: staffId,
           linkedEmployeeDocId: staffId,
           disabledAt: null,
@@ -760,6 +816,8 @@ export default function SettingsUsers({
       {
         linkedEmployeeDocId: staffId,
         employeeId: staffId,
+        includeInEmployeeManagement,
+        employeeProfileEnabled: includeInEmployeeManagement,
         accountStatus: "active",
         authStatus: "active",
         disabledAt: null,
@@ -842,6 +900,14 @@ export default function SettingsUsers({
           archived: x?.archived === true,
           deleted: x?.deleted === true,
           removedFromStaff: x?.removedFromStaff === true,
+          includeInEmployeeManagement:
+            typeof x?.includeInEmployeeManagement === "boolean"
+              ? x.includeInEmployeeManagement
+              : defaultEmployeeManagementVisibility(role),
+          employeeProfileEnabled:
+            typeof x?.employeeProfileEnabled === "boolean"
+              ? x.employeeProfileEnabled
+              : defaultEmployeeManagementVisibility(role),
           employmentStatus: String(x?.employmentStatus || ""),
           accountStatus: String(x?.accountStatus || ""),
           authStatus: String(x?.authStatus || ""),
@@ -1028,6 +1094,7 @@ export default function SettingsUsers({
     const phone = createForm.phone.trim();
     const notes = createForm.notes.trim();
     const role = createForm.role;
+    const includeInEmployeeManagement = createForm.includeInEmployeeManagement === true;
 
     setCreateMsg("");
 
@@ -1071,6 +1138,9 @@ export default function SettingsUsers({
           permissionOverrides,
           permissionVersion: PERMISSION_SCHEMA_VERSION,
           active: true,
+          isActive: true,
+          includeInEmployeeManagement,
+          employeeProfileEnabled: includeInEmployeeManagement,
           createdAt: serverTimestamp(),
           createdByUid: (auth as any)?.currentUser?.uid || "",
           createdByEmail: (auth as any)?.currentUser?.email || "",
@@ -1078,8 +1148,8 @@ export default function SettingsUsers({
         { merge: true }
       );
 
-      // ✅ لو Staff: جهّز staff_public + employees
-      if (isEmployeeRole(role)) {
+      // ملف الموظفة التشغيلي منفصل عن حساب الدخول ولا يُنشأ إلا عند تفعيل الخيار.
+      if (includeInEmployeeManagement) {
         await syncLinkedStaffFromUser({
           user: {
             uid,
@@ -1098,6 +1168,7 @@ export default function SettingsUsers({
           displayName,
           permissions,
           permissionOverrides,
+          includeInEmployeeManagement,
           createIfMissing: true,
         });
       }
@@ -1118,6 +1189,7 @@ export default function SettingsUsers({
           role: toFirestoreRole(role),
           permissions,
           active: true,
+          includeInEmployeeManagement,
         },
         meta: {
           role: toFirestoreRole(role),
@@ -1126,7 +1198,15 @@ export default function SettingsUsers({
       });
 
       toastMsg("✅ تم إنشاء الحساب بنجاح", 1800);
-      setCreateForm({ displayName: "", email: "", password: "", phone: "", notes: "", role: "staff" });
+      setCreateForm({
+        displayName: "",
+        email: "",
+        password: "",
+        phone: "",
+        notes: "",
+        role: "staff",
+        includeInEmployeeManagement: true,
+      });
       setCreateOpen(false);
       setSelectedUserId(uid);
 
@@ -1502,133 +1582,125 @@ export default function SettingsUsers({
     }
   };
 
-  const saveEditedUser = async () => {
-    if (!canManageUsers || !editDraft) return;
 
-    const row = users.find((x) => x.uid === editDraft.uid);
-    if (!row) return;
-
-    if (!canEditTargetUser(row)) {
-      toastMsg("❌ تعديل حسابات المالك محجوز للمالك نفسه", 2400);
-      return;
+  const updateEmployeeManagementVisibility = async (
+    row: UserRow,
+    includeInEmployeeManagement: boolean,
+    options?: { quiet?: boolean }
+  ) => {
+    const isSelf = cleanText((auth as any)?.currentUser?.uid) === row.uid;
+    if (!canEditTargetUser(row) && !(isSelf && isOwner)) {
+      if (!options?.quiet) toastMsg("❌ لا تملك صلاحية تعديل ظهور هذا الحساب", 2200);
+      return null;
     }
 
-    if ((auth as any)?.currentUser?.uid === editDraft.uid) {
-      toastMsg("❌ لا يمكن تعديل حسابك من هنا", 2400);
-      return;
+    const previousVisibility = isVisibleInEmployeeManagement(row);
+    if (previousVisibility === includeInEmployeeManagement) {
+      return resolveLinkedEmployeeDocId(row) || null;
     }
 
-    const displayName = editDraft.displayName.trim();
-    const phone = editDraft.phone.trim();
-    const notes = editDraft.notes.trim();
-    const role = editDraft.role;
-    const active = role === "pending" ? false : editDraft.active !== false;
+    const currentLinkedEmployeeId = resolveLinkedEmployeeDocId(row);
+    const nextEmployeeId = currentLinkedEmployeeId || row.uid;
 
-    if (role !== row.role && !canAssignRole(role)) {
-      toastMsg("❌ لا يمكنك تعيين هذا الدور", 2200);
-      return;
-    }
+    // تحديث متفائل: المفتاح يتغير فورًا ولا يبقى عالقًا على حالة "جار الحفظ".
+    setUsers((previous) =>
+      previous.map((user) =>
+        user.uid === row.uid
+          ? {
+              ...user,
+              includeInEmployeeManagement,
+              employeeProfileEnabled: includeInEmployeeManagement,
+            }
+          : user
+      )
+    );
+    setVisibilitySavingUid(row.uid);
 
-    const requestedPermissions = ALL_PERMISSION_META
-      .map((item) => item.key)
-      .filter((permission) => editDraft.permissions.includes(permission));
-    const permissions = canManagePermissions
-      ? requestedPermissions
-      : role === row.role
-        ? getUserPermissions(row)
-        : getRoleAppPermissions(role as any);
-    const permissionOverrides = buildPermissionOverrides(role as any, permissions);
-
-    if (!displayName) {
-      toastMsg("❌ الاسم لا يمكن أن يكون فارغًا", 2000);
-      return;
-    }
-
-    if (role === "owner" && !isOwner) {
-      toastMsg("❌ فقط المالك يقدر يمنح Owner", 2200);
-      return;
-    }
-
-    try {
-      setUsersLoading(true);
-
-      const nextRole = toFirestoreRole(role);
-      const staffId = await syncLinkedStaffFromUser({
-        user: {
-          uid: row.uid,
-          email: row.email || editDraft.email,
-          phone,
-          displayName,
-          role,
-          active,
-          permissions,
-          permissionOverrides,
-          linkedEmployeeDocId: row.linkedEmployeeDocId || row.employeeId || "",
-          employeeId: row.employeeId || row.linkedEmployeeDocId || "",
-        },
-        role,
-        active,
-        displayName,
-        permissions,
-        permissionOverrides,
-        createIfMissing: isEmployeeRole(role),
-        writeStaff: false,
+    const withTimeout = <T,>(task: Promise<T>, timeoutMs = 15000) =>
+      new Promise<T>((resolve, reject) => {
+        const timeoutId = window.setTimeout(
+          () => reject(new Error("EMPLOYEE_VISIBILITY_SAVE_TIMEOUT")),
+          timeoutMs
+        );
+        task.then(
+          (value) => {
+            window.clearTimeout(timeoutId);
+            resolve(value);
+          },
+          (error) => {
+            window.clearTimeout(timeoutId);
+            reject(error);
+          }
+        );
       });
 
-      await setDoc(
-        doc(db, ...USERS_COLLECTION, row.uid),
-        {
-          displayName,
-          phone,
-          notes,
-          role: nextRole,
-          permissions,
-          permissionOverrides,
-          permissionVersion: PERMISSION_SCHEMA_VERSION,
-          active,
-          isActive: active,
-          linkedEmployeeDocId: staffId || row.linkedEmployeeDocId || row.employeeId || "",
-          employeeId: staffId || row.employeeId || row.linkedEmployeeDocId || "",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+    try {
+      let linkedEmployeeId: string | null = currentLinkedEmployeeId || null;
 
-      await setDoc(
-        doc(db, "salons", SALON_ID, "admin_users", row.uid),
-        {
-          uid: row.uid,
-          email: row.email || editDraft.email,
-          displayName,
-          phone,
-          role: nextRole,
-          permissions,
-          permissionOverrides,
-          permissionVersion: PERMISSION_SCHEMA_VERSION,
-          active,
-          isActive: active,
+      if (includeInEmployeeManagement) {
+        linkedEmployeeId = await withTimeout(
+          syncLinkedStaffFromUser({
+            user: {
+              ...row,
+              linkedEmployeeDocId: nextEmployeeId,
+              employeeId: nextEmployeeId,
+              includeInEmployeeManagement: true,
+              employeeProfileEnabled: true,
+            },
+            role: row.role,
+            active: row.active !== false,
+            displayName: getDisplayName(row),
+            permissions: getUserPermissions(row),
+            permissionOverrides: row.permissionOverrides,
+            includeInEmployeeManagement: true,
+            createIfMissing: true,
+            writeStaff: true,
+          })
+        );
+      } else {
+        const visibilityPatch = {
+          includeInEmployeeManagement: false,
+          employeeProfileEnabled: false,
           updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        };
+        const hiddenPatch = {
+          ...visibilityPatch,
+          showOnAbout: false,
+          showOnBooking: false,
+        };
 
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.uid === row.uid
+        // تنفذ كل عمليات الإخفاء معًا بدل انتظار كل مجموعة على حدة.
+        await withTimeout(
+          Promise.all([
+            setDoc(doc(db, ...USERS_COLLECTION, row.uid), visibilityPatch, { merge: true }),
+            setDoc(
+              doc(db, "salons", SALON_ID, "admin_users", row.uid),
+              {
+                uid: row.uid,
+                email: row.email || "",
+                displayName: row.displayName || "",
+                role: toFirestoreRole(row.role),
+                ...visibilityPatch,
+              },
+              { merge: true }
+            ),
+            setDoc(doc(db, ...STAFF_PUBLIC_COLLECTION, nextEmployeeId), hiddenPatch, { merge: true }),
+            setDoc(doc(db, ...EMPLOYEES_COLLECTION, nextEmployeeId), hiddenPatch, { merge: true }),
+          ])
+        );
+      }
+
+      setUsers((previous) =>
+        previous.map((user) =>
+          user.uid === row.uid
             ? {
-                ...u,
-                displayName,
-                phone,
-                notes,
-                role,
-                permissions,
-                permissionOverrides,
-                active,
-                isActive: active,
-                linkedEmployeeDocId: staffId || u.linkedEmployeeDocId,
-                employeeId: staffId || u.employeeId,
+                ...user,
+                includeInEmployeeManagement,
+                employeeProfileEnabled: includeInEmployeeManagement,
+                linkedEmployeeDocId: linkedEmployeeId || user.linkedEmployeeDocId,
+                employeeId: linkedEmployeeId || user.employeeId,
               }
-            : u
+            : user
         )
       );
 
@@ -1637,7 +1709,205 @@ export default function SettingsUsers({
         action: "user_updated",
         entityType: "user",
         entityId: row.uid,
-        description: "تم حفظ تعديلات الحساب",
+        description: includeInEmployeeManagement
+          ? "تم إظهار الحساب في إدارة الموظفات"
+          : "تم إخفاء الحساب من إدارة الموظفات",
+        source: "dashboard",
+        before: {
+          includeInEmployeeManagement: previousVisibility,
+        },
+        after: {
+          includeInEmployeeManagement,
+        },
+        meta: {
+          field: "includeInEmployeeManagement",
+        },
+      });
+
+      if (!options?.quiet) {
+        toastMsg(
+          includeInEmployeeManagement
+            ? "✅ ظهر الحساب الآن ضمن إدارة الموظفات"
+            : "✅ تم إخفاء الحساب من إدارة الموظفات",
+          1800
+        );
+      }
+
+      return linkedEmployeeId;
+    } catch (error) {
+      console.error("updateEmployeeManagementVisibility error:", error);
+
+      // عند فشل الحفظ نعيد المفتاح إلى وضعه الحقيقي السابق بدل ترك واجهة مضللة.
+      setUsers((previous) =>
+        previous.map((user) =>
+          user.uid === row.uid
+            ? {
+                ...user,
+                includeInEmployeeManagement: previousVisibility,
+                employeeProfileEnabled: previousVisibility,
+              }
+            : user
+        )
+      );
+
+      if (options?.quiet) throw error;
+      const timedOut = error instanceof Error && error.message === "EMPLOYEE_VISIBILITY_SAVE_TIMEOUT";
+      toastMsg(
+        timedOut
+          ? "❌ تأخر تأكيد الحفظ. أعد المحاولة بعد تحديث الصفحة"
+          : "❌ تعذر تحديث الظهور في إدارة الموظفات",
+        3000
+      );
+      return null;
+    } finally {
+      setVisibilitySavingUid((current) => (current === row.uid ? "" : current));
+    }
+  };
+
+  const saveEditedUser = async () => {
+    if (!canManageUsers || !editDraft) return;
+
+    const row = users.find((item) => item.uid === editDraft.uid);
+    if (!row) return;
+
+    const editingSelf = cleanText((auth as any)?.currentUser?.uid) === row.uid;
+    const canEditBasics = canEditTargetUser(row) || (editingSelf && isOwner);
+    if (!canEditBasics) {
+      toastMsg("❌ لا تملك صلاحية تعديل هذا الحساب", 2400);
+      return;
+    }
+
+    const displayName = editDraft.displayName.trim();
+    const phone = editDraft.phone.trim();
+    const notes = editDraft.notes.trim();
+    const role = editingSelf ? row.role : editDraft.role;
+    const active = editingSelf
+      ? row.active !== false
+      : role === "pending"
+        ? false
+        : editDraft.active !== false;
+    const includeInEmployeeManagement = editDraft.includeInEmployeeManagement === true;
+
+    if (!editingSelf && role !== row.role && !canAssignRole(role)) {
+      toastMsg("❌ لا يمكنك تعيين هذا الدور", 2200);
+      return;
+    }
+
+    const requestedPermissions = ALL_PERMISSION_META
+      .map((item) => item.key)
+      .filter((permission) => editDraft.permissions.includes(permission));
+    const permissions = editingSelf
+      ? getUserPermissions(row)
+      : canManagePermissions
+        ? requestedPermissions
+        : role === row.role
+          ? getUserPermissions(row)
+          : getRoleAppPermissions(role as any);
+    const permissionOverrides = editingSelf
+      ? row.permissionOverrides || buildPermissionOverrides(role as any, permissions)
+      : buildPermissionOverrides(role as any, permissions);
+
+    if (!displayName) {
+      toastMsg("❌ الاسم لا يمكن أن يكون فارغًا", 2000);
+      return;
+    }
+
+    if (role === "owner" && !isOwner) {
+      toastMsg("❌ فقط المالك يقدر يمنح دور المالك", 2200);
+      return;
+    }
+
+    try {
+      setUsersLoading(true);
+
+      const nextRole = toFirestoreRole(role);
+      const visibilityChanged =
+        isVisibleInEmployeeManagement(row) !== includeInEmployeeManagement;
+      let linkedEmployeeId = resolveLinkedEmployeeDocId(row);
+
+      const accountPatch = {
+        displayName,
+        phone,
+        notes,
+        role: nextRole,
+        permissions,
+        permissionOverrides,
+        permissionVersion: PERMISSION_SCHEMA_VERSION,
+        active,
+        isActive: active,
+        includeInEmployeeManagement,
+        employeeProfileEnabled: includeInEmployeeManagement,
+        updatedAt: serverTimestamp(),
+      };
+
+      await Promise.all([
+        setDoc(doc(db, ...USERS_COLLECTION, row.uid), accountPatch, { merge: true }),
+        setDoc(
+          doc(db, "salons", SALON_ID, "admin_users", row.uid),
+          {
+            uid: row.uid,
+            email: row.email || editDraft.email,
+            ...accountPatch,
+          },
+          { merge: true }
+        ),
+      ]);
+
+      if (editingSelf && (auth as any)?.currentUser) {
+        await updateProfile((auth as any).currentUser, { displayName }).catch((error) => {
+          console.warn("update current auth profile displayName failed:", error);
+        });
+      }
+
+      if (visibilityChanged) {
+        linkedEmployeeId =
+          (await updateEmployeeManagementVisibility(
+            {
+              ...row,
+              displayName,
+              phone,
+              notes,
+              role,
+              active,
+              isActive: active,
+              permissions,
+              permissionOverrides,
+              includeInEmployeeManagement,
+              employeeProfileEnabled: includeInEmployeeManagement,
+            },
+            includeInEmployeeManagement,
+            { quiet: true }
+          )) || linkedEmployeeId;
+      }
+
+      setUsers((previous) =>
+        previous.map((user) =>
+          user.uid === row.uid
+            ? {
+                ...user,
+                displayName,
+                phone,
+                notes,
+                role,
+                permissions,
+                permissionOverrides,
+                active,
+                isActive: active,
+                includeInEmployeeManagement,
+                employeeProfileEnabled: includeInEmployeeManagement,
+                linkedEmployeeDocId: linkedEmployeeId || user.linkedEmployeeDocId,
+                employeeId: linkedEmployeeId || user.employeeId,
+              }
+            : user
+        )
+      );
+
+      void writeAuditLog({
+        salonId: SALON_ID,
+        action: "user_updated",
+        entityType: "user",
+        entityId: row.uid,
+        description: editingSelf ? "تم تحديث إعدادات حساب المالك" : "تم حفظ تعديلات الحساب",
         source: "dashboard",
         before: {
           displayName: row.displayName || null,
@@ -1646,6 +1916,7 @@ export default function SettingsUsers({
           active: row.active,
           notes: row.notes || null,
           permissions: row.permissions || [],
+          includeInEmployeeManagement: isVisibleInEmployeeManagement(row),
         },
         after: {
           displayName,
@@ -1654,17 +1925,19 @@ export default function SettingsUsers({
           active,
           notes: notes || null,
           permissions,
+          includeInEmployeeManagement,
         },
         meta: {
-          field: "profile",
+          field: "account_profile",
+          editingSelf,
         },
       });
 
-      toastMsg("✅ تم حفظ التعديلات", 1600);
+      toastMsg("✅ تم حفظ إعدادات الحساب", 1600);
       setEditDraft(null);
-    } catch (e) {
-      console.error("saveEditedUser error:", e);
-      toastMsg("❌ تعذر حفظ التعديلات (Rules?)", 2600);
+    } catch (error) {
+      console.error("saveEditedUser error:", error);
+      toastMsg("❌ تعذر حفظ التعديلات", 2600);
     } finally {
       setUsersLoading(false);
     }
@@ -1674,6 +1947,7 @@ export default function SettingsUsers({
     setCreateMsg("");
     setPermissionSearch("");
     setPermissionGroupFilter("all");
+    setEditSection("profile");
     setEditDraft({
       uid: row.uid,
       displayName: row.displayName || "",
@@ -1681,6 +1955,7 @@ export default function SettingsUsers({
       phone: row.phone || "",
       role: row.role,
       active: row.active !== false,
+      includeInEmployeeManagement: isVisibleInEmployeeManagement(row),
       notes: row.notes || "",
       permissions: getEffectiveAppPermissions({
         role: row.role as any,
@@ -1891,6 +2166,7 @@ export default function SettingsUsers({
           ? row.permissionOverrides
           : buildPermissionOverrides(restoredRole as any, restoredPermissions);
       const authDisabledNeedsManualAction = hadFirebaseAuthDisabledMarker(row);
+      const restoredVisibility = isVisibleInEmployeeManagement(row);
 
       const restorePatch = {
         uid,
@@ -1910,7 +2186,8 @@ export default function SettingsUsers({
         status: "active",
         accountStatus: "active",
         authStatus: "active",
-        employeeProfileEnabled: true,
+        employeeProfileEnabled: restoredVisibility,
+        includeInEmployeeManagement: restoredVisibility,
         linkedEmployeeDocId: restoredEmployeeId,
         employeeId: restoredEmployeeId,
         disabledAt: null,
@@ -1927,27 +2204,32 @@ export default function SettingsUsers({
         setDoc(doc(db, "salons", SALON_ID, "admin_users", uid), restorePatch, { merge: true }),
       ]);
 
-      const restoredStaffId = await syncLinkedStaffFromUser({
-        user: {
-          uid: row.uid,
-          email: row.email,
-          phone: row.phone || "",
-          displayName,
-          role: restoredRole,
-          active: true,
-          permissions: restoredPermissions,
-          permissionOverrides: restoredPermissionOverrides,
-          linkedEmployeeDocId: restoredEmployeeId,
-          employeeId: restoredEmployeeId,
-        },
-        role: restoredRole,
-        active: true,
-        displayName,
-        permissions: restoredPermissions,
-        permissionOverrides: restoredPermissionOverrides,
-        createIfMissing: true,
-        writeStaff: true,
-      });
+      const restoredStaffId = restoredVisibility
+        ? await syncLinkedStaffFromUser({
+            user: {
+              uid: row.uid,
+              email: row.email,
+              phone: row.phone || "",
+              displayName,
+              role: restoredRole,
+              active: true,
+              permissions: restoredPermissions,
+              permissionOverrides: restoredPermissionOverrides,
+              linkedEmployeeDocId: restoredEmployeeId,
+              employeeId: restoredEmployeeId,
+              includeInEmployeeManagement: restoredVisibility,
+              employeeProfileEnabled: restoredVisibility,
+            },
+            role: restoredRole,
+            active: true,
+            displayName,
+            permissions: restoredPermissions,
+            permissionOverrides: restoredPermissionOverrides,
+            includeInEmployeeManagement: restoredVisibility,
+            createIfMissing: true,
+            writeStaff: true,
+          })
+        : restoredEmployeeId;
       const finalEmployeeId = restoredStaffId || restoredEmployeeId;
 
       setUsers((prev) =>
@@ -1966,7 +2248,8 @@ export default function SettingsUsers({
                 employmentStatus: "active",
                 accountStatus: "active",
                 authStatus: "active",
-                employeeProfileEnabled: true,
+                employeeProfileEnabled: restoredVisibility,
+                includeInEmployeeManagement: restoredVisibility,
                 linkedEmployeeDocId: finalEmployeeId,
                 employeeId: finalEmployeeId,
                 disabledAt: null,
@@ -2027,6 +2310,7 @@ export default function SettingsUsers({
     return [...users]
       .filter((user) => {
         if (roleFilter !== "all" && user.role !== roleFilter) return false;
+        if (!matchesAccountTypeFilter(user, accountTypeFilter)) return false;
 
         if (!matchesStatusFilter(user, statusFilter)) return false;
         if (!matchesLinkFilter(user, linkFilter)) return false;
@@ -2054,12 +2338,17 @@ export default function SettingsUsers({
         return haystack.includes(search);
       })
       ;
-  }, [users, roleFilter, searchQuery, statusFilter, linkFilter]);
+  }, [users, roleFilter, searchQuery, statusFilter, linkFilter, accountTypeFilter]);
 
   const selectedUser = useMemo(() => {
     if (!selectedUserId) return visibleUsers[0] || null;
     return visibleUsers.find((user) => user.uid === selectedUserId) || visibleUsers[0] || null;
   }, [selectedUserId, visibleUsers]);
+
+  const editTargetUser = useMemo(
+    () => (editDraft ? users.find((user) => user.uid === editDraft.uid) || null : null),
+    [editDraft, users]
+  );
 
   const stats = useMemo(() => {
     const total = users.length;
@@ -2067,10 +2356,26 @@ export default function SettingsUsers({
     const inactive = users.filter((user) => matchesStatusFilter(user, "inactive")).length;
     const pending = users.filter((user) => getUserState(user) === "pending").length;
     const incomplete = users.filter((user) => isIncompleteAccount(user)).length;
-    const unlinked = users.filter((user) => !hasLinkedEmployee(user)).length;
+    const unlinked = users.filter(
+      (user) => isVisibleInEmployeeManagement(user) && !hasLinkedEmployee(user)
+    ).length;
     const editors = users.filter((user) => ["owner", "hr", "admin"].includes(user.role)).length;
+    const administrative = users.filter((user) => isAdministrativeRole(user.role)).length;
+    const operational = users.filter((user) => isOperationalRole(user.role)).length;
+    const visibleInEmployees = users.filter((user) => isVisibleInEmployeeManagement(user)).length;
 
-    return { total, active, inactive, pending, incomplete, unlinked, editors };
+    return {
+      total,
+      active,
+      inactive,
+      pending,
+      incomplete,
+      unlinked,
+      editors,
+      administrative,
+      operational,
+      visibleInEmployees,
+    };
   }, [users]);
 
   const inviteStats = useMemo(() => {
@@ -2120,17 +2425,22 @@ export default function SettingsUsers({
     }
   }, [editDraft, users]);
 
-  const selectedState = selectedUser ? getUserState(selectedUser) : "inactive";
+  const selectedState = editTargetUser ? getUserState(editTargetUser) : "inactive";
   const selectedStateLabel = getUserStateLabel(selectedState);
-  const selectedRoleLabel = selectedUser ? getRoleLabel(selectedUser.role) : "-";
-  const selectedRoleTone = selectedUser ? getRoleTone(selectedUser.role) : "gray";
+  const selectedRoleLabel = editTargetUser ? getRoleLabel(editTargetUser.role) : "-";
+  const selectedRoleTone = editTargetUser ? getRoleTone(editTargetUser.role) : "gray";
   const createPermissionCount = getRoleAppPermissions(createForm.role as any).length;
   const invitePreviewPermissions = PERMISSION_META.filter((item) =>
     getRoleAppPermissions(inviteDraft.role as any).includes(item.key)
   );
   const currentUid = String((auth as any)?.currentUser?.uid || "");
-  const selectedIsSelf = Boolean(selectedUser && selectedUser.uid === currentUid);
-  const selectedCanMutate = Boolean(selectedUser && !selectedIsSelf && canEditTargetUser(selectedUser));
+  const selectedIsSelf = Boolean(editTargetUser && editTargetUser.uid === currentUid);
+  const selectedCanEditBasics = Boolean(
+    editTargetUser && (canEditTargetUser(editTargetUser) || (selectedIsSelf && isOwner))
+  );
+  const selectedCanControl = Boolean(
+    editTargetUser && !selectedIsSelf && canEditTargetUser(editTargetUser)
+  );
   const usersBasePath = "/dashboard/settings/users";
   const profileUid = useMemo(() => {
     const marker = `${usersBasePath}/`;
@@ -2142,7 +2452,13 @@ export default function SettingsUsers({
     [profileUid, users]
   );
   const profileEmployeeId = cleanText(profileUser?.employeeId || profileUser?.linkedEmployeeDocId || "");
-  const profileCanMutate = Boolean(profileUser && profileUser.uid !== currentUid && canEditTargetUser(profileUser));
+  const profileIsSelf = Boolean(profileUser && profileUser.uid === currentUid);
+  const profileCanEditBasics = Boolean(
+    profileUser && (canEditTargetUser(profileUser) || (profileIsSelf && isOwner))
+  );
+  const profileCanControl = Boolean(
+    profileUser && !profileIsSelf && canEditTargetUser(profileUser)
+  );
   const editRoleDefaultPermissions = editDraft ? getRoleAppPermissions(editDraft.role as any) : [];
   const editPermissionSet = new Set<AppPermission>(editDraft?.permissions || []);
   const editAddedPermissions = editDraft
@@ -2168,9 +2484,9 @@ export default function SettingsUsers({
     .filter((group) => group.permissions.length > 0);
   const canEditSelectedPermissions = Boolean(
     editDraft &&
-      selectedUser &&
-      canEditTargetUser(selectedUser) &&
-      selectedUser.role !== "owner" &&
+      editTargetUser &&
+      selectedCanControl &&
+      editTargetUser.role !== "owner" &&
       editDraft.role !== "owner" &&
       canManagePermissions
   );
@@ -2240,40 +2556,60 @@ export default function SettingsUsers({
     firstText(row.displayName, row.employeeName, row.email) || "حساب غير مرتبط بموظفة";
   const getDisplayTitle = (row: UserRow) => firstText(row.jobTitle, getRoleLabel(row.role));
   const getDepartmentLabel = (row: UserRow) => firstText(row.department, "غير محدد");
+  const getAccountTypeLabel = (row: UserRow) =>
+    isAdministrativeRole(row.role) ? "حساب إداري" : "حساب موظفة تشغيلية";
+
+  const canChangeVisibilityFor = (row: UserRow) => {
+    const isSelf = row.uid === currentUid;
+    return canEditTargetUser(row) || (isSelf && isOwner);
+  };
+
   const renderListPage = () => (
-    <>
-      <header className="employee-accounts-v2__header">
-        <div>
-          <span className="employee-accounts-v2__eyebrow">إدارة الحسابات</span>
+    <div className="accounts-console-v3">
+      <header className="accounts-console-v3__hero">
+        <div className="accounts-console-v3__heroCopy">
+          <span className="accounts-console-v3__eyebrow">الهوية والصلاحيات</span>
           <h1>إدارة حسابات الدخول</h1>
-          <p>إدارة حسابات الدخول، الأدوار، والصلاحيات فقط. ملفات الموظفات الإدارية تبقى في إدارة الموظفين.</p>
+          <p>
+            هذا القسم مخصص للحسابات فقط: الاسم، البريد، الدور، حالة الدخول والصلاحيات.
+            الخدمات وأوقات العمل والحضور تبقى داخل إدارة الموظفات.
+          </p>
+          <div className="accounts-console-v3__separation">
+            <span><b>إدارة الحسابات</b> دخول وصلاحيات</span>
+            <span><b>إدارة الموظفات</b> خدمات وأوقات وتشغيل</span>
+          </div>
         </div>
 
-        <div className="employee-accounts-v2__actions">
+        <div className="accounts-console-v3__heroActions">
           <button
             type="button"
-            className="employee-accounts-v2__button employee-accounts-v2__button--primary"
+            className="accounts-console-v3__btn accounts-console-v3__btn--primary"
             onClick={() => {
               setCreateMsg("");
               setCreateOpen(true);
             }}
           >
-            حساب جديد
+            + إنشاء حساب
           </button>
           <button
             type="button"
-            className="employee-accounts-v2__button"
+            className="accounts-console-v3__btn"
             disabled={usersLoading}
             onClick={() => void loadUsers({ runRepair: true })}
           >
-            {usersLoading ? "جار التحديث..." : "تحديث"}
+            {usersLoading ? "جار التحديث..." : "تحديث البيانات"}
           </button>
         </div>
       </header>
 
-      <section className="employee-accounts-v2__stats" aria-label="إحصائيات الحسابات">
-        {listStats.map((item) => (
-          <article key={item.label} className="employee-accounts-v2__stat">
+      <section className="accounts-console-v3__stats" aria-label="إحصائيات الحسابات">
+        {[
+          { label: "كل الحسابات", value: stats.total, hint: `${stats.active} نشطة` },
+          { label: "حسابات إدارية", value: stats.administrative, hint: "مالك، إدارة، HR، استقبال" },
+          { label: "حسابات تشغيلية", value: stats.operational, hint: "حسابات الموظفات العاملات" },
+          { label: "ظاهرة في الموظفات", value: stats.visibleInEmployees, hint: `${stats.unlinked} تحتاج ربطًا` },
+        ].map((item) => (
+          <article key={item.label}>
             <span>{item.label}</span>
             <strong>{item.value}</strong>
             <small>{item.hint}</small>
@@ -2283,110 +2619,130 @@ export default function SettingsUsers({
 
       {createMsg ? <div className={`accounts-banner accounts-banner--${bannerTone}`}>{createMsg}</div> : null}
 
-      <section className="employee-directory-v2">
-        <div className="employee-directory-v2__head">
+      <section className="accounts-console-v3__directory">
+        <div className="accounts-console-v3__directoryHead">
           <div>
-            <h2>قائمة حسابات الدخول</h2>
-            <p>ابحث وفلتر حسب الحالة أو الدور أو الارتباط بسجل موظفة.</p>
+            <h2>دليل الحسابات</h2>
+            <p>اختر أي حساب لفتح مركز التحكم الكامل به.</p>
           </div>
-          <span>{visibleUsers.length} نتيجة</span>
+          <span className="accounts-console-v3__count">{visibleUsers.length} حساب</span>
         </div>
 
-        <div className="employee-directory-v2__filters">
-          <label className="employee-directory-v2__search">
-            <span>بحث</span>
+        <div className="accounts-console-v3__filters">
+          <label className="accounts-console-v3__search">
+            <span>بحث سريع</span>
             <input
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="الاسم، البريد، الجوال، القسم، أو المسمى الوظيفي"
+              placeholder="الاسم، البريد، الجوال أو UID"
             />
           </label>
 
-          <div className="employee-directory-v2__filterRow">
-            <label>
-              <span>الحالة</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
-                <option value="all">كل الحالات</option>
-                <option value="active">نشطة</option>
-                <option value="inactive">غير نشطة</option>
-                <option value="pending">قيد المراجعة</option>
-                <option value="archived">مؤرشفة</option>
-                <option value="deleted">محذوفة منطقيًا</option>
-              </select>
-            </label>
-
-            <label>
-              <span>الدور</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
-                <option value="all">كل الأدوار</option>
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
-                <option value="hr">HR</option>
-                <option value="reception">Reception</option>
-                <option value="staff">Staff</option>
-                <option value="pending">Pending</option>
-              </select>
-            </label>
-
-            <label>
-              <span>الارتباط</span>
-              <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as AccountLinkFilter)}>
-                <option value="all">الكل</option>
-                <option value="linked">مرتبط بسجل موظفة</option>
-                <option value="unlinked">غير مرتبط</option>
-                <option value="incomplete">غير مكتمل</option>
-              </select>
-            </label>
-
-            <button
-              type="button"
-              className="employee-accounts-v2__button employee-accounts-v2__button--ghost"
-              onClick={() => {
-                setSearchQuery("");
-                setRoleFilter("all");
-                setStatusFilter("all");
-                setLinkFilter("all");
-              }}
+          <label>
+            <span>نوع الحساب</span>
+            <select
+              value={accountTypeFilter}
+              onChange={(event) => setAccountTypeFilter(event.target.value as AccountTypeFilter)}
             >
-              إعادة ضبط
-            </button>
-          </div>
+              <option value="all">كل الحسابات</option>
+              <option value="administrative">الحسابات الإدارية</option>
+              <option value="operational">حسابات الموظفات</option>
+            </select>
+          </label>
+
+          <label>
+            <span>الدور</span>
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
+              <option value="all">كل الأدوار</option>
+              <option value="owner">المالك</option>
+              <option value="admin">الإدارة</option>
+              <option value="hr">الموارد البشرية</option>
+              <option value="reception">الاستقبال</option>
+              <option value="staff">موظفة تشغيلية</option>
+              <option value="pending">قيد المراجعة</option>
+            </select>
+          </label>
+
+          <label>
+            <span>حالة الدخول</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
+              <option value="all">كل الحالات</option>
+              <option value="active">نشطة</option>
+              <option value="inactive">غير نشطة</option>
+              <option value="pending">قيد المراجعة</option>
+              <option value="archived">مؤرشفة</option>
+              <option value="deleted">محذوفة</option>
+            </select>
+          </label>
+
+          <label>
+            <span>إدارة الموظفات</span>
+            <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as AccountLinkFilter)}>
+              <option value="all">الكل</option>
+              <option value="visible">ظاهر في الموظفات</option>
+              <option value="hidden">مخفي من الموظفات</option>
+              <option value="incomplete">يحتاج إكمال</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="accounts-console-v3__reset"
+            onClick={() => {
+              setSearchQuery("");
+              setRoleFilter("all");
+              setStatusFilter("all");
+              setLinkFilter("all");
+              setAccountTypeFilter("all");
+            }}
+          >
+            مسح الفلاتر
+          </button>
+        </div>
+
+        <div className="accounts-console-v3__tableHead" aria-hidden="true">
+          <span>الحساب</span>
+          <span>النوع والدور</span>
+          <span>حالة الدخول</span>
+          <span>إدارة الموظفات</span>
+          <span>الصلاحيات</span>
+          <span />
         </div>
 
         {usersLoading ? (
-          <div className="employee-directory-v2__skeletonGrid" aria-live="polite">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} className="employee-directory-v2__skeleton" />
-            ))}
+          <div className="accounts-console-v3__loading" aria-live="polite">
+            {Array.from({ length: 6 }).map((_, index) => <span key={index} />)}
           </div>
         ) : null}
 
         {!usersLoading && !users.length ? (
-          <div className="employee-directory-v2__empty">
-            <strong>لا توجد حسابات موظفين</strong>
-            <p>لم يتم العثور على أي حساب إداري يمكن عرضه من مصدر البيانات الحالي.</p>
+          <div className="accounts-console-v3__empty">
+            <strong>لا توجد حسابات إدارية</strong>
+            <p>أنشئ أول حساب دخول أو حدّث البيانات.</p>
           </div>
         ) : null}
 
         {!usersLoading && users.length > 0 && !visibleUsers.length ? (
-          <div className="employee-directory-v2__empty">
+          <div className="accounts-console-v3__empty">
             <strong>لا توجد نتائج مطابقة</strong>
-            <p>جرّب تغيير البحث أو الفلاتر الحالية.</p>
+            <p>غيّر البحث أو امسح الفلاتر الحالية.</p>
           </div>
         ) : null}
 
         {!usersLoading && visibleUsers.length ? (
-          <div className="employee-directory-v2__grid">
+          <div className="accounts-console-v3__rows">
             {visibleUsers.map((row) => {
               const state = getUserState(row);
-              const linked = hasLinkedEmployee(row);
-              const incomplete = isIncompleteAccount(row);
               const displayName = getDisplayName(row);
+              const visibleInEmployees = isVisibleInEmployeeManagement(row);
+              const linked = hasLinkedEmployee(row);
+              const canChangeVisibility = canChangeVisibilityFor(row);
+
               return (
                 <article
                   key={row.uid}
-                  className={`employee-mini-card ${linked ? "" : "is-unlinked"}`}
+                  className={`accounts-console-v3__row ${row.uid === currentUid ? "is-self" : ""}`}
                   tabIndex={0}
                   role="button"
                   onClick={() => navigate(`${usersBasePath}/${encodeURIComponent(row.uid)}`)}
@@ -2397,273 +2753,379 @@ export default function SettingsUsers({
                     }
                   }}
                 >
-                  <div className="employee-mini-card__media">
+                  <div className="accounts-console-v3__identity">
                     <EmployeeAvatar src={row.avatarUrl} name={displayName} alt={displayName} loading="lazy" />
+                    <div>
+                      <strong>{displayName}</strong>
+                      <span>{row.email || "لا يوجد بريد"}</span>
+                      {row.phone ? <small>{row.phone}</small> : null}
+                    </div>
                   </div>
 
-                  <div className="employee-mini-card__body">
-                    <div className="employee-mini-card__top">
-                      <div>
-                        <h3>{displayName}</h3>
-                        <p>{getDisplayTitle(row)}</p>
-                      </div>
-                      <span className="employee-mini-card__arrow" aria-hidden="true">‹</span>
-                    </div>
-
-                    <div className="employee-mini-card__meta">
-                      <span className={`employee-status-dot is-${state}`}>{getUserStateLabel(state)}</span>
-                      <span>{getDepartmentLabel(row)}</span>
-                    </div>
-
-                    {!linked || incomplete ? (
-                      <div className="employee-mini-card__warning">
-                        <strong>حساب غير مرتبط بموظفة</strong>
-                        <small>{row.email || "لا يوجد بريد"} · {getRoleLabel(row.role)}</small>
-                      </div>
-                    ) : null}
+                  <div className="accounts-console-v3__role">
+                    <strong>{getAccountTypeLabel(row)}</strong>
+                    <span>{getRoleLabel(row.role)}</span>
                   </div>
+
+                  <div>
+                    <span className={`accounts-console-v3__status is-${state}`}>
+                      {getUserStateLabel(state)}
+                    </span>
+                  </div>
+
+                  <div className="accounts-console-v3__visibilityCell">
+                    <button
+                      type="button"
+                      className={`accounts-console-v3__visibility ${visibleInEmployees ? "is-on" : "is-off"}`}
+                      disabled={!canChangeVisibility || usersLoading || visibilitySavingUid === row.uid}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void updateEmployeeManagementVisibility(row, !visibleInEmployees);
+                      }}
+                    >
+                      <i aria-hidden="true" />
+                      <span>
+                        <b>
+                          {visibilitySavingUid === row.uid
+                            ? "جار الحفظ..."
+                            : visibleInEmployees
+                              ? "ظاهر"
+                              : "مخفي"}
+                        </b>
+                        <small>
+                          {visibleInEmployees
+                            ? linked
+                              ? "ملف تشغيلي مرتبط"
+                              : "سيتم إنشاء ملف تشغيلي"
+                            : "حساب دخول فقط"}
+                        </small>
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="accounts-console-v3__permissions">
+                    <strong>{getUserPermissions(row).length}</strong>
+                    <span>صلاحية</span>
+                  </div>
+
+                  <span className="accounts-console-v3__open" aria-hidden="true">←</span>
                 </article>
               );
             })}
           </div>
         ) : null}
       </section>
-    </>
+    </div>
   );
 
   const renderProfilePage = () => {
     if (usersLoading && !profileUser) {
       return (
-        <section className="employee-profile-v2 employee-profile-v2--loading">
-          <div className="employee-directory-v2__empty">جاري تحميل حساب الدخول...</div>
+        <section className="account-console-v3 account-console-v3--loading">
+          <div className="accounts-console-v3__empty">جاري تحميل الحساب...</div>
         </section>
       );
     }
 
     if (!profileUser) {
       return (
-        <section className="employee-profile-v2">
-          <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(usersBasePath)}>
-            العودة إلى القائمة
+        <section className="account-console-v3">
+          <button type="button" className="account-console-v3__back" onClick={() => navigate(usersBasePath)}>
+            ← العودة إلى الحسابات
           </button>
-          <div className="employee-directory-v2__empty">
+          <div className="accounts-console-v3__empty">
             <strong>تعذر العثور على الحساب</strong>
-            <p>قد يكون الحساب خارج الفلاتر أو لا تملك صلاحية عرضه.</p>
+            <p>قد يكون الحساب غير موجود أو لا تملك صلاحية عرضه.</p>
           </div>
         </section>
       );
     }
 
     const state = getUserState(profileUser);
-    const linked = hasLinkedEmployee(profileUser);
     const displayName = getDisplayName(profileUser);
-    const linkedEmployeePath = profileEmployeeId
-      ? `/admin/employees/${encodeURIComponent(profileEmployeeId)}/basic`
-      : "";
-    const accountSections = [
-      { label: "ملخص الحساب", href: "#account-summary" },
-      { label: "إعدادات الدخول", href: "#account-settings" },
-      { label: "الربط الوظيفي", href: "#employee-link" },
-      { label: "البيانات التقنية", href: "#account-technical" },
-    ];
+    const visibleInEmployees = isVisibleInEmployeeManagement(profileUser);
+    const linked = hasLinkedEmployee(profileUser);
+    const linkedEmployeePath =
+      visibleInEmployees && profileEmployeeId
+        ? `/admin/employees/${encodeURIComponent(profileEmployeeId)}/basic`
+        : "";
     const rowCanRestore = canRestoreUserAccount(profileUser);
+    const permissionsCount = getUserPermissions(profileUser).length;
+    const accountTypeLabel = getAccountTypeLabel(profileUser);
 
     return (
-      <section className="employee-profile-v2">
-        <button type="button" className="employee-profile-v2__back" onClick={() => navigate(usersBasePath)}>
-          العودة إلى حسابات الدخول
-        </button>
+      <section className="account-console-v3">
+        <div className="account-console-v3__topbar">
+          <button type="button" className="account-console-v3__back" onClick={() => navigate(usersBasePath)}>
+            ← حسابات الدخول
+          </button>
+          <div className="account-console-v3__topbarMeta">
+            {profileIsSelf ? <span className="account-console-v3__selfBadge">حسابي</span> : null}
+            <span>آخر تحديث: {formatDate(profileUser.updatedAt)}</span>
+          </div>
+        </div>
 
-        <header className="employee-profile-v2__hero">
-          <div className="employee-profile-v2__identity">
-            <span className="employee-profile-v2__avatar">
+        <header className="account-console-v3__hero">
+          <div className="account-console-v3__identity">
+            <span className="account-console-v3__avatar">
               <EmployeeAvatar src={profileUser.avatarUrl} name={displayName} alt={displayName} loading="eager" />
             </span>
             <div>
-              <span className="employee-accounts-v2__eyebrow">حساب الدخول</span>
+              <span className="account-console-v3__eyebrow">{accountTypeLabel}</span>
               <h1>{displayName}</h1>
-              <p>{getDisplayTitle(profileUser)} · {getDepartmentLabel(profileUser)}</p>
-              <div className="employee-profile-v2__chips">
-                <span className={`employee-status-dot is-${state}`}>{getUserStateLabel(state)}</span>
-                <span>{linked ? "مرتبط بسجل موظفة" : "حساب غير مرتبط بموظفة"}</span>
-                <span>رقم الموظف: {profileUser.employeeNo || shortUid(profileUser.uid)}</span>
+              <p>{profileUser.email || "لا يوجد بريد مسجل"}</p>
+              <div className="account-console-v3__chips">
+                <span className={`account-console-v3__chip is-${state}`}>{getUserStateLabel(state)}</span>
+                <span className="account-console-v3__chip">{getRoleLabel(profileUser.role)}</span>
+                <span className="account-console-v3__chip">{permissionsCount} صلاحية</span>
               </div>
             </div>
           </div>
 
-          <div className="employee-profile-v2__heroActions">
+          <div className="account-console-v3__heroActions">
             <button
               type="button"
-              className="employee-accounts-v2__button employee-accounts-v2__button--primary"
-              disabled={!profileCanMutate}
+              className="account-console-v3__btn account-console-v3__btn--primary"
+              disabled={!profileCanEditBasics}
               onClick={() => {
                 setSelectedUserId(profileUser.uid);
                 openEditUser(profileUser);
               }}
             >
-              تعديل الحساب
+              تعديل إعدادات الحساب
             </button>
             {linkedEmployeePath ? (
-              <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(linkedEmployeePath)}>
-                فتح ملف الموظفة الإداري
-              </button>
-            ) : (
-              <button type="button" className="employee-accounts-v2__button" disabled>
-                حساب غير مرتبط بسجل موظفة
-              </button>
-            )}
-          </div>
-        </header>
-
-        <nav className="employee-profile-v2__tabs" aria-label="أقسام حساب الدخول">
-          {accountSections.map((tab) => (
-            <button
-              key={tab.label}
-              type="button"
-              onClick={() => {
-                document.querySelector(tab.href)?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="employee-profile-v2__grid" id="account-summary">
-          <article className="employee-profile-v2__panel employee-profile-v2__panel--summary">
-            <div className="employee-profile-v2__panelHead">
-              <div>
-                <h2>ملخص الحساب</h2>
-                <p>بيانات حساب الدخول وحالة الربط بسجل الموظفة كما هي مخزنة حاليًا.</p>
-              </div>
-            </div>
-
-            <div className="employee-profile-v2__facts">
-              {[
-                ["الاسم", displayName],
-                ["البريد", profileUser.email || "—"],
-                ["الجوال", profileUser.phone || "—"],
-                ["تاريخ بداية العمل", profileUser.startDate || "—"],
-                ["رقم البصمة", profileUser.fingerprintNo || "—"],
-                ["القسم", getDepartmentLabel(profileUser)],
-                ["المسمى الوظيفي", getDisplayTitle(profileUser)],
-                ["الحالة الوظيفية", profileUser.employmentStatus || getUserStateSummary(state)],
-                ["حالة حساب الدخول", getUserStateLabel(state)],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="employee-profile-v2__panel" id="account-settings">
-            <div className="employee-profile-v2__panelHead">
-              <div>
-                <h2>إعدادات الحساب</h2>
-                <p>إجراءات الدخول والصلاحيات بدون تعديل ملف الموظفة الإداري.</p>
-              </div>
-            </div>
-
-            <div className="employee-profile-v2__accountActions">
               <button
                 type="button"
-                className="employee-accounts-v2__button"
-                disabled={!profileCanMutate}
-                onClick={() => {
-                  if (rowCanRestore) {
-                    restoreUserAccount(profileUser.uid);
-                    return;
-                  }
-                  toggleUserActive(profileUser.uid, !(profileUser.active !== false));
-                }}
+                className="account-console-v3__btn"
+                onClick={() => navigate(linkedEmployeePath)}
               >
-                {rowCanRestore ? "استعادة الحساب" : profileUser.active !== false ? "تعطيل الحساب" : "تفعيل الحساب"}
-              </button>
-              <button
-                type="button"
-                className="employee-accounts-v2__button"
-                disabled={profileUser.uid !== currentUid}
-                title={profileUser.uid !== currentUid ? "فتح بوابة موظفة أخرى غير مدعوم من إدارة الحسابات." : undefined}
-                onClick={() => navigate("/employee/overview")}
-              >
-                فتح بوابتي
-              </button>
-              <button
-                type="button"
-                className="employee-accounts-v2__button"
-                onClick={() => navigate("/admin/messages")}
-              >
-                عرض الرسائل
-              </button>
-              <button
-                type="button"
-                className="employee-accounts-v2__button employee-accounts-v2__button--danger"
-                disabled={!profileCanMutate || usersLoading}
-                onClick={() => deleteUserAccount(profileUser.uid)}
-              >
-                حذف الحساب
-              </button>
-            </div>
-
-            {!linked ? (
-              <details className="employee-profile-v2__technical" id="account-technical" open>
-                <summary>الحساب غير مرتبط بموظفة</summary>
-                <p>راجع الحساب واربطه من ملف الموظفة في الموارد البشرية.</p>
-                <dl>
-                  <div><dt>الدور</dt><dd>{getRoleLabel(profileUser.role)}</dd></div>
-                  <div><dt>البريد</dt><dd>{profileUser.email || "—"}</dd></div>
-                  <div><dt>UID</dt><dd>{shortUid(profileUser.uid)}</dd></div>
-                </dl>
-              </details>
-            ) : (
-              <details className="employee-profile-v2__technical" id="account-technical">
-                <summary>بيانات تقنية</summary>
-                <dl>
-                  <div><dt>UID</dt><dd>{shortUid(profileUser.uid)}</dd></div>
-                  <div><dt>Employee ID</dt><dd>{profileEmployeeId || "—"}</dd></div>
-                </dl>
-              </details>
-            )}
-          </article>
-        </div>
-
-        <section className="employee-profile-v2__panel" id="employee-link">
-          <div className="employee-profile-v2__panelHead">
-            <div>
-              <h2>الربط مع ملف الموظفة</h2>
-              <p>هذه قراءة فقط من سجل الموظفة المرتبط. تعديل الراتب والحضور والإجازات والبيانات الإدارية يتم من إدارة الموظفين.</p>
-            </div>
-            {linkedEmployeePath ? (
-              <button type="button" className="employee-accounts-v2__button" onClick={() => navigate(linkedEmployeePath)}>
-                فتح ملف الموظفة في إدارة الموظفين
+                فتح الملف التشغيلي
               </button>
             ) : null}
           </div>
+        </header>
 
-          <div className="employee-profile-v2__formPreview">
-            {[
-              ["اسم الموظف", displayName],
-              ["البريد", profileUser.email || "—"],
-              ["رقم الجوال", profileUser.phone || "—"],
-              ["المسمى الوظيفي", getDisplayTitle(profileUser)],
-              ["القسم", getDepartmentLabel(profileUser)],
-              ["تاريخ بداية العمل", profileUser.startDate || "—"],
-              ["الحالة الوظيفية", profileUser.employmentStatus || getUserStateSummary(state)],
-              ["رقم البصمة", profileUser.fingerprintNo || "—"],
-              ["الدور والصلاحيات", `${getRoleLabel(profileUser.role)} · ${getUserPermissions(profileUser).length} صلاحية`],
-              ["حالة الحساب", getUserStateLabel(state)],
-              ["الملاحظات الإدارية", profileUser.notes || "—"],
-            ].map(([label, value]) => (
-              <label key={label}>
-                <span>{label}</span>
-                <input value={value} readOnly />
-              </label>
-            ))}
-          </div>
-        </section>
+        <div className="account-console-v3__layout">
+          <main className="account-console-v3__main">
+            <article className="account-console-v3__panel">
+              <div className="account-console-v3__panelHead">
+                <div>
+                  <span className="account-console-v3__sectionLabel">البيانات الأساسية</span>
+                  <h2>معلومات حساب الدخول</h2>
+                  <p>هذه هي البيانات الأساسية للحساب، وهي المكان الرئيسي لتعديل الاسم والجوال والملاحظات.</p>
+                </div>
+                <button
+                  type="button"
+                  className="account-console-v3__textBtn"
+                  disabled={!profileCanEditBasics}
+                  onClick={() => {
+                    setSelectedUserId(profileUser.uid);
+                    openEditUser(profileUser);
+                  }}
+                >
+                  تعديل المعلومات
+                </button>
+              </div>
 
+              <div className="account-console-v3__facts">
+                <div>
+                  <span>الاسم المعروض</span>
+                  <strong>{displayName}</strong>
+                </div>
+                <div>
+                  <span>البريد الإلكتروني</span>
+                  <strong>{profileUser.email || "—"}</strong>
+                  <small>معرّف تسجيل الدخول — لا يتغير من هذه الشاشة.</small>
+                </div>
+                <div>
+                  <span>رقم الجوال</span>
+                  <strong>{profileUser.phone || "—"}</strong>
+                </div>
+                <div>
+                  <span>نوع الحساب</span>
+                  <strong>{accountTypeLabel}</strong>
+                </div>
+                <div>
+                  <span>الدور</span>
+                  <strong>{getRoleLabel(profileUser.role)}</strong>
+                </div>
+                <div>
+                  <span>الملاحظات</span>
+                  <strong>{profileUser.notes || "لا توجد ملاحظات"}</strong>
+                </div>
+              </div>
+            </article>
+
+            <article className="account-console-v3__panel">
+              <div className="account-console-v3__panelHead">
+                <div>
+                  <span className="account-console-v3__sectionLabel">الوصول</span>
+                  <h2>الدور والصلاحيات</h2>
+                  <p>حدد ما يستطيع الحساب الوصول إليه داخل لوحة التحكم.</p>
+                </div>
+                <button
+                  type="button"
+                  className="account-console-v3__textBtn"
+                  disabled={!profileCanEditBasics}
+                  onClick={() => {
+                    setSelectedUserId(profileUser.uid);
+                    openEditUser(profileUser);
+                  }}
+                >
+                  إدارة الصلاحيات
+                </button>
+              </div>
+
+              <div className="account-console-v3__accessSummary">
+                <div>
+                  <span>الدور الأساسي</span>
+                  <strong>{getRoleLabel(profileUser.role)}</strong>
+                </div>
+                <div>
+                  <span>الصلاحيات الفعلية</span>
+                  <strong>{permissionsCount}</strong>
+                </div>
+                <div>
+                  <span>حالة الدخول</span>
+                  <strong>{getUserStateLabel(state)}</strong>
+                </div>
+              </div>
+
+              {profileIsSelf ? (
+                <div className="account-console-v3__notice">
+                  يمكنك تعديل معلومات حسابك وظهوره في إدارة الموظفات. حمايةً للحساب الرئيسي، لا يمكنك تعطيل حسابك أو تغيير دورك من نفس الجلسة.
+                </div>
+              ) : null}
+            </article>
+          </main>
+
+          <aside className="account-console-v3__aside">
+            <article className="account-console-v3__controlCard account-console-v3__controlCard--featured">
+              <div className="account-console-v3__controlHead">
+                <div>
+                  <span>إدارة الموظفات</span>
+                  <h3>{visibleInEmployees ? "ظاهر كموظفة تشغيلية" : "حساب دخول فقط"}</h3>
+                </div>
+                <button
+                  type="button"
+                  className={`account-console-v3__switch ${visibleInEmployees ? "is-on" : "is-off"}`}
+                  disabled={!profileCanEditBasics || usersLoading || visibilitySavingUid === profileUser.uid}
+                  aria-pressed={visibleInEmployees}
+                  onClick={() =>
+                    void updateEmployeeManagementVisibility(profileUser, !visibleInEmployees)
+                  }
+                >
+                  <i aria-hidden="true" />
+                  <span>
+                    {visibilitySavingUid === profileUser.uid
+                      ? "جار الحفظ..."
+                      : visibleInEmployees
+                        ? "ظاهر"
+                        : "مخفي"}
+                  </span>
+                </button>
+              </div>
+              <p>
+                {visibleInEmployees
+                  ? "يظهر هذا الحساب داخل إدارة الموظفات لإدارة الخدمات، أوقات العمل، الحضور والملف التشغيلي."
+                  : "لن يظهر هذا الحساب في إدارة الموظفات. سيبقى حسابًا إداريًا للدخول والصلاحيات فقط."}
+              </p>
+
+              {visibleInEmployees ? (
+                <div className={`account-console-v3__linkState ${linked ? "is-linked" : "is-unlinked"}`}>
+                  <strong>{linked ? "الملف التشغيلي مرتبط" : "الملف التشغيلي يحتاج إنشاء"}</strong>
+                  <span>{linked ? `Employee ID: ${profileEmployeeId}` : "سيُنشأ تلقائيًا عند تفعيل الظهور."}</span>
+                </div>
+              ) : null}
+
+              {linkedEmployeePath ? (
+                <button
+                  type="button"
+                  className="account-console-v3__btn account-console-v3__btn--full"
+                  onClick={() => navigate(linkedEmployeePath)}
+                >
+                  فتح إدارة الموظفة
+                </button>
+              ) : null}
+            </article>
+
+            <article className="account-console-v3__controlCard">
+              <div className="account-console-v3__controlHead">
+                <div>
+                  <span>حالة الدخول</span>
+                  <h3>{getUserStateLabel(state)}</h3>
+                </div>
+                <span className={`account-console-v3__stateDot is-${state}`} />
+              </div>
+              <p>التحكم في إمكانية تسجيل الدخول إلى النظام.</p>
+              <button
+                type="button"
+                className="account-console-v3__btn account-console-v3__btn--full"
+                disabled={!profileCanControl || usersLoading}
+                onClick={() => {
+                  if (rowCanRestore) {
+                    void restoreUserAccount(profileUser.uid);
+                    return;
+                  }
+                  void toggleUserActive(profileUser.uid, !(profileUser.active !== false));
+                }}
+              >
+                {profileIsSelf
+                  ? "لا يمكن تعطيل حسابك الحالي"
+                  : rowCanRestore
+                    ? "استعادة الحساب"
+                    : profileUser.active !== false
+                      ? "تعطيل تسجيل الدخول"
+                      : "تفعيل تسجيل الدخول"}
+              </button>
+            </article>
+
+            <article className="account-console-v3__controlCard">
+              <div className="account-console-v3__controlHead">
+                <div>
+                  <span>إجراءات الحساب</span>
+                  <h3>إدارة آمنة</h3>
+                </div>
+              </div>
+              <div className="account-console-v3__stackActions">
+                {profileIsSelf ? (
+                  <button
+                    type="button"
+                    className="account-console-v3__btn account-console-v3__btn--full"
+                    onClick={() => navigate("/employee/overview")}
+                  >
+                    فتح بوابتي
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="account-console-v3__btn account-console-v3__btn--full"
+                  onClick={() => navigate("/admin/messages")}
+                >
+                  عرض الرسائل
+                </button>
+                <button
+                  type="button"
+                  className="account-console-v3__btn account-console-v3__btn--danger account-console-v3__btn--full"
+                  disabled={!profileCanControl || usersLoading}
+                  onClick={() => void deleteUserAccount(profileUser.uid)}
+                >
+                  حذف الحساب
+                </button>
+              </div>
+            </article>
+
+            <details className="account-console-v3__technical">
+              <summary>البيانات التقنية</summary>
+              <dl>
+                <div><dt>UID</dt><dd>{profileUser.uid || "—"}</dd></div>
+                <div><dt>Employee ID</dt><dd>{profileEmployeeId || "غير مرتبط"}</dd></div>
+                <div><dt>المصدر</dt><dd>salons/main/users</dd></div>
+              </dl>
+            </details>
+          </aside>
+        </div>
       </section>
     );
   };
@@ -2725,8 +3187,8 @@ export default function SettingsUsers({
             <div className="accounts-modal__head">
               <div>
                 <span className="accounts-eyebrow">حساب جديد</span>
-                <h2>إنشاء حساب إداري جديد</h2>
-                <p>أضف حسابًا إداريًا جديدًا وحدد الدور والبيانات الأساسية من شاشة منظمة وواسعة.</p>
+                <h2>إنشاء حساب دخول جديد</h2>
+                <p>أنشئ الحساب أولًا، ثم قرر بشكل مستقل هل يحتاج ملفًا تشغيليًا داخل إدارة الموظفات.</p>
               </div>
 
               <button type="button" className="accounts-modal__close" onClick={() => setCreateOpen(false)}>
@@ -2738,8 +3200,8 @@ export default function SettingsUsers({
               <aside className="accounts-modal__sidebar">
                 <article className="accounts-modal__sidebar-card accounts-modal__sidebar-card--dark">
                   <span className="accounts-kicker">ملخص الإنشاء</span>
-                  <h3>حساب إداري جديد</h3>
-                  <p>سيُنشأ حساب Firebase Auth أولًا ثم يُحفظ الملف داخل `salons/main/users`، مع ربط الموظف تلقائيًا إذا كان الدور ضمن الطاقم.</p>
+                  <h3>حساب دخول جديد</h3>
+                  <p>الحساب والصلاحيات منفصلان عن ملف الموظفة التشغيلي. الظهور في إدارة الموظفات خيار مستقل أدناه.</p>
                   <div className="accounts-modal__summary-list">
                     <div className="accounts-modal__summary-item">
                       <span>الدور الحالي</span>
@@ -2750,8 +3212,8 @@ export default function SettingsUsers({
                       <strong>{createPermissionCount}</strong>
                     </div>
                     <div className="accounts-modal__summary-item">
-                      <span>المصدر</span>
-                      <strong>salons/main/users</strong>
+                      <span>إدارة الموظفات</span>
+                      <strong>{createForm.includeInEmployeeManagement ? "ظاهر" : "مخفي"}</strong>
                     </div>
                   </div>
                 </article>
@@ -2805,7 +3267,16 @@ export default function SettingsUsers({
                     <span>الدور</span>
                     <select
                       value={createForm.role}
-                      onChange={(e) => setCreateForm((prev) => ({ ...prev, role: e.target.value as UiRole }))}
+                      onChange={(e) =>
+                        setCreateForm((prev) => {
+                          const role = e.target.value as UiRole;
+                          return {
+                            ...prev,
+                            role,
+                            includeInEmployeeManagement: defaultEmployeeManagementVisibility(role),
+                          };
+                        })
+                      }
                     >
                       {isOwner ? <option value="owner">Owner</option> : null}
                       <option value="admin">Admin</option>
@@ -2813,6 +3284,39 @@ export default function SettingsUsers({
                       <option value="reception">Reception</option>
                       <option value="staff">Staff</option>
                     </select>
+                  </label>
+
+                  <label className="accounts-field accounts-field--wide accounts-field--visibility">
+                    <span>الظهور في إدارة الموظفات</span>
+                    <div className="accounts-visibility-choice">
+                      <div>
+                        <strong>
+                          {createForm.includeInEmployeeManagement
+                            ? "إنشاء ملف موظفة تشغيلي"
+                            : "حساب دخول فقط"}
+                        </strong>
+                        <small>
+                          {createForm.includeInEmployeeManagement
+                            ? "سيظهر لإدارة الخدمات وأوقات العمل والحضور."
+                            : "لن يظهر ضمن قائمة الموظفات."}
+                        </small>
+                      </div>
+                      <button
+                        type="button"
+                        className={`account-console-v3__switch ${
+                          createForm.includeInEmployeeManagement ? "is-on" : "is-off"
+                        }`}
+                        onClick={() =>
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            includeInEmployeeManagement: !prev.includeInEmployeeManagement,
+                          }))
+                        }
+                      >
+                        <i aria-hidden="true" />
+                        <span>{createForm.includeInEmployeeManagement ? "ظاهر" : "مخفي"}</span>
+                      </button>
+                    </div>
                   </label>
 
                   <label className="accounts-field accounts-field--wide">
@@ -2847,7 +3351,15 @@ export default function SettingsUsers({
                 className="accounts-btn"
                 onClick={() => {
                   setCreateOpen(false);
-                  setCreateForm({ displayName: "", email: "", password: "", phone: "", notes: "", role: "staff" });
+                  setCreateForm({
+                    displayName: "",
+                    email: "",
+                    password: "",
+                    phone: "",
+                    notes: "",
+                    role: "staff",
+                    includeInEmployeeManagement: true,
+                  });
                 }}
               >
                 إلغاء
@@ -2866,7 +3378,7 @@ export default function SettingsUsers({
       ) : null}
 
       {editDraft ? (
-        <div className="accounts-modal" role="dialog" aria-modal="true">
+        <div className="accounts-modal" role="dialog" aria-modal="true" aria-label="تعديل الحساب">
           <button
             type="button"
             className="accounts-modal__backdrop"
@@ -2874,259 +3386,341 @@ export default function SettingsUsers({
             onClick={() => setEditDraft(null)}
           />
 
-          <div className="accounts-modal__card accounts-modal__card--split accounts-modal__card--edit">
-            <div className="accounts-modal__head">
-              <div>
-                <span className="accounts-eyebrow">تعديل حساب</span>
-                <h2>تعديل {editDraft.displayName || editDraft.email || "الحساب"}</h2>
-                <p>يمكن تعديل الاسم، الهاتف، الدور، الحالة، والملاحظات من شاشة مرتبة وواسعة.</p>
+          <div className="account-editor-v4" dir="rtl">
+            <header className="account-editor-v4__header">
+              <div className="account-editor-v4__titleBlock">
+                <span className="account-editor-v4__eyebrow">إدارة الحسابات / تعديل الحساب</span>
+                <h2>{editDraft.displayName || editDraft.email || "الحساب"}</h2>
+                <p>عدّل بيانات الدخول، ظهور الحساب في إدارة الموظفات، والدور والصلاحيات من مساحة واضحة واحدة.</p>
               </div>
 
-              <button type="button" className="accounts-modal__close" onClick={() => setEditDraft(null)}>
+              <button
+                type="button"
+                className="account-editor-v4__close"
+                aria-label="إغلاق نافذة التعديل"
+                onClick={() => setEditDraft(null)}
+              >
                 ×
               </button>
-            </div>
+            </header>
 
-            <div className="accounts-modal__body">
-              <aside className="accounts-modal__sidebar">
-                <article className="accounts-modal__sidebar-card accounts-modal__sidebar-card--dark">
-                  <span className="accounts-kicker">ملخص الحساب</span>
-                  <div className="accounts-profile accounts-profile--modal">
-                    <div className="accounts-avatar">
-                      {cleanText(selectedUser?.displayName || selectedUser?.email || selectedUser?.uid).slice(0, 1) ||
-                        "?"}
-                    </div>
-
-                    <div className="accounts-profile__copy">
-                      <div className="accounts-inline-tags">
-                        <span className={`accounts-chip accounts-chip--${selectedRoleTone}`}>{selectedRoleLabel}</span>
-                        <span className={`accounts-chip accounts-chip--state accounts-chip--${selectedState}`}>
-                          {selectedStateLabel}
-                        </span>
-                        <span className="accounts-chip accounts-chip--soft">ID: {editDraft.uid}</span>
-                      </div>
-
-                      <div className="accounts-modal__summary-list">
-                        <div className="accounts-modal__summary-item">
-                          <span>البريد</span>
-                          <strong>{editDraft.email || "—"}</strong>
-                        </div>
-                        <div className="accounts-modal__summary-item">
-                          <span>الصلاحيات</span>
-                          <strong>{editDraft.permissions.length}</strong>
-                        </div>
-                        <div className="accounts-modal__summary-item">
-                          <span>الحالة</span>
-                          <strong>{editDraft.active ? "نشط" : "غير نشط"}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="accounts-modal__sidebar-card">
-                  <span className="accounts-kicker">ملاحظات التعديل</span>
-                  <p>البريد مرتبط بحساب Firebase Auth لذلك يظهر للقراءة فقط، بينما بقية الحقول قابلة للتعديل.</p>
-                </article>
-              </aside>
-
-              <div className="accounts-modal__main">
-                <div className="accounts-form-grid">
-                  <label className="accounts-field">
-                    <span>الاسم</span>
-                    <input
-                      value={editDraft.displayName}
-                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
-                    />
-                  </label>
-
-                  <label className="accounts-field">
-                    <span>البريد</span>
-                    <input value={editDraft.email} readOnly />
-                  </label>
-
-                  <label className="accounts-field">
-                    <span>الهاتف</span>
-                    <input
-                      value={editDraft.phone}
-                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
-                    />
-                  </label>
-
-                  <label className="accounts-field">
-                    <span>الدور</span>
-                    <select
-                      value={editDraft.role}
-                      onChange={(e) =>
-                        setEditDraft((prev) => {
-                          if (!prev) return prev;
-                          const role = e.target.value as UiRole;
-                          if (!canAssignRole(role) && role !== prev.role) return prev;
-                          return {
-                            ...prev,
-                            role,
-                            active: role === "pending" ? false : prev.active,
-                            permissions: getRoleAppPermissions(role as any),
-                          };
-                        })
-                      }
-                      disabled={!canEditTargetUser(selectedUser)}
-                    >
-                      {(["owner", "admin", "hr", "reception", "staff", "pending"] as UiRole[])
-                        .filter((role) => role === editDraft.role || canAssignRole(role))
-                        .map((role) => (
-                          <option key={role} value={role}>
-                            {getRoleLabel(role)}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-
-                  <label className="accounts-field accounts-field--switch">
-                    <span>الحالة</span>
-                    <div className="accounts-switch">
-                      <input
-                        type="checkbox"
-                        checked={editDraft.active}
-                        onChange={(e) =>
-                          setEditDraft((prev) => (prev ? { ...prev, active: e.target.checked } : prev))
-                        }
-                        disabled={!canEditTargetUser(selectedUser)}
-                      />
-                      <span>{editDraft.active ? "نشط" : "غير نشط"}</span>
-                    </div>
-                  </label>
-
-                  <label className="accounts-field accounts-field--wide">
-                    <span>ملاحظات</span>
-                    <textarea
-                      value={editDraft.notes}
-                      onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
-                    />
-                  </label>
+            <section className="account-editor-v4__identity">
+              <div className="account-editor-v4__identityMain">
+                <div className="account-editor-v4__avatar">
+                  {cleanText(editDraft.displayName || editDraft.email || editDraft.uid).slice(0, 1) || "?"}
                 </div>
+                <div>
+                  <strong>{editDraft.displayName || "بدون اسم"}</strong>
+                  <span>{editDraft.email || "بدون بريد"}</span>
+                </div>
+              </div>
 
-                <section className="accounts-permissions-editor">
-                  <div className="accounts-permissions-editor__head">
+              <div className="account-editor-v4__facts">
+                <div>
+                  <span>الدور</span>
+                  <strong>{getRoleLabel(editDraft.role)}</strong>
+                </div>
+                <div>
+                  <span>الحالة</span>
+                  <strong className={editDraft.active ? "is-success" : "is-danger"}>
+                    {editDraft.active ? "نشط" : "غير نشط"}
+                  </strong>
+                </div>
+                <div>
+                  <span>الصلاحيات</span>
+                  <strong>{editDraft.permissions.length}</strong>
+                </div>
+                <div>
+                  <span>إدارة الموظفات</span>
+                  <strong className={editDraft.includeInEmployeeManagement ? "is-success" : "is-muted"}>
+                    {editDraft.includeInEmployeeManagement ? "ظاهر" : "مخفي"}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <nav className="account-editor-v4__tabs" aria-label="أقسام تعديل الحساب">
+              <button
+                type="button"
+                className={editSection === "profile" ? "is-active" : ""}
+                onClick={() => setEditSection("profile")}
+              >
+                <span>01</span>
+                البيانات الأساسية
+              </button>
+              <button
+                type="button"
+                className={editSection === "employee" ? "is-active" : ""}
+                onClick={() => setEditSection("employee")}
+              >
+                <span>02</span>
+                الظهور في الموظفات
+              </button>
+              <button
+                type="button"
+                className={editSection === "access" ? "is-active" : ""}
+                onClick={() => setEditSection("access")}
+              >
+                <span>03</span>
+                الدور والصلاحيات
+              </button>
+            </nav>
+
+            <div className="account-editor-v4__content">
+              {editSection === "profile" ? (
+                <section className="account-editor-v4__section">
+                  <div className="account-editor-v4__sectionHead">
                     <div>
-                      <span className="accounts-kicker">الصلاحيات الفعلية</span>
-                      <h3>مفاتيح الوصول الجديدة</h3>
-                      <p>اضغط على أي صلاحية لإضافتها أو إيقافها كاستثناء على الدور الأساسي.</p>
+                      <span>المعلومات الأساسية</span>
+                      <h3>بيانات الحساب وتسجيل الدخول</h3>
+                      <p>هذه هي البيانات الأساسية للحساب الإداري. البريد للقراءة فقط لأنه معرّف تسجيل الدخول.</p>
                     </div>
-                    <div className="accounts-permissions-editor__stats">
-                      <span>الدور: {editRoleDefaultPermissions.length}</span>
-                      <span>الفعلية: {editDraft.permissions.length}</span>
-                      <span>الاستثناءات: {editAddedPermissions + editDisabledDefaults}</span>
-                    </div>
+                    {selectedIsSelf ? <b className="account-editor-v4__selfBadge">حسابك الحالي</b> : null}
                   </div>
 
-                  <div className="accounts-permissions-editor__toolbar">
-                    <label className="accounts-permissions-editor__search">
-                      <span>بحث داخل الصلاحيات</span>
+                  <div className="account-editor-v4__formGrid">
+                    <label className="account-editor-v4__field">
+                      <span>الاسم</span>
                       <input
-                        value={permissionSearch}
-                        onChange={(event) => setPermissionSearch(event.target.value)}
-                        placeholder="اكتب اسم الصلاحية أو المفتاح..."
+                        value={editDraft.displayName}
+                        disabled={!selectedCanEditBasics}
+                        onChange={(event) =>
+                          setEditDraft((prev) => (prev ? { ...prev, displayName: event.target.value } : prev))
+                        }
+                        placeholder="اسم صاحب الحساب"
                       />
                     </label>
 
-                    <label className="accounts-permissions-editor__filter">
-                      <span>القسم</span>
-                      <select
-                        value={permissionGroupFilter}
+                    <label className="account-editor-v4__field">
+                      <span>البريد الإلكتروني</span>
+                      <input value={editDraft.email} readOnly />
+                      <small>معرّف الدخول، لا يتم تغييره من هذه الشاشة.</small>
+                    </label>
+
+                    <label className="account-editor-v4__field">
+                      <span>رقم الجوال</span>
+                      <input
+                        value={editDraft.phone}
+                        disabled={!selectedCanEditBasics}
                         onChange={(event) =>
-                          setPermissionGroupFilter(event.target.value as typeof permissionGroupFilter)
+                          setEditDraft((prev) => (prev ? { ...prev, phone: event.target.value } : prev))
                         }
+                        placeholder="05xxxxxxxx"
+                      />
+                    </label>
+
+                    <label className="account-editor-v4__field account-editor-v4__field--wide">
+                      <span>ملاحظات إدارية</span>
+                      <textarea
+                        value={editDraft.notes}
+                        disabled={!selectedCanEditBasics}
+                        onChange={(event) =>
+                          setEditDraft((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
+                        }
+                        placeholder="اكتب ملاحظات داخلية عن الحساب..."
+                      />
+                    </label>
+                  </div>
+
+                  <div className="account-editor-v4__notice">
+                    <strong>فصل واضح:</strong>
+                    <span>هذه الشاشة تعدّل حساب الدخول فقط. الخدمات، أوقات العمل، الحضور والعمليات اليومية تُدار من قسم إدارة الموظفات.</span>
+                  </div>
+                </section>
+              ) : null}
+
+              {editSection === "employee" ? (
+                <section className="account-editor-v4__section">
+                  <div className="account-editor-v4__sectionHead">
+                    <div>
+                      <span>الربط التشغيلي</span>
+                      <h3>الظهور في إدارة الموظفات</h3>
+                      <p>حدّد هل هذا الحساب يمثل موظفة تعمل داخل الصالون أم أنه حساب إداري للدخول فقط.</p>
+                    </div>
+                  </div>
+
+                  <div className={`account-editor-v4__employeeToggle ${editDraft.includeInEmployeeManagement ? "is-on" : "is-off"}`}>
+                    <div className="account-editor-v4__employeeIcon" aria-hidden="true">م</div>
+                    <div className="account-editor-v4__employeeCopy">
+                      <span>حالة الربط الحالية</span>
+                      <h4>{editDraft.includeInEmployeeManagement ? "ظاهر ضمن الموظفات العاملات" : "حساب إداري فقط"}</h4>
+                      <p>
+                        {editDraft.includeInEmployeeManagement
+                          ? "سيظهر في إدارة الموظفات لإسناد الخدمات، أوقات العمل، الحضور والملف التشغيلي."
+                          : "لن يظهر في إدارة الموظفات، مع بقاء حساب الدخول والصلاحيات الإدارية فعّالة."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="account-editor-v4__switch"
+                      disabled={!selectedCanEditBasics}
+                      aria-pressed={editDraft.includeInEmployeeManagement}
+                      onClick={() =>
+                        setEditDraft((prev) =>
+                          prev
+                            ? { ...prev, includeInEmployeeManagement: !prev.includeInEmployeeManagement }
+                            : prev
+                        )
+                      }
+                    >
+                      <i aria-hidden="true" />
+                      <span>{editDraft.includeInEmployeeManagement ? "ظاهر" : "مخفي"}</span>
+                    </button>
+                  </div>
+
+                  <div className="account-editor-v4__compareGrid">
+                    <article>
+                      <span>عند الظهور</span>
+                      <h4>ملف موظفة تشغيلي</h4>
+                      <p>خدمات، جدول دوام، حضور، تقييم، راتب وملفات وظيفية.</p>
+                    </article>
+                    <article>
+                      <span>عند الإخفاء</span>
+                      <h4>حساب دخول فقط</h4>
+                      <p>يبقى الاسم والبريد والدور والصلاحيات دون ظهوره بين العاملات.</p>
+                    </article>
+                  </div>
+                </section>
+              ) : null}
+
+              {editSection === "access" ? (
+                <section className="account-editor-v4__section account-editor-v4__section--access">
+                  <div className="account-editor-v4__sectionHead">
+                    <div>
+                      <span>التحكم في الوصول</span>
+                      <h3>الدور، حالة الدخول والصلاحيات</h3>
+                      <p>اضبط مستوى الوصول للحساب ثم خصّص الاستثناءات عند الحاجة.</p>
+                    </div>
+                  </div>
+
+                  <div className="account-editor-v4__accessGrid">
+                    <label className="account-editor-v4__field">
+                      <span>الدور الإداري</span>
+                      <select
+                        value={editDraft.role}
+                        onChange={(event) =>
+                          setEditDraft((prev) => {
+                            if (!prev) return prev;
+                            const role = event.target.value as UiRole;
+                            if (!canAssignRole(role) && role !== prev.role) return prev;
+                            return {
+                              ...prev,
+                              role,
+                              active: role === "pending" ? false : prev.active,
+                              permissions: getRoleAppPermissions(role as any),
+                            };
+                          })
+                        }
+                        disabled={!selectedCanControl}
                       >
-                        <option value="all">كل الأقسام</option>
-                        {APP_PERMISSION_GROUPS.map((group) => (
-                          <option key={group.key} value={group.key}>
-                            {group.label}
-                          </option>
-                        ))}
+                        {(["owner", "admin", "hr", "reception", "staff", "pending"] as UiRole[])
+                          .filter((role) => role === editDraft.role || canAssignRole(role))
+                          .map((role) => (
+                            <option key={role} value={role}>{getRoleLabel(role)}</option>
+                          ))}
                       </select>
                     </label>
+
+                    <div className="account-editor-v4__statusControl">
+                      <div>
+                        <span>حالة تسجيل الدخول</span>
+                        <strong>{editDraft.active ? "الحساب نشط" : "الحساب معطل"}</strong>
+                        <small>{editDraft.active ? "يمكن لصاحب الحساب تسجيل الدخول." : "لن يتمكن صاحب الحساب من الدخول."}</small>
+                      </div>
+                      <button
+                        type="button"
+                        className={`account-editor-v4__switch ${editDraft.active ? "is-on" : "is-off"}`}
+                        disabled={!selectedCanControl}
+                        aria-pressed={editDraft.active}
+                        onClick={() => setEditDraft((prev) => (prev ? { ...prev, active: !prev.active } : prev))}
+                      >
+                        <i aria-hidden="true" />
+                        <span>{editDraft.active ? "نشط" : "معطل"}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {!canManagePermissions ? (
-                    <div className="accounts-permissions-editor__notice">
-                      يمكنك إدارة الحساب والدور، لكن تعديل الاستثناءات التفصيلية يتطلب صلاحية
-                      <code>permissions.manage</code>.
+                  {selectedIsSelf ? (
+                    <div className="account-editor-v4__warning">
+                      حمايةً للحساب الحالي، يمكنك تعديل بياناتك الأساسية وظهورك في الموظفات، لكن لا يمكنك تغيير دورك أو تعطيل حسابك أو تعديل صلاحياتك من الجلسة نفسها.
                     </div>
                   ) : null}
 
-                  <div className="accounts-permissions-editor__groups">
-                    {visiblePermissionGroups.map((group) => {
-                      const groupKeys = group.permissions.map((permission) => permission.key);
-                      const enabledCount = groupKeys.filter((key) => editPermissionSet.has(key)).length;
-                      const canEnableWholeGroup = groupKeys.every(
-                        (key) => isOwner || actorPermissions.includes(key)
-                      );
+                  <section className="account-editor-v4__permissions">
+                    <div className="account-editor-v4__permissionsHead">
+                      <div>
+                        <span>الصلاحيات الفعلية</span>
+                        <h4>مفاتيح الوصول</h4>
+                        <p>فعّل أو أوقف أي صلاحية كاستثناء عن الدور الأساسي.</p>
+                      </div>
+                      <div className="account-editor-v4__permissionStats">
+                        <b>الدور <strong>{editRoleDefaultPermissions.length}</strong></b>
+                        <b>الفعلية <strong>{editDraft.permissions.length}</strong></b>
+                        <b>الاستثناءات <strong>{editAddedPermissions + editDisabledDefaults}</strong></b>
+                      </div>
+                    </div>
 
-                      return (
-                        <section key={group.key} className="accounts-permission-group">
-                          <div className="accounts-permission-group__head">
-                            <div>
-                              <span>{group.label}</span>
-                              <p>{group.hint}</p>
-                            </div>
-                            <div className="accounts-permission-group__actions">
-                              <strong>{enabledCount}/{groupKeys.length}</strong>
-                              <button
-                                type="button"
-                                className="accounts-btn accounts-btn--compact"
-                                disabled={!canEditSelectedPermissions || !canEnableWholeGroup}
-                                onClick={() =>
-                                  setEditDraft((prev) => {
-                                    if (!prev) return prev;
-                                    const current = new Set(prev.permissions);
-                                    const shouldEnable = groupKeys.some((key) => !current.has(key));
-                                    groupKeys.forEach((key) => {
-                                      if (!isOwner && !actorPermissions.includes(key)) return;
-                                      if (shouldEnable) current.add(key);
-                                      else current.delete(key);
-                                    });
-                                    const permissions = ALL_PERMISSION_META
-                                      .map((item) => item.key)
-                                      .filter((key) => current.has(key));
-                                    return { ...prev, permissions };
-                                  })
-                                }
-                              >
-                                {enabledCount === groupKeys.length ? "إلغاء القسم" : "تحديد القسم"}
-                              </button>
-                            </div>
-                          </div>
+                    <div className="account-editor-v4__permissionTools">
+                      <label>
+                        <span>بحث داخل الصلاحيات</span>
+                        <input
+                          value={permissionSearch}
+                          onChange={(event) => setPermissionSearch(event.target.value)}
+                          placeholder="اسم الصلاحية أو المفتاح..."
+                        />
+                      </label>
+                      <label>
+                        <span>القسم</span>
+                        <select
+                          value={permissionGroupFilter}
+                          onChange={(event) =>
+                            setPermissionGroupFilter(event.target.value as typeof permissionGroupFilter)
+                          }
+                        >
+                          <option value="all">كل الأقسام</option>
+                          {APP_PERMISSION_GROUPS.map((group) => (
+                            <option key={group.key} value={group.key}>{group.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
 
-                          <div className="accounts-permissions-editor__grid">
-                            {group.permissions.map((permission) => {
-                              const isEnabled = editPermissionSet.has(permission.key);
-                              const isDefault = editRoleDefaultPermissions.includes(permission.key);
-                              const isAdded = isEnabled && !isDefault;
-                              const isDisabledDefault = !isEnabled && isDefault;
-                              const actorCanGrant = isOwner || actorPermissions.includes(permission.key);
+                    {!selectedIsSelf && !canManagePermissions ? (
+                      <div className="account-editor-v4__warning">
+                        تعديل الاستثناءات التفصيلية يتطلب صلاحية <code>permissions.manage</code>.
+                      </div>
+                    ) : null}
 
-                              return (
+                    <div className="account-editor-v4__permissionGroups">
+                      {visiblePermissionGroups.map((group) => {
+                        const groupKeys = group.permissions.map((permission) => permission.key);
+                        const enabledCount = groupKeys.filter((key) => editPermissionSet.has(key)).length;
+                        const canEnableWholeGroup = groupKeys.every(
+                          (key) => isOwner || actorPermissions.includes(key)
+                        );
+
+                        return (
+                          <section key={group.key} className="account-editor-v4__permissionGroup">
+                            <div className="account-editor-v4__permissionGroupHead">
+                              <div>
+                                <h5>{group.label}</h5>
+                                <p>{group.hint}</p>
+                              </div>
+                              <div>
+                                <strong>{enabledCount}/{groupKeys.length}</strong>
                                 <button
-                                  key={permission.key}
                                   type="button"
-                                  className={[
-                                    "accounts-permission-toggle",
-                                    isEnabled ? "is-on" : "is-off",
-                                    isDefault ? "is-default" : "",
-                                    isAdded ? "is-added" : "",
-                                    isDisabledDefault ? "is-disabled-default" : "",
-                                    permission.sensitive ? "is-sensitive" : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" ")}
-                                  disabled={!canEditSelectedPermissions || !actorCanGrant}
+                                  disabled={!canEditSelectedPermissions || !canEnableWholeGroup}
                                   onClick={() =>
                                     setEditDraft((prev) => {
                                       if (!prev) return prev;
                                       const current = new Set(prev.permissions);
-                                      if (current.has(permission.key)) current.delete(permission.key);
-                                      else current.add(permission.key);
+                                      const shouldEnable = groupKeys.some((key) => !current.has(key));
+                                      groupKeys.forEach((key) => {
+                                        if (!isOwner && !actorPermissions.includes(key)) return;
+                                        if (shouldEnable) current.add(key);
+                                        else current.delete(key);
+                                      });
                                       const permissions = ALL_PERMISSION_META
                                         .map((item) => item.key)
                                         .filter((key) => current.has(key));
@@ -3134,69 +3728,114 @@ export default function SettingsUsers({
                                     })
                                   }
                                 >
-                                  <span className="accounts-permission-toggle__dot" aria-hidden="true" />
-                                  <span className="accounts-permission-toggle__copy">
-                                    <strong>{permission.label}</strong>
-                                    <small>{permission.key}</small>
-                                    <em>{permission.hint}</em>
-                                  </span>
-                                  <span className="accounts-permission-toggle__state">
-                                    {!actorCanGrant
-                                      ? "خارج صلاحياتك"
-                                      : isAdded
-                                        ? "استثناء مضاف"
-                                        : isDisabledDefault
-                                          ? "متوقف"
-                                          : isDefault
-                                            ? "ضمن الدور"
-                                            : isEnabled
-                                              ? "مفعلة"
-                                              : "غير مفعلة"}
-                                  </span>
+                                  {enabledCount === groupKeys.length ? "إلغاء القسم" : "تحديد القسم"}
                                 </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
+                              </div>
+                            </div>
 
-                  {!visiblePermissionGroups.length ? (
-                    <div className="accounts-permissions-editor__empty">لا توجد صلاحيات تطابق البحث الحالي.</div>
-                  ) : null}
+                            <div className="account-editor-v4__permissionGrid">
+                              {group.permissions.map((permission) => {
+                                const isEnabled = editPermissionSet.has(permission.key);
+                                const isDefault = editRoleDefaultPermissions.includes(permission.key);
+                                const isAdded = isEnabled && !isDefault;
+                                const isDisabledDefault = !isEnabled && isDefault;
+                                const actorCanGrant = isOwner || actorPermissions.includes(permission.key);
 
-                  <div className="accounts-permissions-editor__actions">
-                    <button
-                      type="button"
-                      className="accounts-btn"
-                      disabled={!canEditSelectedPermissions}
-                      onClick={() =>
-                        setEditDraft((prev) =>
-                          prev ? { ...prev, permissions: getRoleAppPermissions(prev.role as any) } : prev
-                        )
-                      }
-                    >
-                      استعادة صلاحيات الدور
-                    </button>
-                  </div>
+                                return (
+                                  <button
+                                    key={permission.key}
+                                    type="button"
+                                    className={[
+                                      "account-editor-v4__permission",
+                                      isEnabled ? "is-on" : "is-off",
+                                      isDefault ? "is-default" : "",
+                                      isAdded ? "is-added" : "",
+                                      isDisabledDefault ? "is-disabled-default" : "",
+                                      permission.sensitive ? "is-sensitive" : "",
+                                    ].filter(Boolean).join(" ")}
+                                    disabled={!canEditSelectedPermissions || !actorCanGrant}
+                                    onClick={() =>
+                                      setEditDraft((prev) => {
+                                        if (!prev) return prev;
+                                        const current = new Set(prev.permissions);
+                                        if (current.has(permission.key)) current.delete(permission.key);
+                                        else current.add(permission.key);
+                                        const permissions = ALL_PERMISSION_META
+                                          .map((item) => item.key)
+                                          .filter((key) => current.has(key));
+                                        return { ...prev, permissions };
+                                      })
+                                    }
+                                  >
+                                    <i aria-hidden="true" />
+                                    <span>
+                                      <strong>{permission.label}</strong>
+                                      <small>{permission.key}</small>
+                                      <em>{permission.hint}</em>
+                                    </span>
+                                    <b>
+                                      {!actorCanGrant
+                                        ? "خارج صلاحياتك"
+                                        : isAdded
+                                          ? "استثناء مضاف"
+                                          : isDisabledDefault
+                                            ? "متوقف"
+                                            : isDefault
+                                              ? "ضمن الدور"
+                                              : isEnabled
+                                                ? "مفعلة"
+                                                : "غير مفعلة"}
+                                    </b>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+
+                    {!visiblePermissionGroups.length ? (
+                      <div className="account-editor-v4__empty">لا توجد صلاحيات تطابق البحث الحالي.</div>
+                    ) : null}
+
+                    <div className="account-editor-v4__permissionFooter">
+                      <button
+                        type="button"
+                        disabled={!canEditSelectedPermissions}
+                        onClick={() =>
+                          setEditDraft((prev) =>
+                            prev ? { ...prev, permissions: getRoleAppPermissions(prev.role as any) } : prev
+                          )
+                        }
+                      >
+                        استعادة صلاحيات الدور
+                      </button>
+                    </div>
+                  </section>
                 </section>
-              </div>
+              ) : null}
             </div>
 
-            <div className="accounts-modal__footer">
-              <button type="button" className="accounts-btn" onClick={() => setEditDraft(null)}>
-                إلغاء
-              </button>
-              <button
-                type="button"
-                className="accounts-btn accounts-btn--primary"
-                disabled={usersLoading}
-                onClick={() => void saveEditedUser()}
-              >
-                {usersLoading ? "جاري الحفظ..." : "حفظ التعديلات"}
-              </button>
-            </div>
+            <footer className="account-editor-v4__footer">
+              <div>
+                <strong>تعديل حساب الدخول</strong>
+                <span>لن تُحفظ التغييرات حتى تضغط حفظ التعديلات.</span>
+              </div>
+              <div>
+                <button type="button" className="account-editor-v4__cancel" onClick={() => setEditDraft(null)}>
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  className="account-editor-v4__save"
+                  disabled={usersLoading}
+                  onClick={() => void saveEditedUser()}
+                >
+                  {usersLoading ? "جاري الحفظ..." : "حفظ التعديلات"}
+                </button>
+              </div>
+            </footer>
           </div>
         </div>
       ) : null}
