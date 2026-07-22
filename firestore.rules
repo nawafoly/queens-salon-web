@@ -778,8 +778,12 @@ service cloud.firestore {
 
     match /salons/{salonId}/employee_payroll_records/{recordId} {
       allow read: if signedIn() && (
-        isEmployeeManagementForSalon(salonId)
+        isHrManagementForSalon(salonId)
         || (resource.data.employeeUid is string && resource.data.employeeUid == request.auth.uid)
+        || (
+          resource.data.employeeId is string
+          && isOwnEmployeeIdForSalon(salonId, resource.data.employeeId)
+        )
       );
 
       allow write: if signedIn() && isHrManagementForSalon(salonId);

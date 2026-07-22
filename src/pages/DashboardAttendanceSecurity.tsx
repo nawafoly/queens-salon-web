@@ -30,12 +30,35 @@ import {
   type AttendanceSecurityEvent,
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
+import {
+  calculateAttendanceDisciplineDay,
+  formatAttendanceHours,
+  formatSignedAttendanceHours,
+  normalizeAttendanceTimeHHMM,
+  riyadhDateKeyFromTimestamp,
+  summarizeAttendanceDisciplineMonth,
+  type AttendanceDayStatus,
+  type AttendanceDisciplineDaySummary,
+} from "../helpers/hr/attendanceDiscipline";
 import "../styles/DashboardAttendanceSecurity.css";
 import "../styles/DashboardAttendanceDeviceCards.css";
 
-type AttendanceTab = "overview" | "records" | "devices" | "alerts" | "zones";
+type AttendanceTab = "discipline" | "overview" | "records" | "devices" | "alerts" | "zones";
 type RecordResultFilter = "all" | "allowed" | "rejected";
 type RecordTypeFilter = "all" | "check_in" | "check_out";
+type WeekdayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
+
+type AttendanceDisciplineRow = {
+  key: string;
+  employeeName: string;
+  employeeId: string;
+  date: string;
+  shiftLabel: string;
+  scheduleNote: string;
+  firstCheckInAt?: string;
+  lastCheckOutAt?: string;
+  summary: AttendanceDisciplineDaySummary;
+};
 
 type FriendlyDeviceInput = {
   userAgent?: unknown;
@@ -63,6 +86,18 @@ const EMPTY_DASHBOARD: AttendanceSecurityDashboard = {
   alerts: [],
   zones: [],
 };
+
+const DEFAULT_ATTENDANCE_SHIFT_START = "10:00";
+const DEFAULT_ATTENDANCE_SHIFT_END = "22:00";
+const WEEKDAY_KEYS_BY_JS_DAY: WeekdayKey[] = [
+  "sun",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+];
 
 function localDateKey(date: Date) {
   const year = date.getFullYear();
@@ -301,15 +336,127 @@ function recordDevicePresentation(
   return { label, status, hasRisk };
 }
 
+function weekdayKeyForDate(dateKey: string): WeekdayKey {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return "sun";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return WEEKDAY_KEYS_BY_JS_DAY[date.getUTCDay()] || "sun";
+}
+
+function staffIdentityKeys(row: Record<string, unknown>) {
+  const keys = [
+    row.id,
+    row.uid,
+    row.employeeUid,
+    row.employeeId,
+    row.employeeDocId,
+    row.linkedUid,
+    row.linkedEmployeeId,
+    row.linkedEmployeeDocId,
+    row.linkedUserUid,
+    row.authUid,
+    row.userId,
+  ];
+  return Array.from(
+    new Set(keys.map((key) => String(key || "").trim()).filter(Boolean))
+  );
+}
+
+function resolveStaffProfile(
+  record: Pick<AttendanceWorkerRecord, "employeeUid" | "employeeDocId">,
+  staffProfiles: Map<string, Record<string, unknown>>
+) {
+  const keys = [record.employeeDocId, record.employeeUid]
+    .map((key) => String(key || "").trim())
+    .filter(Boolean);
+  for (const key of keys) {
+    const profile = staffProfiles.get(key);
+    if (profile) return profile;
+  }
+  return undefined;
+}
+
+function cleanScheduleDay(value: unknown) {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function resolveApprovedScheduleForDate(
+  staff: Record<string, unknown> | undefined,
+  dateKey: string
+) {
+  const overrides = Array.isArray(staff?.customWorkingHourOverrides)
+    ? (staff?.customWorkingHourOverrides as unknown[])
+    : [];
+  const override = overrides
+    .map(cleanScheduleDay)
+    .find((item) => String(item?.date || "").trim() === dateKey);
+
+  const weekday = weekdayKeyForDate(dateKey);
+  const customWorkingHours = cleanScheduleDay(staff?.customWorkingHours) || {};
+  const customDay =
+    staff?.useCustomWorkingHours === true
+      ? cleanScheduleDay(customWorkingHours[weekday])
+      : undefined;
+  const source = override || customDay;
+
+  if (source?.enabled === false) {
+    return {
+      enabled: false,
+      start: undefined,
+      end: undefined,
+      label: "غير مجدول",
+      note: override ? "استثناء اليوم" : "دوام الموظفة",
+    };
+  }
+
+  const start =
+    normalizeAttendanceTimeHHMM(String(source?.start || "")) ||
+    DEFAULT_ATTENDANCE_SHIFT_START;
+  const end =
+    normalizeAttendanceTimeHHMM(String(source?.end || "")) ||
+    DEFAULT_ATTENDANCE_SHIFT_END;
+
+  return {
+    enabled: true,
+    start,
+    end,
+    label: `${start} - ${end}`,
+    note: override
+      ? "استثناء اليوم"
+      : customDay
+        ? "دوام الموظفة"
+        : "دوام الصالون الافتراضي",
+  };
+}
+
+function disciplineStatusTone(status: AttendanceDayStatus) {
+  if (status === "absent" || status === "missing_hours" || status === "incomplete") {
+    return "danger";
+  }
+  if (
+    status === "complete_with_compensated_late" ||
+    status === "complete_with_extra_hours" ||
+    status === "compensated_late_with_extra_hours" ||
+    status === "off_day_work"
+  ) {
+    return "warning";
+  }
+  if (status === "off_day" || status === "leave") return "muted";
+  return "ok";
+}
+
 export default function DashboardAttendanceSecurity() {
   const { hasPermission } = usePermissions();
   const canManageDevices = hasPermission("attendance.settings.manage");
   const canResolveAlerts =
     hasPermission("attendance.records.update") || canManageDevices;
 
-  const [activeTab, setActiveTab] = useState<AttendanceTab>("overview");
+  const [activeTab, setActiveTab] = useState<AttendanceTab>("discipline");
   const [dashboard, setDashboard] = useState<AttendanceSecurityDashboard>(EMPTY_DASHBOARD);
   const [staffNames, setStaffNames] = useState<Map<string, string>>(new Map());
+  const [staffProfiles, setStaffProfiles] = useState<Map<string, Record<string, unknown>>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -330,10 +477,8 @@ export default function DashboardAttendanceSecurity() {
         fetchAttendanceSecurityDashboard({
           fromDate,
           toDate,
-          result: resultFilter === "all" ? undefined : resultFilter,
-          type: typeFilter === "all" ? undefined : typeFilter,
           alertStatus: "open",
-          limit: 150,
+          limit: 200,
         }),
         listActiveStaffAll(),
       ]);
@@ -343,33 +488,25 @@ export default function DashboardAttendanceSecurity() {
 
       if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
         const next = new Map<string, string>();
+        const profiles = new Map<string, Record<string, unknown>>();
         for (const row of staffResult.value as Array<Record<string, unknown>>) {
           const name = String(
             row.name || row.displayName || row.fullName || row.title || ""
           ).trim();
-          if (!name) continue;
-          const ids = [
-            row.id,
-            row.uid,
-            row.employeeUid,
-            row.employeeId,
-            row.linkedUid,
-            row.linkedEmployeeId,
-            row.linkedUserUid,
-          ];
-          for (const rawId of ids) {
-            const id = String(rawId || "").trim();
-            if (id) next.set(id, name);
+          for (const id of staffIdentityKeys(row)) {
+            if (name) next.set(id, name);
+            profiles.set(id, row);
           }
         }
         setStaffNames(next);
+        setStaffProfiles(profiles);
       }
     } catch (loadError: any) {
       setError(String(loadError?.message || "تعذر تحميل مركز متابعة البصمة."));
     } finally {
       setLoading(false);
     }
-  }, [fromDate, resultFilter, toDate, typeFilter]);
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     void load();
@@ -383,6 +520,8 @@ export default function DashboardAttendanceSecurity() {
   const visibleRecords = useMemo(
     () =>
       dashboard.records.filter((record) => {
+        if (resultFilter !== "all" && record.result !== resultFilter) return false;
+        if (typeFilter !== "all" && record.type !== typeFilter) return false;
         const deviceView = recordDevicePresentation(record, devicesById);
         return searchable(search, [
           resolveStaffName(record, staffNames),
@@ -397,7 +536,7 @@ export default function DashboardAttendanceSecurity() {
           recordResultLabel(record.result),
         ]);
       }),
-    [dashboard.records, devicesById, search, staffNames]
+    [dashboard.records, devicesById, resultFilter, search, staffNames, typeFilter]
   );
 
   const visibleDevices = useMemo(
@@ -454,6 +593,85 @@ export default function DashboardAttendanceSecurity() {
     [dashboard.records]
   );
 
+  const disciplineRows = useMemo<AttendanceDisciplineRow[]>(() => {
+    const grouped = new Map<
+      string,
+      {
+        employeeId: string;
+        date: string;
+        records: AttendanceWorkerRecord[];
+      }
+    >();
+
+    for (const record of dashboard.records) {
+      if (record.result !== "allowed") continue;
+      const date = riyadhDateKeyFromTimestamp(record.serverTime);
+      const employeeId = String(record.employeeDocId || record.employeeUid || "").trim();
+      if (!date || !employeeId) continue;
+      const key = `${employeeId}:${date}`;
+      const current = grouped.get(key) || { employeeId, date, records: [] };
+      current.records.push(record);
+      grouped.set(key, current);
+    }
+
+    const rows = Array.from(grouped.values()).map((group) => {
+      const records = [...group.records].sort(
+        (left, right) => Date.parse(left.serverTime) - Date.parse(right.serverTime)
+      );
+      const firstCheckIn = records.find((record) => record.type === "check_in");
+      const lastCheckOut = [...records]
+        .reverse()
+        .find((record) => record.type === "check_out");
+      const firstRecord = records[0];
+      const staffProfile = firstRecord
+        ? resolveStaffProfile(firstRecord, staffProfiles)
+        : undefined;
+      const schedule = resolveApprovedScheduleForDate(staffProfile, group.date);
+      const summary = calculateAttendanceDisciplineDay({
+        date: group.date,
+        scheduledStart: schedule.start,
+        scheduledEnd: schedule.end,
+        isScheduledWorkDay: schedule.enabled,
+        checkInAt: firstCheckIn?.serverTime,
+        checkOutAt: lastCheckOut?.serverTime,
+      });
+
+      return {
+        key: `${group.employeeId}:${group.date}`,
+        employeeName: firstRecord ? resolveStaffName(firstRecord, staffNames) : group.employeeId,
+        employeeId: group.employeeId,
+        date: group.date,
+        shiftLabel: schedule.label,
+        scheduleNote: schedule.note,
+        firstCheckInAt: firstCheckIn?.serverTime,
+        lastCheckOutAt: lastCheckOut?.serverTime,
+        summary,
+      };
+    });
+
+    return rows
+      .filter((row) =>
+        searchable(search, [
+          row.employeeName,
+          row.employeeId,
+          row.date,
+          row.shiftLabel,
+          row.scheduleNote,
+          row.summary.statusLabel,
+        ])
+      )
+      .sort((left, right) => {
+        const dateSort = right.date.localeCompare(left.date);
+        if (dateSort !== 0) return dateSort;
+        return left.employeeName.localeCompare(right.employeeName, "ar");
+      });
+  }, [dashboard.records, search, staffNames, staffProfiles]);
+
+  const disciplineSummary = useMemo(
+    () => summarizeAttendanceDisciplineMonth(disciplineRows.map((row) => row.summary)),
+    [disciplineRows]
+  );
+
   const setDeviceStatus = async (
     device: AttendanceSecurityDevice,
     trustStatus: "new" | "trusted" | "blocked"
@@ -502,6 +720,7 @@ export default function DashboardAttendanceSecurity() {
   };
 
   const tabs: Array<{ id: AttendanceTab; label: string }> = [
+    { id: "discipline", label: "الحضور والانضباط" },
     { id: "overview", label: "نظرة عامة" },
     { id: "records", label: "سجل البصمات" },
     { id: "devices", label: "الأجهزة" },
@@ -514,8 +733,8 @@ export default function DashboardAttendanceSecurity() {
       <header className="attendance-security-heading">
         <div>
           <p className="attendance-security-eyebrow">Attendance D1</p>
-          <h1>سجل البصمة والأجهزة</h1>
-          <p>متابعة كل عملية حضور وانصراف، الأجهزة المستخدمة، والمخالفات الأمنية من مصدر واحد.</p>
+          <h1>الحضور والانضباط</h1>
+          <p>متابعة وقت الحضور والانصراف وفروقات الساعات من البصمات المقبولة حسب الدوام المعتمد.</p>
         </div>
         <button
           type="button"
@@ -564,10 +783,12 @@ export default function DashboardAttendanceSecurity() {
                 placeholder="ابحث باسم الموظفة أو الجهاز أو النطاق أو الحالة..."
               />
             </label>
-            {activeTab === "records" ? (
+            {activeTab === "discipline" || activeTab === "records" ? (
               <div className="attendance-security-filters">
                 <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
                 <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+                {activeTab === "records" ? (
+                  <>
                 <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as RecordResultFilter)}>
                   <option value="all">كل النتائج</option>
                   <option value="allowed">المقبولة</option>
@@ -578,9 +799,67 @@ export default function DashboardAttendanceSecurity() {
                   <option value="check_in">حضور</option>
                   <option value="check_out">انصراف</option>
                 </select>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {!error && activeTab === "discipline" ? (
+          <>
+            <div className="attendance-security-stats attendance-discipline-stats">
+              <article><span><FiClock /></span><small>ساعات الدوام المعتمدة</small><strong>{formatAttendanceHours(disciplineSummary.totalScheduledHours)}</strong></article>
+              <article><span><FiActivity /></span><small>ساعات العمل الفعلية</small><strong>{formatAttendanceHours(disciplineSummary.totalActualWorkedHours)}</strong></article>
+              <article><span><FiAlertTriangle /></span><small>التأخير الفعلي</small><strong>{formatAttendanceHours(disciplineSummary.totalLateHours)}</strong></article>
+              <article><span><FiCheck /></span><small>التعويض بعد الدوام</small><strong>{formatAttendanceHours(disciplineSummary.totalCompensatedLateHours)}</strong></article>
+              <article className="is-danger"><span><FiXCircle /></span><small>نقص الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalMissingHours)}</strong></article>
+              <article className="is-warning"><span><FiClock /></span><small>زيادة الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalExtraHours)}</strong></article>
+            </div>
+
+            <div className="attendance-security-table-wrap attendance-discipline-table-wrap">
+              <table className="attendance-security-table attendance-discipline-table">
+                <thead>
+                  <tr>
+                    <th>الموظفة</th>
+                    <th>التاريخ</th>
+                    <th>الدوام المعتمد</th>
+                    <th>أول حضور</th>
+                    <th>آخر انصراف</th>
+                    <th>مدة العمل الفعلية</th>
+                    <th>التأخير الفعلي</th>
+                    <th>التعويض بعد الدوام</th>
+                    <th>نقص الساعات</th>
+                    <th>زيادة الساعات</th>
+                    <th>صافي فرق الساعات</th>
+                    <th>الحالة الإدارية لليوم</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {disciplineRows.map((row) => {
+                    const tone = disciplineStatusTone(row.summary.status);
+                    return (
+                      <tr key={row.key} className={`is-discipline-${tone}`}>
+                        <td><strong>{row.employeeName}</strong><small>{row.employeeId}</small></td>
+                        <td><strong>{formatRecordDate(`${row.date}T00:00:00+03:00`)}</strong><small dir="ltr">{row.date}</small></td>
+                        <td><strong dir="ltr">{row.shiftLabel}</strong><small>{row.scheduleNote}</small></td>
+                        <td><strong dir="ltr">{formatRecordTime(row.firstCheckInAt)}</strong></td>
+                        <td><strong dir="ltr">{formatRecordTime(row.lastCheckOutAt)}</strong></td>
+                        <td>{formatAttendanceHours(row.summary.actualWorkedHours)}</td>
+                        <td>{formatAttendanceHours(row.summary.lateHours)}</td>
+                        <td>{formatAttendanceHours(row.summary.compensatedLateHours)}</td>
+                        <td>{formatAttendanceHours(row.summary.missingHours)}</td>
+                        <td>{formatAttendanceHours(row.summary.extraHours)}</td>
+                        <td>{formatSignedAttendanceHours(row.summary.netHourDifference)}</td>
+                        <td><span className={`attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {!loading && !disciplineRows.length ? <p className="attendance-security-empty">لا توجد سجلات حضور مكتملة أو مطابقة للفترة المحددة.</p> : null}
+            </div>
+          </>
         ) : null}
 
         {!error && activeTab === "overview" ? (
