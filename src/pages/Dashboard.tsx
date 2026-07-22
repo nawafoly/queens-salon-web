@@ -49,6 +49,7 @@ import DashboardDayAudit from "../pages/DashboardDayAudit";
 import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 import DashboardPartners from "../pages/DashboardPartners";
 import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
+import DashboardPayroll from "../pages/DashboardPayroll";
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -2149,6 +2150,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     "clients.view",
     "income.view",
     "expenses.view",
+    "payroll.view",
   ]);
   const hasManagementNavigation = hasAnyPermission([
     "partners.manage",
@@ -2863,6 +2865,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {hasPermission("payroll.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/payroll" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faMoneyBillWave} />
+                      إدارة الرواتب
+                    </NavLink>
+                  </li>
+                ) : null}
+
                 {hasManagementNavigation ? (
                   <li className="sidebar-nav-section">الإدارة والتقارير</li>
                 ) : null}
@@ -3108,6 +3119,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="reports" element={<PermissionRoute permission="reports.view"><DashboardReports /></PermissionRoute>} />
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
+                <Route path="payroll" element={<PermissionRoute permission="payroll.view"><DashboardPayroll /></PermissionRoute>} />
                 <Route
                   path="attendance"
                   element={

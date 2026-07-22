@@ -1,0 +1,28 @@
+ALTER TABLE payroll_entries ADD COLUMN employee_name TEXT;
+ALTER TABLE payroll_entries ADD COLUMN job_title TEXT;
+ALTER TABLE payroll_entries ADD COLUMN work_days REAL;
+ALTER TABLE payroll_entries ADD COLUMN monthly_hours REAL;
+ALTER TABLE payroll_entries ADD COLUMN daily_rate_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN hourly_rate_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN attendance_summary_json TEXT;
+ALTER TABLE payroll_entries ADD COLUMN detected_extra_hours REAL NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN overtime_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN financial_overtime_hours REAL NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN overtime_multiplier REAL NOT NULL DEFAULT 1.5;
+ALTER TABLE payroll_entries ADD COLUMN overtime_value_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN additions_json TEXT;
+ALTER TABLE payroll_entries ADD COLUMN manual_additions_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN manual_deductions_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN advances_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN missing_hours_deduction_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN total_deductions_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN net_salary_halalas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE payroll_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE payroll_entries ADD COLUMN approved_at TEXT;
+ALTER TABLE payroll_entries ADD COLUMN approved_by_uid TEXT;
+ALTER TABLE payroll_entries ADD COLUMN paid_at TEXT;
+ALTER TABLE payroll_entries ADD COLUMN paid_by_uid TEXT;
+ALTER TABLE payroll_entries ADD COLUMN notes TEXT;
+ALTER TABLE payroll_entries ADD COLUMN audit_log_json TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_payroll_entry_status ON payroll_entries(salon_id, payroll_month, status);

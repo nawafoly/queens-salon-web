@@ -78,11 +78,31 @@ export const CoreHrService = {
   async savePayrollPeriod(input: Record<string, unknown>) {
     return camel<CorePayrollPeriod>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-periods", { method: "POST", body: input }));
   },
-  async listPayrollEntries(query: { employeeId?: string; payrollMonth?: string } = {}) {
+  async listPayrollEntries(query: { employeeId?: string; payrollMonth?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/payroll-entries", { query });
     return rows.map((row) => camel<CorePayrollEntry>(row));
   },
+  async getPayrollEntry(id: string) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}`);
+    return camel<CorePayrollEntry>(row);
+  },
   async savePayrollEntry(input: Record<string, unknown>) {
     return camel<CorePayrollEntry>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-entries", { method: "POST", body: input }));
+  },
+  async updatePayrollEntryAdjustments(id: string, input: Record<string, unknown>) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/adjustments`, { method: "PATCH", body: input });
+    return camel<CorePayrollEntry>(row);
+  },
+  async togglePayrollOvertime(id: string, input: Record<string, unknown>) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/overtime`, { method: "PATCH", body: input });
+    return camel<CorePayrollEntry>(row);
+  },
+  async approvePayrollEntry(id: string) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/approve`, { method: "POST" });
+    return camel<CorePayrollEntry>(row);
+  },
+  async markPayrollEntryPaid(id: string) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/paid`, { method: "POST" });
+    return camel<CorePayrollEntry>(row);
   },
 };

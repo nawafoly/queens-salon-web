@@ -31,6 +31,8 @@ async function setup() {
     '0007_booking_soft_delete.sql',
     '0008_booking_reference_sequence.sql',
     '0014_app_users_permissions.sql',
+    '0015_employee_type.sql',
+    '0016_payroll_snapshots.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -131,11 +133,11 @@ test('booking reschedule atomically replaces slot locks', async (t) => {
     INSERT INTO staff (id,salon_id,name,active,employment_status,created_at,updated_at) VALUES ('staff-1','main','Staff',1,'active','2026-01-01','2026-01-01');
   `);
   const booking = await createBooking(db, 'main', {
-    id: 'booking-1', clientId: 'client-1', staffId: 'staff-1', bookingDate: '2026-07-20', startTime: '10:00',
+    id: 'booking-1', clientId: 'client-1', staffId: 'staff-1', bookingDate: '2026-08-20', startTime: '10:00',
     slotStepMin: 5, items: [{ id: 'item-1', serviceId: 'svc-1', staffId: 'staff-1' }],
   }, 'uid-admin');
   assert.equal(booking.start_time, '10:00');
-  const moved = await rescheduleBooking(db, 'main', booking.id, { bookingDate: '2026-07-20', startTime: '11:00' });
+  const moved = await rescheduleBooking(db, 'main', booking.id, { bookingDate: '2026-08-20', startTime: '11:00' });
   assert.equal(moved.start_time, '11:00');
   const oldLocks = await db.prepare("SELECT COUNT(*) AS count FROM booking_slot_locks WHERE booking_id='booking-1' AND slot_time='10:00'").first();
   const newLocks = await db.prepare("SELECT COUNT(*) AS count FROM booking_slot_locks WHERE booking_id='booking-1' AND slot_time='11:00'").first();

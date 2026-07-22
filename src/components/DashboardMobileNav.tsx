@@ -111,6 +111,13 @@ export default function DashboardMobileNav({
         permission: "clients.view",
       },
       {
+        to: "/dashboard/payroll",
+        label: "إدارة الرواتب",
+        description: "مسيرات الرواتب الشهرية والاعتماد والدفع",
+        icon: faMoneyBillWave,
+        permission: "payroll.view",
+      },
+      {
         to: "/dashboard/partners",
         label: "الشريكات والمساحات",
         description: "إدارة المستأجرات ومقاعد العمل",

@@ -100,8 +100,13 @@ import {
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
+  approvePayrollEntry,
+  getPayrollEntry,
   listPayrollEntries,
   listPayrollPeriods,
+  markPayrollEntryPaid,
+  togglePayrollOvertime,
+  updatePayrollEntryAdjustments,
   upsertPayrollEntry,
   upsertPayrollPeriod,
 } from './repositories/payroll.js';
@@ -307,6 +312,8 @@ function match(url, method) {
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid)$/.exec(path);
+  if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
   if (fileContent && ["GET", "PUT"].includes(method)) return { name: "file:content", id: fileContent[1] };
 
@@ -820,15 +827,49 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "payroll-periods":
-      requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET") return listPayrollPeriods(db, ctx.salonId);
-      if (method === "POST") return upsertPayrollPeriod(db, ctx.salonId, body, actorInfo);
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listPayrollPeriods(db, ctx.salonId);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return upsertPayrollPeriod(db, ctx.salonId, body, actorInfo);
+      }
       break;
 
     case "payroll-entries":
-      requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET") return listPayrollEntries(db, ctx.salonId, query);
-      if (method === "POST") return upsertPayrollEntry(db, ctx.salonId, body, actorInfo);
+      if (method === "GET" && route.id) {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return getPayrollEntry(db, ctx.salonId, route.id);
+      }
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listPayrollEntries(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return upsertPayrollEntry(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "payroll-entry:adjustments":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "PATCH" || method === "POST") return updatePayrollEntryAdjustments(db, ctx.salonId, route.id, body, actorInfo);
+      break;
+
+    case "payroll-entry:overtime":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "PATCH" || method === "POST") return togglePayrollOvertime(db, ctx.salonId, route.id, body, actorInfo);
+      break;
+
+    case "payroll-entry:approve":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "payroll-entry:paid":
+      requirePermission(ctx, "payroll.manage");
+      if (method === "POST") return markPayrollEntryPaid(db, ctx.salonId, route.id, actorInfo);
       break;
 
     case "settings": {
