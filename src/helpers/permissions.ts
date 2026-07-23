@@ -72,6 +72,8 @@ export type AppPermission =
   | "attendance.settings.manage"
   | "payroll.view"
   | "payroll.manage"
+  | "staffPerformance.view"
+  | "staffPerformance.manage"
   | "recruitment.view"
   | "recruitment.manage"
   | "reports.view"
@@ -183,6 +185,8 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "attendance.settings.manage", label: "إعدادات الحضور والبصمة", hint: "إدارة النطاقات والموقع وسياسات البصمة.", group: "workforce", action: "manage", sensitive: true },
   { key: "payroll.view", label: "عرض الرواتب", hint: "عرض سجلات الرواتب والاستحقاقات.", group: "workforce", action: "view", sensitive: true },
   { key: "payroll.manage", label: "إدارة الرواتب", hint: "إنشاء وتعديل واعتماد الرواتب والخصومات.", group: "workforce", action: "manage", sensitive: true },
+  { key: "staffPerformance.view", label: "عرض أداء الموظفات", hint: "عرض مؤشرات أداء الموظفات من الحجوزات والحضور.", group: "workforce", action: "view", sensitive: true },
+  { key: "staffPerformance.manage", label: "إدارة أداء الموظفات", hint: "إدارة إعدادات وملاحظات أداء الموظفات مستقبلًا.", group: "workforce", action: "manage", sensitive: true },
   { key: "recruitment.view", label: "عرض طلبات التوظيف", hint: "استعراض طلبات التوظيف الواردة.", group: "workforce", action: "view" },
   { key: "recruitment.manage", label: "إدارة طلبات التوظيف", hint: "تحديث الحالات والمراجعات والقرارات.", group: "workforce", action: "manage" },
 
@@ -307,6 +311,8 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.settings.manage",
     "payroll.view",
     "payroll.manage",
+    "staffPerformance.view",
+    "staffPerformance.manage",
     "recruitment.view",
     "recruitment.manage",
     "reports.view",
@@ -357,6 +363,8 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.export",
     "payroll.view",
     "payroll.manage",
+    "staffPerformance.view",
+    "staffPerformance.manage",
     "recruitment.view",
     "recruitment.manage",
     "reports.view",
@@ -485,6 +493,7 @@ export function getEffectiveAppPermissions(args: {
   // حتى لا تفقد الحسابات صلاحيات جديدة عند توسيع السجل المركزي.
   if (
     role !== "admin" &&
+    role !== "hr" &&
     version >= PERMISSION_SCHEMA_VERSION &&
     Array.isArray(args.permissions) &&
     !overrides.enabled.length &&

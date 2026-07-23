@@ -1,0 +1,418 @@
+.staff-performance-page {
+  --perf-ink: #202635;
+  --perf-muted: #667085;
+  --perf-border: #e1e6ef;
+  --perf-panel: #ffffff;
+  --perf-soft: #f7f8fb;
+  --perf-accent: #8f294f;
+  --perf-teal: #177e74;
+  --perf-blue: #2f5f98;
+  --perf-warn: #aa6a16;
+  min-height: 100%;
+  padding: 22px;
+  color: var(--perf-ink);
+}
+
+.staff-performance-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.staff-performance-hero span,
+.staff-performance-detail__head span {
+  color: var(--perf-accent);
+  font-size: .76rem;
+  font-weight: 900;
+}
+
+.staff-performance-hero h1,
+.staff-performance-detail__head h2 {
+  margin: 4px 0;
+  font-size: 1.8rem;
+  font-weight: 950;
+}
+
+.staff-performance-hero p {
+  margin: 0;
+  color: var(--perf-muted);
+  line-height: 1.7;
+}
+
+.staff-performance-hero button,
+.staff-performance-detail__head button,
+.staff-performance-icon-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--perf-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #344054;
+  font-weight: 900;
+}
+
+.staff-performance-hero button,
+.staff-performance-detail__head button {
+  padding: 0 14px;
+}
+
+.staff-performance-page button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.staff-performance-page .is-spinning {
+  animation: perf-spin .8s linear infinite;
+}
+
+@keyframes perf-spin {
+  to { transform: rotate(360deg); }
+}
+
+.staff-performance-toolbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--perf-border);
+  border-radius: 12px;
+  background: var(--perf-panel);
+}
+
+.staff-performance-toolbar label {
+  display: grid;
+  gap: 6px;
+}
+
+.staff-performance-toolbar span {
+  color: var(--perf-muted);
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.staff-performance-toolbar input,
+.staff-performance-toolbar select {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid var(--perf-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--perf-ink);
+  padding: 0 10px;
+  font: inherit;
+  font-weight: 800;
+}
+
+.staff-performance-alert,
+.staff-performance-loading,
+.staff-performance-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 11px 13px;
+  border: 1px solid #ead6db;
+  border-radius: 10px;
+  background: #fff7f8;
+  color: #78334a;
+  font-weight: 850;
+}
+
+.staff-performance-alert.is-soft {
+  border-color: #d7e7e4;
+  background: #f2fbf8;
+  color: #136b61;
+}
+
+.staff-performance-alert div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.staff-performance-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.staff-performance-stats article,
+.staff-performance-detail-grid article {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid var(--perf-border);
+  border-radius: 10px;
+  background: var(--perf-panel);
+}
+
+.staff-performance-stats svg {
+  color: var(--perf-teal);
+  font-size: 1.25rem;
+}
+
+.staff-performance-stats small,
+.staff-performance-detail-grid small {
+  color: var(--perf-muted);
+  font-weight: 900;
+}
+
+.staff-performance-stats strong,
+.staff-performance-detail-grid strong {
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.staff-performance-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--perf-border);
+  border-radius: 12px;
+  background: var(--perf-panel);
+}
+
+.staff-performance-table {
+  width: 100%;
+  min-width: 1040px;
+  border-collapse: collapse;
+}
+
+.staff-performance-table th,
+.staff-performance-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--perf-border);
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.staff-performance-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--perf-soft);
+  color: #4a5568;
+  font-size: .78rem;
+  font-weight: 950;
+}
+
+.staff-performance-table th:first-child,
+.staff-performance-table td:first-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.staff-performance-person {
+  display: grid;
+  gap: 3px;
+}
+
+.staff-performance-person strong {
+  font-weight: 950;
+}
+
+.staff-performance-person small,
+.staff-performance-table td small {
+  display: block;
+  color: var(--perf-muted);
+  font-size: .74rem;
+  font-weight: 800;
+}
+
+.staff-performance-badge,
+.staff-performance-score {
+  display: inline-flex;
+  min-width: 54px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-weight: 950;
+}
+
+.staff-performance-badge.is-active {
+  background: #e9f8f2;
+  color: #126b4f;
+}
+
+.staff-performance-badge.is-muted {
+  background: #eef1f5;
+  color: #667085;
+}
+
+.staff-performance-score.is-strong {
+  background: #e8f7ef;
+  color: #14734f;
+}
+
+.staff-performance-score.is-steady {
+  background: #eef4ff;
+  color: var(--perf-blue);
+}
+
+.staff-performance-score.is-low {
+  background: #fff4e5;
+  color: var(--perf-warn);
+}
+
+.staff-performance-icon-btn {
+  width: 38px;
+  padding: 0;
+}
+
+.staff-performance-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--perf-muted);
+  font-weight: 850;
+}
+
+.staff-performance-detail {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--perf-border);
+}
+
+.staff-performance-detail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.staff-performance-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.staff-performance-detail-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.staff-performance-detail-columns > section {
+  border: 1px solid var(--perf-border);
+  border-radius: 10px;
+  background: var(--perf-panel);
+  padding: 14px;
+}
+
+.staff-performance-detail-columns h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.staff-performance-bookings,
+.staff-performance-services {
+  display: grid;
+  gap: 8px;
+}
+
+.staff-performance-bookings article,
+.staff-performance-services article {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--perf-border);
+  border-radius: 8px;
+  background: var(--perf-soft);
+}
+
+.staff-performance-bookings small,
+.staff-performance-services small {
+  color: var(--perf-muted);
+  font-weight: 800;
+}
+
+.staff-performance-attendance {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.staff-performance-attendance div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--perf-border);
+}
+
+.staff-performance-attendance dt {
+  color: var(--perf-muted);
+  font-weight: 850;
+}
+
+.staff-performance-attendance dd {
+  margin: 0;
+  font-weight: 950;
+}
+
+.staff-performance-notes {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-performance-notes li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7a4b10;
+  font-weight: 850;
+}
+
+@media (max-width: 1100px) {
+  .staff-performance-toolbar,
+  .staff-performance-stats,
+  .staff-performance-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-performance-detail-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .staff-performance-page {
+    padding: 14px;
+  }
+
+  .staff-performance-hero,
+  .staff-performance-detail__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .staff-performance-toolbar,
+  .staff-performance-stats,
+  .staff-performance-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-performance-table {
+    min-width: 920px;
+  }
+}

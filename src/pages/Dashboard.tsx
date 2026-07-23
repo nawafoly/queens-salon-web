@@ -50,6 +50,7 @@ import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 import DashboardPartners from "../pages/DashboardPartners";
 import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
 import DashboardPayroll from "../pages/DashboardPayroll";
+import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -1388,6 +1389,7 @@ function getDashboardHeaderTitle(pathname: string) {
     bookings: "الحجوزات",
     "booking-internal": "الحجز الإداري",
     attendance: "سجل البصمة والأجهزة",
+    "staff-performance": "أداء الموظفات",
     "tv-queue": "شاشة نداء الحجوزات",
     "day-audit": "إغلاق اليوم / الشفت",
     clients: "العملاء",
@@ -2151,6 +2153,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     "income.view",
     "expenses.view",
     "payroll.view",
+    "staffPerformance.view",
   ]);
   const hasManagementNavigation = hasAnyPermission([
     "partners.manage",
@@ -2169,6 +2172,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       "settings.content.manage",
       "attendance.view",
       "attendance.settings.manage",
+      "staffPerformance.view",
     ]);
 
 
@@ -2874,6 +2878,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {hasPermission("staffPerformance.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/staff-performance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faChartLine} />
+                      أداء الموظفات
+                    </NavLink>
+                  </li>
+                ) : null}
+
                 {hasManagementNavigation ? (
                   <li className="sidebar-nav-section">الإدارة والتقارير</li>
                 ) : null}
@@ -3120,6 +3133,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
                 <Route path="payroll" element={<PermissionRoute permission="payroll.view"><DashboardPayroll /></PermissionRoute>} />
+                <Route path="staff-performance" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
+                <Route path="staff-performance/:employeeId" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
                 <Route
                   path="attendance"
                   element={
