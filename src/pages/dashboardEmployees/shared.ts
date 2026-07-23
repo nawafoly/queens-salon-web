@@ -115,6 +115,10 @@ export type StaffPublicDoc = {
   assignedAttendanceZoneId?: string;
   allowedZoneIds?: string[];
   monthlySalary?: number;
+  payrollMonthlyHours?: number;
+  payrollOvertimeEnabled?: boolean;
+  payrollOvertimeMultiplier?: number;
+  payrollDeductionMethod?: "hourly" | "daily" | string;
   overtimeMethod?: StaffPayrollMethod;
   overtimeDaysPerMonth?: number;
   overtimeBaseHoursPerDay?: number;
