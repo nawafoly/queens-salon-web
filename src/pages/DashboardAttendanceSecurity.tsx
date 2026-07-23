@@ -6,7 +6,9 @@ import {
   FiCheckCircle,
   FiClock,
   FiCpu,
+  FiDownload,
   FiEye,
+  FiFileText,
   FiLock,
   FiMapPin,
   FiRefreshCw,
@@ -40,6 +42,11 @@ import {
   type AttendanceDayStatus,
   type AttendanceDisciplineDaySummary,
 } from "../helpers/hr/attendanceDiscipline";
+import {
+  exportAttendanceReportExcel,
+  exportAttendanceReportPdf,
+  type AttendanceReportRowInput,
+} from "../helpers/reports/exportAttendanceReport";
 import "../styles/DashboardAttendanceSecurity.css";
 import "../styles/DashboardAttendanceDeviceCards.css";
 
@@ -48,17 +55,7 @@ type RecordResultFilter = "all" | "allowed" | "rejected";
 type RecordTypeFilter = "all" | "check_in" | "check_out";
 type WeekdayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 
-type AttendanceDisciplineRow = {
-  key: string;
-  employeeName: string;
-  employeeId: string;
-  date: string;
-  shiftLabel: string;
-  scheduleNote: string;
-  firstCheckInAt?: string;
-  lastCheckOutAt?: string;
-  summary: AttendanceDisciplineDaySummary;
-};
+type AttendanceDisciplineRow = AttendanceReportRowInput;
 
 type FriendlyDeviceInput = {
   userAgent?: unknown;
@@ -672,6 +669,20 @@ export default function DashboardAttendanceSecurity() {
     [disciplineRows]
   );
 
+  const attendanceReportInput = () => ({
+    rows: disciplineRows,
+    summary: disciplineSummary,
+    filters: { fromDate, toDate, search },
+  });
+
+  const handleExportAttendancePdf = () => {
+    exportAttendanceReportPdf(attendanceReportInput());
+  };
+
+  const handleExportAttendanceExcel = () => {
+    exportAttendanceReportExcel(attendanceReportInput());
+  };
+
   const setDeviceStatus = async (
     device: AttendanceSecurityDevice,
     trustStatus: "new" | "trusted" | "blocked"
@@ -801,6 +812,16 @@ export default function DashboardAttendanceSecurity() {
                 </select>
                   </>
                 ) : null}
+              </div>
+            ) : null}
+            {activeTab === "discipline" ? (
+              <div className="attendance-security-export-actions" aria-label="تصدير تقرير الحضور والانضباط">
+                <button type="button" onClick={handleExportAttendancePdf} disabled={loading}>
+                  <FiFileText /> تصدير PDF
+                </button>
+                <button type="button" onClick={handleExportAttendanceExcel} disabled={loading}>
+                  <FiDownload /> تصدير Excel
+                </button>
               </div>
             ) : null}
           </div>

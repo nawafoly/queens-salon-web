@@ -183,8 +183,16 @@
   gap: 8px;
 }
 
+.attendance-security-export-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .attendance-security-filters input,
-.attendance-security-filters select {
+.attendance-security-filters select,
+.attendance-security-export-actions button {
   height: 50px;
   padding: 0 12px;
   border: 1px solid #dfe3eb;
@@ -192,6 +200,20 @@
   background: #fff;
   color: #343d52;
   font-weight: 700;
+}
+
+.attendance-security-export-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--att-maroon);
+  font-weight: 900;
+}
+
+.attendance-security-export-actions button:disabled {
+  opacity: .58;
+  cursor: wait;
 }
 
 .attendance-security-stats {
@@ -655,6 +677,8 @@
   .attendance-security-toolbar { align-items: stretch; flex-direction: column; }
   .attendance-security-filters { overflow-x: auto; }
   .attendance-security-filters > * { min-width: 150px; }
+  .attendance-security-export-actions { justify-content: stretch; }
+  .attendance-security-export-actions button { flex: 1; min-width: 150px; }
   .attendance-security-overview-grid,
   .attendance-security-device-grid { grid-template-columns: 1fr; }
   .attendance-security-zone-grid { grid-template-columns: 1fr; }

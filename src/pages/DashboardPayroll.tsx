@@ -4,8 +4,10 @@ import {
   FiCheckCircle,
   FiClock,
   FiDollarSign,
+  FiDownload,
   FiEdit3,
   FiEye,
+  FiFileText,
   FiPlus,
   FiRefreshCw,
   FiSave,
@@ -41,6 +43,11 @@ import {
   type PayrollStatus,
 } from "../helpers/hr/payrollCalculations";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
+import {
+  exportPayrollPayslipPdf,
+  exportPayrollReportExcel,
+  exportPayrollReportPdf,
+} from "../helpers/reports/exportPayrollReport";
 import "../styles/DashboardPayroll.css";
 
 type AdjustmentMode = "addition" | "deduction";
@@ -284,6 +291,30 @@ export default function DashboardPayroll() {
     );
   }, [visibleEntries]);
 
+  const selectedEmployeeName =
+    employeeFilter === "all"
+      ? "كل الموظفات"
+      : employees.find((employee) => employee.id === employeeFilter)?.name || employeeFilter;
+  const selectedStatusLabel = STATUS_LABELS[statusFilter] || statusFilter;
+
+  const payrollReportInput = () => ({
+    entries: visibleEntries,
+    filters: {
+      year,
+      month,
+      employeeName: selectedEmployeeName,
+      statusLabel: selectedStatusLabel,
+    },
+  });
+
+  const handleExportPayrollPdf = () => {
+    exportPayrollReportPdf(payrollReportInput());
+  };
+
+  const handleExportPayrollExcel = () => {
+    exportPayrollReportExcel(payrollReportInput());
+  };
+
   const handleGenerate = async (recalculate = false) => {
     if (!canManage) return;
     setBusy(recalculate ? "recalculate" : "generate");
@@ -519,6 +550,12 @@ export default function DashboardPayroll() {
           <button type="button" className="is-primary" onClick={() => void handleSaveDrafts()} disabled={!canManage || Boolean(busy)}>
             <FiSave /> حفظ المسودات
           </button>
+          <button type="button" onClick={handleExportPayrollPdf} disabled={loading}>
+            <FiFileText /> تصدير مسيرة الشهر PDF
+          </button>
+          <button type="button" onClick={handleExportPayrollExcel} disabled={loading}>
+            <FiDownload /> تصدير مسيرة الشهر Excel
+          </button>
         </div>
       </div>
 
@@ -652,6 +689,7 @@ export default function DashboardPayroll() {
           entry={selectedEntry}
           onClose={() => setSelectedEntry(null)}
           onAdd={(mode) => openAdjustment(selectedEntry, mode)}
+          onExportPayslip={() => exportPayrollPayslipPdf({ entry: selectedEntry })}
         />
       ) : null}
 
@@ -700,10 +738,12 @@ function PayrollDetailsModal({
   entry,
   onClose,
   onAdd,
+  onExportPayslip,
 }: {
   entry: PayrollEntryView;
   onClose: () => void;
   onAdd: (mode: AdjustmentMode) => void;
+  onExportPayslip: () => void;
 }) {
   const missingLabels = setupMissingLabels(entry);
   return (
@@ -715,7 +755,10 @@ function PayrollDetailsModal({
             <h2>{entry.employeeName}</h2>
             <p>{entry.jobTitle || "موظفة"} · {STATUS_LABELS[entry.status] || entry.status}</p>
           </div>
-          <button type="button" onClick={onClose}><FiX /></button>
+          <div className="payroll-modal-actions">
+            <button type="button" onClick={onExportPayslip}><FiFileText /> تصدير كشف راتب PDF</button>
+            <button type="button" onClick={onClose} aria-label="إغلاق"><FiX /></button>
+          </div>
         </header>
 
         {!entry.payrollSetupComplete ? (

@@ -4,14 +4,20 @@ import {
   FiAlertTriangle,
   FiBarChart2,
   FiCalendar,
+  FiDownload,
   FiDollarSign,
   FiEye,
+  FiFileText,
   FiRefreshCw,
   FiStar,
   FiUsers,
 } from "react-icons/fi";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
 import type { StaffPerformanceResult, StaffPerformanceRow } from "../helpers/hr/staffPerformance";
+import {
+  exportStaffPerformanceReportExcel,
+  exportStaffPerformanceReportPdf,
+} from "../helpers/reports/exportStaffPerformanceReport";
 import { StaffPerformanceService } from "../services/StaffPerformanceService";
 import "../styles/DashboardStaffPerformance.css";
 
@@ -129,6 +135,30 @@ export default function DashboardStaffPerformance() {
     return Array.from(seen.entries()).sort((left, right) => left[1].localeCompare(right[1], "ar"));
   }, [result.rows, selectedRow]);
 
+  const loadedEmployeeName =
+    result.filters.employeeId
+      ? result.rows.find((row) => row.employeeId === result.filters.employeeId)?.employeeName || result.filters.employeeId
+      : "كل الموظفات";
+  const loadedBookingStatusLabel =
+    result.filters.bookingStatus === "all" ? "كل حالات الحجز للتحليل" : "المكتملة فقط";
+  const staffPerformanceReportInput = () => ({
+    result,
+    filters: {
+      fromDate: result.filters.fromDate,
+      toDate: result.filters.toDate,
+      employeeName: loadedEmployeeName,
+      bookingStatusLabel: loadedBookingStatusLabel,
+    },
+  });
+
+  const handleExportPerformancePdf = () => {
+    exportStaffPerformanceReportPdf(staffPerformanceReportInput());
+  };
+
+  const handleExportPerformanceExcel = () => {
+    exportStaffPerformanceReportExcel(staffPerformanceReportInput());
+  };
+
   return (
     <div className="staff-performance-page">
       <header className="staff-performance-hero">
@@ -193,6 +223,14 @@ export default function DashboardStaffPerformance() {
             <option value="all">كل الحالات للتحليل</option>
           </select>
         </label>
+        <div className="staff-performance-export-actions" aria-label="تصدير تقرير أداء الموظفات">
+          <button type="button" onClick={handleExportPerformancePdf} disabled={loading}>
+            <FiFileText /> تصدير PDF
+          </button>
+          <button type="button" onClick={handleExportPerformanceExcel} disabled={loading}>
+            <FiDownload /> تصدير Excel
+          </button>
+        </div>
       </section>
 
       {error ? <div className="staff-performance-alert" role="alert"><FiAlertTriangle />{error}</div> : null}
