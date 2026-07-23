@@ -7,6 +7,7 @@ import { CoreSettingsService } from "../services/CoreSettingsService";
 import { listCoreBookings } from "../services/firestoreBookings";
 import { listAllIncomeCore } from "../services/firestoreIncome";
 import { listAllExpensesCore } from "../services/firestoreExpenses";
+import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";
 import type { PaymentMethod } from "../types/finance";
 import {
   buildPayrollExpenseRowsForMonths,
@@ -1404,6 +1405,58 @@ export default function DashboardReports() {
     [lastSyncMs]
   );
 
+  const buildFinancialOverviewReportInput = () => ({
+    revenueRows: revenueRowsDetailed.map((row) => ({
+      date: row.date,
+      time: row.time,
+      source: sourceLabel(row.source),
+      mkRef: row.mkRef,
+      employeeName: row.employeeName,
+      note: row.note,
+      amount: row.amount,
+      statusLabel: row.statusLabel,
+    })),
+    expenseRows: expensesInRange.map((row) => ({
+      date: row.date,
+      category: row.category,
+      title: row.title || row.note || "-",
+      amount: row.amount,
+      addedBy: row.addedBy,
+      note: row.note,
+    })),
+    trendRows: chartsModel.points.map((point) => ({
+      label: point.label,
+      returns: point.returns,
+      investments: point.investments,
+    })),
+    filters: {
+      fromDate: range.from,
+      toDate: range.to,
+      periodLabel: period,
+      incomeMethod: incomeMethodFilter === "all" ? "الكل" : methodLabelFromRaw(incomeMethodFilter),
+      incomeSource: incomeSourceFilter === "all" ? "الكل" : sourceLabel(incomeSourceFilter),
+      incomeStatus: incomeStatusFilter,
+    },
+    payrollCycle: {
+      cycleKey: payrollCycleTotals.cycleKey,
+      fromDate: payrollCycleRange.from,
+      toDate: payrollCycleRange.to,
+      salary: payrollCycleTotals.salary,
+      overtime: payrollCycleTotals.overtime,
+      other: payrollCycleTotals.other,
+      total: payrollCycleTotals.total,
+    },
+    generatedBy: "لوحة التقارير العامة",
+  });
+
+  const exportFinancialPdf = () => {
+    exportFinancialOverviewReportPdf(buildFinancialOverviewReportInput());
+  };
+
+  const exportFinancialExcel = () => {
+    exportFinancialOverviewReportExcel(buildFinancialOverviewReportInput());
+  };
+
   return (
     <div className="reports-v2">
       <div className="reports-v2__header">
@@ -1418,6 +1471,14 @@ export default function DashboardReports() {
           <small className="reports-v2__sync">
             <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}
           </small>
+          <div className="reports-v2__export-actions">
+            <button type="button" className="reports-btn" onClick={exportFinancialPdf} disabled={loading}>
+              تصدير PDF
+            </button>
+            <button type="button" className="reports-btn primary" onClick={exportFinancialExcel} disabled={loading}>
+              تصدير Excel
+            </button>
+          </div>
         </div>
       </div>
 

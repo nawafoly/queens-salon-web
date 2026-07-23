@@ -28,6 +28,7 @@ import { listCoreBookings } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
+import { exportIncomeReportExcel, exportIncomeReportPdf } from "../helpers/reports/exportIncomeReport";
 
 const ALL_BOOKINGS_KEY = "allBookings";
 
@@ -934,10 +935,58 @@ export default function DashboardIncome() {
     }
   };
 
+  const buildIncomeReportInput = () => ({
+    rows: filtered.map((x) => {
+      const bookingMeta = rowBookingMeta(x);
+      const amountToShow = rowEffectiveAmount(x);
+      const noteText = formatIncomeNote(x.note);
+      return {
+        date: rowEffectiveDate(x),
+        invoiceRef: resolveDisplayBookingRef(x, bookingMeta),
+        clientName: resolveDisplayClientName(x, bookingMeta),
+        services: sourceLabel(x.source || ""),
+        employeeName: "-",
+        paymentMethod: methodLabel(x.method),
+        source: sourceLabel(x.source || ""),
+        totalAmount: bookingMeta?.totalAmount ?? amountToShow,
+        paidAmount: amountToShow,
+        remainingAmount: bookingMeta?.remainingAmount ?? 0,
+        status: amountToShow < 0 || isRefundIncomeRow(x) ? "استرجاع" : "نشط",
+        note: resolveDisplayNoteText(x, noteText),
+      };
+    }),
+    filters: {
+      fromDate: from || undefined,
+      toDate: to || undefined,
+      method: fMethod === "all" ? "الكل" : methodLabel(fMethod),
+      source: q.trim() ? `بحث: ${q.trim()}` : "الكل",
+    },
+    summary: {
+      totalRevenue: total,
+      cashRevenue: totalCash,
+      cardRevenue: totalCard,
+      transferRevenue: totalTransfer,
+      otherRevenue: totalOtherIncome,
+      refundTotal: totalRefund,
+      remainingTotal: filtered.reduce((sum, x) => sum + Number(rowBookingMeta(x)?.remainingAmount || 0), 0),
+    },
+    generatedBy: "لوحة الإيرادات",
+  });
+
   const exportCsv = () => {
     const csvRows = filtered.map((x) => ({ ...x, date: rowEffectiveDate(x) }));
     const csv = toCsv(csvRows);
     downloadTextFile(`income_${todayISO()}.csv`, csv);
+  };
+
+  const exportPdf = () => {
+    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    exportIncomeReportPdf(buildIncomeReportInput());
+  };
+
+  const exportExcel = () => {
+    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    exportIncomeReportExcel(buildIncomeReportInput());
   };
 
   const canFixPaymentMethods = uiRole === "owner" || uiRole === "admin";
@@ -988,6 +1037,26 @@ export default function DashboardIncome() {
               title="تصدير CSV"
             >
               <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
+            </button>
+
+            <button
+              className="dash-pill dash-pill-outline"
+              onClick={exportPdf}
+              type="button"
+              disabled={!filtered.length}
+              title="تصدير PDF"
+            >
+              <FontAwesomeIcon icon={faFileCsv} /> PDF
+            </button>
+
+            <button
+              className="dash-pill dash-pill-outline"
+              onClick={exportExcel}
+              type="button"
+              disabled={!filtered.length}
+              title="تصدير Excel"
+            >
+              <FontAwesomeIcon icon={faFileCsv} /> Excel
             </button>
 
             <button

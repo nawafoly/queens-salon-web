@@ -1,4 +1,4 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import { buildAttendanceReportData } from "../src/helpers/reports/exportAttendanceReport.ts";
 import {
@@ -10,6 +10,9 @@ import {
   createPdfDocument,
 } from "../src/helpers/reports/common.ts";
 import { buildStaffPerformanceReportData } from "../src/helpers/reports/exportStaffPerformanceReport.ts";
+import { buildIncomeReportData } from "../src/helpers/reports/exportIncomeReport.ts";
+import { buildExpensesReportData } from "../src/helpers/reports/exportExpensesReport.ts";
+import { buildFinancialOverviewReportData } from "../src/helpers/reports/exportFinancialOverviewReport.ts";
 import {
   calculatePayrollSnapshot,
 } from "../src/helpers/hr/payrollCalculations.ts";
@@ -200,7 +203,7 @@ test("report detail tables expose the required Arabic columns", () => {
 
 test("monthly payroll default export excludes incomplete payroll rows", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     filters: { year: 2026, month: 7 },
@@ -209,10 +212,10 @@ test("monthly payroll default export excludes incomplete payroll rows", () => {
   assert.equal(report.title, "مسيرة الرواتب الشهرية - الموظفات ذات الراتب");
   assert.equal(report.table.rows.length, 1);
   assert.equal(report.table.rows[0].employeeName, "مكتملة");
-  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), false);
+  assert.equal(report.table.rows.some((row) => row.employeeName === "موظفة مستبعدة للاختبار"), false);
   assert.equal(report.extraTables?.[0]?.name, "المستبعدون");
   assert.equal(report.extraTables?.[0]?.hideInPdf, true);
-  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "ناقصة");
+  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "موظفة مستبعدة للاختبار");
 });
 
 test("monthly payroll default export keeps completed salary rows even when net salary is zero", () => {
@@ -242,7 +245,7 @@ test("monthly payroll default export keeps completed salary rows even when net s
 test("monthly payroll totals ignore excluded incomplete rows", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
   const incomplete = payrollEntry({
-    employeeName: "ناقصة",
+    employeeName: "موظفة مستبعدة للاختبار",
     baseSalaryHalalas: 0,
     totalDeductionsHalalas: 999999,
   });
@@ -259,7 +262,7 @@ test("monthly payroll totals ignore excluded incomplete rows", () => {
 
 test("monthly payroll export can include incomplete rows explicitly", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     includeIncomplete: true,
@@ -267,7 +270,7 @@ test("monthly payroll export can include incomplete rows explicitly", () => {
     generatedAt: "2026-07-23T10:00:00.000Z",
   });
   assert.equal(report.table.rows.length, 2);
-  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), true);
+  assert.equal(report.table.rows.some((row) => row.employeeName === "موظفة مستبعدة للاختبار"), true);
   assert.equal(report.extraTables, undefined);
   assert.ok(report.period.includes("يشمل غير المكتمل"));
 });
@@ -275,15 +278,15 @@ test("monthly payroll export can include incomplete rows explicitly", () => {
 
 test("monthly payroll default export keeps excluded employee names out of the official detail table", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     filters: { year: 2026, month: 7 },
     generatedAt: "2026-07-23T10:00:00.000Z",
   });
   assert.equal(report.table.rows.length, 1);
-  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), false);
-  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "ناقصة");
+  assert.equal(report.table.rows.some((row) => row.employeeName === "موظفة مستبعدة للاختبار"), false);
+  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "موظفة مستبعدة للاختبار");
 });
 
 test("monthly payroll report shows the 21-to-20 accounting period when provided", () => {
@@ -308,7 +311,7 @@ test("monthly payroll report shows the 21-to-20 accounting period when provided"
 
 test("monthly payroll PDF does not render excluded rows as a table", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     filters: { year: 2026, month: 7 },
@@ -316,12 +319,12 @@ test("monthly payroll PDF does not render excluded rows as a table", () => {
   });
   const html = createPdfDocument(report);
   assert.equal(html.includes("المستبعدون"), false);
-  assert.equal(html.includes("ناقصة"), false);
+  assert.equal(html.includes("موظفة مستبعدة للاختبار"), false);
 });
 
 test("monthly payroll Excel puts excluded rows in a separate sheet when needed", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     filters: { year: 2026, month: 7 },
@@ -335,7 +338,7 @@ test("monthly payroll Excel puts excluded rows in a separate sheet when needed",
 
 test("monthly payroll report export count matches the official detail rows", () => {
   const complete = payrollEntry({ employeeName: "مكتملة" });
-  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const incomplete = payrollEntry({ employeeName: "موظفة مستبعدة للاختبار", baseSalaryHalalas: 0 });
   const report = buildPayrollReportData({
     entries: [complete, incomplete],
     filters: { year: 2026, month: 7 },
@@ -366,4 +369,86 @@ test("monthly payroll report marks unconfirmed attendance as non-deductible", ()
   });
   assert.equal(report.table.rows[0].missingDeduction, "لم يطبق");
   assert.match(report.table.rows[0].notes, /ربط البصمات/);
+});
+
+
+
+
+test("income report exposes PDF/Excel ready revenue details", () => {
+  const report = buildIncomeReportData({
+    rows: [
+      {
+        date: "2026-07-10",
+        invoiceRef: "MK-100",
+        clientName: "عميلة اختبار",
+        services: "استشوار",
+        employeeName: "موظفة اختبار",
+        paymentMethod: "كاش",
+        source: "حجز",
+        totalAmount: 300,
+        paidAmount: 300,
+        remainingAmount: 0,
+        status: "نشط",
+        note: "دفع كامل",
+      },
+    ],
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.summarySheetName, "ملخص الإيرادات");
+  assert.ok(report.table.columns.map((column) => column.header).includes("طريقة الدفع"));
+  assert.ok(report.table.columns.map((column) => column.header).includes("المتبقي"));
+  assert.equal(report.table.rows[0].clientName, "عميلة اختبار");
+});
+
+test("expenses report includes summary details and category sheet", () => {
+  const report = buildExpensesReportData({
+    rows: [
+      {
+        date: "2026-07-10",
+        type: "تشغيلي",
+        category: "منتجات",
+        title: "شراء منتجات",
+        amount: 250,
+        paymentMethod: "شبكة",
+        source: "تشغيل",
+        addedBy: "الإدارة",
+        note: "فاتورة مورد",
+      },
+    ],
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.summarySheetName, "ملخص المصروفات");
+  assert.ok(report.table.columns.map((column) => column.header).includes("التصنيف"));
+  assert.ok(report.extraTables?.some((table) => table.name === "المصروفات حسب التصنيف"));
+});
+
+test("financial overview report combines revenue expenses and trend sheets", () => {
+  const report = buildFinancialOverviewReportData({
+    revenueRows: [{ date: "2026-07-10", source: "حجز", mkRef: "MK-100", amount: 300, statusLabel: "نشط" }],
+    expenseRows: [{ date: "2026-07-10", category: "منتجات", title: "شراء", amount: 100, addedBy: "الإدارة" }],
+    trendRows: [{ label: "07", returns: 300, investments: 100 }],
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.summary.find((item) => item.label === "صافي الربح / الخسارة")?.value, 200);
+  assert.ok(report.extraTables?.some((table) => table.name === "تفاصيل الإيرادات"));
+  assert.ok(report.extraTables?.some((table) => table.name === "تفاصيل المصروفات"));
+  assert.ok(report.extraTables?.some((table) => table.name === "اتجاه الإيرادات والمصروفات"));
+});
+
+test("excel builder appends all extra tables with valid sheet names", () => {
+  const workbook = buildReportExcelWorkbook(
+    buildFinancialOverviewReportData({
+      revenueRows: [{ date: "2026-07-10", source: "حجز", amount: 300 }],
+      expenseRows: [{ date: "2026-07-10", category: "منتجات", amount: 100 }],
+      trendRows: [{ label: "07", returns: 300, investments: 100 }],
+      filters: { fromDate: "2026-07-01", toDate: "2026-07-31" },
+      generatedAt: "2026-07-23T10:00:00.000Z",
+    })
+  );
+  assert.ok(workbook.SheetNames.includes("ملخص التقرير"));
+  assert.ok(workbook.SheetNames.includes("تفاصيل الإيرادات"));
+  assert.ok(workbook.SheetNames.includes("تفاصيل المصروفات"));
 });

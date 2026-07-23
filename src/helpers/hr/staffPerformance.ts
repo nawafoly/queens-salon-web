@@ -1,4 +1,4 @@
-import type { AttendanceDisciplineMonthSummary } from "./attendanceDiscipline";
+﻿import type { AttendanceDisciplineMonthSummary } from "./attendanceDiscipline";
 
 export type StaffPerformanceFilters = {
   fromDate: string;
@@ -128,6 +128,7 @@ const EMPTY_ATTENDANCE: StaffPerformanceAttendanceSnapshot = {
   totalScheduledHours: 0,
   totalActualWorkedHours: 0,
   totalLateHours: 0,
+  totalEarlyLeaveHours: 0,
   totalCompensatedLateHours: 0,
   totalMissingHours: 0,
   totalExtraHours: 0,
@@ -542,3 +543,4 @@ export function calculateStaffPerformance(
     ],
   };
 }
+

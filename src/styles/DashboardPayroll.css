@@ -325,6 +325,36 @@
   white-space: normal;
 }
 
+.payroll-attendance-cell {
+  min-width: 260px;
+  white-space: normal !important;
+}
+
+.payroll-attendance-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.payroll-attendance-metrics span,
+.payroll-attendance-note-list span {
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 7px;
+  background: #f7f8fb;
+  color: #4b5568;
+  font-size: .68rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.payroll-attendance-note-list {
+  display: grid;
+  gap: 7px;
+}
+
 .payroll-setup-cell {
   min-width: 190px;
   white-space: normal;

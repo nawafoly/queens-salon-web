@@ -1,4 +1,4 @@
-import { CoreBookingService } from "./CoreBookingService";
+﻿import { CoreBookingService } from "./CoreBookingService";
 import { CoreStaffService } from "./CoreStaffService";
 import {
   fetchAttendanceRecordsFromWorker,
@@ -172,6 +172,7 @@ function summarizeAttendanceForEmployee(
       totalScheduledHours: 0,
       totalActualWorkedHours: 0,
       totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
       totalCompensatedLateHours: 0,
       totalMissingHours: 0,
       totalExtraHours: 0,
@@ -282,3 +283,4 @@ export const StaffPerformanceService = {
     });
   },
 };
+

@@ -50,16 +50,20 @@ export type PayrollAttendanceSummarySnapshot = {
   totalScheduledHours: number;
   totalActualWorkedHours: number;
   totalLateHours: number;
+  totalEarlyLeaveHours?: number;
   totalCompensatedLateHours: number;
   totalMissingHours: number;
   totalExtraHours: number;
   attendanceDays: number;
   absentDays: number;
   incompleteDays: number;
+  approvedLeaveDays?: number;
+  approvedAbsenceDays?: number;
   attendanceRecordCount?: number;
   attendanceLinkStatus?: "confirmed" | "unlinked" | "not_ready";
   attendanceDeductionEligible?: boolean;
   attendanceDeductionNote?: string | null;
+  attendanceNotes?: string[];
 };
 
 export type PayrollSetupMissingKey =
@@ -272,18 +276,24 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     totalScheduledHours: hours(input.attendanceSummary.totalScheduledHours),
     totalActualWorkedHours: hours(input.attendanceSummary.totalActualWorkedHours),
     totalLateHours: hours(input.attendanceSummary.totalLateHours),
+    totalEarlyLeaveHours: hours(input.attendanceSummary.totalEarlyLeaveHours),
     totalCompensatedLateHours: hours(input.attendanceSummary.totalCompensatedLateHours),
     totalMissingHours: clampHours(rawAttendanceMissingHours, maxDeductiblePeriodHours),
     totalExtraHours: hours(input.attendanceSummary.totalExtraHours),
     attendanceDays: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceDays || 0))),
     absentDays: Math.max(0, Math.round(Number(input.attendanceSummary.absentDays || 0))),
     incompleteDays: Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
+    approvedLeaveDays: Math.max(0, Math.round(Number(input.attendanceSummary.approvedLeaveDays || 0))),
+    approvedAbsenceDays: Math.max(0, Math.round(Number(input.attendanceSummary.approvedAbsenceDays || 0))),
     attendanceRecordCount: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceRecordCount || 0))),
     attendanceLinkStatus:
       input.attendanceSummary.attendanceLinkStatus ||
       (attendanceDeductionEligible ? "confirmed" : "unlinked"),
     attendanceDeductionEligible,
     attendanceDeductionNote,
+    attendanceNotes: Array.isArray(input.attendanceSummary.attendanceNotes)
+      ? input.attendanceSummary.attendanceNotes.map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
   };
 
   const additions = (input.additions || []).map((item) => ({

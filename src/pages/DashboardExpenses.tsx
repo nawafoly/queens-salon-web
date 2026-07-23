@@ -39,6 +39,7 @@ import {
   upsertExpenseFS,
   countMonthlyExpensesMissingNotesFS, // ✅ إضافة
 } from "../services/firestoreExpenses";
+import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
 
 type UiRole = "owner" | "admin" | "staff" | "client" | "guest";
 
@@ -937,6 +938,33 @@ const DashboardExpenses: React.FC = () => {
     }
   };
 
+  const buildExpensesReportInput = () => ({
+    rows: filtered.map((e) => ({
+      date: e.date,
+      type: expenseTypeLabel(e),
+      category: e.category,
+      title: e.title || e.note || "",
+      employeeName: expenseEmployeeLabel(e),
+      paymentMethod: String(e.paymentMethod || ""),
+      amount: Number(e.amount || 0),
+      source: expenseSourceLabel(e),
+      addedBy: String((e as any).createdByName || (e as any).addedBy || "الإدارة"),
+      payrollCycle:
+        payrollKindFromExpense(e) === "manual"
+          ? ""
+          : String(e.monthKey || payrollCycleKeyFromDate(e.date, PAYROLL_CLOSE_DAY) || ""),
+      note: e.note || "",
+    })),
+    filters: {
+      fromDate: activeRange.from,
+      toDate: activeRange.to,
+      category: fCategory,
+      paymentMethod: fPayment,
+      mode: recordMode === "payroll_cycle" ? "دورة رواتب" : "شهر تقويمي",
+    },
+    generatedBy: "لوحة المصروفات",
+  });
+
   const exportCsv = () => {
     if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
 
@@ -959,6 +987,16 @@ const DashboardExpenses: React.FC = () => {
     const csv = toCsv(rows);
     const filename = `expenses_${recordMode}_${selectedMonthKey}_${activeRange.from}_${activeRange.to}.csv`;
     downloadTextFile(filename, csv);
+  };
+
+  const exportPdf = () => {
+    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    exportExpensesReportPdf(buildExpensesReportInput());
+  };
+
+  const exportExcel = () => {
+    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
+    exportExpensesReportExcel(buildExpensesReportInput());
   };
 
   const addCategoryQuick = () => {
@@ -1071,7 +1109,27 @@ const DashboardExpenses: React.FC = () => {
             disabled={loading}
             title="CSV"
           >
-            <FontAwesomeIcon icon={faFileCsv} /> تصدير
+            <FontAwesomeIcon icon={faFileCsv} /> CSV
+          </button>
+
+          <button
+            className="reports-btn"
+            type="button"
+            onClick={exportPdf}
+            disabled={loading || !filtered.length}
+            title="PDF"
+          >
+            <FontAwesomeIcon icon={faFileCsv} /> PDF
+          </button>
+
+          <button
+            className="reports-btn"
+            type="button"
+            onClick={exportExcel}
+            disabled={loading || !filtered.length}
+            title="Excel"
+          >
+            <FontAwesomeIcon icon={faFileCsv} /> Excel
           </button>
         </div>
       </div>

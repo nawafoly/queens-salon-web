@@ -1,8 +1,10 @@
 import { CoreHrService } from "./CoreHrService";
 import type {
+  CoreAbsence,
   CoreAttendanceRecord,
   CoreHrEmployee,
   CoreHrSchedule,
+  CoreLeave,
   CorePayrollEntry,
   CorePayrollPeriod,
 } from "../types/hrCoreApi";
@@ -165,6 +167,160 @@ function uniqueTextKeys(values: unknown[]) {
   return Array.from(new Set(values.map(text).filter(Boolean)));
 }
 
+function readStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(text).filter(Boolean);
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(text).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+const WEEKDAY_KEY_BY_UTC_DAY = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function weeklyOffDays(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return new Set(
+    readStringList(
+      employment.weekly_off_days_json ??
+        employment.weeklyOffDaysJson ??
+        employment.weekly_off_days ??
+        employment.weeklyOffDays
+    ).map((item) => item.toLowerCase())
+  );
+}
+
+export function resolvePayrollAttendanceIdentity(employee: CoreHrEmployee | Record<string, unknown>) {
+  const raw = employee as CoreHrEmployee & Record<string, unknown>;
+  const employment =
+    raw.employment && typeof raw.employment === "object"
+      ? (raw.employment as Record<string, unknown>)
+      : {};
+  const keys = uniqueTextKeys([
+    raw.id,
+    raw.employeeId,
+    raw.firebaseUid,
+    raw.uid,
+    raw.authUid,
+    raw.linkedStaffId,
+    employment.employee_id,
+    employment.employeeId,
+    employment.firebase_uid,
+    employment.firebaseUid,
+    employment.uid,
+    employment.authUid,
+    employment.linkedStaffId,
+    employment.employee_code,
+    employment.employeeCode,
+    employment.fingerprint_number,
+    employment.fingerprintNumber,
+  ]);
+  return {
+    keys,
+    employeeId: text(raw.id || raw.employeeId || employment.employee_id || employment.employeeId) || null,
+    firebaseUid: text(raw.firebaseUid || raw.uid || raw.authUid || employment.firebase_uid || employment.firebaseUid) || null,
+    linkedStaffId: text(raw.linkedStaffId || employment.linkedStaffId) || null,
+  };
+}
+
+function employeeAttendanceKeys(employee: CoreHrEmployee) {
+  return resolvePayrollAttendanceIdentity(employee).keys;
+}
+
+function attendanceRecordKeys(record: CoreAttendanceRecord | Record<string, unknown>) {
+  const raw = record as CoreAttendanceRecord & Record<string, unknown>;
+  return uniqueTextKeys([
+    raw.employeeId,
+    raw.employeeUid,
+    raw.firebaseUid,
+    raw.uid,
+    raw.employeeDocId,
+    raw.employee_id,
+    raw.employee_uid,
+    raw.firebase_uid,
+    raw.employee_doc_id,
+  ]);
+}
+
+export function doesAttendanceRecordBelongToEmployee(
+  record: CoreAttendanceRecord | Record<string, unknown>,
+  employee: CoreHrEmployee | Record<string, unknown>
+) {
+  const employeeKeys = new Set(resolvePayrollAttendanceIdentity(employee).keys);
+  return attendanceRecordKeys(record).some((key) => employeeKeys.has(key));
+}
+
+function leaveMatchesEmployee(leave: CoreLeave, employee: CoreHrEmployee) {
+  return doesAttendanceRecordBelongToEmployee(
+    {
+      employeeId: leave.employeeId,
+      employeeUid: leave.employeeUid,
+    },
+    employee
+  );
+}
+
+function absenceMatchesEmployee(absence: CoreAbsence, employee: CoreHrEmployee) {
+  return doesAttendanceRecordBelongToEmployee(
+    {
+      employeeId: absence.employeeId,
+      employeeUid: absence.employeeUid,
+    },
+    employee
+  );
+}
+
+function dateSetForApprovedLeaves(leaves: CoreLeave[], employee: CoreHrEmployee, startDate: string, endDate: string) {
+  const dates = new Set<string>();
+  for (const leave of leaves) {
+    if (text(leave.status).toLowerCase() !== "approved") continue;
+    if (!leaveMatchesEmployee(leave, employee)) continue;
+    const from = leave.startDate > startDate ? leave.startDate : startDate;
+    const to = leave.endDate < endDate ? leave.endDate : endDate;
+    if (!from || !to || from > to) continue;
+    dateKeysInRange(from, to).forEach((date) => dates.add(date));
+  }
+  return dates;
+}
+
+function dateSetForAbsences(absences: CoreAbsence[], employee: CoreHrEmployee, startDate: string, endDate: string) {
+  const dates = new Set<string>();
+  for (const absence of absences) {
+    if (!absenceMatchesEmployee(absence, employee)) continue;
+    const date = text(absence.dateKey);
+    if (date && date >= startDate && date <= endDate) dates.add(date);
+  }
+  return dates;
+}
+
+function emptyAttendanceSummary(
+  status: "unlinked" | "not_ready",
+  notes: string[] = [ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE]
+): PayrollAttendanceSummarySnapshot {
+  return {
+    totalScheduledHours: 0,
+    totalActualWorkedHours: 0,
+    totalLateHours: 0,
+    totalEarlyLeaveHours: 0,
+    totalCompensatedLateHours: 0,
+    totalMissingHours: 0,
+    totalExtraHours: 0,
+    attendanceDays: 0,
+    absentDays: 0,
+    incompleteDays: 0,
+    approvedLeaveDays: 0,
+    approvedAbsenceDays: 0,
+    attendanceRecordCount: 0,
+    attendanceLinkStatus: status,
+    attendanceDeductionEligible: false,
+    attendanceDeductionNote: ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
+    attendanceNotes: notes,
+  };
+}
+
+/*
 function employeeAttendanceKeys(employee: CoreHrEmployee) {
   const employment = employmentOf(employee);
   return uniqueTextKeys([
@@ -188,6 +344,11 @@ function attendanceRecordKeys(record: CoreAttendanceRecord) {
 function attendanceRecordMatchesEmployee(record: CoreAttendanceRecord, employee: CoreHrEmployee) {
   const employeeKeys = new Set(employeeAttendanceKeys(employee));
   return attendanceRecordKeys(record).some((key) => employeeKeys.has(key));
+}
+*/
+
+function attendanceRecordMatchesEmployee(record: CoreAttendanceRecord, employee: CoreHrEmployee) {
+  return doesAttendanceRecordBelongToEmployee(record, employee);
 }
 
 function attendanceMetadata(recordCount: number) {
@@ -314,6 +475,7 @@ function employeePayrollOvertimeEnabled(employee: CoreHrEmployee) {
 
 function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
   const weekday = jsDateFromKey(dateKey).getUTCDay();
+  const offDays = weeklyOffDays(employee);
   const schedules = (employee.schedules || []).filter((schedule) => {
     if (schedule.active === false || Number((schedule as any).active) === 0) return false;
     if (Number(schedule.weekday) !== weekday) return false;
@@ -334,6 +496,9 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
   }
 
   const employment = employmentOf(employee);
+  if (offDays.has(WEEKDAY_KEY_BY_UTC_DAY[weekday]) || offDays.has(String(weekday))) {
+    return { enabled: false, start: null, end: null };
+  }
   return {
     enabled: true,
     start: text(employment.shift_start_time ?? employment.shiftStartTime) || DEFAULT_SHIFT_START,
@@ -341,9 +506,11 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
   };
 }
 
-function attendanceSummaryForEmployee(input: {
+export function buildPayrollAttendanceSummaryForEmployee(input: {
   employee: CoreHrEmployee;
   records: CoreAttendanceRecord[];
+  leaves?: CoreLeave[];
+  absences?: CoreAbsence[];
   year: number;
   month: number;
 }) {
@@ -354,6 +521,32 @@ function attendanceSummaryForEmployee(input: {
   const periodRecords = input.records.filter((record) =>
     isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
   );
+  if (!periodRecords.length) {
+    const identity = resolvePayrollAttendanceIdentity(input.employee);
+    return {
+      days,
+      summary: emptyAttendanceSummary(
+        identity.keys.length ? "not_ready" : "unlinked",
+        identity.keys.length
+          ? ["لا توجد بصمات مطابقة داخل فترة الراتب، لذلك لم يتم احتساب غياب أو خصم حضور تلقائي."]
+          : ["لا توجد مفاتيح كافية لربط الموظفة بسجلات البصمة."]
+      ),
+    };
+  }
+
+  const approvedLeaveDates = dateSetForApprovedLeaves(
+    input.leaves || [],
+    input.employee,
+    bounds.monthStart,
+    bounds.monthEnd
+  );
+  const approvedAbsenceDates = dateSetForAbsences(
+    input.absences || [],
+    input.employee,
+    bounds.monthStart,
+    bounds.monthEnd
+  );
+
   for (const record of periodRecords) {
     const list = recordsByDate.get(record.dateKey) || [];
     list.push(record);
@@ -374,9 +567,14 @@ function attendanceSummaryForEmployee(input: {
         scheduledStart: schedule.start,
         scheduledEnd: schedule.end,
         isScheduledWorkDay: schedule.enabled,
+        isApprovedLeave: approvedLeaveDates.has(date) || approvedAbsenceDates.has(date),
         checkInAt: firstCheckIn?.recordedAt,
         checkOutAt: lastCheckOut?.recordedAt,
-        isAbsent: schedule.enabled && !records.length,
+        isAbsent:
+          schedule.enabled &&
+          !records.length &&
+          !approvedLeaveDates.has(date) &&
+          !approvedAbsenceDates.has(date),
       })
     );
   }
@@ -385,6 +583,13 @@ function attendanceSummaryForEmployee(input: {
     days,
     summary: {
       ...(summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot),
+      approvedLeaveDays: approvedLeaveDates.size,
+      approvedAbsenceDays: approvedAbsenceDates.size,
+      attendanceNotes: [
+        ...(approvedLeaveDates.size ? [`${approvedLeaveDates.size} أيام إجازة معتمدة لم تدخل في خصم الحضور.`] : []),
+        ...(approvedAbsenceDates.size ? [`${approvedAbsenceDates.size} أيام غياب/استثناء معتمد لم تدخل في خصم الحضور.`] : []),
+        ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
+      ],
       ...attendanceMetadata(periodRecords.length),
     },
   };
@@ -645,9 +850,11 @@ export async function generatePayrollEntries(input: {
 }) {
   const bounds = payrollMonthBounds(input.year, input.month);
   const { payrollMonth } = bounds;
-  const [employees, attendance] = await Promise.all([
+  const [employees, attendance, leaves, absences] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
     CoreHrService.listAttendance(),
+    CoreHrService.listLeaves({ status: "approved" }),
+    CoreHrService.listAbsences(),
   ]);
   const existingMap = new Map(
     (input.currentEntries || [])
@@ -664,9 +871,11 @@ export async function generatePayrollEntries(input: {
       const employeeRecords = periodAttendanceRecords.filter((record) =>
         attendanceRecordMatchesEmployee(record, employee)
       );
-      const attendanceSnapshot = attendanceSummaryForEmployee({
+      const attendanceSnapshot = buildPayrollAttendanceSummaryForEmployee({
         employee,
         records: employeeRecords,
+        leaves,
+        absences,
         year: input.year,
         month: input.month,
       });

@@ -187,6 +187,15 @@ function attendanceDeductionMessage(entry: PayrollEntryView) {
   return entry.attendanceSummary.attendanceDeductionNote || "لم يتم تطبيق خصم الحضور لأن ربط البصمات غير مكتمل أو غير مؤكد.";
 }
 
+function attendanceLinkLabel(entry: PayrollEntryView) {
+  const status = entry.attendanceSummary.attendanceLinkStatus;
+  if (status === "confirmed") {
+    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - بصمة ناقصة" : "مؤكد";
+  }
+  if (status === "not_ready") return "غير جاهز";
+  return "غير مربوط";
+}
+
 function formatAttendanceDeduction(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) return UNDEFINED_VALUE_LABEL;
   return attendanceDeductionBlocked(entry)
@@ -657,7 +666,7 @@ export default function DashboardPayroll() {
               <th>الموظفة</th>
               <th>حالة إعداد الراتب</th>
               <th>الراتب الأساسي</th>
-              <th>نقص الساعات</th>
+              <th>ملخص الحضور</th>
               <th>الساعات الزائدة</th>
               <th>احتساب الأوفر تايم</th>
               <th>الإضافات</th>
@@ -720,8 +729,20 @@ export default function DashboardPayroll() {
                       </small>
                     ) : null}
                   </td>
-                  <td>
-                    <strong>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</strong>
+                  <td className="payroll-attendance-cell">
+                    <span className={`payroll-mini-badge ${attendanceBlocked ? "is-attendance-warning" : "is-exported"}`}>
+                      {attendanceLinkLabel(entry)}
+                    </span>
+                    <div className="payroll-attendance-metrics">
+                      <span>حضور {entry.attendanceSummary.attendanceDays}</span>
+                      <span>غياب {entry.attendanceSummary.absentDays}</span>
+                      <span>ناقصة {entry.attendanceSummary.incompleteDays}</span>
+                      <span>مطلوب {formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</span>
+                      <span>فعلي {formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</span>
+                      <span>تأخير {formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</span>
+                      <span>انصراف {formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</span>
+                      <span>نقص {formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</span>
+                    </div>
                     {attendanceBlocked ? <small className="payroll-attendance-note">معلومة فقط، بدون خصم تلقائي</small> : null}
                   </td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
@@ -888,18 +909,32 @@ function PayrollDetailsModal({
             <h3>ملخص الحضور</h3>
             <dl>
               <div><dt>أيام الحضور</dt><dd>{entry.attendanceSummary.attendanceDays}</dd></div>
-              <div><dt>حالة ربط الحضور</dt><dd>{attendanceDeductionBlocked(entry) ? "غير مربوط/غير مؤكد" : "مؤكد"}</dd></div>
+              <div><dt>حالة ربط الحضور</dt><dd>{attendanceLinkLabel(entry)}</dd></div>
               <div><dt>عدد البصمات المرتبطة</dt><dd>{entry.attendanceSummary.attendanceRecordCount || 0}</dd></div>
               <div><dt>أيام الغياب</dt><dd>{entry.attendanceSummary.absentDays}</dd></div>
+              <div><dt>أيام الإجازة المعتمدة</dt><dd>{entry.attendanceSummary.approvedLeaveDays || 0}</dd></div>
+              <div><dt>أيام الغياب/الاستثناء المعتمد</dt><dd>{entry.attendanceSummary.approvedAbsenceDays || 0}</dd></div>
               <div><dt>إجمالي ساعات الدوام المطلوبة</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</dd></div>
               <div><dt>إجمالي ساعات العمل الفعلية</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</dd></div>
               <div><dt>إجمالي التأخير الفعلي</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</dd></div>
+              <div><dt>إجمالي الانصراف المبكر</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</dd></div>
               <div><dt>إجمالي التعويض بعد الدوام</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalCompensatedLateHours)}</dd></div>
               <div><dt>إجمالي نقص الساعات</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</dd></div>
               <div><dt>أيام ناقصة البصمة</dt><dd>{entry.attendanceSummary.incompleteDays}</dd></div>
               <div><dt>إجمالي الساعات الزائدة المكتشفة</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
             </dl>
           </section>
+
+          {(entry.attendanceSummary.attendanceNotes || []).length ? (
+            <section>
+              <h3>ملاحظات الحضور</h3>
+              <div className="payroll-attendance-note-list">
+                {entry.attendanceSummary.attendanceNotes!.map((note, index) => (
+                  <span key={`${note}:${index}`}>{note}</span>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section>
             <h3>الاستحقاقات</h3>

@@ -23,11 +23,19 @@ import { formatAttendanceHours } from "../hr/attendanceDiscipline.ts";
 
 type PayrollReportRow = {
   employeeName: string;
+  payrollPeriod: string;
   setupStatus: string;
+  attendanceStatus: string;
   baseSalary: string | number;
   workDays: string | number;
   monthlyHours: string;
+  attendanceDays: number;
+  absentDays: number;
+  incompleteDays: number;
+  scheduledHours: string;
   actualWorkedHours: string;
+  lateHours: string;
+  earlyLeaveHours: string;
   dailyRate: string | number;
   hourlyRate: string | number;
   missingHours: string;
@@ -81,11 +89,19 @@ const MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
 
 const PAYROLL_COLUMNS: ReportColumn<PayrollReportRow>[] = [
   { key: "employeeName", header: "الموظفة", width: 24 },
+  { key: "payrollPeriod", header: "فترة الاحتساب", width: 24 },
   { key: "setupStatus", header: "حالة إعداد الراتب", width: 18 },
+  { key: "attendanceStatus", header: "حالة ربط الحضور", width: 18 },
   { key: "baseSalary", header: "الراتب الأساسي", width: 16 },
   { key: "workDays", header: "أيام العمل", width: 12 },
   { key: "monthlyHours", header: "ساعات الفترة", width: 13 },
+  { key: "attendanceDays", header: "أيام الحضور", width: 12 },
+  { key: "absentDays", header: "أيام الغياب", width: 12 },
+  { key: "incompleteDays", header: "أيام البصمة الناقصة", width: 18 },
+  { key: "scheduledHours", header: "الساعات المطلوبة", width: 16 },
   { key: "actualWorkedHours", header: "الساعات الفعلية", width: 14 },
+  { key: "lateHours", header: "ساعات التأخير", width: 14 },
+  { key: "earlyLeaveHours", header: "ساعات الانصراف المبكر", width: 20 },
   { key: "missingHours", header: "نقص الساعات", width: 13 },
   { key: "missingDeduction", header: "خصم الحضور", width: 14 },
   { key: "additions", header: "الإضافات", width: 14 },
@@ -144,7 +160,7 @@ function hoursValue(value: unknown, fallback = "غير متوفر") {
 }
 
 function setupNotes(entry: PayrollEntryView) {
-  const notes = [entry.notes || ""];
+  const notes = [entry.notes || "", ...(entry.attendanceSummary.attendanceNotes || [])];
   if (!entry.payrollSetupComplete) {
     notes.push(`غير مكتمل: ${setupMissingLabels(entry).join("، ")}`);
   }
@@ -160,14 +176,35 @@ function missingDeductionValue(entry: PayrollEntryView) {
   return halalasToRiyalsNumber(entry.missingHoursDeductionHalalas);
 }
 
-function buildPayrollRows(entries: PayrollEntryView[]): PayrollReportRow[] {
+function attendanceStatusLabel(entry: PayrollEntryView) {
+  const status = entry.attendanceSummary.attendanceLinkStatus;
+  if (status === "confirmed") {
+    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - توجد بصمة ناقصة" : "مؤكد";
+  }
+  if (status === "not_ready") return "غير جاهز";
+  return "غير مربوط";
+}
+
+function buildPayrollRows(entries: PayrollEntryView[], filters: PayrollReportFilters): PayrollReportRow[] {
+  const payrollPeriod =
+    filters.periodStartDate && filters.periodEndDate
+      ? `${filters.periodStartDate} إلى ${filters.periodEndDate}`
+      : formatMonthPeriod(filters.year, filters.month);
   return entries.map((entry) => ({
     employeeName: safeText(entry.employeeName),
+    payrollPeriod,
     setupStatus: entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل",
+    attendanceStatus: attendanceStatusLabel(entry),
     baseSalary: baseSalaryValue(entry),
     workDays: workDaysValue(entry),
     monthlyHours: entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل",
+    attendanceDays: entry.attendanceSummary.attendanceDays,
+    absentDays: entry.attendanceSummary.absentDays,
+    incompleteDays: entry.attendanceSummary.incompleteDays,
+    scheduledHours: hoursValue(entry.attendanceSummary.totalScheduledHours),
     actualWorkedHours: hoursValue(entry.attendanceSummary.totalActualWorkedHours),
+    lateHours: hoursValue(entry.attendanceSummary.totalLateHours),
+    earlyLeaveHours: hoursValue(entry.attendanceSummary.totalEarlyLeaveHours),
     dailyRate: riyalsOrIncomplete(entry, entry.dailyRateHalalas),
     hourlyRate: riyalsOrIncomplete(entry, entry.hourlyRateHalalas),
     missingHours: hoursValue(entry.attendanceSummary.totalMissingHours),
@@ -268,7 +305,7 @@ export function buildPayrollReportData(input: {
   const exportedEntries = includeIncomplete ? input.entries : input.entries.filter(isPayrollExportEligible);
   const generatedExcludedRows = includeIncomplete ? [] : input.entries.filter((entry) => !isPayrollExportEligible(entry)).map(excludedRowFor);
   const excludedRows = includeIncomplete ? [] : input.excludedRows ?? generatedExcludedRows;
-  const rows = buildPayrollRows(exportedEntries);
+  const rows = buildPayrollRows(exportedEntries, input.filters);
   const noEligibleRows = !includeIncomplete && rows.length === 0;
   return {
     title: includeIncomplete ? "مسيرة الرواتب الشهرية - مراجعة داخلية" : "مسيرة الرواتب الشهرية - الموظفات ذات الراتب",
@@ -323,10 +360,15 @@ function payslipRows(entry: PayrollEntryView): PayslipRow[] {
     { item: "الراتب الأساسي", value: entry.baseSalaryHalalas > 0 ? formatCurrency(halalasToRiyalsNumber(entry.baseSalaryHalalas)) : "غير مكتمل" },
     { item: "أيام العمل", value: workDaysValue(entry) },
     { item: "ساعات الفترة", value: entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل" },
+    { item: "حالة ربط الحضور", value: attendanceStatusLabel(entry) },
+    { item: "أيام الحضور", value: entry.attendanceSummary.attendanceDays },
+    { item: "أيام الغياب", value: entry.attendanceSummary.absentDays },
+    { item: "أيام البصمة الناقصة", value: entry.attendanceSummary.incompleteDays },
     { item: "الساعات الفعلية", value: formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours) },
     { item: "راتب اليوم", value: payslipValue(entry, entry.dailyRateHalalas) },
     { item: "راتب الساعة", value: payslipValue(entry, entry.hourlyRateHalalas) },
     { item: "التأخير", value: formatAttendanceHours(entry.attendanceSummary.totalLateHours) },
+    { item: "الانصراف المبكر", value: formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0) },
     { item: "نقص الساعات", value: formatAttendanceHours(entry.attendanceSummary.totalMissingHours) },
     { item: "خصم الحضور", value: missingDeductionValue(entry) },
     { item: "الساعات الزائدة", value: formatAttendanceHours(entry.detectedExtraHours) },

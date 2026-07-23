@@ -30,6 +30,7 @@ export type AttendanceDisciplineDaySummary = {
   scheduledHours: number;
   actualWorkedHours: number;
   lateHours: number;
+  earlyLeaveHours: number;
   compensatedLateHours: number;
   missingHours: number;
   extraHours: number;
@@ -43,6 +44,7 @@ export type AttendanceDisciplineMonthSummary = {
   totalScheduledHours: number;
   totalActualWorkedHours: number;
   totalLateHours: number;
+  totalEarlyLeaveHours: number;
   totalCompensatedLateHours: number;
   totalMissingHours: number;
   totalExtraHours: number;
@@ -219,6 +221,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: 0,
       extraHours: 0,
@@ -234,6 +237,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: 0,
       actualWorkedHours: 0,
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: 0,
       extraHours: 0,
@@ -249,6 +253,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: roundHours(scheduledMinutes),
       extraHours: 0,
@@ -264,6 +269,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: 0,
       extraHours: 0,
@@ -281,6 +287,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: 0,
       extraHours: 0,
@@ -298,6 +305,7 @@ export function calculateAttendanceDisciplineDay(
       scheduledHours: 0,
       actualWorkedHours: roundHours(actualMinutes),
       lateHours: 0,
+      earlyLeaveHours: 0,
       compensatedLateHours: 0,
       missingHours: 0,
       extraHours: roundHours(actualMinutes),
@@ -309,6 +317,7 @@ export function calculateAttendanceDisciplineDay(
   }
 
   const lateMinutes = Math.max(0, actualCheckInMinutes - scheduledStartMinutes!);
+  const earlyLeaveMinutes = Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes);
   const afterScheduleMinutes = Math.max(0, actualCheckOutMinutes - scheduledEndMinutes!);
   const compensatedLateMinutes = Math.min(lateMinutes, afterScheduleMinutes);
   const missingMinutes = Math.max(0, scheduledMinutes - actualMinutes);
@@ -324,6 +333,7 @@ export function calculateAttendanceDisciplineDay(
     scheduledHours: roundHours(scheduledMinutes),
     actualWorkedHours: roundHours(actualMinutes),
     lateHours: roundHours(lateMinutes),
+    earlyLeaveHours: roundHours(earlyLeaveMinutes),
     compensatedLateHours: roundHours(compensatedLateMinutes),
     missingHours: roundHours(missingMinutes),
     extraHours: roundHours(extraMinutes),
@@ -341,6 +351,7 @@ export function summarizeAttendanceDisciplineMonth(
     totalScheduledHours: 0,
     totalActualWorkedHours: 0,
     totalLateHours: 0,
+    totalEarlyLeaveHours: 0,
     totalCompensatedLateHours: 0,
     totalMissingHours: 0,
     totalExtraHours: 0,
@@ -353,6 +364,7 @@ export function summarizeAttendanceDisciplineMonth(
     summary.totalScheduledHours += day.scheduledHours;
     summary.totalActualWorkedHours += day.actualWorkedHours;
     summary.totalLateHours += day.lateHours;
+    summary.totalEarlyLeaveHours += day.earlyLeaveHours;
     summary.totalCompensatedLateHours += day.compensatedLateHours;
     summary.totalMissingHours += day.missingHours;
     summary.totalExtraHours += day.extraHours;
@@ -368,6 +380,7 @@ export function summarizeAttendanceDisciplineMonth(
     totalScheduledHours: Math.round(summary.totalScheduledHours * 100) / 100,
     totalActualWorkedHours: Math.round(summary.totalActualWorkedHours * 100) / 100,
     totalLateHours: Math.round(summary.totalLateHours * 100) / 100,
+    totalEarlyLeaveHours: Math.round(summary.totalEarlyLeaveHours * 100) / 100,
     totalCompensatedLateHours:
       Math.round(summary.totalCompensatedLateHours * 100) / 100,
     totalMissingHours: Math.round(summary.totalMissingHours * 100) / 100,
