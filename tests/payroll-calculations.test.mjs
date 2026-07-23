@@ -44,6 +44,20 @@ test("hourly rate uses monthlyHours when present", () => {
   assert.ok(Math.abs(result.hourlyRateHalalas / 100 - 26.442) < 0.01);
 });
 
+test("salary setup can use work days times daily hours as monthly hours", () => {
+  const result = snapshot({
+    baseSalaryHalalas: 300000,
+    workDays: 30,
+    monthlyHours: undefined,
+    dailyScheduledHours: 8,
+  });
+  assert.equal(result.monthlyHours, 240);
+  assert.equal(result.dailyRateHalalas, 10000);
+  assert.equal(result.hourlyRateHalalas, 1250);
+  assert.equal(result.payrollSetupComplete, true);
+  assert.equal(result.monthlyHoursSource, "configured_daily_hours");
+});
+
 test("one missing hour deducts one hourly rate", () => {
   const result = snapshot();
   assert.equal(result.missingHoursDeductionHalalas, result.hourlyRateHalalas);
@@ -54,11 +68,18 @@ test("detected extra hours do not become financial overtime by default", () => {
   assert.equal(result.detectedExtraHours, 2);
   assert.equal(result.financialOvertimeHours, 0);
   assert.equal(result.overtimeValueHalalas, 0);
+  assert.equal(result.payrollSetupComplete, true);
 });
 
 test("enabled overtime uses detected net extra hours and multiplier", () => {
   const result = snapshot({ overtimeEnabled: true, overtimeMultiplier: 1.5 });
   assert.equal(result.financialOvertimeHours, 2);
+  assert.equal(result.overtimeValueHalalas, Math.round(2 * result.hourlyRateHalalas * 1.5));
+});
+
+test("enabled overtime falls back to multiplier 1.5 when not configured", () => {
+  const result = snapshot({ overtimeEnabled: true, overtimeMultiplier: undefined });
+  assert.equal(result.overtimeMultiplier, 1.5);
   assert.equal(result.overtimeValueHalalas, Math.round(2 * result.hourlyRateHalalas * 1.5));
 });
 
@@ -86,10 +107,10 @@ test("monthly hours are not inferred from attendance summary", () => {
 
 test("configured daily hours can complete setup without monthlyHours", () => {
   const result = snapshot({ monthlyHours: undefined, dailyScheduledHours: 8 });
-  assert.equal(result.monthlyHours, 0);
+  assert.equal(result.monthlyHours, 240);
   assert.equal(result.payrollSetupComplete, true);
   assert.equal(result.monthlyHoursSource, "configured_daily_hours");
-  assert.equal(result.hourlyRateHalalas, Math.round(result.dailyRateHalalas / 8));
+  assert.equal(result.hourlyRateHalalas, Math.round(result.baseSalaryHalalas / 240));
 });
 
 test("enabled overtime is ignored when payroll setup is incomplete", () => {
@@ -114,4 +135,16 @@ test("setup evaluator reports core missing salary settings", () => {
   });
   assert.deepEqual(setup.missing, ["baseSalary", "workDays", "monthlyHours"]);
   assert.equal(setup.complete, false);
+});
+
+test("setup evaluator does not require overtime multiplier when salary setup is complete", () => {
+  const setup = evaluatePayrollSetup({
+    employeeId: "emp-1",
+    baseSalaryHalalas: 300000,
+    workDays: 30,
+    monthlyHours: 240,
+    overtimeMultiplier: undefined,
+  });
+  assert.deepEqual(setup.missing, []);
+  assert.equal(setup.complete, true);
 });

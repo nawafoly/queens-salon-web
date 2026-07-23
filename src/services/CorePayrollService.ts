@@ -111,7 +111,7 @@ function boolValue(value: unknown) {
 }
 
 function isPayrollSetupMissingKey(value: string): value is PayrollSetupMissingKey {
-  return ["employeeId", "baseSalary", "workDays", "monthlyHours", "overtimeMultiplier"].includes(value);
+  return ["employeeId", "baseSalary", "workDays", "monthlyHours"].includes(value);
 }
 
 function asMonthlyHoursSource(value: string): PayrollMonthlyHoursSource | null {
@@ -188,6 +188,16 @@ function explicitDailyScheduledHoursForMonth(employee: CoreHrEmployee, year: num
 function employeeOvertimeMultiplier(employee: CoreHrEmployee) {
   const employment = employmentOf(employee);
   return positiveNumber(employment.overtime_multiplier ?? employment.overtimeMultiplier) || 1.5;
+}
+
+function employeePayrollOvertimeEnabled(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return boolValue(
+    employment.overtime_enabled ??
+      employment.overtimeEnabled ??
+      employment.payroll_overtime_enabled ??
+      employment.payrollOvertimeEnabled
+  );
 }
 
 function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
@@ -306,8 +316,8 @@ function snapshotFromEmployee(input: {
     attendanceSummary: input.attendanceSummary,
     additions: input.existing?.additions || [],
     deductions: input.existing?.deductions || [],
-    overtimeEnabled: input.existing?.overtimeEnabled || false,
-    overtimeMultiplier: input.existing?.overtimeMultiplier || employeeOvertimeMultiplier(input.employee),
+    overtimeEnabled: employeePayrollOvertimeEnabled(input.employee),
+    overtimeMultiplier: employeeOvertimeMultiplier(input.employee),
     monthlyHoursSource,
     status: (input.existing?.status as PayrollStatus | undefined) || "draft",
     notes: input.existing?.notes || null,

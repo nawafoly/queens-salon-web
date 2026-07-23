@@ -5598,6 +5598,31 @@
   font-weight: 750 !important;
 }
 
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head em.is-complete {
+  background: rgba(29, 168, 106, 0.28);
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-head em.is-incomplete {
+  background: rgba(242, 184, 0, 0.22);
+}
+
 /* =========================================================
    Payroll form
    ========================================================= */
@@ -5650,6 +5675,50 @@
   .staff-payroll-form
   select {
   text-overflow: ellipsis;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-calculated {
+  display: grid;
+  min-height: 42px;
+  align-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px dashed #cfd7e4;
+  border-radius: 11px;
+  background: #f8fafc;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-calculated strong {
+  color: #172033;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-calculated small {
+  color: #758197;
+  font-size: 0.58rem;
+  font-weight: 850;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  color: #172033;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #8f294f;
 }
 
 /* الحقول أو التنبيهات الطويلة */
@@ -6700,6 +6769,27 @@
   border-radius: 13px;
 
   background: #ffffff;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-note.is-warning {
+  border-color: rgba(242, 184, 0, 0.52);
+  background: #fff9e7;
+  color: #8a5a0a;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-note.is-success {
+  border-color: rgba(29, 168, 106, 0.32);
+  background: #eefaf4;
+  color: #16764e;
+}
+
+.emp-editor-overlay.emp-editor-overlay--hr
+  .staff-payroll-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .emp-editor-overlay.emp-editor-overlay--hr

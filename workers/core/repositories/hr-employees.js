@@ -39,6 +39,33 @@ function jsonArray(value) {
   return '[]';
 }
 
+function optionalNumber(value, field) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    const error = new Error(`${field}_invalid`);
+    error.code = 'core_hr:invalid_number';
+    throw error;
+  }
+  return Math.round(numeric * 100) / 100;
+}
+
+function positiveNumber(value, fallback, field) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    const error = new Error(`${field}_invalid`);
+    error.code = 'core_hr:invalid_number';
+    throw error;
+  }
+  return Math.round(numeric * 100) / 100;
+}
+
+function payrollDeductionMethod(value) {
+  const clean = cleanText(value).toLowerCase();
+  return clean === 'daily' ? 'daily' : 'hourly';
+}
+
 async function employmentFor(db, salonId, employeeId) {
   return dbFirst(
     db,
@@ -126,6 +153,28 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     other_allowances_halalas: moneyHalalas(employmentInput.otherAllowancesHalalas ?? employmentInput.other_allowances_halalas ?? employmentInput.otherAllowances ?? employmentInput.allowances, 'otherAllowances'),
     expected_work_days: employmentInput.expectedWorkDays ?? employmentInput.expected_work_days ?? null,
     expected_work_hours: employmentInput.expectedWorkHours ?? employmentInput.expected_work_hours ?? null,
+    daily_scheduled_hours: optionalNumber(
+      employmentInput.dailyScheduledHours ??
+        employmentInput.daily_scheduled_hours ??
+        employmentInput.expectedDailyHours ??
+        employmentInput.expected_daily_hours,
+      'dailyScheduledHours'
+    ),
+    overtime_enabled: activeFlag(
+      employmentInput.overtimeEnabled ??
+        employmentInput.overtime_enabled ??
+        employmentInput.payrollOvertimeEnabled ??
+        employmentInput.payroll_overtime_enabled,
+      0
+    ),
+    overtime_multiplier: positiveNumber(
+      employmentInput.overtimeMultiplier ?? employmentInput.overtime_multiplier,
+      1.5,
+      'overtimeMultiplier'
+    ),
+    payroll_deduction_method: payrollDeductionMethod(
+      employmentInput.payrollDeductionMethod ?? employmentInput.payroll_deduction_method
+    ),
     shift_start_time: optionalText(employmentInput.shiftStartTime || employmentInput.shift_start_time) || null,
     shift_end_time: optionalText(employmentInput.shiftEndTime || employmentInput.shift_end_time) || null,
     weekly_off_days_json: jsonArray(employmentInput.weeklyOffDays || employmentInput.weekly_off_days_json),
@@ -156,9 +205,10 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         (salon_id, employee_id, title, job_title, department, employment_source, partner_id, partner_member_id,
          contract_id, start_date, leave_balance, base_salary_halalas, housing_allowance_halalas,
          transportation_allowance_halalas, other_allowances_halalas, expected_work_days, expected_work_hours,
+         daily_scheduled_hours, overtime_enabled, overtime_multiplier, payroll_deduction_method,
          shift_start_time, shift_end_time, weekly_off_days_json, allowed_zone_ids_json, employment_status,
          employee_code, fingerprint_number, admin_notes, updated_by_uid, updated_by_email, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(salon_id, employee_id) DO UPDATE SET
         title = excluded.title, job_title = excluded.job_title, department = excluded.department,
         employment_source = excluded.employment_source, partner_id = excluded.partner_id,
@@ -169,6 +219,10 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         transportation_allowance_halalas = excluded.transportation_allowance_halalas,
         other_allowances_halalas = excluded.other_allowances_halalas,
         expected_work_days = excluded.expected_work_days, expected_work_hours = excluded.expected_work_hours,
+        daily_scheduled_hours = excluded.daily_scheduled_hours,
+        overtime_enabled = excluded.overtime_enabled,
+        overtime_multiplier = excluded.overtime_multiplier,
+        payroll_deduction_method = excluded.payroll_deduction_method,
         shift_start_time = excluded.shift_start_time, shift_end_time = excluded.shift_end_time,
         weekly_off_days_json = excluded.weekly_off_days_json, allowed_zone_ids_json = excluded.allowed_zone_ids_json,
         employment_status = excluded.employment_status, employee_code = excluded.employee_code,

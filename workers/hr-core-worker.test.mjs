@@ -38,6 +38,7 @@ async function setup() {
     '0014_app_users_permissions.sql',
     '0015_employee_type.sql',
     '0016_payroll_snapshots.sql',
+    '0018_employee_payroll_settings.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')

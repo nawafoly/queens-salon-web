@@ -159,19 +159,11 @@ export function evaluatePayrollSetup(input: {
   const workDays = hours(input.workDays);
   const monthlyHours = hours(input.monthlyHours);
   const dailyScheduledHours = hours(input.dailyScheduledHours);
-  const rawOvertimeMultiplier = input.overtimeMultiplier;
-  const overtimeMultiplier =
-    rawOvertimeMultiplier === undefined || rawOvertimeMultiplier === null || rawOvertimeMultiplier === ""
-      ? 1.5
-      : Number(rawOvertimeMultiplier);
 
   if (!employeeId) missing.push("employeeId");
   if (baseSalaryHalalas <= 0) missing.push("baseSalary");
   if (workDays <= 0) missing.push("workDays");
   if (monthlyHours <= 0 && dailyScheduledHours <= 0) missing.push("monthlyHours");
-  if (!Number.isFinite(overtimeMultiplier) || overtimeMultiplier <= 0) {
-    missing.push("overtimeMultiplier");
-  }
 
   const configuredSource =
     input.monthlyHoursSource && input.monthlyHoursSource !== "missing"
@@ -195,19 +187,25 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
   const baseSalaryHalalas = money(input.baseSalaryHalalas);
   const allowancesHalalas = money(input.allowancesHalalas);
   const workDays = hours(input.workDays);
-  const monthlyHours = hours(input.monthlyHours);
+  const configuredMonthlyHours = hours(input.monthlyHours);
   const explicitDailyScheduledHours = hours(input.dailyScheduledHours);
   const dailyScheduledHours =
     explicitDailyScheduledHours > 0
       ? explicitDailyScheduledHours
-      : monthlyHours > 0 && workDays > 0
-        ? Math.round((monthlyHours / workDays) * 100) / 100
+      : configuredMonthlyHours > 0 && workDays > 0
+        ? Math.round((configuredMonthlyHours / workDays) * 100) / 100
+        : 0;
+  const monthlyHours =
+    configuredMonthlyHours > 0
+      ? configuredMonthlyHours
+      : workDays > 0 && dailyScheduledHours > 0
+        ? Math.round(workDays * dailyScheduledHours * 100) / 100
         : 0;
   const payrollSetup = evaluatePayrollSetup({
     employeeId: input.employeeId,
     baseSalaryHalalas,
     workDays,
-    monthlyHours,
+    monthlyHours: configuredMonthlyHours,
     dailyScheduledHours: explicitDailyScheduledHours,
     overtimeMultiplier: input.overtimeMultiplier,
     monthlyHoursSource: input.monthlyHoursSource,

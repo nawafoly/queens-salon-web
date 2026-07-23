@@ -46,6 +46,7 @@ import {
 } from "../services/firestoreLeaveBalance";
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
+import { CoreHrService } from "../services/CoreHrService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
   getTodayAttendanceDateKey,
@@ -185,6 +186,33 @@ import {
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
+}
+
+function positiveNumberOrZero(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function positiveInputString(value: unknown) {
+  const number = positiveNumberOrZero(value);
+  return number > 0 ? String(number) : "";
+}
+
+function booleanSetting(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function payrollDeductionMethodSetting(value: unknown): "hourly" | "daily" {
+  return cleanText(value).toLowerCase() === "daily" ? "daily" : "hourly";
+}
+
+function roundPayrollNumber(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function riyalsInputToHalalas(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) : 0;
 }
 
 function toDateTimeLocalValue(value: unknown) {
@@ -655,10 +683,16 @@ export default function DashboardEmployees() {
   const [modalHourOverrideUpdateExistingOnly, setModalHourOverrideUpdateExistingOnly] = useState(false);
   const [modalHourOverrideEditingDate, setModalHourOverrideEditingDate] = useState("");
   const [modalHourOverrideEditingGroupId, setModalHourOverrideEditingGroupId] = useState("");
-  const [monthlySalary, setMonthlySalary] = useState("0");
+  const [monthlySalary, setMonthlySalary] = useState("");
+  const [payrollMonthlyHours, setPayrollMonthlyHours] = useState("");
+  const [payrollOvertimeEnabled, setPayrollOvertimeEnabled] = useState(false);
+  const [payrollOvertimeMultiplier, setPayrollOvertimeMultiplier] = useState("1.5");
+  const [payrollDeductionMethod, setPayrollDeductionMethod] = useState<"hourly" | "daily">("hourly");
+  const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
+  const [payrollSettingsMessage, setPayrollSettingsMessage] = useState("");
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
-  const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("30");
-  const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("8");
+  const [overtimeDaysPerMonth, setOvertimeDaysPerMonth] = useState("");
+  const [overtimeBaseHoursPerDay, setOvertimeBaseHoursPerDay] = useState("");
   const [overtimeSeasonBaseHoursPerDay, setOvertimeSeasonBaseHoursPerDay] = useState("6");
   const [overtimeHoursBasis, setOvertimeHoursBasis] = useState<StaffOvertimeHoursBasis>("regular");
   const [overtimePercent, setOvertimePercent] = useState("25");
@@ -1314,10 +1348,15 @@ export default function DashboardEmployees() {
     setModalHourOverrideUpdateExistingOnly(false);
     setModalHourOverrideEditingDate("");
     setModalHourOverrideEditingGroupId("");
-    setMonthlySalary("0");
+    setMonthlySalary("");
+    setPayrollMonthlyHours("");
+    setPayrollOvertimeEnabled(false);
+    setPayrollOvertimeMultiplier("1.5");
+    setPayrollDeductionMethod("hourly");
+    setPayrollSettingsMessage("");
     setOvertimeMethod("hours_from_salary");
-    setOvertimeDaysPerMonth("30");
-    setOvertimeBaseHoursPerDay("8");
+    setOvertimeDaysPerMonth("");
+    setOvertimeBaseHoursPerDay("");
     setOvertimeSeasonBaseHoursPerDay("6");
     setOvertimeHoursBasis("regular");
     setOvertimePercent("25");
@@ -1391,10 +1430,46 @@ export default function DashboardEmployees() {
     setModalHourOverrideEditingDate("");
     setModalHourOverrideEditingGroupId("");
     const payrollCfg = normalizePayrollConfig(x as any);
-    setMonthlySalary(String(payrollCfg.monthlySalary || 0));
+    setMonthlySalary(positiveInputString((x as any).monthlySalary ?? payrollCfg.monthlySalary));
+    setPayrollMonthlyHours(
+      positiveInputString(
+        (x as any).payrollMonthlyHours ??
+          (x as any).expectedWorkHours ??
+          (x as any).expected_work_hours
+      )
+    );
+    setPayrollOvertimeEnabled(
+      booleanSetting(
+        (x as any).payrollOvertimeEnabled ??
+          (x as any).payroll_overtime_enabled ??
+          (x as any).overtimeEnabled ??
+          false
+      )
+    );
+    setPayrollOvertimeMultiplier(
+      positiveInputString((x as any).payrollOvertimeMultiplier ?? (x as any).overtimeMultiplier) || "1.5"
+    );
+    setPayrollDeductionMethod(
+      payrollDeductionMethodSetting((x as any).payrollDeductionMethod ?? (x as any).payroll_deduction_method)
+    );
+    setPayrollSettingsMessage("");
     setOvertimeMethod(payrollCfg.method);
-    setOvertimeDaysPerMonth(String(payrollCfg.daysPerMonth || 30));
-    setOvertimeBaseHoursPerDay(String(payrollCfg.baseHoursPerDay || 8));
+    setOvertimeDaysPerMonth(
+      positiveInputString(
+        (x as any).payrollWorkDays ??
+          (x as any).expectedWorkDays ??
+          (x as any).expected_work_days ??
+          (x as any).overtimeDaysPerMonth
+      )
+    );
+    setOvertimeBaseHoursPerDay(
+      positiveInputString(
+        (x as any).payrollDailyHours ??
+          (x as any).dailyScheduledHours ??
+          (x as any).daily_scheduled_hours ??
+          (x as any).overtimeBaseHoursPerDay
+      )
+    );
     setOvertimeSeasonBaseHoursPerDay(String(payrollCfg.seasonBaseHoursPerDay || 6));
     setOvertimeHoursBasis(payrollCfg.hoursBasis || "regular");
     setOvertimePercent(String(payrollCfg.overtimePercent || 0));
@@ -1428,6 +1503,56 @@ export default function DashboardEmployees() {
     setActiveTab(routeSection);
     if (["basic", "profile", "services", "booking"].includes(routeSection)) setModalTab(routeSection as EmployeeModalTab);
   }, [editId, list, loading, navigate, routeEmployeeId, routeSection]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId || activeTab !== "payroll" || !canViewPayroll) return;
+    let cancelled = false;
+    CoreHrService.getEmployee(selectedEmployeeId)
+      .then((coreEmployee) => {
+        if (cancelled) return;
+        const employment = (coreEmployee.employment || {}) as Record<string, unknown>;
+        const baseSalaryHalalas = positiveNumberOrZero(
+          employment.base_salary_halalas ?? employment.baseSalaryHalalas
+        );
+        if (baseSalaryHalalas > 0) {
+          setMonthlySalary(String(roundPayrollNumber(baseSalaryHalalas / 100)));
+        }
+        setOvertimeDaysPerMonth(
+          positiveInputString(employment.expected_work_days ?? employment.expectedWorkDays)
+        );
+        setPayrollMonthlyHours(
+          positiveInputString(employment.expected_work_hours ?? employment.expectedWorkHours)
+        );
+        setOvertimeBaseHoursPerDay(
+          positiveInputString(
+            employment.daily_scheduled_hours ??
+              employment.dailyScheduledHours ??
+              employment.expected_daily_hours ??
+              employment.expectedDailyHours
+          )
+        );
+        setPayrollOvertimeEnabled(
+          booleanSetting(
+            employment.overtime_enabled ??
+              employment.overtimeEnabled ??
+              employment.payroll_overtime_enabled ??
+              employment.payrollOvertimeEnabled
+          )
+        );
+        setPayrollOvertimeMultiplier(
+          positiveInputString(employment.overtime_multiplier ?? employment.overtimeMultiplier) || "1.5"
+        );
+        setPayrollDeductionMethod(
+          payrollDeductionMethodSetting(employment.payroll_deduction_method ?? employment.payrollDeductionMethod)
+        );
+      })
+      .catch((error) => {
+        console.warn("Failed to load Core payroll settings for employee:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, canViewPayroll, selectedEmployeeId]);
 
   const closeModal = () => {
     setIsOpen(false);
@@ -1657,6 +1782,10 @@ export default function DashboardEmployees() {
               ? combined.allowedZoneIds.map(cleanText).filter(Boolean)
               : [],
             monthlySalary: payrollCfg.monthlySalary,
+            payrollMonthlyHours: positiveNumberOrZero(combined?.payrollMonthlyHours ?? combined?.expectedWorkHours ?? combined?.expected_work_hours),
+            payrollOvertimeEnabled: booleanSetting(combined?.payrollOvertimeEnabled ?? combined?.payroll_overtime_enabled ?? combined?.overtimeEnabled),
+            payrollOvertimeMultiplier: positiveNumberOrZero(combined?.payrollOvertimeMultiplier ?? combined?.overtimeMultiplier) || 1.5,
+            payrollDeductionMethod: payrollDeductionMethodSetting(combined?.payrollDeductionMethod ?? combined?.payroll_deduction_method),
             overtimeMethod: payrollCfg.method,
             overtimeDaysPerMonth: payrollCfg.daysPerMonth,
             overtimeBaseHoursPerDay: payrollCfg.baseHoursPerDay,
@@ -2061,6 +2190,93 @@ export default function DashboardEmployees() {
     );
   };
 
+  const savePayrollSettings = async () => {
+    if (!canManagePayroll) {
+      setErrorMsg("ليست لديك صلاحية لإدارة الرواتب.");
+      return;
+    }
+    const targetEmployeeId = cleanText(selectedEmployeeId || editId || routeEmployeeId);
+    const currentEmployee = editingStaff || selectedEmployee;
+    if (!targetEmployeeId || !currentEmployee) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
+      return;
+    }
+    const cleanName = cleanText(name || currentEmployee.name || targetEmployeeId);
+    if (!cleanName) {
+      setErrorMsg("اكتب اسم الموظفة قبل حفظ إعدادات الراتب.");
+      return;
+    }
+
+    setPayrollSettingsSaving(true);
+    setErrorMsg("");
+    setPayrollSettingsMessage("");
+    try {
+      const existingCoreEmployee = await CoreHrService.getEmployee(targetEmployeeId).catch(() => null);
+      const existingEmployment = (existingCoreEmployee?.employment || {}) as Record<string, unknown>;
+      const baseSalaryHalalas = riyalsInputToHalalas(monthlySalary);
+      const workDays = payrollSettingsPreview.workDays > 0 ? payrollSettingsPreview.workDays : null;
+      const dailyHours = payrollSettingsPreview.dailyHours > 0 ? payrollSettingsPreview.dailyHours : null;
+      const monthlyHours = payrollSettingsPreview.monthlyHours > 0 ? payrollSettingsPreview.monthlyHours : null;
+      const overtimeMultiplier = payrollOvertimeEnabled
+        ? positiveNumberOrZero(payrollOvertimeMultiplier) || 1.5
+        : 1.5;
+      const employment = {
+        ...existingEmployment,
+        title: cleanText((currentEmployee as any).title || (currentEmployee as any).jobTitle || existingEmployment.title),
+        jobTitle: cleanText((currentEmployee as any).jobTitle || (currentEmployee as any).title || existingEmployment.job_title || existingEmployment.jobTitle),
+        department: cleanText((currentEmployee as any).department || existingEmployment.department),
+        employmentStatus: active ? "active" : "inactive",
+        baseSalaryHalalas,
+        expectedWorkDays: workDays,
+        expectedWorkHours: monthlyHours,
+        dailyScheduledHours: dailyHours,
+        overtimeEnabled: payrollOvertimeEnabled,
+        overtimeMultiplier,
+        payrollDeductionMethod,
+      };
+      await CoreHrService.saveEmployee({
+        id: targetEmployeeId,
+        name: cleanName,
+        firebaseUid: cleanText((currentEmployee as any).linkedUid || (currentEmployee as any).uid || (currentEmployee as any).employeeUid),
+        email: cleanText((currentEmployee as any).email),
+        phone: cleanText((currentEmployee as any).phone),
+        status: active ? "active" : "inactive",
+        employment,
+      });
+
+      const compatibilityPatch = {
+        monthlySalary: payrollSettingsPreview.baseSalaryRiyals,
+        payrollMonthlyHours: monthlyHours || 0,
+        payrollOvertimeEnabled,
+        payrollOvertimeMultiplier: overtimeMultiplier,
+        payrollDeductionMethod,
+        overtimeDaysPerMonth: workDays || 0,
+        overtimeBaseHoursPerDay: dailyHours || 0,
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(staffPublicDoc(targetEmployeeId), compatibilityPatch, { merge: true }).catch((error) => {
+        console.warn("Saving payroll compatibility fields to staff_public failed:", error);
+      });
+
+      setList((current) =>
+        current.map((employee) =>
+          employee.id === targetEmployeeId
+            ? {
+                ...employee,
+                ...compatibilityPatch,
+                updatedAt: employee.updatedAt,
+              }
+            : employee
+        )
+      );
+      setPayrollSettingsMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب."));
+    } finally {
+      setPayrollSettingsSaving(false);
+    }
+  };
+
   const save = async () => {
     if (!ensureCanManage()) return;
     const cleanName = name.trim();
@@ -2166,10 +2382,16 @@ export default function DashboardEmployees() {
       attendanceScopeId: normalizedAttendanceZoneId,
       allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
       monthlySalary: safeNonNegativeNumber(monthlySalary, 0),
+      payrollMonthlyHours: payrollSettingsPreview.monthlyHours,
+      payrollOvertimeEnabled,
+      payrollOvertimeMultiplier: payrollOvertimeEnabled
+        ? positiveNumberOrZero(payrollOvertimeMultiplier) || 1.5
+        : 1.5,
+      payrollDeductionMethod,
       overtimeMethod:
         overtimeMethod === "invoice_percentage" ? "invoice_percentage" : "hours_from_salary",
-      overtimeDaysPerMonth: Math.max(1, safeNonNegativeNumber(overtimeDaysPerMonth, 30)),
-      overtimeBaseHoursPerDay: Math.max(1, safeNonNegativeNumber(overtimeBaseHoursPerDay, 8)),
+      overtimeDaysPerMonth: safeNonNegativeNumber(overtimeDaysPerMonth, 0),
+      overtimeBaseHoursPerDay: safeNonNegativeNumber(overtimeBaseHoursPerDay, 0),
       overtimeSeasonBaseHoursPerDay: Math.max(
         1,
         safeNonNegativeNumber(overtimeSeasonBaseHoursPerDay, 6)
@@ -3258,6 +3480,39 @@ export default function DashboardEmployees() {
     () => (editingStaff ? staffScheduleSummary.find((x) => x.id === editingStaff.id) || null : null),
     [editingStaff, staffScheduleSummary]
   );
+  const payrollSettingsPreview = useMemo(() => {
+    const baseSalaryRiyals = positiveNumberOrZero(monthlySalary);
+    const workDays = positiveNumberOrZero(overtimeDaysPerMonth);
+    const dailyHours = positiveNumberOrZero(overtimeBaseHoursPerDay);
+    const manualMonthlyHours = positiveNumberOrZero(payrollMonthlyHours);
+    const computedMonthlyHours =
+      manualMonthlyHours > 0
+        ? manualMonthlyHours
+        : workDays > 0 && dailyHours > 0
+          ? roundPayrollNumber(workDays * dailyHours)
+          : 0;
+    const missing: string[] = [];
+    if (baseSalaryRiyals <= 0) missing.push("الراتب الأساسي غير محدد");
+    if (workDays <= 0) missing.push("أيام العمل غير محددة");
+    if (computedMonthlyHours <= 0) missing.push("ساعات العمل غير محددة");
+    const dailyRateRiyals = baseSalaryRiyals > 0 && workDays > 0
+      ? roundPayrollNumber(baseSalaryRiyals / workDays)
+      : 0;
+    const hourlyRateRiyals = baseSalaryRiyals > 0 && computedMonthlyHours > 0
+      ? roundPayrollNumber(baseSalaryRiyals / computedMonthlyHours)
+      : 0;
+    return {
+      baseSalaryRiyals,
+      workDays,
+      dailyHours,
+      monthlyHours: computedMonthlyHours,
+      monthlyHoursSource: manualMonthlyHours > 0 ? "manual" as const : computedMonthlyHours > 0 ? "computed" as const : "missing" as const,
+      dailyRateRiyals,
+      hourlyRateRiyals,
+      complete: missing.length === 0,
+      missing,
+    };
+  }, [monthlySalary, overtimeBaseHoursPerDay, overtimeDaysPerMonth, payrollMonthlyHours]);
   const modalPayrollMonthSummary = useMemo(() => {
     if (!editingStaff) return null;
     const monthStats = bookingStats[editingStaff.id]?.month;
@@ -4382,22 +4637,26 @@ export default function DashboardEmployees() {
                 currentMonthKeyLabel={currentMonthKey()}
                 payroll={{
                   monthlySalary,
-                  overtimeMethod,
-                  overtimeDaysPerMonth,
-                  overtimeBaseHoursPerDay,
-                  overtimeSeasonBaseHoursPerDay,
-                  overtimeHoursBasis,
-                  overtimePercent,
-                  overtimeInvoicePercent,
+                  workDays: overtimeDaysPerMonth,
+                  dailyHours: overtimeBaseHoursPerDay,
+                  monthlyHours: payrollMonthlyHours,
+                  overtimeEnabled: payrollOvertimeEnabled,
+                  overtimeMultiplier: payrollOvertimeMultiplier,
+                  deductionMethod: payrollDeductionMethod,
                   summary: modalPayrollMonthSummary,
+                  setupPreview: payrollSettingsPreview,
+                  savingSettings: payrollSettingsSaving,
+                  settingsMessage: payrollSettingsMessage,
                   onMonthlySalaryChange: setMonthlySalary,
-                  onOvertimeMethodChange: setOvertimeMethod,
-                  onOvertimeDaysPerMonthChange: setOvertimeDaysPerMonth,
-                  onOvertimeBaseHoursPerDayChange: setOvertimeBaseHoursPerDay,
-                  onOvertimeSeasonBaseHoursPerDayChange: setOvertimeSeasonBaseHoursPerDay,
-                  onOvertimeHoursBasisChange: setOvertimeHoursBasis,
-                  onOvertimePercentChange: setOvertimePercent,
-                  onOvertimeInvoicePercentChange: setOvertimeInvoicePercent,
+                  onWorkDaysChange: setOvertimeDaysPerMonth,
+                  onDailyHoursChange: setOvertimeBaseHoursPerDay,
+                  onMonthlyHoursChange: setPayrollMonthlyHours,
+                  onOvertimeEnabledChange: setPayrollOvertimeEnabled,
+                  onOvertimeMultiplierChange: setPayrollOvertimeMultiplier,
+                  onDeductionMethodChange: setPayrollDeductionMethod,
+                  onSaveSettings: () => {
+                    void savePayrollSettings();
+                  },
                 }}
                 leave={{
                   modalOnLeave,

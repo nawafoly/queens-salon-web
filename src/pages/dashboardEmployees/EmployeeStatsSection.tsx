@@ -50,6 +50,18 @@ type PayrollSummary = {
   };
 } | null;
 
+type PayrollSetupPreview = {
+  baseSalaryRiyals: number;
+  workDays: number;
+  dailyHours: number;
+  monthlyHours: number;
+  monthlyHoursSource: "manual" | "computed" | "missing";
+  dailyRateRiyals: number;
+  hourlyRateRiyals: number;
+  complete: boolean;
+  missing: string[];
+};
+
 type EmployeeStatsSectionProps = {
   isVisible: boolean;
   busy: boolean;
@@ -63,22 +75,24 @@ type EmployeeStatsSectionProps = {
   currentMonthKeyLabel: string;
   payroll: {
     monthlySalary: string;
-    overtimeMethod: StaffPayrollMethod;
-    overtimeDaysPerMonth: string;
-    overtimeBaseHoursPerDay: string;
-    overtimeSeasonBaseHoursPerDay: string;
-    overtimeHoursBasis: StaffOvertimeHoursBasis;
-    overtimePercent: string;
-    overtimeInvoicePercent: string;
+    workDays: string;
+    dailyHours: string;
+    monthlyHours: string;
+    overtimeEnabled: boolean;
+    overtimeMultiplier: string;
+    deductionMethod: "hourly" | "daily";
     summary: PayrollSummary;
+    setupPreview: PayrollSetupPreview;
+    savingSettings: boolean;
+    settingsMessage?: string;
     onMonthlySalaryChange: (value: string) => void;
-    onOvertimeMethodChange: (value: StaffPayrollMethod) => void;
-    onOvertimeDaysPerMonthChange: (value: string) => void;
-    onOvertimeBaseHoursPerDayChange: (value: string) => void;
-    onOvertimeSeasonBaseHoursPerDayChange: (value: string) => void;
-    onOvertimeHoursBasisChange: (value: StaffOvertimeHoursBasis) => void;
-    onOvertimePercentChange: (value: string) => void;
-    onOvertimeInvoicePercentChange: (value: string) => void;
+    onWorkDaysChange: (value: string) => void;
+    onDailyHoursChange: (value: string) => void;
+    onMonthlyHoursChange: (value: string) => void;
+    onOvertimeEnabledChange: (value: boolean) => void;
+    onOvertimeMultiplierChange: (value: string) => void;
+    onDeductionMethodChange: (value: "hourly" | "daily") => void;
+    onSaveSettings: () => void;
   };
   leave: {
     modalOnLeave: boolean;
@@ -146,6 +160,14 @@ export default function EmployeeStatsSection({
 
   const currentLeaveBalance = parsePositiveInt(String(leaveBalanceDays || 0), 0);
   const currentLeaveBalanceLabel = loading ? "جاري التحميل..." : `${currentLeaveBalance} يوم`;
+  const payrollSetup = payroll.setupPreview;
+  const payrollSetupStatusLabel = payrollSetup.complete ? "مكتمل" : "غير مكتمل";
+  const payrollMonthlyHoursLabel =
+    payrollSetup.monthlyHours > 0 ? `${fmtMoneySar(payrollSetup.monthlyHours)} ساعة` : "غير محدد";
+  const payrollDailyRateLabel =
+    payrollSetup.dailyRateRiyals > 0 ? `${fmtMoneySar(payrollSetup.dailyRateRiyals)} ر.س` : "غير محدد";
+  const payrollHourlyRateLabel =
+    payrollSetup.hourlyRateRiyals > 0 ? `${fmtMoneySar(payrollSetup.hourlyRateRiyals)} ر.س` : "غير محدد";
 
   return (
     <div className="emp-modal-section">
@@ -165,14 +187,19 @@ export default function EmployeeStatsSection({
 
       <div className="emp-stats-stack">
       {showPayrollSubTab ? (
-        <div className="staff-payroll-box">
+        <div className="staff-payroll-box" id="payroll-settings">
           <div className="staff-payroll-head">
-            <b>الراتب + الأوفر تايم</b>
-            <span>يدخل تلقائيًا ضمن المصروفات والتقارير</span>
+            <div>
+              <b>الراتب والدوام</b>
+              <span>هذه الإعدادات تُستخدم في مسيرات الرواتب الشهرية.</span>
+            </div>
+            <em className={payrollSetup.complete ? "is-complete" : "is-incomplete"}>
+              {payrollSetupStatusLabel}
+            </em>
           </div>
           <div className="staff-payroll-form">
             <div className="dash-field">
-              <label className="emp-label">الراتب الشهري (ريال)</label>
+              <label className="emp-label">الراتب الأساسي الشهري (ريال)</label>
               <input
                 className="dash-input"
                 type="number"
@@ -181,194 +208,153 @@ export default function EmployeeStatsSection({
                 value={payroll.monthlySalary}
                 disabled={busy || !canManagePayroll}
                 onChange={(e) => payroll.onMonthlySalaryChange(e.target.value)}
-                placeholder="مثال: 5000"
+                placeholder="مثال: 3000"
               />
             </div>
             <div className="dash-field">
-              <label className="emp-label">طريقة احتساب الأوفر تايم</label>
-                            <EmployeeSelect
-                value={payroll.overtimeMethod}
+              <label className="emp-label">أيام العمل الشهرية المعتمدة</label>
+              <input
+                className="dash-input"
+                type="number"
+                min={0}
+                step={1}
+                value={payroll.workDays}
                 disabled={busy || !canManagePayroll}
-                ariaLabel="طريقة احتساب الأوفر تايم"
-                options={[
-                  {
-                    value: "hours_from_salary",
-                    label: "من الراتب + الساعات الإضافية",
-                  },
-                  {
-                    value: "invoice_percentage",
-                    label: "نسبة من فواتير الموظفة",
-                  },
-                ]}
-                onChange={(value) =>
-                  payroll.onOvertimeMethodChange(
-                    value as StaffPayrollMethod
-                  )
-                }
+                onChange={(e) => payroll.onWorkDaysChange(e.target.value)}
+                placeholder="مثال: 30"
               />
             </div>
-            {payroll.overtimeMethod === "hours_from_salary" ? (
-              <>
-                <div className="dash-field">
-                  <label className="emp-label">عدد الأيام للتقسيم الشهري</label>
-                  <input
-                    className="dash-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={payroll.overtimeDaysPerMonth}
-                    disabled={busy || !canManagePayroll}
-                    onChange={(e) => payroll.onOvertimeDaysPerMonthChange(e.target.value)}
-                    placeholder="مثال: 30"
-                  />
-                </div>
-                <div className="dash-field">
-                  <label className="emp-label">الساعات الأساسية اليومية (العادي)</label>
-                  <input
-                    className="dash-input"
-                    type="number"
-                    min={1}
-                    step="0.25"
-                    value={payroll.overtimeBaseHoursPerDay}
-                    disabled={busy || !canManagePayroll}
-                    onChange={(e) => payroll.onOvertimeBaseHoursPerDayChange(e.target.value)}
-                    placeholder="مثال: 8"
-                  />
-                </div>
-                <div className="dash-field">
-                  <label className="emp-label">الساعات الأساسية اليومية (الموسم)</label>
-                  <input
-                    className="dash-input"
-                    type="number"
-                    min={1}
-                    step="0.25"
-                    value={payroll.overtimeSeasonBaseHoursPerDay}
-                    disabled={busy || !canManagePayroll}
-                    onChange={(e) => payroll.onOvertimeSeasonBaseHoursPerDayChange(e.target.value)}
-                    placeholder="مثال: 6"
-                  />
-                </div>
-                <div className="dash-field">
-                  <label className="emp-label">أساس حساب الأوفر تايم</label>
-                                    <EmployeeSelect
-                    value={payroll.overtimeHoursBasis}
-                    disabled={busy || !canManagePayroll}
-                    ariaLabel="أساس حساب الأوفر تايم"
-                    options={[
-                      {
-                        value: "regular",
-                        label: "الأيام العادية",
-                      },
-                      {
-                        value: "season",
-                        label: "الموسم",
-                      },
-                    ]}
-                    onChange={(value) =>
-                      payroll.onOvertimeHoursBasisChange(
-                        value === "season"
-                          ? "season"
-                          : "regular"
-                      )
-                    }
-                  />
-                </div>
-                <div className="dash-field">
-                  <label className="emp-label">نسبة زيادة الأوفر تايم (%)</label>
-                  <input
-                    className="dash-input"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={payroll.overtimePercent}
-                    disabled={busy || !canManagePayroll}
-                    onChange={(e) => payroll.onOvertimePercentChange(e.target.value)}
-                    placeholder="مثال: 25"
-                  />
-                </div>
-              </>
-            ) : (
+            <div className="dash-field">
+              <label className="emp-label">ساعات العمل اليومية</label>
+              <input
+                className="dash-input"
+                type="number"
+                min={0}
+                step="0.25"
+                value={payroll.dailyHours}
+                disabled={busy || !canManagePayroll}
+                onChange={(e) => payroll.onDailyHoursChange(e.target.value)}
+                placeholder="مثال: 8"
+              />
+            </div>
+            <div className="dash-field">
+              <label className="emp-label">ساعات الشهر المعتمدة</label>
+              <input
+                className="dash-input"
+                type="number"
+                min={0}
+                step="0.25"
+                value={payroll.monthlyHours}
+                disabled={busy || !canManagePayroll}
+                onChange={(e) => payroll.onMonthlyHoursChange(e.target.value)}
+                placeholder="اتركيه فارغًا للحساب التلقائي"
+              />
+            </div>
+            <div className="dash-field">
+              <label className="emp-label">ساعات الشهر المحسوبة</label>
+              <div className="staff-payroll-calculated">
+                <strong>{payrollMonthlyHoursLabel}</strong>
+                <small>
+                  {payrollSetup.monthlyHoursSource === "manual"
+                    ? "مدخلة يدويًا"
+                    : payrollSetup.monthlyHoursSource === "computed"
+                      ? "من أيام العمل × ساعات اليوم"
+                      : "تحتاج أيام العمل وساعات اليوم أو ساعات الشهر"}
+                </small>
+              </div>
+            </div>
+            <div className="dash-field">
+              <label className="emp-label">احتساب الأوفر تايم</label>
+              <label className="staff-payroll-toggle">
+                <input
+                  type="checkbox"
+                  checked={payroll.overtimeEnabled}
+                  disabled={busy || !canManagePayroll}
+                  onChange={(e) => payroll.onOvertimeEnabledChange(e.target.checked)}
+                />
+                <span>{payroll.overtimeEnabled ? "مفعل" : "غير مفعل"}</span>
+              </label>
+            </div>
+            {payroll.overtimeEnabled ? (
               <div className="dash-field">
-                <label className="emp-label">نسبة الأوفر تايم من فواتير الموظفة (%)</label>
+                <label className="emp-label">معامل الأوفر تايم</label>
                 <input
                   className="dash-input"
                   type="number"
                   min={0}
-                  step="0.01"
-                  value={payroll.overtimeInvoicePercent}
+                  step="0.05"
+                  value={payroll.overtimeMultiplier}
                   disabled={busy || !canManagePayroll}
-                  onChange={(e) => payroll.onOvertimeInvoicePercentChange(e.target.value)}
-                  placeholder="مثال: 40"
+                  onChange={(e) => payroll.onOvertimeMultiplierChange(e.target.value)}
+                  placeholder="1.5"
                 />
               </div>
-            )}
+            ) : null}
+            <div className="dash-field">
+              <label className="emp-label">طريقة خصم نقص الساعات</label>
+              <EmployeeSelect
+                value={payroll.deductionMethod}
+                disabled={busy || !canManagePayroll}
+                ariaLabel="طريقة خصم نقص الساعات"
+                options={[
+                  { value: "hourly", label: "حسب راتب الساعة" },
+                  { value: "daily", label: "حسب راتب اليوم" },
+                ]}
+                onChange={(value) => payroll.onDeductionMethodChange(value === "daily" ? "daily" : "hourly")}
+              />
+            </div>
           </div>
           <div className="staff-payroll-preview">
             <div className="staff-payroll-preview-grid">
               <div className="staff-payroll-chip">
-                <span>إجمالي الراتب الشهري</span>
-                <b>{fmtMoneySar(payroll.summary?.salaryAmount || 0)} ر.س</b>
+                <span>حالة الإعداد</span>
+                <b>{payrollSetupStatusLabel}</b>
               </div>
               <div className="staff-payroll-chip">
-                <span>مبلغ الأوفر تايم</span>
-                <b>{fmtMoneySar(payroll.summary?.overtimeAmount || 0)} ر.س</b>
-              </div>
-              <div className="staff-payroll-chip accent">
-                <span>إجمالي المستحق الشهري</span>
-                <b>{fmtMoneySar(payroll.summary?.totalAmount || 0)} ر.س</b>
+                <span>ساعات الشهر</span>
+                <b>{payrollMonthlyHoursLabel}</b>
               </div>
               <div className="staff-payroll-chip">
-                <span>ساعات الدوام المجدولة</span>
-                <b>{fmtMoneySar(payroll.summary?.schedule.scheduledHours || 0)} ساعة</b>
+                <span>راتب اليوم</span>
+                <b>{payrollDailyRateLabel}</b>
               </div>
               <div className="staff-payroll-chip">
-                <span>الساعات الأساسية المحتسبة</span>
-                <b>{fmtMoneySar(payroll.summary?.schedule.baselineHours || 0)} ساعة</b>
+                <span>راتب الساعة</span>
+                <b>{payrollHourlyRateLabel}</b>
               </div>
               <div className="staff-payroll-chip">
-                <span>أساس الحساب</span>
-                <b>{payroll.summary?.config.hoursBasis === "season" ? "الموسم" : "الأيام العادية"}</b>
+                <span>الأوفر تايم</span>
+                <b>{payroll.overtimeEnabled ? `مفعل × ${payroll.overtimeMultiplier || "1.5"}` : "غير مفعل"}</b>
               </div>
               <div className="staff-payroll-chip">
-                <span>ساعات الأوفر تايم</span>
-                <b>{fmtMoneySar(payroll.summary?.schedule.overtimeHours || 0)} ساعة</b>
+                <span>طريقة الخصم</span>
+                <b>{payroll.deductionMethod === "daily" ? "حسب راتب اليوم" : "حسب راتب الساعة"}</b>
               </div>
             </div>
             <div className="staff-payroll-notes">
               <div className="staff-payroll-note">
-                {payroll.summary?.method === "invoice_percentage"
-                  ? `طريقة الحساب: نسبة من الفواتير (${payroll.summary.config.invoicePercent}%).`
-                  : `طريقة الحساب: (الراتب ÷ ${payroll.summary?.config.daysPerMonth || 0} يوم ÷ ${
-                      payroll.summary?.config.hoursBasis === "season"
-                        ? payroll.summary?.config.seasonBaseHoursPerDay || 0
-                        : payroll.summary?.config.baseHoursPerDay || 0
-                    } ساعة) ثم تطبيق نسبة ${
-                      payroll.summary?.config.overtimePercent || 0
-                    }% على ساعات الأوفر تايم.`}
+                لن يتم احتساب الراتب في إدارة الرواتب حتى تكتمل: الراتب الأساسي، أيام العمل، وساعات الشهر أو ساعات اليوم.
               </div>
-              <div className="staff-payroll-note">
-                {`أساس الحساب المعتمد: ${
-                  payroll.summary?.config.hoursBasis === "season" ? "الموسم" : "الأيام العادية"
-                } | الساعات المستخدمة يوميًا: ${
-                  payroll.summary?.config.hoursBasis === "season"
-                    ? payroll.summary?.config.seasonBaseHoursPerDay || 0
-                    : payroll.summary?.config.baseHoursPerDay || 0
-                } ساعة.`}
-              </div>
-              <div className="staff-payroll-note">
-                {`الشهر المحتسب: ${payroll.summary?.monthKey || currentMonthKeyLabel} | فواتير الموظفة: ${
-                  payroll.summary?.invoiceCount || 0
-                } | إيرادها: ${fmtMoneySar(payroll.summary?.invoiceRevenue || 0)} ر.س`}
-              </div>
-              {showPayrollSubTab && payroll.summary ? (
-                <div className="staff-payroll-note">
-                  {`تفصيل الساعات: ${payroll.summary.schedule.periodFrom || "-"} → ${
-                    payroll.summary.schedule.periodTo || "-"
-                  } | الأيام: ${fmtMoneySar(payroll.summary.schedule.workedDays || 0)} | متوسط: ${fmtMoneySar(
-                    payroll.summary.schedule.averageHoursPerWorkedDay || 0
-                  )} س | التوزيع: ${formatDailyHourBucketsLabel(payroll.summary.schedule.dailyHourBuckets as any)}`}
+              {!payrollSetup.complete ? (
+                <div className="staff-payroll-note is-warning">
+                  النواقص: {payrollSetup.missing.join("، ")}
                 </div>
               ) : null}
+              {payroll.settingsMessage ? (
+                <div className="staff-payroll-note is-success">
+                  {payroll.settingsMessage}
+                </div>
+              ) : null}
+            </div>
+            <div className="staff-payroll-actions">
+              <button
+                type="button"
+                className="exp-btn primary"
+                disabled={busy || payroll.savingSettings || !canManagePayroll}
+                onClick={payroll.onSaveSettings}
+              >
+                حفظ إعدادات الراتب
+              </button>
             </div>
           </div>
         </div>

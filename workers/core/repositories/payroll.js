@@ -103,9 +103,9 @@ function payrollSetupMissing(row = {}) {
   if (numberValue(row.base_salary_halalas, 0) <= 0) missing.push('baseSalary');
   if (numberValue(row.work_days, 0) <= 0) missing.push('workDays');
   if (numberValue(row.monthly_hours, 0) <= 0 && dailyScheduledHours <= 0) missing.push('monthlyHours');
-  if (numberValue(row.overtime_multiplier, 1.5) <= 0) missing.push('overtimeMultiplier');
 
   for (const key of scheduleMissing) {
+    if (key === 'overtimeMultiplier') continue;
     if (!missing.includes(key)) missing.push(key);
   }
   return missing;

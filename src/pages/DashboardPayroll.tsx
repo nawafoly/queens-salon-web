@@ -167,7 +167,7 @@ function formatMonthlyHours(entry: PayrollEntryView) {
 }
 
 function employeePayrollPath(entry: PayrollEntryView) {
-  return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll`;
+  return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll#payroll-settings`;
 }
 
 function payrollActionErrorMessage(error: unknown, fallback: string) {
