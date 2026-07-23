@@ -52,7 +52,7 @@ import {
 } from "./services/localAuthSession";
 import { isInternalAuthRole, normalizeAuthRole } from "./services/authAccess";
 import { IS_CUSTOMER_APP, IS_STAFF_APP } from "./config/appVariant";
-import { normalizeAppPermissions, type AppPermission } from "./helpers/permissions";
+import { getEffectiveAppPermissions, type AppPermission } from "./helpers/permissions";
 import { CoreAccountService } from "./services/CoreAccountService";
 import { CoreApiError } from "./services/coreApiClient";
 
@@ -72,16 +72,63 @@ function isPendingRole(role: UiRole) {
 
 type LiveAccountState = "active" | "pending" | "disabled" | "archived" | "deleted";
 
+const PRIVILEGED_INTERNAL_ROLES = new Set<UiRole>(["owner", "admin"]);
+
+function cleanAccountStatus(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isPrivilegedInternalRole(role: UiRole) {
+  return PRIVILEGED_INTERNAL_ROLES.has(role);
+}
+
+function hasExplicitAccountBlock(profile: Record<string, unknown> | null | undefined) {
+  const status = cleanAccountStatus(profile?.status || profile?.accountStatus);
+  const employmentStatus = cleanAccountStatus(profile?.employmentStatus);
+
+  return (
+    status === "disabled" ||
+    status === "inactive" ||
+    status === "blocked" ||
+    status === "archived" ||
+    status === "deleted" ||
+    employmentStatus === "archived" ||
+    employmentStatus === "deleted" ||
+    profile?.deleted === true ||
+    profile?.disabled === true ||
+    profile?.archived === true ||
+    Boolean(profile?.deletedAt)
+  );
+}
+
+function resolveOperationalAccountActive(
+  profile: Record<string, unknown> | null | undefined,
+  role: UiRole
+) {
+  const status = cleanAccountStatus(profile?.status || profile?.accountStatus);
+
+  if (hasExplicitAccountBlock(profile)) return false;
+  if (status === "pending") return false;
+  if (status === "active") return true;
+
+  if (isPrivilegedInternalRole(role)) {
+    return true;
+  }
+
+  return profile?.active !== false;
+}
+
 function resolveLiveAccountState(
   profile: Record<string, unknown> | null | undefined,
   role: UiRole,
   active: boolean
 ): LiveAccountState {
-  const accountStatus = String(profile?.status || profile?.accountStatus || "").trim().toLowerCase();
+  const accountStatus = cleanAccountStatus(profile?.status || profile?.accountStatus);
   if (accountStatus === "deleted") return "deleted";
+  if (accountStatus === "archived") return "archived";
   if (accountStatus === "disabled") return "disabled";
   if (accountStatus === "pending") return "pending";
-  const employmentStatus = String(profile?.employmentStatus || "").trim().toLowerCase();
+  const employmentStatus = cleanAccountStatus(profile?.employmentStatus);
   if (profile?.deleted === true || Boolean(profile?.deletedAt) || employmentStatus === "deleted") {
     return "deleted";
   }
@@ -295,8 +342,8 @@ const App: React.FC = () => {
     ]
   );
   const effectivePermissions = useMemo(
-    () => normalizeAppPermissions(permissionSource.permissions),
-    [permissionSource.permissions]
+    () => getEffectiveAppPermissions(permissionSource),
+    [permissionSource]
   );
   const effectivePermissionSet = useMemo(
     () => new Set<AppPermission>(effectivePermissions),
@@ -400,7 +447,6 @@ const App: React.FC = () => {
 
           const account = me.user;
           const liveRole = normalizeAuthRole(account.role || account.primaryRole);
-          const active = account.active !== false && account.status === "active";
           const data: Record<string, unknown> = {
             ...account,
             uid: account.firebaseUid || account.uid || user.uid,
@@ -408,6 +454,7 @@ const App: React.FC = () => {
             permissions: me.permissions,
             employeeLink: me.employeeLink,
           };
+          const active = resolveOperationalAccountActive(data, liveRole);
           const liveAccountState = resolveLiveAccountState(data, liveRole, active);
 
           const liveName = String(

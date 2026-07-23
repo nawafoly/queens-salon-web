@@ -40,6 +40,33 @@ const ROLE_RANKS = {
   guest: 0,
 };
 
+const PRIVILEGED_STATUS_FALLBACK_ROLES = new Set(['owner', 'admin']);
+const ADMIN_PERMISSION_FALLBACK = new Set([
+  'workspace.dashboard.view',
+  'employees.view',
+  'employees.manage',
+  'attendance.view',
+  'attendance.records.create',
+  'attendance.records.update',
+  'attendance.settings.manage',
+  'payroll.view',
+  'payroll.manage',
+  'admin_accounts.view',
+  'admin_accounts.manage',
+  'accounts.read',
+  'accounts.create',
+  'accounts.update',
+  'accounts.disable',
+  'accounts.restore',
+  'accounts.reset_password',
+  'roles.read',
+  'roles.assign',
+  'permissions.read',
+  'permissions.manage',
+  'employee_links.read',
+  'employee_links.manage',
+]);
+
 function normalizeEmail(value) {
   return cleanText(value).toLowerCase();
 }
@@ -56,6 +83,20 @@ export function normalizeAccountRole(value, fallback = 'pending') {
 function normalizeStatus(value, fallback = 'pending') {
   const status = cleanText(value).toLowerCase();
   return VALID_STATUSES.has(status) ? status : fallback;
+}
+
+function resolveAccountStatus(row) {
+  const status = cleanText(row?.status || row?.account_status).toLowerCase();
+  if (status === 'enabled') return 'active';
+  if (status === 'archived') return 'deleted';
+  if (status === 'inactive' || status === 'blocked') return 'disabled';
+  if (VALID_STATUSES.has(status)) return status;
+  if (row?.deleted_at) return 'deleted';
+
+  const role = normalizeAccountRole(row?.primary_role, 'guest');
+  if (PRIVILEGED_STATUS_FALLBACK_ROLES.has(role)) return 'active';
+
+  return 'pending';
 }
 
 function boolInt(value, fallback = 0) {
@@ -104,7 +145,7 @@ function roleRank(role) {
 }
 
 export function isActiveOperationalAccount(row) {
-  return row && row.status === 'active' && !row.deleted_at;
+  return row && resolveAccountStatus(row) === 'active' && !row.deleted_at;
 }
 
 export async function getPermissionCatalog(db) {
@@ -156,7 +197,11 @@ async function getRolePermissions(db, salonId, role) {
     'SELECT permission_key FROM role_permissions WHERE salon_id = ? AND role_key = ? ORDER BY permission_key',
     [salonId, normalizedRole]
   );
-  return rows.map((row) => cleanText(row.permission_key)).filter(Boolean);
+  const permissions = new Set(rows.map((row) => cleanText(row.permission_key)).filter(Boolean));
+  if (normalizedRole === 'admin') {
+    ADMIN_PERMISSION_FALLBACK.forEach((permission) => permissions.add(permission));
+  }
+  return [...permissions];
 }
 
 export async function getAccountPermissionBundle(db, salonId, account) {
@@ -205,9 +250,10 @@ export async function touchAccountLogin(db, accountId) {
 
 export function assertAccountCanAuthenticate(account) {
   if (!account) throw new AppError(403, 'ACCOUNT_NOT_PROVISIONED');
-  if (account.status === 'disabled') throw new AppError(403, 'ACCOUNT_DISABLED');
-  if (account.status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING');
-  if (account.status === 'deleted' || account.deleted_at) throw new AppError(403, 'ACCOUNT_DELETED');
+  const status = resolveAccountStatus(account);
+  if (status === 'disabled') throw new AppError(403, 'ACCOUNT_DISABLED');
+  if (status === 'pending') throw new AppError(403, 'ACCOUNT_PENDING');
+  if (status === 'deleted' || account.deleted_at) throw new AppError(403, 'ACCOUNT_DELETED');
 }
 
 export function serializeEmployeeLink(link) {
@@ -232,6 +278,7 @@ export function serializeEmployeeLink(link) {
 }
 
 export function serializeAccount(row, permissionBundle = null, link = null) {
+  const status = resolveAccountStatus(row);
   return {
     id: row.id,
     uid: row.firebase_uid || '',
@@ -242,8 +289,8 @@ export function serializeAccount(row, permissionBundle = null, link = null) {
     displayName: row.display_name || '',
     primaryRole: row.primary_role,
     role: row.primary_role,
-    status: row.status,
-    active: row.status === 'active' && !row.deleted_at,
+    status,
+    active: status === 'active' && !row.deleted_at,
     emailVerified: Number(row.email_verified || 0) === 1,
     lastLoginAt: row.last_login_at || null,
     createdAt: row.created_at,
@@ -279,6 +326,9 @@ export async function serializeAuthMe(db, salonId, account) {
 }
 
 export function hasPermission(ctx, permission) {
+  const role = normalizeAccountRole(ctx?.role || ctx?.user?.primary_role, 'guest');
+  if (role === 'owner') return true;
+  if (role === 'admin' && ADMIN_PERMISSION_FALLBACK.has(cleanText(permission))) return true;
   return new Set(ctx?.permissions || []).has(permission);
 }
 

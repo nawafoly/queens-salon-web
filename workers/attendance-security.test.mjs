@@ -8,6 +8,42 @@ import {
   buildAttendanceSecurityEventSpecs,
   classifyAttendanceDeviceSecurity,
 } from "./attendance-worker.js";
+import attendanceEdgeWorker from "./malikat-attendance-worker.js";
+
+test("attendance worker preflight allows local dev Authorization requests", async () => {
+  const origin = "http://127.0.0.1:5174";
+  const response = await attendanceEdgeWorker.fetch(
+    new Request("https://attendance.test/attendance/records", {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization",
+      },
+    }),
+    {}
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
+  assert.match(response.headers.get("Access-Control-Allow-Methods") || "", /\bGET\b/);
+  assert.match(response.headers.get("Access-Control-Allow-Headers") || "", /Authorization/i);
+});
+
+test("attendance worker error responses keep production CORS headers", async () => {
+  const origin = "https://queens-salon-web.vercel.app";
+  const response = await attendanceEdgeWorker.fetch(
+    new Request("https://attendance.test/attendance/records", {
+      method: "GET",
+      headers: { Origin: origin },
+    }),
+    {}
+  );
+
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
+  assert.equal((await response.json()).message, "missing_attendance_d1_binding");
+});
 
 test("new device is flagged without false device-change warning", () => {
   const result = classifyAttendanceDeviceSecurity({
@@ -183,4 +219,3 @@ test("attendance migration backfills historical devices and employee assignments
     },
   ]);
 });
-

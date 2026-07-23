@@ -18,13 +18,19 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
   "https://localhost",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
   "http://localhost:4173",
+  "http://127.0.0.1:4173",
+  "https://queens-salon-web.vercel.app",
   "capacitor://localhost",
   "ionic://localhost",
   "https://queens-salon-web-gnxk.vercel.app",
 ]);
 
 const DEFAULT_ALLOWED_ORIGIN_PATTERNS = [
+  /^http:\/\/localhost:\d+$/i,
+  /^http:\/\/127\.0\.0\.1:\d+$/i,
   /^https:\/\/queens-salon-web(?:-[a-z0-9-]+)?\.vercel\.app$/i,
 ];
 
@@ -63,11 +69,16 @@ const ACTIVE_TRUE_VALUES = new Set([
 const ACTIVE_FALSE_VALUES = new Set([
   "inactive",
   "disabled",
+  "archived",
+  "deleted",
+  "pending",
   "false",
   "0",
   "no",
   "blocked",
 ]);
+
+const PRIVILEGED_STATUS_FALLBACK_ROLES = new Set(["owner", "admin"]);
 
 const PERMISSION_SCHEMA_VERSION = 3;
 const PERMISSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -156,27 +167,39 @@ export default {
       );
     }
 
-    const response = await handleAttendanceRequest({
-      request,
-      url,
-      db: env.ATTENDANCE_DB,
-      directoryDb: null,
-      salonId: getSalonId(env),
-      resolveRequesterContext: currentRequest =>
-        resolveRequesterContext(currentRequest, env, env.ATTENDANCE_DB),
-      fetchFirestoreDocument: args =>
-        fetchFirestoreDocument({
-          ...args,
-          env,
-        }),
-      queryFirestoreDocuments: args =>
-        queryFirestoreDocuments({
-          ...args,
-          env,
-        }),
-    });
+    try {
+      const response = await handleAttendanceRequest({
+        request,
+        url,
+        db: env.ATTENDANCE_DB,
+        directoryDb: null,
+        salonId: getSalonId(env),
+        resolveRequesterContext: currentRequest =>
+          resolveRequesterContext(currentRequest, env, env.ATTENDANCE_DB),
+        fetchFirestoreDocument: args =>
+          fetchFirestoreDocument({
+            ...args,
+            env,
+          }),
+        queryFirestoreDocuments: args =>
+          queryFirestoreDocuments({
+            ...args,
+            env,
+          }),
+      });
 
-    return withCors(response, request, env);
+      return withCors(response, request, env);
+    } catch (error) {
+      console.error("[attendance] unhandled worker error", error);
+      return withCors(
+        json(500, {
+          ok: false,
+          message: "attendance_worker_unhandled_error",
+        }),
+        request,
+        env
+      );
+    }
   },
 };
 
@@ -559,7 +582,9 @@ async function loadPermissionCache(db, uid) {
 
     return {
       role,
-      isActive: Number(row.active) === 1,
+      isActive:
+        Number(row.active) === 1 ||
+        PRIVILEGED_STATUS_FALLBACK_ROLES.has(role),
       permissionVersion: Number(row.permission_version || 0) || 0,
       permissions,
       permissionsAllow: permissions,
@@ -983,7 +1008,7 @@ function createRuntime(data) {
 
   return {
     role,
-    isActive: resolveActive(data),
+    isActive: resolveActive(data, role),
     permissionVersion,
     permissions,
     permissionsAllow: permissions,
@@ -1017,6 +1042,7 @@ function resolveAttendancePermissions({
   const version = Number(permissionVersion || 0) || 0;
 
   if (
+    normalizedRole !== "admin" &&
     version >= PERMISSION_SCHEMA_VERSION &&
     Array.isArray(permissions) &&
     !overrides.enabled.length &&
@@ -1069,7 +1095,38 @@ function normalizeRole(value) {
   return ROLE_ALIASES[role] || "guest";
 }
 
-function resolveActive(data) {
+function hasExplicitInactiveStatus(data) {
+  const status = cleanText(data?.status || data?.accountStatus).toLowerCase();
+
+  return (
+    status === "disabled" ||
+    status === "archived" ||
+    status === "deleted" ||
+    status === "pending" ||
+    status === "blocked" ||
+    data?.disabled === true ||
+    data?.archived === true ||
+    data?.deleted === true ||
+    Boolean(data?.deletedAt) ||
+    Boolean(data?.deleted_at)
+  );
+}
+
+function resolveActive(data, role = "guest") {
+  const normalizedRole = normalizeRole(role);
+  const status = cleanText(data?.status || data?.accountStatus).toLowerCase();
+
+  if (hasExplicitInactiveStatus(data)) {
+    return false;
+  }
+
+  if (
+    PRIVILEGED_STATUS_FALLBACK_ROLES.has(normalizedRole) &&
+    !status
+  ) {
+    return true;
+  }
+
   for (const value of [
     data?.active,
     data?.isActive,
@@ -1240,7 +1297,7 @@ function withCors(response, request, env) {
 
   headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type,Authorization"
+    "Content-Type,Authorization,Accept"
   );
 
   headers.set("Access-Control-Max-Age", "86400");

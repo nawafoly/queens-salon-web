@@ -357,6 +357,7 @@ type WorkerPayload = T & {
           "attendance_records_forbidden",
           "attendance_management_forbidden",
           "attendance_permission_forbidden",
+          "inactive_account",
           "invalid_firebase_id_token",
         ].includes(authFailureMessage));
 
@@ -366,13 +367,24 @@ type WorkerPayload = T & {
       result = await executeRequest(true);
     }
   } catch (cause) {
+    const networkMessage =
+      pathname === "/attendance/records" ||
+      pathname === "/attendance/monthly-summaries"
+        ? "تعذر الاتصال بخادم الحضور أثناء تحميل السجل. تحقق من الاتصال أو إعدادات CORS الخاصة بـ Cloudflare Worker."
+        : "تعذر الاتصال بخادم الحضور. تحقق من اتصال الإنترنت وإعدادات CORS الخاصة بـ Cloudflare Worker.";
     const error = new Error(
-      "تم التقاط الموقع، لكن تعذر الاتصال بخادم الحضور. تحقق من اتصال الإنترنت وإعدادات CORS الخاصة بـ Cloudflare Worker."
+      networkMessage
     ) as Error & {
       cause?: unknown;
+      status?: number;
+      code?: string;
+      endpoint?: string;
     };
 
     error.cause = cause;
+    error.status = 0;
+    error.code = "attendance_worker_network_error";
+    error.endpoint = pathname;
     throw error;
   }
 

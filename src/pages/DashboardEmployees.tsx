@@ -840,7 +840,16 @@ export default function DashboardEmployees() {
       if (requestId !== attendanceLoadRequestRef.current) return;
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
+      const status = Number((error as { status?: number })?.status || 0);
+      if (status === 403) {
+        const payload = (error as { payload?: { message?: unknown; detail?: unknown } })?.payload || {};
+        const developerCode = cleanText(payload.message || payload.detail || (error as Error)?.message || "forbidden");
+        setErrorMsg(
+          `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`
+        );
+      } else {
+        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
+      }
     } finally {
       if (requestId === attendanceLoadRequestRef.current) {
         setEmployeeAttendanceLoading(false);

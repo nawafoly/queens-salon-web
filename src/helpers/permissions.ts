@@ -324,6 +324,7 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "settings.booking.manage",
     "settings.content.manage",
     "admin_accounts.view",
+    "admin_accounts.manage",
     "accounts.read",
     "accounts.create",
     "accounts.update",
@@ -333,6 +334,7 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "roles.read",
     "roles.assign",
     "permissions.read",
+    "permissions.manage",
     "employee_links.read",
     "employee_links.manage",
     "audit.read",
@@ -482,6 +484,7 @@ export function getEffectiveAppPermissions(args: {
   // مستندات v3 تحفظ الصلاحيات الفعلية صراحةً. الإصدارات القديمة تُعامل كدور + استثناءات
   // حتى لا تفقد الحسابات صلاحيات جديدة عند توسيع السجل المركزي.
   if (
+    role !== "admin" &&
     version >= PERMISSION_SCHEMA_VERSION &&
     Array.isArray(args.permissions) &&
     !overrides.enabled.length &&

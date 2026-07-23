@@ -2,8 +2,8 @@
 import React, { createContext, useContext, useMemo } from "react";
 
 import {
+  getEffectiveAppPermissions,
   getUserRole,
-  normalizeAppPermissions,
   type AppPermission,
   type UserRole,
 } from "../helpers/permissions";
@@ -46,8 +46,14 @@ export function PermissionProvider({
 }: PermissionProviderProps) {
   const normalizedRole = getUserRole(role);
   const effectivePermissions = useMemo(
-    () => normalizeAppPermissions(permissions),
-    [permissions]
+    () =>
+      getEffectiveAppPermissions({
+        role: normalizedRole,
+        permissions,
+        permissionOverrides,
+        permissionVersion,
+      }),
+    [normalizedRole, permissions, permissionOverrides, permissionVersion]
   );
 
   const value = useMemo<PermissionContextValue>(() => {
