@@ -324,7 +324,7 @@ export default function DashboardPayroll() {
       const prepared = visibleEntries.map((entry) => ({ ...entry, periodId: entry.periodId || period.id }));
       const saved = await savePayrollDrafts(prepared);
       setEntries((current) => saved.reduce(replaceEntry, current));
-      setMessage(`تم حفظ ${saved.length} مسودة في Core D1.`);
+      setMessage(`تم حفظ ${saved.length} مسودة في نظام الرواتب.`);
     } catch (actionError: any) {
       setError(String(actionError?.message || "تعذر حفظ مسودات الرواتب."));
     } finally {
@@ -469,7 +469,7 @@ export default function DashboardPayroll() {
     <section className="payroll-page" dir="rtl">
       <header className="payroll-hero">
         <div>
-          <span>Core D1 Payroll</span>
+          <span>نظام الرواتب</span>
           <h1>إدارة الرواتب</h1>
           <p>إنشاء ومراجعة واعتماد مسيرات الرواتب الشهرية للموظفات.</p>
         </div>
@@ -538,6 +538,16 @@ export default function DashboardPayroll() {
         <article><span><FiCheckCircle /></span><small>عدد الرواتب المعتمدة</small><strong>{summary.approved}</strong></article>
         <article><span><FiDollarSign /></span><small>عدد الرواتب المدفوعة</small><strong>{summary.paid}</strong></article>
       </div>
+
+      {summary.incomplete > 0 ? (
+        <div className="payroll-alert is-warning payroll-setup-warning" role="status">
+          <FiAlertTriangle />
+          <div>
+            <strong>لن يتم احتساب الراتب حتى يتم إكمال إعدادات الراتب من ملف الموظفة.</strong>
+            <small>الحقول المطلوبة: الراتب الأساسي، أيام العمل، وساعات الشهر.</small>
+          </div>
+        </div>
+      ) : null}
 
       <div className="payroll-table-wrap">
         <table className="payroll-table">
@@ -620,7 +630,10 @@ export default function DashboardPayroll() {
                       <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
                       <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
                       {!entry.payrollSetupComplete ? (
-                        <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+                        <span className="payroll-action-help">
+                          <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+                          <small>لإكمال الراتب الأساسي، أيام العمل، وساعات الشهر</small>
+                        </span>
                       ) : null}
                       <button type="button" disabled={!canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
                       <button type="button" disabled={!canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>

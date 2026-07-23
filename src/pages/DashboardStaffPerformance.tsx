@@ -293,7 +293,13 @@ export default function DashboardStaffPerformance() {
               <span>تفاصيل الموظفة</span>
               <h2>{selectedRow.employeeName}</h2>
             </div>
-            <button type="button" onClick={() => navigate("/dashboard/staff-performance")}>
+            <button
+              type="button"
+              onClick={() => {
+                setEmployeeFilter("");
+                navigate("/dashboard/staff-performance");
+              }}
+            >
               إغلاق التفاصيل
             </button>
           </div>
