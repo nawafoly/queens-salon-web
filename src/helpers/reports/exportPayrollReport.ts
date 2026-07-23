@@ -38,6 +38,11 @@ type PayrollReportRow = {
   notes: string;
 };
 
+type PayrollExcludedRow = {
+  employeeName: string;
+  reason: string;
+};
+
 type PayslipRow = {
   item: string;
   value: string | number;
@@ -87,12 +92,36 @@ const PAYROLL_COLUMNS: ReportColumn<PayrollReportRow>[] = [
   { key: "notes", header: "ملاحظات", width: 28 },
 ];
 
+const EXCLUDED_PAYROLL_COLUMNS: ReportColumn<PayrollExcludedRow>[] = [
+  { key: "employeeName", header: "الموظفة", width: 28 },
+  { key: "reason", header: "سبب الاستبعاد", width: 44 },
+];
+
 function statusLabel(status?: string | null) {
   return STATUS_LABELS[String(status || "")] || safeText(status, "غير متوفر");
 }
 
 function setupMissingLabels(entry: Pick<PayrollEntryView, "payrollSetupMissing">) {
   return entry.payrollSetupMissing.map((key) => MISSING_LABELS[key] || key);
+}
+
+export function payrollExportExclusionReason(entry: PayrollEntryView) {
+  const reasons: string[] = [];
+  if (!entry.payrollSetupComplete) {
+    const missing = setupMissingLabels(entry);
+    reasons.push(missing.length ? `إعداد الراتب غير مكتمل: ${missing.join("، ")}` : "إعداد الراتب غير مكتمل");
+  }
+  if (!(entry.baseSalaryHalalas > 0)) {
+    reasons.push("الراتب الأساسي غير محدد");
+  }
+  if (!Number.isFinite(Number(entry.netSalaryHalalas)) || Number(entry.netSalaryHalalas) <= 0) {
+    reasons.push("صافي الراتب غير قابل للصرف");
+  }
+  return reasons.join("، ");
+}
+
+export function isPayrollExportEligible(entry: PayrollEntryView) {
+  return !payrollExportExclusionReason(entry);
 }
 
 function riyalsOrIncomplete(entry: PayrollEntryView, value: unknown) {
@@ -146,11 +175,24 @@ function buildPayrollRows(entries: PayrollEntryView[]): PayrollReportRow[] {
   }));
 }
 
-function payrollSummary(entries: PayrollEntryView[], filters: PayrollReportFilters): ReportSummaryItem[] {
+function payrollSummary(
+  entries: PayrollEntryView[],
+  filters: PayrollReportFilters,
+  options?: { includeIncomplete?: boolean; originalCount?: number; excludedRows?: PayrollExcludedRow[] }
+): ReportSummaryItem[] {
   const completeEntries = entries.filter((entry) => entry.payrollSetupComplete);
+  const exportedCount = entries.length;
+  const originalCount = options?.originalCount ?? entries.length;
+  const excludedCount = options?.excludedRows?.length ?? Math.max(0, originalCount - exportedCount);
   return [
     { label: "الشهر/السنة", value: formatMonthPeriod(filters.year, filters.month) },
-    { label: "عدد الموظفات", value: entries.length },
+    { label: options?.includeIncomplete ? "عدد الموظفات" : "عدد الموظفات المصدّرة", value: exportedCount },
+    ...(options?.includeIncomplete
+      ? []
+      : [
+          { label: "عدد المستبعدات من التصدير", value: excludedCount },
+          { label: "نطاق التصدير", value: "الموظفات النشطات ذات إعداد راتب مكتمل وصافي راتب قابل للصرف" },
+        ]),
     { label: "عدد المكتمل", value: completeEntries.length },
     { label: "عدد غير المكتمل", value: entries.length - completeEntries.length },
     { label: "عدد المعتمد", value: entries.filter((entry) => entry.status === "approved").length },
@@ -174,9 +216,43 @@ function payrollSummary(entries: PayrollEntryView[], filters: PayrollReportFilte
   ];
 }
 
+function excludedRowFor(entry: PayrollEntryView): PayrollExcludedRow {
+  return {
+    employeeName: entry.employeeName || entry.employeeId || "غير متوفر",
+    reason: payrollExportExclusionReason(entry) || "غير قابل للتصدير",
+  };
+}
+
+function noEligiblePayrollRow(): PayrollReportRow {
+  return {
+    employeeName: "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.",
+    setupStatus: "غير متوفر",
+    baseSalary: "غير متوفر",
+    workDays: "غير متوفر",
+    monthlyHours: "غير متوفر",
+    dailyRate: "غير متوفر",
+    hourlyRate: "غير متوفر",
+    missingHours: "غير متوفر",
+    missingDeduction: "غير متوفر",
+    detectedExtraHours: "غير متوفر",
+    overtimeFinancialStatus: "غير متوفر",
+    overtimeValue: "غير متوفر",
+    additions: "غير متوفر",
+    deductions: "غير متوفر",
+    netSalary: "غير متوفر",
+    salaryStatus: "غير متوفر",
+    approvedAt: "غير متوفر",
+    paidAt: "غير متوفر",
+    notes: "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.",
+  };
+}
+
 export function buildPayrollReportData(input: {
   entries: PayrollEntryView[];
   filters: PayrollReportFilters;
+  includeIncomplete?: boolean;
+  originalCount?: number;
+  excludedRows?: PayrollExcludedRow[];
   generatedAt?: string;
   generatedBy?: string;
   salonName?: string;
@@ -184,21 +260,44 @@ export function buildPayrollReportData(input: {
   const monthPeriod = formatMonthPeriod(input.filters.year, input.filters.month);
   const employee = safeText(input.filters.employeeName, "كل الموظفات");
   const status = safeText(input.filters.statusLabel, "كل الحالات");
+  const includeIncomplete = Boolean(input.includeIncomplete);
+  const exportedEntries = includeIncomplete ? input.entries : input.entries.filter(isPayrollExportEligible);
+  const generatedExcludedRows = includeIncomplete ? [] : input.entries.filter((entry) => !isPayrollExportEligible(entry)).map(excludedRowFor);
+  const excludedRows = includeIncomplete ? [] : input.excludedRows ?? generatedExcludedRows;
+  const rows = buildPayrollRows(exportedEntries);
+  const noEligibleRows = !includeIncomplete && rows.length === 0;
   return {
-    title: "تقرير الرواتب الشهري",
-    period: `${monthPeriod} - ${employee} - ${status}`,
+    title: includeIncomplete ? "تقرير الرواتب الشهري" : "تقرير الرواتب الشهرية - المستحقات الفعلية",
+    period: includeIncomplete
+      ? `${monthPeriod} - ${employee} - ${status} - يشمل السجلات غير المكتملة`
+      : `${monthPeriod} - ${employee} - ${status} - المستحقات الفعلية`,
     generatedAt: input.generatedAt || currentGeneratedAt(),
     generatedBy: normalizeGeneratedBy(input.generatedBy),
     salonName: input.salonName,
-    summary: payrollSummary(input.entries, input.filters),
+    summary: payrollSummary(exportedEntries, input.filters, {
+      includeIncomplete,
+      originalCount: input.originalCount ?? input.entries.length,
+      excludedRows,
+    }),
     table: {
       name: "البيانات التفصيلية",
       columns: PAYROLL_COLUMNS,
-      rows: buildPayrollRows(input.entries),
+      rows: rows.length ? rows : noEligibleRows ? [noEligiblePayrollRow()] : rows,
     },
-    notes: input.entries.some((entry) => !entry.payrollSetupComplete)
-      ? ["السجلات غير المكتملة تظهر بوضوح ولا يتم تصدير صافي الراتب كراتب معتمد."]
+    extraTables: !includeIncomplete && excludedRows.length
+      ? [
+          {
+            name: "السجلات المستبعدة",
+            columns: EXCLUDED_PAYROLL_COLUMNS,
+            rows: excludedRows,
+          },
+        ]
       : undefined,
+    notes: noEligibleRows
+      ? ["لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة."]
+      : includeIncomplete && input.entries.some((entry) => !entry.payrollSetupComplete)
+        ? ["يشمل هذا التقرير سجلات غير مكتملة ولا يتم تصدير صافي الراتب كراتب معتمد."]
+        : ["يشمل هذا التقرير الموظفات ذات إعداد راتب مكتمل وصافي راتب قابل للصرف فقط."],
   };
 }
 
@@ -263,7 +362,10 @@ export function buildPayrollPayslipData(input: {
       ],
       rows: payslipRows(entry),
     },
-    notes: draftNotice ? [draftNotice] : undefined,
+    notes: [
+      ...(draftNotice ? [draftNotice] : []),
+      ...(!entry.payrollSetupComplete ? ["لا يمكن اعتبار هذا كشف راتب نهائي لأن إعداد الراتب غير مكتمل."] : []),
+    ],
   };
 }
 

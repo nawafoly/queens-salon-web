@@ -686,3 +686,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+.payroll-export-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(143, 41, 79, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #5f3146;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.payroll-export-option input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #8f294f;
+}

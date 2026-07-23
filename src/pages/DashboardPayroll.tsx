@@ -47,6 +47,8 @@ import {
   exportPayrollPayslipPdf,
   exportPayrollReportExcel,
   exportPayrollReportPdf,
+  isPayrollExportEligible,
+  payrollExportExclusionReason,
 } from "../helpers/reports/exportPayrollReport";
 import "../styles/DashboardPayroll.css";
 
@@ -206,6 +208,7 @@ export default function DashboardPayroll() {
   const [entries, setEntries] = useState<PayrollEntryView[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<PayrollEntryView | null>(null);
   const [adjustment, setAdjustment] = useState<AdjustmentDraft | null>(null);
+  const [includeIncompleteExport, setIncludeIncompleteExport] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
@@ -297,15 +300,32 @@ export default function DashboardPayroll() {
       : employees.find((employee) => employee.id === employeeFilter)?.name || employeeFilter;
   const selectedStatusLabel = STATUS_LABELS[statusFilter] || statusFilter;
 
-  const payrollReportInput = () => ({
-    entries: visibleEntries,
-    filters: {
-      year,
-      month,
-      employeeName: selectedEmployeeName,
-      statusLabel: selectedStatusLabel,
-    },
-  });
+  const payrollReportInput = () => {
+    const exportedEntries = includeIncompleteExport
+      ? visibleEntries
+      : visibleEntries.filter(isPayrollExportEligible);
+    const excludedRows = includeIncompleteExport
+      ? []
+      : visibleEntries
+          .filter((entry) => !isPayrollExportEligible(entry))
+          .map((entry) => ({
+            employeeName: entry.employeeName || entry.employeeId || "غير متوفر",
+            reason: payrollExportExclusionReason(entry) || "غير قابل للتصدير",
+          }));
+
+    return {
+      entries: exportedEntries,
+      includeIncomplete: includeIncompleteExport,
+      originalCount: visibleEntries.length,
+      excludedRows,
+      filters: {
+        year,
+        month,
+        employeeName: selectedEmployeeName,
+        statusLabel: selectedStatusLabel,
+      },
+    };
+  };
 
   const handleExportPayrollPdf = () => {
     exportPayrollReportPdf(payrollReportInput());
@@ -556,6 +576,14 @@ export default function DashboardPayroll() {
           <button type="button" onClick={handleExportPayrollExcel} disabled={loading}>
             <FiDownload /> تصدير مسيرة الشهر Excel
           </button>
+          <label className="payroll-export-option">
+            <input
+              type="checkbox"
+              checked={includeIncompleteExport}
+              onChange={(event) => setIncludeIncompleteExport(event.target.checked)}
+            />
+            <span>تضمين غير المكتمل في التصدير</span>
+          </label>
         </div>
       </div>
 

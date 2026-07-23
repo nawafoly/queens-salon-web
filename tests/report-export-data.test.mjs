@@ -192,3 +192,67 @@ test("report detail tables expose the required Arabic columns", () => {
   assert.ok(performanceHeaders.includes("الإيراد المنسوب"));
   assert.ok(performanceHeaders.includes("ملاحظات نقص البيانات"));
 });
+
+test("monthly payroll default export excludes incomplete payroll rows", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.title, "تقرير الرواتب الشهرية - المستحقات الفعلية");
+  assert.equal(report.table.rows.length, 1);
+  assert.equal(report.table.rows[0].employeeName, "مكتملة");
+  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), false);
+  assert.equal(report.extraTables?.[0]?.name, "السجلات المستبعدة");
+  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "ناقصة");
+});
+
+test("monthly payroll default export excludes zero net salary rows", () => {
+  const zeroNet = payrollEntry({
+    employeeName: "صفر",
+    totalDeductionsHalalas: 550000,
+  });
+  const report = buildPayrollReportData({
+    entries: [zeroNet],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.table.rows[0].employeeName, "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.");
+  assert.ok(report.notes?.includes("لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة."));
+  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "صفر");
+});
+
+test("monthly payroll totals ignore excluded incomplete rows", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({
+    employeeName: "ناقصة",
+    baseSalaryHalalas: 0,
+    totalDeductionsHalalas: 999999,
+  });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  const netTotal = report.summary.find((item) => item.label === "إجمالي صافي الرواتب")?.value;
+  const deductionsTotal = report.summary.find((item) => item.label === "إجمالي الخصومات")?.value;
+  assert.equal(netTotal, 5473.56);
+  assert.equal(deductionsTotal, 26.44);
+});
+
+test("monthly payroll export can include incomplete rows explicitly", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    includeIncomplete: true,
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.table.rows.length, 2);
+  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), true);
+  assert.equal(report.extraTables, undefined);
+  assert.ok(report.period.includes("يشمل السجلات غير المكتملة"));
+});
