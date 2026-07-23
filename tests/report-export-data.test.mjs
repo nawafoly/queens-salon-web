@@ -5,6 +5,10 @@ import {
   buildPayrollPayslipData,
   buildPayrollReportData,
 } from "../src/helpers/reports/exportPayrollReport.ts";
+import {
+  buildReportExcelWorkbook,
+  createPdfDocument,
+} from "../src/helpers/reports/common.ts";
 import { buildStaffPerformanceReportData } from "../src/helpers/reports/exportStaffPerformanceReport.ts";
 import {
   calculatePayrollSnapshot,
@@ -133,6 +137,7 @@ function staffPerformanceResult() {
 test("payroll report does not turn incomplete salary values into official zeroes", () => {
   const report = buildPayrollReportData({
     entries: [payrollEntry({ baseSalaryHalalas: 0 })],
+    includeIncomplete: true,
     filters: { year: 2026, month: 7 },
     generatedAt: "2026-07-23T10:00:00.000Z",
   });
@@ -201,27 +206,37 @@ test("monthly payroll default export excludes incomplete payroll rows", () => {
     filters: { year: 2026, month: 7 },
     generatedAt: "2026-07-23T10:00:00.000Z",
   });
-  assert.equal(report.title, "تقرير الرواتب الشهرية - المستحقات الفعلية");
+  assert.equal(report.title, "مسيرة الرواتب الشهرية - الموظفات ذات الراتب");
   assert.equal(report.table.rows.length, 1);
   assert.equal(report.table.rows[0].employeeName, "مكتملة");
   assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), false);
-  assert.equal(report.extraTables?.[0]?.name, "السجلات المستبعدة");
+  assert.equal(report.extraTables?.[0]?.name, "المستبعدون");
+  assert.equal(report.extraTables?.[0]?.hideInPdf, true);
   assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "ناقصة");
 });
 
-test("monthly payroll default export excludes zero net salary rows", () => {
+test("monthly payroll default export keeps completed salary rows even when net salary is zero", () => {
   const zeroNet = payrollEntry({
-    employeeName: "صفر",
-    totalDeductionsHalalas: 550000,
+    employeeName: "صفر بسبب الخصومات",
+    deductions: [
+      {
+        id: "deduction-zero-net",
+        direction: "deduction",
+        kind: "manual_deduction",
+        amountHalalas: 547356,
+        reason: "خصم يدوي",
+        addedAt: "2026-07-23T10:00:00.000Z",
+      },
+    ],
   });
   const report = buildPayrollReportData({
     entries: [zeroNet],
     filters: { year: 2026, month: 7 },
     generatedAt: "2026-07-23T10:00:00.000Z",
   });
-  assert.equal(report.table.rows[0].employeeName, "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.");
-  assert.ok(report.notes?.includes("لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة."));
-  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "صفر");
+  assert.equal(report.table.rows.length, 1);
+  assert.equal(report.table.rows[0].employeeName, "صفر بسبب الخصومات");
+  assert.equal(report.extraTables, undefined);
 });
 
 test("monthly payroll totals ignore excluded incomplete rows", () => {
@@ -254,5 +269,101 @@ test("monthly payroll export can include incomplete rows explicitly", () => {
   assert.equal(report.table.rows.length, 2);
   assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), true);
   assert.equal(report.extraTables, undefined);
-  assert.ok(report.period.includes("يشمل السجلات غير المكتملة"));
+  assert.ok(report.period.includes("يشمل غير المكتمل"));
+});
+
+
+test("monthly payroll default export keeps excluded employee names out of the official detail table", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.table.rows.length, 1);
+  assert.equal(report.table.rows.some((row) => row.employeeName === "ناقصة"), false);
+  assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "ناقصة");
+});
+
+test("monthly payroll report shows the 21-to-20 accounting period when provided", () => {
+  const report = buildPayrollReportData({
+    entries: [payrollEntry({ employeeName: "مكتملة" })],
+    filters: {
+      year: 2026,
+      month: 7,
+      periodStartDate: "2026-06-21",
+      periodEndDate: "2026-07-20",
+      payDate: "2026-07-28",
+    },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.ok(report.period.includes("فترة الاحتساب"));
+  assert.ok(report.period.includes("تاريخ الصرف المتوقع"));
+  const accountingPeriod = String(report.summary.find((item) => item.label === "فترة الاحتساب")?.value || "");
+  assert.ok(accountingPeriod.includes("2026"));
+  assert.ok(accountingPeriod.includes("21"));
+  assert.ok(accountingPeriod.includes("20"));
+});
+
+test("monthly payroll PDF does not render excluded rows as a table", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  const html = createPdfDocument(report);
+  assert.equal(html.includes("المستبعدون"), false);
+  assert.equal(html.includes("ناقصة"), false);
+});
+
+test("monthly payroll Excel puts excluded rows in a separate sheet when needed", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  const workbook = buildReportExcelWorkbook(report);
+  assert.ok(workbook.SheetNames.includes("ملخص الرواتب"));
+  assert.ok(workbook.SheetNames.includes("تفاصيل الرواتب"));
+  assert.ok(workbook.SheetNames.includes("المستبعدون"));
+});
+
+test("monthly payroll report export count matches the official detail rows", () => {
+  const complete = payrollEntry({ employeeName: "مكتملة" });
+  const incomplete = payrollEntry({ employeeName: "ناقصة", baseSalaryHalalas: 0 });
+  const report = buildPayrollReportData({
+    entries: [complete, incomplete],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  const exportedCount = report.summary.find((item) => item.label === "عدد الموظفات المصدّرة")?.value;
+  assert.equal(exportedCount, report.table.rows.length);
+  assert.equal(exportedCount, 1);
+});
+
+test("monthly payroll report marks unconfirmed attendance as non-deductible", () => {
+  const entry = payrollEntry({
+    employeeName: "حضور غير مؤكد",
+    attendanceSummary: {
+      ...attendanceSummary,
+      totalActualWorkedHours: 0,
+      totalMissingHours: 248,
+      attendanceDays: 0,
+      attendanceRecordCount: 0,
+      attendanceDeductionEligible: false,
+      attendanceDeductionNote: "لم يتم تطبيق خصم الحضور لأن ربط البصمات غير مكتمل أو غير مؤكد.",
+    },
+  });
+  const report = buildPayrollReportData({
+    entries: [entry],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+  assert.equal(report.table.rows[0].missingDeduction, "لم يطبق");
+  assert.match(report.table.rows[0].notes, /ربط البصمات/);
 });

@@ -1,12 +1,17 @@
 import type { PayrollEntryView } from "../../services/CorePayrollService.ts";
-import type { PayrollSetupMissingKey } from "../hr/payrollCalculations.ts";
+import {
+  ATTENDANCE_UNCONFIRMED_REPORT_NOTE,
+  type PayrollSetupMissingKey,
+} from "../hr/payrollCalculations.ts";
 import {
   currentGeneratedAt,
   exportReportToExcel,
   exportReportToPdf,
   formatCurrency,
+  formatDate,
   formatDateTime,
   formatMonthPeriod,
+  formatPeriod,
   halalasToRiyalsNumber,
   normalizeGeneratedBy,
   safeText,
@@ -22,6 +27,7 @@ type PayrollReportRow = {
   baseSalary: string | number;
   workDays: string | number;
   monthlyHours: string;
+  actualWorkedHours: string;
   dailyRate: string | number;
   hourlyRate: string | number;
   missingHours: string;
@@ -53,6 +59,9 @@ export type PayrollReportFilters = {
   month: number;
   employeeName?: string;
   statusLabel?: string;
+  periodStartDate?: string;
+  periodEndDate?: string;
+  payDate?: string;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,24 +81,18 @@ const MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
 
 const PAYROLL_COLUMNS: ReportColumn<PayrollReportRow>[] = [
   { key: "employeeName", header: "الموظفة", width: 24 },
-  { key: "setupStatus", header: "حالة إعداد الراتب", width: 20 },
-  { key: "baseSalary", header: "الراتب الأساسي", width: 18 },
-  { key: "workDays", header: "أيام العمل", width: 13 },
-  { key: "monthlyHours", header: "ساعات الشهر", width: 14 },
-  { key: "dailyRate", header: "راتب اليوم", width: 16 },
-  { key: "hourlyRate", header: "راتب الساعة", width: 16 },
-  { key: "missingHours", header: "نقص الساعات", width: 15 },
-  { key: "missingDeduction", header: "قيمة خصم النقص", width: 18 },
-  { key: "detectedExtraHours", header: "الساعات الزائدة المكتشفة", width: 20 },
-  { key: "overtimeFinancialStatus", header: "الأوفر تايم المالي", width: 18 },
-  { key: "overtimeValue", header: "قيمة الأوفر تايم", width: 18 },
-  { key: "additions", header: "الإضافات", width: 16 },
-  { key: "deductions", header: "الخصومات", width: 16 },
-  { key: "netSalary", header: "صافي الراتب", width: 18 },
-  { key: "salaryStatus", header: "حالة الراتب", width: 16 },
-  { key: "approvedAt", header: "تاريخ الاعتماد", width: 20 },
-  { key: "paidAt", header: "تاريخ الدفع", width: 20 },
-  { key: "notes", header: "ملاحظات", width: 28 },
+  { key: "setupStatus", header: "حالة إعداد الراتب", width: 18 },
+  { key: "baseSalary", header: "الراتب الأساسي", width: 16 },
+  { key: "workDays", header: "أيام العمل", width: 12 },
+  { key: "monthlyHours", header: "ساعات الفترة", width: 13 },
+  { key: "actualWorkedHours", header: "الساعات الفعلية", width: 14 },
+  { key: "missingHours", header: "نقص الساعات", width: 13 },
+  { key: "missingDeduction", header: "خصم الحضور", width: 14 },
+  { key: "additions", header: "الإضافات", width: 14 },
+  { key: "deductions", header: "الخصومات", width: 14 },
+  { key: "netSalary", header: "صافي الراتب", width: 15 },
+  { key: "salaryStatus", header: "حالة الراتب", width: 13 },
+  { key: "notes", header: "ملاحظات", width: 24 },
 ];
 
 const EXCLUDED_PAYROLL_COLUMNS: ReportColumn<PayrollExcludedRow>[] = [
@@ -113,9 +116,6 @@ export function payrollExportExclusionReason(entry: PayrollEntryView) {
   }
   if (!(entry.baseSalaryHalalas > 0)) {
     reasons.push("الراتب الأساسي غير محدد");
-  }
-  if (!Number.isFinite(Number(entry.netSalaryHalalas)) || Number(entry.netSalaryHalalas) <= 0) {
-    reasons.push("صافي الراتب غير قابل للصرف");
   }
   return reasons.join("، ");
 }
@@ -148,7 +148,16 @@ function setupNotes(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) {
     notes.push(`غير مكتمل: ${setupMissingLabels(entry).join("، ")}`);
   }
+  if (entry.attendanceSummary.attendanceDeductionEligible === false) {
+    notes.push(entry.attendanceSummary.attendanceDeductionNote || ATTENDANCE_UNCONFIRMED_REPORT_NOTE);
+  }
   return notes.map((item) => String(item || "").trim()).filter(Boolean).join(" | ");
+}
+
+function missingDeductionValue(entry: PayrollEntryView) {
+  if (!entry.payrollSetupComplete) return "غير مكتمل";
+  if (entry.attendanceSummary.attendanceDeductionEligible === false) return "لم يطبق";
+  return halalasToRiyalsNumber(entry.missingHoursDeductionHalalas);
 }
 
 function buildPayrollRows(entries: PayrollEntryView[]): PayrollReportRow[] {
@@ -158,10 +167,11 @@ function buildPayrollRows(entries: PayrollEntryView[]): PayrollReportRow[] {
     baseSalary: baseSalaryValue(entry),
     workDays: workDaysValue(entry),
     monthlyHours: entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل",
+    actualWorkedHours: hoursValue(entry.attendanceSummary.totalActualWorkedHours),
     dailyRate: riyalsOrIncomplete(entry, entry.dailyRateHalalas),
     hourlyRate: riyalsOrIncomplete(entry, entry.hourlyRateHalalas),
     missingHours: hoursValue(entry.attendanceSummary.totalMissingHours),
-    missingDeduction: riyalsOrIncomplete(entry, entry.missingHoursDeductionHalalas),
+    missingDeduction: missingDeductionValue(entry),
     detectedExtraHours: hoursValue(entry.detectedExtraHours),
     overtimeFinancialStatus: entry.overtimeEnabled ? "مفعل" : "غير مفعل",
     overtimeValue: riyalsOrIncomplete(entry, entry.overtimeValueHalalas),
@@ -175,6 +185,19 @@ function buildPayrollRows(entries: PayrollEntryView[]): PayrollReportRow[] {
   }));
 }
 
+function payrollCycleText(filters: PayrollReportFilters) {
+  if (filters.periodStartDate && filters.periodEndDate) {
+    return `${formatMonthPeriod(filters.year, filters.month)} | فترة الاحتساب: ${formatPeriod(filters.periodStartDate, filters.periodEndDate)}`;
+  }
+  return formatMonthPeriod(filters.year, filters.month);
+}
+
+function payrollPeriodLine(filters: PayrollReportFilters, employee: string, status: string, includeIncomplete: boolean) {
+  const scope = includeIncomplete ? "يشمل غير المكتمل للمراجعة الداخلية" : "الموظفات ذات إعداد راتب مكتمل";
+  const payDate = filters.payDate ? ` | تاريخ الصرف المتوقع: ${formatDate(filters.payDate)}` : "";
+  return `${payrollCycleText(filters)}${payDate} - ${employee} - ${status} - ${scope}`;
+}
+
 function payrollSummary(
   entries: PayrollEntryView[],
   filters: PayrollReportFilters,
@@ -186,13 +209,18 @@ function payrollSummary(
   const excludedCount = options?.excludedRows?.length ?? Math.max(0, originalCount - exportedCount);
   return [
     { label: "الشهر/السنة", value: formatMonthPeriod(filters.year, filters.month) },
+    ...(filters.periodStartDate && filters.periodEndDate
+      ? [{ label: "فترة الاحتساب", value: formatPeriod(filters.periodStartDate, filters.periodEndDate) }]
+      : []),
+    ...(filters.payDate ? [{ label: "تاريخ الصرف المتوقع", value: formatDate(filters.payDate) }] : []),
     { label: options?.includeIncomplete ? "عدد الموظفات" : "عدد الموظفات المصدّرة", value: exportedCount },
-    ...(options?.includeIncomplete
-      ? []
-      : [
-          { label: "عدد المستبعدات من التصدير", value: excludedCount },
-          { label: "نطاق التصدير", value: "الموظفات النشطات ذات إعداد راتب مكتمل وصافي راتب قابل للصرف" },
-        ]),
+    ...(options?.includeIncomplete ? [] : [{ label: "عدد المستبعدات من التصدير", value: excludedCount }]),
+    {
+      label: "نطاق التصدير",
+      value: options?.includeIncomplete
+        ? "يشمل غير المكتمل للمراجعة الداخلية"
+        : "الموظفات ذات إعداد راتب مكتمل",
+    },
     { label: "عدد المكتمل", value: completeEntries.length },
     { label: "عدد غير المكتمل", value: entries.length - completeEntries.length },
     { label: "عدد المعتمد", value: entries.filter((entry) => entry.status === "approved").length },
@@ -223,30 +251,6 @@ function excludedRowFor(entry: PayrollEntryView): PayrollExcludedRow {
   };
 }
 
-function noEligiblePayrollRow(): PayrollReportRow {
-  return {
-    employeeName: "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.",
-    setupStatus: "غير متوفر",
-    baseSalary: "غير متوفر",
-    workDays: "غير متوفر",
-    monthlyHours: "غير متوفر",
-    dailyRate: "غير متوفر",
-    hourlyRate: "غير متوفر",
-    missingHours: "غير متوفر",
-    missingDeduction: "غير متوفر",
-    detectedExtraHours: "غير متوفر",
-    overtimeFinancialStatus: "غير متوفر",
-    overtimeValue: "غير متوفر",
-    additions: "غير متوفر",
-    deductions: "غير متوفر",
-    netSalary: "غير متوفر",
-    salaryStatus: "غير متوفر",
-    approvedAt: "غير متوفر",
-    paidAt: "غير متوفر",
-    notes: "لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة.",
-  };
-}
-
 export function buildPayrollReportData(input: {
   entries: PayrollEntryView[];
   filters: PayrollReportFilters;
@@ -257,47 +261,50 @@ export function buildPayrollReportData(input: {
   generatedBy?: string;
   salonName?: string;
 }): ExportReport<PayrollReportRow> {
-  const monthPeriod = formatMonthPeriod(input.filters.year, input.filters.month);
   const employee = safeText(input.filters.employeeName, "كل الموظفات");
   const status = safeText(input.filters.statusLabel, "كل الحالات");
   const includeIncomplete = Boolean(input.includeIncomplete);
+  const periodLine = payrollPeriodLine(input.filters, employee, status, includeIncomplete);
   const exportedEntries = includeIncomplete ? input.entries : input.entries.filter(isPayrollExportEligible);
   const generatedExcludedRows = includeIncomplete ? [] : input.entries.filter((entry) => !isPayrollExportEligible(entry)).map(excludedRowFor);
   const excludedRows = includeIncomplete ? [] : input.excludedRows ?? generatedExcludedRows;
   const rows = buildPayrollRows(exportedEntries);
   const noEligibleRows = !includeIncomplete && rows.length === 0;
   return {
-    title: includeIncomplete ? "تقرير الرواتب الشهري" : "تقرير الرواتب الشهرية - المستحقات الفعلية",
-    period: includeIncomplete
-      ? `${monthPeriod} - ${employee} - ${status} - يشمل السجلات غير المكتملة`
-      : `${monthPeriod} - ${employee} - ${status} - المستحقات الفعلية`,
+    title: includeIncomplete ? "مسيرة الرواتب الشهرية - مراجعة داخلية" : "مسيرة الرواتب الشهرية - الموظفات ذات الراتب",
+    period: periodLine,
     generatedAt: input.generatedAt || currentGeneratedAt(),
     generatedBy: normalizeGeneratedBy(input.generatedBy),
     salonName: input.salonName,
+    summarySheetName: "ملخص الرواتب",
     summary: payrollSummary(exportedEntries, input.filters, {
       includeIncomplete,
       originalCount: input.originalCount ?? input.entries.length,
       excludedRows,
     }),
     table: {
-      name: "البيانات التفصيلية",
+      name: "تفاصيل الرواتب",
       columns: PAYROLL_COLUMNS,
-      rows: rows.length ? rows : noEligibleRows ? [noEligiblePayrollRow()] : rows,
+      rows,
+      emptyMessage: noEligibleRows
+        ? "لا توجد موظفات بإعداد راتب مكتمل قابلة للتصدير لهذه الفترة."
+        : "لا توجد بيانات مطابقة للفلاتر الحالية.",
     },
     extraTables: !includeIncomplete && excludedRows.length
       ? [
           {
-            name: "السجلات المستبعدة",
+            name: "المستبعدون",
             columns: EXCLUDED_PAYROLL_COLUMNS,
             rows: excludedRows,
+            hideInPdf: true,
           },
         ]
       : undefined,
     notes: noEligibleRows
-      ? ["لا توجد رواتب مكتملة قابلة للتصدير لهذه الفترة."]
+      ? ["لا توجد موظفات بإعداد راتب مكتمل قابلة للتصدير لهذه الفترة."]
       : includeIncomplete && input.entries.some((entry) => !entry.payrollSetupComplete)
-        ? ["يشمل هذا التقرير سجلات غير مكتملة ولا يتم تصدير صافي الراتب كراتب معتمد."]
-        : ["يشمل هذا التقرير الموظفات ذات إعداد راتب مكتمل وصافي راتب قابل للصرف فقط."],
+        ? ["يشمل هذا التقرير سجلات غير مكتملة للمراجعة الداخلية فقط."]
+        : ["يشمل هذا التقرير الموظفات ذات إعداد راتب مكتمل وراتب أساسي محدد فقط، وفترة الاحتساب المعتمدة هي من يوم 21 إلى يوم 20."],
   };
 }
 
@@ -315,11 +322,13 @@ function payslipRows(entry: PayrollEntryView): PayslipRow[] {
     { item: "ملاحظة الاعتماد", value: draftNotice || "معتمد/مدفوع حسب حالة السجل" },
     { item: "الراتب الأساسي", value: entry.baseSalaryHalalas > 0 ? formatCurrency(halalasToRiyalsNumber(entry.baseSalaryHalalas)) : "غير مكتمل" },
     { item: "أيام العمل", value: workDaysValue(entry) },
-    { item: "ساعات الشهر", value: entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل" },
+    { item: "ساعات الفترة", value: entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل" },
+    { item: "الساعات الفعلية", value: formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours) },
     { item: "راتب اليوم", value: payslipValue(entry, entry.dailyRateHalalas) },
     { item: "راتب الساعة", value: payslipValue(entry, entry.hourlyRateHalalas) },
     { item: "التأخير", value: formatAttendanceHours(entry.attendanceSummary.totalLateHours) },
     { item: "نقص الساعات", value: formatAttendanceHours(entry.attendanceSummary.totalMissingHours) },
+    { item: "خصم الحضور", value: missingDeductionValue(entry) },
     { item: "الساعات الزائدة", value: formatAttendanceHours(entry.detectedExtraHours) },
     { item: "الإضافات", value: payslipValue(entry, entry.totalAdditionsHalalas) },
     { item: "الخصومات", value: payslipValue(entry, entry.totalDeductionsHalalas) },

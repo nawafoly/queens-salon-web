@@ -77,7 +77,7 @@ const SETUP_MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
   employeeId: "معرف الموظفة غير محدد",
   baseSalary: "الراتب الأساسي غير محدد",
   workDays: "أيام العمل غير محددة",
-  monthlyHours: "ساعات الشهر غير محددة",
+  monthlyHours: "ساعات الفترة غير محددة",
   overtimeMultiplier: "معامل الأوفر تايم غير محدد",
 };
 
@@ -172,11 +172,30 @@ function formatSetupMoney(entry: PayrollEntryView, value: unknown) {
 }
 
 function formatMonthlyHours(entry: PayrollEntryView) {
-  return entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "ساعات الشهر غير محددة";
+  return entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "ساعات الفترة غير محددة";
 }
 
 function employeePayrollPath(entry: PayrollEntryView) {
   return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll#payroll-settings`;
+}
+
+function attendanceDeductionBlocked(entry: PayrollEntryView) {
+  return entry.attendanceSummary.attendanceDeductionEligible === false;
+}
+
+function attendanceDeductionMessage(entry: PayrollEntryView) {
+  return entry.attendanceSummary.attendanceDeductionNote || "لم يتم تطبيق خصم الحضور لأن ربط البصمات غير مكتمل أو غير مؤكد.";
+}
+
+function formatAttendanceDeduction(entry: PayrollEntryView) {
+  if (!entry.payrollSetupComplete) return UNDEFINED_VALUE_LABEL;
+  return attendanceDeductionBlocked(entry)
+    ? "لم يطبق"
+    : formatPayrollMoney(entry.missingHoursDeductionHalalas);
+}
+
+function hasManualAdjustments(entry: PayrollEntryView) {
+  return entry.additions.length > 0 || entry.deductions.length > 0;
 }
 
 function payrollActionErrorMessage(error: unknown, fallback: string) {
@@ -214,7 +233,8 @@ export default function DashboardPayroll() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const payrollMonth = payrollMonthBounds(year, month).payrollMonth;
+  const payrollBounds = payrollMonthBounds(year, month);
+  const payrollMonth = payrollBounds.payrollMonth;
 
   const load = async () => {
     setLoading(true);
@@ -299,11 +319,14 @@ export default function DashboardPayroll() {
       ? "كل الموظفات"
       : employees.find((employee) => employee.id === employeeFilter)?.name || employeeFilter;
   const selectedStatusLabel = STATUS_LABELS[statusFilter] || statusFilter;
+  const exportableEntries = includeIncompleteExport
+    ? visibleEntries
+    : visibleEntries.filter(isPayrollExportEligible);
+  const exportableCount = exportableEntries.length;
+  const payrollCycleLabel = `فترة الاحتساب: ${payrollBounds.monthStart} إلى ${payrollBounds.monthEnd} · الصرف المتوقع: ${payrollBounds.payDate}`;
 
   const payrollReportInput = () => {
-    const exportedEntries = includeIncompleteExport
-      ? visibleEntries
-      : visibleEntries.filter(isPayrollExportEligible);
+    const exportedEntries = exportableEntries;
     const excludedRows = includeIncompleteExport
       ? []
       : visibleEntries
@@ -323,6 +346,9 @@ export default function DashboardPayroll() {
         month,
         employeeName: selectedEmployeeName,
         statusLabel: selectedStatusLabel,
+        periodStartDate: payrollBounds.monthStart,
+        periodEndDate: payrollBounds.monthEnd,
+        payDate: payrollBounds.payDate,
       },
     };
   };
@@ -358,7 +384,11 @@ export default function DashboardPayroll() {
         next = [...next, ...withPeriod];
         return next;
       });
-      setMessage(recalculate ? "تمت إعادة الحساب للمسودات غير المقفلة." : "تم توليد مسيرة الشهر كمسودات جاهزة للحفظ.");
+      setMessage(
+        recalculate
+          ? `تمت إعادة الحساب للفترة ${period.monthStart} إلى ${period.monthEnd}.`
+          : `تم توليد مسيرة الشهر للفترة ${period.monthStart} إلى ${period.monthEnd} كمسودات جاهزة للحفظ.`
+      );
     } catch (actionError: any) {
       setError(String(actionError?.message || "تعذر توليد مسيرة الرواتب."));
     } finally {
@@ -576,6 +606,7 @@ export default function DashboardPayroll() {
           <button type="button" onClick={handleExportPayrollExcel} disabled={loading}>
             <FiDownload /> تصدير مسيرة الشهر Excel
           </button>
+          <span className="payroll-export-count">سيصدّر {exportableCount} من {visibleEntries.length}</span>
           <label className="payroll-export-option">
             <input
               type="checkbox"
@@ -585,6 +616,11 @@ export default function DashboardPayroll() {
             <span>تضمين غير المكتمل في التصدير</span>
           </label>
         </div>
+      </div>
+
+      <div className="payroll-period-banner">
+        <FiClock />
+        <span>{payrollCycleLabel}</span>
       </div>
 
       {error ? <div className="payroll-alert is-error">{error}</div> : null}
@@ -648,11 +684,25 @@ export default function DashboardPayroll() {
                 entry.payrollSetupComplete &&
                 entry.status === "approved";
               const missingLabels = setupMissingLabels(entry);
+              const exportEligible = isPayrollExportEligible(entry);
+              const attendanceBlocked = attendanceDeductionBlocked(entry);
+              const manualAdjustments = hasManualAdjustments(entry);
               return (
                 <tr key={`${entry.employeeId}:${entry.payrollMonth}`}>
                   <td className="payroll-employee-cell">
                     <strong>{entry.employeeName}</strong>
                     <small>{entry.jobTitle || entry.employeeId}</small>
+                    <div className="payroll-row-badges">
+                      <span className={`payroll-mini-badge ${exportEligible ? "is-exported" : "is-excluded"}`}>
+                        {exportEligible ? "داخل التصدير الرسمي" : "مستبعد من التصدير"}
+                      </span>
+                      {attendanceBlocked ? (
+                        <span className="payroll-mini-badge is-attendance-warning">الحضور غير مربوط</span>
+                      ) : null}
+                      {manualAdjustments ? (
+                        <span className="payroll-mini-badge is-manual">بنود يدوية</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="payroll-setup-cell">
                     <span className={`payroll-setup-badge ${entry.payrollSetupComplete ? "is-complete" : "is-incomplete"}`}>
@@ -670,7 +720,10 @@ export default function DashboardPayroll() {
                       </small>
                     ) : null}
                   </td>
-                  <td>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</td>
+                  <td>
+                    <strong>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</strong>
+                    {attendanceBlocked ? <small className="payroll-attendance-note">معلومة فقط، بدون خصم تلقائي</small> : null}
+                  </td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
                   <td>
                     <label className="payroll-switch">
@@ -685,7 +738,10 @@ export default function DashboardPayroll() {
                     <small>{entry.overtimeEnabled ? "محتسب" : "غير محتسب"}</small>
                   </td>
                   <td>{formatPayrollMoney(entry.totalAdditionsHalalas)}</td>
-                  <td>{formatPayrollMoney(entry.totalDeductionsHalalas)}</td>
+                  <td>
+                    <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
+                    {attendanceBlocked ? <small className="payroll-attendance-note">خصم الحضور: لم يطبق</small> : null}
+                  </td>
                   <td><strong>{formatSetupMoney(entry, entry.netSalaryHalalas)}</strong></td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
@@ -799,6 +855,16 @@ function PayrollDetailsModal({
           </div>
         ) : null}
 
+        {attendanceDeductionBlocked(entry) ? (
+          <div className="payroll-alert is-warning">
+            <FiAlertTriangle />
+            <div>
+              <strong>{attendanceDeductionMessage(entry)}</strong>
+              <small>نقص الساعات ظاهر للمراجعة فقط ولن يتحول إلى خصم مالي تلقائي.</small>
+            </div>
+          </div>
+        ) : null}
+
         <div className="payroll-detail-grid">
           <section>
             <h3>إعدادات الراتب</h3>
@@ -806,7 +872,7 @@ function PayrollDetailsModal({
               <div><dt>حالة الإعداد</dt><dd>{entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل"}</dd></div>
               <div><dt>الراتب الأساسي</dt><dd>{formatBaseSalary(entry)}</dd></div>
               <div><dt>عدد أيام العمل</dt><dd>{setupMissing(entry, "workDays") ? UNDEFINED_VALUE_LABEL : entry.workDays}</dd></div>
-              <div><dt>ساعات الشهر</dt><dd>{formatMonthlyHours(entry)}</dd></div>
+              <div><dt>ساعات الفترة</dt><dd>{formatMonthlyHours(entry)}</dd></div>
               <div><dt>ساعات اليوم المعتمدة</dt><dd>{entry.dailyScheduledHours > 0 ? formatAttendanceHours(entry.dailyScheduledHours) : UNDEFINED_VALUE_LABEL}</dd></div>
               <div><dt>راتب اليوم</dt><dd>{formatSetupMoney(entry, entry.dailyRateHalalas)}</dd></div>
               <div><dt>راتب الساعة</dt><dd>{formatSetupMoney(entry, entry.hourlyRateHalalas)}</dd></div>
@@ -822,6 +888,8 @@ function PayrollDetailsModal({
             <h3>ملخص الحضور</h3>
             <dl>
               <div><dt>أيام الحضور</dt><dd>{entry.attendanceSummary.attendanceDays}</dd></div>
+              <div><dt>حالة ربط الحضور</dt><dd>{attendanceDeductionBlocked(entry) ? "غير مربوط/غير مؤكد" : "مؤكد"}</dd></div>
+              <div><dt>عدد البصمات المرتبطة</dt><dd>{entry.attendanceSummary.attendanceRecordCount || 0}</dd></div>
               <div><dt>أيام الغياب</dt><dd>{entry.attendanceSummary.absentDays}</dd></div>
               <div><dt>إجمالي ساعات الدوام المطلوبة</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</dd></div>
               <div><dt>إجمالي ساعات العمل الفعلية</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</dd></div>
@@ -849,7 +917,7 @@ function PayrollDetailsModal({
           <section>
             <h3>الخصومات</h3>
             <dl>
-              <div><dt>خصم نقص الساعات</dt><dd>{formatSetupMoney(entry, entry.missingHoursDeductionHalalas)}</dd></div>
+              <div><dt>خصم الحضور</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
               <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
               <div><dt>خصومات يدوية وجزاءات</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
               <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>

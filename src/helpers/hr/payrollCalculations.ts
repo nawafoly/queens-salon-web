@@ -1,3 +1,28 @@
+﻿
+export function payrollMonthBounds(year: number, month: number) {
+  const normalizedMonth = Math.max(1, Math.min(12, Math.trunc(Number(month) || 1)));
+  const payYear = Math.trunc(Number(year) || new Date().getFullYear());
+
+  const currentMonth = String(normalizedMonth).padStart(2, "0");
+  const previousMonthDate = new Date(Date.UTC(payYear, normalizedMonth - 2, 1));
+  const previousYear = previousMonthDate.getUTCFullYear();
+  const previousMonth = String(previousMonthDate.getUTCMonth() + 1).padStart(2, "0");
+
+  const periodStart = `${previousYear}-${previousMonth}-21`;
+  const periodEnd = `${payYear}-${currentMonth}-20`;
+  const payrollMonth = `${payYear}-${currentMonth}`;
+  const payDate = `${payYear}-${currentMonth}-28`;
+
+  return {
+    payrollMonth,
+    monthStart: periodStart,
+    monthEnd: periodEnd,
+    periodStart,
+    periodEnd,
+    payDate,
+    payoutDate: payDate,
+  };
+}
 export type PayrollStatus = "draft" | "reviewed" | "approved" | "paid";
 
 export type PayrollManualItemKind =
@@ -31,6 +56,10 @@ export type PayrollAttendanceSummarySnapshot = {
   attendanceDays: number;
   absentDays: number;
   incompleteDays: number;
+  attendanceRecordCount?: number;
+  attendanceLinkStatus?: "confirmed" | "unlinked" | "not_ready";
+  attendanceDeductionEligible?: boolean;
+  attendanceDeductionNote?: string | null;
 };
 
 export type PayrollSetupMissingKey =
@@ -108,6 +137,12 @@ export type PayrollSnapshot = {
   notes?: string | null;
 };
 
+export const ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE =
+  "لم يتم تطبيق خصم الحضور لأن ربط البصمات غير مكتمل أو غير مؤكد.";
+
+export const ATTENDANCE_UNCONFIRMED_REPORT_NOTE =
+  "الحضور غير مربوط/غير مؤكد، لم يتم تطبيق خصم حضور تلقائي.";
+
 function money(value: unknown) {
   const number = Number(value ?? 0);
   if (!Number.isFinite(number) || number < 0) return 0;
@@ -129,6 +164,11 @@ function positive(value: unknown, fallback = 0) {
 function roundHalalas(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.round(value));
+}
+
+function clampHours(value: number, max: number) {
+  if (!Number.isFinite(max) || max <= 0) return value;
+  return Math.min(value, Math.round(max * 100) / 100);
 }
 
 export function isPayrollSnapshotLocked(status?: string | null) {
@@ -218,16 +258,32 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
         ? roundHalalas(dailyRateHalalas / dailyScheduledHours)
         : 0;
 
+  const rawAttendanceMissingHours = hours(input.attendanceSummary.totalMissingHours);
+  const maxDeductiblePeriodHours =
+    monthlyHours > 0
+      ? monthlyHours
+      : hours(input.attendanceSummary.totalScheduledHours);
+  const attendanceDeductionEligible = input.attendanceSummary.attendanceDeductionEligible !== false;
+  const attendanceDeductionNote =
+    input.attendanceSummary.attendanceDeductionNote ||
+    (attendanceDeductionEligible ? null : ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE);
+
   const attendanceSummary: PayrollAttendanceSummarySnapshot = {
     totalScheduledHours: hours(input.attendanceSummary.totalScheduledHours),
     totalActualWorkedHours: hours(input.attendanceSummary.totalActualWorkedHours),
     totalLateHours: hours(input.attendanceSummary.totalLateHours),
     totalCompensatedLateHours: hours(input.attendanceSummary.totalCompensatedLateHours),
-    totalMissingHours: hours(input.attendanceSummary.totalMissingHours),
+    totalMissingHours: clampHours(rawAttendanceMissingHours, maxDeductiblePeriodHours),
     totalExtraHours: hours(input.attendanceSummary.totalExtraHours),
     attendanceDays: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceDays || 0))),
     absentDays: Math.max(0, Math.round(Number(input.attendanceSummary.absentDays || 0))),
     incompleteDays: Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
+    attendanceRecordCount: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceRecordCount || 0))),
+    attendanceLinkStatus:
+      input.attendanceSummary.attendanceLinkStatus ||
+      (attendanceDeductionEligible ? "confirmed" : "unlinked"),
+    attendanceDeductionEligible,
+    attendanceDeductionNote,
   };
 
   const additions = (input.additions || []).map((item) => ({
@@ -253,9 +309,10 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     .filter((item) => item.kind === "advance")
     .reduce((total, item) => total + money(item.amountHalalas), 0);
 
-  const missingHoursDeductionHalalas = roundHalalas(
-    attendanceSummary.totalMissingHours * hourlyRateHalalas
-  );
+  const missingHoursDeductionHalalas =
+    attendanceDeductionEligible
+      ? roundHalalas(attendanceSummary.totalMissingHours * hourlyRateHalalas)
+      : 0;
   const detectedExtraHours = attendanceSummary.totalExtraHours;
   const overtimeEnabled =
     input.overtimeEnabled === true &&
@@ -336,3 +393,4 @@ export function formatPayrollMoney(value: unknown) {
     maximumFractionDigits: 2,
   }).format(halalasToRiyals(value));
 }
+

@@ -12,6 +12,8 @@ export type ReportTable<Row extends Record<string, ReportCellValue> = Record<str
   name: string;
   columns: ReportColumn<Row>[];
   rows: Row[];
+  emptyMessage?: string;
+  hideInPdf?: boolean;
 };
 
 export type ReportSummaryItem = {
@@ -26,6 +28,7 @@ export type ExportReport<Row extends Record<string, ReportCellValue> = Record<st
   generatedBy: string;
   salonName?: string;
   summary: ReportSummaryItem[];
+  summarySheetName?: string;
   table: ReportTable<Row>;
   extraTables?: ReportTable[];
   notes?: string[];
@@ -141,83 +144,138 @@ export function createExcelWorkbook() {
   return workbook;
 }
 
-function worksheetFromRows<Row extends Record<string, ReportCellValue>>(
-  table: ReportTable<Row>
+function normalizeExcelValue(value: ReportCellValue) {
+  if (value == null) return "";
+  if (value instanceof Date) return formatDateTime(value.toISOString());
+  return value;
+}
+
+function safeSheetName(value: string) {
+  return safeText(value, "Sheet").replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
+}
+
+function setWorksheetLayout(
+  worksheet: XLSX.WorkSheet,
+  widths: number[],
+  options: { autoFilterHeaderRow?: number; freezeRows?: number } = {}
 ) {
-  const rows = table.rows.map((row) =>
-    table.columns.map((column) => normalizeExcelValue(row[column.key]))
-  );
-  const worksheet = XLSX.utils.aoa_to_sheet([
-    table.columns.map((column) => column.header),
-    ...rows,
-  ]);
   const sheet = worksheet as XLSX.WorkSheet & {
     "!cols"?: XLSX.ColInfo[];
     "!freeze"?: unknown;
     "!rtl"?: boolean;
     "!autofilter"?: { ref: string };
   };
-  sheet["!cols"] = table.columns.map((column) => ({
-    wch: column.width || Math.max(12, Math.min(32, column.header.length + 6)),
-  }));
-  sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+  sheet["!cols"] = widths.map((width) => ({ wch: width }));
   sheet["!rtl"] = true;
-  if (worksheet["!ref"]) {
-    sheet["!autofilter"] = { ref: worksheet["!ref"] };
+  if (options.freezeRows) {
+    sheet["!freeze"] = { xSplit: 0, ySplit: options.freezeRows };
   }
+  if (worksheet["!ref"] && options.autoFilterHeaderRow != null) {
+    const range = XLSX.utils.decode_range(worksheet["!ref"]);
+    range.s.r = options.autoFilterHeaderRow;
+    sheet["!autofilter"] = { ref: XLSX.utils.encode_range(range) };
+  }
+}
+
+function summaryRows<Row extends Record<string, ReportCellValue>>(report: ExportReport<Row>) {
+  return [
+    { label: "اسم الصالون", value: report.salonName || DEFAULT_SALON_NAME },
+    { label: "عنوان التقرير", value: report.title },
+    { label: "الفترة", value: report.period },
+    { label: "تاريخ التصدير", value: formatDateTime(report.generatedAt) },
+    { label: "المصدر", value: report.generatedBy },
+    ...report.summary,
+  ];
+}
+
+function worksheetFromSummary<Row extends Record<string, ReportCellValue>>(report: ExportReport<Row>) {
+  const rows = [
+    [report.salonName || DEFAULT_SALON_NAME],
+    [report.title],
+    [report.period],
+    [],
+    ["البند", "القيمة"],
+    ...summaryRows(report).map((item) => [item.label, normalizeExcelValue(item.value)]),
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  setWorksheetLayout(worksheet, [34, 42], { autoFilterHeaderRow: 4, freezeRows: 5 });
   return worksheet;
 }
 
-function normalizeExcelValue(value: ReportCellValue) {
-  if (value == null) return "";
-  return value;
+function tableBodyRows<Row extends Record<string, ReportCellValue>>(table: ReportTable<Row>) {
+  if (table.rows.length) {
+    return table.rows.map((row) =>
+      table.columns.map((column) => normalizeExcelValue(row[column.key]))
+    );
+  }
+  if (!table.emptyMessage) return [];
+  const empty = Array.from({ length: table.columns.length }, () => "");
+  empty[0] = table.emptyMessage;
+  return [empty];
 }
 
-function appendSheet<Row extends Record<string, ReportCellValue>>(
-  workbook: XLSX.WorkBook,
-  table: ReportTable<Row>,
-  fallbackName: string
+function worksheetFromTable<Row extends Record<string, ReportCellValue>>(
+  report: ExportReport<Row>,
+  table: ReportTable<Row>
 ) {
-  const worksheet = worksheetFromRows(table);
-  XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName(table.name || fallbackName));
+  const introRows = [
+    [report.salonName || DEFAULT_SALON_NAME],
+    [report.title],
+    [report.period],
+    ["تاريخ التصدير", formatDateTime(report.generatedAt), "المصدر", report.generatedBy],
+    [],
+    [table.name],
+  ];
+  const headerRow = introRows.length;
+  const rows = [
+    ...introRows,
+    table.columns.map((column) => column.header),
+    ...tableBodyRows(table),
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const widths = table.columns.map((column) =>
+    column.width || Math.max(12, Math.min(34, column.header.length + 6))
+  );
+  setWorksheetLayout(worksheet, widths, { autoFilterHeaderRow: headerRow, freezeRows: headerRow + 1 });
+  return worksheet;
+}
+
+export function buildReportExcelWorkbook<Row extends Record<string, ReportCellValue>>(
+  report: ExportReport<Row>
+) {
+  const workbook = createExcelWorkbook();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheetFromSummary(report),
+    safeSheetName(report.summarySheetName || "الملخص")
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheetFromTable(report, report.table),
+    safeSheetName(report.table.name || "التفاصيل")
+  );
+  for (const table of report.extraTables || []) {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheetFromTable(report, table),
+      safeSheetName(table.name)
+    );
+  }
+  return workbook;
 }
 
 export function exportReportToExcel<Row extends Record<string, ReportCellValue>>(
   report: ExportReport<Row>,
   filename: string
 ) {
-  const workbook = createExcelWorkbook();
-  const summaryRows: ReportTable = {
-    name: "الملخص",
-    columns: [
-      { key: "label", header: "البند", width: 34 },
-      { key: "value", header: "القيمة", width: 32 },
-    ],
-    rows: [
-      { label: "اسم الصالون", value: report.salonName || DEFAULT_SALON_NAME },
-      { label: "عنوان التقرير", value: report.title },
-      { label: "الفترة", value: report.period },
-      { label: "تاريخ التصدير", value: formatDateTime(report.generatedAt) },
-      { label: "المصدر", value: report.generatedBy },
-      ...report.summary,
-    ],
-  };
-  appendSheet(workbook, summaryRows, "الملخص");
-  appendSheet(workbook, report.table, "التفاصيل");
-  for (const table of report.extraTables || []) {
-    appendSheet(workbook, table, table.name);
-  }
+  const workbook = buildReportExcelWorkbook(report);
   const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   downloadBlob(
     new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
-    filename
+    filename.replace(/\.xls$/i, ".xlsx")
   );
-}
-
-function safeSheetName(value: string) {
-  return safeText(value, "Sheet").replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
 }
 
 function escapeHtml(value: ReportCellValue) {
@@ -247,7 +305,7 @@ function renderTable<Row extends Record<string, ReportCellValue>>(table: ReportT
               .join("")}</tr>`
         )
         .join("")
-    : `<tr><td colspan="${table.columns.length}">لا توجد بيانات مطابقة للفلاتر الحالية.</td></tr>`;
+    : `<tr><td colspan="${table.columns.length}">${escapeHtml(table.emptyMessage || "لا توجد بيانات مطابقة للفلاتر الحالية.")}</td></tr>`;
 
   return `
     <section class="report-section">
@@ -419,7 +477,7 @@ export function createPdfDocument<Row extends Record<string, ReportCellValue>>(r
       .join("")}
   </ul>
   ${renderTable(report.table)}
-  ${(report.extraTables || []).map(renderTable).join("")}
+  ${(report.extraTables || []).filter((table) => !table.hideInPdf).map(renderTable).join("")}
   ${notes}
   <footer>
     <span>تم إنشاء التقرير من بيانات النظام الحالية بدون تعديل أي سجلات.</span>

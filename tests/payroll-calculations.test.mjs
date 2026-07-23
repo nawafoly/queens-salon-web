@@ -1,9 +1,10 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculatePayrollSnapshot,
   evaluatePayrollSetup,
   preserveLockedPayrollSnapshot,
+  payrollMonthBounds,
 } from "../src/helpers/hr/payrollCalculations.ts";
 
 const attendanceSummary = {
@@ -61,6 +62,88 @@ test("salary setup can use work days times daily hours as monthly hours", () => 
 test("one missing hour deducts one hourly rate", () => {
   const result = snapshot();
   assert.equal(result.missingHoursDeductionHalalas, result.hourlyRateHalalas);
+});
+
+test("payroll month 07/2026 uses the 21-to-20 accounting period", () => {
+  const bounds = payrollMonthBounds(2026, 7);
+  assert.equal(bounds.payrollMonth, "2026-07");
+  assert.equal(bounds.monthStart, "2026-06-21");
+  assert.equal(bounds.monthEnd, "2026-07-20");
+  assert.equal(bounds.payDate, "2026-07-28");
+});
+
+test("payroll month 08/2026 uses the 21-to-20 accounting period", () => {
+  const bounds = payrollMonthBounds(2026, 8);
+  assert.equal(bounds.payrollMonth, "2026-08");
+  assert.equal(bounds.monthStart, "2026-07-21");
+  assert.equal(bounds.monthEnd, "2026-08-20");
+  assert.equal(bounds.payDate, "2026-08-28");
+});
+
+test("attendance missing-hour deduction is blocked when attendance linkage is unconfirmed", () => {
+  const result = snapshot({
+    attendanceSummary: {
+      ...attendanceSummary,
+      totalActualWorkedHours: 0,
+      totalMissingHours: 248,
+      attendanceDays: 0,
+      attendanceRecordCount: 0,
+      attendanceLinkStatus: "unlinked",
+      attendanceDeductionEligible: false,
+    },
+  });
+  assert.equal(result.attendanceSummary.totalMissingHours, 208);
+  assert.equal(result.missingHoursDeductionHalalas, 0);
+  assert.equal(result.attendanceSummary.attendanceDeductionEligible, false);
+  assert.match(result.attendanceSummary.attendanceDeductionNote, /ربط البصمات/);
+});
+
+test("manual deductions still apply when attendance deduction is blocked", () => {
+  const result = snapshot({
+    attendanceSummary: {
+      ...attendanceSummary,
+      totalMissingHours: 20,
+      attendanceRecordCount: 0,
+      attendanceDeductionEligible: false,
+    },
+    deductions: [
+      {
+        id: "manual-deduction-1",
+        direction: "deduction",
+        kind: "manual_deduction",
+        amountHalalas: 10000,
+        reason: "خصم إداري",
+        addedAt: "2026-07-23T10:00:00.000Z",
+      },
+    ],
+  });
+  assert.equal(result.missingHoursDeductionHalalas, 0);
+  assert.equal(result.manualDeductionsHalalas, 10000);
+  assert.equal(result.totalDeductionsHalalas, 10000);
+});
+
+test("manual additions still apply when attendance deduction is blocked", () => {
+  const result = snapshot({
+    attendanceSummary: {
+      ...attendanceSummary,
+      totalMissingHours: 20,
+      attendanceRecordCount: 0,
+      attendanceDeductionEligible: false,
+    },
+    additions: [
+      {
+        id: "manual-addition-1",
+        direction: "addition",
+        kind: "bonus",
+        amountHalalas: 15000,
+        reason: "مكافأة",
+        addedAt: "2026-07-23T10:00:00.000Z",
+      },
+    ],
+  });
+  assert.equal(result.missingHoursDeductionHalalas, 0);
+  assert.equal(result.manualAdditionsHalalas, 15000);
+  assert.equal(result.totalAdditionsHalalas, 15000);
 });
 
 test("detected extra hours do not become financial overtime by default", () => {
@@ -148,3 +231,4 @@ test("setup evaluator does not require overtime multiplier when salary setup is 
   assert.deepEqual(setup.missing, []);
   assert.equal(setup.complete, true);
 });
+

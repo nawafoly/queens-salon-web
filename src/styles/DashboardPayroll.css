@@ -284,6 +284,47 @@
   min-width: 170px;
 }
 
+.payroll-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.payroll-mini-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.payroll-mini-badge.is-exported {
+  background: #eaf8f0;
+  color: #16764e;
+}
+
+.payroll-mini-badge.is-excluded,
+.payroll-mini-badge.is-attendance-warning {
+  background: #fff4e5;
+  color: #9a5b00;
+}
+
+.payroll-mini-badge.is-manual {
+  background: #eef4ff;
+  color: #2f5597;
+}
+
+.payroll-attendance-note {
+  max-width: 180px;
+  color: #9a5b00 !important;
+  line-height: 1.45;
+  white-space: normal;
+}
+
 .payroll-setup-cell {
   min-width: 190px;
   white-space: normal;
@@ -687,21 +728,71 @@
   }
 }
 
-.payroll-export-option {
+.payroll-toolbar .payroll-export-option {
+  min-height: 38px;
+  width: auto;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid rgba(143, 41, 79, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #5f3146;
-  font-size: 0.82rem;
-  font-weight: 800;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--payroll-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #3e4657;
+  font-size: inherit;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.payroll-export-option input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #8f294f;
+.payroll-toolbar .payroll-export-option input {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--payroll-maroon);
+}
+
+.payroll-toolbar .payroll-export-option span {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.payroll-period-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 13px;
+  border: 1px solid #f2d291;
+  border-radius: 10px;
+  background: #fff9eb;
+  color: #8a5a0a;
+  font-weight: 900;
+}
+
+.payroll-export-count {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid #8bdcb9;
+  border-radius: 8px;
+  background: #ecfff6;
+  color: #067647;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .payroll-period-banner,
+  .payroll-export-count,
+  .payroll-toolbar .payroll-export-option {
+    width: 100%;
+  }
 }

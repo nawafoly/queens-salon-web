@@ -12,6 +12,7 @@ import {
   type AttendanceDisciplineDaySummary,
 } from "../helpers/hr/attendanceDiscipline";
 import {
+  ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
   calculatePayrollSnapshot,
   evaluatePayrollSetup,
   isPayrollSnapshotLocked,
@@ -51,17 +52,53 @@ export function payrollMonthKey(year: number, month: number) {
   return `${year}-${pad(month)}`;
 }
 
-export function payrollMonthBounds(year: number, month: number) {
-  const start = `${year}-${pad(month)}-01`;
-  const endDate = new Date(Date.UTC(year, month, 0));
-  const end = `${endDate.getUTCFullYear()}-${pad(endDate.getUTCMonth() + 1)}-${pad(endDate.getUTCDate())}`;
-  return { payrollMonth: payrollMonthKey(year, month), monthStart: start, monthEnd: end };
+const PAYROLL_CYCLE_START_DAY = 21;
+const PAYROLL_CYCLE_END_DAY = 20;
+const PAYROLL_PAY_DAY = 28;
+
+function dateKeyFromUtcDate(date: Date) {
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
-function dateKeysInMonth(year: number, month: number) {
-  const endDate = new Date(Date.UTC(year, month, 0));
-  const count = endDate.getUTCDate();
-  return Array.from({ length: count }, (_, index) => `${year}-${pad(month)}-${pad(index + 1)}`);
+function daysInUtcMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function addUtcDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * DAY_MS);
+}
+
+export function payrollMonthBounds(year: number, month: number) {
+  const cycleStartDate = new Date(Date.UTC(year, month - 2, PAYROLL_CYCLE_START_DAY));
+  const cycleEndDate = new Date(Date.UTC(year, month - 1, PAYROLL_CYCLE_END_DAY));
+  const safePayDay = Math.min(PAYROLL_PAY_DAY, daysInUtcMonth(year, month));
+  const payDate = new Date(Date.UTC(year, month - 1, safePayDay));
+  return {
+    payrollMonth: payrollMonthKey(year, month),
+    monthStart: dateKeyFromUtcDate(cycleStartDate),
+    monthEnd: dateKeyFromUtcDate(cycleEndDate),
+    payDate: dateKeyFromUtcDate(payDate),
+  };
+}
+
+function dateKeysInRange(startDateKey: string, endDateKey: string) {
+  const dates: string[] = [];
+  let cursor = jsDateFromKey(startDateKey);
+  const end = jsDateFromKey(endDateKey);
+  while (cursor.getTime() <= end.getTime()) {
+    dates.push(dateKeyFromUtcDate(cursor));
+    cursor = addUtcDays(cursor, 1);
+  }
+  return dates;
+}
+
+function dateKeysInPayrollCycle(year: number, month: number) {
+  const bounds = payrollMonthBounds(year, month);
+  return dateKeysInRange(bounds.monthStart, bounds.monthEnd);
+}
+
+function isDateKeyInRange(dateKey: string, startDateKey: string, endDateKey: string) {
+  return dateKey >= startDateKey && dateKey <= endDateKey;
 }
 
 function jsDateFromKey(dateKey: string) {
@@ -124,6 +161,81 @@ function employmentOf(employee: CoreHrEmployee) {
   return (employee.employment || {}) as Record<string, unknown>;
 }
 
+function uniqueTextKeys(values: unknown[]) {
+  return Array.from(new Set(values.map(text).filter(Boolean)));
+}
+
+function employeeAttendanceKeys(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return uniqueTextKeys([
+    employee.id,
+    employee.firebaseUid,
+    employment.employee_id,
+    employment.employeeId,
+    employment.firebase_uid,
+    employment.firebaseUid,
+    employment.employee_code,
+    employment.employeeCode,
+    employment.fingerprint_number,
+    employment.fingerprintNumber,
+  ]);
+}
+
+function attendanceRecordKeys(record: CoreAttendanceRecord) {
+  return uniqueTextKeys([record.employeeId, record.employeeUid]);
+}
+
+function attendanceRecordMatchesEmployee(record: CoreAttendanceRecord, employee: CoreHrEmployee) {
+  const employeeKeys = new Set(employeeAttendanceKeys(employee));
+  return attendanceRecordKeys(record).some((key) => employeeKeys.has(key));
+}
+
+function attendanceMetadata(recordCount: number) {
+  if (recordCount > 0) {
+    return {
+      attendanceRecordCount: recordCount,
+      attendanceLinkStatus: "confirmed" as const,
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+    };
+  }
+  return {
+    attendanceRecordCount: 0,
+    attendanceLinkStatus: "unlinked" as const,
+    attendanceDeductionEligible: false,
+    attendanceDeductionNote: ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
+  };
+}
+
+function normalizeAttendanceSummaryMetadata(summary: PayrollAttendanceSummarySnapshot) {
+  const recordCount = Math.max(0, Math.round(Number(summary.attendanceRecordCount || 0)));
+  if (typeof summary.attendanceDeductionEligible === "boolean") {
+    return {
+      ...summary,
+      attendanceRecordCount: recordCount,
+      attendanceLinkStatus:
+        summary.attendanceLinkStatus || (summary.attendanceDeductionEligible ? "confirmed" : "unlinked"),
+      attendanceDeductionNote:
+        summary.attendanceDeductionEligible === false
+          ? summary.attendanceDeductionNote || ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE
+          : summary.attendanceDeductionNote || null,
+    };
+  }
+
+  const looksUnlinked =
+    recordCount === 0 &&
+    numberValue(summary.totalActualWorkedHours) <= 0 &&
+    numberValue(summary.attendanceDays) <= 0 &&
+    numberValue(summary.totalMissingHours) > 0;
+  return {
+    ...summary,
+    attendanceRecordCount: recordCount,
+    attendanceLinkStatus: looksUnlinked ? ("not_ready" as const) : ("confirmed" as const),
+    attendanceDeductionEligible: !looksUnlinked,
+    attendanceDeductionNote: looksUnlinked ? ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE : summary.attendanceDeductionNote || null,
+  };
+}
+
 function employeeBaseSalary(employee: CoreHrEmployee) {
   const employment = employmentOf(employee);
   return positiveNumber(employment.base_salary_halalas ?? employment.baseSalaryHalalas);
@@ -165,7 +277,7 @@ function explicitDailyScheduledHoursForMonth(employee: CoreHrEmployee, year: num
 
   const explicitSchedules = (employee.schedules || []).filter((schedule) => {
     if (schedule.active === false || Number((schedule as any).active) === 0) return false;
-    const sampleDate = dateKeysInMonth(year, month).find((date) => jsDateFromKey(date).getUTCDay() === Number(schedule.weekday));
+    const sampleDate = dateKeysInPayrollCycle(year, month).find((date) => jsDateFromKey(date).getUTCDay() === Number(schedule.weekday));
     if (!sampleDate) return false;
     if (schedule.effectiveFrom && schedule.effectiveFrom > sampleDate) return false;
     if (schedule.effectiveTo && schedule.effectiveTo < sampleDate) return false;
@@ -229,17 +341,6 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
   };
 }
 
-function groupAttendance(records: CoreAttendanceRecord[]) {
-  const map = new Map<string, CoreAttendanceRecord[]>();
-  for (const record of records) {
-    const key = `${record.employeeId}:${record.dateKey}`;
-    const list = map.get(key) || [];
-    list.push(record);
-    map.set(key, list);
-  }
-  return map;
-}
-
 function attendanceSummaryForEmployee(input: {
   employee: CoreHrEmployee;
   records: CoreAttendanceRecord[];
@@ -247,10 +348,13 @@ function attendanceSummaryForEmployee(input: {
   month: number;
 }) {
   const days: AttendanceDisciplineDaySummary[] = [];
-  const dates = dateKeysInMonth(input.year, input.month);
+  const bounds = payrollMonthBounds(input.year, input.month);
+  const dates = dateKeysInPayrollCycle(input.year, input.month);
   const recordsByDate = new Map<string, CoreAttendanceRecord[]>();
-  for (const record of input.records) {
-    if (!record.dateKey.startsWith(payrollMonthKey(input.year, input.month))) continue;
+  const periodRecords = input.records.filter((record) =>
+    isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
+  );
+  for (const record of periodRecords) {
     const list = recordsByDate.get(record.dateKey) || [];
     list.push(record);
     recordsByDate.set(record.dateKey, list);
@@ -279,7 +383,10 @@ function attendanceSummaryForEmployee(input: {
 
   return {
     days,
-    summary: summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot,
+    summary: {
+      ...(summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot),
+      ...attendanceMetadata(periodRecords.length),
+    },
   };
 }
 
@@ -366,7 +473,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     scheduleSnapshot?.dailyScheduledHours ?? scheduleSnapshot?.daily_scheduled_hours
   );
   const scheduleMonthlyHoursSource = asMonthlyHoursSource(text(scheduleSnapshot?.monthlyHoursSource));
-  const attendanceSummary = readJson<PayrollAttendanceSummarySnapshot>(
+  const attendanceSummary = normalizeAttendanceSummaryMetadata(readJson<PayrollAttendanceSummarySnapshot>(
     row.attendanceSummaryJson,
     {
       totalScheduledHours: numberValue(row.expectedWorkHours),
@@ -379,7 +486,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
       absentDays: numberValue(row.absenceDays),
       incompleteDays: 0,
     }
-  );
+  ));
   const status = (text(row.status) || "draft") as PayrollStatus;
   const additions = readJson<PayrollManualItem[]>(row.additionsJson, []);
   const deductions = readJson<PayrollManualItem[]>(row.deductionsJson, []);
@@ -536,7 +643,8 @@ export async function generatePayrollEntries(input: {
   status?: string;
   currentEntries?: PayrollEntryView[];
 }) {
-  const { payrollMonth } = payrollMonthBounds(input.year, input.month);
+  const bounds = payrollMonthBounds(input.year, input.month);
+  const { payrollMonth } = bounds;
   const [employees, attendance] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
     CoreHrService.listAttendance(),
@@ -546,16 +654,16 @@ export async function generatePayrollEntries(input: {
       .filter((entry) => entry.payrollMonth === payrollMonth)
       .map((entry) => [entry.employeeId, entry])
   );
-  const attendanceByEmployeeDate = groupAttendance(
-    attendance.filter((record) => record.dateKey.startsWith(payrollMonth))
+  const periodAttendanceRecords = attendance.filter((record) =>
+    isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
   );
 
   const generated = employees
     .filter((employee) => !input.employeeId || employee.id === input.employeeId)
     .map((employee) => {
-      const employeeRecords = Array.from(attendanceByEmployeeDate.entries())
-        .filter(([key]) => key.startsWith(`${employee.id}:`))
-        .flatMap(([, records]) => records);
+      const employeeRecords = periodAttendanceRecords.filter((record) =>
+        attendanceRecordMatchesEmployee(record, employee)
+      );
       const attendanceSnapshot = attendanceSummaryForEmployee({
         employee,
         records: employeeRecords,
