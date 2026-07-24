@@ -289,6 +289,13 @@ function isFullAttendanceIdentifier(value: unknown) {
 }
 
 function resolveRosterAttendanceIdentity(item: DirectoryEmployee) {
+  const canonicalDocId = uniqueCleanTexts([
+    item.employeeDocId,
+    item.linkedEmployeeDocId,
+    item.employeeId,
+    item.id,
+    item.employeeKey,
+  ]).find((value) => !isFullAttendanceIdentifier(value)) || "";
   const uidCandidates = uniqueCleanTexts([
     item.employeeUid,
     item.linkedUid,
@@ -302,24 +309,9 @@ function resolveRosterAttendanceIdentity(item: DirectoryEmployee) {
     item.id,
     item.employeeKey,
   ]);
-  const docCandidates = uniqueCleanTexts([
-    item.employeeDocId,
-    item.linkedEmployeeDocId,
-    item.employeeId,
-    item.id,
-    item.employeeUid,
-    item.linkedUid,
-    item.authUid,
-    item.uid,
-    item.linkedUserId,
-    item.employeeKey,
-  ]);
   const fullUid = uidCandidates.find(isFullAttendanceIdentifier) || "";
-  const fullDocId = docCandidates.find(isFullAttendanceIdentifier) || "";
-  const employeeUid =
-    fullUid || fullDocId || uidCandidates[0] || docCandidates[0] || "";
-  const employeeId =
-    fullDocId || fullUid || docCandidates[0] || employeeUid;
+  const employeeUid = fullUid || uidCandidates[0] || "";
+  const employeeId = canonicalDocId || cleanText(item.id) || employeeUid;
 
   return {
     employeeUid,

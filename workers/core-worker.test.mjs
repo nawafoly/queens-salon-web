@@ -44,6 +44,8 @@ class FakeD1 {
       "user_permissions",
       "user_employee_links",
       "employee_profiles",
+      "attendance_records",
+      "employee_absences",
     ].map((table) => [table, new Map()]));
     this.seedIdentity();
   }
@@ -246,6 +248,16 @@ class FakeD1 {
       const [salonId, id] = params;
       return this.find("employee_profiles", salonId, id) ? [this.find("employee_profiles", salonId, id)] : [];
     }
+    if (normalized.startsWith("SELECT id, firebase_uid FROM employee_profiles WHERE salon_id = ? AND (id = ? OR firebase_uid = ? OR firebase_uid = ?)")) {
+      const [salonId, id, uidA, uidB] = params;
+      return this.rows("employee_profiles")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          (row.id === id || row.firebase_uid === uidA || row.firebase_uid === uidB)
+        )
+        .slice(0, 1)
+        .map((row) => ({ id: row.id, firebase_uid: row.firebase_uid }));
+    }
     if (normalized.startsWith("SELECT id, name, NULL AS email, phone_normalized FROM staff WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       const row = this.find("staff", salonId, id);
@@ -286,6 +298,31 @@ class FakeD1 {
     if (normalized.startsWith("SELECT * FROM staff WHERE salon_id = ? ORDER BY")) {
       const [salonId] = params;
       return this.rows("staff").filter((row) => row.salon_id === salonId);
+    }
+    if (normalized.startsWith("SELECT * FROM attendance_records WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("attendance_records")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => String(b.recorded_at || "").localeCompare(String(a.recorded_at || "")));
+    }
+    if (normalized.startsWith("SELECT id, employee_uid, employee_doc_id")) {
+      return this.rows("attendance_records")
+        .filter((row) => row.result === "allowed" && ["check_in", "check_out"].includes(row.type))
+        .sort((a, b) => String(b.server_time || "").localeCompare(String(a.server_time || "")))
+        .slice(0, 5000);
+    }
+    if (normalized.startsWith("SELECT * FROM employee_absences WHERE salon_id = ? AND employee_id = ? AND date_key = ?")) {
+      const [salonId, employeeId, dateKey] = params;
+      return this.rows("employee_absences")
+        .filter((row) => row.salon_id === salonId && row.employee_id === employeeId && row.date_key === dateKey)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM employee_absences WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("employee_absences")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => String(b.date_key || "").localeCompare(String(a.date_key || "")))
+        .slice(0, 1000);
     }
     if (normalized.startsWith("SELECT id FROM bookings")) {
       const [salonId, staffId, bookingDate, startTime, excludeId] = params;
@@ -1039,6 +1076,190 @@ test("core endpoint fails clearly when D1 binding is missing", async () => {
   const body = await json(response);
   assert.equal(response.status, 503, JSON.stringify(body));
   assert.equal(body.error, "core_d1:not_configured");
+});
+
+test("core attendance endpoint returns core D1 records", async () => {
+  const fake = new FakeD1();
+  fake.seed("attendance_records", {
+    id: "core-attendance-a",
+    salon_id: "main",
+    employee_id: "staff-a",
+    employee_uid: "staff1",
+    date_key: "2026-07-20",
+    record_type: "check_in",
+    recorded_at: "2026-07-20T06:00:00.000Z",
+    latitude: null,
+    longitude: null,
+    accuracy_meters: null,
+    zone_id: null,
+    device_id: null,
+    source: "app",
+    note: null,
+    idempotency_key: null,
+    created_at: "2026-07-20T06:00:01.000Z",
+  });
+
+  const response = await worker.fetch(
+    request("/api/core/hr/attendance?employeeId=staff-a&dateKey=2026-07-20"),
+    env(fake)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.length, 1);
+  assert.equal(body.data[0].id, "core-attendance-a");
+  assert.equal(body.data[0].record_type, "check_in");
+});
+
+test("core attendance endpoint merges and normalizes malikat attendance records", async () => {
+  const core = new FakeD1();
+  const attendance = new FakeD1();
+  core.seed("attendance_records", {
+    id: "core-attendance-b",
+    salon_id: "main",
+    employee_id: "core-staff",
+    employee_uid: "core-uid",
+    date_key: "2026-07-22",
+    record_type: "check_out",
+    recorded_at: "2026-07-22T10:00:00.000Z",
+    latitude: null,
+    longitude: null,
+    accuracy_meters: null,
+    zone_id: null,
+    device_id: null,
+    source: "app",
+    note: null,
+    idempotency_key: null,
+    created_at: "2026-07-22T10:00:01.000Z",
+  });
+  attendance.seed("attendance_records", {
+    id: "malikat-allowed-a",
+    employee_doc_id: "1001",
+    employee_uid: "SForOsVcv9QZLRc1GO3OK9KxMtV2",
+    type: "check_in",
+    server_time: "2026-07-22T21:05:40.317Z",
+    client_time: "2026-07-22T21:05:38.000Z",
+    location_lat: 24.7136,
+    location_lng: 46.6753,
+    location_accuracy: 12,
+    zone_id: "salon-zone",
+    zone_name: "Salon",
+    result: "allowed",
+    rejection_reason: "",
+    created_at: "2026-07-22T21:05:41.000Z",
+  });
+  attendance.seed("attendance_records", {
+    id: "malikat-denied-a",
+    employee_doc_id: "1001",
+    employee_uid: "SForOsVcv9QZLRc1GO3OK9KxMtV2",
+    type: "check_out",
+    server_time: "2026-07-22T22:00:00.000Z",
+    result: "denied",
+    created_at: "2026-07-22T22:00:01.000Z",
+  });
+  attendance.seed("attendance_records", {
+    id: "malikat-break-a",
+    employee_doc_id: "1001",
+    employee_uid: "SForOsVcv9QZLRc1GO3OK9KxMtV2",
+    type: "break_start",
+    server_time: "2026-07-22T23:00:00.000Z",
+    result: "allowed",
+    created_at: "2026-07-22T23:00:01.000Z",
+  });
+
+  const merged = await worker.fetch(
+    request("/api/core/hr/attendance"),
+    { ...env(core), ATTENDANCE_DB: attendance }
+  );
+  const mergedBody = await json(merged);
+  assert.equal(merged.status, 200, JSON.stringify(mergedBody));
+  assert.deepEqual(mergedBody.data.map((row) => row.id), ["malikat:malikat-allowed-a", "core-attendance-b"]);
+  assert.equal(mergedBody.data[0].employee_id, "1001");
+  assert.equal(mergedBody.data[0].employee_uid, "SForOsVcv9QZLRc1GO3OK9KxMtV2");
+  assert.equal(mergedBody.data[0].record_type, "check_in");
+  assert.equal(mergedBody.data[0].recorded_at, "2026-07-22T21:05:40.317Z");
+  assert.equal(mergedBody.data[0].date_key, "2026-07-23");
+  assert.equal(mergedBody.data[0].latitude, 24.7136);
+  assert.equal(mergedBody.data[0].longitude, 46.6753);
+  assert.equal(mergedBody.data[0].accuracy_meters, 12);
+  assert.equal(mergedBody.data[0].zone_id, "salon-zone");
+  assert.equal(mergedBody.data[0].source, "malikat-attendance");
+
+  const byEmployeeDocId = await worker.fetch(
+    request("/api/core/hr/attendance?employeeId=1001"),
+    { ...env(core), ATTENDANCE_DB: attendance }
+  );
+  const byEmployeeDocIdBody = await json(byEmployeeDocId);
+  assert.equal(byEmployeeDocId.status, 200, JSON.stringify(byEmployeeDocIdBody));
+  assert.deepEqual(byEmployeeDocIdBody.data.map((row) => row.id), ["malikat:malikat-allowed-a"]);
+
+  const byEmployeeUid = await worker.fetch(
+    request("/api/core/hr/attendance?employeeId=SForOsVcv9QZLRc1GO3OK9KxMtV2"),
+    { ...env(core), ATTENDANCE_DB: attendance }
+  );
+  const byEmployeeUidBody = await json(byEmployeeUid);
+  assert.equal(byEmployeeUid.status, 200, JSON.stringify(byEmployeeUidBody));
+  assert.deepEqual(byEmployeeUidBody.data.map((row) => row.id), ["malikat:malikat-allowed-a"]);
+
+  const byDateKey = await worker.fetch(
+    request("/api/core/hr/attendance?dateKey=2026-07-23"),
+    { ...env(core), ATTENDANCE_DB: attendance }
+  );
+  const byDateKeyBody = await json(byDateKey);
+  assert.equal(byDateKey.status, 200, JSON.stringify(byDateKeyBody));
+  assert.deepEqual(byDateKeyBody.data.map((row) => row.id), ["malikat:malikat-allowed-a"]);
+});
+
+test("core absence endpoint stores canonical employee id and filters by employee identity", async () => {
+  const fake = new FakeD1();
+  fake.seed("employee_profiles", {
+    id: "1002",
+    salon_id: "main",
+    firebase_uid: "eqnFOm4TtWdAjpLeG4XopdEj24I2",
+    name: "Sabah",
+    email: null,
+    phone_normalized: null,
+    status: "active",
+    created_at: "2026-07-01T00:00:00.000Z",
+    updated_at: "2026-07-01T00:00:00.000Z",
+  });
+  const response = await worker.fetch(request("/api/core/hr/absences", {
+    method: "POST",
+    body: {
+      id: "absence-sabah-2026-07-15",
+      employeeId: "eqnFOm4TtWdAjpLeG4XopdEj24I2",
+      date: "2026-07-15",
+      type: "admin",
+      note: "غياب إداري",
+    },
+  }), env(fake));
+  const body = await json(response);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.employee_id, "1002");
+  assert.equal(body.data.employee_uid, "eqnFOm4TtWdAjpLeG4XopdEj24I2");
+  assert.equal(body.data.absence_type, "admin");
+  assert.equal(body.data.date_key, "2026-07-15");
+  assert.equal(body.data.created_by_uid, "owner1");
+
+  const stored = fake.rows("employee_absences")[0];
+  assert.equal(stored.salon_id, "main");
+  assert.equal(stored.employee_id, "1002");
+  assert.equal(stored.employee_uid, "eqnFOm4TtWdAjpLeG4XopdEj24I2");
+
+  const byEmployeeId = await worker.fetch(
+    request("/api/core/hr/absences?employeeId=1002"),
+    env(fake)
+  );
+  const byEmployeeIdBody = await json(byEmployeeId);
+  assert.equal(byEmployeeId.status, 200, JSON.stringify(byEmployeeIdBody));
+  assert.deepEqual(byEmployeeIdBody.data.map((row) => row.id), ["absence-sabah-2026-07-15"]);
+
+  const byEmployeeUid = await worker.fetch(
+    request("/api/core/hr/absences?employeeId=eqnFOm4TtWdAjpLeG4XopdEj24I2"),
+    env(fake)
+  );
+  const byEmployeeUidBody = await json(byEmployeeUid);
+  assert.equal(byEmployeeUid.status, 200, JSON.stringify(byEmployeeUidBody));
+  assert.deepEqual(byEmployeeUidBody.data.map((row) => row.id), ["absence-sabah-2026-07-15"]);
 });
 
 test("client CRUD uses D1", async () => {

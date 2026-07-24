@@ -17,6 +17,11 @@
       "database_name": "queens-salon-core",
       "database_id": "d0565103-0b29-490d-8c10-c955e8d65c4a",
       "migrations_dir": "migrations/core"
+    },
+    {
+      "binding": "ATTENDANCE_DB",
+      "database_name": "malikat-attendance",
+      "database_id": "425bb0b9-2e3e-4c6e-84f3-22a7afa4ace9"
     }
   ],
   "r2_buckets": [

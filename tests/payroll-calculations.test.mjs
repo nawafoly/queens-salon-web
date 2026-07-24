@@ -122,6 +122,26 @@ test("manual deductions still apply when attendance deduction is blocked", () =>
   assert.equal(result.totalDeductionsHalalas, 10000);
 });
 
+test("approved admin absences are tracked separately from manual deductions", () => {
+  const result = snapshot({
+    attendanceSummary: {
+      ...attendanceSummary,
+      totalActualWorkedHours: 0,
+      totalMissingHours: 20,
+      attendanceDays: 0,
+      absentDays: 0,
+      approvedAbsenceDays: 1,
+      attendanceRecordCount: 0,
+      attendanceLinkStatus: "not_ready",
+      attendanceDeductionEligible: false,
+    },
+  });
+  assert.equal(result.attendanceSummary.approvedAbsenceDays, 1);
+  assert.equal(result.attendanceSummary.absentDays, 0);
+  assert.equal(result.missingHoursDeductionHalalas, 0);
+  assert.equal(result.manualDeductionsHalalas, 0);
+});
+
 test("manual additions still apply when attendance deduction is blocked", () => {
   const result = snapshot({
     attendanceSummary: {

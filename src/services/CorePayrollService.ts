@@ -521,19 +521,6 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
   const periodRecords = input.records.filter((record) =>
     isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
   );
-  if (!periodRecords.length) {
-    const identity = resolvePayrollAttendanceIdentity(input.employee);
-    return {
-      days,
-      summary: emptyAttendanceSummary(
-        identity.keys.length ? "not_ready" : "unlinked",
-        identity.keys.length
-          ? ["لا توجد بصمات مطابقة داخل فترة الراتب، لذلك لم يتم احتساب غياب أو خصم حضور تلقائي."]
-          : ["لا توجد مفاتيح كافية لربط الموظفة بسجلات البصمة."]
-      ),
-    };
-  }
-
   const approvedLeaveDates = dateSetForApprovedLeaves(
     input.leaves || [],
     input.employee,
@@ -546,6 +533,22 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     bounds.monthStart,
     bounds.monthEnd
   );
+  if (!periodRecords.length) {
+    const identity = resolvePayrollAttendanceIdentity(input.employee);
+    return {
+      days,
+      summary: {
+        ...emptyAttendanceSummary(
+        identity.keys.length ? "not_ready" : "unlinked",
+        identity.keys.length
+          ? ["لا توجد بصمات مطابقة داخل فترة الراتب، لذلك لم يتم احتساب غياب أو خصم حضور تلقائي."]
+          : ["لا توجد مفاتيح كافية لربط الموظفة بسجلات البصمة."]
+        ),
+        approvedLeaveDays: approvedLeaveDates.size,
+        approvedAbsenceDays: approvedAbsenceDates.size,
+      },
+    };
+  }
 
   for (const record of periodRecords) {
     const list = recordsByDate.get(record.dateKey) || [];

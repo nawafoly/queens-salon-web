@@ -794,7 +794,7 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "attendance":
       requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET") return listAttendance(db, ctx.salonId, query);
+      if (method === "GET") return listAttendance(db, ctx.salonId, query, env.ATTENDANCE_DB || null);
       break;
 
     case "attendance:state":

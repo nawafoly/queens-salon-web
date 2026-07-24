@@ -23,6 +23,7 @@ import {
 } from "../helpers/hr/employeeAbsence";
 import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
 import { normalizeEmployeePayrollRecord } from "../helpers/hr/employeePayroll";
+import { CoreHrService } from "./CoreHrService";
 import {
   HR_COLLECTIONS,
   SALON_ID,
@@ -847,9 +848,23 @@ function mapEmployeeAbsenceDoc(d: any): EmployeeAbsence {
   };
 }
 
+function mapCoreAbsence(row: Awaited<ReturnType<typeof CoreHrService.listAbsences>>[number]): EmployeeAbsence {
+  return {
+    id: cleanText(row.id),
+    employeeUid: cleanText(row.employeeUid || ""),
+    employeeId: cleanText(row.employeeId || ""),
+    date: cleanText(row.dateKey || ""),
+    type: cleanText(row.absenceType || "full_day") as EmployeeAbsence["type"],
+    note: cleanText(row.note || "") || null,
+    createdByUid: cleanText(row.createdByUid || ""),
+    createdAt: row.createdAt,
+    updatedAt: (row as any).updatedAt,
+  };
+}
+
 export async function listEmployeeAbsences(limitCount = 80): Promise<EmployeeAbsence[]> {
-  const snap = await getDocs(query(employeeAbsencesCol(), orderBy("createdAt", "desc"), limit(limitCount)));
-  return sortEmployeeAbsences(snap.docs.map(mapEmployeeAbsenceDoc)).slice(0, limitCount);
+  const rows = await CoreHrService.listAbsences();
+  return sortEmployeeAbsences(rows.map(mapCoreAbsence)).slice(0, limitCount);
 }
 
 export async function listEmployeeAbsencesByEmployee(args: {
@@ -866,17 +881,11 @@ export async function listEmployeeAbsencesByEmployee(args: {
   const limitCount = Math.max(1, Number(args.limitCount || 120));
   if (!employeeUid && !employeeId) return [];
 
-  const [uidSnap, employeeIdSnap] = await Promise.all([
-    employeeUid ? getDocs(query(employeeAbsencesCol(), where("employeeUid", "==", employeeUid), limit(limitCount))) : Promise.resolve(null),
-    employeeId ? getDocs(query(employeeAbsencesCol(), where("employeeId", "==", employeeId), limit(limitCount))) : Promise.resolve(null),
-  ]);
-
-  const docsById = new Map<string, any>();
-  uidSnap?.docs.forEach((d) => docsById.set(d.id, d));
-  employeeIdSnap?.docs.forEach((d) => docsById.set(d.id, d));
-
-  return sortEmployeeAbsences(Array.from(docsById.values()).map(mapEmployeeAbsenceDoc))
+  const rows = await CoreHrService.listAbsences({ employeeId: employeeId || employeeUid });
+  return sortEmployeeAbsences(rows.map(mapCoreAbsence))
     .filter((item) => {
+      if (employeeId && item.employeeId !== employeeId && item.employeeUid !== employeeId) return false;
+      if (employeeUid && item.employeeUid !== employeeUid && item.employeeId !== employeeUid) return false;
       if (fromDate && item.date < fromDate) return false;
       if (toDate && item.date > toDate) return false;
       return true;
@@ -903,12 +912,14 @@ export async function createEmployeeAbsenceRecord(input: {
     createdByUid: cleanText(input.createdByUid),
   });
 
-  return addDoc(employeeAbsencesCol(), {
-    ...payload,
-    employeeName: cleanText(input.employeeName || "") || undefined,
+  return CoreHrService.createAbsence({
+    employeeId: payload.employeeId,
+    employeeUid: payload.employeeUid,
+    date: payload.date,
+    type: payload.type,
+    note: payload.note || undefined,
     createdByName: cleanText(input.createdByName || "") || undefined,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdByUid: payload.createdByUid,
   });
 }
 

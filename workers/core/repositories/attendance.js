@@ -22,6 +22,49 @@ function recordType(value) {
   return normalized;
 }
 
+function riyadhDateKey(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const read = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
+function normalizeMalikatAttendance(row) {
+  const recordedAt = cleanText(row.server_time);
+  return {
+    id: `malikat:${cleanText(row.id)}`,
+    salon_id: null,
+    employee_id: cleanText(row.employee_doc_id),
+    employee_uid: cleanText(row.employee_uid) || null,
+    date_key: riyadhDateKey(recordedAt),
+    record_type: cleanText(row.type).toLowerCase(),
+    recorded_at: recordedAt,
+    latitude: row.location_lat === undefined || row.location_lat === null ? null : Number(row.location_lat),
+    longitude: row.location_lng === undefined || row.location_lng === null ? null : Number(row.location_lng),
+    accuracy_meters: row.location_accuracy === undefined || row.location_accuracy === null ? null : Number(row.location_accuracy),
+    zone_id: cleanText(row.zone_id) || null,
+    device_id: null,
+    source: 'malikat-attendance',
+    note: cleanText(row.rejection_reason) || null,
+    idempotency_key: null,
+    created_at: cleanText(row.created_at) || null,
+  };
+}
+
+function filterAttendanceRows(rows, employeeId, date) {
+  return rows.filter((row) => {
+    if (employeeId && cleanText(row.employee_id) !== employeeId && cleanText(row.employee_uid) !== employeeId) return false;
+    if (date && cleanText(row.date_key) !== date) return false;
+    return true;
+  });
+}
+
 export async function getAttendanceState(db, salonId, employeeIdValue) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   return (
@@ -33,17 +76,35 @@ export async function getAttendanceState(db, salonId, employeeIdValue) {
   );
 }
 
-export async function listAttendance(db, salonId, query = {}) {
+export async function listAttendance(db, salonId, query = {}, externalAttendanceDb = null) {
   const employeeId = cleanText(query.employeeId || query.employee_id);
   const date = cleanText(query.date || query.dateKey || query.date_key);
-  let rows = await dbAll(
+  const coreRows = await dbAll(
     db,
-    'SELECT * FROM attendance_records WHERE salon_id = ? ORDER BY recorded_at DESC LIMIT 2000',
+    'SELECT * FROM attendance_records WHERE salon_id = ? ORDER BY recorded_at DESC LIMIT 5000',
     [salonId]
   );
-  if (employeeId) rows = rows.filter((row) => row.employee_id === employeeId);
-  if (date) rows = rows.filter((row) => row.date_key === date);
-  return rows;
+  let rows = filterAttendanceRows(coreRows, employeeId, date);
+
+  if (externalAttendanceDb) {
+    const malikatRows = await dbAll(
+      externalAttendanceDb,
+      `SELECT id, employee_uid, employee_doc_id, type, server_time, client_time, location_lat,
+        location_lng, location_accuracy, zone_id, zone_name, result, rejection_reason, created_at
+       FROM attendance_records
+       WHERE result = ? AND type IN (?, ?)
+       ORDER BY server_time DESC
+       LIMIT 5000`,
+      ['allowed', 'check_in', 'check_out']
+    );
+    rows = rows.concat(
+      filterAttendanceRows(malikatRows.map(normalizeMalikatAttendance), employeeId, date)
+    );
+  }
+
+  return rows
+    .sort((a, b) => cleanText(b.recorded_at).localeCompare(cleanText(a.recorded_at)))
+    .slice(0, 5000);
 }
 
 export async function recordAttendance(db, salonId, data, actor = {}) {

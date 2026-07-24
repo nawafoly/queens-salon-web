@@ -4,20 +4,39 @@
 import { cleanText, dbAll, dbFirst, dbRun, generatedId, nowIso, optionalText, requiredId, validDate } from '../d1.js';
 import { AppError } from '../errors.js';
 
+async function resolveAbsenceEmployeeIdentity(db, salonId, data) {
+  const employeeIdInput = requiredId(data.employeeId || data.employee_id, 'employeeId');
+  const employeeUidInput = optionalText(data.employeeUid || data.employee_uid) || null;
+  const profile = await dbFirst(
+    db,
+    `SELECT id, firebase_uid FROM employee_profiles
+     WHERE salon_id = ? AND (id = ? OR firebase_uid = ? OR firebase_uid = ?)
+     LIMIT 1`,
+    [salonId, employeeIdInput, employeeIdInput, employeeUidInput || '']
+  );
+  return {
+    employee_id: cleanText(profile?.id) || employeeIdInput,
+    employee_uid: optionalText(employeeUidInput || profile?.firebase_uid) || null,
+  };
+}
+
 export async function listAbsences(db, salonId, query = {}) {
   let rows = await dbAll(db, 'SELECT * FROM employee_absences WHERE salon_id = ? ORDER BY date_key DESC LIMIT 1000', [salonId]);
   const employeeId = cleanText(query.employeeId || query.employee_id);
-  if (employeeId) rows = rows.filter((row) => row.employee_id === employeeId);
+  if (employeeId) {
+    rows = rows.filter((row) => cleanText(row.employee_id) === employeeId || cleanText(row.employee_uid) === employeeId);
+  }
   return rows;
 }
 
 export async function createAbsence(db, salonId, data, actor = {}) {
   const now = nowIso();
+  const identity = await resolveAbsenceEmployeeIdentity(db, salonId, data);
   const row = {
     id: requiredId(data.id || generatedId('absence')),
     salon_id: salonId,
-    employee_id: requiredId(data.employeeId || data.employee_id, 'employeeId'),
-    employee_uid: optionalText(data.employeeUid || data.employee_uid) || null,
+    employee_id: identity.employee_id,
+    employee_uid: identity.employee_uid,
     date_key: validDate(data.date || data.dateKey || data.date_key, 'date'),
     absence_type: cleanText(data.type || data.absenceType || data.absence_type || 'full_day'),
     note: optionalText(data.note) || null,
