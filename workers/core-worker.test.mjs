@@ -46,6 +46,8 @@ class FakeD1 {
       "employee_profiles",
       "attendance_records",
       "employee_absences",
+      "payroll_periods",
+      "payroll_entries",
     ].map((table) => [table, new Map()]));
     this.seedIdentity();
   }
@@ -102,6 +104,8 @@ class FakeD1 {
       "finance.view",
       "finance.manage",
       "reports.view",
+      "payroll.view",
+      "payroll.manage",
     ];
     for (const permission_key of permissionKeys) {
       this.seed("permissions", { permission_key, group_key: permission_key.split(".")[0], label: permission_key, description: "", sensitive: permission_key.includes("delete") ? 1 : 0, created_at: now, updated_at: now });
@@ -323,6 +327,36 @@ class FakeD1 {
         .filter((row) => row.salon_id === salonId)
         .sort((a, b) => String(b.date_key || "").localeCompare(String(a.date_key || "")))
         .slice(0, 1000);
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_periods WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("payroll_periods")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => String(b.payroll_month || "").localeCompare(String(a.payroll_month || "")))
+        .slice(0, 120);
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_periods WHERE salon_id = ? AND payroll_month = ?")) {
+      const [salonId, payrollMonth] = params;
+      return this.rows("payroll_periods")
+        .filter((row) => row.salon_id === salonId && row.payroll_month === payrollMonth)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.find("payroll_entries", salonId, id) ? [this.find("payroll_entries", salonId, id)] : [];
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ?")) {
+      const [salonId, employeeId, payrollMonth] = params;
+      return this.rows("payroll_entries")
+        .filter((row) => row.salon_id === salonId && row.employee_id === employeeId && row.payroll_month === payrollMonth)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? ORDER BY")) {
+      const [salonId] = params;
+      return this.rows("payroll_entries")
+        .filter((row) => row.salon_id === salonId)
+        .sort((a, b) => `${b.payroll_month || ""}\u0000${a.employee_id || ""}`.localeCompare(`${a.payroll_month || ""}\u0000${b.employee_id || ""}`))
+        .slice(0, 2000);
     }
     if (normalized.startsWith("SELECT id FROM bookings")) {
       const [salonId, staffId, bookingDate, startTime, excludeId] = params;
@@ -635,6 +669,41 @@ class FakeD1 {
       const [id, salon_id, amount_halalas, category, description, payment_method, occurred_at, created_by_uid, created_at, updated_at] = params;
       return this.insert("expense_entries", { id, salon_id, amount_halalas, category, description, payment_method, occurred_at, created_by_uid, created_at, updated_at });
     }
+    if (normalized.startsWith("UPDATE payroll_entries SET status = 'approved'")) {
+      const [approved_at, approved_by_uid, audit_log_json, updated_at, salonId, id] = params;
+      const current = this.find("payroll_entries", salonId, id);
+      return this.update("payroll_entries", salonId, id, {
+        status: "approved",
+        approved_at: current?.approved_at || approved_at,
+        approved_by_uid: current?.approved_by_uid || approved_by_uid,
+        audit_log_json,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("UPDATE payroll_entries SET status = ?")) {
+      const [status, audit_log_json, updated_at, salonId, id] = params;
+      return this.update("payroll_entries", salonId, id, {
+        status,
+        approved_at: null,
+        approved_by_uid: null,
+        audit_log_json,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("UPDATE payroll_entries SET status = 'paid'")) {
+      const [approved_at, approved_by_uid, paid_at, paid_by_uid, audit_log_json, updated_at, salonId, id] = params;
+      const current = this.find("payroll_entries", salonId, id);
+      return this.update("payroll_entries", salonId, id, {
+        status: "paid",
+        approved_at: current?.approved_at || approved_at,
+        approved_by_uid: current?.approved_by_uid || approved_by_uid,
+        paid_at: current?.paid_at || paid_at,
+        paid_by_uid: current?.paid_by_uid || paid_by_uid,
+        audit_log_json,
+        updated_at,
+      });
+    }
+    if (normalized.startsWith("UPDATE payroll_entries SET")) return this.dynamicUpdate("payroll_entries", normalized, params);
     if (normalized.startsWith("UPDATE income_entries SET")) return this.dynamicUpdate("income_entries", normalized, params);
     if (normalized.startsWith("UPDATE expense_entries SET")) return this.dynamicUpdate("expense_entries", normalized, params);
     if (normalized.startsWith("UPDATE discounts SET used_count = used_count + 1")) {
@@ -1059,6 +1128,143 @@ async function createCoreBooking(fake, overrides = {}) {
   return fake.find("bookings", "main", id);
 }
 
+function seedPayrollEntry(fake, overrides = {}) {
+  const now = "2026-07-28T10:00:00.000Z";
+  const row = {
+    id: overrides.id || "payroll-maryam-2026-07",
+    salon_id: "main",
+    period_id: overrides.period_id || "period-2026-07",
+    employee_id: overrides.employee_id || "emp-maryam",
+    payroll_month: overrides.payroll_month || "2026-07",
+    employee_name: overrides.employee_name || "Maryam",
+    job_title: overrides.job_title || null,
+    base_salary_halalas: overrides.base_salary_halalas ?? 310000,
+    allowances_halalas: overrides.allowances_halalas ?? 0,
+    work_days: overrides.work_days ?? 30,
+    monthly_hours: overrides.monthly_hours ?? 240,
+    daily_rate_halalas: overrides.daily_rate_halalas ?? 10333,
+    hourly_rate_halalas: overrides.hourly_rate_halalas ?? 1292,
+    absence_days: overrides.absence_days ?? 0,
+    absence_deduction_halalas: overrides.absence_deduction_halalas ?? 0,
+    expected_work_hours: overrides.expected_work_hours ?? 0,
+    actual_worked_hours: overrides.actual_worked_hours ?? 0,
+    missing_hours: overrides.missing_hours ?? 0,
+    overtime_hours: overrides.overtime_hours ?? 0,
+    attendance_summary_json: overrides.attendance_summary_json || JSON.stringify({
+      totalScheduledHours: 0,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: 0,
+      incompleteDays: 0,
+    }),
+    detected_extra_hours: overrides.detected_extra_hours ?? 0,
+    overtime_enabled: overrides.overtime_enabled ?? 0,
+    financial_overtime_hours: overrides.financial_overtime_hours ?? 0,
+    overtime_multiplier: overrides.overtime_multiplier ?? 1.5,
+    overtime_value_halalas: overrides.overtime_value_halalas ?? 0,
+    overtime_bonus_halalas: overrides.overtime_bonus_halalas ?? 0,
+    delay_deduction_halalas: overrides.delay_deduction_halalas ?? 0,
+    insurance_deduction_halalas: overrides.insurance_deduction_halalas ?? 0,
+    other_deductions_halalas: overrides.other_deductions_halalas ?? 0,
+    missing_hours_deduction_halalas: overrides.missing_hours_deduction_halalas ?? 0,
+    additions_json: overrides.additions_json || "[]",
+    manual_additions_halalas: overrides.manual_additions_halalas ?? 0,
+    manual_deductions_halalas: overrides.manual_deductions_halalas ?? 0,
+    advances_halalas: overrides.advances_halalas ?? 0,
+    total_deductions_halalas: overrides.total_deductions_halalas ?? 0,
+    gross_salary_halalas: overrides.gross_salary_halalas ?? 310000,
+    final_salary_halalas: overrides.final_salary_halalas ?? 310000,
+    net_salary_halalas: overrides.net_salary_halalas ?? 310000,
+    schedule_snapshot_json: overrides.schedule_snapshot_json || JSON.stringify({
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+      dailyScheduledHours: 8,
+      monthlyHoursSource: "configured_monthly_hours",
+    }),
+    absence_entries_json: overrides.absence_entries_json || "[]",
+    deductions_json: overrides.deductions_json || "[]",
+    mudad_file_id: overrides.mudad_file_id || null,
+    status: overrides.status || "approved",
+    approved_at: overrides.approved_at === undefined ? now : overrides.approved_at,
+    approved_by_uid: overrides.approved_by_uid === undefined ? "owner1" : overrides.approved_by_uid,
+    paid_at: overrides.paid_at || null,
+    paid_by_uid: overrides.paid_by_uid || null,
+    notes: overrides.notes || null,
+    audit_log_json: overrides.audit_log_json || JSON.stringify([{ action: "approved", byUid: "owner1", at: now }]),
+    created_by_uid: overrides.created_by_uid || "owner1",
+    created_by_email: overrides.created_by_email || "owner@example.com",
+    created_at: overrides.created_at || now,
+    updated_at: overrides.updated_at || now,
+  };
+  fake.seed("payroll_entries", row);
+  return row;
+}
+
+function payrollSavePayload(overrides = {}) {
+  return {
+    employeeId: "emp-maryam",
+    employeeName: "Maryam",
+    payrollMonth: "2026-07",
+    baseSalaryHalalas: 310000,
+    allowancesHalalas: 0,
+    workDays: 30,
+    monthlyHours: 240,
+    dailyRateHalalas: 10333,
+    hourlyRateHalalas: 1292,
+    absenceDays: 30,
+    absenceDeductionHalalas: 0,
+    expectedWorkHours: 240,
+    actualWorkedHours: 0,
+    missingHours: 240,
+    overtimeHours: 0,
+    attendanceSummary: {
+      totalScheduledHours: 240,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 240,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: 30,
+      incompleteDays: 0,
+      attendanceRecordCount: 0,
+      attendanceLinkStatus: "confirmed",
+      attendanceDeductionEligible: true,
+    },
+    detectedExtraHours: 0,
+    overtimeEnabled: false,
+    financialOvertimeHours: 0,
+    overtimeMultiplier: 1.5,
+    overtimeValueHalalas: 0,
+    overtimeBonusHalalas: 0,
+    delayDeductionHalalas: 0,
+    insuranceDeductionHalalas: 0,
+    otherDeductionsHalalas: 0,
+    missingHoursDeductionHalalas: 310080,
+    additions: [],
+    manualAdditionsHalalas: 0,
+    manualDeductionsHalalas: 0,
+    advancesHalalas: 0,
+    totalDeductionsHalalas: 310080,
+    grossSalaryHalalas: 310000,
+    finalSalaryHalalas: 0,
+    netSalaryHalalas: 0,
+    scheduleSnapshot: {
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+      dailyScheduledHours: 8,
+      monthlyHoursSource: "configured_monthly_hours",
+    },
+    deductions: [],
+    status: "draft",
+    ...overrides,
+  };
+}
+
 test("core operational path passes D1-only guard", () => {
   const result = spawnSync(process.execPath, ["scripts/check-core-d1-only.mjs"], {
     cwd: process.cwd(),
@@ -1260,6 +1466,85 @@ test("core absence endpoint stores canonical employee id and filters by employee
   const byEmployeeUidBody = await json(byEmployeeUid);
   assert.equal(byEmployeeUid.status, 200, JSON.stringify(byEmployeeUidBody));
   assert.deepEqual(byEmployeeUidBody.data.map((row) => row.id), ["absence-sabah-2026-07-15"]);
+});
+
+test("approved payroll can be reopened by admin and records audit details", async () => {
+  const fake = new FakeD1();
+  seedPayrollEntry(fake, {
+    id: "payroll-reopen-approved",
+    approved_at: "2026-07-28T10:00:00.000Z",
+    approved_by_uid: "owner1",
+  });
+
+  const response = await worker.fetch(request("/api/core/hr/payroll-entries/payroll-reopen-approved/reopen", {
+    method: "POST",
+    token: "test:admin1:admin",
+    body: {
+      reason: "recalculate attendance after absence policy fix",
+      status: "draft",
+    },
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.status, "draft");
+  assert.equal(body.data.approved_at, null);
+  assert.equal(body.data.approved_by_uid, null);
+
+  const audit = JSON.parse(body.data.audit_log_json);
+  const reopened = audit.at(-1);
+  assert.equal(reopened.action, "reopened");
+  assert.equal(reopened.byUid, "admin1");
+  assert.equal(reopened.byEmail, "admin@example.com");
+  assert.equal(reopened.reason, "recalculate attendance after absence policy fix");
+  assert.equal(reopened.previousStatus, "approved");
+  assert.equal(reopened.previousApprovedAt, "2026-07-28T10:00:00.000Z");
+  assert.equal(reopened.previousApprovedByUid, "owner1");
+});
+
+test("paid payroll cannot be reopened", async () => {
+  const fake = new FakeD1();
+  seedPayrollEntry(fake, {
+    id: "payroll-reopen-paid",
+    status: "paid",
+    paid_at: "2026-07-29T10:00:00.000Z",
+    paid_by_uid: "owner1",
+  });
+
+  const response = await worker.fetch(request("/api/core/hr/payroll-entries/payroll-reopen-paid/reopen", {
+    method: "POST",
+    body: { reason: "attempt paid reopen" },
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 409, JSON.stringify(body));
+  assert.equal(body.error, "core_payroll:paid_reopen_not_allowed");
+  assert.equal(fake.find("payroll_entries", "main", "payroll-reopen-paid").status, "paid");
+});
+
+test("reopened payroll can be recalculated and updates attendance summary", async () => {
+  const fake = new FakeD1();
+  seedPayrollEntry(fake, { id: "payroll-recalculate-after-reopen" });
+
+  const reopenResponse = await worker.fetch(request("/api/core/hr/payroll-entries/payroll-recalculate-after-reopen/reopen", {
+    method: "POST",
+    body: { reason: "recalculate attendance summary" },
+  }), env(fake));
+  assert.equal(reopenResponse.status, 200, JSON.stringify(await json(reopenResponse)));
+
+  const saveResponse = await worker.fetch(request("/api/core/hr/payroll-entries", {
+    method: "POST",
+    body: payrollSavePayload({ id: "payroll-recalculate-after-reopen" }),
+  }), env(fake));
+  const saveBody = await json(saveResponse);
+
+  assert.equal(saveResponse.status, 200, JSON.stringify(saveBody));
+  assert.equal(saveBody.data.status, "draft");
+  assert.equal(saveBody.data.missing_hours, 240);
+  const attendance = JSON.parse(saveBody.data.attendance_summary_json);
+  assert.equal(attendance.absentDays, 30);
+  assert.equal(attendance.totalMissingHours, 240);
+  assert.equal(attendance.attendanceLinkStatus, "confirmed");
 });
 
 test("client CRUD uses D1", async () => {

@@ -40,7 +40,9 @@ export type PayrollEntryView = PayrollSnapshot & {
   saved: boolean;
   absenceEntries?: PayrollAbsenceEntry[];
   approvedAt?: string | null;
+  approvedByUid?: string | null;
   paidAt?: string | null;
+  paidByUid?: string | null;
   auditLog?: Array<Record<string, unknown>>;
 };
 
@@ -697,7 +699,9 @@ function snapshotFromEmployee(input: {
     periodId: input.existing?.periodId,
     saved: Boolean(input.existing?.saved),
     approvedAt: input.existing?.approvedAt,
+    approvedByUid: input.existing?.approvedByUid,
     paidAt: input.existing?.paidAt,
+    paidByUid: input.existing?.paidByUid,
     auditLog: input.existing?.auditLog || [],
   }) as PayrollEntryView;
 }
@@ -819,7 +823,9 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     status,
     notes: text(row.notes) || null,
     approvedAt: text(row.approvedAt) || null,
+    approvedByUid: text(row.approvedByUid) || null,
     paidAt: text(row.paidAt) || null,
+    paidByUid: text(row.paidByUid) || null,
     auditLog: readJson<Array<Record<string, unknown>>>(row.auditLogJson, []),
   };
 }
@@ -1019,5 +1025,23 @@ export async function markPayrollEntryPaid(entry: PayrollEntryView) {
   const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
   const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.markPayrollEntryPaid(saved.id!));
+}
+
+export async function reopenPayrollEntry(
+  entry: PayrollEntryView,
+  input: { reason: string; status?: "draft" | "reviewed" }
+) {
+  if (!entry.id) throw new Error("payroll_entry_not_saved");
+  if (entry.status === "paid") throw new Error("payroll_paid_reopen_not_allowed");
+  if (entry.status !== "approved") throw new Error("payroll_not_approved");
+  const reason = text(input.reason);
+  if (!reason) throw new Error("payroll_reopen_reason_required");
+  const CoreHrService = await coreHrService();
+  return normalizePayrollEntry(
+    await CoreHrService.reopenPayrollEntry(entry.id, {
+      reason,
+      status: input.status || "draft",
+    })
+  );
 }
 

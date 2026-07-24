@@ -6,6 +6,7 @@ import {
   preserveLockedPayrollSnapshot,
   payrollMonthBounds,
 } from "../src/helpers/hr/payrollCalculations.ts";
+import { payrollActionVisibility } from "../src/helpers/hr/payrollActions.ts";
 import { buildPayrollAttendanceSummaryForEmployee } from "../src/services/CorePayrollService.ts";
 
 const payrollAttendanceFixtures = {
@@ -438,5 +439,47 @@ test("setup evaluator does not require overtime multiplier when salary setup is 
   });
   assert.deepEqual(setup.missing, []);
   assert.equal(setup.complete, true);
+});
+
+test("approved payroll actions hide approve and show reopen for admin owner roles", () => {
+  const ownerActions = payrollActionVisibility({
+    status: "approved",
+    payrollSetupComplete: true,
+    canManage: true,
+    role: "owner",
+  });
+  const adminActions = payrollActionVisibility({
+    status: "approved",
+    payrollSetupComplete: true,
+    canManage: true,
+    role: "admin",
+  });
+
+  assert.equal(ownerActions.showApprove, false);
+  assert.equal(ownerActions.showMarkPaid, true);
+  assert.equal(ownerActions.canMarkPaid, true);
+  assert.equal(ownerActions.showReopen, true);
+  assert.equal(adminActions.showReopen, true);
+});
+
+test("approved payroll reopen is hidden without admin owner role and paid payroll cannot reopen", () => {
+  const accountantActions = payrollActionVisibility({
+    status: "approved",
+    payrollSetupComplete: true,
+    canManage: true,
+    role: "accountant",
+  });
+  const paidActions = payrollActionVisibility({
+    status: "paid",
+    payrollSetupComplete: true,
+    canManage: true,
+    role: "owner",
+  });
+
+  assert.equal(accountantActions.showReopen, false);
+  assert.equal(accountantActions.showApprove, false);
+  assert.equal(paidActions.showReopen, false);
+  assert.equal(paidActions.showMarkPaid, false);
+  assert.equal(paidActions.canRecalculate, false);
 });
 

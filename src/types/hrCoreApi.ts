@@ -127,7 +127,9 @@ export type CorePayrollEntry = Record<string, unknown> & {
   scheduleSnapshotJson?: string | null;
   auditLogJson?: string | null;
   approvedAt?: string | null;
+  approvedByUid?: string | null;
   paidAt?: string | null;
+  paidByUid?: string | null;
   notes?: string | null;
 };
 

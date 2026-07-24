@@ -13,6 +13,7 @@ import {
   FiSave,
   FiShield,
   FiSliders,
+  FiUnlock,
   FiX,
 } from "react-icons/fi";
 import { usePermissions } from "../security/PermissionContext";
@@ -25,6 +26,7 @@ import {
   markPayrollEntryPaid,
   payrollMonthBounds,
   rebuildPayrollEntryFromEmployeeSettings,
+  reopenPayrollEntry,
   savePayrollDrafts,
   togglePayrollOvertime,
   updatePayrollEntryAdjustments,
@@ -42,6 +44,7 @@ import {
   type PayrollSetupMissingKey,
   type PayrollStatus,
 } from "../helpers/hr/payrollCalculations";
+import { payrollActionVisibility } from "../helpers/hr/payrollActions";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
 import {
   exportPayrollPayslipPdf,
@@ -221,11 +224,17 @@ function payrollActionErrorMessage(error: unknown, fallback: string) {
   if (message === "core_payroll:not_approved") {
     return "لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.";
   }
+  if (message === "payroll_paid_reopen_not_allowed" || message === "core_payroll:paid_reopen_not_allowed") {
+    return "لا يمكن إعادة فتح راتب مدفوع. يحتاج ذلك مسار إلغاء دفع منفصل.";
+  }
+  if (message === "payroll_reopen_reason_required") {
+    return "سبب إعادة فتح الراتب مطلوب.";
+  }
   return String((error as any)?.message || fallback);
 }
 
 export default function DashboardPayroll() {
-  const { hasPermission } = usePermissions();
+  const { hasPermission, role } = usePermissions();
   const canManage = hasPermission("payroll.manage");
   const initial = currentYearMonth();
   const [year, setYear] = useState(initial.year);
@@ -432,8 +441,13 @@ export default function DashboardPayroll() {
         employeeId: entry.employeeId,
         currentEntries: entries,
       });
-      const next = generated[0] || entry;
+      const recalculated = generated[0] || entry;
+      const saved = recalculated.id
+        ? (await savePayrollDrafts([{ ...recalculated, periodId: recalculated.periodId || entry.periodId }]))[0] || recalculated
+        : recalculated;
+      const next = saved;
       setEntries((current) => replaceEntry(current, next));
+      setSelectedEntry((current) => (current?.employeeId === next.employeeId ? next : current));
       setMessage("تمت إعادة حساب السجل.");
     } catch (actionError: any) {
       setError(String(actionError?.message || "تعذرت إعادة حساب السجل."));
@@ -550,6 +564,36 @@ export default function DashboardPayroll() {
       setMessage("تم تسجيل الراتب كمدفوع.");
     } catch (actionError: any) {
       setError(payrollActionErrorMessage(actionError, "تعذر تسجيل الدفع."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const handleReopen = async (entry: PayrollEntryView) => {
+    const visibility = payrollActionVisibility({
+      status: entry.status,
+      payrollSetupComplete: entry.payrollSetupComplete,
+      canManage,
+      role,
+    });
+    if (!visibility.canReopen) return;
+    const confirmed = window.confirm(
+      "سيتم إعادة فتح الراتب المعتمد وتحويله إلى مسودة حتى يمكن إعادة الحساب. لن يتم تعديل الراتب تلقائيًا حتى تضغط إعادة الحساب بعد الفتح. هل تريد المتابعة؟"
+    );
+    if (!confirmed) return;
+    const reason = window.prompt("اكتب سبب إعادة فتح الراتب", "إعادة احتساب الحضور بعد تحديث سياسة الغياب");
+    if (!reason?.trim()) {
+      setError("سبب إعادة فتح الراتب مطلوب.");
+      return;
+    }
+    setBusy(`reopen:${entry.employeeId}`);
+    try {
+      const saved = await reopenPayrollEntry(entry, { reason: reason.trim(), status: "draft" });
+      setEntries((current) => replaceEntry(current, saved));
+      setSelectedEntry((current) => (current?.employeeId === saved.employeeId ? saved : current));
+      setMessage("تمت إعادة فتح الراتب. يمكنك الآن إعادة الحساب ثم الاعتماد من جديد.");
+    } catch (actionError: any) {
+      setError(payrollActionErrorMessage(actionError, "تعذرت إعادة فتح الراتب."));
     } finally {
       setBusy("");
     }
@@ -679,19 +723,17 @@ export default function DashboardPayroll() {
           <tbody>
             {visibleEntries.map((entry) => {
               const locked = isPayrollSnapshotLocked(entry.status);
+              const actions = payrollActionVisibility({
+                status: entry.status,
+                payrollSetupComplete: entry.payrollSetupComplete,
+                canManage,
+                role,
+              });
               const canToggleOvertime =
                 canManage &&
                 !locked &&
                 entry.payrollSetupComplete &&
                 entry.detectedExtraHours > 0;
-              const canApprove =
-                canManage &&
-                entry.payrollSetupComplete &&
-                entry.status !== "paid";
-              const canMarkPaid =
-                canManage &&
-                entry.payrollSetupComplete &&
-                entry.status === "approved";
               const missingLabels = setupMissingLabels(entry);
               const exportEligible = isPayrollExportEligible(entry);
               const attendanceBlocked = attendanceDeductionBlocked(entry);
@@ -768,17 +810,24 @@ export default function DashboardPayroll() {
                   <td>
                     <div className="payroll-row-actions">
                       <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض</button>
-                      <button type="button" disabled={!canManage || locked} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
-                      <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
-                      <button type="button" disabled={!canManage || locked} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
+                      <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
+                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
+                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
                       {!entry.payrollSetupComplete ? (
                         <span className="payroll-action-help">
                           <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
                           <small>لإكمال الراتب الأساسي، أيام العمل، وساعات الشهر</small>
                         </span>
                       ) : null}
-                      <button type="button" disabled={!canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
-                      <button type="button" disabled={!canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
+                      {actions.showApprove ? (
+                        <button type="button" disabled={!actions.canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
+                      ) : null}
+                      {actions.showMarkPaid ? (
+                        <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
+                      ) : null}
+                      {actions.showReopen ? (
+                        <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />إعادة فتح الراتب</button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

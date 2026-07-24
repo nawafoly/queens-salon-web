@@ -105,4 +105,8 @@ export const CoreHrService = {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/paid`, { method: "POST" });
     return camel<CorePayrollEntry>(row);
   },
+  async reopenPayrollEntry(id: string, input: { reason: string; status?: "draft" | "reviewed" }) {
+    const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}/reopen`, { method: "POST", body: input });
+    return camel<CorePayrollEntry>(row);
+  },
 };

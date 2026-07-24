@@ -105,6 +105,7 @@ import {
   listPayrollEntries,
   listPayrollPeriods,
   markPayrollEntryPaid,
+  reopenPayrollEntry,
   togglePayrollOvertime,
   updatePayrollEntryAdjustments,
   upsertPayrollEntry,
@@ -312,7 +313,7 @@ function match(url, method) {
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
-  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid)$/.exec(path);
+  const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
   if (fileContent && ["GET", "PUT"].includes(method)) return { name: "file:content", id: fileContent[1] };
@@ -398,7 +399,7 @@ async function dispatch(ctx, route, method, body, query, env) {
   const readQuery = publicConsumer ? publicBookingQuery(route.name, query) : query;
   const actorInfo = {
     uid: ctx.identity?.uid || "",
-    email: ctx.identity?.claims?.email || "",
+    email: ctx.identity?.claims?.email || ctx.user?.email || "",
     name: ctx.user?.display_name || ctx.identity?.claims?.name || "",
     role: ctx.role,
     userId: ctx.user?.id || "",
@@ -865,6 +866,12 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-entry:approve":
       requirePermission(ctx, "payroll.manage");
       if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "payroll-entry:reopen":
+      requirePermission(ctx, "payroll.manage");
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "POST") return reopenPayrollEntry(db, ctx.salonId, route.id, body, actorInfo);
       break;
 
     case "payroll-entry:paid":

@@ -88,6 +88,17 @@ function appendAudit(row, action, actor = {}) {
   return JSON.stringify(entries);
 }
 
+function appendAuditEntry(row, entry = {}) {
+  const entries = parseJsonArray(row?.audit_log_json);
+  entries.push({
+    ...entry,
+    byUid: optionalText(entry.byUid ?? entry.by_uid) || null,
+    byEmail: optionalText(entry.byEmail ?? entry.by_email) || null,
+    at: optionalText(entry.at) || nowIso(),
+  });
+  return JSON.stringify(entries);
+}
+
 function payrollSetupMissing(row = {}) {
   const missing = [];
   const scheduleSnapshot = parseJsonObject(row.schedule_snapshot_json);
@@ -346,6 +357,45 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}) {
            approved_by_uid = COALESCE(approved_by_uid, ?), audit_log_json = ?, updated_at = ?
      WHERE salon_id = ? AND id = ?`,
     [now, optionalText(actor.uid) || null, appendAudit(existing, 'approved', actor), now, salonId, existing.id]
+  );
+  return getPayrollEntry(db, salonId, existing.id);
+}
+
+export async function reopenPayrollEntry(db, salonId, id, data = {}, actor = {}) {
+  const existing = await getPayrollEntry(db, salonId, id);
+  const currentStatus = cleanText(existing.status || 'draft');
+  if (currentStatus === 'paid') throw new AppError(409, 'core_payroll:paid_reopen_not_allowed');
+  if (currentStatus !== 'approved') throw new AppError(409, 'core_payroll:not_approved');
+
+  const nextStatus = cleanStatus(data.status || data.nextStatus || data.next_status || 'draft');
+  if (!['draft', 'reviewed'].includes(nextStatus)) {
+    throw new AppError(400, 'core_payroll:invalid_reopen_status');
+  }
+
+  const now = nowIso();
+  const reason = optionalText(data.reason) || 'recalculate_approved_payroll';
+  await dbRun(
+    db,
+    `UPDATE payroll_entries
+       SET status = ?, approved_at = NULL, approved_by_uid = NULL,
+           audit_log_json = ?, updated_at = ?
+     WHERE salon_id = ? AND id = ?`,
+    [
+      nextStatus,
+      appendAuditEntry(existing, {
+        action: 'reopened',
+        byUid: optionalText(actor.uid) || null,
+        byEmail: optionalText(actor.email) || null,
+        at: now,
+        reason,
+        previousStatus: currentStatus,
+        previousApprovedAt: existing.approved_at || null,
+        previousApprovedByUid: existing.approved_by_uid || null,
+      }),
+      now,
+      salonId,
+      existing.id,
+    ]
   );
   return getPayrollEntry(db, salonId, existing.id);
 }
