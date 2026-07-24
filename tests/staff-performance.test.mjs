@@ -137,3 +137,32 @@ test("attendance summary contributes commitment without salary effects", () => {
   assert.equal("netSalary" in row, false);
   assert.ok(row.performanceScore >= 0 && row.performanceScore <= 100);
 });
+
+test("full absence attendance summary remains available for performance commitment", () => {
+  const fixture = {
+    scheduledHours: 176,
+    workDays: 22,
+  };
+  const result = build({
+    attendanceByEmployeeId: {
+      "emp-a": {
+        totalScheduledHours: fixture.scheduledHours,
+        totalActualWorkedHours: 0,
+        totalLateHours: 0,
+        totalCompensatedLateHours: 0,
+        totalMissingHours: fixture.scheduledHours,
+        totalExtraHours: 0,
+        attendanceDays: 0,
+        absentDays: fixture.workDays,
+        incompleteDays: 0,
+        available: true,
+      },
+    },
+  });
+  const row = result.rows.find((item) => item.employeeId === "emp-a");
+
+  assert.equal(row.attendance.available, true);
+  assert.equal(row.attendance.attendanceDays, 0);
+  assert.equal(row.attendance.absentDays, fixture.workDays);
+  assert.equal(row.attendance.commitmentPercent, 0);
+});

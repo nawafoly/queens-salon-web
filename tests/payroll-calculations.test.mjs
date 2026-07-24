@@ -6,6 +6,34 @@ import {
   preserveLockedPayrollSnapshot,
   payrollMonthBounds,
 } from "../src/helpers/hr/payrollCalculations.ts";
+import { buildPayrollAttendanceSummaryForEmployee } from "../src/services/CorePayrollService.ts";
+
+const payrollAttendanceFixtures = {
+  fullCycle: {
+    workDays: 30,
+    monthlyHours: 240,
+    dailyHours: 8,
+    weeklyOffDays: [],
+  },
+  oneWeeklyOffDay: {
+    workDays: 26,
+    monthlyHours: 208,
+    dailyHours: 8,
+    weeklyOffDays: ["fri"],
+  },
+  twoWeeklyOffDays: {
+    workDays: 22,
+    monthlyHours: 176,
+    dailyHours: 8,
+    weeklyOffDays: ["fri", "sat"],
+  },
+  variableDailyHoursSundayOnly: {
+    workDays: 5,
+    monthlyHours: 35,
+    dailyHours: 7,
+    scheduleWeekday: 0,
+  },
+};
 
 const attendanceSummary = {
   totalScheduledHours: 208,
@@ -31,6 +59,71 @@ function snapshot(overrides = {}) {
     attendanceSummary,
     ...overrides,
   });
+}
+
+function employeeFixture(id, fixture, overrides = {}) {
+  const weeklyOffDays = fixture.weeklyOffDays || [];
+  const schedules =
+    fixture.scheduleWeekday == null
+      ? []
+      : [
+          {
+            id: `${id}-schedule`,
+            salonId: "salon-test",
+            employeeId: id,
+            weekday: fixture.scheduleWeekday,
+            startTime: "10:00",
+            endTime: null,
+            active: true,
+          },
+        ];
+  return {
+    id,
+    salonId: "salon-test",
+    name: `Employee ${id}`,
+    status: "active",
+    employment: {
+      base_salary_halalas: 310000,
+      expected_work_days: fixture.workDays,
+      expected_work_hours: fixture.monthlyHours,
+      daily_scheduled_hours: fixture.dailyHours,
+      weekly_off_days_json: JSON.stringify(weeklyOffDays),
+    },
+    schedules,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function attendanceRecord(id, employeeId, dateKey, recordType, recordedAt) {
+  return {
+    id,
+    salonId: "salon-test",
+    employeeId,
+    employeeUid: null,
+    dateKey,
+    recordType,
+    recordedAt,
+  };
+}
+
+function completePunchesForDate(employeeId, dateKey) {
+  return [
+    attendanceRecord(`${employeeId}-${dateKey}-in`, employeeId, dateKey, "check_in", `${dateKey}T07:00:00.000Z`),
+    attendanceRecord(`${employeeId}-${dateKey}-out`, employeeId, dateKey, "check_out", `${dateKey}T15:00:00.000Z`),
+  ];
+}
+
+function payrollAttendanceSummary(employee, records = []) {
+  return buildPayrollAttendanceSummaryForEmployee({
+    employee,
+    records,
+    leaves: [],
+    absences: [],
+    year: 2026,
+    month: 7,
+  }).summary;
 }
 
 test("daily rate respects the entered workDays value", () => {
@@ -78,6 +171,101 @@ test("payroll month 08/2026 uses the 21-to-20 accounting period", () => {
   assert.equal(bounds.monthStart, "2026-07-21");
   assert.equal(bounds.monthEnd, "2026-08-20");
   assert.equal(bounds.payDate, "2026-08-28");
+});
+
+test("complete payroll setup with no attendance punches is counted as full absence", () => {
+  const fixture = payrollAttendanceFixtures.fullCycle;
+  const summary = payrollAttendanceSummary(employeeFixture("emp-no-punches", fixture));
+
+  assert.equal(summary.attendanceRecordCount, 0);
+  assert.equal(summary.attendanceLinkStatus, "confirmed");
+  assert.equal(summary.attendanceDeductionEligible, true);
+  assert.equal(summary.attendanceDays, 0);
+  assert.equal(summary.absentDays, fixture.workDays);
+  assert.equal(summary.totalActualWorkedHours, 0);
+  assert.equal(summary.totalScheduledHours, fixture.monthlyHours);
+  assert.equal(summary.totalMissingHours, fixture.monthlyHours);
+});
+
+test("partial attendance punches count remaining scheduled work days as absence", () => {
+  const fixture = payrollAttendanceFixtures.fullCycle;
+  const employee = employeeFixture("emp-partial-punches", fixture);
+  const presentDates = ["2026-06-21", "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25"];
+  const summary = payrollAttendanceSummary(employee, presentDates.flatMap((date) => completePunchesForDate(employee.id, date)));
+  const absentDays = fixture.workDays - presentDates.length;
+
+  assert.equal(summary.attendanceDays, presentDates.length);
+  assert.equal(summary.absentDays, absentDays);
+  assert.equal(summary.totalActualWorkedHours, presentDates.length * fixture.dailyHours);
+  assert.equal(summary.totalScheduledHours, fixture.monthlyHours);
+  assert.equal(summary.totalMissingHours, absentDays * fixture.dailyHours);
+});
+
+test("attendance absence calculation follows employee weekly schedule for non-full-cycle work days", () => {
+  const fixture = payrollAttendanceFixtures.oneWeeklyOffDay;
+  const summary = payrollAttendanceSummary(employeeFixture("emp-one-off-day", fixture));
+
+  assert.equal(summary.attendanceDays, 0);
+  assert.equal(summary.absentDays, fixture.workDays);
+  assert.equal(summary.totalScheduledHours, fixture.monthlyHours);
+  assert.equal(summary.totalMissingHours, fixture.monthlyHours);
+});
+
+test("incomplete payroll setup stays not ready even when attendance can be inspected", () => {
+  const fixture = payrollAttendanceFixtures.twoWeeklyOffDays;
+  const employee = employeeFixture("emp-incomplete-setup", fixture, {
+    employment: {
+      expected_work_days: fixture.workDays,
+      expected_work_hours: fixture.monthlyHours,
+      daily_scheduled_hours: fixture.dailyHours,
+      weekly_off_days_json: JSON.stringify(fixture.weeklyOffDays),
+    },
+  });
+  const summary = payrollAttendanceSummary(employee);
+  const result = snapshot({
+    employeeId: employee.id,
+    baseSalaryHalalas: 0,
+    workDays: fixture.workDays,
+    monthlyHours: fixture.monthlyHours,
+    dailyScheduledHours: fixture.dailyHours,
+    attendanceSummary: summary,
+  });
+
+  assert.equal(summary.attendanceLinkStatus, "not_ready");
+  assert.equal(summary.attendanceDeductionEligible, false);
+  assert.equal(result.payrollSetupComplete, false);
+  assert.ok(result.payrollSetupMissing.includes("baseSalary"));
+});
+
+test("unknown employee identity keeps attendance not ready and blocks deductions", () => {
+  const fixture = payrollAttendanceFixtures.fullCycle;
+  const summary = payrollAttendanceSummary(employeeFixture("", fixture));
+  const result = snapshot({
+    employeeId: "",
+    workDays: fixture.workDays,
+    monthlyHours: fixture.monthlyHours,
+    dailyScheduledHours: fixture.dailyHours,
+    attendanceSummary: summary,
+  });
+
+  assert.equal(summary.attendanceLinkStatus, "not_ready");
+  assert.equal(summary.attendanceDeductionEligible, false);
+  assert.equal(result.missingHoursDeductionHalalas, 0);
+});
+
+test("single missing punch increments incomplete days without counting full attendance", () => {
+  const fixture = payrollAttendanceFixtures.variableDailyHoursSundayOnly;
+  const employee = employeeFixture("emp-incomplete-punch", fixture);
+  const summary = payrollAttendanceSummary(employee, [
+    attendanceRecord("emp-incomplete-punch-in", employee.id, "2026-06-21", "check_in", "2026-06-21T07:00:00.000Z"),
+  ]);
+
+  assert.equal(summary.incompleteDays, 1);
+  assert.equal(summary.attendanceDays, 0);
+  assert.equal(summary.absentDays, fixture.workDays - summary.incompleteDays);
+  assert.equal(summary.totalActualWorkedHours, 0);
+  assert.equal(summary.totalScheduledHours, fixture.monthlyHours);
+  assert.equal(summary.totalMissingHours, (fixture.workDays - summary.incompleteDays) * fixture.dailyHours);
 });
 
 test("attendance missing-hour deduction is blocked when attendance linkage is unconfirmed", () => {

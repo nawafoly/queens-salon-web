@@ -1,5 +1,4 @@
-﻿import { CoreHrService } from "./CoreHrService";
-import type {
+﻿import type {
   CoreAbsence,
   CoreAttendanceRecord,
   CoreHrEmployee,
@@ -7,12 +6,12 @@ import type {
   CoreLeave,
   CorePayrollEntry,
   CorePayrollPeriod,
-} from "../types/hrCoreApi";
+} from "../types/hrCoreApi.ts";
 import {
   calculateAttendanceDisciplineDay,
   summarizeAttendanceDisciplineMonth,
   type AttendanceDisciplineDaySummary,
-} from "../helpers/hr/attendanceDiscipline";
+} from "../helpers/hr/attendanceDiscipline.ts";
 import {
   ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
   calculatePayrollSnapshot,
@@ -25,11 +24,15 @@ import {
   type PayrollManualItem,
   type PayrollSnapshot,
   type PayrollStatus,
-} from "../helpers/hr/payrollCalculations";
+} from "../helpers/hr/payrollCalculations.ts";
 
 const DEFAULT_SHIFT_START = "10:00";
 const DEFAULT_SHIFT_END = "22:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function coreHrService() {
+  return (await import("./CoreHrService.ts")).CoreHrService;
+}
 
 export type PayrollEntryView = PayrollSnapshot & {
   id?: string;
@@ -129,6 +132,17 @@ function hoursBetween(start?: string | null, end?: string | null) {
   if (startMinutes == null || endMinutes == null) return 0;
   if (endMinutes <= startMinutes) endMinutes += 24 * 60;
   return Math.max(0, Math.round(((endMinutes - startMinutes) / 60) * 100) / 100);
+}
+
+function timeFromMinutes(value: number) {
+  const minutes = ((Math.round(value) % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+function endTimeFromDailyHours(start?: string | null, dailyScheduledHours = 0) {
+  const startMinutes = parseTimeMinutes(start);
+  if (startMinutes == null || dailyScheduledHours <= 0) return null;
+  return timeFromMinutes(startMinutes + dailyScheduledHours * 60);
 }
 
 function readJson<T>(value: unknown, fallback: T): T {
@@ -366,8 +380,12 @@ function attendanceRecordMatchesEmployee(record: CoreAttendanceRecord, employee:
   return doesAttendanceRecordBelongToEmployee(record, employee);
 }
 
-function attendanceMetadata(recordCount: number) {
-  if (recordCount > 0) {
+function attendanceMetadata(
+  recordCount: number,
+  linkStatus: "confirmed" | "unlinked" | "not_ready" = recordCount > 0 ? "confirmed" : "unlinked",
+  note = ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE
+) {
+  if (linkStatus === "confirmed") {
     return {
       attendanceRecordCount: recordCount,
       attendanceLinkStatus: "confirmed" as const,
@@ -377,9 +395,9 @@ function attendanceMetadata(recordCount: number) {
   }
   return {
     attendanceRecordCount: 0,
-    attendanceLinkStatus: "unlinked" as const,
+    attendanceLinkStatus: linkStatus,
     attendanceDeductionEligible: false,
-    attendanceDeductionNote: ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
+    attendanceDeductionNote: note,
   };
 }
 
@@ -488,7 +506,7 @@ function employeePayrollOvertimeEnabled(employee: CoreHrEmployee) {
   );
 }
 
-function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
+function scheduleForDate(employee: CoreHrEmployee, dateKey: string, dailyScheduledHours = 0) {
   const weekday = jsDateFromKey(dateKey).getUTCDay();
   const offDays = weeklyOffDays(employee);
   const schedules = (employee.schedules || []).filter((schedule) => {
@@ -501,11 +519,12 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
 
   if ((employee.schedules || []).length > 0) {
     const schedule = schedules[0];
+    const start = schedule?.startTime || DEFAULT_SHIFT_START;
     return schedule
       ? {
           enabled: true,
-          start: schedule.startTime || DEFAULT_SHIFT_START,
-          end: schedule.endTime || DEFAULT_SHIFT_END,
+          start,
+          end: schedule.endTime || endTimeFromDailyHours(start, dailyScheduledHours) || DEFAULT_SHIFT_END,
         }
       : { enabled: false, start: null, end: null };
   }
@@ -514,10 +533,14 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string) {
   if (offDays.has(WEEKDAY_KEY_BY_UTC_DAY[weekday]) || offDays.has(String(weekday))) {
     return { enabled: false, start: null, end: null };
   }
+  const start = text(employment.shift_start_time ?? employment.shiftStartTime) || DEFAULT_SHIFT_START;
   return {
     enabled: true,
-    start: text(employment.shift_start_time ?? employment.shiftStartTime) || DEFAULT_SHIFT_START,
-    end: text(employment.shift_end_time ?? employment.shiftEndTime) || DEFAULT_SHIFT_END,
+    start,
+    end:
+      text(employment.shift_end_time ?? employment.shiftEndTime) ||
+      endTimeFromDailyHours(start, dailyScheduledHours) ||
+      DEFAULT_SHIFT_END,
   };
 }
 
@@ -533,8 +556,10 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
   const bounds = payrollMonthBounds(input.year, input.month);
   const dates = dateKeysInPayrollCycle(input.year, input.month);
   const recordsByDate = new Map<string, CoreAttendanceRecord[]>();
-  const periodRecords = input.records.filter((record) =>
-    isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
+  const periodRecords = input.records.filter(
+    (record) =>
+      isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd) &&
+      attendanceRecordMatchesEmployee(record, input.employee)
   );
   const approvedLeaveDates = dateSetForApprovedLeaves(
     input.leaves || [],
@@ -548,16 +573,30 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     bounds.monthStart,
     bounds.monthEnd
   );
-  if (!periodRecords.length) {
-    const identity = resolvePayrollAttendanceIdentity(input.employee);
+  const identity = resolvePayrollAttendanceIdentity(input.employee);
+  const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
+    input.employee,
+    input.year,
+    input.month
+  );
+  const payrollSetup = evaluatePayrollSetup({
+    employeeId: input.employee.id,
+    baseSalaryHalalas: employeeBaseSalary(input.employee),
+    workDays: employeeWorkDays(input.employee),
+    monthlyHours: employeeMonthlyHours(input.employee),
+    dailyScheduledHours,
+  });
+  const hasCoreEmployeeIdentity = Boolean(identity.employeeId);
+
+  if (!hasCoreEmployeeIdentity || !payrollSetup.complete) {
     return {
       days,
       summary: {
         ...emptyAttendanceSummary(
-        identity.keys.length ? "not_ready" : "unlinked",
-        identity.keys.length
-          ? ["لا توجد بصمات مطابقة داخل فترة الراتب، لذلك لم يتم احتساب غياب أو خصم حضور تلقائي."]
-          : ["لا توجد مفاتيح كافية لربط الموظفة بسجلات البصمة."]
+          "not_ready",
+          hasCoreEmployeeIdentity
+            ? ["إعداد الراتب غير مكتمل؛ لم يتم احتساب خصم حضور تلقائي."]
+            : ["لا توجد هوية موظفة معروفة في Core لربط سجلات البصمة."]
         ),
         approvedLeaveDays: approvedLeaveDates.size,
         approvedAbsenceDays: approvedAbsenceDates.size,
@@ -572,7 +611,7 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
   }
 
   for (const date of dates) {
-    const schedule = scheduleForDate(input.employee, date);
+    const schedule = scheduleForDate(input.employee, date, dailyScheduledHours);
     const records = [...(recordsByDate.get(date) || [])].sort(
       (left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)
     );
@@ -608,7 +647,7 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
         ...(approvedAbsenceDates.size ? [`${approvedAbsenceDates.size} أيام غياب/استثناء معتمد لم تدخل في خصم الحضور.`] : []),
         ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
       ],
-      ...attendanceMetadata(periodRecords.length),
+      ...attendanceMetadata(periodRecords.length, "confirmed"),
     },
   };
 }
@@ -845,6 +884,7 @@ export async function loadPayrollMonth(input: {
   status?: string;
 }): Promise<PayrollMonthLoadResult> {
   const { payrollMonth } = payrollMonthBounds(input.year, input.month);
+  const CoreHrService = await coreHrService();
   const [periods, rows] = await Promise.all([
     CoreHrService.listPayrollPeriods(),
     CoreHrService.listPayrollEntries({
@@ -869,6 +909,7 @@ export async function generatePayrollEntries(input: {
 }) {
   const bounds = payrollMonthBounds(input.year, input.month);
   const { payrollMonth } = bounds;
+  const CoreHrService = await coreHrService();
   const [employees, attendance, leaves, absences] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
     CoreHrService.listAttendance(),
@@ -913,6 +954,7 @@ export async function generatePayrollEntries(input: {
 
 export async function ensurePayrollPeriod(year: number, month: number) {
   const bounds = payrollMonthBounds(year, month);
+  const CoreHrService = await coreHrService();
   return CoreHrService.savePayrollPeriod({
     payrollMonth: bounds.payrollMonth,
     monthStart: bounds.monthStart,
@@ -922,6 +964,7 @@ export async function ensurePayrollPeriod(year: number, month: number) {
 }
 
 export async function savePayrollEntrySnapshot(entry: PayrollEntryView) {
+  const CoreHrService = await coreHrService();
   const saved = normalizePayrollEntry(
     await CoreHrService.savePayrollEntry(payrollEntryPayload(entry))
   );
@@ -945,6 +988,7 @@ export function assertPayrollEntryReady(entry: PayrollEntryView) {
 
 export async function updatePayrollEntryAdjustments(entry: PayrollEntryView) {
   if (!entry.id) return savePayrollEntrySnapshot(entry);
+  const CoreHrService = await coreHrService();
   return normalizePayrollEntry(
     await CoreHrService.updatePayrollEntryAdjustments(entry.id, payrollEntryPayload(entry))
   );
@@ -954,6 +998,7 @@ export async function togglePayrollOvertime(entry: PayrollEntryView) {
   assertPayrollEntryReady(entry);
   if (entry.detectedExtraHours <= 0) return entry;
   if (!entry.id) return savePayrollEntrySnapshot(entry);
+  const CoreHrService = await coreHrService();
   return normalizePayrollEntry(
     await CoreHrService.togglePayrollOvertime(entry.id, payrollEntryPayload(entry))
   );
@@ -962,6 +1007,7 @@ export async function togglePayrollOvertime(entry: PayrollEntryView) {
 export async function approvePayrollEntry(entry: PayrollEntryView) {
   assertPayrollEntryReady(entry);
   const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
+  const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.approvePayrollEntry(saved.id!));
 }
 
@@ -971,6 +1017,7 @@ export async function markPayrollEntryPaid(entry: PayrollEntryView) {
     throw new Error("payroll_not_approved");
   }
   const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
+  const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.markPayrollEntryPaid(saved.id!));
 }
 

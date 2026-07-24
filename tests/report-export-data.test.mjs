@@ -30,6 +30,12 @@ const attendanceSummary = {
   incompleteDays: 0,
 };
 
+const noPunchesPayrollFixture = {
+  workDays: 22,
+  monthlyHours: 176,
+  dailyHours: 8,
+};
+
 function payrollEntry(overrides = {}) {
   const snapshot = calculatePayrollSnapshot({
     employeeId: "emp-1",
@@ -216,6 +222,41 @@ test("monthly payroll default export excludes incomplete payroll rows", () => {
   assert.equal(report.extraTables?.[0]?.name, "المستبعدون");
   assert.equal(report.extraTables?.[0]?.hideInPdf, true);
   assert.equal(report.extraTables?.[0]?.rows[0].employeeName, "موظفة مستبعدة للاختبار");
+});
+
+test("monthly payroll default export keeps complete salary rows with zero attendance records", () => {
+  const fixture = noPunchesPayrollFixture;
+  const noPunches = payrollEntry({
+    employeeName: "مكتملة بلا بصمات",
+    workDays: fixture.workDays,
+    monthlyHours: fixture.monthlyHours,
+    dailyScheduledHours: fixture.dailyHours,
+    attendanceSummary: {
+      totalScheduledHours: fixture.monthlyHours,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: fixture.monthlyHours,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: fixture.workDays,
+      incompleteDays: 0,
+      attendanceRecordCount: 0,
+      attendanceLinkStatus: "confirmed",
+      attendanceDeductionEligible: true,
+    },
+  });
+  const report = buildPayrollReportData({
+    entries: [noPunches],
+    filters: { year: 2026, month: 7 },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.equal(report.table.rows.length, 1);
+  assert.equal(report.table.rows[0].employeeName, "مكتملة بلا بصمات");
+  assert.equal(report.table.rows[0].attendanceDays, 0);
+  assert.equal(report.table.rows[0].absentDays, fixture.workDays);
+  assert.notEqual(report.table.rows[0].missingDeduction, "لم يطبق");
 });
 
 test("monthly payroll default export keeps completed salary rows even when net salary is zero", () => {
