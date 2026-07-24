@@ -23,6 +23,7 @@ export type AttendanceDisciplineDayInput = {
   isScheduledWorkDay?: boolean;
   isApprovedLeave?: boolean;
   isAbsent?: boolean;
+  treatMissingPunchesAsAbsent?: boolean;
 };
 
 export type AttendanceDisciplineDaySummary = {
@@ -248,7 +249,8 @@ export function calculateAttendanceDisciplineDay(
     });
   }
 
-  if ((input.isAbsent || (!hasCheckIn && !hasCheckOut)) && scheduledMinutes > 0) {
+  const shouldTreatMissingPunchesAsAbsent = input.treatMissingPunchesAsAbsent !== false;
+  if ((input.isAbsent || (shouldTreatMissingPunchesAsAbsent && !hasCheckIn && !hasCheckOut)) && scheduledMinutes > 0) {
     return makeDaySummary(input, {
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,

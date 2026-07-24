@@ -128,6 +128,7 @@ export type PayrollSnapshot = {
   manualAdditionsHalalas: number;
   manualDeductionsHalalas: number;
   advancesHalalas: number;
+  absenceDeductionHalalas: number;
   missingHoursDeductionHalalas: number;
   grossSalaryHalalas: number;
   totalAdditionsHalalas: number;
@@ -154,6 +155,12 @@ function money(value: unknown) {
 }
 
 function hours(value: unknown) {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number) || number < 0) return 0;
+  return Math.round(number * 100) / 100;
+}
+
+function days(value: unknown) {
   const number = Number(value ?? 0);
   if (!Number.isFinite(number) || number < 0) return 0;
   return Math.round(number * 100) / 100;
@@ -281,10 +288,10 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     totalMissingHours: clampHours(rawAttendanceMissingHours, maxDeductiblePeriodHours),
     totalExtraHours: hours(input.attendanceSummary.totalExtraHours),
     attendanceDays: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceDays || 0))),
-    absentDays: Math.max(0, Math.round(Number(input.attendanceSummary.absentDays || 0))),
+    absentDays: days(input.attendanceSummary.absentDays),
     incompleteDays: Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
-    approvedLeaveDays: Math.max(0, Math.round(Number(input.attendanceSummary.approvedLeaveDays || 0))),
-    approvedAbsenceDays: Math.max(0, Math.round(Number(input.attendanceSummary.approvedAbsenceDays || 0))),
+    approvedLeaveDays: days(input.attendanceSummary.approvedLeaveDays),
+    approvedAbsenceDays: days(input.attendanceSummary.approvedAbsenceDays),
     attendanceRecordCount: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceRecordCount || 0))),
     attendanceLinkStatus:
       input.attendanceSummary.attendanceLinkStatus ||
@@ -323,6 +330,10 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     attendanceDeductionEligible
       ? roundHalalas(attendanceSummary.totalMissingHours * hourlyRateHalalas)
       : 0;
+  const absenceDeductionHalalas =
+    payrollSetup.complete && dailyRateHalalas > 0
+      ? roundHalalas((attendanceSummary.approvedAbsenceDays || 0) * dailyRateHalalas)
+      : 0;
   const detectedExtraHours = attendanceSummary.totalExtraHours;
   const overtimeEnabled =
     input.overtimeEnabled === true &&
@@ -339,7 +350,7 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     allowancesHalalas + manualAdditionsHalalas + overtimeValueHalalas;
   const grossSalaryHalalas = baseSalaryHalalas + totalAdditionsHalalas;
   const totalDeductionsHalalas =
-    missingHoursDeductionHalalas + manualDeductionsHalalas;
+    absenceDeductionHalalas + missingHoursDeductionHalalas + manualDeductionsHalalas;
   const netSalaryHalalas = Math.max(0, grossSalaryHalalas - totalDeductionsHalalas);
 
   return {
@@ -365,6 +376,7 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     manualAdditionsHalalas,
     manualDeductionsHalalas,
     advancesHalalas,
+    absenceDeductionHalalas,
     missingHoursDeductionHalalas,
     grossSalaryHalalas,
     totalAdditionsHalalas,
