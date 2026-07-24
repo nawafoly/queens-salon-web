@@ -1,4 +1,4 @@
-import { CoreHrService } from "./CoreHrService";
+﻿import { CoreHrService } from "./CoreHrService";
 import type {
   CoreAbsence,
   CoreAttendanceRecord,
@@ -764,6 +764,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     manualAdditionsHalalas: numberValue(row.manualAdditionsHalalas),
     manualDeductionsHalalas: numberValue(row.manualDeductionsHalalas),
     advancesHalalas: numberValue(row.advancesHalalas),
+    absenceDeductionHalalas: numberValue(row.absenceDeductionHalalas),
     missingHoursDeductionHalalas: numberValue(row.missingHoursDeductionHalalas),
     grossSalaryHalalas: numberValue(row.grossSalaryHalalas),
     totalAdditionsHalalas:
@@ -972,3 +973,4 @@ export async function markPayrollEntryPaid(entry: PayrollEntryView) {
   const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
   return normalizePayrollEntry(await CoreHrService.markPayrollEntryPaid(saved.id!));
 }
+
