@@ -35,9 +35,18 @@ export type PayrollEntryView = PayrollSnapshot & {
   id?: string;
   periodId?: string | null;
   saved: boolean;
+  absenceEntries?: PayrollAbsenceEntry[];
   approvedAt?: string | null;
   paidAt?: string | null;
   auditLog?: Array<Record<string, unknown>>;
+};
+
+export type PayrollAbsenceEntry = {
+  id: string;
+  dateKey: string;
+  absenceType: string;
+  days: number;
+  note?: string | null;
 };
 
 export type PayrollMonthLoadResult = {
@@ -138,6 +147,12 @@ function text(value: unknown) {
 function numberValue(value: unknown, fallback = 0) {
   const number = Number(value ?? fallback);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function dayValue(value: unknown) {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number) || number < 0) return 0;
+  return Math.round(number * 100) / 100;
 }
 
 function positiveNumber(value: unknown) {
