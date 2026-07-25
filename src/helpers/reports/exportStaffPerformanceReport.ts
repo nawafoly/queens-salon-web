@@ -301,7 +301,7 @@ function bookingCards(rows: StaffPerformanceRow[]) {
   const bookings = rows
     .flatMap((row) => row.bookingDetails.map((booking) => ({ ...booking, employeeName: row.employeeName })))
     .sort((left, right) => right.date.localeCompare(left.date));
-  const visibleBookings = bookings.slice(0, 15);
+  const visibleBookings = bookings.length > 20 ? bookings.slice(0, 20) : bookings;
   if (!visibleBookings.length) {
     return `<p class="qs-empty">لا توجد حجوزات مكتملة لهذه الفترة.</p>`;
   }
@@ -309,20 +309,30 @@ function bookingCards(rows: StaffPerformanceRow[]) {
     <div class="qs-list">
       ${visibleBookings.map((booking) => `
         <article class="qs-list-card">
+          <div class="qs-booking-focus">
+            <div>
+              <span>اسم العميلة</span>
+              <strong>${escapePerformanceHtml(safeText(booking.clientName))}</strong>
+            </div>
+            <div>
+              <span>الخدمة</span>
+              <strong>${escapePerformanceHtml(safeText(booking.services.join("، ")))}</strong>
+            </div>
+          </div>
           <div class="qs-list-head">
             <strong>${escapePerformanceHtml(safeText(booking.publicId || booking.id))}</strong>
             <span>${escapePerformanceHtml(formatDate(booking.date))}</span>
           </div>
           <div class="qs-list-body">
-            ${detailField("العميلة", safeText(booking.clientName))}
-            ${detailField("الخدمة", safeText(booking.services.join("، ")))}
+            ${detailField("رقم الحجز", safeText(booking.publicId || booking.id))}
+            ${detailField("التاريخ", formatDate(booking.date))}
             ${detailField("الإيراد", moneyValue(booking.revenueHalalas))}
             ${detailField("الموظفة", safeText(booking.employeeName))}
           </div>
         </article>
       `).join("")}
     </div>
-    ${bookings.length > visibleBookings.length ? `<p class="qs-muted">تم عرض آخر/أهم الحجوزات فقط، والتفاصيل الكاملة متاحة من لوحة التحكم.</p>` : ""}
+    ${bookings.length > visibleBookings.length ? `<p class="qs-muted">تم عرض أول 20 حجزًا، والتفاصيل الكاملة متاحة في ملف Excel أو لوحة التحكم.</p>` : ""}
   `;
 }
 
@@ -543,12 +553,38 @@ export function createStaffPerformancePdfDocument(input: StaffPerformanceReportI
       gap: 6px;
     }
     .qs-list-card {
-      padding: 7px;
+      padding: 8px;
       border: 1px solid #e3e7ee;
       border-radius: 8px;
       background: #fff;
       break-inside: avoid;
       page-break-inside: avoid;
+    }
+    .qs-booking-focus {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 6px;
+    }
+    .qs-booking-focus div {
+      padding: 7px 8px;
+      border: 1px solid #ead8df;
+      border-radius: 7px;
+      background: #fff7fa;
+    }
+    .qs-booking-focus span {
+      display: block;
+      color: #8f294f;
+      font-size: 9px;
+      font-weight: 900;
+    }
+    .qs-booking-focus strong {
+      display: block;
+      margin-top: 2px;
+      color: #202635;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
     }
     .qs-list-head {
       display: flex;
@@ -643,7 +679,7 @@ export function createStaffPerformancePdfDocument(input: StaffPerformanceReportI
     ${employeeSections(rows)}
 
     <section class="qs-section qs-list-section">
-      <h2>الحجوزات المنجزة</h2>
+      <h2>تفاصيل العميلات والخدمات المنفذة</h2>
       ${bookingCards(rows)}
     </section>
 

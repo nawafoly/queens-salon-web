@@ -216,6 +216,32 @@ function staffPerformanceResultWithDetails(employeeName = "عايدة") {
   };
 }
 
+function staffPerformanceResultWithManyBookings() {
+  const result = staffPerformanceResultWithDetails("عايدة");
+  const bookingDetails = Array.from({ length: 21 }, (_, index) => {
+    const day = String(index + 1).padStart(2, "0");
+    const number = String(index + 1).padStart(4, "0");
+    return {
+      id: `booking-${index + 1}`,
+      publicId: `QS-${number}`,
+      date: `2026-07-${day}`,
+      clientName: `عميلة ${index + 1}`,
+      services: [`خدمة ${index + 1}`],
+      serviceCount: 1,
+      revenueHalalas: 10000 + index,
+    };
+  });
+  return {
+    ...result,
+    rows: [
+      {
+        ...result.rows[0],
+        bookingDetails,
+      },
+    ],
+  };
+}
+
 test("payroll report does not turn incomplete salary values into official zeroes", () => {
   const report = buildPayrollReportData({
     entries: [payrollEntry({ baseSalaryHalalas: 0 })],
@@ -302,7 +328,8 @@ test("staff performance PDF uses a dedicated A4 portrait mobile-readable layout"
   assert.ok(html.includes("الإنتاجية"));
   assert.ok(html.includes("الحضور والانضباط"));
   assert.ok(html.includes("الإيراد المنسوب"));
-  assert.ok(html.includes("الحجوزات المنجزة"));
+  assert.ok(html.includes("تفاصيل العميلات والخدمات المنفذة"));
+  assert.equal(html.includes("الحجوزات المنجزة"), false);
   assert.ok(html.includes("آخر الخدمات تنفيذًا"));
 });
 
@@ -335,6 +362,38 @@ test("staff performance PDF keeps Arabic employee service and client names", () 
     assert.match(html, /dir="rtl"/);
     assert.match(html, /lang="ar"/);
   }
+});
+
+test("staff performance PDF highlights client and service details in booking cards", () => {
+  const html = createStaffPerformancePdfDocument({
+    result: staffPerformanceResultWithDetails("عايدة"),
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31", employeeName: "عايدة" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.ok(html.includes("اسم العميلة"));
+  assert.ok(html.includes("الخدمة"));
+  assert.ok(html.includes("رقم الحجز"));
+  assert.ok(html.includes("التاريخ"));
+  assert.ok(html.includes("الإيراد"));
+  assert.ok(html.includes("الموظفة"));
+  assert.ok(html.includes("qs-booking-focus"));
+  assert.ok(html.includes("QS-1001"));
+  assert.ok(html.includes("وسام"));
+  assert.ok(html.includes("استشوار"));
+});
+
+test("staff performance PDF limits long booking lists to the first 20 cards", () => {
+  const html = createStaffPerformancePdfDocument({
+    result: staffPerformanceResultWithManyBookings(),
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31", employeeName: "عايدة" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.ok(html.includes("تم عرض أول 20 حجزًا، والتفاصيل الكاملة متاحة في ملف Excel أو لوحة التحكم."));
+  assert.ok(html.includes("QS-0021"));
+  assert.ok(html.includes("QS-0002"));
+  assert.equal(html.includes("QS-0001"), false);
 });
 
 test("attendance report contains no financial columns", () => {
