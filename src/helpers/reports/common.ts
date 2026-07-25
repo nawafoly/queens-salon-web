@@ -493,11 +493,7 @@ export function createPdfDocument<Row extends Record<string, ReportCellValue>>(r
 </html>`;
 }
 
-export function exportReportToPdf<Row extends Record<string, ReportCellValue>>(
-  report: ExportReport<Row>,
-  filename: string
-) {
-  const html = createPdfDocument(report);
+export function exportHtmlDocumentToPdf(html: string, filename: string) {
   const printWindow = window.open("", "_blank");
   if (printWindow) {
     printWindow.document.open();
@@ -506,4 +502,11 @@ export function exportReportToPdf<Row extends Record<string, ReportCellValue>>(
     return;
   }
   downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), filename.replace(/\.pdf$/i, ".html"));
+}
+
+export function exportReportToPdf<Row extends Record<string, ReportCellValue>>(
+  report: ExportReport<Row>,
+  filename: string
+) {
+  exportHtmlDocumentToPdf(createPdfDocument(report), filename);
 }

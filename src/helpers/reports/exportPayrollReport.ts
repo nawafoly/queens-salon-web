@@ -5,6 +5,7 @@ import {
 } from "../hr/payrollCalculations.ts";
 import {
   currentGeneratedAt,
+  exportHtmlDocumentToPdf,
   exportReportToExcel,
   exportReportToPdf,
   formatCurrency,
@@ -384,6 +385,349 @@ function payslipRows(entry: PayrollEntryView): PayslipRow[] {
   return rows;
 }
 
+function escapePayslipHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function payslipStatusNotice(entry: PayrollEntryView) {
+  return entry.status === "approved" || entry.status === "paid"
+    ? "معتمد/مدفوع حسب حالة السجل"
+    : "مسودة غير معتمدة";
+}
+
+function payslipMoneyValue(entry: PayrollEntryView, value: unknown) {
+  return entry.payrollSetupComplete ? formatCurrency(halalasToRiyalsNumber(value)) : "غير مكتمل";
+}
+
+function payslipAttendanceDeduction(entry: PayrollEntryView) {
+  if (!entry.payrollSetupComplete) return "غير مكتمل";
+  if (entry.attendanceSummary.attendanceDeductionEligible === false) return "لم يطبق";
+  return formatCurrency(halalasToRiyalsNumber(entry.missingHoursDeductionHalalas));
+}
+
+function payslipMetric(label: string, value: unknown, tone = "") {
+  return `<div class="payslip-metric ${tone}"><span>${escapePayslipHtml(label)}</span><strong>${escapePayslipHtml(value)}</strong></div>`;
+}
+
+function payslipField(label: string, value: unknown) {
+  return `<div class="payslip-field"><span>${escapePayslipHtml(label)}</span><strong>${escapePayslipHtml(value)}</strong></div>`;
+}
+
+function payslipSection(title: string, rows: Array<[string, unknown]>) {
+  return `
+    <section class="payslip-section">
+      <h2>${escapePayslipHtml(title)}</h2>
+      <div class="payslip-fields">
+        ${rows.map(([label, value]) => payslipField(label, value)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+export function createPayrollPayslipPdfDocument(input: Parameters<typeof buildPayrollPayslipData>[0]) {
+  const entry = input.entry;
+  const salonName = input.salonName || "Queens Salon";
+  const generatedAt = input.generatedAt || currentGeneratedAt();
+  const generatedBy = normalizeGeneratedBy(input.generatedBy);
+  const notes = [
+    setupNotes(entry),
+    ...(!entry.payrollSetupComplete ? ["لا يمكن اعتبار هذا كشف راتب نهائي لأن إعداد الراتب غير مكتمل."] : []),
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const attendanceNotes = (entry.attendanceSummary.attendanceNotes || []).map((item) => String(item || "").trim()).filter(Boolean);
+  const title = "كشف راتب موظفة";
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapePayslipHtml(title)} - ${escapePayslipHtml(entry.employeeName)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      direction: rtl;
+      color: #202635;
+      background: #fff;
+      font-family: Tahoma, Arial, "Segoe UI", sans-serif;
+      font-size: 10.5px;
+      line-height: 1.55;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .payslip-page {
+      width: 100%;
+      max-width: 190mm;
+      margin: 0 auto;
+    }
+    .payslip-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px 12px;
+      border: 1px solid #ead8df;
+      border-radius: 8px;
+      background: #fff7fa;
+    }
+    .payslip-brand {
+      color: #8f294f;
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    h1 {
+      margin: 4px 0 0;
+      color: #202635;
+      font-size: 19px;
+      line-height: 1.25;
+    }
+    .payslip-net {
+      min-width: 48mm;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #8f294f;
+      color: #fff;
+      text-align: center;
+    }
+    .payslip-net span,
+    .payslip-metric span,
+    .payslip-field span {
+      display: block;
+      font-size: 9px;
+      font-weight: 800;
+      color: #6d7586;
+    }
+    .payslip-net span { color: #ffe7f0; }
+    .payslip-net strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+    .payslip-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin: 8px 0;
+    }
+    .payslip-metric,
+    .payslip-field {
+      min-width: 0;
+      padding: 6px 7px;
+      border: 1px solid #e3e7ee;
+      border-radius: 7px;
+      background: #f8f9fb;
+      overflow-wrap: anywhere;
+    }
+    .payslip-metric strong,
+    .payslip-field strong {
+      display: block;
+      margin-top: 2px;
+      color: #202635;
+      font-size: 10.5px;
+      font-weight: 900;
+    }
+    .payslip-metric.is-money {
+      border-color: #ead8df;
+      background: #fff9fb;
+    }
+    .payslip-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .payslip-section {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      padding: 8px;
+      border: 1px solid #e3e7ee;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .payslip-section h2 {
+      margin: 0 0 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #edf0f5;
+      color: #8f294f;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .payslip-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+    .payslip-wide {
+      grid-column: 1 / -1;
+    }
+    .payslip-final {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      background: #202635;
+      color: #fff;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .payslip-final .payslip-field {
+      border-color: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.08);
+    }
+    .payslip-final span { color: #d8dde8; }
+    .payslip-final strong { color: #fff; font-size: 12px; }
+    .payslip-notes,
+    .payslip-signatures {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid #e3e7ee;
+      border-radius: 8px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .payslip-notes h2,
+    .payslip-signatures h2 {
+      margin: 0 0 6px;
+      color: #8f294f;
+      font-size: 12px;
+    }
+    .payslip-notes ul {
+      margin: 0;
+      padding: 0 16px 0 0;
+    }
+    .payslip-notes li { margin: 2px 0; }
+    .payslip-signature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .payslip-signature {
+      height: 22mm;
+      padding-top: 12mm;
+      border-bottom: 1px solid #9aa3b5;
+      color: #6d7586;
+      text-align: center;
+      font-weight: 800;
+    }
+    .payslip-footer {
+      margin-top: 6px;
+      color: #7a8291;
+      font-size: 9px;
+      text-align: center;
+    }
+    @media print {
+      body { width: auto; }
+      .payslip-page { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="payslip-page">
+    <header class="payslip-header">
+      <div>
+        <div class="payslip-brand">${escapePayslipHtml(salonName)}</div>
+        <h1>${escapePayslipHtml(title)}</h1>
+      </div>
+      <div class="payslip-net">
+        <span>صافي الراتب</span>
+        <strong>${escapePayslipHtml(payslipMoneyValue(entry, entry.netSalaryHalalas))}</strong>
+      </div>
+    </header>
+
+    <section class="payslip-meta" aria-label="بيانات الكشف">
+      ${payslipMetric("الشهر/السنة", entry.payrollMonth)}
+      ${payslipMetric("تاريخ التصدير", formatDateTime(generatedAt))}
+      ${payslipMetric("حالة الراتب", statusLabel(entry.status))}
+      ${payslipMetric("المصدر", generatedBy)}
+    </section>
+
+    <section class="payslip-meta" aria-label="بيانات الموظفة">
+      ${payslipMetric("اسم الموظفة", safeText(entry.employeeName))}
+      ${payslipMetric("رقم الموظفة", safeText(entry.employeeId))}
+      ${payslipMetric("المسمى/الدور", entry.jobTitle || "غير متوفر")}
+      ${payslipMetric("حالة الاعتماد", payslipStatusNotice(entry))}
+    </section>
+
+    <div class="payslip-grid">
+      ${payslipSection("إعدادات الراتب", [
+        ["الراتب الأساسي", entry.baseSalaryHalalas > 0 ? payslipMoneyValue(entry, entry.baseSalaryHalalas) : "غير مكتمل"],
+        ["أيام العمل", workDaysValue(entry)],
+        ["ساعات الفترة", entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "غير مكتمل"],
+        ["ساعات اليوم", entry.dailyScheduledHours > 0 ? formatAttendanceHours(entry.dailyScheduledHours) : "غير محدد"],
+        ["راتب اليوم", payslipMoneyValue(entry, entry.dailyRateHalalas)],
+        ["راتب الساعة", payslipMoneyValue(entry, entry.hourlyRateHalalas)],
+      ])}
+      ${payslipSection("ملخص الحضور", [
+        ["أيام الحضور", entry.attendanceSummary.attendanceDays],
+        ["أيام الغياب", entry.attendanceSummary.absentDays],
+        ["أيام البصمة الناقصة", entry.attendanceSummary.incompleteDays],
+        ["ساعات الفترة", formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)],
+        ["الساعات الفعلية", formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)],
+        ["نقص الساعات", formatAttendanceHours(entry.attendanceSummary.totalMissingHours)],
+        ["حالة ربط الحضور", attendanceStatusLabel(entry)],
+        ["خصم الحضور", payslipAttendanceDeduction(entry)],
+        ["ملاحظات الحضور", attendanceNotes.join(" | ") || "لا توجد"],
+      ])}
+      ${payslipSection("الاستحقاقات", [
+        ["الراتب الأساسي", entry.baseSalaryHalalas > 0 ? payslipMoneyValue(entry, entry.baseSalaryHalalas) : "غير مكتمل"],
+        ["البدلات", payslipMoneyValue(entry, entry.allowancesHalalas)],
+        ["الإضافات", payslipMoneyValue(entry, entry.manualAdditionsHalalas)],
+        ["الساعات الزائدة", formatAttendanceHours(entry.detectedExtraHours)],
+        ["الأوفر تايم", entry.overtimeEnabled ? "مفعل" : "غير مفعل"],
+        ["قيمة الأوفر تايم", payslipMoneyValue(entry, entry.overtimeValueHalalas)],
+      ])}
+      ${payslipSection("الخصومات", [
+        ["خصم الحضور", payslipAttendanceDeduction(entry)],
+        ["السلف", payslipMoneyValue(entry, entry.advancesHalalas)],
+        ["الخصومات اليدوية", payslipMoneyValue(entry, entry.manualDeductionsHalalas)],
+        ["إجمالي الخصومات", payslipMoneyValue(entry, entry.totalDeductionsHalalas)],
+      ])}
+    </div>
+
+    <section class="payslip-final" aria-label="الصافي النهائي">
+      ${payslipField("إجمالي الراتب", payslipMoneyValue(entry, entry.grossSalaryHalalas))}
+      ${payslipField("إجمالي الإضافات", payslipMoneyValue(entry, entry.totalAdditionsHalalas))}
+      ${payslipField("إجمالي الخصومات", payslipMoneyValue(entry, entry.totalDeductionsHalalas))}
+      ${payslipField("صافي الراتب", payslipMoneyValue(entry, entry.netSalaryHalalas))}
+    </section>
+
+    <section class="payslip-notes">
+      <h2>ملاحظات</h2>
+      ${
+        notes.length || attendanceNotes.length
+          ? `<ul>${[...notes, ...attendanceNotes].map((note) => `<li>${escapePayslipHtml(note)}</li>`).join("")}</ul>`
+          : `<p>لا توجد ملاحظات.</p>`
+      }
+    </section>
+
+    <section class="payslip-signatures">
+      <h2>التوقيعات</h2>
+      <div class="payslip-signature-grid">
+        <div class="payslip-signature">توقيع الإدارة</div>
+        <div class="payslip-signature">توقيع الموظفة</div>
+      </div>
+    </section>
+
+    <p class="payslip-footer">تم إنشاء كشف الراتب من بيانات النظام الحالية.</p>
+  </main>
+  <script>
+    window.addEventListener("load", () => {
+      window.focus();
+      window.setTimeout(() => window.print(), 200);
+    });
+  </script>
+</body>
+</html>`;
+}
+
 export function buildPayrollPayslipData(input: {
   entry: PayrollEntryView;
   generatedAt?: string;
@@ -429,5 +773,5 @@ export function exportPayrollReportExcel(input: Parameters<typeof buildPayrollRe
 }
 
 export function exportPayrollPayslipPdf(input: Parameters<typeof buildPayrollPayslipData>[0]) {
-  exportReportToPdf(buildPayrollPayslipData(input), "employee-payslip.pdf");
+  exportHtmlDocumentToPdf(createPayrollPayslipPdfDocument(input), "employee-payslip.pdf");
 }

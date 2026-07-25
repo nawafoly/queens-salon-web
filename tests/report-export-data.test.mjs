@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildAttendanceReportData } from "../src/helpers/reports/exportAttendanceReport.ts";
 import {
   buildPayrollPayslipData,
+  createPayrollPayslipPdfDocument,
   buildPayrollReportData,
 } from "../src/helpers/reports/exportPayrollReport.ts";
 import {
@@ -163,6 +164,53 @@ test("draft payslip clearly marks the document as not approved", () => {
   });
   assert.ok(report.summary.some((item) => item.value === "مسودة غير معتمدة"));
   assert.ok(report.table.rows.some((row) => row.value === "مسودة غير معتمدة"));
+});
+
+test("employee payslip PDF uses a dedicated A4 portrait mobile-readable layout", () => {
+  const html = createPayrollPayslipPdfDocument({
+    entry: payrollEntry({ employeeName: "وسام" }),
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.match(html, /@page\s*\{\s*size:\s*A4 portrait;/);
+  assert.equal(/landscape/i.test(html), false);
+  assert.equal(/rotate\s*\(/i.test(html), false);
+  assert.equal(/<table/i.test(html), false);
+  assert.ok(html.includes("Queens Salon"));
+  assert.ok(html.includes("كشف راتب موظفة"));
+  assert.ok(html.includes("إعدادات الراتب"));
+  assert.ok(html.includes("ملخص الحضور"));
+  assert.ok(html.includes("الاستحقاقات"));
+  assert.ok(html.includes("الخصومات"));
+  assert.ok(html.includes("الصافي النهائي"));
+});
+
+test("employee payslip PDF exposes Arabic payroll labels without English key labels", () => {
+  const html = createPayrollPayslipPdfDocument({
+    entry: payrollEntry({ employeeName: "عايدة" }),
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.ok(html.includes("إجمالي الراتب"));
+  assert.ok(html.includes("إجمالي الإضافات"));
+  assert.ok(html.includes("إجمالي الخصومات"));
+  assert.ok(html.includes("صافي الراتب"));
+  assert.equal(html.includes("grossSalary"), false);
+  assert.equal(html.includes("totalDeductions"), false);
+  assert.equal(html.includes("netSalary"), false);
+  assert.equal(html.includes("totalAdditions"), false);
+});
+
+test("employee payslip PDF keeps Arabic employee names in the portrait document", () => {
+  for (const employeeName of ["وسام", "عايدة", "صباح"]) {
+    const html = createPayrollPayslipPdfDocument({
+      entry: payrollEntry({ employeeName }),
+      generatedAt: "2026-07-23T10:00:00.000Z",
+    });
+    assert.ok(html.includes(employeeName));
+    assert.match(html, /dir="rtl"/);
+    assert.match(html, /lang="ar"/);
+  }
 });
 
 test("attendance report contains no financial columns", () => {
