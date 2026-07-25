@@ -10,7 +10,10 @@ import {
   buildReportExcelWorkbook,
   createPdfDocument,
 } from "../src/helpers/reports/common.ts";
-import { buildStaffPerformanceReportData } from "../src/helpers/reports/exportStaffPerformanceReport.ts";
+import {
+  buildStaffPerformanceReportData,
+  createStaffPerformancePdfDocument,
+} from "../src/helpers/reports/exportStaffPerformanceReport.ts";
 import { buildIncomeReportData } from "../src/helpers/reports/exportIncomeReport.ts";
 import { buildExpensesReportData } from "../src/helpers/reports/exportExpensesReport.ts";
 import { buildFinancialOverviewReportData } from "../src/helpers/reports/exportFinancialOverviewReport.ts";
@@ -144,6 +147,75 @@ function staffPerformanceResult() {
   };
 }
 
+function staffPerformanceResultWithDetails(employeeName = "عايدة") {
+  return {
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31", bookingStatus: "completed" },
+    rows: [
+      {
+        employeeId: "emp-1",
+        employeeName,
+        active: true,
+        jobTitle: "أخصائية شعر",
+        department: "التصفيف",
+        specialties: ["شعر"],
+        completedBookings: 18,
+        uniqueClients: 14,
+        servicesPerformed: 27,
+        attributedRevenueHalalas: 865000,
+        averageServiceValueHalalas: 32037,
+        averageBookingValueHalalas: 48056,
+        cancellations: 1,
+        noShows: 0,
+        averageRating: 4.7,
+        ratingCount: 9,
+        attendance: {
+          ...attendanceSummary,
+          available: true,
+          commitmentPercent: 96,
+          note: "التزام جيد خلال الفترة",
+        },
+        performanceScore: 91,
+        scoreNotes: [],
+        dataWarnings: [],
+        topServices: [
+          { serviceId: "svc-1", serviceName: "استشوار", count: 12, revenueHalalas: 360000 },
+          { serviceId: "svc-2", serviceName: "صبغة جذور", count: 7, revenueHalalas: 280000 },
+        ],
+        bookingDetails: [
+          {
+            id: "booking-1",
+            publicId: "QS-1001",
+            date: "2026-07-22",
+            clientName: "وسام",
+            services: ["استشوار", "قص أطراف"],
+            serviceCount: 2,
+            revenueHalalas: 18000,
+          },
+          {
+            id: "booking-2",
+            publicId: "QS-1002",
+            date: "2026-07-21",
+            clientName: "صباح",
+            services: ["صبغة جذور"],
+            serviceCount: 1,
+            revenueHalalas: 24000,
+          },
+        ],
+      },
+    ],
+    summary: {
+      totalCompletedBookings: 18,
+      totalAttributedRevenueHalalas: 865000,
+      activeEmployees: 1,
+      averagePerformanceScore: 91,
+      unassignedCompletedBookings: 0,
+      ratingAvailable: true,
+      attendanceAvailable: true,
+    },
+    warnings: [],
+  };
+}
+
 test("payroll report does not turn incomplete salary values into official zeroes", () => {
   const report = buildPayrollReportData({
     entries: [payrollEntry({ baseSalaryHalalas: 0 })],
@@ -208,6 +280,58 @@ test("employee payslip PDF keeps Arabic employee names in the portrait document"
       generatedAt: "2026-07-23T10:00:00.000Z",
     });
     assert.ok(html.includes(employeeName));
+    assert.match(html, /dir="rtl"/);
+    assert.match(html, /lang="ar"/);
+  }
+});
+
+test("staff performance PDF uses a dedicated A4 portrait mobile-readable layout", () => {
+  const html = createStaffPerformancePdfDocument({
+    result: staffPerformanceResultWithDetails("عايدة"),
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31", employeeName: "عايدة" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.match(html, /@page\s*\{\s*size:\s*A4 portrait;/);
+  assert.equal(/landscape/i.test(html), false);
+  assert.equal(/rotate\s*\(/i.test(html), false);
+  assert.equal(/<table/i.test(html), false);
+  assert.ok(html.includes("Queens Salon"));
+  assert.ok(html.includes("تقرير أداء الموظفة"));
+  assert.ok(html.includes("مؤشرات الأداء"));
+  assert.ok(html.includes("الإنتاجية"));
+  assert.ok(html.includes("الحضور والانضباط"));
+  assert.ok(html.includes("الإيراد المنسوب"));
+  assert.ok(html.includes("الحجوزات المنجزة"));
+  assert.ok(html.includes("آخر الخدمات تنفيذًا"));
+});
+
+test("staff performance PDF exposes Arabic labels without English raw field names", () => {
+  const html = createStaffPerformancePdfDocument({
+    result: staffPerformanceResultWithDetails("وسام"),
+    filters: { fromDate: "2026-07-01", toDate: "2026-07-31", employeeName: "وسام" },
+    generatedAt: "2026-07-23T10:00:00.000Z",
+  });
+
+  assert.ok(html.includes("إجمالي الإيراد المنسوب"));
+  assert.ok(html.includes("عدد الخدمات المكتملة"));
+  assert.ok(html.includes("متوسط درجة الأداء"));
+  assert.ok(html.includes("عدد المواعيد بدون بيانات كافية"));
+  for (const rawKey of ["revenue", "completedBookings", "noShow", "score", "productivity"]) {
+    assert.equal(html.includes(rawKey), false);
+  }
+});
+
+test("staff performance PDF keeps Arabic employee service and client names", () => {
+  for (const employeeName of ["وسام", "عايدة", "صباح"]) {
+    const html = createStaffPerformancePdfDocument({
+      result: staffPerformanceResultWithDetails(employeeName),
+      filters: { fromDate: "2026-07-01", toDate: "2026-07-31", employeeName },
+      generatedAt: "2026-07-23T10:00:00.000Z",
+    });
+    assert.ok(html.includes(employeeName));
+    assert.ok(html.includes("استشوار"));
+    assert.ok(html.includes("صبغة جذور"));
     assert.match(html, /dir="rtl"/);
     assert.match(html, /lang="ar"/);
   }
