@@ -1,0 +1,1736 @@
+/*
+ * Enterprise Workspaces V2
+ * Final visual authority for the operational routes requested by the owner.
+ * Imported by Dashboard.tsx after page modules to neutralize legacy page skins.
+ */
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route {
+  --ev2-maroon: #5b0016;
+  --ev2-maroon-2: #7a1230;
+  --ev2-maroon-soft: #fff1f5;
+  --ev2-ink: #111827;
+  --ev2-ink-soft: #344054;
+  --ev2-muted: #667085;
+  --ev2-muted-2: #98a2b3;
+  --ev2-line: #e2e6ed;
+  --ev2-line-strong: #d0d5dd;
+  --ev2-page: #fbfbfc;
+  --ev2-panel: #ffffff;
+  --ev2-soft: #f7f8fb;
+  --ev2-success: #18794e;
+  --ev2-success-soft: #ecfdf3;
+  --ev2-warning: #a65b00;
+  --ev2-warning-soft: #fff6e8;
+  --ev2-danger: #b42318;
+  --ev2-danger-soft: #fff2f0;
+  --ev2-info: #175cd3;
+  --ev2-info-soft: #eff8ff;
+  --ev2-shadow: 0 18px 52px rgba(27, 32, 47, 0.055);
+  --ev2-shadow-sm: 0 10px 30px rgba(27, 32, 47, 0.045);
+  --ev2-radius-xl: 20px;
+  --ev2-radius-lg: 16px;
+  --ev2-radius-md: 13px;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .dashboard-main.has-single-scroll,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .dashboard-inner {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .dashboard-inner {
+  padding: 0 !important;
+  background: var(--ev2-page) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  min-height: calc(100vh - 90px) !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 18px !important;
+  margin: 0 !important;
+  padding: clamp(16px, 2vw, 28px) !important;
+  background: var(--ev2-page) !important;
+  color: var(--ev2-ink) !important;
+  font-family: inherit !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2::before,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2::after,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header, .partner-admin-hero, .offers-header, .dash-topbar, .settings-shell__hero, .settings-shell__subhead)::after {
+  content: none !important;
+  display: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 > *,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-container {
+  width: 100% !important;
+  max-width: 1680px !important;
+  min-width: 0 !important;
+  margin-inline: auto !important;
+  box-sizing: border-box !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-container {
+  display: grid;
+  gap: 18px;
+}
+
+/* ===== Shared enterprise hero ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header, .partner-admin-hero, .offers-header, .logs-page .dash-topbar, .settings-shell__hero, .settings-shell__subhead) {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  margin: 0 !important;
+  padding: 2px 4px 22px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero__copy,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-page-title, .partner-admin-hero__copy, .offers-head-main, .dash-topbar-title, .settings-shell__hero-copy, .settings-shell__subhead-copy) {
+  position: static !important;
+  z-index: auto !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-eyebrow,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-page-eyebrow, .partner-admin-kicker, .offers-kicker, .logs-kicker, .settings-shell__eyebrow, .enterprise-v2-panel__kicker) {
+  display: block !important;
+  margin: 0 0 6px !important;
+  color: var(--ev2-maroon) !important;
+  font-size: 0.72rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.06em !important;
+  line-height: 1.4 !important;
+  text-transform: uppercase !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero h1,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header h1, .partner-admin-hero h1, .offers-header h1, .dash-topbar-title h1, .settings-shell__hero h1, .settings-shell__subhead h1) {
+  display: block !important;
+  margin: 0 !important;
+  color: var(--ev2-ink) !important;
+  font-size: clamp(1.55rem, 2.2vw, 2.2rem) !important;
+  font-weight: 950 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.3 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero__copy > p,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-page-title > p, .partner-admin-hero__copy > p, .offers-sub, .dash-topbar-title > p, .settings-shell__hero-copy > p, .settings-shell__subhead-copy > p) {
+  max-width: 820px !important;
+  margin: 7px 0 0 !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  line-height: 1.8 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero__actions,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header-actions, .partner-admin-hero__actions, .settings-shell__hero-meta, .settings-shell__subhead-meta, .logs-head-meta) {
+  position: static !important;
+  z-index: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 9px !important;
+  max-width: none !important;
+}
+
+/* ===== Buttons ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-btn,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-btn, .reports-btn, .partner-admin-btn, .dash-pill, .log-secondary-btn, .log-action-btn, .log-restore-btn, .settings-tabs .exp-btn) {
+  min-height: 44px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 0 15px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  color: #344054 !important;
+  box-shadow: 0 7px 20px rgba(22, 28, 45, 0.035) !important;
+  font: inherit !important;
+  font-size: 0.79rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-btn, .reports-btn, .partner-admin-btn, .dash-pill, .log-secondary-btn, .log-action-btn, .log-restore-btn):not(:disabled):hover,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-btn:not(:disabled):hover {
+  transform: translateY(-1px) !important;
+  border-color: #cab9bf !important;
+  box-shadow: 0 12px 30px rgba(22, 28, 45, 0.08) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-btn.is-primary,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-btn.primary, .reports-btn.primary, .partner-admin-btn--primary, .dash-pill-primary, .log-action-btn) {
+  border-color: var(--ev2-maroon) !important;
+  background: linear-gradient(135deg, var(--ev2-maroon), var(--ev2-maroon-2)) !important;
+  color: #fff !important;
+  box-shadow: 0 12px 28px rgba(91, 0, 22, 0.19) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-btn.danger, .dash-pill-danger) {
+  border-color: #f1b7b1 !important;
+  background: var(--ev2-danger-soft) !important;
+  color: var(--ev2-danger) !important;
+  box-shadow: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(button, .exp-btn, .reports-btn, .partner-admin-btn, .dash-pill):disabled {
+  opacity: 0.46 !important;
+  transform: none !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+/* ===== Shared metrics ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metrics,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metrics, .partner-admin-stats, .settings-shell__metrics) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric, .partner-admin-stat, .settings-shell__metric) {
+  position: relative !important;
+  min-width: 0 !important;
+  min-height: 112px !important;
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 13px !important;
+  margin: 0 !important;
+  padding: 17px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 17px !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric__icon,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric__icon, .partner-admin-stat__icon) {
+  width: 44px !important;
+  height: 44px !important;
+  display: grid !important;
+  place-items: center !important;
+  margin: 0 !important;
+  border-radius: 13px !important;
+  background: var(--ev2-maroon-soft) !important;
+  color: var(--ev2-maroon) !important;
+  font-size: 1rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric > div,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric > div, .partner-admin-stat > div, .settings-shell__metric) {
+  min-width: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric :is(small, strong, em),
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric small, .enterprise-metric strong, .enterprise-metric em, .partner-admin-stat small, .partner-admin-stat strong, .partner-admin-stat span, .settings-shell__metric span, .settings-shell__metric strong, .settings-shell__metric small) {
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric small,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric small, .partner-admin-stat small, .settings-shell__metric span) {
+  margin: 0 !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric strong,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric strong, .partner-admin-stat strong, .settings-shell__metric strong) {
+  margin: 3px 0 0 !important;
+  color: var(--ev2-ink) !important;
+  font-size: clamp(1.15rem, 1.6vw, 1.52rem) !important;
+  font-style: normal !important;
+  font-weight: 950 !important;
+  line-height: 1.25 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric em,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric em, .partner-admin-stat span, .settings-shell__metric small) {
+  margin: 4px 0 0 !important;
+  color: var(--ev2-muted-2) !important;
+  font-size: 0.67rem !important;
+  font-style: normal !important;
+  font-weight: 650 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric.is-danger .enterprise-v2-metric__icon {
+  background: var(--ev2-danger-soft) !important;
+  color: var(--ev2-danger) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric.is-warning .enterprise-v2-metric__icon {
+  background: var(--ev2-warning-soft) !important;
+  color: var(--ev2-warning) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric.is-success .enterprise-v2-metric__icon {
+  background: var(--ev2-success-soft) !important;
+  color: var(--ev2-success) !important;
+}
+
+/* ===== Shared panels / cards ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-card, .partner-admin-panel, .partner-card, .partner-contract-card, .partner-team-card, .offers-card, .offers-table-card, .logs-card, .log-card, .settings-card, .settings-toolbar, .settings-page-actions) {
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 20px !important;
+  overflow: visible !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: var(--ev2-radius-xl) !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel__head,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.settings-section-head, .settings-toolbar__head, .offers-card-title, .log-card-head) {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  margin: 0 0 18px !important;
+  padding: 0 0 15px !important;
+  border-bottom: 1px solid #edf0f4 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel__head h2,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-card h3, .exp-card-title, .partner-admin-panel h2, .offers-card-title, .settings-title, .settings-toolbar__title, .log-card-head h3) {
+  margin: 0 !important;
+  color: var(--ev2-ink) !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+  line-height: 1.45 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel__head p,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.settings-section-hint, .settings-toolbar__hint, .offers-section-note) {
+  margin: 5px 0 0 !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.76rem !important;
+  font-weight: 600 !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel__index {
+  min-width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--ev2-maroon-soft);
+  color: var(--ev2-maroon);
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #edf0f4;
+}
+
+/* ===== Forms / filters ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(input, select, textarea, .dash-select, .dash-input) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 46px !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--ev2-line-strong) !important;
+  border-radius: 11px !important;
+  outline: 0 !important;
+  background: #fff !important;
+  color: var(--ev2-ink) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 0.79rem !important;
+  font-weight: 700 !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 textarea {
+  min-height: 110px !important;
+  resize: vertical !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(input, select, textarea, .dash-select, .dash-input):focus {
+  border-color: #a9697b !important;
+  box-shadow: 0 0 0 4px rgba(91, 0, 22, 0.06) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(label, .settings-field) {
+  color: #475467 !important;
+  font-size: 0.74rem !important;
+  font-weight: 850 !important;
+  line-height: 1.55 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 label > :is(input, select, textarea, .dash-dd-wrap),
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 .settings-field > :is(input, select, textarea) {
+  margin-top: 7px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 .dash-dd-menu {
+  z-index: 120 !important;
+  margin-top: 6px !important;
+  padding: 6px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 18px 46px rgba(16, 24, 40, 0.14) !important;
+}
+
+/* ===== Notices / states ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-notice,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.partner-admin-alert, .dash-alert, .settings-note, .logs-restore-status) {
+  min-height: 48px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  border: 1px solid #f1d49c !important;
+  border-radius: 13px !important;
+  background: var(--ev2-warning-soft) !important;
+  color: #7d4b00 !important;
+  box-shadow: none !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-notice.is-success,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.partner-admin-alert--success, .logs-restore-status--ok) {
+  border-color: #b7e3ca !important;
+  background: var(--ev2-success-soft) !important;
+  color: var(--ev2-success) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-notice.is-danger,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.partner-admin-alert--error, .logs-restore-status--error) {
+  border-color: #f1b7b1 !important;
+  background: var(--ev2-danger-soft) !important;
+  color: var(--ev2-danger) !important;
+}
+
+/* ===== Tables ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-table-wrap, .resource-table-wrap, .offers-table-card, .of-services-table) {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: auto !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-table, .resource-table, table) {
+  width: 100% !important;
+  min-width: 760px !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+  color: var(--ev2-ink-soft) !important;
+  font-size: 0.76rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 table thead th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 2 !important;
+  padding: 13px 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--ev2-line) !important;
+  background: #f7f8fa !important;
+  color: #667085 !important;
+  font-size: 0.69rem !important;
+  font-weight: 950 !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 table tbody td {
+  padding: 13px 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #edf0f4 !important;
+  background: #fff !important;
+  vertical-align: middle !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 table tbody tr:last-child td {
+  border-bottom: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 table tbody tr:hover td {
+  background: #fffafb !important;
+}
+
+/* =====================================================================================
+   DAY AUDIT V2
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-day-audit-v2 {
+  display: block !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control {
+  min-width: 315px;
+  display: grid;
+  grid-template-columns: 34px minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--ev2-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--ev2-shadow-sm);
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control > svg {
+  color: var(--ev2-maroon);
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control > div {
+  display: grid;
+  gap: 1px;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control span {
+  color: var(--ev2-muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control input {
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 0.76rem !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--ev2-line);
+  border-radius: 10px;
+  background: var(--ev2-soft);
+  color: var(--ev2-ink-soft);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-status {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid #b7e3ca;
+  border-radius: 12px;
+  background: var(--ev2-success-soft);
+  color: var(--ev2-success);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-status.is-locked {
+  border-color: #d6c2ca;
+  background: var(--ev2-maroon-soft);
+  color: var(--ev2-maroon);
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 18px;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field {
+  display: grid;
+  gap: 9px;
+  margin-top: 4px;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field > span {
+  color: var(--ev2-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 10px 16px;
+  border: 1px solid var(--ev2-line-strong);
+  border-radius: 16px;
+  background: #fafbfc;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field input {
+  min-height: 58px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ev2-ink) !important;
+  font-size: clamp(1.5rem, 2.5vw, 2.15rem) !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field b {
+  padding-inline-start: 14px;
+  border-inline-start: 1px solid var(--ev2-line);
+  color: var(--ev2-muted);
+  font-size: 0.9rem;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-amount-field small {
+  color: var(--ev2-muted-2);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-difference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px 15px;
+  border: 1px solid var(--ev2-line);
+  border-radius: 13px;
+  background: var(--ev2-soft);
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-difference span {
+  color: var(--ev2-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-difference strong,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary strong {
+  color: var(--ev2-ink);
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route :is(.is-neg) { color: var(--ev2-danger) !important; }
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route :is(.is-pos) { color: var(--ev2-warning) !important; }
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route :is(.is-zero) { color: var(--ev2-success) !important; }
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--ev2-line);
+  border-radius: 15px;
+  overflow: hidden;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary > div {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #edf0f4;
+  background: #fff;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary > div:last-child { border-bottom: 0; }
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary span {
+  color: var(--ev2-muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary .is-highlight { background: #fffafb; }
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary .is-total {
+  background: var(--ev2-soft);
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-summary .is-total strong {
+  font-size: 1rem;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-policy {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 13px;
+  background: var(--ev2-info-soft);
+  color: #184f99;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-policy strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-policy p {
+  margin: 0;
+  font-size: 0.69rem;
+  line-height: 1.7;
+}
+
+/* =====================================================================================
+   EXPENSES V2
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-header {
+  order: 0;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .enterprise-metrics {
+  order: 1;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--controls {
+  order: 2;
+  padding: 20px !important;
+  border-top: 1px solid var(--ev2-line) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-grid--main {
+  order: 3;
+  display: grid !important;
+  grid-template-columns: minmax(330px, 420px) minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 18px !important;
+  margin: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--form {
+  position: sticky !important;
+  top: 18px !important;
+  border-top: 1px solid var(--ev2-line) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--table {
+  border-top: 1px solid var(--ev2-line) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 9px !important;
+  margin: 0 0 16px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points > div {
+  min-height: 72px !important;
+  padding: 11px 12px !important;
+  border: 1px solid #e7eaf0 !important;
+  border-radius: 12px !important;
+  background: var(--ev2-soft) !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.68rem !important;
+  font-weight: 650 !important;
+  line-height: 1.65 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points b {
+  color: var(--ev2-ink-soft) !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: end !important;
+  gap: 11px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 15px !important;
+  background: #fafbfc !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls .span-2 {
+  grid-column: span 2 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-form {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-form .span-2 {
+  grid-column: 1 / -1 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-divider {
+  height: 1px !important;
+  margin: 18px 0 !important;
+  background: #edf0f4 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-mini {
+  padding: 14px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 13px !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-table-wrap--main {
+  max-height: min(68vh, 820px) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-results-count {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 34px !important;
+  padding: 0 10px !important;
+  border-radius: 10px !important;
+  background: var(--ev2-maroon-soft) !important;
+  color: var(--ev2-maroon) !important;
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-row-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-row-actions .exp-btn {
+  min-height: 34px !important;
+  padding-inline: 10px !important;
+  font-size: 0.68rem !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-auto-pill {
+  display: inline-flex !important;
+  min-height: 28px !important;
+  align-items: center !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  background: var(--ev2-info-soft) !important;
+  color: var(--ev2-info) !important;
+  font-size: 0.66rem !important;
+  font-weight: 900 !important;
+}
+
+/* =====================================================================================
+   PARTNERS V2
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-toolbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px) !important;
+  align-items: center !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-tabs {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px !important;
+  overflow-x: auto !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 12px !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-tabs button {
+  min-height: 40px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  padding: 0 13px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: var(--ev2-muted) !important;
+  font: inherit !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-tabs button.is-active {
+  border-color: #d8bbc4 !important;
+  background: #fff !important;
+  color: var(--ev2-maroon) !important;
+  box-shadow: 0 6px 16px rgba(22, 28, 45, 0.06) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-search {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 48px !important;
+  padding: 0 13px !important;
+  border: 1px solid var(--ev2-line-strong) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-search input {
+  min-height: 44px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-grid,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-grid,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-team-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-card, .partner-contract-card, .partner-team-card) {
+  padding: 17px !important;
+  border-radius: 17px !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__head,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-card__head {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-bottom: 14px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__avatar,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-team-card__avatar,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-card__icon {
+  width: 44px !important;
+  height: 44px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 13px !important;
+  background: var(--ev2-maroon-soft) !important;
+  color: var(--ev2-maroon) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__title h3,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-card h3,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-team-card strong {
+  margin: 0 !important;
+  color: var(--ev2-ink) !important;
+  font-size: 0.9rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__metrics {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin: 13px 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__metrics > div {
+  min-height: 58px !important;
+  padding: 9px 10px !important;
+  border-radius: 11px !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-status, .resource-status, .contract-status, .partner-team-status, .partner-account-badge) {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 28px !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  background: var(--ev2-soft) !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.65rem !important;
+  font-weight: 900 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__footer,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-card__footer {
+  display: flex !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  margin-top: 14px !important;
+  padding-top: 14px !important;
+  border-top: 1px solid #edf0f4 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-card__footer .partner-admin-btn,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-contract-card__footer .partner-admin-btn {
+  min-height: 36px !important;
+  padding-inline: 10px !important;
+  font-size: 0.67rem !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-field--wide {
+  grid-column: 1 / -1 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-resource-picker,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-member-permission-grid {
+  padding: 14px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 13px !important;
+  background: var(--ev2-soft) !important;
+}
+
+/* =====================================================================================
+   OFFERS V2
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-header {
+  display: flex !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-header h1 svg {
+  color: var(--ev2-maroon) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-stats-section {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-stats-group {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 17px !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-stats-group-title {
+  grid-column: 1 / -1 !important;
+  margin: 0 0 2px !important;
+  color: var(--ev2-ink) !important;
+  font-size: 0.82rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-kpi {
+  min-height: 80px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 4px !important;
+  padding: 12px !important;
+  border: 1px solid #edf0f4 !important;
+  border-radius: 12px !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-kpi span {
+  color: var(--ev2-muted) !important;
+  font-size: 0.68rem !important;
+  font-weight: 800 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-kpi strong {
+  color: var(--ev2-ink) !important;
+  font-size: 1.15rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--quick-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-quick-actions,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-filter-pills {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--filters .offers-row--filters {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-search {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 48px !important;
+  padding: 0 13px !important;
+  border: 1px solid var(--ev2-line-strong) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-search input {
+  min-height: 44px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offers-grid,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-as-packages-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-card {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 17px !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-inner {
+  padding: 15px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-image-wrap {
+  aspect-ratio: 16 / 8 !important;
+  overflow: hidden !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #edf0f4 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-row:last-child {
+  border-bottom: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-label {
+  color: var(--ev2-muted) !important;
+  font-size: 0.68rem !important;
+  font-weight: 800 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkg-offer-value {
+  color: var(--ev2-ink) !important;
+  font-size: 0.75rem !important;
+  font-weight: 900 !important;
+  text-align: left !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.of-section, .of-services-box, .pkgm__group) {
+  margin: 0 !important;
+  padding: 14px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 13px !important;
+  background: var(--ev2-soft) !important;
+  box-shadow: none !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.of-grid-2, .of-grid-2a) {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.of-grid-3) {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .of-actions,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .of-modal-actions,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkgm__services-actions,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkgm__title-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkgm__service-row {
+  min-height: 58px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 11px !important;
+  padding: 10px 12px !important;
+  border: 1px solid #e7eaf0 !important;
+  border-radius: 11px !important;
+  background: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .pkgm__service-row.is-selected {
+  border-color: #d8bbc4 !important;
+  background: #fffafb !important;
+}
+
+/* =====================================================================================
+   LOGS V2
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 {
+  display: block !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 > .container {
+  width: 100% !important;
+  max-width: 1680px !important;
+  display: grid !important;
+  gap: 18px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .dash-topbar--sticky {
+  position: static !important;
+  top: auto !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-filters {
+  display: grid !important;
+  grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(150px, 0.7fr)) !important;
+  align-items: end !important;
+  gap: 11px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-search {
+  position: relative !important;
+  min-width: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-search svg {
+  position: absolute !important;
+  inset-inline-start: 13px !important;
+  top: 50% !important;
+  z-index: 2 !important;
+  transform: translateY(-50%) !important;
+  color: var(--ev2-muted) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-search input {
+  padding-inline-start: 38px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-switches {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 9px !important;
+  padding-top: 3px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-sensitive-filter {
+  min-height: 38px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 10px !important;
+  background: var(--ev2-soft) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 0 2px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-head h2 {
+  margin: 0 !important;
+  color: var(--ev2-ink) !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-list {
+  display: grid !important;
+  gap: 11px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-card {
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-card-head {
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  background: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-main {
+  min-width: 0 !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-severity {
+  min-width: 74px !important;
+  min-height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  background: var(--ev2-info-soft) !important;
+  color: var(--ev2-info) !important;
+  font-size: 0.64rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-severity--critical {
+  background: var(--ev2-danger-soft) !important;
+  color: var(--ev2-danger) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-severity--warning {
+  background: var(--ev2-warning-soft) !important;
+  color: var(--ev2-warning) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-summary {
+  color: var(--ev2-ink) !important;
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+  line-height: 1.6 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-meta,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-meta-grid {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 7px 12px !important;
+  margin-top: 6px !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.68rem !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-card-body {
+  padding: 16px !important;
+  border-top: 1px solid #edf0f4 !important;
+  background: #fafbfc !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .log-diff {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 :is(.log-diff-before, .log-diff-after, .log-details) {
+  min-width: 0 !important;
+  padding: 13px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-load-more {
+  display: flex !important;
+  justify-content: center !important;
+  padding: 4px 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 :is(.logs-empty, .logs-loading) {
+  min-height: 220px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 24px !important;
+  border: 1px dashed var(--ev2-line-strong) !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  color: var(--ev2-muted) !important;
+}
+
+/* =====================================================================================
+   SETTINGS V2 — applies to every nested settings route
+===================================================================================== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 {
+  display: block !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__main,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__content,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-wrap,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-page-frame {
+  width: 100% !important;
+  max-width: 1680px !important;
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 18px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__content > .settings-page,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__content .dashboard-section.settings-page {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__hero,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__subhead {
+  width: 100% !important;
+  max-width: none !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__badges {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 7px !important;
+  margin-top: 11px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__pill {
+  min-height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 999px !important;
+  background: var(--ev2-soft) !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.66rem !important;
+  font-weight: 900 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__pill--success {
+  border-color: #b7e3ca !important;
+  background: var(--ev2-success-soft) !important;
+  color: var(--ev2-success) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-basic-tabs,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tabs--cards {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card {
+  min-width: 0 !important;
+  min-height: 88px !important;
+  display: grid !important;
+  grid-template-columns: 38px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 13px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  color: var(--ev2-ink-soft) !important;
+  box-shadow: var(--ev2-shadow-sm) !important;
+  font: inherit !important;
+  text-align: right !important;
+  cursor: pointer !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card.is-active {
+  border-color: #cdaebb !important;
+  background: #fffafb !important;
+  box-shadow: 0 12px 30px rgba(91, 0, 22, 0.08) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card__index {
+  width: 38px !important;
+  height: 38px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 11px !important;
+  background: var(--ev2-maroon-soft) !important;
+  color: var(--ev2-maroon) !important;
+  font-size: 0.7rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card__copy strong,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card__copy small {
+  display: block !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card__copy strong {
+  color: var(--ev2-ink) !important;
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-tab-card__copy small {
+  margin-top: 4px !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.65rem !important;
+  line-height: 1.5 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-card {
+  padding: 20px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-section-body {
+  padding: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-basic-form,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 13px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card {
+  min-width: 0 !important;
+  min-height: 82px !important;
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 11px !important;
+  padding: 12px !important;
+  border: 1px solid var(--ev2-line) !important;
+  border-radius: 13px !important;
+  background: #fff !important;
+  color: var(--ev2-ink-soft) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  text-align: right !important;
+  cursor: pointer !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card.is-on {
+  border-color: #badfc9 !important;
+  background: #f8fffb !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__mark {
+  width: 30px !important;
+  height: 30px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid var(--ev2-line-strong) !important;
+  border-radius: 9px !important;
+  background: var(--ev2-soft) !important;
+  color: transparent !important;
+  font-size: 0.74rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card.is-on .settings-toggle-card__mark {
+  border-color: var(--ev2-success) !important;
+  background: var(--ev2-success) !important;
+  color: #fff !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__copy strong,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__copy small {
+  display: block !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__copy strong {
+  color: var(--ev2-ink) !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__copy small {
+  margin-top: 4px !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.65rem !important;
+  line-height: 1.5 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card__status {
+  min-height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 0 8px !important;
+  border-radius: 999px !important;
+  background: var(--ev2-soft) !important;
+  color: var(--ev2-muted) !important;
+  font-size: 0.62rem !important;
+  font-weight: 900 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-toggle-card.is-on .settings-toggle-card__status {
+  background: var(--ev2-success-soft) !important;
+  color: var(--ev2-success) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-page-actions {
+  position: sticky !important;
+  bottom: 12px !important;
+  z-index: 20 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 13px 15px !important;
+  border-radius: 15px !important;
+  box-shadow: 0 16px 42px rgba(16, 24, 40, 0.11) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-split, .settings-master-detail) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr) !important;
+  align-items: start !important;
+  gap: 18px !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-split__main, .settings-split__aside, .settings-master-detail__list, .settings-master-detail__detail) {
+  min-width: 0 !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-state {
+  min-height: 190px !important;
+  display: grid !important;
+  place-items: center !important;
+  align-content: center !important;
+  gap: 7px !important;
+  padding: 24px !important;
+  border: 1px dashed var(--ev2-line-strong) !important;
+  border-radius: 15px !important;
+  background: #fff !important;
+  color: var(--ev2-muted) !important;
+  text-align: center !important;
+}
+
+/* ===== Modal consistency ===== */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route :is(.partner-admin-modal__header, .of-modal-head, .modal-head) {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin-bottom: 16px !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid var(--ev2-line) !important;
+}
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route :is(.partner-admin-modal__footer, .of-modal-actions, .modal-actions) {
+  display: flex !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 9px !important;
+  margin-top: 18px !important;
+  padding-top: 16px !important;
+  border-top: 1px solid var(--ev2-line) !important;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1280px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metrics,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metrics, .partner-admin-stats, .settings-shell__metrics) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-admin-grid, .partner-contract-grid, .partner-team-grid),
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.pkg-offers-grid, .offers-as-packages-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 .logs-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header, .partner-admin-hero, .offers-header, .logs-page .dash-topbar, .settings-shell__hero, .settings-shell__subhead) {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero__actions,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header-actions, .partner-admin-hero__actions, .settings-shell__hero-meta, .settings-shell__subhead-meta) {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-layout,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-grid--main,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-split, .settings-master-detail) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--form {
+    position: static !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-toolbar,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--quick-actions,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--filters .offers-row--filters {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-stats-section {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 {
+    gap: 13px !important;
+    padding: 13px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header, .partner-admin-hero, .offers-header, .logs-page .dash-topbar, .settings-shell__hero, .settings-shell__subhead) {
+    gap: 15px !important;
+    padding: 2px 2px 14px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero h1,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-header h1, .partner-admin-hero h1, .offers-header h1, .dash-topbar-title h1, .settings-shell__hero h1, .settings-shell__subhead h1) {
+    font-size: 1.45rem !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metrics,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metrics, .partner-admin-stats, .settings-shell__metrics) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric, .partner-admin-stat, .settings-shell__metric) {
+    min-height: 88px !important;
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    padding: 13px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric__icon,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metric__icon, .partner-admin-stat__icon) {
+    width: 38px !important;
+    height: 38px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.exp-card, .partner-admin-panel, .partner-card, .partner-contract-card, .partner-team-card, .offers-card, .offers-table-card, .logs-card, .log-card, .settings-card, .settings-toolbar, .settings-page-actions) {
+    padding: 14px !important;
+    border-radius: 15px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-date-control {
+    width: 100%;
+    min-width: 0;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-hero__actions > *,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 .exp-header-actions > * {
+    flex: 1 1 auto !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 :is(.exp-control-points, .exp-filters--controls, .exp-form),
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-admin-grid, .partner-contract-grid, .partner-team-grid, .partner-admin-form-grid),
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.offers-stats-group, .pkg-offers-grid, .offers-as-packages-grid, .of-grid-2, .of-grid-2a, .of-grid-3),
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 :is(.logs-filters, .log-diff),
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-basic-tabs, .settings-tabs--cards, .settings-basic-form, .settings-form-grid, .settings-toggle-grid) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls .span-2 {
+    grid-column: auto !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-toolbar {
+    padding: 10px !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-page-actions {
+    position: static !important;
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-page-actions > button {
+    width: 100% !important;
+  }
+}
+
+@media print {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .no-print { display: none !important; }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-day-audit-v2,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-container {
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-panel,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-v2-metric {
+    box-shadow: none !important;
+  }
+}
+
+/* Settings metrics do not carry a separate icon node. */
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 .settings-shell__metric {
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-content: center !important;
+  gap: 2px !important;
+}

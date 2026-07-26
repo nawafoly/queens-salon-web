@@ -1,0 +1,1342 @@
+/* Unified enterprise workspace language for operational dashboard pages.
+   Scoped by Dashboard.tsx to the requested routes only. */
+
+.dashboard-skin.is-enterprise-workspace-route {
+  --enterprise-maroon: #5b0016;
+  --enterprise-maroon-2: #7a1230;
+  --enterprise-maroon-soft: #fff1f5;
+  --enterprise-ink: #111827;
+  --enterprise-ink-2: #273043;
+  --enterprise-muted: #667085;
+  --enterprise-muted-2: #98a2b3;
+  --enterprise-line: #e2e6ed;
+  --enterprise-line-strong: #d0d5dd;
+  --enterprise-page: #fbfbfc;
+  --enterprise-panel: #ffffff;
+  --enterprise-soft: #f7f8fb;
+  --enterprise-success: #18794e;
+  --enterprise-success-soft: #ecfdf3;
+  --enterprise-warning: #a65b00;
+  --enterprise-warning-soft: #fff6e8;
+  --enterprise-danger: #b42318;
+  --enterprise-danger-soft: #fff2f0;
+  --enterprise-info: #175cd3;
+  --enterprise-info-soft: #eff8ff;
+  --enterprise-radius-lg: 20px;
+  --enterprise-radius-md: 15px;
+  --enterprise-radius-sm: 12px;
+  --enterprise-shadow: 0 18px 52px rgba(27, 32, 47, 0.055);
+  --enterprise-shadow-sm: 0 10px 30px rgba(27, 32, 47, 0.045);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-main.has-single-scroll,
+.dashboard-skin.is-enterprise-workspace-route .dashboard-inner {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-inner {
+  padding-inline: 0 !important;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-workspace-page,
+  .exp-page,
+  .partner-admin-page,
+  .offers-page,
+  .logs-page,
+  .day-audit-page,
+  .settings-page,
+  .dashboard-tv-page
+) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: clamp(16px, 2vw, 28px);
+  background: var(--enterprise-page);
+  color: var(--enterprise-ink);
+  font-family: inherit;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-page,
+  .partner-admin-page,
+  .offers-page,
+  .logs-page,
+  .day-audit-page,
+  .settings-page
+) {
+  min-height: calc(100vh - 90px);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-page,
+  .partner-admin-page,
+  .offers-page,
+  .logs-page > .container,
+  .day-audit-page,
+  .settings-shell__main,
+  .dashboard-tv-page
+) {
+  width: 100% !important;
+  max-width: 1680px !important;
+  margin-inline: auto !important;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-page > .container {
+  padding: 0 !important;
+}
+
+/* Shared hero language */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-page-title,
+  .partner-admin-hero__copy,
+  .offers-head-main,
+  .logs-page .dash-topbar-title,
+  .settings-shell__hero-copy,
+  .day-audit-head-main
+) {
+  min-width: 0;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-page-eyebrow,
+  .partner-admin-kicker,
+  .offers-kicker,
+  .logs-kicker,
+  .day-audit-kicker,
+  .settings-shell__eyebrow
+) {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--enterprise-maroon);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-header,
+  .partner-admin-hero,
+  .offers-header,
+  .logs-page .dash-topbar,
+  .settings-shell__hero
+) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin: 0;
+  padding: 2px 4px 22px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-header h1,
+  .partner-admin-hero h1,
+  .offers-header h1,
+  .logs-page .dash-topbar-title h1,
+  .settings-shell__hero h1,
+  .day-audit-head h2
+) {
+  margin: 0;
+  color: var(--enterprise-ink);
+  font-size: clamp(1.55rem, 2.2vw, 2.2rem);
+  font-weight: 950;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-page-title > p,
+  .partner-admin-hero__copy > p,
+  .offers-sub,
+  .logs-page .dash-topbar-title > p,
+  .settings-shell__hero-copy > p,
+  .day-audit-head-main > p
+) {
+  max-width: 800px;
+  margin: 7px 0 0;
+  color: var(--enterprise-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.8;
+}
+
+/* Shared actions */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-header-actions,
+  .partner-admin-hero__actions,
+  .settings-shell__hero-meta,
+  .settings-shell__subhead-meta,
+  .day-audit-actions
+) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-btn,
+  .reports-btn,
+  .partner-admin-btn,
+  .dash-pill,
+  .log-secondary-btn,
+  .log-action-btn,
+  .log-restore-btn,
+  .day-audit-btn,
+  .settings-shell__pill,
+  .settings-tabs .exp-btn
+) {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: var(--enterprise-radius-sm);
+  background: #fff;
+  color: #344054;
+  box-shadow: 0 7px 20px rgba(22, 28, 45, 0.035);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-btn,
+  .reports-btn,
+  .partner-admin-btn,
+  .dash-pill,
+  .log-secondary-btn,
+  .log-action-btn,
+  .log-restore-btn,
+  .day-audit-btn,
+  .settings-shell__pill
+):not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: #c9b7bd;
+  box-shadow: 0 11px 28px rgba(22, 28, 45, 0.07);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-btn.primary,
+  .reports-btn.primary,
+  .partner-admin-btn--primary,
+  .partner-admin-btn--contract,
+  .dash-pill-primary,
+  .day-audit-btn--primary,
+  .settings-shell__pill--success,
+  .settings-tabs .exp-btn.primary
+) {
+  border-color: var(--enterprise-maroon);
+  background: linear-gradient(135deg, var(--enterprise-maroon), var(--enterprise-maroon-2));
+  color: #fff;
+  box-shadow: 0 11px 25px rgba(91, 0, 22, 0.18);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-admin-btn--dark,
+  .partner-admin-btn--team
+) {
+  border-color: #273043;
+  background: #273043;
+  color: #fff;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  button:disabled,
+  .is-disabled
+) {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Unified KPI cards */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metrics,
+  .partner-admin-stats,
+  .offers-stats-section,
+  .settings-shell__metrics,
+  .day-audit-kpis
+) {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-stats-section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metric,
+  .partner-admin-stat,
+  .offers-kpi,
+  .settings-shell__metric,
+  .day-audit-kpi
+) {
+  min-width: 0;
+  min-height: 106px;
+  padding: 17px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: var(--enterprise-shadow-sm);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metric,
+  .partner-admin-stat
+) {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metric__icon,
+  .partner-admin-stat__icon
+) {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--enterprise-maroon-soft);
+  color: var(--enterprise-maroon);
+  font-size: 1rem;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metric small,
+  .partner-admin-stat small,
+  .offers-kpi span,
+  .settings-shell__metric > span,
+  .day-audit-kpi-label
+) {
+  display: block;
+  color: var(--enterprise-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .enterprise-metric strong,
+  .partner-admin-stat strong,
+  .offers-kpi strong,
+  .settings-shell__metric > strong,
+  .day-audit-kpi-value
+) {
+  display: block;
+  margin-top: 4px;
+  color: var(--enterprise-ink);
+  font-size: clamp(1.12rem, 1.6vw, 1.5rem);
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .enterprise-metric em,
+.dashboard-skin.is-enterprise-workspace-route .settings-shell__metric small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--enterprise-muted-2);
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Unified panels */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-card,
+  .partner-admin-panel,
+  .partner-card,
+  .partner-team-card,
+  .partner-contract-card,
+  .offers-card,
+  .logs-card,
+  .log-card,
+  .day-audit-card,
+  .settings-card,
+  .settings-toolbar,
+  .settings-basic-panel,
+  .dashboard-tv-video-card,
+  .dashboard-tv-queue-card
+) {
+  min-width: 0;
+  border: 1px solid var(--enterprise-line);
+  border-radius: var(--enterprise-radius-lg);
+  background: var(--enterprise-panel);
+  box-shadow: var(--enterprise-shadow);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-card,
+  .partner-admin-panel,
+  .offers-card,
+  .logs-card,
+  .day-audit-card,
+  .settings-card,
+  .settings-toolbar,
+  .settings-basic-panel
+) {
+  padding: clamp(17px, 1.7vw, 23px);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-card,
+  .partner-admin-panel,
+  .offers-card,
+  .logs-card,
+  .settings-card,
+  .settings-toolbar,
+  .settings-basic-panel
+) + :where(
+  .exp-card,
+  .partner-admin-panel,
+  .offers-card,
+  .logs-card,
+  .settings-card,
+  .settings-toolbar,
+  .settings-basic-panel
+) {
+  margin-top: 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-card-title,
+  .offers-card-title,
+  .settings-title,
+  .settings-toolbar__title,
+  .logs-head h3,
+  .partner-card__title h3,
+  .partner-contract-card h3
+) {
+  margin: 0;
+  color: var(--enterprise-ink);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .offers-section-note,
+  .settings-section-hint,
+  .settings-toolbar__hint,
+  .logs-head p,
+  .exp-control-points,
+  .settings-note,
+  .settings-footnote
+) {
+  color: var(--enterprise-muted);
+  font-size: 0.77rem;
+  line-height: 1.75;
+}
+
+/* Forms / filters */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .dash-input,
+  .dash-select,
+  .settings-input
+) {
+  min-height: 44px;
+  border: 1px solid var(--enterprise-line-strong);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--enterprise-ink-2);
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.dashboard-skin.is-enterprise-workspace-route textarea {
+  min-height: 94px;
+  padding-block: 10px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .dash-input,
+  .dash-select,
+  .settings-input
+):focus {
+  border-color: rgba(91, 0, 22, 0.55);
+  box-shadow: 0 0 0 3px rgba(91, 0, 22, 0.08);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-filters,
+  .exp-form,
+  .logs-filters,
+  .partner-admin-form-grid,
+  .settings-basic-form,
+  .settings-toggle-grid
+) label {
+  color: #475467;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-card--controls {
+  position: relative;
+  overflow: visible;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-control-points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  margin: 12px 0 17px;
+  padding: 14px 16px;
+  border: 1px solid #eadce1;
+  border-radius: 14px;
+  background: #fff8fa;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-filters--controls,
+  .logs-filters
+) {
+  padding: 15px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 15px;
+  background: var(--enterprise-soft);
+}
+
+/* Tables */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table-wrap,
+  .resource-table-wrap
+) {
+  overflow: auto;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 15px;
+  background: #fff;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table,
+  .resource-table
+) {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table,
+  .resource-table
+) thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 13px 12px;
+  border-bottom: 1px solid var(--enterprise-line);
+  background: #f8f9fb;
+  color: #475467;
+  font-size: 0.7rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table,
+  .resource-table
+) tbody td {
+  padding: 13px 12px;
+  border-bottom: 1px solid #edf0f4;
+  color: #344054;
+  font-size: 0.76rem;
+  vertical-align: middle;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table,
+  .resource-table
+) tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .exp-table,
+  .resource-table
+) tbody tr:hover td {
+  background: #fcfafb;
+}
+
+/* Expenses */
+.dashboard-skin.is-enterprise-workspace-route .exp-grid--main {
+  align-items: start;
+  gap: 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-card--form {
+  position: sticky;
+  top: 94px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-results-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 999px;
+  background: var(--enterprise-soft);
+  color: var(--enterprise-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-row-auto-payroll td {
+  background: #fffaf0;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .exp-auto-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--enterprise-warning-soft);
+  color: var(--enterprise-warning);
+  font-size: 0.64rem;
+  font-weight: 900;
+}
+
+/* Partners */
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-hero__actions {
+  max-width: 760px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 420px);
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--enterprise-line);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-tabs button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 11px;
+  background: #fff;
+  color: #475467;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-tabs button.is-active {
+  border-color: var(--enterprise-maroon);
+  background: var(--enterprise-maroon);
+  color: #fff;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-search {
+  position: relative;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .partner-admin-grid,
+.dashboard-skin.is-enterprise-workspace-route .partner-team-grid,
+.dashboard-skin.is-enterprise-workspace-route .partner-contract-grid {
+  gap: 14px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-card,
+  .partner-team-card,
+  .partner-contract-card
+) {
+  padding: 17px;
+  box-shadow: var(--enterprise-shadow-sm);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-status,
+  .resource-status,
+  .partner-team-status,
+  .contract-status,
+  .partner-account-badge
+) {
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 950;
+}
+
+/* Offers */
+.dashboard-skin.is-enterprise-workspace-route .offers-page {
+  direction: rtl;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-header {
+  min-height: 84px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-section--stats {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-stats-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--enterprise-shadow-sm);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-stats-group-title {
+  grid-column: 1 / -1;
+  color: var(--enterprise-maroon);
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-kpi {
+  min-height: 82px;
+  box-shadow: none;
+  background: var(--enterprise-soft);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .pkg-offer-card,
+  .offer-card,
+  .pkgm__group
+) {
+  border: 1px solid var(--enterprise-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 9px 26px rgba(27, 32, 47, 0.04);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .pkg-offer-card,
+  .offer-card
+):hover {
+  transform: translateY(-2px);
+  border-color: #d9c8ce;
+  box-shadow: 0 15px 35px rgba(27, 32, 47, 0.075);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .offers-filter-pills,
+.dashboard-skin.is-enterprise-workspace-route .offers-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Logs */
+.dashboard-skin.is-enterprise-workspace-route .logs-page .dash-topbar--sticky {
+  position: static;
+  inset: auto;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-head-meta,
+.dashboard-skin.is-enterprise-workspace-route .logs-meta {
+  color: var(--enterprise-muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-filters {
+  display: grid;
+  grid-template-columns: minmax(230px, 1.6fr) repeat(3, minmax(150px, 0.75fr)) repeat(2, minmax(145px, 0.65fr));
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-search,
+.dashboard-skin.is-enterprise-workspace-route .logs-select {
+  position: relative;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-switches,
+.dashboard-skin.is-enterprise-workspace-route .logs-meta {
+  grid-column: span 3;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .logs-list {
+  display: grid;
+  gap: 11px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .log-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 15px;
+  box-shadow: 0 8px 24px rgba(27, 32, 47, 0.04);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .log-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  background: #98a2b3;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .log-card--critical::before { background: var(--enterprise-danger); }
+.dashboard-skin.is-enterprise-workspace-route .log-card--warning::before { background: #f79009; }
+.dashboard-skin.is-enterprise-workspace-route .log-card--info::before { background: #2e90fa; }
+
+.dashboard-skin.is-enterprise-workspace-route .log-card-head,
+.dashboard-skin.is-enterprise-workspace-route .log-card-body,
+.dashboard-skin.is-enterprise-workspace-route .log-card-actions,
+.dashboard-skin.is-enterprise-workspace-route .log-details {
+  padding-inline: 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .log-card-head {
+  padding-top: 15px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .log-card-actions {
+  padding-bottom: 15px;
+}
+
+/* Day audit */
+.dashboard-skin.is-enterprise-workspace-route .day-audit-card {
+  max-width: 1260px;
+  margin: 0 auto;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--enterprise-line);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-date-controls {
+  margin-top: 15px;
+  padding: 13px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 14px;
+  background: var(--enterprise-soft);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-badge {
+  min-width: 80px;
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-badge.is-open {
+  background: var(--enterprise-success-soft);
+  color: var(--enterprise-success);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-badge.is-locked {
+  background: var(--enterprise-danger-soft);
+  color: var(--enterprise-danger);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-manual {
+  margin: 18px 0;
+  padding: 17px;
+  border: 1px solid #eadce1;
+  border-radius: 16px;
+  background: #fff8fa;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-summary {
+  overflow: hidden;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 15px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-summary-row {
+  padding: 13px 15px;
+  border-bottom: 1px solid #edf0f4;
+  background: #fff;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-summary-row:last-child {
+  border-bottom: 0;
+  background: var(--enterprise-soft);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .day-audit-actions {
+  margin-top: 18px;
+  padding-top: 17px;
+  border-top: 1px solid var(--enterprise-line);
+}
+
+/* Settings */
+.dashboard-skin.is-enterprise-workspace-route .settings-page {
+  padding-inline: clamp(16px, 2vw, 28px) !important;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-shell__content {
+  width: 100%;
+  max-width: none;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-shell__metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-tabs,
+.dashboard-skin.is-enterprise-workspace-route .settings-basic-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 17px;
+  padding: 8px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 14px;
+  background: var(--enterprise-soft);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-tabs--cards {
+  gap: 12px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-tab-card {
+  border: 1px solid var(--enterprise-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-tab-card.is-active {
+  border-color: rgba(91, 0, 22, 0.38);
+  background: #fff8fa;
+  box-shadow: 0 9px 24px rgba(91, 0, 22, 0.07);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-toggle-card {
+  border: 1px solid var(--enterprise-line);
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .settings-toggle-card.is-on {
+  border-color: rgba(24, 121, 78, 0.28);
+  background: #f4fcf7;
+}
+
+/* TV queue */
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-page {
+  min-height: calc(100vh - 90px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(380px, 0.8fr);
+  gap: 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video-card,
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video-card {
+  min-height: min(72vh, 760px);
+  padding: 0;
+  background: #111318;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video {
+  width: 100%;
+  height: 100%;
+  min-height: min(72vh, 760px);
+  object-fit: cover;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video-logo {
+  position: absolute;
+  z-index: 2;
+  top: 18px;
+  right: 18px;
+  width: clamp(78px, 9vw, 130px);
+  max-height: 74px;
+  object-fit: contain;
+  filter: drop-shadow(0 9px 20px rgba(0, 0, 0, 0.25));
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-card {
+  display: flex;
+  flex-direction: column;
+  min-height: min(72vh, 760px);
+  padding: 18px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--enterprise-line);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-head h2 {
+  margin: 0;
+  color: var(--enterprise-ink);
+  font-size: 1.1rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-head p {
+  margin: 5px 0 0;
+  color: var(--enterprise-muted);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-count {
+  min-width: 45px;
+  height: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--enterprise-maroon-soft);
+  color: var(--enterprise-maroon);
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-booking-list {
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  padding-inline-end: 3px;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-booking-card {
+  padding: 14px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(27, 32, 47, 0.035);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-booking-card.is-current {
+  border-color: rgba(91, 0, 22, 0.32);
+  background: #fff8fa;
+  box-shadow: 0 11px 28px rgba(91, 0, 22, 0.08);
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-state-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--enterprise-soft);
+  color: var(--enterprise-muted);
+  font-size: 0.64rem;
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-state-chip.is-current {
+  background: var(--enterprise-maroon);
+  color: #fff;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-booking-id {
+  color: var(--enterprise-maroon);
+  font-weight: 950;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-kv-row {
+  padding-block: 6px;
+  border-bottom: 1px dashed #e6e9ee;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-kv-row:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-skin.is-enterprise-workspace-route .dashboard-tv-empty,
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-admin-empty,
+  .logs-empty,
+  .pkgm__empty,
+  .empty,
+  .settings-state
+) {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border: 1px dashed var(--enterprise-line-strong);
+  border-radius: 15px;
+  background: var(--enterprise-soft);
+  color: var(--enterprise-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Alerts */
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-admin-alert,
+  .dash-alert,
+  .logs-restore-status,
+  .day-audit-alert,
+  .day-audit-lock-note
+) {
+  margin-bottom: 15px;
+  padding: 12px 14px;
+  border: 1px solid var(--enterprise-line);
+  border-radius: 13px;
+  box-shadow: none;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-admin-alert--success,
+  .logs-restore-status--ok
+) {
+  border-color: #abefc6;
+  background: var(--enterprise-success-soft);
+  color: var(--enterprise-success);
+}
+
+.dashboard-skin.is-enterprise-workspace-route :where(
+  .partner-admin-alert--error,
+  .logs-restore-status--error,
+  .day-audit-alert.is-error,
+  .dash-alert
+) {
+  border-color: #f4b8b2;
+  background: var(--enterprise-danger-soft);
+  color: var(--enterprise-danger);
+}
+
+@media (max-width: 1280px) {
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .enterprise-metrics,
+    .partner-admin-stats,
+    .settings-shell__metrics
+  ) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .logs-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .logs-search {
+    grid-column: span 2;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-page {
+    grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .exp-header,
+    .partner-admin-hero,
+    .offers-header,
+    .logs-page .dash-topbar,
+    .settings-shell__hero,
+    .day-audit-head
+  ) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .exp-header-actions,
+    .partner-admin-hero__actions,
+    .settings-shell__hero-meta,
+    .day-audit-actions
+  ) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .partner-admin-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .exp-card--form {
+    position: static;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-page {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video-card,
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video {
+    min-height: 420px;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .enterprise-workspace-page,
+    .exp-page,
+    .partner-admin-page,
+    .offers-page,
+    .logs-page,
+    .day-audit-page,
+    .settings-page,
+    .dashboard-tv-page
+  ) {
+    padding: 12px;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .enterprise-metrics,
+    .partner-admin-stats,
+    .offers-stats-section,
+    .settings-shell__metrics,
+    .day-audit-kpis
+  ) {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .offers-stats-section {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .offers-stats-group {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .exp-control-points,
+  .dashboard-skin.is-enterprise-workspace-route .logs-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .logs-search,
+  .dashboard-skin.is-enterprise-workspace-route .logs-switches,
+  .dashboard-skin.is-enterprise-workspace-route .logs-meta {
+    grid-column: auto;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .exp-header-actions,
+    .partner-admin-hero__actions,
+    .settings-shell__hero-meta,
+    .day-audit-actions
+  ) > * {
+    flex: 1 1 145px;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .partner-admin-toolbar,
+  .dashboard-skin.is-enterprise-workspace-route .logs-head,
+  .dashboard-skin.is-enterprise-workspace-route .exp-table-head,
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-queue-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .day-audit-card,
+  .dashboard-skin.is-enterprise-workspace-route :where(
+    .exp-card,
+    .partner-admin-panel,
+    .offers-card,
+    .logs-card,
+    .settings-card,
+    .settings-toolbar,
+    .settings-basic-panel
+  ) {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video-card,
+  .dashboard-skin.is-enterprise-workspace-route .dashboard-tv-video {
+    min-height: 300px;
+  }
+}
+
+@media print {
+  .dashboard-skin.is-enterprise-workspace-route .day-audit-page {
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .dashboard-skin.is-enterprise-workspace-route .day-audit-card {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+}

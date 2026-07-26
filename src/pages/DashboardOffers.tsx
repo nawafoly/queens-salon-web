@@ -17,6 +17,7 @@ import {
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/AdminDashboardOffers.css";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
   PackageService,
@@ -1228,7 +1229,7 @@ const DashboardOffers: React.FC = () => {
   };
 
   return (
-    <div className="dashboard-skin offers-page">
+    <div className="offers-page enterprise-workspace-page enterprise-workspace-v2 enterprise-offers-v2">
       {inlineNotice ? (
         <div
           role="alert"
@@ -1248,6 +1249,7 @@ const DashboardOffers: React.FC = () => {
       {/* Header */}
       <div className="offers-header">
         <div className="offers-head-main">
+          <span className="offers-kicker">COMMERCIAL CAMPAIGNS</span>
           <h1>
             <FontAwesomeIcon icon={faTag} /> العروض والكوبونات
           </h1>

@@ -3,6 +3,7 @@
 // ✅ src/pages/DashboardSettings.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 
 import { AppSettingsService } from "../services/AppSettingsService";
 import type { AppSettings, SectionKey } from "../services/AppSettingsService";
@@ -271,7 +272,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   ========================= */
   if (authLoading) {
     return (
-      <div className="dashboard-section settings-page">
+      <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
         <div className="settings-wrap">
           <SettingsState title="جاري التحميل…" hint="لحظات…" loading />
         </div>
@@ -281,7 +282,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
 
   if (!canView) {
     return (
-      <div className="dashboard-section settings-page">
+      <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
         <div className="settings-wrap">
           <SettingsState
             title="غير مصرح"
@@ -296,7 +297,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
      Main settings UI (index route)
   ========================= */
   const MainSettings = () => (
-    <div className="dashboard-section settings-page">
+    <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
       <div className="settings-wrap">
         <SettingsPageHeader
           eyebrow="الوحدة 03"
@@ -555,7 +556,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
      Nested routes under /dashboard/settings/*
   ========================= */
   return (
-    <div className="dashboard-section settings-page settings-shell settings-shell--embedded" dir="rtl">
+    <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded" dir="rtl">
       <main className="settings-shell__main" dir="rtl">
         <section className="settings-shell__content">
             <Routes>

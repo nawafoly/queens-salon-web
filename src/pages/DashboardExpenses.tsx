@@ -3,12 +3,13 @@
 // ✅ src/pages/DashboardExpenses.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/AdminDashboardExpenses.css";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv } from "@fortawesome/free-solid-svg-icons";
+import { faFileCsv, faList, faMoneyBillWave, faTriangleExclamation, faWallet } from "@fortawesome/free-solid-svg-icons";
 /**
  * ✅ قاعدة الاستيراد:
- * - المشترك/العام أولاً
- * - ستايل الصفحة الخاصة آخر شيء عشان يفوز بالأولوية
+ * - ستايل الصفحة الأصلي أولاً
+ * - نظام مساحات العمل المؤسسي أخيرًا لتوحيد الواجهة
  */
 import Modal from "../components/Modal";
 
@@ -733,6 +734,16 @@ const DashboardExpenses: React.FC = () => {
     });
   }, [allItems, activeRange.from, activeRange.to, fCategory, fPayment, q, onlyMissingNotes]);
 
+  const filteredAmount = useMemo(
+    () => filtered.reduce((sum, expense) => sum + Number(expense.amount || 0), 0),
+    [filtered]
+  );
+  const filteredPayrollCount = useMemo(
+    () => filtered.filter((expense) => isAutoPayrollExpenseId(expense.id)).length,
+    [filtered]
+  );
+  const filteredManualCount = Math.max(0, filtered.length - filteredPayrollCount);
+
   // ====== فورم الإضافة ======
   const resetForm = () => {
     setTitle("");
@@ -1021,7 +1032,7 @@ const DashboardExpenses: React.FC = () => {
 
   if (!authReady) {
     return (
-      <div className="exp-page">
+      <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
         <div className="exp-card">
           <h2>جاري التحقق من الصلاحيات...</h2>
         </div>
@@ -1031,7 +1042,7 @@ const DashboardExpenses: React.FC = () => {
 
   if (!allowed) {
     return (
-      <div className="exp-page">
+      <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
         <div className="exp-card">
           <h2>غير مصرح</h2>
           <p>هذه الصفحة خاصة بالمالك/الإدارة فقط.</p>
@@ -1072,10 +1083,14 @@ const DashboardExpenses: React.FC = () => {
   ];
 
   return (
-    <div className="exp-page">
+    <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
       {/* ✅ Header ثابت: الأزرار تظهر دائمًا (حل اختفاء التصدير) */}
       <div className="exp-header">
-        <h1>المصروفات</h1>
+        <div className="enterprise-page-title">
+          <span className="enterprise-page-eyebrow">FINANCE OPERATIONS</span>
+          <h1>المصروفات</h1>
+          <p>إدارة المصروفات التشغيلية والرواتب، مراجعة النواقص، وتصدير التقارير من مساحة عمل واحدة.</p>
+        </div>
 
         <div className="exp-header-actions">
           {hasLegacy && !migrated ? (
@@ -1133,6 +1148,25 @@ const DashboardExpenses: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <section className="enterprise-metrics" aria-label="ملخص المصروفات المعروضة">
+        <article className="enterprise-metric">
+          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
+          <div><small>إجمالي الفترة</small><strong>{money(filteredAmount)} ريال</strong><em>{activeRange.from} — {activeRange.to}</em></div>
+        </article>
+        <article className="enterprise-metric">
+          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faList} /></span>
+          <div><small>السجلات المعروضة</small><strong>{filtered.length}</strong><em>بعد تطبيق الفلاتر الحالية</em></div>
+        </article>
+        <article className="enterprise-metric">
+          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faWallet} /></span>
+          <div><small>مصروفات الرواتب</small><strong>{filteredPayrollCount}</strong><em>صفوف محسوبة تلقائيًا</em></div>
+        </article>
+        <article className="enterprise-metric">
+          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+          <div><small>تحتاج ملاحظة</small><strong>{missingNotesInActiveRange}</strong><em>{filteredManualCount} مصروف يدوي معروض</em></div>
+        </article>
+      </section>
 
       <div className="exp-card exp-card--controls">
         <h3 className="exp-card-title">سجل المصروفات الكامل</h3>

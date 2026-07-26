@@ -1,5 +1,6 @@
 // src/pages/DashboardBookings.tsx
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import Modal from "../components/Modal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -11,6 +12,14 @@ import {
   faRotate,
   faPlus,
   faPrint,
+  faCalendarDay,
+  faClock,
+  faMoneyBillWave,
+  faChevronDown,
+  faChevronUp,
+  faChartLine,
+  faCheckCircle,
+  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { auth } from "../services/firebase";
@@ -93,6 +102,7 @@ import {
 } from "./DashboardBookings.helpers";
 
 // ✅ Styles
+import "../styles/DashboardBookingsEnterprise.css";
 
 /* =========================
    Constants / Types
@@ -2223,6 +2233,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResultMessage, setBulkResultMessage] = useState("");
   const [bulkError, setBulkError] = useState("");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
@@ -2991,6 +3002,36 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     return next;
   }, [filtered]);
 
+  const bookingOperationsOverview = useMemo(() => {
+    const today = todayISOLocal();
+    let todayCount = 0;
+    let todayConfirmed = 0;
+    let todayCompleted = 0;
+    let todayCollectedAmount = 0;
+    let totalOutstandingAmount = 0;
+
+    bookings.forEach((booking) => {
+      const payment = resolveBookingPaymentSummary(booking);
+      if (booking.status !== "cancelled") {
+        totalOutstandingAmount += payment.remainingAmount;
+      }
+      if (String(booking.date || "") !== today || booking.status === "cancelled") return;
+      todayCount += 1;
+      if (booking.status === "confirmed") todayConfirmed += 1;
+      if (booking.status === "completed") todayCompleted += 1;
+      todayCollectedAmount += payment.paidAmount;
+    });
+
+    return {
+      today,
+      todayCount,
+      todayConfirmed,
+      todayCompleted,
+      todayCollectedAmount: round2(todayCollectedAmount),
+      totalOutstandingAmount: round2(totalOutstandingAmount),
+    };
+  }, [bookings]);
+
   const bookingSections = useMemo<BookingDisplaySection[]>(() => {
     const normalRows: Booking[] = [];
     const internalRows: Booking[] = [];
@@ -3040,6 +3081,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [bookings, newBookingsSeenAt]);
 
   const unseenNewPreviewBookings = useMemo(() => unseenNewBookings.slice(0, 6), [unseenNewBookings]);
+  const unseenNewBookingIds = useMemo(
+    () => new Set(unseenNewBookings.map((booking) => String(booking.id || "").trim()).filter(Boolean)),
+    [unseenNewBookings]
+  );
 
   const markNewBookingsSeen = useCallback(() => {
     const latestCreatedAt = bookings.reduce((max, b) => {
@@ -3121,6 +3166,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       }),
     [expiredPendingDayBookings]
   );
+
+  const attentionBookingCount = useMemo(() => {
+    const ids = new Set<string>();
+    [...staleStatusBookings, ...expiredPendingDayBookings].forEach((booking) => {
+      const id = String(booking.id || "").trim();
+      if (id) ids.add(id);
+    });
+    return ids.size;
+  }, [expiredPendingDayBookings, staleStatusBookings]);
 
   const getAllowedStatusOptions = useCallback((b: Booking): BookingStatus[] => {
     if (uiRole === "owner" || uiRole === "admin") return allStatusOptions;
@@ -3978,6 +4032,40 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     ]
   );
 
+  const activeFilterCount = useMemo(
+    () =>
+      [
+        Boolean(q.trim()),
+        statusFilter !== "all",
+        Boolean(excludedStatus),
+        settlementFilter !== "all",
+        Boolean(dateFrom || dateTo || datePreset !== "all"),
+        paymentMethodFilter !== "all",
+        employeeFilter !== "all",
+        serviceFilter !== "all",
+        sourceFilter !== "all",
+        oldPendingFilter !== "off" || Boolean(oldPendingFrom || oldPendingTo),
+        sortOrder !== "newest",
+      ].filter(Boolean).length,
+    [
+      dateFrom,
+      datePreset,
+      dateTo,
+      employeeFilter,
+      excludedStatus,
+      oldPendingFilter,
+      oldPendingFrom,
+      oldPendingTo,
+      paymentMethodFilter,
+      q,
+      serviceFilter,
+      settlementFilter,
+      sortOrder,
+      sourceFilter,
+      statusFilter,
+    ]
+  );
+
   const resetBookingFilters = useCallback(() => {
     setQ("");
     setStatusFilter("all");
@@ -4230,10 +4318,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       {section.rows.length ? (
         <div className="bookings-table-card">
           <div className="bk-table-wrap">
-            <table className="bookings-table">
+            <table className="bookings-table bookings-table--enterprise">
               <thead>
                 <tr>
-                  <th>
+                  <th className="bk-col-select">
                     <input
                       type="checkbox"
                       className="bk-select-checkbox"
@@ -4242,14 +4330,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       aria-label="تحديد حجوزات الصفحة الحالية"
                     />
                   </th>
-                  <th>رقم الحجز</th>
+                  <th>الحجز</th>
                   <th>العميلة</th>
-                  <th>الخدمة</th>
-                  <th>الموظفة</th>
-                  <th>التاريخ والوقت</th>
-                  <th>آخر تحديث</th>
-                  <th>الدفع</th>
-                  <th>تفاصيل الدفع</th>
+                  <th>الخدمة والموظفة</th>
+                  <th>الموعد</th>
+                  <th>التحصيل</th>
                   <th>الإجراءات</th>
                 </tr>
               </thead>
@@ -4259,11 +4344,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   if (block.rows.length > 1) {
                     rows.push(
                       <tr key={`${section.key}-group-${block.key}`} className="bookings-group-row">
-                        <td colSpan={10}>
+                        <td colSpan={7}>
                           <div className="bookings-group-row-inner">
                             <span className="bookings-group-title">حجز مجمّع</span>
                             <span className="bookings-group-meta">
-                              المرجع: {block.label} - الخدمات: {block.rows.length}
+                              المرجع: {block.label} • {block.rows.length} خدمات
                             </span>
                           </div>
                         </td>
@@ -4281,12 +4366,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     const isPendingDeposit = isPendingDepositBooking(b, payment);
                     const channelBadge = bookingChannelBadgeText(b);
                     const isTemporaryInternal = isTemporaryNormalInternalBooking(b);
+                    const isNewBooking = unseenNewBookingIds.has(String(b.id || "").trim());
+
                     rows.push(
                       <tr
                         key={b.id}
-                        className={`bk-row bk-row-${safeStatus}${isPendingDeposit ? " bk-row-pending-deposit" : ""}`}
+                        className={`bk-row bk-row-${safeStatus}${isPendingDeposit ? " bk-row-pending-deposit" : ""}${isNewBooking ? " is-new-booking" : ""}`}
                       >
-                        <td>
+                        <td className="bk-col-select">
                           <input
                             type="checkbox"
                             className="bk-select-checkbox"
@@ -4297,19 +4384,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td>
                           <div className="bk-ref-cell">
-                            <div className="bk-ref-code" title={`المعرف الكامل: ${String(b.id || "—")}`}><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
+                            <div className="bk-ref-title-row">
+                              <button type="button" className="bk-ref-code" onClick={() => setSelectedBooking(b)} title="فتح تفاصيل الحجز">
+                                <bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi>
+                              </button>
+                              {isNewBooking ? <span className="bk-new-row-badge">جديد</span> : null}
+                            </div>
                             <div className="bk-ref-meta">
                               <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
                                 {statusLabel[safeStatus]}
                               </span>
                               {channelBadge ? (
-                                <span
-                                  className={`bk-channel-badge${isTemporaryInternal ? " is-temporary" : ""}`}
-                                >
+                                <span className={`bk-channel-badge${isTemporaryInternal ? " is-temporary" : ""}`}>
                                   {channelBadge}
                                 </span>
                               ) : null}
                             </div>
+                            <small className="bk-row-update">آخر تحديث: {lastUpdateMap[b.id]?.at || "—"}</small>
                           </div>
                         </td>
                         <td>
@@ -4319,20 +4410,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         <td>
                           <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
                           <div className="bk-service-meta">{serviceMetaSummaryForTable(b)}</div>
+                          <span className="bk-employee-pill">{b.employeeName || "غير محددة"}</span>
                         </td>
                         <td>
-                          <span className="bk-employee-pill">{b.employeeName || "—"}</span>
+                          <div className="bk-appointment-cell">
+                            <strong><bdi className="bk-numeric" dir="ltr">{b.date}</bdi></strong>
+                            <span><FontAwesomeIcon icon={faClock} /><bdi className="bk-numeric" dir="ltr">{formatTime12(b.time)}</bdi></span>
+                          </div>
                         </td>
                         <td>
-                          <div className="bk-datetime-date"><bdi className="bk-numeric" dir="ltr">{b.date}</bdi></div>
-                          <div className="bk-datetime-time"><bdi className="bk-numeric" dir="ltr">{formatTime12(b.time)}</bdi></div>
-                        </td>
-                        <td>
-                          <div className="bk-update-by">{lastUpdateMap[b.id]?.by || "—"}</div>
-                          <div className="bk-update-at"><bdi className="bk-numeric" dir="ltr">{lastUpdateMap[b.id]?.at || "—"}</bdi></div>
-                        </td>
-                        <td>
-                          <div className="bk-payment-cell">
+                          <div className="bk-payment-cell bk-payment-cell--compact">
                             <div className="bk-payment-total">
                               <span className="bk-payment-total-label">الإجمالي</span>
                               <span className="bk-payment-total-value"><BookingMoney value={payment.totalAmount} /></span>
@@ -4346,7 +4433,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                       ? "is-partial"
                                       : "is-unpaid"
                                 }`}
-                                title={paymentStatusLabel(payment)}
                               >
                                 {compactPaymentStatusLabel(payment)}
                               </span>
@@ -4356,24 +4442,16 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                 </span>
                               ) : null}
                             </div>
-                          </div>
-                        </td>
-                        <td className="bk-payment-details-cell">
-                          <div className="bk-payment-breakdown">
-                            {paymentAmountsDisplayLines(payment).map((line) => (
-                              <div key={line.key} className={`bk-payment-metric-row ${line.tone}`}>
-                                <span className="bk-payment-metric-label">{line.label}</span>
-                                {typeof line.amount === "number" ? (
-                                  <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
-                                ) : null}
-                              </div>
-                            ))}
+                            <div className="bk-payment-inline-metrics">
+                              <span>مدفوع <b><BookingMoney value={payment.paidAmount} /></b></span>
+                              <span>متبقي <b><BookingMoney value={payment.remainingAmount} /></b></span>
+                            </div>
                           </div>
                         </td>
                         <td className="bk-actions-cell">
-                          <div className="bk-actions-row">
-                            <button type="button" className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
-                              تفاصيل
+                          <div className="bk-actions-row bk-actions-row--enterprise">
+                            <button type="button" className="exp-btn sm bk-primary-row-action" onClick={() => setSelectedBooking(b)}>
+                              فتح
                             </button>
                             <button
                               type="button"
@@ -4385,63 +4463,49 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <FontAwesomeIcon icon={faPrint} aria-hidden="true" />
                               <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
-                            {canEditBookings && (
+                            {canEditBookings ? (
                               <button type="button" className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
-                            )}
+                            ) : null}
                             <button
                               type="button"
                               className="exp-btn ghost sm bk-refund-btn"
                               onClick={() => openRefundModal(b)}
                               disabled={!canManageRefund(b) || refundBusyId === b.id}
-                              title={refundMapByBookingId[String(b.id || "").trim()] ? "تم تسجيل استرجاع لهذا الحجز" : "تسجيل استرجاع"}
                             >
-                              {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع مسجل" : "استرجاع"}
+                              {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
                             </button>
-                            {(uiRole === "owner" || uiRole === "admin") && (
+                            {(uiRole === "owner" || uiRole === "admin") ? (
+                              <select
+                                className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
+                                value={b.status}
+                                onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
+                                aria-label={`تغيير حالة الحجز ${bookingRef(b)}`}
+                              >
+                                {allStatusOptions.map((s) => (
+                                  <option key={`desk_${b.id}_${s}`} value={s}>
+                                    {statusLabel[s]}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+                            {uiRole === "owner" ? (
+                              <button
+                                type="button"
+                                className="exp-btn danger sm"
+                                onClick={() => handleDeleteBooking(b)}
+                                title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
+                              >
+                                حذف
+                              </button>
+                            ) : null}
+                            {uiRole === "reception" && b.status === "pending" ? (
                               <>
-                                {uiRole === "owner" && (
-                                  <button
-                                    type="button"
-                                    className="exp-btn danger sm"
-                                    onClick={() => handleDeleteBooking(b)}
-                                    title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
-                                  >
-                                    حذف
-                                  </button>
-                                )}
-                                <select
-                                  className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                                  value={b.status}
-                                  onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                                >
-                                  {allStatusOptions.map((s) => (
-                                    <option key={`desk_${b.id}_${s}`} value={s}>
-                                      {statusLabel[s]}
-                                    </option>
-                                  ))}
-                                </select>
+                                <button type="button" className="exp-btn sm" onClick={() => handleUpdateStatus(b.id, "confirmed")}>تأكيد</button>
+                                <button type="button" className="exp-btn danger sm" onClick={() => handleUpdateStatus(b.id, "cancelled")}>إلغاء</button>
                               </>
-                            )}
-                            {uiRole === "reception" && b.status === "pending" && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="exp-btn sm"
-                                  onClick={() => handleUpdateStatus(b.id, "confirmed")}
-                                >
-                                  تأكيد
-                                </button>
-                                <button
-                                  type="button"
-                                  className="exp-btn danger sm"
-                                  onClick={() => handleUpdateStatus(b.id, "cancelled")}
-                                >
-                                  إلغاء
-                                </button>
-                              </>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -4473,10 +4537,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   const isPendingDeposit = isPendingDepositBooking(b, payment);
                   const channelBadge = bookingChannelBadgeText(b);
                   const isTemporaryInternal = isTemporaryNormalInternalBooking(b);
+                  const isNewBooking = unseenNewBookingIds.has(String(b.id || "").trim());
                   return (
                     <div
                       key={b.id}
-                      className={`bk-mobile-card bk-mobile-card-${safeStatus}${isPendingDeposit ? " is-pending-deposit" : ""}`}
+                      className={`bk-mobile-card bk-mobile-card-${safeStatus}${isPendingDeposit ? " is-pending-deposit" : ""}${isNewBooking ? " is-new-booking" : ""}`}
                     >
                       <label className="bk-mobile-select-row">
                         <input
@@ -4489,7 +4554,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       </label>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">رقم الحجز:</span>
-                        <bdi className="bk-mobile-val bk-numeric" dir="ltr" style={{ fontWeight: 900 }}>{bookingRef(b)}</bdi>
+                        <span className="bk-mobile-val bk-mobile-ref-value">
+                          <bdi className="bk-numeric" dir="ltr" style={{ fontWeight: 900 }}>{bookingRef(b)}</bdi>
+                          {isNewBooking ? <span className="bk-mobile-new-badge">جديد</span> : null}
+                        </span>
                       </div>
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">العميلة:</span>
@@ -4655,6 +4723,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     toggleBookingSelection,
     toggleCurrentPageSelection,
     uiRole,
+    unseenNewBookingIds,
   ]);
 
   const bookingSectionsView = useMemo(
@@ -4683,239 +4752,151 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
 
   return (
-    <div className="bk-page-wrapper">
-      <div className="container-fluid">
-        <div className="bookings-header">
-          <h1>إدارة الحجوزات</h1>
-          <p>عرض وتعديل كافة الحجوزات في النظام</p>
-          {error && <div className="bookings-error">{error}</div>}
-        </div>
+    <div className="bk-page-wrapper bk-enterprise-page" dir="rtl">
+      <div className="container-fluid bk-enterprise-container">
+        <header className="bk-enterprise-hero">
+          <div className="bk-enterprise-hero-copy">
+            <p className="bk-enterprise-eyebrow">Queens Salon • Booking Operations</p>
+            <h1>مركز إدارة الحجوزات</h1>
+            <p>واجهة تشغيل موحدة لمتابعة الحجوزات الجديدة، المواعيد، التحصيل، والإجراءات اليومية.</p>
+          </div>
+          <div className="bk-enterprise-hero-actions">
+            <Link to="/dashboard/booking-internal" className="bk-enterprise-btn is-primary">
+              <FontAwesomeIcon icon={faPlus} />
+              إنشاء حجز جديد
+            </Link>
+            <button type="button" className="bk-enterprise-btn" onClick={refreshBookingData}>
+              <FontAwesomeIcon icon={faRotate} />
+              تحديث
+            </button>
+            <button type="button" className="bk-enterprise-btn" onClick={handleExport}>
+              <FontAwesomeIcon icon={faFileCsv} />
+              تصدير
+            </button>
+          </div>
+        </header>
 
-        <div className="bk-mini">
-          {unseenNewBookings.length > 0 ? (
-            <div className="bk-new-alert" role="status" aria-live="polite">
-              <div className="bk-new-alert-head">
-                <strong>تنبيه: يوجد {unseenNewBookings.length} حجز جديد.</strong>
-                <span>حجوزات جديدة منذ آخر مرة تم الاطلاع عليها.</span>
+        {error ? <div className="bookings-error bk-enterprise-error">{error}</div> : null}
+
+        <section className="bk-enterprise-kpis" aria-label="ملخص عمليات الحجوزات">
+          <article className="bk-enterprise-kpi">
+            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
+            <div><small>حجوزات اليوم</small><strong>{bookingOperationsOverview.todayCount}</strong><em>{bookingOperationsOverview.today}</em></div>
+          </article>
+          <article className="bk-enterprise-kpi">
+            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
+            <div><small>المؤكد والمكتمل اليوم</small><strong>{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em>مؤكد {bookingOperationsOverview.todayConfirmed} • مكتمل {bookingOperationsOverview.todayCompleted}</em></div>
+          </article>
+          <article className="bk-enterprise-kpi">
+            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
+            <div><small>المحصّل اليوم</small><strong><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} /></strong><em>حسب الحجوزات المحمّلة</em></div>
+          </article>
+          <article className="bk-enterprise-kpi is-alert">
+            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+            <div><small>تحتاج متابعة</small><strong>{attentionBookingCount}</strong><em>حجوزات قديمة أو غير مغلقة</em></div>
+          </article>
+          <article className="bk-enterprise-kpi">
+            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faChartLine} /></span>
+            <div><small>إجمالي المتبقي</small><strong><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em>على كل الحجوزات غير الملغاة</em></div>
+          </article>
+        </section>
+
+        <section className="bk-enterprise-operations-grid">
+          <article className="bk-enterprise-panel bk-enterprise-new-queue">
+            <div className="bk-enterprise-panel-head">
+              <div>
+                <span className="bk-panel-kicker">الوارد الجديد</span>
+                <h2>الحجوزات الجديدة</h2>
+                <p>أحدث الحجوزات التي لم يتم الاطلاع عليها بعد.</p>
               </div>
+              <span className="bk-panel-count">{unseenNewBookings.length}</span>
+            </div>
 
-              <div className="bk-new-alert-actions">
-                <button
-                  type="button"
-                  className="bk-new-alert-btn is-primary"
-                  onClick={() => setStatusFilter("pending")}
-                >
-                  عرض الحجوزات الجديدة
-                </button>
-                <button type="button" className="bk-new-alert-btn" onClick={markNewBookingsSeen}>
-                  تم الاطلاع
-                </button>
-              </div>
-
-              <div className="bk-new-alert-list">
-                {unseenNewPreviewBookings.map((b) => (
-                  <button
-                    key={`new_${b.id}`}
-                    type="button"
-                    className="bk-new-alert-item"
-                    onClick={() => setSelectedBooking(b)}
-                    title="فتح تفاصيل الحجز"
-                  >
-                    <span className="bk-new-alert-ref">
-                      {bookingRef(b)} • {b.customerName || "—"}
+            {unseenNewPreviewBookings.length ? (
+              <div className="bk-enterprise-queue-list">
+                {unseenNewPreviewBookings.map((booking) => (
+                  <button key={`enterprise_new_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
+                    <span className="bk-enterprise-queue-time">
+                      <strong>{formatTime12(booking.time)}</strong>
+                      <small>{booking.date}</small>
                     </span>
-                    <span className="bk-new-alert-meta">
-                      {b.date} {formatTime12(b.time)} • {statusLabel[b.status]}
+                    <span className="bk-enterprise-queue-copy">
+                      <strong>{booking.customerName || "عميلة غير معروفة"}</strong>
+                      <small>{serviceSummaryForTable(booking)} • {booking.employeeName || "بدون موظفة"}</small>
                     </span>
+                    <span className="bk-enterprise-queue-ref"><bdi dir="ltr">{bookingRef(booking)}</bdi></span>
                   </button>
                 ))}
               </div>
-
-              {unseenNewBookings.length > unseenNewPreviewBookings.length ? (
-                <div className="bk-new-alert-more">
-                  +{unseenNewBookings.length - unseenNewPreviewBookings.length} حجوزات جديدة إضافية
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {staleStatusBookings.length > 0 ? (
-            <div className="bk-stale-alert" role="status" aria-live="polite">
-              <div className="bk-stale-alert-head">
-                <strong>تنبيه: يوجد {staleStatusBookings.length} حجز قديم ما زال غير مغلق.</strong>
-                <span>
-                  في الانتظار: {stalePendingCount} • مؤكد: {staleConfirmedCount}
-                </span>
+            ) : (
+              <div className="bk-enterprise-empty-state">
+                <FontAwesomeIcon icon={faCheckCircle} />
+                <strong>تمت مراجعة كل الحجوزات الجديدة</strong>
+                <span>أي حجز جديد سيظهر هنا مباشرة.</span>
               </div>
+            )}
 
-              <div className="bk-stale-alert-list">
-                {stalePreviewBookings.map((b) => (
-                  <button
-                    key={`stale_${b.id}`}
-                    type="button"
-                    className="bk-stale-alert-item"
-                    onClick={() => setSelectedBooking(b)}
-                    title="فتح تفاصيل الحجز"
-                  >
-                    <span className="bk-stale-alert-ref">
-                      {bookingRef(b)} • {b.customerName || "—"}
-                    </span>
-                    <span className="bk-stale-alert-meta">
-                      {b.date} {formatTime12(b.time)} • {statusLabel[b.status]}
-                    </span>
+            <div className="bk-enterprise-panel-actions">
+              <button type="button" onClick={() => { resetBookingFilters(); setSortOrder("newest"); }} disabled={!unseenNewBookings.length}>عرض الأحدث في القائمة</button>
+              <button type="button" onClick={markNewBookingsSeen} disabled={!unseenNewBookings.length}>تحديد الكل كمُطّلع عليه</button>
+            </div>
+          </article>
+
+          <article className="bk-enterprise-panel bk-enterprise-attention-panel">
+            <div className="bk-enterprise-panel-head">
+              <div>
+                <span className="bk-panel-kicker">مركز المتابعة</span>
+                <h2>حجوزات تحتاج إجراء</h2>
+                <p>الحجوزات المتأخرة أو التي بقيت بحالة مفتوحة.</p>
+              </div>
+              <span className="bk-panel-count is-warning">{attentionBookingCount}</span>
+            </div>
+
+            <div className="bk-enterprise-attention-stats">
+              <button type="button" onClick={() => { setStatusFilter("pending"); setOldPendingFilter("before_today"); }}>
+                <span>قديم بالانتظار</span><strong>{stalePendingCount}</strong>
+              </button>
+              <button type="button" onClick={() => { setStatusFilter("confirmed"); setOldPendingFilter("off"); setDatePreset("custom"); setDateFrom(""); setDateTo(shiftISODate(todayISOLocal(), -1)); }}>
+                <span>قديم ومؤكد</span><strong>{staleConfirmedCount}</strong>
+              </button>
+              <button type="button" onClick={() => { setStatusFilter("pending"); setSettlementFilter("partial"); }}>
+                <span>عربون غير مغلق</span><strong>{expiredPendingDayDepositBookings.length}</strong>
+              </button>
+              <button type="button" onClick={() => { setStatusFilter("pending"); setSettlementFilter("unpaid"); }}>
+                <span>بدون دفع</span><strong>{expiredPendingDayNoPaymentBookings.length}</strong>
+              </button>
+            </div>
+
+            {stalePreviewBookings.length ? (
+              <div className="bk-enterprise-attention-list">
+                {stalePreviewBookings.slice(0, 4).map((booking) => (
+                  <button key={`attention_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
+                    <span className={`status-badge ${booking.status}`}>{statusLabel[booking.status]}</span>
+                    <span><strong>{booking.customerName || "—"}</strong><small>{booking.date} • {formatTime12(booking.time)}</small></span>
+                    <bdi dir="ltr">{bookingRef(booking)}</bdi>
                   </button>
                 ))}
               </div>
-
-              {staleStatusBookings.length > stalePreviewBookings.length ? (
-                <div className="bk-stale-alert-more">
-                  +{staleStatusBookings.length - stalePreviewBookings.length} حجوزات قديمة إضافية
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {expiredPendingDayDepositBookings.length > 0 ? (
-            <div className="bk-stale-alert" role="status" aria-live="polite">
-              <div className="bk-stale-alert-head">
-                <strong>
-                  تنبيه: يوجد {expiredPendingDayDepositBookings.length} حجز في الانتظار (
-                  <span className="bk-stale-alert-keyword">عربون</span>) لم يتم تاكيدها من تاريخ انشاء الحجز .
-                </strong>
-                <span>يرجى مراجعتها وإغلاقها بالحالة المناسبة.</span>
+            ) : (
+              <div className="bk-enterprise-empty-state is-compact">
+                <FontAwesomeIcon icon={faCheckCircle} />
+                <strong>لا توجد حجوزات متأخرة</strong>
               </div>
+            )}
+          </article>
+        </section>
 
-              <div className="bk-stale-alert-list">
-                {expiredPendingDayDepositBookings.map((b) => (
-                  <button
-                    key={`expired_pending_deposit_${b.id}`}
-                    type="button"
-                    className="bk-stale-alert-item"
-                    onClick={() => setSelectedBooking(b)}
-                    title="فتح تفاصيل الحجز"
-                  >
-                    {(() => {
-                      const createdAtMs = bookingCreationRefMs(b);
-                      const createdISO = dateISOFromMillisLocal(createdAtMs) || "—";
-                      return (
-                        <>
-                          <span className="bk-stale-alert-ref">
-                            {bookingRef(b)} • {b.customerName || "—"}
-                          </span>
-                          <span className="bk-stale-alert-meta">
-                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار (عربون)
-                          </span>
-                        </>
-                      );
-                    })()}
-                  </button>
-                ))}
-              </div>
-
-            </div>
-          ) : null}
-
-          {expiredPendingDayNoPaymentBookings.length > 0 ? (
-            <div className="bk-stale-alert" role="status" aria-live="polite">
-              <div className="bk-stale-alert-head">
-                <strong>
-                  تنبيه: يوجد {expiredPendingDayNoPaymentBookings.length} حجز في الانتظار (
-                  <span className="bk-stale-alert-keyword">بدون دفع</span>) لم يتم تاكيدها من تاريخ انشاء الحجز .
-                </strong>
-                <span>يرجى مراجعتها وإغلاقها بالحالة المناسبة.</span>
-              </div>
-
-              <div className="bk-stale-alert-list">
-                {expiredPendingDayNoPaymentBookings.map((b) => (
-                  <button
-                    key={`expired_pending_unpaid_${b.id}`}
-                    type="button"
-                    className="bk-stale-alert-item"
-                    onClick={() => setSelectedBooking(b)}
-                    title="فتح تفاصيل الحجز"
-                  >
-                    {(() => {
-                      const createdAtMs = bookingCreationRefMs(b);
-                      const createdISO = dateISOFromMillisLocal(createdAtMs) || "—";
-                      return (
-                        <>
-                          <span className="bk-stale-alert-ref">
-                            {bookingRef(b)} • {b.customerName || "—"}
-                          </span>
-                          <span className="bk-stale-alert-meta">
-                            إنشاء: {createdISO} • الموعد: {b.date} {formatTime12(b.time)} • في الانتظار (بدون دفع)
-                          </span>
-                        </>
-                      );
-                    })()}
-                  </button>
-                ))}
-              </div>
-
-            </div>
-          ) : null}
-
-          <div className="bk-headline">
-            <div className="bk-status-tabs" role="tablist" aria-label="فلترة حالة الحجز">
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "all" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("all")}
-              >
-                الكل
-                <span>{statusTabCounts.all}</span>
-              </button>
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "pending" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("pending")}
-              >
-                بالانتظار
-                <span>{statusTabCounts.pending}</span>
-              </button>
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "confirmed" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("confirmed")}
-              >
-                مؤكد
-                <span>{statusTabCounts.confirmed}</span>
-              </button>
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "completed" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("completed")}
-              >
-                مكتمل
-                <span>{statusTabCounts.completed}</span>
-              </button>
-              <button
-                type="button"
-                className={`bk-status-tab ${statusFilter === "cancelled" ? "is-active" : ""}`}
-                onClick={() => setStatusFilter("cancelled")}
-              >
-                ملغي
-                <span>{statusTabCounts.cancelled}</span>
-              </button>
-            </div>
-            <div className="bk-total-remaining">
-              إجمالي المتبقي: <strong>{totalRemainingAmount} ر.س</strong>
-            </div>
+        <section className="bk-enterprise-command-center" aria-label="البحث والفلاتر">
+          <div className="bk-command-heading">
+            <div><span className="bk-panel-kicker">مساحة العمل</span><h2>البحث وإدارة القائمة</h2></div>
+            <div className="bk-command-result"><strong>{filteredSorted.length}</strong><span>نتيجة مطابقة</span></div>
           </div>
 
-          <div className="bk-result-summary" role="status">
-            <span>المحمّل: {bookings.length}</span>
-            <span>بعد الفلترة: {filteredSorted.length}</span>
-            <span>المعروض الآن: {pagedBookings.length}</span>
-            <span>الصفحة {currentPage} من {totalPages}</span>
-          </div>
-
-          <div className="bk-filters">
-            <div className="bk-field">
-              <label>بحث</label>
-              <input 
+          <div className="bk-command-primary-row">
+            <label className="bk-enterprise-search">
+              <FontAwesomeIcon icon={faSearch} />
+              <input
                 type="text"
-                className="bk-input bk-search-input" 
                 name="booking_filters_search_query"
                 autoComplete="off"
                 data-form-type="other"
@@ -4924,17 +4905,22 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
-                placeholder="اسم، جوال، رقم الحجز، موظفة، أو خدمة..."
-                value={q} 
-                onChange={e => setQ(e.target.value)} 
+                placeholder="ابحثي بالاسم، الجوال، رقم الحجز، الخدمة أو الموظفة..."
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
               />
-            </div>
-            <div className="bk-field">
-              <label>الفترة الزمنية</label>
+              {q ? <button type="button" onClick={() => setQ("")} aria-label="مسح البحث"><FontAwesomeIcon icon={faXmark} /></button> : null}
+            </label>
+
+            <label className="bk-command-select">
+              <span>الفترة</span>
               <select
-                className="bk-select"
                 value={datePreset}
-                onChange={(e) => applyDatePreset(e.target.value as DatePresetOption)}
+                onChange={(event) => {
+                  const next = event.target.value as DatePresetOption;
+                  applyDatePreset(next);
+                  if (next === "custom") setAdvancedFiltersOpen(true);
+                }}
               >
                 <option value="all">كل الحجوزات</option>
                 <option value="today">اليوم</option>
@@ -4944,584 +4930,146 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <option value="last_month">الشهر الماضي</option>
                 <option value="custom">نطاق مخصص</option>
               </select>
-            </div>
-            <div className="bk-field bk-field-date">
-              <label>من تاريخ</label>
-              <input
-                type="date"
-                className="bk-input bk-date-input"
-                lang="ar-SA"
-                dir="rtl"
-                value={dateFrom}
-                onChange={e => {
-                  setDatePreset("custom");
-                  setDateFrom(e.target.value);
-                }}
-                onClick={(e) => {
-                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
-                  if (typeof el.showPicker === "function") el.showPicker();
-                }}
-              />
-            </div>
-            <div className="bk-field bk-field-date">
-              <label>إلى تاريخ</label>
-              <input
-                type="date"
-                className="bk-input bk-date-input"
-                lang="ar-SA"
-                dir="rtl"
-                value={dateTo}
-                onChange={e => {
-                  setDatePreset("custom");
-                  setDateTo(e.target.value);
-                }}
-                onClick={(e) => {
-                  const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
-                  if (typeof el.showPicker === "function") el.showPicker();
-                }}
-              />
-            </div>
-            <div className="bk-field">
-              <label>استثناء (في الكل)</label>
-              <select
-                className="bk-select"
-                value={excludedStatus}
-                onChange={(e) => setExcludedStatus(e.target.value as ExcludedStatusOption)}
-                disabled={statusFilter !== "all"}
-              >
-                <option value="">بدون استثناء</option>
-                {allStatusOptions.map((s) => (
-                  <option key={`exclude_${s}`} value={s}>
-                    {`استثناء: ${statusLabel[s]}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>السداد</label>
-              <select
-                className="bk-select"
-                value={settlementFilter}
-                onChange={(e) => setSettlementFilter(e.target.value as SettlementFilterOption)}
-              >
-                <option value="all">الكل</option>
-                <option value="paid">مدفوع بالكامل</option>
-                <option value="partial">مدفوع جزئيا</option>
-                <option value="unpaid">غير مدفوع</option>
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>طريقة الدفع</label>
-              <select
-                className="bk-select"
-                value={paymentMethodFilter}
-                onChange={(e) => setPaymentMethodFilter(e.target.value as PaymentMethodFilterOption)}
-              >
-                <option value="all">كل الطرق</option>
-                <option value="cash">كاش</option>
-                <option value="card">شبكة</option>
-                <option value="transfer">تحويل</option>
-                <option value="mixed">مختلط</option>
-                <option value="other">أخرى</option>
-                <option value="none">بدون دفع</option>
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>الموظفة</label>
-              <select
-                className="bk-select"
-                value={employeeFilter}
-                onChange={(e) => setEmployeeFilter(e.target.value)}
-              >
-                <option value="all">كل الموظفات</option>
-                {employeeFilterOptions.map(([id, label]) => (
-                  <option key={`employee_filter_${id}`} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>الخدمة</label>
-              <select
-                className="bk-select"
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-              >
-                <option value="all">كل الخدمات</option>
-                {serviceFilterOptions.map(([id, label]) => (
-                  <option key={`service_filter_${id}`} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>مصدر الحجز</label>
-              <select
-                className="bk-select"
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value as BookingSourceFilterOption)}
-              >
-                <option value="all">كل المصادر</option>
-                <option value="client">موقع العميلات</option>
-                <option value="dashboard">الداشبورد</option>
-                <option value="internal">الحجز الداخلي</option>
-                <option value="unknown">غير محدد</option>
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>الترتيب</label>
-              <select
-                className="bk-select"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as SortOrderOption)}
-              >
-                <option value="newest">الأحدث أولا</option>
-                <option value="oldest">الأقدم أولا</option>
-              </select>
-            </div>
-            <div className="bk-field">
-              <label>حجوزات قديمة بالانتظار</label>
-              <select
-                className="bk-select"
-                value={oldPendingFilter}
-                onChange={(e) => setOldPendingFilter(e.target.value as OldPendingFilterOption)}
-              >
-                <option value="off">بدون فلتر</option>
-                <option value="before_today">الأقدم من اليوم</option>
-                <option value="older_7">الأقدم من 7 أيام</option>
-                <option value="older_30">الأقدم من 30 يوما</option>
-                <option value="custom">نطاق مخصص</option>
-              </select>
-            </div>
-            {oldPendingFilter === "custom" ? (
-              <>
-                <div className="bk-field bk-field-date">
-                  <label>قديم من</label>
-                  <input
-                    type="date"
-                    className="bk-input bk-date-input"
-                    value={oldPendingFrom}
-                    onChange={(e) => setOldPendingFrom(e.target.value)}
-                  />
-                </div>
-                <div className="bk-field bk-field-date">
-                  <label>قديم إلى</label>
-                  <input
-                    type="date"
-                    className="bk-input bk-date-input"
-                    value={oldPendingTo}
-                    onChange={(e) => setOldPendingTo(e.target.value)}
-                  />
-                </div>
-              </>
-            ) : null}
-          </div>
-          <div className="bk-actions">
-            <button className="exp-btn ghost" type="button" onClick={refreshBookingData}>
-              <FontAwesomeIcon icon={faRotate} /> تحديث البيانات
+            </label>
+
+            <button type="button" className={`bk-advanced-toggle ${advancedFiltersOpen ? "is-open" : ""}`} onClick={() => setAdvancedFiltersOpen((open) => !open)}>
+              <FontAwesomeIcon icon={faFilter} />
+              فلاتر متقدمة
+              {activeFilterCount ? <span>{activeFilterCount}</span> : null}
+              <FontAwesomeIcon icon={advancedFiltersOpen ? faChevronUp : faChevronDown} />
             </button>
-            <button className="exp-btn" onClick={handleExport}>
-              <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
-            </button>
-            <button
-              className="exp-btn ghost"
-              onClick={resetBookingFilters}
-              disabled={!hasActiveBookingFilters}
-            >
-              <FontAwesomeIcon icon={faRotate} /> مسح الفلاتر
+
+            <button type="button" className="bk-clear-filters" onClick={resetBookingFilters} disabled={!hasActiveBookingFilters}>
+              مسح الفلاتر
             </button>
           </div>
 
-          <div className="bk-bulk-toolbar">
-            <div className="bk-bulk-summary">
-              <strong>{selectedBookingIds.size}</strong>
-              <span>حجز محدد</span>
-              <span>منها {selectedMatchingCount} ضمن النتائج الحالية</span>
+          <div className="bk-status-tabs bk-status-tabs--enterprise" role="tablist" aria-label="فلترة حالة الحجز">
+            {([
+              ["all", "الكل", statusTabCounts.all],
+              ["pending", "بالانتظار", statusTabCounts.pending],
+              ["confirmed", "مؤكد", statusTabCounts.confirmed],
+              ["completed", "مكتمل", statusTabCounts.completed],
+              ["cancelled", "ملغي", statusTabCounts.cancelled],
+            ] as Array<[StatusOption, string, number]>).map(([status, label, count]) => (
+              <button key={status} type="button" className={`bk-status-tab ${statusFilter === status ? "is-active" : ""}`} onClick={() => setStatusFilter(status)}>
+                {label}<span>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          {advancedFiltersOpen ? (
+            <div className="bk-advanced-filters">
+              <div className="bk-field bk-field-date">
+                <label>من تاريخ</label>
+                <input type="date" className="bk-input bk-date-input" lang="ar-SA" dir="rtl" value={dateFrom} onChange={(event) => { setDatePreset("custom"); setDateFrom(event.target.value); }} />
+              </div>
+              <div className="bk-field bk-field-date">
+                <label>إلى تاريخ</label>
+                <input type="date" className="bk-input bk-date-input" lang="ar-SA" dir="rtl" value={dateTo} onChange={(event) => { setDatePreset("custom"); setDateTo(event.target.value); }} />
+              </div>
+              <div className="bk-field">
+                <label>استثناء حالة</label>
+                <select className="bk-select" value={excludedStatus} onChange={(event) => setExcludedStatus(event.target.value as ExcludedStatusOption)} disabled={statusFilter !== "all"}>
+                  <option value="">بدون استثناء</option>
+                  {allStatusOptions.map((status) => <option key={`exclude_${status}`} value={status}>{`استثناء: ${statusLabel[status]}`}</option>)}
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>حالة السداد</label>
+                <select className="bk-select" value={settlementFilter} onChange={(event) => setSettlementFilter(event.target.value as SettlementFilterOption)}>
+                  <option value="all">الكل</option><option value="paid">مدفوع بالكامل</option><option value="partial">مدفوع جزئيًا</option><option value="unpaid">غير مدفوع</option>
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>طريقة الدفع</label>
+                <select className="bk-select" value={paymentMethodFilter} onChange={(event) => setPaymentMethodFilter(event.target.value as PaymentMethodFilterOption)}>
+                  <option value="all">كل الطرق</option><option value="cash">كاش</option><option value="card">شبكة</option><option value="transfer">تحويل</option><option value="mixed">مختلط</option><option value="other">أخرى</option><option value="none">بدون دفع</option>
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>الموظفة</label>
+                <select className="bk-select" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
+                  <option value="all">كل الموظفات</option>{employeeFilterOptions.map(([id, label]) => <option key={`employee_filter_${id}`} value={id}>{label}</option>)}
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>الخدمة</label>
+                <select className="bk-select" value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)}>
+                  <option value="all">كل الخدمات</option>{serviceFilterOptions.map(([id, label]) => <option key={`service_filter_${id}`} value={id}>{label}</option>)}
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>مصدر الحجز</label>
+                <select className="bk-select" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as BookingSourceFilterOption)}>
+                  <option value="all">كل المصادر</option><option value="client">موقع العميلات</option><option value="dashboard">الداشبورد</option><option value="internal">الحجز الداخلي</option><option value="unknown">غير محدد</option>
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>الترتيب</label>
+                <select className="bk-select" value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrderOption)}>
+                  <option value="newest">الأحدث أولًا</option><option value="oldest">الأقدم أولًا</option>
+                </select>
+              </div>
+              <div className="bk-field">
+                <label>الحجوزات القديمة</label>
+                <select className="bk-select" value={oldPendingFilter} onChange={(event) => setOldPendingFilter(event.target.value as OldPendingFilterOption)}>
+                  <option value="off">بدون فلتر</option><option value="before_today">الأقدم من اليوم</option><option value="older_7">الأقدم من 7 أيام</option><option value="older_30">الأقدم من 30 يومًا</option><option value="custom">نطاق مخصص</option>
+                </select>
+              </div>
+              {oldPendingFilter === "custom" ? (
+                <>
+                  <div className="bk-field bk-field-date"><label>قديم من</label><input type="date" className="bk-input bk-date-input" value={oldPendingFrom} onChange={(event) => setOldPendingFrom(event.target.value)} /></div>
+                  <div className="bk-field bk-field-date"><label>قديم إلى</label><input type="date" className="bk-input bk-date-input" value={oldPendingTo} onChange={(event) => setOldPendingTo(event.target.value)} /></div>
+                </>
+              ) : null}
             </div>
+          ) : null}
+
+          <div className="bk-command-footer" role="status">
+            <div className="bk-result-summary">
+              <span>المحمّل <strong>{bookings.length}</strong></span>
+              <span>المطابق <strong>{filteredSorted.length}</strong></span>
+              <span>المعروض <strong>{pagedBookings.length}</strong></span>
+              <span>الصفحة <strong>{currentPage} / {totalPages}</strong></span>
+            </div>
+            <div className="bk-total-remaining">المتبقي ضمن النتائج <strong><BookingMoney value={totalRemainingAmount} /></strong></div>
+          </div>
+        </section>
+
+        {selectedBookingIds.size || bulkResultMessage || bulkError ? (
+          <section className="bk-bulk-toolbar bk-bulk-toolbar--enterprise">
+            <div className="bk-bulk-summary"><strong>{selectedBookingIds.size}</strong><span>حجز محدد</span><small>{selectedMatchingCount} ضمن النتائج الحالية</small></div>
             <div className="bk-bulk-actions">
-              <button type="button" className="exp-btn ghost" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>
-                {allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة الحالية"}
-              </button>
-              <button type="button" className="exp-btn ghost" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>
-                تحديد كل النتائج المطابقة
-              </button>
-              <button type="button" className="exp-btn ghost" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>
-                إلغاء التحديد
-              </button>
-              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>
-                تحويل إلى مكتمل
-              </button>
-              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>
-                تحويل إلى مؤكد
-              </button>
-              <button type="button" className="exp-btn danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>
-                تحويل إلى ملغي
-              </button>
+              <button type="button" className="exp-btn ghost" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>{allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة"}</button>
+              <button type="button" className="exp-btn ghost" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>تحديد كل النتائج</button>
+              <button type="button" className="exp-btn ghost" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>إلغاء التحديد</button>
+              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>مكتمل</button>
+              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>مؤكد</button>
+              <button type="button" className="exp-btn danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>ملغي</button>
             </div>
             {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
             {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
-          </div>
+          </section>
+        ) : null}
 
-          <div className="bk-pagination-bar">
-            <div className="bk-pagination-count">
-              عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0}
-              {" - "}
-              {Math.min(currentPage * pageSize, filteredSorted.length)}
-              {" من "}
-              {filteredSorted.length} حجز
-            </div>
-            <div className="bk-pagination-controls">
-              <label>
-                لكل صفحة
-                <select
-                  className="bk-select"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value) || DEFAULT_PAGE_SIZE)}
-                >
-                  {pageSizeOptions.map((size) => (
-                    <option key={`page_size_${size}`} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>
-                الأولى
-              </button>
-              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
-                السابق
-              </button>
-              <span className="bk-page-number">صفحة {currentPage} / {totalPages}</span>
-              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>
-                التالي
-              </button>
-              <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>
-                الأخيرة
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="bk-bookings-sections">
+        <div className="bk-bookings-sections bk-bookings-sections--enterprise">
           {bookingSectionsView}
         </div>
 
-        {false ? (
-        <div className="bookings-table-card">
-          <div className="bk-table-wrap">
-            <table className="bookings-table">
-              <thead>
-                <tr>
-                  <th>رقم الحجز</th>
-                  <th>الزبون</th>
-                  <th>الخدمة</th>
-                  <th>الموظفة</th>
-                  <th>التاريخ والوقت</th>
-                  <th>آخر تحديث</th>
-                  <th>السعر</th>
-                  <th>تفاصيل الدفع</th>
-                  <th>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookingSections.flatMap((section) => section.blocks).flatMap((block) => {
-                  const rows: any[] = [];
-                  if (block.rows.length > 1) {
-                    rows.push(
-                      <tr key={`group-${block.key}`} className="bookings-group-row">
-                        <td colSpan={9}>
-                          <div className="bookings-group-row-inner">
-                            <span className="bookings-group-title">حجز مجمّع</span>
-                            <span className="bookings-group-meta">
-                              المرجع: {block.label} - الخدمات: {block.rows.length}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-
-                  block.rows.forEach((b) => {
-                    const safeStatus = (["pending", "confirmed", "completed", "cancelled"] as const).includes(
-                      b.status as any
-                    )
-                      ? (b.status as BookingStatus)
-                      : "pending";
-                    const payment = resolveBookingPaymentSummary(b);
-                    const isPendingDeposit = isPendingDepositBooking(b, payment);
-                    rows.push(
-                      <tr
-                        key={b.id}
-                        className={`bk-row bk-row-${safeStatus}${isPendingDeposit ? " bk-row-pending-deposit" : ""}`}
-                      >
-                        <td>
-                          <div className="bk-ref-cell">
-                            <div className="bk-ref-code" title={`المعرف الكامل: ${String(b.id || "—")}`}><bdi className="bk-numeric" dir="ltr">{bookingRef(b)}</bdi></div>
-                            <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
-                              {statusLabel[safeStatus]}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="bk-customer-name">{b.customerName || "—"}</div>
-                          <div className="bk-customer-phone"><bdi className="bk-numeric" dir="ltr">{b.phone || "—"}</bdi></div>
-                        </td>
-                        <td>
-                          <div className="bk-service-main">{serviceSummaryForTable(b)}</div>
-                          <div className="bk-service-meta">{serviceMetaSummaryForTable(b)}</div>
-                        </td>
-                        <td>
-                          <span className="bk-employee-pill">{b.employeeName || "—"}</span>
-                        </td>
-                        <td>
-                          <div className="bk-datetime-date"><bdi className="bk-numeric" dir="ltr">{b.date}</bdi></div>
-                          <div className="bk-datetime-time"><bdi className="bk-numeric" dir="ltr">{formatTime12(b.time)}</bdi></div>
-                        </td>
-                        <td>
-                          <div className="bk-update-by">{lastUpdateMap[b.id]?.by || "—"}</div>
-                          <div className="bk-update-at"><bdi className="bk-numeric" dir="ltr">{lastUpdateMap[b.id]?.at || "—"}</bdi></div>
-                        </td>
-                        <td>
-                          <div className="bk-payment-cell">
-                            <div className="bk-payment-total">
-                              <span className="bk-payment-total-label">الإجمالي</span>
-                              <span className="bk-payment-total-value"><BookingMoney value={payment.totalAmount} /></span>
-                            </div>
-                            <div className="bk-payment-state-row">
-                              <span
-                                className={`bk-payment-status ${
-                                  payment.remainingAmount <= 0
-                                    ? "is-paid"
-                                    : payment.paidAmount > 0
-                                      ? "is-partial"
-                                      : "is-unpaid"
-                                }`}
-                                title={paymentStatusLabel(payment)}
-                              >
-                                {compactPaymentStatusLabel(payment)}
-                              </span>
-                              {bookingPaymentMethodFilterValue(b) !== "none" ? (
-                                <span className={`bk-payment-method-chip bk-payment-method-${bookingPaymentMethodFilterValue(b)}`}>
-                                  {paymentMethodLabel(bookingPaymentMethodFilterValue(b))}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="bk-payment-details-cell">
-                          <div className="bk-payment-breakdown">
-                            {paymentAmountsDisplayLines(payment).map((line) => (
-                              <div key={line.key} className={`bk-payment-metric-row ${line.tone}`}>
-                                <span className="bk-payment-metric-label">{line.label}</span>
-                                {typeof line.amount === "number" ? (
-                                  <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="bk-actions-cell">
-                          <div className="bk-actions-row">
-                            <button type="button" className="exp-btn ghost sm" onClick={() => setSelectedBooking(b)}>
-                              تفاصيل
-                            </button>
-                            {canEditBookings && (
-                              <button type="button" className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
-                                تعديل
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="exp-btn ghost sm bk-refund-btn"
-                              onClick={() => openRefundModal(b)}
-                              disabled={!canManageRefund(b) || refundBusyId === b.id}
-                              title={refundMapByBookingId[String(b.id || "").trim()] ? "تعديل/إلغاء الاسترجاع" : "تسجيل استرجاع"}
-                            >
-                              {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
-                            </button>
-                            {(uiRole === "owner" || uiRole === "admin") && (
-                              <>
-                                {uiRole === "owner" && (
-                                  <button
-                                    type="button"
-                                    className="exp-btn danger sm"
-                                    onClick={() => handleDeleteBooking(b)}
-                                    title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
-                                  >
-                                    حذف
-                                  </button>
-                                )}
-                                <select
-                                  className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                                  style={{ width: "auto", height: 40, padding: "0 12px", fontSize: 12 }}
-                                  value={b.status}
-                                  onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                                >
-                                  {allStatusOptions.map((s) => (
-                                    <option key={`desk_${b.id}_${s}`} value={s}>
-                                      {statusLabel[s]}
-                                    </option>
-                                  ))}
-                                </select>
-                              </>
-                            )}
-                            {uiRole === "reception" && b.status === "pending" && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="exp-btn sm"
-                                  onClick={() => handleUpdateStatus(b.id, "confirmed")}
-                                >
-                                  تأكيد
-                                </button>
-                                <button
-                                  type="button"
-                                  className="exp-btn danger sm"
-                                  onClick={() => handleUpdateStatus(b.id, "cancelled")}
-                                >
-                                  إلغاء
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  });
-
-                  return rows;
-                })}
-              </tbody>
-            </table>
+        <nav className="bk-pagination-bar bk-pagination-bar--enterprise" aria-label="التنقل بين صفحات الحجوزات">
+          <div className="bk-pagination-count">
+            عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} من {filteredSorted.length}
           </div>
-
-          <div className="bk-mobile-grid">
-            {bookingSections.flatMap((section) => section.blocks).map((block) => (
-              <div key={`mob-${block.key}`} className="bk-mobile-group">
-                {block.rows.length > 1 ? (
-                  <div className="bk-mobile-group-head">
-                    <span>حجز مجمّع</span>
-                    <span>{block.label} - {block.rows.length} خدمات</span>
-                  </div>
-                ) : null}
-                {block.rows.map((b) => {
-                  const safeStatus = (["pending", "confirmed", "completed", "cancelled"] as const).includes(
-                    b.status as any
-                  )
-                    ? (b.status as BookingStatus)
-                    : "pending";
-                  const payment = resolveBookingPaymentSummary(b);
-                  const isPendingDeposit = isPendingDepositBooking(b, payment);
-                  return (
-                  <div
-                    key={b.id}
-                    className={`bk-mobile-card bk-mobile-card-${safeStatus}${isPendingDeposit ? " is-pending-deposit" : ""}`}
-                  >
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">رقم الحجز:</span>
-                      <span className="bk-mobile-val" style={{fontWeight: 900}}>{bookingRef(b)}</span>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الزبون:</span>
-                      <span className="bk-mobile-val">{b.customerName || "—"}</span>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الجوال:</span>
-                      <bdi className="bk-mobile-val bk-numeric" dir="ltr">{b.phone || "—"}</bdi>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الخدمة:</span>
-                      <span className="bk-mobile-val">
-                        {serviceSummaryForTable(b)}
-                        <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
-                      </span>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الموظفة:</span>
-                      <span className="bk-mobile-val">{b.employeeName || "—"}</span>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">التاريخ:</span>
-                      <bdi className="bk-mobile-val bk-mobile-date-val bk-numeric" dir="ltr">{b.date} {formatTime12(b.time)}</bdi>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الحالة:</span>
-                      <span className={`status-badge ${safeStatus}${isPendingDeposit ? " pending-deposit" : ""}`}>
-                        {statusLabel[safeStatus]}
-                      </span>
-                    </div>
-                    <div className="bk-mobile-row">
-                      <span className="bk-mobile-label">الدفع:</span>
-                      <div className="bk-mobile-val bk-mobile-payment-val">
-                        <strong>{paymentStatusLabel(payment)}</strong>
-                        <div className="bk-mobile-payment-line">
-                          {paymentAmountsDisplayLines(payment).map((line) => (
-                            <div key={`mob_pay_${b.id}_${line.key}`} className={`bk-payment-metric-row ${line.tone}`}>
-                              <span className="bk-payment-metric-label">{line.label}</span>
-                              {typeof line.amount === "number" ? (
-                                <span className="bk-payment-metric-value"><BookingMoney value={line.amount} /></span>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bk-mobile-actions">
-                       <button type="button" className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
-                       {canEditBookings && (
-                         <button type="button" className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
-                           تعديل
-                         </button>
-                       )}
-                       <button
-                         className="exp-btn ghost sm w-100 bk-refund-btn"
-                         onClick={() => openRefundModal(b)}
-                         disabled={!canManageRefund(b) || refundBusyId === b.id}
-                       >
-                         {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
-                       </button>
-                       {(uiRole === "owner" || uiRole === "admin") && (
-                         <>
-                           {uiRole === "owner" && (
-                             <button type="button" className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
-                               حذف الحجز
-                             </button>
-                           )}
-                           <select
-                             className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                             style={{ height: 40, padding: "0 12px", fontSize: 12 }}
-                             value={b.status}
-                             onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                           >
-                             {allStatusOptions.map((s) => (
-                               <option key={`mob_${b.id}_${s}`} value={s}>
-                                 {statusLabel[s]}
-                               </option>
-                             ))}
-                           </select>
-                         </>
-                       )}
-                       {uiRole === "reception" && b.status === "pending" && (
-                         <>
-                           <button type="button" className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
-                             تأكيد
-                           </button>
-                           <button type="button" className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
-                             إلغاء
-                           </button>
-                         </>
-                       )}
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            ))}
+          <div className="bk-pagination-controls">
+            <label>لكل صفحة<select className="bk-select" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) || DEFAULT_PAGE_SIZE)}>{pageSizeOptions.map((size) => <option key={`page_size_${size}`} value={size}>{size}</option>)}</select></label>
+            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>الأولى</button>
+            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>السابق</button>
+            <span className="bk-page-number">{currentPage} / {totalPages}</span>
+            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>التالي</button>
+            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</button>
           </div>
-        </div>
-        ) : null}
+        </nav>
 
         {selectedBooking && (
           <Modal

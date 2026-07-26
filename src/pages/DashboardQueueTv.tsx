@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { resolveBookingDataSource } from "../services/bookingDataSource";
 import type { BookingDocWithId } from "../services/firestoreBookings";
 import defaultLogo from "../assets/images/ssunnamed.png";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 
 const SHOW_AFTER_TURN_MS = 20 * 60 * 1000;
 const MAX_PROMO_VIDEOS = 12;
@@ -361,7 +362,7 @@ export default function DashboardQueueTv() {
   }, [bookings, nowMs]);
 
   return (
-    <div className="dashboard-tv-page">
+    <div className="dashboard-tv-page enterprise-workspace-page">
       <section className="dashboard-tv-video-card">
         <img
           src={logoSrc}
@@ -403,6 +404,17 @@ export default function DashboardQueueTv() {
       </section>
 
       <section className="dashboard-tv-queue-card">
+        <div className="dashboard-tv-queue-head">
+          <div>
+            <span className="enterprise-page-eyebrow">LIVE QUEUE</span>
+            <h2>قائمة حجوزات اليوم</h2>
+            <p>عرض مباشر للحجوزات الحالية والقادمة مع تحديث تلقائي للحالة والوقت.</p>
+          </div>
+          <div className="dashboard-tv-queue-count" title="إجمالي الحجوزات المعروضة">
+            {todayQueue.length}
+          </div>
+        </div>
+
         {loading ? <div className="dashboard-tv-empty">{copy.loading}</div> : null}
         {!loading && error ? <div className="dashboard-tv-empty">{error}</div> : null}
 

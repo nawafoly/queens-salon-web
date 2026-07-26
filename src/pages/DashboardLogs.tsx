@@ -26,6 +26,7 @@ import { upsertExpenseFS } from "../services/firestoreExpenses";
 import { upsertIncomeFS } from "../services/firestoreIncome";
 import { writeAuditLog } from "../services/logService";
 import type { Expense, IncomeItem, PaymentMethod } from "../types/finance";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
@@ -805,6 +806,19 @@ export default function DashboardLogs() {
     return rows.reduce((max, r) => Math.max(max, r.atMs || 0), 0);
   }, [rows]);
 
+  const criticalCount = useMemo(
+    () => filtered.filter((row) => (row.severity || actionSeverityFallback(row.action)) === "critical").length,
+    [filtered]
+  );
+  const warningCount = useMemo(
+    () => filtered.filter((row) => (row.severity || actionSeverityFallback(row.action)) === "warning").length,
+    [filtered]
+  );
+  const sensitiveCount = useMemo(
+    () => filtered.filter((row) => Boolean(row.sensitive)).length,
+    [filtered]
+  );
+
   const ensureDetails = useCallback(
     async (row: LogRow, forceSnapshot = false) => {
       const existing = detailsById[row.id];
@@ -1031,7 +1045,7 @@ export default function DashboardLogs() {
 
   if (!authUser) {
     return (
-      <div className="dashboard-page logs-page">
+      <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
         <div className="container">
           <div className="dash-card">
             <h3>غير مصرح</h3>
@@ -1043,7 +1057,7 @@ export default function DashboardLogs() {
 
   if (!canManage) {
     return (
-      <div className="dashboard-page logs-page">
+      <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
         <div className="container">
           <div className="dash-card">
             <h3>صلاحيات غير كافية</h3>
@@ -1055,10 +1069,11 @@ export default function DashboardLogs() {
   }
 
   return (
-    <div className="dashboard-page logs-page">
+    <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
       <div className="container">
         <div className="dash-topbar dash-topbar--sticky">
           <div className="dash-topbar-title">
+            <span className="logs-kicker">AUDIT & COMPLIANCE</span>
             <h1>سجل العمليات</h1>
             <p>عرض احترافي للعمليات مع تفاصيل منظمة وأداء منخفض القراءة.</p>
           </div>
@@ -1067,6 +1082,25 @@ export default function DashboardLogs() {
         {errMsg && <div className="dash-alert">{errMsg}</div>}
         {restoreErr ? <div className="logs-restore-status logs-restore-status--error">{restoreErr}</div> : null}
         {restoreMsg ? <div className="logs-restore-status logs-restore-status--ok">{restoreMsg}</div> : null}
+
+        <section className="enterprise-metrics" aria-label="ملخص السجل الحالي">
+          <article className="enterprise-metric">
+            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faFilter} /></span>
+            <div><small>النتائج المعروضة</small><strong>{filtered.length}</strong><em>من أصل {rows.length} عملية محملة</em></div>
+          </article>
+          <article className="enterprise-metric">
+            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+            <div><small>عمليات حرجة</small><strong>{criticalCount}</strong><em>تحتاج مراجعة ذات أولوية</em></div>
+          </article>
+          <article className="enterprise-metric">
+            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faRotateRight} /></span>
+            <div><small>تحتاج مراجعة</small><strong>{warningCount}</strong><em>تنبيهات ضمن الفلاتر الحالية</em></div>
+          </article>
+          <article className="enterprise-metric">
+            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faMagnifyingGlass} /></span>
+            <div><small>عمليات حساسة</small><strong>{sensitiveCount}</strong><em>ضمن النتائج المعروضة الآن</em></div>
+          </article>
+        </section>
 
         <div className="dash-card logs-card">
           <div className="logs-head">

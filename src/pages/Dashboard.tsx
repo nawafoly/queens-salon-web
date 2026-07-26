@@ -51,6 +51,7 @@ import DashboardPartners from "../pages/DashboardPartners";
 import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
 import DashboardPayroll from "../pages/DashboardPayroll";
 import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
+import "../styles/DashboardEnterpriseWorkspacesV2.css";
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -2287,8 +2288,19 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const isTvQueuePage = location.pathname.startsWith("/dashboard/tv-queue");
   const isBookingInternalPage = location.pathname.startsWith("/dashboard/booking-internal");
+  const isBookingsWorkspacePage = location.pathname === "/dashboard/bookings";
   const isAttendanceSecurityPage = location.pathname.startsWith("/dashboard/attendance");
-  const isModernWorkspacePage = isBookingInternalPage || isAttendanceSecurityPage;
+  const isEnterpriseOperationsPage = [
+    "/dashboard/tv-queue",
+    "/dashboard/day-audit",
+    "/dashboard/expenses",
+    "/dashboard/partners",
+    "/dashboard/offers",
+    "/dashboard/logs",
+    "/dashboard/settings",
+  ].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
+  const isSingleScrollWorkspacePage =
+    isBookingInternalPage || isBookingsWorkspacePage || isAttendanceSecurityPage || isEnterpriseOperationsPage;
   useEffect(() => {
     if (!isTvQueuePage) return;
     setTopbarNowMs(Date.now());
@@ -2334,7 +2346,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
   return (
-    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${isModernWorkspacePage ? " is-booking-internal-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${(isBookingInternalPage || isAttendanceSecurityPage) ? " is-booking-internal-route" : ""}${isBookingsWorkspacePage ? " is-bookings-workspace-route" : ""}${isEnterpriseOperationsPage ? " is-enterprise-workspace-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -3017,7 +3029,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Main Content */}
-          <div className={`col-md-9 col-lg-10 dashboard-main${isModernWorkspacePage ? " has-single-scroll" : ""}`}>
+          <div className={`col-md-9 col-lg-10 dashboard-main${isSingleScrollWorkspacePage ? " has-single-scroll" : ""}`}>
             <DashboardHeader
               theme="dashboard"
               title={dashboardHeaderTitle}

@@ -46,6 +46,7 @@ import type {
   RevenueShareBasis,
 } from "../types/partner";
 import "../styles/AdminDashboardPartners.css";
+import "../styles/DashboardEnterpriseWorkspaces.css";
 
 type ActiveTab = "partners" | "resources" | "team" | "contracts";
 type CreateModal = "partner" | "resource" | "member" | "account" | "employeeLink" | "employeeImport" | "contract" | null;
@@ -1040,7 +1041,7 @@ export default function DashboardPartners() {
           : "بحث برقم العقد أو الشريكة أو المساحة...";
 
   return (
-    <div className="partner-admin-page" dir="rtl">
+    <div className="partner-admin-page enterprise-workspace-page enterprise-workspace-v2 enterprise-partners-v2" dir="rtl">
       <header className="partner-admin-hero">
         <div className="partner-admin-hero__copy">
           <span className="partner-admin-kicker">PARTNER WORKSPACE</span>
