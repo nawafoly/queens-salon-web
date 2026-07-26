@@ -44,13 +44,36 @@ function stripUndefined<T extends Record<string, unknown>>(value: T) {
   );
 }
 
-async function readJson(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) return null;
+function valueToMessage(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value === null || value === undefined) return "";
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["code", "error", "message", "detail", "details"]) {
+      const nested = valueToMessage(record[key]);
+      if (nested) return nested;
+    }
+
+    try {
+      const serialized = JSON.stringify(value);
+      return serialized === "{}" ? "" : serialized;
+    } catch {
+      return "";
+    }
+  }
+
+  return String(value).trim();
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text.trim()) return null;
+
   try {
-    return await response.json();
+    return JSON.parse(text);
   } catch {
-    return null;
+    return text.trim();
   }
 }
 
@@ -73,18 +96,27 @@ async function partnerApiRequest<T>(
     },
   });
 
-  const payload = (await readJson(response)) as
-    | ApiSuccessPayload<T>
-    | ApiErrorPayload
-    | null;
+  const rawPayload = await readResponsePayload(response);
+  const payload = rawPayload as ApiSuccessPayload<T> | ApiErrorPayload | null;
 
   if (!response.ok) {
-    const errorCode = payload && "error" in payload ? payload.error : undefined;
-    const errorMessage = payload && "message" in payload ? payload.message : undefined;
-    throw new Error(errorCode || errorMessage || `partner_api:http_${response.status}`);
+    const record =
+      rawPayload && typeof rawPayload === "object"
+        ? (rawPayload as Record<string, unknown>)
+        : null;
+    const errorCode = valueToMessage(record?.error);
+    const errorMessage = valueToMessage(record?.message);
+    const responseMessage = valueToMessage(rawPayload);
+
+    throw new Error(
+      errorCode ||
+        errorMessage ||
+        responseMessage ||
+        `partner_api:http_${response.status}`
+    );
   }
 
-  if (!payload || !("ok" in payload) || payload.ok !== true) {
+  if (!payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true) {
     throw new Error("partner_api:invalid_response");
   }
 
