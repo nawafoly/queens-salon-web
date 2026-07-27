@@ -22,6 +22,29 @@ function normalizeCode(value) {
   return cleanText(value).toUpperCase();
 }
 
+function discountNumber(value, field, { min = 0, max = 100_000_000 } = {}) {
+  const number = Number(value);
+  const scaled = number * 100;
+  if (
+    !Number.isFinite(number) ||
+    number < min ||
+    number > max ||
+    Math.abs(scaled - Math.round(scaled)) > 1e-8
+  ) {
+    throw new AppError(400, 'core_validation:invalid_number', `${field} is invalid`);
+  }
+  return Math.round(scaled) / 100;
+}
+
+function nullableInteger(value, field, options) {
+  if (value === null || value === '') return null;
+  return integer(value, field, options);
+}
+
+function preferredValue(data, camelKey, snakeKey) {
+  return data[camelKey] !== undefined ? data[camelKey] : data[snakeKey];
+}
+
 function jsonArray(value) {
   if (Array.isArray(value)) return JSON.stringify(value);
   if (typeof value === 'string') {
@@ -85,23 +108,23 @@ export async function createDiscount(db, salonId, data, actor = {}) {
     code_key: code || null,
     name: requiredText(data.name || data.title, 'name', 300),
     type,
-    value: integer(data.value, 'value', { min: 0, max: type === 'percent' ? 100 : 100_000_000 }),
+    value: discountNumber(data.value, 'value', { min: 0, max: type === 'percent' ? 100 : 100_000_000 }),
     active: activeFlag(data.active, 1),
     starts_at: optionalText(data.startsAt || data.starts_at || data.startDate) || null,
     ends_at: optionalText(data.endsAt || data.ends_at || data.endDate) || null,
     usage_limit: data.usageLimit === undefined && data.usage_limit === undefined
       ? null
-      : integer(data.usageLimit ?? data.usage_limit, 'usageLimit', { min: 0, max: 10_000_000 }),
+      : nullableInteger(preferredValue(data, 'usageLimit', 'usage_limit'), 'usageLimit', { min: 0, max: 10_000_000 }),
     used_count: integer(data.usedCount ?? data.used_count, 'usedCount', { min: 0, max: 10_000_000, fallback: 0 }),
     min_order_halalas: data.minOrderHalalas === undefined && data.min_order_halalas === undefined
       ? null
-      : integer(data.minOrderHalalas ?? data.min_order_halalas, 'minOrderHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'minOrderHalalas', 'min_order_halalas'), 'minOrderHalalas', { min: 0, max: 100_000_000 }),
     max_discount_halalas: data.maxDiscountHalalas === undefined && data.max_discount_halalas === undefined
       ? null
-      : integer(data.maxDiscountHalalas ?? data.max_discount_halalas, 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'maxDiscountHalalas', 'max_discount_halalas'), 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
     per_client_limit: data.perClientLimit === undefined && data.per_client_limit === undefined
       ? null
-      : integer(data.perClientLimit ?? data.per_client_limit, 'perClientLimit', { min: 0, max: 10_000_000 }),
+      : nullableInteger(preferredValue(data, 'perClientLimit', 'per_client_limit'), 'perClientLimit', { min: 0, max: 10_000_000 }),
     applies_to: cleanText(data.appliesTo || data.applies_to || 'all'),
     service_ids_json: jsonArray(data.serviceIds || data.service_ids_json),
     category_ids_json: jsonArray(data.categoryIds || data.category_ids_json),
@@ -110,10 +133,10 @@ export async function createDiscount(db, salonId, data, actor = {}) {
     description: optionalText(data.description) || null,
     price_before_halalas: data.priceBeforeHalalas === undefined && data.price_before_halalas === undefined
       ? null
-      : integer(data.priceBeforeHalalas ?? data.price_before_halalas, 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'priceBeforeHalalas', 'price_before_halalas'), 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
     price_after_halalas: data.priceAfterHalalas === undefined && data.price_after_halalas === undefined
       ? null
-      : integer(data.priceAfterHalalas ?? data.price_after_halalas, 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'priceAfterHalalas', 'price_after_halalas'), 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
     published: activeFlag(data.published, 1),
     status: cleanText(data.status || (activeFlag(data.active, 1) ? 'active' : 'disabled')),
     sort_order: integer(data.sortOrder ?? data.sort_order, 'sortOrder', { min: 0, max: 1_000_000, fallback: 0 }),
@@ -171,7 +194,7 @@ export async function patchDiscount(db, salonId, id, data, actor = {}) {
     type,
     value: data.value === undefined
       ? undefined
-      : integer(data.value, 'value', { min: 0, max: (type || before.type) === 'percent' ? 100 : 100_000_000 }),
+      : discountNumber(data.value, 'value', { min: 0, max: (type || before.type) === 'percent' ? 100 : 100_000_000 }),
     active: data.active === undefined ? undefined : activeFlag(data.active),
     starts_at: data.startsAt === undefined && data.starts_at === undefined && data.startDate === undefined
       ? undefined
@@ -181,19 +204,19 @@ export async function patchDiscount(db, salonId, id, data, actor = {}) {
       : optionalText(data.endsAt || data.ends_at || data.endDate) || null,
     usage_limit: data.usageLimit === undefined && data.usage_limit === undefined
       ? undefined
-      : integer(data.usageLimit ?? data.usage_limit, 'usageLimit', { min: 0, max: 10_000_000 }),
+      : nullableInteger(preferredValue(data, 'usageLimit', 'usage_limit'), 'usageLimit', { min: 0, max: 10_000_000 }),
     used_count: data.usedCount === undefined && data.used_count === undefined
       ? undefined
       : integer(data.usedCount ?? data.used_count, 'usedCount', { min: 0, max: 10_000_000 }),
     min_order_halalas: data.minOrderHalalas === undefined && data.min_order_halalas === undefined
       ? undefined
-      : integer(data.minOrderHalalas ?? data.min_order_halalas, 'minOrderHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'minOrderHalalas', 'min_order_halalas'), 'minOrderHalalas', { min: 0, max: 100_000_000 }),
     max_discount_halalas: data.maxDiscountHalalas === undefined && data.max_discount_halalas === undefined
       ? undefined
-      : integer(data.maxDiscountHalalas ?? data.max_discount_halalas, 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'maxDiscountHalalas', 'max_discount_halalas'), 'maxDiscountHalalas', { min: 0, max: 100_000_000 }),
     per_client_limit: data.perClientLimit === undefined && data.per_client_limit === undefined
       ? undefined
-      : integer(data.perClientLimit ?? data.per_client_limit, 'perClientLimit', { min: 0, max: 10_000_000 }),
+      : nullableInteger(preferredValue(data, 'perClientLimit', 'per_client_limit'), 'perClientLimit', { min: 0, max: 10_000_000 }),
     applies_to: data.appliesTo === undefined && data.applies_to === undefined
       ? undefined
       : cleanText(data.appliesTo || data.applies_to || 'all'),
@@ -212,10 +235,10 @@ export async function patchDiscount(db, salonId, id, data, actor = {}) {
     description: data.description === undefined ? undefined : optionalText(data.description) || null,
     price_before_halalas: data.priceBeforeHalalas === undefined && data.price_before_halalas === undefined
       ? undefined
-      : integer(data.priceBeforeHalalas ?? data.price_before_halalas, 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'priceBeforeHalalas', 'price_before_halalas'), 'priceBeforeHalalas', { min: 0, max: 100_000_000 }),
     price_after_halalas: data.priceAfterHalalas === undefined && data.price_after_halalas === undefined
       ? undefined
-      : integer(data.priceAfterHalalas ?? data.price_after_halalas, 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
+      : nullableInteger(preferredValue(data, 'priceAfterHalalas', 'price_after_halalas'), 'priceAfterHalalas', { min: 0, max: 100_000_000 }),
     published: data.published === undefined ? undefined : activeFlag(data.published),
     status: data.status === undefined ? undefined : cleanText(data.status || 'active'),
     sort_order: data.sortOrder === undefined && data.sort_order === undefined

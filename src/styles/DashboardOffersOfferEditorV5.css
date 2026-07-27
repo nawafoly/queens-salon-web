@@ -1,0 +1,1641 @@
+/*
+ * Dashboard Offers — Offer Editor V5
+ * Full enterprise authoring workspace for create/edit offer flows.
+ */
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5 {
+  --of5-ink: #111827;
+  --of5-muted: #667085;
+  --of5-line: #e4e8ee;
+  --of5-soft: #f7f8fa;
+  --of5-maroon: #74112d;
+  --of5-maroon-dark: #560015;
+  --of5-gold: #c99c33;
+  --of5-success: #177245;
+  --of5-success-soft: #edf9f2;
+  --of5-danger: #b42318;
+  position: relative !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  border: 1px solid #dde2e9 !important;
+  border-radius: 22px !important;
+  background: #f5f7fa !important;
+  box-shadow: 0 22px 64px rgba(16, 24, 40, 0.08) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 0 auto !important;
+  height: 4px !important;
+  border-radius: 22px 22px 0 0 !important;
+  background: linear-gradient(90deg, var(--of5-maroon-dark), var(--of5-maroon), var(--of5-gold)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header {
+  position: relative !important;
+  z-index: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  margin: 0 !important;
+  padding: 24px 26px !important;
+  border-bottom: 1px solid var(--of5-line) !important;
+  border-radius: 22px 22px 0 0 !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__heading {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 15px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__heading-icon {
+  flex: 0 0 50px !important;
+  width: 50px !important;
+  height: 50px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(116, 17, 45, 0.1) !important;
+  border-radius: 15px !important;
+  color: var(--of5-maroon) !important;
+  background: linear-gradient(145deg, #fff2f6, #fff9fb) !important;
+  font-size: 1.08rem !important;
+  box-shadow: 0 8px 20px rgba(116, 17, 45, 0.07) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__eyebrow {
+  display: block !important;
+  margin-bottom: 5px !important;
+  color: var(--of5-maroon) !important;
+  font-size: 0.64rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.12em !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__heading h2 {
+  margin: 0 !important;
+  color: var(--of5-ink) !important;
+  font-size: clamp(1.25rem, 2vw, 1.65rem) !important;
+  font-weight: 950 !important;
+  line-height: 1.35 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__heading p {
+  max-width: 760px !important;
+  margin: 6px 0 0 !important;
+  color: var(--of5-muted) !important;
+  font-size: 0.78rem !important;
+  font-weight: 650 !important;
+  line-height: 1.75 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header-actions {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header-actions .dash-pill {
+  min-height: 42px !important;
+  padding-inline: 14px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__save-top {
+  min-width: 148px !important;
+  box-shadow: 0 10px 22px rgba(116, 17, 45, 0.16) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 320px !important;
+  align-items: start !important;
+  gap: 20px !important;
+  padding: 20px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__main {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 16px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__section {
+  margin: 0 !important;
+  padding: 20px !important;
+  border: 1px solid var(--of5-line) !important;
+  border-radius: 17px !important;
+  background: #fff !important;
+  box-shadow: 0 7px 22px rgba(16, 24, 40, 0.035) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__section-head {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  margin-bottom: 18px !important;
+  padding-bottom: 15px !important;
+  border-bottom: 1px solid #edf0f3 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__step {
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 10px !important;
+  color: var(--of5-maroon) !important;
+  background: #fff0f4 !important;
+  font-size: 0.65rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__section-head h3 {
+  margin: 0 !important;
+  color: var(--of5-ink) !important;
+  font-size: 0.95rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__section-head p {
+  margin: 4px 0 0 !important;
+  color: var(--of5-muted) !important;
+  font-size: 0.7rem !important;
+  font-weight: 650 !important;
+  line-height: 1.65 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 15px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field--wide {
+  grid-column: span 2 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field {
+  min-width: 0 !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 7px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field--spaced {
+  margin-top: 16px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field label {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  color: #344054 !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field label em {
+  padding: 2px 7px !important;
+  border-radius: 999px !important;
+  color: var(--of5-maroon) !important;
+  background: #fff0f4 !important;
+  font-size: 0.58rem !important;
+  font-style: normal !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field small {
+  color: #8a94a5 !important;
+  font-size: 0.63rem !important;
+  font-weight: 650 !important;
+  line-height: 1.55 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5 :is(input, textarea, select) {
+  width: 100% !important;
+  min-height: 46px !important;
+  padding: 10px 13px !important;
+  border: 1px solid #d8dde5 !important;
+  border-radius: 11px !important;
+  color: var(--of5-ink) !important;
+  background: #fff !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5 textarea {
+  min-height: 104px !important;
+  resize: vertical !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5 :is(input, textarea, select):focus {
+  border-color: rgba(116, 17, 45, 0.55) !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 4px rgba(116, 17, 45, 0.075) !important;
+  outline: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__code-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__code-row .dash-pill {
+  min-width: 100px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin-bottom: 16px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector > button,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid > button {
+  appearance: none !important;
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 5px !important;
+  padding: 15px 16px !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 13px !important;
+  color: #344054 !important;
+  background: #fafbfc !important;
+  text-align: start !important;
+  cursor: pointer !important;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector > button:hover,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid > button:hover {
+  border-color: rgba(116, 17, 45, 0.25) !important;
+  transform: translateY(-1px) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector > button.is-active,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid > button.is-active {
+  border-color: rgba(116, 17, 45, 0.42) !important;
+  background: #fff7f9 !important;
+  box-shadow: 0 0 0 3px rgba(116, 17, 45, 0.055) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector strong,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.79rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-selector span,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid span {
+  color: var(--of5-muted) !important;
+  font-size: 0.65rem !important;
+  font-weight: 650 !important;
+  line-height: 1.55 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__commercial-grid,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__limits-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__commercial-field {
+  padding: 14px !important;
+  border: 1px solid #e6e9ee !important;
+  border-radius: 13px !important;
+  background: #fafbfc !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__commercial-field.is-primary {
+  border-color: rgba(116, 17, 45, 0.16) !important;
+  background: #fff9fb !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__input-suffix {
+  position: relative !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__input-suffix input {
+  padding-inline-end: 62px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__input-suffix > span {
+  position: absolute !important;
+  inset-inline-end: 10px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  min-width: 38px !important;
+  padding: 4px 7px !important;
+  border-radius: 7px !important;
+  color: #667085 !important;
+  background: #eef1f5 !important;
+  font-size: 0.62rem !important;
+  font-weight: 900 !important;
+  text-align: center !important;
+  pointer-events: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+  margin: 14px 0 !important;
+  padding: 12px !important;
+  border: 1px solid #e7eaef !important;
+  border-radius: 13px !important;
+  background: #f8fafb !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary > div {
+  display: grid !important;
+  gap: 3px !important;
+  padding: 7px 10px !important;
+  border-inline-end: 1px solid #e5e8ed !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary > div:last-of-type {
+  border-inline-end: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary span {
+  color: var(--of5-muted) !important;
+  font-size: 0.61rem !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.8rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary .dash-pill {
+  align-self: center !important;
+  min-height: 40px !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__limits-grid {
+  margin-top: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__status-card {
+  min-height: 76px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 4px !important;
+  padding: 12px 14px !important;
+  border: 1px solid rgba(23, 114, 69, 0.16) !important;
+  border-radius: 12px !important;
+  background: var(--of5-success-soft) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__status-card span {
+  color: #667085 !important;
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__status-card strong {
+  color: var(--of5-success) !important;
+  font-size: 0.83rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  margin-top: 15px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card {
+  position: relative !important;
+  min-width: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 15px !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 13px !important;
+  background: #fafbfc !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card.is-on {
+  border-color: rgba(23, 114, 69, 0.28) !important;
+  background: var(--of5-success-soft) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card input {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card > span {
+  display: grid !important;
+  gap: 4px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.75rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card small {
+  color: var(--of5-muted) !important;
+  font-size: 0.62rem !important;
+  font-weight: 650 !important;
+  line-height: 1.5 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card i {
+  min-width: 68px !important;
+  padding: 6px 9px !important;
+  border-radius: 999px !important;
+  color: #667085 !important;
+  background: #eef1f5 !important;
+  font-size: 0.59rem !important;
+  font-style: normal !important;
+  font-weight: 950 !important;
+  text-align: center !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toggle-card.is-on i {
+  color: var(--of5-success) !important;
+  background: #dff3e7 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__grid--action {
+  margin-top: 16px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__scope-panel {
+  margin-top: 16px !important;
+  padding: 15px !important;
+  border: 1px solid #e4e8ee !important;
+  border-radius: 14px !important;
+  background: #fafbfc !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__service-toolbar, .offer-editor__category-head) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__service-toolbar, .offer-editor__category-head) > div:first-child {
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__service-toolbar, .offer-editor__category-head) strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__service-toolbar, .offer-editor__category-head) span {
+  color: var(--of5-muted) !important;
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toolbar-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 7px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__selected-summary {
+  display: grid !important;
+  gap: 4px !important;
+  margin-bottom: 11px !important;
+  padding: 10px 12px !important;
+  border: 1px solid rgba(116, 17, 45, 0.11) !important;
+  border-radius: 11px !important;
+  background: #fff7f9 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__selected-summary span {
+  color: var(--of5-maroon) !important;
+  font-size: 0.59rem !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__selected-summary strong {
+  max-height: 50px !important;
+  overflow: hidden !important;
+  color: #344054 !important;
+  font-size: 0.67rem !important;
+  font-weight: 750 !important;
+  line-height: 1.65 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-search {
+  position: relative !important;
+  margin-bottom: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-search > svg {
+  position: absolute !important;
+  inset-inline-start: 13px !important;
+  top: 50% !important;
+  z-index: 2 !important;
+  transform: translateY(-50%) !important;
+  color: #98a2b3 !important;
+  font-size: 0.75rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-search input {
+  padding-inline-start: 40px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-groups {
+  max-height: 520px !important;
+  overflow: auto !important;
+  display: grid !important;
+  gap: 10px !important;
+  padding-inline-end: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-group {
+  overflow: hidden !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-group-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 10px 12px !important;
+  border-bottom: 1px solid #edf0f3 !important;
+  background: #f8f9fb !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-group-head strong {
+  color: #344054 !important;
+  font-size: 0.69rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-group-head span {
+  color: #667085 !important;
+  font-size: 0.6rem !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-list {
+  display: grid !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-height: 58px !important;
+  padding: 9px 12px !important;
+  border-bottom: 1px solid #f0f2f5 !important;
+  background: #fff !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row.is-selected {
+  background: #fff8fa !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row input {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-check,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-check {
+  width: 22px !important;
+  height: 22px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #cfd5dd !important;
+  border-radius: 7px !important;
+  color: transparent !important;
+  background: #fff !important;
+  font-size: 0.58rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row.is-selected .offer-editor__service-check,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid button.is-selected .offer-editor__category-check {
+  border-color: var(--of5-maroon) !important;
+  color: #fff !important;
+  background: var(--of5-maroon) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-copy {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-copy strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.69rem !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-copy small {
+  color: var(--of5-muted) !important;
+  font-size: 0.58rem !important;
+  font-weight: 650 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-price {
+  padding: 5px 8px !important;
+  border-radius: 8px !important;
+  color: #344054 !important;
+  background: #f1f3f6 !important;
+  font-size: 0.62rem !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__empty {
+  padding: 28px 18px !important;
+  border: 1px dashed #d5dae1 !important;
+  border-radius: 12px !important;
+  color: var(--of5-muted) !important;
+  background: #fff !important;
+  font-size: 0.7rem !important;
+  font-weight: 750 !important;
+  text-align: center !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-panel {
+  margin-top: 13px !important;
+  border: 1px solid #e2e6ec !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-toggle {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 15px !important;
+  padding: 13px 14px !important;
+  border: 0 !important;
+  background: #fff !important;
+  text-align: start !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-toggle > span {
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-toggle strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.7rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-toggle small {
+  color: var(--of5-muted) !important;
+  font-size: 0.59rem !important;
+  font-weight: 650 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-toggle b {
+  padding: 5px 9px !important;
+  border-radius: 8px !important;
+  color: var(--of5-maroon) !important;
+  background: #fff0f4 !important;
+  font-size: 0.6rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table-wrap {
+  overflow: auto !important;
+  border-top: 1px solid #e8ebef !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table {
+  width: 100% !important;
+  min-width: 760px !important;
+  border-collapse: collapse !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table th,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table td {
+  padding: 9px 10px !important;
+  border-bottom: 1px solid #edf0f3 !important;
+  color: #344054 !important;
+  font-size: 0.63rem !important;
+  font-weight: 700 !important;
+  text-align: start !important;
+  vertical-align: middle !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table th {
+  color: #667085 !important;
+  background: #f8f9fb !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__sequence-table input {
+  min-height: 38px !important;
+  padding: 7px 9px !important;
+  font-size: 0.65rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__move-actions {
+  display: flex !important;
+  gap: 5px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__move-actions button {
+  width: 31px !important;
+  height: 31px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #d7dce3 !important;
+  border-radius: 8px !important;
+  color: #344054 !important;
+  background: #fff !important;
+  font-size: 0.74rem !important;
+  font-weight: 950 !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__move-actions button:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 9px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid > button {
+  min-width: 0 !important;
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 11px !important;
+  border: 1px solid #e0e4ea !important;
+  border-radius: 11px !important;
+  background: #fff !important;
+  text-align: start !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid > button.is-selected {
+  border-color: rgba(116, 17, 45, 0.35) !important;
+  background: #fff7f9 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid strong {
+  overflow: hidden !important;
+  color: var(--of5-ink) !important;
+  font-size: 0.67rem !important;
+  font-weight: 900 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid small {
+  grid-column: 2 !important;
+  color: var(--of5-muted) !important;
+  font-size: 0.57rem !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__media-layout {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload {
+  position: relative !important;
+  min-height: 210px !important;
+  overflow: hidden !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px dashed #cbd2db !important;
+  border-radius: 14px !important;
+  background: #fafbfc !important;
+  cursor: pointer !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload.has-image {
+  border-style: solid !important;
+  border-color: #dfe3e8 !important;
+  background: #111827 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload input {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload > img {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 210px !important;
+  object-fit: cover !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload-placeholder {
+  display: grid !important;
+  place-items: center !important;
+  gap: 7px !important;
+  color: var(--of5-muted) !important;
+  text-align: center !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload-placeholder svg {
+  color: var(--of5-maroon) !important;
+  font-size: 1.45rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload-placeholder strong {
+  color: #344054 !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__upload-placeholder small {
+  color: #98a2b3 !important;
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__media-copy {
+  display: grid !important;
+  align-content: center !important;
+  justify-items: start !important;
+  gap: 8px !important;
+  padding: 18px !important;
+  border: 1px solid #e4e8ee !important;
+  border-radius: 14px !important;
+  background: #fafbfc !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__media-copy > span {
+  color: var(--of5-maroon) !important;
+  font-size: 0.61rem !important;
+  font-weight: 900 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__media-copy > strong {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  color: var(--of5-ink) !important;
+  font-size: 0.79rem !important;
+  font-weight: 950 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__media-copy p {
+  margin: 0 !important;
+  color: var(--of5-muted) !important;
+  font-size: 0.67rem !important;
+  font-weight: 650 !important;
+  line-height: 1.7 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside {
+  position: sticky !important;
+  top: 18px !important;
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-card,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-summary,
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-actions {
+  overflow: hidden !important;
+  border: 1px solid var(--of5-line) !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.04) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-media {
+  position: relative !important;
+  height: 176px !important;
+  overflow: hidden !important;
+  background: linear-gradient(135deg, #f0e2e7, #f7f2e8) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-media img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-empty {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  place-items: center !important;
+  color: rgba(116, 17, 45, 0.42) !important;
+  font-size: 2rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-badges {
+  position: absolute !important;
+  inset: 10px 10px auto !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-badges span {
+  padding: 5px 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  border-radius: 999px !important;
+  color: #fff !important;
+  background: rgba(17, 24, 39, 0.68) !important;
+  backdrop-filter: blur(8px) !important;
+  font-size: 0.56rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-body {
+  padding: 17px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-label {
+  color: var(--of5-maroon) !important;
+  font-size: 0.59rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.06em !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-body h3 {
+  margin: 7px 0 5px !important;
+  color: var(--of5-ink) !important;
+  font-size: 1rem !important;
+  font-weight: 950 !important;
+  line-height: 1.4 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-body > p {
+  display: -webkit-box !important;
+  min-height: 42px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  color: var(--of5-muted) !important;
+  font-size: 0.65rem !important;
+  font-weight: 650 !important;
+  line-height: 1.65 !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-box {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-top: 13px !important;
+  padding: 13px !important;
+  border: 1px solid rgba(116, 17, 45, 0.13) !important;
+  border-radius: 12px !important;
+  background: #fff7f9 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-box strong {
+  color: var(--of5-maroon) !important;
+  font-size: 1.35rem !important;
+  font-weight: 1000 !important;
+  line-height: 1 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__discount-box span {
+  color: #667085 !important;
+  font-size: 0.61rem !important;
+  font-weight: 800 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-prices {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-top: 9px !important;
+  padding: 8px 10px !important;
+  border-radius: 9px !important;
+  background: #f6f7f9 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-prices span {
+  color: #98a2b3 !important;
+  font-size: 0.65rem !important;
+  font-weight: 750 !important;
+  text-decoration: line-through !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-prices strong {
+  color: var(--of5-success) !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-details {
+  display: grid !important;
+  gap: 0 !important;
+  margin: 13px 0 0 !important;
+  border-top: 1px solid #edf0f3 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-details > div {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #f0f2f5 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-details dt {
+  color: #667085 !important;
+  font-size: 0.59rem !important;
+  font-weight: 750 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-details dd {
+  margin: 0 !important;
+  color: #344054 !important;
+  font-size: 0.61rem !important;
+  font-weight: 900 !important;
+  text-align: end !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-cta {
+  width: 100% !important;
+  min-height: 42px !important;
+  margin-top: 13px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--of5-maroon-dark), var(--of5-maroon)) !important;
+  font-size: 0.7rem !important;
+  font-weight: 950 !important;
+  cursor: default !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness {
+  padding: 15px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-head > div {
+  display: grid !important;
+  gap: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-head span {
+  color: #667085 !important;
+  font-size: 0.59rem !important;
+  font-weight: 750 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-head strong {
+  color: var(--of5-ink) !important;
+  font-size: 0.73rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness.is-ready .offer-editor__readiness-head strong {
+  color: var(--of5-success) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-head b {
+  width: 42px !important;
+  height: 42px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 12px !important;
+  color: var(--of5-maroon) !important;
+  background: #fff0f4 !important;
+  font-size: 0.68rem !important;
+  font-weight: 1000 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-bar {
+  height: 7px !important;
+  margin: 12px 0 !important;
+  overflow: hidden !important;
+  border-radius: 999px !important;
+  background: #edf0f3 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness-bar span {
+  display: block !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+  background: linear-gradient(90deg, var(--of5-maroon), var(--of5-gold)) !important;
+  transition: width 180ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness.is-ready .offer-editor__readiness-bar span {
+  background: var(--of5-success) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness ul {
+  display: grid !important;
+  gap: 7px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness li {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: #667085 !important;
+  font-size: 0.61rem !important;
+  font-weight: 750 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness li > span {
+  flex: 0 0 19px !important;
+  width: 19px !important;
+  height: 19px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 6px !important;
+  color: #98a2b3 !important;
+  background: #f0f2f5 !important;
+  font-size: 0.5rem !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness li.is-ready {
+  color: #344054 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__readiness li.is-ready > span {
+  color: #fff !important;
+  background: var(--of5-success) !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-summary {
+  display: grid !important;
+  gap: 4px !important;
+  padding: 15px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-summary span {
+  color: #667085 !important;
+  font-size: 0.6rem !important;
+  font-weight: 750 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-summary strong {
+  color: var(--of5-ink) !important;
+  font-size: 1rem !important;
+  font-weight: 1000 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-summary small {
+  color: #8a94a5 !important;
+  font-size: 0.58rem !important;
+  font-weight: 650 !important;
+  line-height: 1.5 !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-actions {
+  display: grid !important;
+  gap: 8px !important;
+  padding: 13px !important;
+}
+
+.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+.enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-actions .dash-pill {
+  width: 100% !important;
+  min-height: 43px !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__layout {
+    grid-template-columns: minmax(0, 1fr) 286px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__commercial-grid, .offer-editor__limits-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary .dash-pill {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 920px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside {
+    position: static !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__preview-card {
+    grid-row: span 3 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__choice-grid--three {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor-v5 {
+    border-radius: 16px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    padding: 20px 16px !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__heading-icon {
+    flex-basis: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header-actions .dash-pill {
+    width: 100% !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__layout {
+    gap: 13px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__section {
+    padding: 15px !important;
+    border-radius: 14px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 :is(
+    .offer-editor__grid,
+    .offer-editor__discount-selector,
+    .offer-editor__commercial-grid,
+    .offer-editor__limits-grid,
+    .offer-editor__toggle-grid,
+    .offer-editor__choice-grid--two,
+    .offer-editor__media-layout,
+    .offer-editor__aside
+  ) {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__field--wide {
+    grid-column: auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__pricing-summary > div {
+    border-inline-end: 0 !important;
+    border-bottom: 1px solid #e5e8ed !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 :is(.offer-editor__service-toolbar, .offer-editor__category-head) {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toolbar-actions {
+    justify-content: stretch !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__toolbar-actions .dash-pill {
+    flex: 1 1 auto !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__category-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-row {
+    grid-template-columns: 24px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__service-price {
+    grid-column: 2 !important;
+    justify-self: start !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-actions {
+    position: sticky !important;
+    bottom: 8px !important;
+    z-index: 5 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    box-shadow: 0 14px 34px rgba(16, 24, 40, 0.14) !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__header-actions,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__aside-actions,
+  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route
+  .enterprise-offers-v2.enterprise-offers-v3 .offer-editor__code-row {
+    grid-template-columns: 1fr !important;
+  }
+}

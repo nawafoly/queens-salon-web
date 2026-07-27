@@ -58,6 +58,25 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function nonNegativeInteger(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.floor(number));
+}
+
+function optionalNonNegativeInteger(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.floor(number));
+}
+
+function nonNegativeDecimal(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.round((number + Number.EPSILON) * 100) / 100);
+}
+
 function localISODate(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -175,8 +194,8 @@ function coreDiscountToOffer(row: CoreDiscount): Offer {
     sequenceSteps: (row.sequenceSteps || [])
       .map((step, index) => ({
         serviceId: text(step.serviceId),
-        orderIndex: Number(step.orderIndex ?? index),
-        gapAfterMin: Math.max(0, Number(step.gapAfterMin || 0)),
+        orderIndex: nonNegativeInteger(step.orderIndex ?? index, index),
+        gapAfterMin: nonNegativeInteger(step.gapAfterMin),
         ...(text(step.titleSnapshot)
           ? { titleSnapshot: text(step.titleSnapshot) }
           : {}),
@@ -218,25 +237,25 @@ function offerToCore(offer: Offer): Record<string, unknown> {
     codeKey: code,
     type: offer.discountType,
     discountType: offer.discountType,
-    value: Math.max(0, Number(offer.value || 0)),
+    value: nonNegativeDecimal(offer.value),
     active: offer.active === true,
     startsAt: startDate || null,
     endsAt: endDate || null,
     startDate: startDate || null,
     endDate: endDate || null,
-    usedCount: Math.max(0, Number(offer.usageCount || 0)),
-    usageLimit: offer.usageLimit ?? null,
-    minOrderHalalas: offer.minOrderHalalas ?? null,
-    maxDiscountHalalas: offer.maxDiscountHalalas ?? null,
-    perClientLimit: offer.perClientLimit ?? null,
+    usedCount: nonNegativeInteger(offer.usageCount),
+    usageLimit: optionalNonNegativeInteger(offer.usageLimit),
+    minOrderHalalas: optionalNonNegativeInteger(offer.minOrderHalalas),
+    maxDiscountHalalas: optionalNonNegativeInteger(offer.maxDiscountHalalas),
+    perClientLimit: optionalNonNegativeInteger(offer.perClientLimit),
     appliesTo: offer.appliesTo || "all",
     serviceIds: (offer.serviceIds || []).map(text).filter(Boolean),
     categoryIds: (offer.categoryIds || []).map(text).filter(Boolean),
     sequenceSteps: (offer.sequenceSteps || [])
       .map((step, index) => ({
         serviceId: text(step.serviceId),
-        orderIndex: Number(step.orderIndex ?? index),
-        gapAfterMin: Math.max(0, Number(step.gapAfterMin || 0)),
+        orderIndex: nonNegativeInteger(step.orderIndex ?? index, index),
+        gapAfterMin: nonNegativeInteger(step.gapAfterMin),
         ...(text(step.titleSnapshot)
           ? { titleSnapshot: text(step.titleSnapshot) }
           : {}),
@@ -244,13 +263,13 @@ function offerToCore(offer: Offer): Record<string, unknown> {
       .filter((step) => step.serviceId),
     imageUrl: text(offer.imageUrl) || null,
     description: text(offer.description) || null,
-    priceBeforeHalalas: offer.priceBeforeHalalas ?? null,
-    priceAfterHalalas: offer.priceAfterHalalas ?? null,
+    priceBeforeHalalas: optionalNonNegativeInteger(offer.priceBeforeHalalas),
+    priceAfterHalalas: optionalNonNegativeInteger(offer.priceAfterHalalas),
     published: offer.published !== false,
     status:
       offer.status ||
       (offer.active ? "active" : "disabled"),
-    sortOrder: Math.max(0, Number(offer.sortOrder || 0)),
+    sortOrder: nonNegativeInteger(offer.sortOrder),
     ctaLabel: text(offer.ctaLabel) || null,
     ctaUrl: text(offer.ctaUrl) || null,
     targetScope: offer.targetScope || "all",

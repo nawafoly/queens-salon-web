@@ -10,10 +10,40 @@ import {
   requiredId,
 } from '../d1.js';
 
+const MAX_AUDIT_JSON_CHARS = 250_000;
+const MAX_AUDIT_STRING_CHARS = 32_000;
+
+function auditJsonReplacer(key, value) {
+  if (typeof value !== 'string') return value;
+
+  const normalizedKey = String(key || '').toLowerCase();
+  const dataUrlMatch = /^data:([^;,]+)(?:;[^,]*)?;base64,/i.exec(value);
+  if (dataUrlMatch) {
+    return `[omitted ${dataUrlMatch[1]} data URL, ${value.length} chars]`;
+  }
+
+  if ((normalizedKey.includes('image') || normalizedKey.includes('file')) && value.length > 2_048) {
+    return `[omitted large ${normalizedKey || 'binary'} value, ${value.length} chars]`;
+  }
+
+  if (value.length > MAX_AUDIT_STRING_CHARS) {
+    return `${value.slice(0, 2_000)}…[truncated ${value.length - 2_000} chars]`;
+  }
+
+  return value;
+}
+
 function safeJson(value) {
   if (value === undefined) return null;
   try {
-    return JSON.stringify(value ?? null);
+    const json = JSON.stringify(value ?? null, auditJsonReplacer);
+    if (json.length <= MAX_AUDIT_JSON_CHARS) return json;
+
+    return JSON.stringify({
+      auditPayloadTruncated: true,
+      originalChars: json.length,
+      preview: json.slice(0, 16_000),
+    });
   } catch {
     return JSON.stringify({ serializationError: true });
   }
@@ -80,8 +110,25 @@ export function auditInsertStatement(salonId, data = {}, actor = {}) {
 
 export async function recordAudit(db, salonId, data = {}, actor = {}) {
   const { row, statement } = auditInsertStatement(salonId, data, actor);
-  await dbRun(db, statement.sql, statement.params);
-  return row;
+  try {
+    await dbRun(db, statement.sql, statement.params);
+    return row;
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (!message.includes('SQLITE_TOOBIG')) throw error;
+
+    const fallback = auditInsertStatement(salonId, {
+      ...data,
+      before: { auditPayloadOmitted: true, reason: 'SQLITE_TOOBIG' },
+      after: { auditPayloadOmitted: true, reason: 'SQLITE_TOOBIG' },
+      meta: {
+        ...(data.meta && typeof data.meta === 'object' ? data.meta : {}),
+        auditFallback: 'SQLITE_TOOBIG',
+      },
+    }, actor);
+    await dbRun(db, fallback.statement.sql, fallback.statement.params);
+    return fallback.row;
+  }
 }
 
 export async function listAudit(db, salonId, query = {}) {
