@@ -2,20 +2,27 @@
 
 import { Fragment, useEffect, useMemo, useState, useRef } from "react";
 import "../styles/BookingMobile.css";
+import "../styles/BookingLuxuryV2.css";
 import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.FormEvent
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import {
+  FiCheckCircle,
+  FiClock,
   FiDroplet,
   FiEdit3,
   FiGift,
   FiHeart,
+  FiHome,
   FiPenTool,
   FiScissors,
+  FiShield,
   FiShoppingBag,
   FiStar,
   FiSun,
+  FiUserCheck,
   FiWind,
   FiZap,
 } from "react-icons/fi";
@@ -7871,6 +7878,120 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     { id: 4, title: "تأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText, action: "مراجعة نهائية" },
   ];
   const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
+  const bookingSummaryDurationMin = cartItems.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.durationMin || 0)),
+    0
+  );
+  const bookingSummaryDurationLabel =
+    bookingSummaryDurationMin > 0 ? `${bookingSummaryDurationMin} دقيقة` : "حسب الخدمة";
+  const bookingSummaryProgress = Math.round((currentStep / stepRows.length) * 100);
+  const bookingSummaryServicesLabel =
+    cartItems.length > 0 ? `${cartItems.length} خدمة` : "لم تختاري خدمة";
+  const bookingSummaryDateLabel = bookingDate ? bookingDateDisplayValue : "اختاري التاريخ";
+  const bookingSummaryTimeLabel = selectedTime ? formatTime12ForClient(selectedTime) : "اختاري الوقت";
+  const bookingSummaryStaffLabel = selectedStaffEmployeeName || "اختاري المختصة";
+  const bookingSummaryStatusLabel = allPreviewLocked
+    ? "جاهز للتأكيد"
+    : cartItems.length
+      ? `${lockedPreviewCount} من ${totalPreviewCount} مؤكد`
+      : "ابدئي باختيار الخدمة";
+  const bookingSummaryPreviewRows = bookingPreviewItems.slice(0, 3);
+  const bookingSummaryMoreCount = Math.max(0, bookingPreviewItems.length - bookingSummaryPreviewRows.length);
+  const bookingSummaryProgressStyle = {
+    "--booking-summary-progress": `${bookingSummaryProgress}%`,
+  } as React.CSSProperties;
+  const renderBookingSummaryPanel = (variant: "desktop" | "mobile") => (
+    <div className={`booking-lux-summary booking-lux-summary--${variant}`}>
+      <div className="booking-lux-summary__head">
+        <span className="booking-lux-summary__eyebrow">ملخص الحجز</span>
+        <strong>{finalPrice.toFixed(0)} ريال</strong>
+        <small>{bookingSummaryStatusLabel}</small>
+      </div>
+
+      <div className="booking-lux-summary__progress" style={bookingSummaryProgressStyle} aria-hidden="true">
+        <span />
+      </div>
+
+      <div className="booking-lux-summary__facts">
+        <div>
+          <FiShoppingBag />
+          <span>الخدمات</span>
+          <strong>{bookingSummaryServicesLabel}</strong>
+        </div>
+        <div>
+          <FiClock />
+          <span>المدة</span>
+          <strong>{bookingSummaryDurationLabel}</strong>
+        </div>
+        <div>
+          <FiUserCheck />
+          <span>المختصة</span>
+          <strong>{bookingSummaryStaffLabel}</strong>
+        </div>
+        <div>
+          <FiCheckCircle />
+          <span>الموعد</span>
+          <strong>{bookingSummaryDateLabel} · {bookingSummaryTimeLabel}</strong>
+        </div>
+      </div>
+
+      {bookingSummaryPreviewRows.length ? (
+        <div className="booking-lux-summary__items">
+          {bookingSummaryPreviewRows.map((row) => (
+            <div key={`lux-summary-${variant}-${row.id}`} className="booking-lux-summary__item">
+              <span>{row.index}</span>
+              <div>
+                <strong>{row.serviceName}</strong>
+                <small>{row.priceLabel} · {row.durationMin} د</small>
+              </div>
+            </div>
+          ))}
+          {bookingSummaryMoreCount > 0 ? (
+            <div className="booking-lux-summary__more">+{bookingSummaryMoreCount} خدمات إضافية</div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {appliedDiscountTotal > 0 ? (
+        <div className="booking-lux-summary__discount">
+          <span>خصم مطبق</span>
+          <strong>-{Number(appliedDiscountTotal || 0).toFixed(0)} ريال</strong>
+        </div>
+      ) : null}
+
+      <div className="booking-lux-summary__total">
+        <span>الإجمالي النهائي</span>
+        <strong>{finalPrice.toFixed(0)} ريال</strong>
+      </div>
+
+      {variant === "desktop" ? (
+        <div className="booking-lux-summary__steps" aria-label="اختصار خطوات الحجز">
+          {stepRows.map((row) => {
+            const isActive = row.id === currentStep;
+            const isUnlocked = row.id <= maxUnlockedStep;
+            return (
+              <button
+                key={`lux-summary-step-${row.id}`}
+                type="button"
+                className={isActive ? "is-active" : ""}
+                disabled={!isUnlocked}
+                onClick={() => {
+                  if (isUnlocked) setCurrentStep(row.id);
+                }}
+              >
+                <span>{row.id}</span>
+                {row.title}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+  const bookingMobileSummaryPortal =
+    typeof document !== "undefined"
+      ? createPortal(renderBookingSummaryPanel("mobile"), document.body)
+      : null;
 
   useEffect(() => {
     if (currentStep > maxUnlockedStep) {
@@ -8076,9 +8197,29 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         </div>
       </Modal>
 
-      <div className="container">
-        <div className="row justify-content-center">
-          <div className="col-lg-8">
+      <section className="booking-lux-hero" aria-label="حجز ملكات صالون">
+        <img className="booking-lux-hero__image" src={servicesImg} alt="" aria-hidden="true" />
+        <div className="booking-lux-hero__overlay" aria-hidden="true" />
+        <div className="container booking-lux-hero__inner">
+          <div className="booking-lux-hero__content">
+            <span className="booking-lux-hero__eyebrow">Queens Salon · Luxury Booking</span>
+            <h1>احجزي تجربتك بجمال يليق بك</h1>
+            <p>
+              اختاري الخدمة، المختصة، والوقت المناسب لك بخطوات واضحة وتجربة فاخرة من أول اختيار حتى تأكيد الموعد.
+            </p>
+            <div className="booking-lux-hero__badges" aria-label="مزايا الحجز">
+              <span><FiCheckCircle /> تأكيد فوري</span>
+              <span><FiHome /> خدمات منزلية</span>
+              <span><FiGift /> عروض وباقات</span>
+              <span><FiShield /> دفع آمن</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="container booking-lux-container">
+        <div className="row justify-content-center booking-lux-layout">
+          <div className="col-lg-8 booking-lux-main">
             <div className="booking-card" ref={bookingCardRef}>
 
               {/* ✅ Logo */}
@@ -10277,8 +10418,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               </form>
             </div>
           </div>
+          <div className="col-lg-4 booking-lux-side" aria-label="ملخص الحجز">
+            {renderBookingSummaryPanel("desktop")}
+          </div>
         </div>
       </div>
+      {bookingMobileSummaryPortal}
     </div>
   );
 };
