@@ -79,6 +79,22 @@ function dateKeyFromUtcDate(date: Date) {
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
+function todayRiyadhDateKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const read = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
+function completedPayrollThroughDate(bounds: { monthStart: string; monthEnd: string }) {
+  const today = todayRiyadhDateKey();
+  if (bounds.monthEnd < today) return bounds.monthEnd;
+  return dateKeyFromUtcDate(addUtcDays(jsDateFromKey(today), -1));
+}
 function daysInUtcMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
@@ -656,7 +672,11 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
 }) {
   const days: AttendanceDisciplineDaySummary[] = [];
   const bounds = payrollMonthBounds(input.year, input.month);
-  const dates = dateKeysInPayrollCycle(input.year, input.month);
+  const completedThroughDate = completedPayrollThroughDate(bounds);
+  const dates =
+    bounds.monthStart <= completedThroughDate
+      ? dateKeysInRange(bounds.monthStart, completedThroughDate)
+      : [];
   const recordsByDate = new Map<string, CoreAttendanceRecord[]>();
   const periodRecords = input.records.filter(
     (record) =>
@@ -1158,4 +1178,6 @@ export async function reopenPayrollEntry(
     })
   );
 }
+
+
 
