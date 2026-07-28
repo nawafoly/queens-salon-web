@@ -1059,9 +1059,9 @@ function PayrollDetailsModal({
         </div>
 
         <section className="payroll-net-panel">
-          <div><span>grossSalary</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
-          <div><span>totalAdditions</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
-          <div><span>totalDeductions</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
+          <div><span>إجمالي الراتب</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
+          <div><span>إجمالي الإضافات</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
+          <div><span>إجمالي الخصومات</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
           <div className="is-net">
             <span>{payrollMoney.isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي"}</span>
             <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
