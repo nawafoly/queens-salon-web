@@ -118,8 +118,12 @@ import {
   createShiftAssignment,
   listScheduleExceptions,
   listShiftAssignments,
+  listShiftPayrollAdjustments,
+  listShiftPayrollPeriodLocks,
   listShiftTemplates,
+  previewShiftChange,
   resolveEmployeeShift,
+  saveShiftPayrollPeriodLock,
   saveShiftTemplate,
   updateScheduleException,
   updateShiftAssignment,
@@ -327,6 +331,7 @@ function match(url, method) {
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
   const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
   if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
+  if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
@@ -349,6 +354,8 @@ function match(url, method) {
     ["shift-templates", "/api/core/hr/shift-templates"],
     ["shift-assignments", "/api/core/hr/shift-assignments"],
     ["schedule-exceptions", "/api/core/hr/schedule-exceptions"],
+    ["shift-payroll-adjustments", "/api/core/hr/shift-payroll-adjustments"],
+    ["shift-payroll-period-locks", "/api/core/hr/shift-payroll-period-locks"],
     ["attendance", "/api/core/hr/attendance"],
     ["leaves", "/api/core/hr/leaves"],
     ["absences", "/api/core/hr/absences"],
@@ -829,6 +836,22 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
       if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return updateScheduleException(db, ctx.salonId, route.id, body, actorInfo);
+      break;
+
+    case "shift-change-preview":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "POST") return previewShiftChange(db, ctx.salonId, body);
+      break;
+
+    case "shift-payroll-adjustments":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listShiftPayrollAdjustments(db, ctx.salonId, query);
+      break;
+
+    case "shift-payroll-period-locks":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listShiftPayrollPeriodLocks(db, ctx.salonId, query);
+      if (method === "POST") return saveShiftPayrollPeriodLock(db, ctx.salonId, body, actorInfo);
       break;
 
     case "hr-shift:resolve":

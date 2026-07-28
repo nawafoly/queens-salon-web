@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const migration = fs.readFileSync(new URL('../migrations/core/0017_shift_control.sql', import.meta.url), 'utf8');
+const adjustmentMigration = fs.readFileSync(new URL('../migrations/core/0019_shift_adjustments_preview.sql', import.meta.url), 'utf8');
 const repository = fs.readFileSync(new URL('../workers/core/repositories/shift-control.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../workers/core/index.js', import.meta.url), 'utf8');
 
@@ -10,6 +11,7 @@ test('migration creates shift-control tables and indexes', () => {
   for (const table of ['hr_shift_templates','hr_shift_assignments','hr_schedule_exceptions','hr_payroll_period_locks','hr_shift_audit_log']) {
     assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
+  assert.match(adjustmentMigration, /CREATE TABLE IF NOT EXISTS hr_shift_payroll_adjustments/);
 });
 
 test('assignment creation rejects overlapping published assignments unless explicitly replaced', () => {
@@ -39,4 +41,15 @@ test('payroll generation loads Core shift templates assignments and exceptions',
   assert.match(payroll, /listScheduleExceptions\(\)/);
   assert.match(payroll, /coreScheduleForDate/);
   assert.match(payroll, /تم احتساب الحضور بناءً على قوالب الشفتات/);
+});
+
+
+test('shift changes preview locked payroll impact and create adjustments', () => {
+  assert.match(repository, /previewShiftChange/);
+  assert.match(repository, /lockedPayrollPeriodsForRange/);
+  assert.match(repository, /allowLockedPeriodAdjustment/);
+  assert.match(repository, /recordShiftPayrollAdjustment/);
+  for (const route of ['shift-change-preview','shift-payroll-adjustments','shift-payroll-period-locks']) {
+    assert.ok(worker.includes(route), `missing route ${route}`);
+  }
 });

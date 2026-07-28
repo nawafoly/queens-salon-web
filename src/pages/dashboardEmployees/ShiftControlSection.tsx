@@ -4,6 +4,9 @@ import { CoreHrService } from "../../services/CoreHrService";
 import type {
   CoreScheduleException,
   CoreShiftAssignment,
+  CoreShiftChangePreview,
+  CoreShiftPayrollAdjustment,
+  CoreShiftPayrollPeriodLock,
   CoreShiftTemplate,
 } from "../../types/hrCoreApi";
 
@@ -99,6 +102,18 @@ function parseSnapshot(row: CoreShiftAssignment) {
   }
 }
 
+function previewCount(value: unknown) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function previewDateRange(preview?: CoreShiftChangePreview | null) {
+  if (!preview) return "لا توجد معاينة بعد";
+  const from = cleanText(preview.dateFrom || preview.date_from);
+  const to = cleanText(preview.dateTo || preview.date_to);
+  return `${from || "----"} ← ${to || from || "----"}`;
+}
+
 function emptyTemplateForm(): TemplateForm {
   return {
     id: "",
@@ -149,6 +164,10 @@ export default function ShiftControlSection({
   const [templates, setTemplates] = useState<CoreShiftTemplate[]>([]);
   const [assignments, setAssignments] = useState<CoreShiftAssignment[]>([]);
   const [exceptions, setExceptions] = useState<CoreScheduleException[]>([]);
+  const [periodLocks, setPeriodLocks] = useState<CoreShiftPayrollPeriodLock[]>([]);
+  const [payrollAdjustments, setPayrollAdjustments] = useState<CoreShiftPayrollAdjustment[]>([]);
+  const [impactPreview, setImpactPreview] = useState<CoreShiftChangePreview | null>(null);
+  const [allowLockedPeriodAdjustment, setAllowLockedPeriodAdjustment] = useState(false);
   const [resolvedDate, setResolvedDate] = useState(todayKey());
   const [resolvedShift, setResolvedShift] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -179,15 +198,19 @@ export default function ShiftControlSection({
     setLoading(true);
     setError("");
     try {
-      const [templateRows, assignmentRows, exceptionRows, resolved] = await Promise.all([
+      const [templateRows, assignmentRows, exceptionRows, locks, adjustments, resolved] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
         CoreHrService.listShiftAssignments({ employeeId }),
         CoreHrService.listScheduleExceptions({ employeeId }),
+        CoreHrService.listShiftPayrollPeriodLocks(),
+        CoreHrService.listShiftPayrollAdjustments({ employeeId }),
         CoreHrService.resolveEmployeeShift(employeeId, resolvedDate),
       ]);
       setTemplates(templateRows);
       setAssignments(assignmentRows);
       setExceptions(exceptionRows);
+      setPeriodLocks(locks);
+      setPayrollAdjustments(adjustments);
       setResolvedShift(resolved);
       setAssignmentForm((current) => ({
         ...current,
@@ -262,6 +285,39 @@ export default function ShiftControlSection({
     });
   };
 
+  const previewAssignmentChange = async () => {
+    if (!employeeId || !assignmentForm.effectiveFrom) return null;
+    const preview = await CoreHrService.previewShiftChange({
+      employeeId,
+      changeType: "assignment",
+      effectiveFrom: assignmentForm.effectiveFrom,
+      effectiveTo: assignmentForm.effectiveTo || assignmentForm.effectiveFrom,
+    });
+    setImpactPreview(preview);
+    return preview;
+  };
+
+  const previewExceptionChange = async () => {
+    if (!employeeId || !exceptionForm.dateFrom) return null;
+    const preview = await CoreHrService.previewShiftChange({
+      employeeId,
+      changeType: "exception",
+      dateFrom: exceptionForm.dateFrom,
+      dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
+    });
+    setImpactPreview(preview);
+    return preview;
+  };
+
+  const ensurePreviewAllowsSave = (preview: CoreShiftChangePreview | null) => {
+    const lockedCount = previewCount(preview?.lockedPeriodsCount ?? preview?.locked_periods_count);
+    if (lockedCount > 0 && !allowLockedPeriodAdjustment) {
+      setError("الفترة مقفلة للرواتب. راجع معاينة أثر التعديل ثم فعّل خيار تسجيل تسوية بعد الإقفال.");
+      return false;
+    }
+    return true;
+  };
+
   const createAssignment = async () => {
     if (!canManage) return;
     if (!assignmentForm.shiftTemplateId || !assignmentForm.effectiveFrom || !assignmentForm.reason.trim()) {
@@ -272,6 +328,8 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
+      const preview = await previewAssignmentChange();
+      if (!ensurePreviewAllowsSave(preview)) return;
       await CoreHrService.createShiftAssignment({
         employeeId,
         shiftTemplateId: assignmentForm.shiftTemplateId,
@@ -282,6 +340,7 @@ export default function ShiftControlSection({
         replaceOverlaps: assignmentForm.replaceOverlaps,
         reason: assignmentForm.reason,
         snapshot: selectedTemplate || {},
+        allowLockedPeriodAdjustment,
       });
       setAssignmentForm(emptyAssignmentForm());
       setMessage("تم تعيين الشفت للموظفة مع حفظ تاريخ السريان.");
@@ -303,7 +362,7 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
-      await CoreHrService.cancelShiftAssignment(assignment.id, reason);
+      await CoreHrService.cancelShiftAssignment(assignment.id, reason, { allowLockedPeriodAdjustment });
       setMessage("تم إلغاء تعيين الشفت.");
       await load();
     } catch (err) {
@@ -323,7 +382,7 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
-      await CoreHrService.updateShiftAssignment(assignment.id, { effectiveTo, reason });
+      await CoreHrService.updateShiftAssignment(assignment.id, { effectiveTo, reason, allowLockedPeriodAdjustment });
       setMessage("تم إنهاء الشفت بتاريخ محدد.");
       await load();
     } catch (err) {
@@ -348,6 +407,8 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
+      const preview = await previewExceptionChange();
+      if (!ensurePreviewAllowsSave(preview)) return;
       await CoreHrService.createScheduleException({
         employeeId,
         dateFrom: exceptionForm.dateFrom,
@@ -359,6 +420,7 @@ export default function ShiftControlSection({
         endTime: exceptionForm.exceptionType === "custom" ? exceptionForm.endTime : null,
         note: exceptionForm.note,
         status: "approved",
+        allowLockedPeriodAdjustment,
       });
       setExceptionForm(emptyExceptionForm());
       setMessage("تم حفظ الاستثناء. الاستثناء يتقدم على الشفت الأساسي في تاريخ تطبيقه.");
@@ -379,7 +441,7 @@ export default function ShiftControlSection({
     setError("");
     setMessage("");
     try {
-      await CoreHrService.updateScheduleException(exception.id, { status: "cancelled", enabled: false, note });
+      await CoreHrService.updateScheduleException(exception.id, { status: "cancelled", enabled: false, note, allowLockedPeriodAdjustment });
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {
@@ -411,6 +473,30 @@ export default function ShiftControlSection({
 
       {error ? <div className="shift-control-alert error">{error}</div> : null}
       {message ? <div className="shift-control-alert success">{message}</div> : null}
+
+      <article className="shift-control-card shift-control-card--wide shift-control-impact-card">
+        <div className="shift-control-card__head">
+          <div>
+            <strong>معاينة أثر التعديل قبل الحفظ</strong>
+            <span>يعرض الأيام المتأثرة، التداخلات، وفترات الرواتب المقفلة قبل تطبيق أي تغيير.</span>
+          </div>
+        </div>
+        <div className="shift-control-impact-grid">
+          <div><span>نطاق التعديل</span><strong>{previewDateRange(impactPreview)}</strong></div>
+          <div><span>الأيام المتأثرة</span><strong>{previewCount(impactPreview?.affectedDays ?? impactPreview?.affected_days)}</strong></div>
+          <div><span>تداخلات الشفت</span><strong>{previewCount(impactPreview?.overlappingAssignmentsCount ?? impactPreview?.overlapping_assignments_count)}</strong></div>
+          <div><span>فترات رواتب مقفلة</span><strong>{previewCount(impactPreview?.lockedPeriodsCount ?? impactPreview?.locked_periods_count)}</strong></div>
+        </div>
+        <div className="shift-control-actions">
+          <button type="button" className="exp-btn ghost" onClick={() => void previewAssignmentChange()} disabled={!canManage || saving || !assignmentForm.effectiveFrom}>معاينة تعيين الشفت</button>
+          <button type="button" className="exp-btn ghost" onClick={() => void previewExceptionChange()} disabled={!canManage || saving || !exceptionForm.dateFrom}>معاينة الاستثناء</button>
+        </div>
+        <label className="shift-control-lock-confirm">
+          <input type="checkbox" checked={allowLockedPeriodAdjustment} onChange={(event) => setAllowLockedPeriodAdjustment(event.target.checked)} disabled={!canManage || saving} />
+          السماح بتسجيل تسوية بعد إقفال الراتب عند تعديل فترة مقفلة
+        </label>
+        {periodLocks.length ? <p className="shift-control-note">فترات الرواتب المقفلة الحالية: {periodLocks.length}. أي تعديل داخلها لن يمر إلا كتسوية قابلة للمراجعة.</p> : null}
+      </article>
 
       <div className="shift-control-grid">
         <article className="shift-control-card shift-control-card--wide">
@@ -560,6 +646,19 @@ export default function ShiftControlSection({
             {!exceptions.length && <p className="shift-control-empty">لا توجد استثناءات لهذا الموظفة.</p>}
           </div>
         </article>
+        <article className="shift-control-list-card shift-control-list-card--wide">
+          <h4>تسويات بعد إقفال الراتب</h4>
+          <div className="shift-control-list">
+            {payrollAdjustments.map((adjustment) => (
+              <div className="shift-control-row" key={adjustment.id}>
+                <div><strong>{adjustment.changeType}</strong><span>{adjustment.dateFrom} ← {adjustment.dateTo} · {adjustment.reason || "بدون سبب"}</span></div>
+                <span className="shift-badge muted">{adjustment.status}</span>
+              </div>
+            ))}
+            {!payrollAdjustments.length && <p className="shift-control-empty">لا توجد تسويات بعد إقفال الراتب لهذه الموظفة.</p>}
+          </div>
+        </article>
+
       </div>
     </section>
   );

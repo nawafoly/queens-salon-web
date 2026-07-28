@@ -237,3 +237,59 @@ export type CoreResolvedShift = Record<string, unknown> & {
   earlyLeaveGraceMinutes?: number | null;
   early_leave_grace_minutes?: number | null;
 };
+
+
+export type CoreShiftPayrollPeriodLock = {
+  id: string;
+  salonId: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  reason?: string | null;
+  lockedByUid?: string | null;
+  lockedAt?: string | null;
+  unlockedByUid?: string | null;
+  unlockedAt?: string | null;
+};
+
+export type CoreShiftPayrollAdjustment = {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  changeType: string;
+  sourceEntityType: string;
+  sourceEntityId: string;
+  dateFrom: string;
+  dateTo: string;
+  lockedPeriodsJson?: string | null;
+  beforeJson?: string | null;
+  afterJson?: string | null;
+  reason?: string | null;
+  status: string;
+  createdAt?: string | null;
+};
+
+export type CoreShiftChangePreview = {
+  employeeId?: string;
+  employee_id?: string;
+  changeType?: string;
+  change_type?: string;
+  dateFrom?: string;
+  date_from?: string;
+  dateTo?: string;
+  date_to?: string;
+  affectedDays?: number;
+  affected_days?: number;
+  lockedPeriodsCount?: number;
+  locked_periods_count?: number;
+  lockedPeriods?: unknown[];
+  locked_periods?: unknown[];
+  overlappingAssignmentsCount?: number;
+  overlapping_assignments_count?: number;
+  overlappingExceptionsCount?: number;
+  overlapping_exceptions_count?: number;
+  requiresAdjustment?: boolean;
+  requires_adjustment?: boolean;
+  payrollMonths?: string[];
+  payroll_months?: string[];
+};

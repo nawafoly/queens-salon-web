@@ -9,6 +9,9 @@ import type {
   CoreResolvedShift,
   CoreScheduleException,
   CoreShiftAssignment,
+  CoreShiftChangePreview,
+  CoreShiftPayrollAdjustment,
+  CoreShiftPayrollPeriodLock,
   CoreShiftTemplate,
   CoreLeave,
   CorePayrollEntry,
@@ -63,8 +66,8 @@ export const CoreHrService = {
   async updateShiftAssignment(id: string, input: Record<string, unknown>) {
     return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
   },
-  async cancelShiftAssignment(id: string, reason: string) {
-    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "DELETE", body: { reason } }));
+  async cancelShiftAssignment(id: string, reason: string, options: Record<string, unknown> = {}) {
+    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "DELETE", body: { reason, ...options } }));
   },
   async listScheduleExceptions(query: { employeeId?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/schedule-exceptions", { query });
@@ -79,6 +82,20 @@ export const CoreHrService = {
   async resolveEmployeeShift(employeeId: string, date: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/resolved-shift`, { query: { date } });
     return camel<CoreResolvedShift>(row);
+  },
+  async previewShiftChange(input: Record<string, unknown>) {
+    return camel<CoreShiftChangePreview>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-change-preview", { method: "POST", body: input }));
+  },
+  async listShiftPayrollAdjustments(query: { employeeId?: string } = {}) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/shift-payroll-adjustments", { query });
+    return rows.map((row) => camel<CoreShiftPayrollAdjustment>(row));
+  },
+  async listShiftPayrollPeriodLocks(query: { from?: string; to?: string } = {}) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/shift-payroll-period-locks", { query });
+    return rows.map((row) => camel<CoreShiftPayrollPeriodLock>(row));
+  },
+  async saveShiftPayrollPeriodLock(input: Record<string, unknown>) {
+    return camel<CoreShiftPayrollPeriodLock>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-payroll-period-locks", { method: "POST", body: input }));
   },
   async listAttendance(query: { employeeId?: string; date?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/attendance", { query });

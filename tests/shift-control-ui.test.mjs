@@ -44,3 +44,14 @@ test('attendance calendar resolves Core shifts before calculating day status', (
   assert.match(monthView, /الشفت المستخدم للحساب/);
   assert.match(dashboard, /employeeId=\{selectedEmployeeId \|\| \(editingStaff as any\)\?\.id/);
 });
+
+
+test('shift-control UI previews impact and handles locked payroll periods', () => {
+  for (const phrase of ['معاينة أثر التعديل قبل الحفظ', 'فترات الرواتب المقفلة', 'تسويات بعد إقفال الراتب']) {
+    assert.ok(section.includes(phrase), `missing phrase ${phrase}`);
+  }
+  for (const method of ['previewShiftChange', 'listShiftPayrollAdjustments', 'listShiftPayrollPeriodLocks']) {
+    assert.ok(service.includes(method), `service missing ${method}`);
+  }
+  assert.match(section, /allowLockedPeriodAdjustment/);
+});
