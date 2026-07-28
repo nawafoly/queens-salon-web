@@ -20,11 +20,13 @@ import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
 import {
   approvePayrollEntry,
+  calculatePayrollAccrualView,
   ensurePayrollPeriod,
   generatePayrollEntries,
   loadPayrollMonth,
   markPayrollEntryPaid,
   payrollMonthBounds,
+  payrollAccrualPeriodStatus,
   rebuildPayrollEntryFromEmployeeSettings,
   reopenPayrollEntry,
   savePayrollDrafts,
@@ -309,6 +311,7 @@ export default function DashboardPayroll() {
           acc.additions += entry.totalAdditionsHalalas;
           acc.deductions += entry.totalDeductionsHalalas;
           acc.net += entry.netSalaryHalalas;
+          acc.earned += calculatePayrollAccrualView(entry).earnedToDateHalalas;
         } else {
           acc.incomplete += 1;
         }
@@ -325,6 +328,7 @@ export default function DashboardPayroll() {
         additions: 0,
         deductions: 0,
         net: 0,
+        earned: 0,
         drafts: 0,
         approved: 0,
         paid: 0,
@@ -342,6 +346,10 @@ export default function DashboardPayroll() {
     : visibleEntries.filter(isPayrollExportEligible);
   const exportableCount = exportableEntries.length;
   const payrollCycleLabel = `فترة الاحتساب: ${payrollBounds.monthStart} إلى ${payrollBounds.monthEnd} · الصرف المتوقع: ${payrollBounds.payDate}`;
+  const payrollPeriodStatus = payrollAccrualPeriodStatus(payrollMonth);
+  const payrollPartialLabel = payrollPeriodStatus.isPartial
+    ? "مسيرة جزئية محسوبة حتى " + (payrollPeriodStatus.completedThroughDate || "لم تبدأ الفترة")
+    : "مسيرة مكتملة / نهائية";
 
   const payrollReportInput = () => {
     const exportedEntries = exportableEntries;
@@ -535,6 +543,19 @@ export default function DashboardPayroll() {
       setError("لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.");
       return;
     }
+    const payrollMoney = calculatePayrollAccrualView(entry);
+    if (payrollMoney.isPartial) {
+      const confirmed = window.confirm(
+        "هذه مسيرة جزئية محسوبة حتى " +
+          (payrollMoney.completedThroughDate || "لم تبدأ الفترة") +
+          "\n\nالمستحق حتى اليوم: " +
+          formatPayrollMoney(payrollMoney.earnedToDateHalalas) +
+          "\nالصافي المتوقع نهاية الفترة: " +
+          formatPayrollMoney(payrollMoney.expectedNetHalalas) +
+          "\n\nهل تريد اعتمادها رغم أنها قبل نهاية الفترة؟"
+      );
+      if (!confirmed) return;
+    }
     setBusy(`approve:${entry.employeeId}`);
     try {
       const saved = await approvePayrollEntry(entry);
@@ -674,6 +695,7 @@ export default function DashboardPayroll() {
       <div className="payroll-period-banner">
         <FiClock />
         <span>{payrollCycleLabel}</span>
+        <strong>{payrollPartialLabel}</strong>
       </div>
 
       {error ? <div className="payroll-alert is-error">{error}</div> : null}
@@ -687,7 +709,8 @@ export default function DashboardPayroll() {
         <article><span><FiDollarSign /></span><small>إجمالي الرواتب المكتملة</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
         <article><span><FiPlus /></span><small>إجمالي الإضافات</small><strong>{formatPayrollMoney(summary.additions)}</strong></article>
         <article><span><FiX /></span><small>إجمالي الخصومات</small><strong>{formatPayrollMoney(summary.deductions)}</strong></article>
-        <article><span><FiDollarSign /></span><small>إجمالي صافي الرواتب</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي المستحق حتى اليوم</small><strong>{formatPayrollMoney(summary.earned)}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي الصافي المتوقع</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
         <article><span><FiClock /></span><small>عدد المسودات</small><strong>{summary.drafts}</strong></article>
         <article><span><FiCheckCircle /></span><small>عدد الرواتب المعتمدة</small><strong>{summary.approved}</strong></article>
         <article><span><FiDollarSign /></span><small>عدد الرواتب المدفوعة</small><strong>{summary.paid}</strong></article>
@@ -715,7 +738,7 @@ export default function DashboardPayroll() {
               <th>احتساب الأوفر تايم</th>
               <th>الإضافات</th>
               <th>الخصومات</th>
-              <th>صافي الراتب</th>
+              <th>المستحق / المتوقع</th>
               <th>الحالة</th>
               <th>الإجراءات</th>
             </tr>
@@ -738,6 +761,7 @@ export default function DashboardPayroll() {
               const exportEligible = isPayrollExportEligible(entry);
               const attendanceBlocked = attendanceDeductionBlocked(entry);
               const manualAdjustments = hasManualAdjustments(entry);
+              const payrollMoney = calculatePayrollAccrualView(entry);
               return (
                 <tr key={`${entry.employeeId}:${entry.payrollMonth}`}>
                   <td className="payroll-employee-cell">
@@ -805,7 +829,15 @@ export default function DashboardPayroll() {
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
                     {attendanceBlocked ? <small className="payroll-attendance-note">خصم الحضور: لم يطبق</small> : null}
                   </td>
-                  <td><strong>{formatSetupMoney(entry, entry.netSalaryHalalas)}</strong></td>
+                  <td className="payroll-net-cell">
+                    <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
+                    {entry.payrollSetupComplete && payrollMoney.isPartial ? (
+                      <>
+                        <small>المتوقع نهاية الفترة: {formatPayrollMoney(payrollMoney.expectedNetHalalas)}</small>
+                        <small>حتى {payrollMoney.completedThroughDate || "لم تبدأ الفترة"}</small>
+                      </>
+                    ) : null}
+                  </td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
                     <div className="payroll-row-actions">
@@ -844,6 +876,7 @@ export default function DashboardPayroll() {
           onClose={() => setSelectedEntry(null)}
           onAdd={(mode) => openAdjustment(selectedEntry, mode)}
           onExportPayslip={() => exportPayrollPayslipPdf({ entry: selectedEntry })}
+          payrollBounds={payrollBounds}
         />
       ) : null}
 
@@ -893,13 +926,16 @@ function PayrollDetailsModal({
   onClose,
   onAdd,
   onExportPayslip,
+  payrollBounds,
 }: {
   entry: PayrollEntryView;
   onClose: () => void;
   onAdd: (mode: AdjustmentMode) => void;
   onExportPayslip: () => void;
+  payrollBounds: { monthStart: string; monthEnd: string; payDate: string; payrollMonth: string };
 }) {
   const missingLabels = setupMissingLabels(entry);
+  const payrollMoney = calculatePayrollAccrualView(entry);
   return (
     <div className="payroll-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="payroll-modal payroll-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -921,6 +957,18 @@ function PayrollDetailsModal({
             <div>
               <strong>لا يمكن اعتماد هذا الراتب لأن بيانات الراتب غير مكتملة.</strong>
               <small>{missingLabels.join("، ")}</small>
+            </div>
+          </div>
+        ) : null}
+
+        {entry.payrollSetupComplete && payrollMoney.isPartial ? (
+          <div className="payroll-alert is-warning">
+            <FiAlertTriangle />
+            <div>
+              <strong>هذه مسيرة جزئية وليست راتبًا نهائيًا.</strong>
+              <small>
+                محسوبة حتى {payrollMoney.completedThroughDate || "لم تبدأ الفترة"} من فترة {payrollBounds.monthStart} إلى {payrollBounds.monthEnd}.
+              </small>
             </div>
           </div>
         ) : null}
@@ -1014,7 +1062,16 @@ function PayrollDetailsModal({
           <div><span>grossSalary</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
           <div><span>totalAdditions</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
           <div><span>totalDeductions</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
-          <div className="is-net"><span>netSalary</span><strong>{formatSetupMoney(entry, entry.netSalaryHalalas)}</strong></div>
+          <div className="is-net">
+            <span>{payrollMoney.isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي"}</span>
+            <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
+          </div>
+          {payrollMoney.isPartial ? (
+            <div>
+              <span>الصافي المتوقع نهاية الفترة</span>
+              <strong>{formatSetupMoney(entry, payrollMoney.expectedNetHalalas)}</strong>
+            </div>
+          ) : null}
         </section>
 
         <section className="payroll-adjustment-list">

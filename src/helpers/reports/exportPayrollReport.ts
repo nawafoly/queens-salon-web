@@ -1,4 +1,7 @@
-import type { PayrollEntryView } from "../../services/CorePayrollService.ts";
+import {
+  calculatePayrollAccrualView,
+  type PayrollEntryView,
+} from "../../services/CorePayrollService.ts";
 import {
   ATTENDANCE_UNCONFIRMED_REPORT_NOTE,
   type PayrollSetupMissingKey,
@@ -46,6 +49,8 @@ type PayrollReportRow = {
   overtimeValue: string | number;
   additions: string | number;
   deductions: string | number;
+  earnedToDate: string | number;
+  expectedNetSalary: string | number;
   netSalary: string | number;
   salaryStatus: string;
   approvedAt: string;
@@ -107,7 +112,8 @@ const PAYROLL_COLUMNS: ReportColumn<PayrollReportRow>[] = [
   { key: "missingDeduction", header: "خصم الحضور", width: 14 },
   { key: "additions", header: "الإضافات", width: 14 },
   { key: "deductions", header: "الخصومات", width: 14 },
-  { key: "netSalary", header: "صافي الراتب", width: 15 },
+  { key: "earnedToDate", header: "المستحق حتى اليوم", width: 18 },
+  { key: "expectedNetSalary", header: "الصافي المتوقع/النهائي", width: 20 },
   { key: "salaryStatus", header: "حالة الراتب", width: 13 },
   { key: "notes", header: "ملاحظات", width: 24 },
 ];
@@ -215,6 +221,8 @@ function buildPayrollRows(entries: PayrollEntryView[], filters: PayrollReportFil
     overtimeValue: riyalsOrIncomplete(entry, entry.overtimeValueHalalas),
     additions: entry.payrollSetupComplete ? halalasToRiyalsNumber(entry.totalAdditionsHalalas) : "غير مكتمل",
     deductions: riyalsOrIncomplete(entry, entry.totalDeductionsHalalas),
+    earnedToDate: riyalsOrIncomplete(entry, calculatePayrollAccrualView(entry).earnedToDateHalalas),
+    expectedNetSalary: riyalsOrIncomplete(entry, calculatePayrollAccrualView(entry).expectedNetHalalas),
     netSalary: riyalsOrIncomplete(entry, entry.netSalaryHalalas),
     salaryStatus: statusLabel(entry.status),
     approvedAt: formatDateTime(entry.approvedAt),
@@ -276,7 +284,13 @@ function payrollSummary(
       value: halalasToRiyalsNumber(completeEntries.reduce((sum, entry) => sum + entry.totalDeductionsHalalas, 0)),
     },
     {
-      label: "إجمالي صافي الرواتب",
+      label: "إجمالي المستحق حتى اليوم",
+      value: halalasToRiyalsNumber(
+        completeEntries.reduce((sum, entry) => sum + calculatePayrollAccrualView(entry).earnedToDateHalalas, 0)
+      ),
+    },
+    {
+      label: "إجمالي الصافي المتوقع/النهائي",
       value: halalasToRiyalsNumber(completeEntries.reduce((sum, entry) => sum + entry.netSalaryHalalas, 0)),
     },
   ];
@@ -377,7 +391,18 @@ function payslipRows(entry: PayrollEntryView): PayslipRow[] {
     { item: "الخصومات", value: payslipValue(entry, entry.totalDeductionsHalalas) },
     { item: "الأوفر تايم", value: entry.overtimeEnabled ? "مفعل" : "غير مفعل" },
     { item: "قيمة الأوفر تايم", value: payslipValue(entry, entry.overtimeValueHalalas) },
-    { item: "صافي الراتب", value: payslipValue(entry, entry.netSalaryHalalas) },
+    {
+      item: calculatePayrollAccrualView(entry).isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي",
+      value: payslipValue(entry, calculatePayrollAccrualView(entry).earnedToDateHalalas),
+    },
+    ...(calculatePayrollAccrualView(entry).isPartial
+      ? [
+          {
+            item: "الصافي المتوقع نهاية الفترة",
+            value: payslipValue(entry, calculatePayrollAccrualView(entry).expectedNetHalalas),
+          },
+        ]
+      : []),
     { item: "ملاحظات", value: setupNotes(entry) || "غير متوفر" },
     { item: "توقيع الإدارة", value: "" },
     { item: "توقيع الموظفة", value: "" },
@@ -431,6 +456,7 @@ function payslipSection(title: string, rows: Array<[string, unknown]>) {
 
 export function createPayrollPayslipPdfDocument(input: Parameters<typeof buildPayrollPayslipData>[0]) {
   const entry = input.entry;
+  const payrollMoney = calculatePayrollAccrualView(entry);
   const salonName = input.salonName || "Queens Salon";
   const generatedAt = input.generatedAt || currentGeneratedAt();
   const generatedBy = normalizeGeneratedBy(input.generatedBy);
@@ -637,8 +663,8 @@ export function createPayrollPayslipPdfDocument(input: Parameters<typeof buildPa
         <h1>${escapePayslipHtml(title)}</h1>
       </div>
       <div class="payslip-net">
-        <span>صافي الراتب</span>
-        <strong>${escapePayslipHtml(payslipMoneyValue(entry, entry.netSalaryHalalas))}</strong>
+        <span>${escapePayslipHtml(payrollMoney.isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي")}</span>
+        <strong>${escapePayslipHtml(payslipMoneyValue(entry, payrollMoney.earnedToDateHalalas))}</strong>
       </div>
     </header>
 
@@ -696,7 +722,8 @@ export function createPayrollPayslipPdfDocument(input: Parameters<typeof buildPa
       ${payslipField("إجمالي الراتب", payslipMoneyValue(entry, entry.grossSalaryHalalas))}
       ${payslipField("إجمالي الإضافات", payslipMoneyValue(entry, entry.totalAdditionsHalalas))}
       ${payslipField("إجمالي الخصومات", payslipMoneyValue(entry, entry.totalDeductionsHalalas))}
-      ${payslipField("صافي الراتب", payslipMoneyValue(entry, entry.netSalaryHalalas))}
+      ${payslipField(payrollMoney.isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي", payslipMoneyValue(entry, payrollMoney.earnedToDateHalalas))}
+      ${payrollMoney.isPartial ? payslipField("الصافي المتوقع نهاية الفترة", payslipMoneyValue(entry, payrollMoney.expectedNetHalalas)) : ""}
     </section>
 
     <section class="payslip-notes">
@@ -746,7 +773,15 @@ export function buildPayrollPayslipData(input: {
       { label: "الموظفة", value: safeText(entry.employeeName) },
       { label: "الشهر/السنة", value: entry.payrollMonth },
       { label: "حالة الراتب", value: statusLabel(entry.status) },
-      { label: "صافي الراتب", value: entry.payrollSetupComplete ? halalasToRiyalsNumber(entry.netSalaryHalalas) : "غير مكتمل" },
+      {
+        label: calculatePayrollAccrualView(entry).isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي",
+        value: entry.payrollSetupComplete
+          ? halalasToRiyalsNumber(calculatePayrollAccrualView(entry).earnedToDateHalalas)
+          : "غير مكتمل",
+      },
+      ...(calculatePayrollAccrualView(entry).isPartial
+        ? [{ label: "الصافي المتوقع نهاية الفترة", value: halalasToRiyalsNumber(calculatePayrollAccrualView(entry).expectedNetHalalas) }]
+        : []),
       { label: "ملاحظة", value: draftNotice || "كشف مبني على snapshot الراتب الحالي" },
     ],
     table: {
