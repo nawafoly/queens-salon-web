@@ -169,6 +169,7 @@ export type EmployeeSplitTab =
   | "profile"
   | "services"
   | "booking"
+  | "shifts"
   | "attendance"
   | "payroll"
   | "requests"

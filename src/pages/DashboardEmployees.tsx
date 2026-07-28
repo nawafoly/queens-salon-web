@@ -76,6 +76,7 @@ import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
 import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection";
 import ServicesSection from "./dashboardEmployees/ServicesSection";
+import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
 
 // ✅ Bookings stats (Owner only)
@@ -3628,6 +3629,9 @@ export default function DashboardEmployees() {
     { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
     { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
     { key: "booking", label: "جدول الدوام", hint: "الدوام والنطاق", icon: faClock },
+    ...(canManageSchedule
+      ? [{ key: "shifts" as EmployeeSplitTab, label: "الشفتات", hint: "القوالب والاستثناءات", icon: faClock }]
+      : []),
     ...(canViewAttendance
       ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
       : []),
@@ -4397,7 +4401,7 @@ export default function DashboardEmployees() {
       setModalTab("basic");
       return;
     }
-    if (tab === "booking") {
+    if (tab === "booking" || tab === "shifts") {
       setModalTab("booking");
       return;
     }
@@ -4921,6 +4925,12 @@ export default function DashboardEmployees() {
                 onReloadAttendanceZones={() => void loadAttendanceZones()}
                 onUpdateModalWorkingDay={updateModalWorkingDay}
                 onCopyModalWorkingDayToAll={copyModalWorkingDayToAll}
+              />
+              <ShiftControlSection
+                isVisible={!!editingStaff && activeTab === "shifts" && canManageSchedule}
+                employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
+                employeeName={name || (editingStaff as any)?.name || ""}
+                canManage={canManageSchedule}
               />
               <ProfileSection
                 isVisible={(!editingStaff && modalTab === "profile") || (!!editingStaff && activeTab === "profile")}

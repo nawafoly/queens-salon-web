@@ -178,7 +178,14 @@ export type CoreShiftAssignment = {
   reason?: string | null;
   snapshotJson: string;
   shiftName?: string | null;
+  shiftCode?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  crossesMidnight?: boolean | number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
+
 
 export type CoreScheduleException = {
   id: string;
@@ -193,4 +200,7 @@ export type CoreScheduleException = {
   endTime?: string | null;
   note?: string | null;
   status: string;
+  shiftName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };

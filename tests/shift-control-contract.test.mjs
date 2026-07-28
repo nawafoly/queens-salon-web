@@ -12,9 +12,11 @@ test('migration creates shift-control tables and indexes', () => {
   }
 });
 
-test('assignment creation rejects overlapping published assignments', () => {
+test('assignment creation rejects overlapping published assignments unless explicitly replaced', () => {
   assert.match(repository, /shift_assignment_overlap/);
   assert.match(repository, /effective_from <= COALESCE/);
+  assert.match(repository, /replaceOverlaps/);
+  assert.match(repository, /addDays\(effectiveFrom, -1\)/);
 });
 
 test('resolved shift gives approved exceptions priority over assignments', () => {
@@ -24,7 +26,7 @@ test('resolved shift gives approved exceptions priority over assignments', () =>
 });
 
 test('core routes expose templates, assignments, exceptions, and resolved shift', () => {
-  for (const route of ['shift-templates','shift-assignments','schedule-exceptions','hr-shift:resolve']) {
+  for (const route of ['shift-templates','shift-assignments','schedule-exceptions','hr-shift:resolve','updateShiftAssignment','updateScheduleException']) {
     assert.ok(worker.includes(route), `missing route ${route}`);
   }
 });

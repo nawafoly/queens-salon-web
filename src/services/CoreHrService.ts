@@ -44,7 +44,7 @@ export const CoreHrService = {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/shift-templates", { query });
     return rows.map((row) => camel<CoreShiftTemplate>(row));
   },
-  async saveShiftTemplate(input: Partial<CoreShiftTemplate> & { name: string }) {
+  async saveShiftTemplate(input: Partial<CoreShiftTemplate> & { name: string; reason?: string }) {
     const id = String(input.id || "").trim();
     const row = await coreApiRequest<Record<string, unknown>>(id ? `/api/core/hr/shift-templates/${encodeURIComponent(id)}` : "/api/core/hr/shift-templates", {
       method: id ? "PATCH" : "POST",
@@ -59,12 +59,21 @@ export const CoreHrService = {
   async createShiftAssignment(input: Record<string, unknown>) {
     return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-assignments", { method: "POST", body: input }));
   },
+  async updateShiftAssignment(id: string, input: Record<string, unknown>) {
+    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+  },
+  async cancelShiftAssignment(id: string, reason: string) {
+    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "DELETE", body: { reason } }));
+  },
   async listScheduleExceptions(query: { employeeId?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/schedule-exceptions", { query });
     return rows.map((row) => camel<CoreScheduleException>(row));
   },
   async createScheduleException(input: Record<string, unknown>) {
     return camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/schedule-exceptions", { method: "POST", body: input }));
+  },
+  async updateScheduleException(id: string, input: Record<string, unknown>) {
+    return camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
   },
   async resolveEmployeeShift(employeeId: string, date: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/resolved-shift`, { query: { date } });
