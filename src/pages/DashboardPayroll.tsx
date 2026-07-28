@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FiAlertTriangle,
   FiCheckCircle,
@@ -68,36 +68,36 @@ type AdjustmentDraft = {
   note: string;
 };
 
-const UNDEFINED_VALUE_LABEL = "ط؛ظٹط± ظ…ط­ط¯ط¯";
+const UNDEFINED_VALUE_LABEL = "غير محدد";
 
 const STATUS_LABELS: Record<string, string> = {
-  all: "ظƒظ„ ط§ظ„ط­ط§ظ„ط§طھ",
-  draft: "ظ…ط³ظˆط¯ط©",
-  reviewed: "طھظ…طھ ط§ظ„ظ…ط±ط§ط¬ط¹ط©",
-  approved: "ظ…ط¹طھظ…ط¯",
-  paid: "ظ…ط¯ظپظˆط¹",
+  all: "كل الحالات",
+  draft: "مسودة",
+  reviewed: "تمت المراجعة",
+  approved: "معتمد",
+  paid: "مدفوع",
 };
 
 const SETUP_MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
-  employeeId: "ظ…ط¹ط±ظپ ط§ظ„ظ…ظˆط¸ظپط© ط؛ظٹط± ظ…ط­ط¯ط¯",
-  baseSalary: "ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ ط؛ظٹط± ظ…ط­ط¯ط¯",
-  workDays: "ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط؛ظٹط± ظ…ط­ط¯ط¯ط©",
-  monthlyHours: "ط³ط§ط¹ط§طھ ط§ظ„ظپطھط±ط© ط؛ظٹط± ظ…ط­ط¯ط¯ط©",
-  overtimeMultiplier: "ظ…ط¹ط§ظ…ظ„ ط§ظ„ط£ظˆظپط± طھط§ظٹظ… ط؛ظٹط± ظ…ط­ط¯ط¯",
+  employeeId: "معرف الموظفة غير محدد",
+  baseSalary: "الراتب الأساسي غير محدد",
+  workDays: "أيام العمل غير محددة",
+  monthlyHours: "ساعات الفترة غير محددة",
+  overtimeMultiplier: "معامل الأوفر تايم غير محدد",
 };
 
 const ADDITION_KINDS: Array<{ value: PayrollManualItemKind; label: string }> = [
-  { value: "bonus", label: "ظ…ظƒط§ظپط£ط©" },
-  { value: "allowance", label: "ط¨ط¯ظ„" },
-  { value: "commission", label: "ط¹ظ…ظˆظ„ط©" },
-  { value: "manual_addition", label: "ط¥ط¶ط§ظپط© ظٹط¯ظˆظٹط©" },
+  { value: "bonus", label: "مكافأة" },
+  { value: "allowance", label: "بدل" },
+  { value: "commission", label: "عمولة" },
+  { value: "manual_addition", label: "إضافة يدوية" },
 ];
 
 const DEDUCTION_KINDS: Array<{ value: PayrollManualItemKind; label: string }> = [
-  { value: "advance", label: "ط³ظ„ظپط©" },
-  { value: "penalty", label: "ط¬ط²ط§ط،" },
-  { value: "manual_deduction", label: "ط®طµظ… ظٹط¯ظˆظٹ" },
-  { value: "other_deduction", label: "ط§ط³طھظ‚ط·ط§ط¹ ط¢ط®ط±" },
+  { value: "advance", label: "سلفة" },
+  { value: "penalty", label: "جزاء" },
+  { value: "manual_deduction", label: "خصم يدوي" },
+  { value: "other_deduction", label: "استقطاع آخر" },
 ];
 
 function currentYearMonth() {
@@ -168,7 +168,7 @@ function setupMissing(entry: PayrollEntryView, key: PayrollSetupMissingKey) {
 
 function formatBaseSalary(entry: PayrollEntryView) {
   return setupMissing(entry, "baseSalary")
-    ? "ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨ ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©"
+    ? "بيانات الراتب غير مكتملة"
     : formatPayrollMoney(entry.baseSalaryHalalas);
 }
 
@@ -177,7 +177,7 @@ function formatSetupMoney(entry: PayrollEntryView, value: unknown) {
 }
 
 function formatMonthlyHours(entry: PayrollEntryView) {
-  return entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "ط³ط§ط¹ط§طھ ط§ظ„ظپطھط±ط© ط؛ظٹط± ظ…ط­ط¯ط¯ط©";
+  return entry.monthlyHours > 0 ? formatAttendanceHours(entry.monthlyHours) : "ساعات الفترة غير محددة";
 }
 
 function employeePayrollPath(entry: PayrollEntryView) {
@@ -189,22 +189,22 @@ function attendanceDeductionBlocked(entry: PayrollEntryView) {
 }
 
 function attendanceDeductionMessage(entry: PayrollEntryView) {
-  return entry.attendanceSummary.attendanceDeductionNote || "ظ„ظ… ظٹطھظ… طھط·ط¨ظٹظ‚ ط®طµظ… ط§ظ„ط­ط¶ظˆط± ظ„ط£ظ† ط±ط¨ط· ط§ظ„ط¨طµظ…ط§طھ ط؛ظٹط± ظ…ظƒطھظ…ظ„ ط£ظˆ ط؛ظٹط± ظ…ط¤ظƒط¯.";
+  return entry.attendanceSummary.attendanceDeductionNote || "لم يتم تطبيق خصم الحضور لأن ربط البصمات غير مكتمل أو غير مؤكد.";
 }
 
 function attendanceLinkLabel(entry: PayrollEntryView) {
   const status = entry.attendanceSummary.attendanceLinkStatus;
   if (status === "confirmed") {
-    return entry.attendanceSummary.incompleteDays > 0 ? "ظ…ط¤ظƒط¯ - ط¨طµظ…ط© ظ†ط§ظ‚طµط©" : "ظ…ط¤ظƒط¯";
+    return entry.attendanceSummary.incompleteDays > 0 ? "مؤكد - بصمة ناقصة" : "مؤكد";
   }
-  if (status === "not_ready") return "ط؛ظٹط± ط¬ط§ظ‡ط²";
-  return "ط؛ظٹط± ظ…ط±ط¨ظˆط·";
+  if (status === "not_ready") return "غير جاهز";
+  return "غير مربوط";
 }
 
 function formatAttendanceDeduction(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) return UNDEFINED_VALUE_LABEL;
   return attendanceDeductionBlocked(entry)
-    ? "ظ„ظ… ظٹط·ط¨ظ‚"
+    ? "لم يطبق"
     : formatPayrollMoney(entry.missingHoursDeductionHalalas);
 }
 
@@ -215,22 +215,22 @@ function hasManualAdjustments(entry: PayrollEntryView) {
 function payrollActionErrorMessage(error: unknown, fallback: string) {
   const message = String((error as any)?.message || error || "");
   if (message === "payroll_setup_incomplete") {
-    return "ظ„ط§ ظٹظ…ظƒظ† ط§ط¹طھظ…ط§ط¯ ط§ظ„ط±ط§طھط¨ ظ‚ط¨ظ„ ط¥ظƒظ…ط§ظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨.";
+    return "لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.";
   }
   if (message === "payroll_not_approved") {
-    return "ظ„ط§ ظٹظ…ظƒظ† طھط³ط¬ظٹظ„ ط§ظ„ط±ط§طھط¨ ظƒظ…ط¯ظپظˆط¹ ظ‚ط¨ظ„ ط§ط¹طھظ…ط§ط¯ظ‡.";
+    return "لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.";
   }
   if (message === "core_payroll:setup_incomplete") {
-    return "ظ„ط§ ظٹظ…ظƒظ† ط§ط¹طھظ…ط§ط¯ ط§ظ„ط±ط§طھط¨ ظ‚ط¨ظ„ ط¥ظƒظ…ط§ظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨.";
+    return "لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.";
   }
   if (message === "core_payroll:not_approved") {
-    return "ظ„ط§ ظٹظ…ظƒظ† طھط³ط¬ظٹظ„ ط§ظ„ط±ط§طھط¨ ظƒظ…ط¯ظپظˆط¹ ظ‚ط¨ظ„ ط§ط¹طھظ…ط§ط¯ظ‡.";
+    return "لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.";
   }
   if (message === "payroll_paid_reopen_not_allowed" || message === "core_payroll:paid_reopen_not_allowed") {
-    return "ظ„ط§ ظٹظ…ظƒظ† ط¥ط¹ط§ط¯ط© ظپطھط­ ط±ط§طھط¨ ظ…ط¯ظپظˆط¹. ظٹط­طھط§ط¬ ط°ظ„ظƒ ظ…ط³ط§ط± ط¥ظ„ط؛ط§ط، ط¯ظپط¹ ظ…ظ†ظپطµظ„.";
+    return "لا يمكن إعادة فتح راتب مدفوع. يحتاج ذلك مسار إلغاء دفع منفصل.";
   }
   if (message === "payroll_reopen_reason_required") {
-    return "ط³ط¨ط¨ ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨ ظ…ط·ظ„ظˆط¨.";
+    return "سبب إعادة فتح الراتب مطلوب.";
   }
   return String((error as any)?.message || fallback);
 }
@@ -278,9 +278,9 @@ export default function DashboardPayroll() {
       });
       setEmployees(employeeRows);
       setEntries(hydratedEntries);
-      setMessage(hydratedEntries.length ? "طھظ… طھط­ظ…ظٹظ„ ظ…ط³ظٹط±ط§طھ ط§ظ„ط±ظˆط§طھط¨ ط§ظ„ظ…ط­ظپظˆط¸ط©." : "ظ„ط§ طھظˆط¬ط¯ ظ…ط³ظٹط±ط§طھ ظ…ط­ظپظˆط¸ط© ظ„ظ‡ط°ط§ ط§ظ„ط´ظ‡ط± ط¨ط¹ط¯.");
+      setMessage(hydratedEntries.length ? "تم تحميل مسيرات الرواتب المحفوظة." : "لا توجد مسيرات محفوظة لهذا الشهر بعد.");
     } catch (loadError: any) {
-      setError(String(loadError?.message || "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط¥ط¯ط§ط±ط© ط§ظ„ط±ظˆط§طھط¨."));
+      setError(String(loadError?.message || "تعذر تحميل إدارة الرواتب."));
     } finally {
       setLoading(false);
     }
@@ -338,18 +338,18 @@ export default function DashboardPayroll() {
 
   const selectedEmployeeName =
     employeeFilter === "all"
-      ? "ظƒظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ"
+      ? "كل الموظفات"
       : employees.find((employee) => employee.id === employeeFilter)?.name || employeeFilter;
   const selectedStatusLabel = STATUS_LABELS[statusFilter] || statusFilter;
   const exportableEntries = includeIncompleteExport
     ? visibleEntries
     : visibleEntries.filter(isPayrollExportEligible);
   const exportableCount = exportableEntries.length;
-  const payrollCycleLabel = `ظپطھط±ط© ط§ظ„ط§ط­طھط³ط§ط¨: ${payrollBounds.monthStart} ط¥ظ„ظ‰ ${payrollBounds.monthEnd} آ· ط§ظ„طµط±ظپ ط§ظ„ظ…طھظˆظ‚ط¹: ${payrollBounds.payDate}`;
+  const payrollCycleLabel = `فترة الاحتساب: ${payrollBounds.monthStart} إلى ${payrollBounds.monthEnd} · الصرف المتوقع: ${payrollBounds.payDate}`;
   const payrollPeriodStatus = payrollAccrualPeriodStatus(payrollMonth);
   const payrollPartialLabel = payrollPeriodStatus.isPartial
-    ? "ظ…ط³ظٹط±ط© ط¬ط²ط¦ظٹط© ظ…ط­ط³ظˆط¨ط© ط­طھظ‰ " + (payrollPeriodStatus.completedThroughDate || "ظ„ظ… طھط¨ط¯ط£ ط§ظ„ظپطھط±ط©")
-    : "ظ…ط³ظٹط±ط© ظ…ظƒطھظ…ظ„ط© / ظ†ظ‡ط§ط¦ظٹط©";
+    ? "مسيرة جزئية محسوبة حتى " + (payrollPeriodStatus.completedThroughDate || "لم تبدأ الفترة")
+    : "مسيرة مكتملة / نهائية";
 
   const payrollReportInput = () => {
     const exportedEntries = exportableEntries;
@@ -358,8 +358,8 @@ export default function DashboardPayroll() {
       : visibleEntries
           .filter((entry) => !isPayrollExportEligible(entry))
           .map((entry) => ({
-            employeeName: entry.employeeName || entry.employeeId || "ط؛ظٹط± ظ…طھظˆظپط±",
-            reason: payrollExportExclusionReason(entry) || "ط؛ظٹط± ظ‚ط§ط¨ظ„ ظ„ظ„طھطµط¯ظٹط±",
+            employeeName: entry.employeeName || entry.employeeId || "غير متوفر",
+            reason: payrollExportExclusionReason(entry) || "غير قابل للتصدير",
           }));
 
     return {
@@ -412,11 +412,11 @@ export default function DashboardPayroll() {
       });
       setMessage(
         recalculate
-          ? `طھظ…طھ ط¥ط¹ط§ط¯ط© ط§ظ„ط­ط³ط§ط¨ ظ„ظ„ظپطھط±ط© ${period.monthStart} ط¥ظ„ظ‰ ${period.monthEnd}.`
-          : `طھظ… طھظˆظ„ظٹط¯ ظ…ط³ظٹط±ط© ط§ظ„ط´ظ‡ط± ظ„ظ„ظپطھط±ط© ${period.monthStart} ط¥ظ„ظ‰ ${period.monthEnd} ظƒظ…ط³ظˆط¯ط§طھ ط¬ط§ظ‡ط²ط© ظ„ظ„ط­ظپط¸.`
+          ? `تمت إعادة الحساب للفترة ${period.monthStart} إلى ${period.monthEnd}.`
+          : `تم توليد مسيرة الشهر للفترة ${period.monthStart} إلى ${period.monthEnd} كمسودات جاهزة للحفظ.`
       );
     } catch (actionError: any) {
-      setError(String(actionError?.message || "طھط¹ط°ط± طھظˆظ„ظٹط¯ ظ…ط³ظٹط±ط© ط§ظ„ط±ظˆط§طھط¨."));
+      setError(String(actionError?.message || "تعذر توليد مسيرة الرواتب."));
     } finally {
       setBusy("");
     }
@@ -431,9 +431,9 @@ export default function DashboardPayroll() {
       const prepared = visibleEntries.map((entry) => ({ ...entry, periodId: entry.periodId || period.id }));
       const saved = await savePayrollDrafts(prepared);
       setEntries((current) => saved.reduce(replaceEntry, current));
-      setMessage(`طھظ… ط­ظپط¸ ${saved.length} ظ…ط³ظˆط¯ط© ظپظٹ ظ†ط¸ط§ظ… ط§ظ„ط±ظˆط§طھط¨.`);
+      setMessage(`تم حفظ ${saved.length} مسودة في نظام الرواتب.`);
     } catch (actionError: any) {
-      setError(String(actionError?.message || "طھط¹ط°ط± ط­ظپط¸ ظ…ط³ظˆط¯ط§طھ ط§ظ„ط±ظˆط§طھط¨."));
+      setError(String(actionError?.message || "تعذر حفظ مسودات الرواتب."));
     } finally {
       setBusy("");
     }
@@ -456,9 +456,9 @@ export default function DashboardPayroll() {
       const next = saved;
       setEntries((current) => replaceEntry(current, next));
       setSelectedEntry((current) => (current?.employeeId === next.employeeId ? next : current));
-      setMessage("طھظ…طھ ط¥ط¹ط§ط¯ط© ط­ط³ط§ط¨ ط§ظ„ط³ط¬ظ„.");
+      setMessage("تمت إعادة حساب السجل.");
     } catch (actionError: any) {
-      setError(String(actionError?.message || "طھط¹ط°ط±طھ ط¥ط¹ط§ط¯ط© ط­ط³ط§ط¨ ط§ظ„ط³ط¬ظ„."));
+      setError(String(actionError?.message || "تعذرت إعادة حساب السجل."));
     } finally {
       setBusy("");
     }
@@ -467,11 +467,11 @@ export default function DashboardPayroll() {
   const handleToggleOvertime = async (entry: PayrollEntryView, checked: boolean) => {
     if (!canManage || isPayrollSnapshotLocked(entry.status)) return;
     if (checked && !entry.payrollSetupComplete) {
-      setError("ظ„ط§ ظٹظ…ظƒظ† ط§ط­طھط³ط§ط¨ ط§ظ„ط£ظˆظپط± طھط§ظٹظ… ظ‚ط¨ظ„ ط¥ظƒظ…ط§ظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨.");
+      setError("لا يمكن احتساب الأوفر تايم قبل إكمال بيانات الراتب.");
       return;
     }
     if (checked && entry.detectedExtraHours <= 0) {
-      setError("ظ„ط§ طھظˆط¬ط¯ ط³ط§ط¹ط§طھ ط²ط§ط¦ط¯ط© ظ…ظƒطھط´ظپط© ظ„ظ‡ط°ط§ ط§ظ„ط³ط¬ظ„.");
+      setError("لا توجد ساعات زائدة مكتشفة لهذا السجل.");
       return;
     }
     const next = rebuildEntry(entry, { overtimeEnabled: checked });
@@ -481,9 +481,9 @@ export default function DashboardPayroll() {
     try {
       const saved = await togglePayrollOvertime(next);
       setEntries((current) => replaceEntry(current, saved));
-      setMessage("طھظ… ط­ظپط¸ ط®ظٹط§ط± ط§ط­طھط³ط§ط¨ ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط¥ط¶ط§ظپظٹط© ظ„ظ‡ط°ط§ ط§ظ„ط³ط¬ظ„.");
+      setMessage("تم حفظ خيار احتساب الساعات الإضافية لهذا السجل.");
     } catch (actionError: any) {
-      setError(String(actionError?.message || "طھط¹ط°ط± طھط­ط¯ظٹط« ط®ظٹط§ط± ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط¥ط¶ط§ظپظٹط©."));
+      setError(String(actionError?.message || "تعذر تحديث خيار الساعات الإضافية."));
     } finally {
       setBusy("");
     }
@@ -509,7 +509,7 @@ export default function DashboardPayroll() {
       amountHalalas: riyalsToHalalas(adjustment.amount),
       reason: adjustment.reason.trim(),
       note: adjustment.note.trim() || undefined,
-      addedBy: "ط§ظ„ط¥ط¯ط§ط±ط©",
+      addedBy: "الإدارة",
       addedAt: new Date().toISOString(),
     };
     try {
@@ -523,14 +523,14 @@ export default function DashboardPayroll() {
       setEntries((current) => replaceEntry(current, saved));
       setSelectedEntry((current) => (current?.employeeId === saved.employeeId ? saved : current));
       setAdjustment(null);
-      setMessage("طھظ…طھ ط¥ط¶ط§ظپط© ط§ظ„ط¨ظ†ط¯ ط§ظ„ظٹط¯ظˆظٹ.");
+      setMessage("تمت إضافة البند اليدوي.");
     } catch (actionError: any) {
       setError(
         actionError?.message === "manual_payroll_item_reason_required"
-          ? "ط³ط¨ط¨ ط§ظ„ط¥ط¶ط§ظپط© ط£ظˆ ط§ظ„ط®طµظ… ظ…ط·ظ„ظˆط¨."
+          ? "سبب الإضافة أو الخصم مطلوب."
           : actionError?.message === "manual_payroll_item_amount_required"
-            ? "ط§ظ„ظ…ط¨ظ„ط؛ ظ…ط·ظ„ظˆط¨ ظˆظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط£ظƒط¨ط± ظ…ظ† طµظپط±."
-            : String(actionError?.message || "طھط¹ط°ط± ط­ظپط¸ ط§ظ„ط¨ظ†ط¯ ط§ظ„ظٹط¯ظˆظٹ.")
+            ? "المبلغ مطلوب ويجب أن يكون أكبر من صفر."
+            : String(actionError?.message || "تعذر حفظ البند اليدوي.")
       );
     } finally {
       setBusy("");
@@ -540,19 +540,19 @@ export default function DashboardPayroll() {
   const handleApprove = async (entry: PayrollEntryView) => {
     if (!canManage || entry.status === "paid") return;
     if (!entry.payrollSetupComplete) {
-      setError("ظ„ط§ ظٹظ…ظƒظ† ط§ط¹طھظ…ط§ط¯ ط§ظ„ط±ط§طھط¨ ظ‚ط¨ظ„ ط¥ظƒظ…ط§ظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨.");
+      setError("لا يمكن اعتماد الراتب قبل إكمال بيانات الراتب.");
       return;
     }
     const payrollMoney = calculatePayrollAccrualView(entry);
     if (payrollMoney.isPartial) {
       const confirmed = window.confirm(
-        "ظ‡ط°ظ‡ ظ…ط³ظٹط±ط© ط¬ط²ط¦ظٹط© ظ…ط­ط³ظˆط¨ط© ط­طھظ‰ " +
-          (payrollMoney.completedThroughDate || "ظ„ظ… طھط¨ط¯ط£ ط§ظ„ظپطھط±ط©") +
-          "\n\nط§ظ„ظ…ط³طھط­ظ‚ ط­طھظ‰ ط§ظ„ظٹظˆظ…: " +
+        "هذه مسيرة جزئية محسوبة حتى " +
+          (payrollMoney.completedThroughDate || "لم تبدأ الفترة") +
+          "\n\nالمستحق حتى اليوم: " +
           formatPayrollMoney(payrollMoney.earnedToDateHalalas) +
-          "\nط§ظ„طµط§ظپظٹ ط§ظ„ظ…طھظˆظ‚ط¹ ظ†ظ‡ط§ظٹط© ط§ظ„ظپطھط±ط©: " +
+          "\nالصافي المتوقع نهاية الفترة: " +
           formatPayrollMoney(payrollMoney.expectedNetHalalas) +
-          "\n\nظ‡ظ„ طھط±ظٹط¯ ط§ط¹طھظ…ط§ط¯ظ‡ط§ ط±ط؛ظ… ط£ظ†ظ‡ط§ ظ‚ط¨ظ„ ظ†ظ‡ط§ظٹط© ط§ظ„ظپطھط±ط©طں"
+          "\n\nهل تريد اعتمادها رغم أنها قبل نهاية الفترة؟"
       );
       if (!confirmed) return;
     }
@@ -560,9 +560,9 @@ export default function DashboardPayroll() {
     try {
       const saved = await approvePayrollEntry(entry);
       setEntries((current) => replaceEntry(current, saved));
-      setMessage("طھظ… ط§ط¹طھظ…ط§ط¯ ط§ظ„ط±ط§طھط¨.");
+      setMessage("تم اعتماد الراتب.");
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "طھط¹ط°ط± ط§ط¹طھظ…ط§ط¯ ط§ظ„ط±ط§طھط¨."));
+      setError(payrollActionErrorMessage(actionError, "تعذر اعتماد الراتب."));
     } finally {
       setBusy("");
     }
@@ -571,20 +571,20 @@ export default function DashboardPayroll() {
   const handlePaid = async (entry: PayrollEntryView) => {
     if (!canManage) return;
     if (!entry.payrollSetupComplete) {
-      setError("ظ„ط§ ظٹظ…ظƒظ† طھط³ط¬ظٹظ„ ط§ظ„ط±ط§طھط¨ ظƒظ…ط¯ظپظˆط¹ ظ‚ط¨ظ„ ط¥ظƒظ…ط§ظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨.");
+      setError("لا يمكن تسجيل الراتب كمدفوع قبل إكمال بيانات الراتب.");
       return;
     }
     if (entry.status !== "approved") {
-      setError("ظ„ط§ ظٹظ…ظƒظ† طھط³ط¬ظٹظ„ ط§ظ„ط±ط§طھط¨ ظƒظ…ط¯ظپظˆط¹ ظ‚ط¨ظ„ ط§ط¹طھظ…ط§ط¯ظ‡.");
+      setError("لا يمكن تسجيل الراتب كمدفوع قبل اعتماده.");
       return;
     }
     setBusy(`paid:${entry.employeeId}`);
     try {
       const saved = await markPayrollEntryPaid(entry);
       setEntries((current) => replaceEntry(current, saved));
-      setMessage("طھظ… طھط³ط¬ظٹظ„ ط§ظ„ط±ط§طھط¨ ظƒظ…ط¯ظپظˆط¹.");
+      setMessage("تم تسجيل الراتب كمدفوع.");
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط¯ظپط¹."));
+      setError(payrollActionErrorMessage(actionError, "تعذر تسجيل الدفع."));
     } finally {
       setBusy("");
     }
@@ -599,12 +599,12 @@ export default function DashboardPayroll() {
     });
     if (!visibility.canReopen) return;
     const confirmed = window.confirm(
-      "ط³ظٹطھظ… ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨ ط§ظ„ظ…ط¹طھظ…ط¯ ظˆطھط­ظˆظٹظ„ظ‡ ط¥ظ„ظ‰ ظ…ط³ظˆط¯ط© ط­طھظ‰ ظٹظ…ظƒظ† ط¥ط¹ط§ط¯ط© ط§ظ„ط­ط³ط§ط¨. ظ„ظ† ظٹطھظ… طھط¹ط¯ظٹظ„ ط§ظ„ط±ط§طھط¨ طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ط­طھظ‰ طھط¶ط؛ط· ط¥ط¹ط§ط¯ط© ط§ظ„ط­ط³ط§ط¨ ط¨ط¹ط¯ ط§ظ„ظپطھط­. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں"
+      "سيتم إعادة فتح الراتب المعتمد وتحويله إلى مسودة حتى يمكن إعادة الحساب. لن يتم تعديل الراتب تلقائيًا حتى تضغط إعادة الحساب بعد الفتح. هل تريد المتابعة؟"
     );
     if (!confirmed) return;
-    const reason = window.prompt("ط§ظƒطھط¨ ط³ط¨ط¨ ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨", "ط¥ط¹ط§ط¯ط© ط§ط­طھط³ط§ط¨ ط§ظ„ط­ط¶ظˆط± ط¨ط¹ط¯ طھط­ط¯ظٹط« ط³ظٹط§ط³ط© ط§ظ„ط؛ظٹط§ط¨");
+    const reason = window.prompt("اكتب سبب إعادة فتح الراتب", "إعادة احتساب الحضور بعد تحديث سياسة الغياب");
     if (!reason?.trim()) {
-      setError("ط³ط¨ط¨ ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨ ظ…ط·ظ„ظˆط¨.");
+      setError("سبب إعادة فتح الراتب مطلوب.");
       return;
     }
     setBusy(`reopen:${entry.employeeId}`);
@@ -612,9 +612,9 @@ export default function DashboardPayroll() {
       const saved = await reopenPayrollEntry(entry, { reason: reason.trim(), status: "draft" });
       setEntries((current) => replaceEntry(current, saved));
       setSelectedEntry((current) => (current?.employeeId === saved.employeeId ? saved : current));
-      setMessage("طھظ…طھ ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨. ظٹظ…ظƒظ†ظƒ ط§ظ„ط¢ظ† ط¥ط¹ط§ط¯ط© ط§ظ„ط­ط³ط§ط¨ ط«ظ… ط§ظ„ط§ط¹طھظ…ط§ط¯ ظ…ظ† ط¬ط¯ظٹط¯.");
+      setMessage("تمت إعادة فتح الراتب. يمكنك الآن إعادة الحساب ثم الاعتماد من جديد.");
     } catch (actionError: any) {
-      setError(payrollActionErrorMessage(actionError, "طھط¹ط°ط±طھ ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨."));
+      setError(payrollActionErrorMessage(actionError, "تعذرت إعادة فتح الراتب."));
     } finally {
       setBusy("");
     }
@@ -624,19 +624,19 @@ export default function DashboardPayroll() {
     <section className="payroll-page" dir="rtl">
       <header className="payroll-hero">
         <div>
-          <span>ظ†ط¸ط§ظ… ط§ظ„ط±ظˆط§طھط¨</span>
-          <h1>ط¥ط¯ط§ط±ط© ط§ظ„ط±ظˆط§طھط¨</h1>
-          <p>ط¥ظ†ط´ط§ط، ظˆظ…ط±ط§ط¬ط¹ط© ظˆط§ط¹طھظ…ط§ط¯ ظ…ط³ظٹط±ط§طھ ط§ظ„ط±ظˆط§طھط¨ ط§ظ„ط´ظ‡ط±ظٹط© ظ„ظ„ظ…ظˆط¸ظپط§طھ.</p>
+          <span>نظام الرواتب</span>
+          <h1>إدارة الرواتب</h1>
+          <p>إنشاء ومراجعة واعتماد مسيرات الرواتب الشهرية للموظفات.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           <FiRefreshCw className={loading ? "is-spinning" : ""} />
-          طھط­ط¯ظٹط«
+          تحديث
         </button>
       </header>
 
       <div className="payroll-toolbar">
         <label>
-          <span>ط§ظ„ط´ظ‡ط±</span>
+          <span>الشهر</span>
           <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
             {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => (
               <option key={item} value={item}>{item}</option>
@@ -644,20 +644,20 @@ export default function DashboardPayroll() {
           </select>
         </label>
         <label>
-          <span>ط§ظ„ط³ظ†ط©</span>
+          <span>السنة</span>
           <input type="number" min="2020" max="2100" value={year} onChange={(event) => setYear(Number(event.target.value))} />
         </label>
         <label>
-          <span>ط§ظ„ظ…ظˆط¸ظپط©</span>
+          <span>الموظفة</span>
           <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
-            <option value="all">ظƒظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ</option>
+            <option value="all">كل الموظفات</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>{employee.name}</option>
             ))}
           </select>
         </label>
         <label>
-          <span>ط­ط§ظ„ط© ط§ظ„ط±ط§طھط¨</span>
+          <span>حالة الراتب</span>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             {Object.entries(STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -666,28 +666,28 @@ export default function DashboardPayroll() {
         </label>
         <div className="payroll-toolbar__actions">
           <button type="button" onClick={() => void handleGenerate(false)} disabled={!canManage || Boolean(busy)}>
-            <FiSliders /> طھظˆظ„ظٹط¯ ظ…ط³ظٹط±ط© ط§ظ„ط´ظ‡ط±
+            <FiSliders /> توليد مسيرة الشهر
           </button>
           <button type="button" onClick={() => void handleGenerate(true)} disabled={!canManage || Boolean(busy)}>
-            <FiRefreshCw /> ط¥ط¹ط§ط¯ط© ط­ط³ط§ط¨
+            <FiRefreshCw /> إعادة حساب
           </button>
           <button type="button" className="is-primary" onClick={() => void handleSaveDrafts()} disabled={!canManage || Boolean(busy)}>
-            <FiSave /> ط­ظپط¸ ط§ظ„ظ…ط³ظˆط¯ط§طھ
+            <FiSave /> حفظ المسودات
           </button>
           <button type="button" onClick={handleExportPayrollPdf} disabled={loading}>
-            <FiFileText /> طھطµط¯ظٹط± ظ…ط³ظٹط±ط© ط§ظ„ط´ظ‡ط± PDF
+            <FiFileText /> تصدير مسيرة الشهر PDF
           </button>
           <button type="button" onClick={handleExportPayrollExcel} disabled={loading}>
-            <FiDownload /> طھطµط¯ظٹط± ظ…ط³ظٹط±ط© ط§ظ„ط´ظ‡ط± Excel
+            <FiDownload /> تصدير مسيرة الشهر Excel
           </button>
-          <span className="payroll-export-count">ط³ظٹطµط¯ظ‘ط± {exportableCount} ظ…ظ† {visibleEntries.length}</span>
+          <span className="payroll-export-count">سيصدّر {exportableCount} من {visibleEntries.length}</span>
           <label className="payroll-export-option">
             <input
               type="checkbox"
               checked={includeIncompleteExport}
               onChange={(event) => setIncludeIncompleteExport(event.target.checked)}
             />
-            <span>طھط¶ظ…ظٹظ† ط؛ظٹط± ط§ظ„ظ…ظƒطھظ…ظ„ ظپظٹ ط§ظ„طھطµط¯ظٹط±</span>
+            <span>تضمين غير المكتمل في التصدير</span>
           </label>
         </div>
       </div>
@@ -700,28 +700,28 @@ export default function DashboardPayroll() {
 
       {error ? <div className="payroll-alert is-error">{error}</div> : null}
       {message ? <div className="payroll-alert"><FiCheckCircle />{message}</div> : null}
-      {!canManage ? <div className="payroll-alert is-readonly">ظˆط¶ط¹ ظ‚ط±ط§ط،ط© ظپظ‚ط·: ظٹظ…ظƒظ†ظƒ ظ…ط±ط§ط¬ط¹ط© ط§ظ„ط±ظˆط§طھط¨ ط¯ظˆظ† طھط¹ط¯ظٹظ„ظ‡ط§.</div> : null}
+      {!canManage ? <div className="payroll-alert is-readonly">وضع قراءة فقط: يمكنك مراجعة الرواتب دون تعديلها.</div> : null}
 
       <div className="payroll-summary-grid">
-        <article><span><FiShield /></span><small>ط¹ط¯ط¯ ط§ظ„ظ…ظˆط¸ظپط§طھ</small><strong>{summary.count}</strong></article>
-        <article><span><FiCheckCircle /></span><small>ط¥ط¹ط¯ط§ط¯ط§طھ ظ…ظƒطھظ…ظ„ط©</small><strong>{summary.complete}</strong></article>
-        <article><span><FiAlertTriangle /></span><small>ط¥ط¹ط¯ط§ط¯ط§طھ ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©</small><strong>{summary.incomplete}</strong></article>
-        <article><span><FiDollarSign /></span><small>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط±ظˆط§طھط¨ ط§ظ„ظ…ظƒطھظ…ظ„ط©</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
-        <article><span><FiPlus /></span><small>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط¥ط¶ط§ظپط§طھ</small><strong>{formatPayrollMoney(summary.additions)}</strong></article>
-        <article><span><FiX /></span><small>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط®طµظˆظ…ط§طھ</small><strong>{formatPayrollMoney(summary.deductions)}</strong></article>
-        <article><span><FiDollarSign /></span><small>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ط³طھط­ظ‚ ط­طھظ‰ ط§ظ„ظٹظˆظ…</small><strong>{formatPayrollMoney(summary.earned)}</strong></article>
-        <article><span><FiDollarSign /></span><small>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„طµط§ظپظٹ ط§ظ„ظ…طھظˆظ‚ط¹</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
-        <article><span><FiClock /></span><small>ط¹ط¯ط¯ ط§ظ„ظ…ط³ظˆط¯ط§طھ</small><strong>{summary.drafts}</strong></article>
-        <article><span><FiCheckCircle /></span><small>ط¹ط¯ط¯ ط§ظ„ط±ظˆط§طھط¨ ط§ظ„ظ…ط¹طھظ…ط¯ط©</small><strong>{summary.approved}</strong></article>
-        <article><span><FiDollarSign /></span><small>ط¹ط¯ط¯ ط§ظ„ط±ظˆط§طھط¨ ط§ظ„ظ…ط¯ظپظˆط¹ط©</small><strong>{summary.paid}</strong></article>
+        <article><span><FiShield /></span><small>عدد الموظفات</small><strong>{summary.count}</strong></article>
+        <article><span><FiCheckCircle /></span><small>إعدادات مكتملة</small><strong>{summary.complete}</strong></article>
+        <article><span><FiAlertTriangle /></span><small>إعدادات غير مكتملة</small><strong>{summary.incomplete}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي الرواتب المكتملة</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
+        <article><span><FiPlus /></span><small>إجمالي الإضافات</small><strong>{formatPayrollMoney(summary.additions)}</strong></article>
+        <article><span><FiX /></span><small>إجمالي الخصومات</small><strong>{formatPayrollMoney(summary.deductions)}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي المستحق حتى اليوم</small><strong>{formatPayrollMoney(summary.earned)}</strong></article>
+        <article><span><FiDollarSign /></span><small>إجمالي الصافي المتوقع</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
+        <article><span><FiClock /></span><small>عدد المسودات</small><strong>{summary.drafts}</strong></article>
+        <article><span><FiCheckCircle /></span><small>عدد الرواتب المعتمدة</small><strong>{summary.approved}</strong></article>
+        <article><span><FiDollarSign /></span><small>عدد الرواتب المدفوعة</small><strong>{summary.paid}</strong></article>
       </div>
 
       {summary.incomplete > 0 ? (
         <div className="payroll-alert is-warning payroll-setup-warning" role="status">
           <FiAlertTriangle />
           <div>
-            <strong>ظ„ظ† ظٹطھظ… ط§ط­طھط³ط§ط¨ ط§ظ„ط±ط§طھط¨ ط­طھظ‰ ظٹطھظ… ط¥ظƒظ…ط§ظ„ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨ ظ…ظ† ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©.</strong>
-            <small>ط§ظ„ط­ظ‚ظˆظ„ ط§ظ„ظ…ط·ظ„ظˆط¨ط©: ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹطŒ ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„طŒ ظˆط³ط§ط¹ط§طھ ط§ظ„ط´ظ‡ط±.</small>
+            <strong>لن يتم احتساب الراتب حتى يتم إكمال إعدادات الراتب من ملف الموظفة.</strong>
+            <small>الحقول المطلوبة: الراتب الأساسي، أيام العمل، وساعات الشهر.</small>
           </div>
         </div>
       ) : null}
@@ -730,17 +730,17 @@ export default function DashboardPayroll() {
         <table className="payroll-table">
           <thead>
             <tr>
-              <th>ط§ظ„ظ…ظˆط¸ظپط©</th>
-              <th>ط­ط§ظ„ط© ط¥ط¹ط¯ط§ط¯ ط§ظ„ط±ط§طھط¨</th>
-              <th>ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ</th>
-              <th>ظ…ظ„ط®طµ ط§ظ„ط­ط¶ظˆط±</th>
-              <th>ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط²ط§ط¦ط¯ط©</th>
-              <th>ط§ط­طھط³ط§ط¨ ط§ظ„ط£ظˆظپط± طھط§ظٹظ…</th>
-              <th>ط§ظ„ط¥ط¶ط§ظپط§طھ</th>
-              <th>ط§ظ„ط®طµظˆظ…ط§طھ</th>
-              <th>ط§ظ„ظ…ط³طھط­ظ‚ / ط§ظ„ظ…طھظˆظ‚ط¹</th>
-              <th>ط§ظ„ط­ط§ظ„ط©</th>
-              <th>ط§ظ„ط¥ط¬ط±ط§ط،ط§طھ</th>
+              <th>الموظفة</th>
+              <th>حالة إعداد الراتب</th>
+              <th>الراتب الأساسي</th>
+              <th>ملخص الحضور</th>
+              <th>الساعات الزائدة</th>
+              <th>احتساب الأوفر تايم</th>
+              <th>الإضافات</th>
+              <th>الخصومات</th>
+              <th>المستحق / المتوقع</th>
+              <th>الحالة</th>
+              <th>الإجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -769,29 +769,29 @@ export default function DashboardPayroll() {
                     <small>{entry.jobTitle || entry.employeeId}</small>
                     <div className="payroll-row-badges">
                       <span className={`payroll-mini-badge ${exportEligible ? "is-exported" : "is-excluded"}`}>
-                        {exportEligible ? "ط¯ط§ط®ظ„ ط§ظ„طھطµط¯ظٹط± ط§ظ„ط±ط³ظ…ظٹ" : "ظ…ط³طھط¨ط¹ط¯ ظ…ظ† ط§ظ„طھطµط¯ظٹط±"}
+                        {exportEligible ? "داخل التصدير الرسمي" : "مستبعد من التصدير"}
                       </span>
                       {attendanceBlocked ? (
-                        <span className="payroll-mini-badge is-attendance-warning">ط§ظ„ط­ط¶ظˆط± ط؛ظٹط± ظ…ط±ط¨ظˆط·</span>
+                        <span className="payroll-mini-badge is-attendance-warning">الحضور غير مربوط</span>
                       ) : null}
                       {manualAdjustments ? (
-                        <span className="payroll-mini-badge is-manual">ط¨ظ†ظˆط¯ ظٹط¯ظˆظٹط©</span>
+                        <span className="payroll-mini-badge is-manual">بنود يدوية</span>
                       ) : null}
                     </div>
                   </td>
                   <td className="payroll-setup-cell">
                     <span className={`payroll-setup-badge ${entry.payrollSetupComplete ? "is-complete" : "is-incomplete"}`}>
-                      {entry.payrollSetupComplete ? "ظ…ظƒطھظ…ظ„" : "ط؛ظٹط± ظ…ظƒطھظ…ظ„"}
+                      {entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل"}
                     </span>
                     {!entry.payrollSetupComplete ? (
-                      <small>{missingLabels.join("طŒ ")}</small>
+                      <small>{missingLabels.join("، ")}</small>
                     ) : null}
                   </td>
                   <td>
                     <strong>{formatBaseSalary(entry)}</strong>
                     {!entry.payrollSetupComplete ? (
                       <small>
-                        <a href={employeePayrollPath(entry)}>ط¥ط¹ط¯ط§ط¯ ط§ظ„ط±ط§طھط¨</a>
+                        <a href={employeePayrollPath(entry)}>إعداد الراتب</a>
                       </small>
                     ) : null}
                   </td>
@@ -800,16 +800,16 @@ export default function DashboardPayroll() {
                       {attendanceLinkLabel(entry)}
                     </span>
                     <div className="payroll-attendance-metrics">
-                      <span>ط­ط¶ظˆط± {entry.attendanceSummary.attendanceDays}</span>
-                      <span>ط؛ظٹط§ط¨ {entry.attendanceSummary.absentDays}</span>
-                      <span>ظ†ط§ظ‚طµط© {entry.attendanceSummary.incompleteDays}</span>
-                      <span>ظ…ط·ظ„ظˆط¨ {formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</span>
-                      <span>ظپط¹ظ„ظٹ {formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</span>
-                      <span>طھط£ط®ظٹط± {formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</span>
-                      <span>ط§ظ†طµط±ط§ظپ {formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</span>
-                      <span>ظ†ظ‚طµ {formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</span>
+                      <span>حضور {entry.attendanceSummary.attendanceDays}</span>
+                      <span>غياب {entry.attendanceSummary.absentDays}</span>
+                      <span>ناقصة {entry.attendanceSummary.incompleteDays}</span>
+                      <span>مطلوب {formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</span>
+                      <span>فعلي {formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</span>
+                      <span>تأخير {formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</span>
+                      <span>انصراف {formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</span>
+                      <span>نقص {formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</span>
                     </div>
-                    {attendanceBlocked ? <small className="payroll-attendance-note">ظ…ط¹ظ„ظˆظ…ط© ظپظ‚ط·طŒ ط¨ط¯ظˆظ† ط®طµظ… طھظ„ظ‚ط§ط¦ظٹ</small> : null}
+                    {attendanceBlocked ? <small className="payroll-attendance-note">معلومة فقط، بدون خصم تلقائي</small> : null}
                   </td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
                   <td>
@@ -822,43 +822,43 @@ export default function DashboardPayroll() {
                       />
                       <span />
                     </label>
-                    <small>{entry.overtimeEnabled ? "ظ…ط­طھط³ط¨" : "ط؛ظٹط± ظ…ط­طھط³ط¨"}</small>
+                    <small>{entry.overtimeEnabled ? "محتسب" : "غير محتسب"}</small>
                   </td>
                   <td>{formatPayrollMoney(entry.totalAdditionsHalalas)}</td>
                   <td>
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
-                    {attendanceBlocked ? <small className="payroll-attendance-note">ط®طµظ… ط§ظ„ط­ط¶ظˆط±: ظ„ظ… ظٹط·ط¨ظ‚</small> : null}
+                    {attendanceBlocked ? <small className="payroll-attendance-note">خصم الحضور: لم يطبق</small> : null}
                   </td>
                   <td className="payroll-net-cell">
                     <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
                     {entry.payrollSetupComplete && payrollMoney.isPartial ? (
                       <>
-                        <small>ط§ظ„ظ…طھظˆظ‚ط¹ ظ†ظ‡ط§ظٹط© ط§ظ„ظپطھط±ط©: {formatPayrollMoney(payrollMoney.expectedNetHalalas)}</small>
-                        <small>ط­طھظ‰ {payrollMoney.completedThroughDate || "ظ„ظ… طھط¨ط¯ط£ ط§ظ„ظپطھط±ط©"}</small>
+                        <small>المتوقع نهاية الفترة: {formatPayrollMoney(payrollMoney.expectedNetHalalas)}</small>
+                        <small>حتى {payrollMoney.completedThroughDate || "لم تبدأ الفترة"}</small>
                       </>
                     ) : null}
                   </td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
                     <div className="payroll-row-actions">
-                      <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />ط¹ط±ط¶</button>
-                      <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>ط¥ط¹ط§ط¯ط© ط§ظ„ط­ط³ط§ط¨</button>
-                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>ط¥ط¶ط§ظپط© ط®طµظ…</button>
-                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>ط¥ط¶ط§ظپط© ط¥ط¶ط§ظپط©</button>
+                      <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض</button>
+                      <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
+                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
+                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
                       {!entry.payrollSetupComplete ? (
                         <span className="payroll-action-help">
-                          <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />ظپطھط­ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©</a>
-                          <small>ظ„ط¥ظƒظ…ط§ظ„ ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹطŒ ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„طŒ ظˆط³ط§ط¹ط§طھ ط§ظ„ط´ظ‡ط±</small>
+                          <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+                          <small>لإكمال الراتب الأساسي، أيام العمل، وساعات الشهر</small>
                         </span>
                       ) : null}
                       {actions.showApprove ? (
-                        <button type="button" disabled={!actions.canApprove} onClick={() => void handleApprove(entry)}>ط§ط¹طھظ…ط§ط¯</button>
+                        <button type="button" disabled={!actions.canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
                       ) : null}
                       {actions.showMarkPaid ? (
-                        <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>طھط³ط¬ظٹظ„ ظƒظ…ط¯ظپظˆط¹</button>
+                        <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
                       ) : null}
                       {actions.showReopen ? (
-                        <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />ط¥ط¹ط§ط¯ط© ظپطھط­ ط§ظ„ط±ط§طھط¨</button>
+                        <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />إعادة فتح الراتب</button>
                       ) : null}
                     </div>
                   </td>
@@ -867,7 +867,7 @@ export default function DashboardPayroll() {
             })}
           </tbody>
         </table>
-        {!loading && !visibleEntries.length ? <p className="payroll-empty">ظ„ط§ طھظˆط¬ط¯ ط±ظˆط§طھط¨ ظ…ط·ط§ط¨ظ‚ط©. ط§ط³طھط®ط¯ظ… ط²ط± طھظˆظ„ظٹط¯ ظ…ط³ظٹط±ط© ط§ظ„ط´ظ‡ط± ظ„ط¥ظ†ط´ط§ط، ظ…ط³ظˆط¯ط§طھ.</p> : null}
+        {!loading && !visibleEntries.length ? <p className="payroll-empty">لا توجد رواتب مطابقة. استخدم زر توليد مسيرة الشهر لإنشاء مسودات.</p> : null}
       </div>
 
       {selectedEntry ? (
@@ -885,13 +885,13 @@ export default function DashboardPayroll() {
           <aside className="payroll-modal payroll-adjustment-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <header>
               <div>
-                <span>{adjustment.mode === "addition" ? "ط¥ط¶ط§ظپط© ط§ط³طھط­ظ‚ط§ظ‚" : "ط¥ط¶ط§ظپط© ط®طµظ…"}</span>
+                <span>{adjustment.mode === "addition" ? "إضافة استحقاق" : "إضافة خصم"}</span>
                 <h2>{adjustment.entry.employeeName}</h2>
               </div>
               <button type="button" onClick={() => setAdjustment(null)}><FiX /></button>
             </header>
             <label>
-              <span>ط§ظ„ظ†ظˆط¹</span>
+              <span>النوع</span>
               <select value={adjustment.kind} onChange={(event) => setAdjustment({ ...adjustment, kind: event.target.value as PayrollManualItemKind })}>
                 {(adjustment.mode === "addition" ? ADDITION_KINDS : DEDUCTION_KINDS).map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
@@ -899,20 +899,20 @@ export default function DashboardPayroll() {
               </select>
             </label>
             <label>
-              <span>ط§ظ„ظ…ط¨ظ„ط؛</span>
+              <span>المبلغ</span>
               <input type="number" min="0" step="0.01" value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} />
             </label>
             <label>
-              <span>ط§ظ„ط³ط¨ط¨</span>
+              <span>السبب</span>
               <input value={adjustment.reason} onChange={(event) => setAdjustment({ ...adjustment, reason: event.target.value })} />
             </label>
             <label>
-              <span>ظ…ظ„ط§ط­ط¸ط© ط§ط®طھظٹط§ط±ظٹط©</span>
+              <span>ملاحظة اختيارية</span>
               <textarea value={adjustment.note} onChange={(event) => setAdjustment({ ...adjustment, note: event.target.value })} />
             </label>
             <footer>
-              <button type="button" onClick={() => setAdjustment(null)}>ط¥ظ„ط؛ط§ط،</button>
-              <button type="button" className="is-primary" disabled={busy === "adjustment"} onClick={() => void submitAdjustment()}>ط­ظپط¸ ط§ظ„ط¨ظ†ط¯</button>
+              <button type="button" onClick={() => setAdjustment(null)}>إلغاء</button>
+              <button type="button" className="is-primary" disabled={busy === "adjustment"} onClick={() => void submitAdjustment()}>حفظ البند</button>
             </footer>
           </aside>
         </div>
@@ -943,11 +943,11 @@ function PayrollDetailsModal({
           <div>
             <span>{entry.payrollMonth}</span>
             <h2>{entry.employeeName}</h2>
-            <p>{entry.jobTitle || "ظ…ظˆط¸ظپط©"} آ· {STATUS_LABELS[entry.status] || entry.status}</p>
+            <p>{entry.jobTitle || "موظفة"} · {STATUS_LABELS[entry.status] || entry.status}</p>
           </div>
           <div className="payroll-modal-actions">
-            <button type="button" onClick={onExportPayslip}><FiFileText /> طھطµط¯ظٹط± ظƒط´ظپ ط±ط§طھط¨ PDF</button>
-            <button type="button" onClick={onClose} aria-label="ط¥ط؛ظ„ط§ظ‚"><FiX /></button>
+            <button type="button" onClick={onExportPayslip}><FiFileText /> تصدير كشف راتب PDF</button>
+            <button type="button" onClick={onClose} aria-label="إغلاق"><FiX /></button>
           </div>
         </header>
 
@@ -955,8 +955,8 @@ function PayrollDetailsModal({
           <div className="payroll-alert is-warning">
             <FiAlertTriangle />
             <div>
-              <strong>ظ„ط§ ظٹظ…ظƒظ† ط§ط¹طھظ…ط§ط¯ ظ‡ط°ط§ ط§ظ„ط±ط§طھط¨ ظ„ط£ظ† ط¨ظٹط§ظ†ط§طھ ط§ظ„ط±ط§طھط¨ ط؛ظٹط± ظ…ظƒطھظ…ظ„ط©.</strong>
-              <small>{missingLabels.join("طŒ ")}</small>
+              <strong>لا يمكن اعتماد هذا الراتب لأن بيانات الراتب غير مكتملة.</strong>
+              <small>{missingLabels.join("، ")}</small>
             </div>
           </div>
         ) : null}
@@ -965,9 +965,9 @@ function PayrollDetailsModal({
           <div className="payroll-alert is-warning">
             <FiAlertTriangle />
             <div>
-              <strong>ظ‡ط°ظ‡ ظ…ط³ظٹط±ط© ط¬ط²ط¦ظٹط© ظˆظ„ظٹط³طھ ط±ط§طھط¨ظ‹ط§ ظ†ظ‡ط§ط¦ظٹظ‹ط§.</strong>
+              <strong>هذه مسيرة جزئية وليست راتبًا نهائيًا.</strong>
               <small>
-                ظ…ط­ط³ظˆط¨ط© ط­طھظ‰ {payrollMoney.completedThroughDate || "ظ„ظ… طھط¨ط¯ط£ ط§ظ„ظپطھط±ط©"} ظ…ظ† ظپطھط±ط© {payrollBounds.monthStart} ط¥ظ„ظ‰ {payrollBounds.monthEnd}.
+                محسوبة حتى {payrollMoney.completedThroughDate || "لم تبدأ الفترة"} من فترة {payrollBounds.monthStart} إلى {payrollBounds.monthEnd}.
               </small>
             </div>
           </div>
@@ -978,53 +978,53 @@ function PayrollDetailsModal({
             <FiAlertTriangle />
             <div>
               <strong>{attendanceDeductionMessage(entry)}</strong>
-              <small>ظ†ظ‚طµ ط§ظ„ط³ط§ط¹ط§طھ ط¸ط§ظ‡ط± ظ„ظ„ظ…ط±ط§ط¬ط¹ط© ظپظ‚ط· ظˆظ„ظ† ظٹطھط­ظˆظ„ ط¥ظ„ظ‰ ط®طµظ… ظ…ط§ظ„ظٹ طھظ„ظ‚ط§ط¦ظٹ.</small>
+              <small>نقص الساعات ظاهر للمراجعة فقط ولن يتحول إلى خصم مالي تلقائي.</small>
             </div>
           </div>
         ) : null}
 
         <div className="payroll-detail-grid">
           <section>
-            <h3>ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨</h3>
+            <h3>إعدادات الراتب</h3>
             <dl>
-              <div><dt>ط­ط§ظ„ط© ط§ظ„ط¥ط¹ط¯ط§ط¯</dt><dd>{entry.payrollSetupComplete ? "ظ…ظƒطھظ…ظ„" : "ط؛ظٹط± ظ…ظƒطھظ…ظ„"}</dd></div>
-              <div><dt>ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ</dt><dd>{formatBaseSalary(entry)}</dd></div>
-              <div><dt>ط¹ط¯ط¯ ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„</dt><dd>{setupMissing(entry, "workDays") ? UNDEFINED_VALUE_LABEL : entry.workDays}</dd></div>
-              <div><dt>ط³ط§ط¹ط§طھ ط§ظ„ظپطھط±ط©</dt><dd>{formatMonthlyHours(entry)}</dd></div>
-              <div><dt>ط³ط§ط¹ط§طھ ط§ظ„ظٹظˆظ… ط§ظ„ظ…ط¹طھظ…ط¯ط©</dt><dd>{entry.dailyScheduledHours > 0 ? formatAttendanceHours(entry.dailyScheduledHours) : UNDEFINED_VALUE_LABEL}</dd></div>
-              <div><dt>ط±ط§طھط¨ ط§ظ„ظٹظˆظ…</dt><dd>{formatSetupMoney(entry, entry.dailyRateHalalas)}</dd></div>
-              <div><dt>ط±ط§طھط¨ ط§ظ„ط³ط§ط¹ط©</dt><dd>{formatSetupMoney(entry, entry.hourlyRateHalalas)}</dd></div>
-              <div><dt>ظ…ط¹ط§ظ…ظ„ ط§ظ„ط£ظˆظپط± طھط§ظٹظ…</dt><dd>{entry.overtimeMultiplier}</dd></div>
-              <div><dt>ظ…طµط¯ط± ط§ظ„ط³ط§ط¹ط§طھ</dt><dd>{entry.monthlyHoursSource === "configured_monthly_hours" ? "ط³ط§ط¹ط§طھ ط´ظ‡ط± ظ…ط­ط¯ط¯ط©" : entry.monthlyHoursSource === "configured_daily_hours" ? "ط¯ظˆط§ظ… ظٹظˆظ…ظٹ ظ…ط¹طھظ…ط¯" : entry.monthlyHoursSource === "saved_snapshot" ? "Snapshot ظ…ط­ظپظˆط¸" : "ط؛ظٹط± ظ…ط­ط¯ط¯"}</dd></div>
+              <div><dt>حالة الإعداد</dt><dd>{entry.payrollSetupComplete ? "مكتمل" : "غير مكتمل"}</dd></div>
+              <div><dt>الراتب الأساسي</dt><dd>{formatBaseSalary(entry)}</dd></div>
+              <div><dt>عدد أيام العمل</dt><dd>{setupMissing(entry, "workDays") ? UNDEFINED_VALUE_LABEL : entry.workDays}</dd></div>
+              <div><dt>ساعات الفترة</dt><dd>{formatMonthlyHours(entry)}</dd></div>
+              <div><dt>ساعات اليوم المعتمدة</dt><dd>{entry.dailyScheduledHours > 0 ? formatAttendanceHours(entry.dailyScheduledHours) : UNDEFINED_VALUE_LABEL}</dd></div>
+              <div><dt>راتب اليوم</dt><dd>{formatSetupMoney(entry, entry.dailyRateHalalas)}</dd></div>
+              <div><dt>راتب الساعة</dt><dd>{formatSetupMoney(entry, entry.hourlyRateHalalas)}</dd></div>
+              <div><dt>معامل الأوفر تايم</dt><dd>{entry.overtimeMultiplier}</dd></div>
+              <div><dt>مصدر الساعات</dt><dd>{entry.monthlyHoursSource === "configured_monthly_hours" ? "ساعات شهر محددة" : entry.monthlyHoursSource === "configured_daily_hours" ? "دوام يومي معتمد" : entry.monthlyHoursSource === "saved_snapshot" ? "Snapshot محفوظ" : "غير محدد"}</dd></div>
             </dl>
             {!entry.payrollSetupComplete ? (
-              <a className="payroll-action-link payroll-action-link--inline" href={employeePayrollPath(entry)}><FiEdit3 />ظپطھط­ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©</a>
+              <a className="payroll-action-link payroll-action-link--inline" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
             ) : null}
           </section>
 
           <section>
-            <h3>ظ…ظ„ط®طµ ط§ظ„ط­ط¶ظˆط±</h3>
+            <h3>ملخص الحضور</h3>
             <dl>
-              <div><dt>ط£ظٹط§ظ… ط§ظ„ط­ط¶ظˆط±</dt><dd>{entry.attendanceSummary.attendanceDays}</dd></div>
-              <div><dt>ط­ط§ظ„ط© ط±ط¨ط· ط§ظ„ط­ط¶ظˆط±</dt><dd>{attendanceLinkLabel(entry)}</dd></div>
-              <div><dt>ط¹ط¯ط¯ ط§ظ„ط¨طµظ…ط§طھ ط§ظ„ظ…ط±طھط¨ط·ط©</dt><dd>{entry.attendanceSummary.attendanceRecordCount || 0}</dd></div>
-              <div><dt>ط£ظٹط§ظ… ط§ظ„ط؛ظٹط§ط¨</dt><dd>{entry.attendanceSummary.absentDays}</dd></div>
-              <div><dt>ط£ظٹط§ظ… ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ظ…ط¹طھظ…ط¯ط©</dt><dd>{entry.attendanceSummary.approvedLeaveDays || 0}</dd></div>
-              <div><dt>ط£ظٹط§ظ… ط§ظ„ط؛ظٹط§ط¨/ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ط¹طھظ…ط¯</dt><dd>{entry.attendanceSummary.approvedAbsenceDays || 0}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط³ط§ط¹ط§طھ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ظ…ط·ظ„ظˆط¨ط©</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط³ط§ط¹ط§طھ ط§ظ„ط¹ظ…ظ„ ط§ظ„ظپط¹ظ„ظٹط©</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„طھط£ط®ظٹط± ط§ظ„ظپط¹ظ„ظٹ</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط§ظ†طµط±ط§ظپ ط§ظ„ظ…ط¨ظƒط±</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„طھط¹ظˆظٹط¶ ط¨ط¹ط¯ ط§ظ„ط¯ظˆط§ظ…</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalCompensatedLateHours)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ظ†ظ‚طµ ط§ظ„ط³ط§ط¹ط§طھ</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</dd></div>
-              <div><dt>ط£ظٹط§ظ… ظ†ط§ظ‚طµط© ط§ظ„ط¨طµظ…ط©</dt><dd>{entry.attendanceSummary.incompleteDays}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط²ط§ط¦ط¯ط© ط§ظ„ظ…ظƒطھط´ظپط©</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
+              <div><dt>أيام الحضور</dt><dd>{entry.attendanceSummary.attendanceDays}</dd></div>
+              <div><dt>حالة ربط الحضور</dt><dd>{attendanceLinkLabel(entry)}</dd></div>
+              <div><dt>عدد البصمات المرتبطة</dt><dd>{entry.attendanceSummary.attendanceRecordCount || 0}</dd></div>
+              <div><dt>أيام الغياب</dt><dd>{entry.attendanceSummary.absentDays}</dd></div>
+              <div><dt>أيام الإجازة المعتمدة</dt><dd>{entry.attendanceSummary.approvedLeaveDays || 0}</dd></div>
+              <div><dt>أيام الغياب/الاستثناء المعتمد</dt><dd>{entry.attendanceSummary.approvedAbsenceDays || 0}</dd></div>
+              <div><dt>إجمالي ساعات الدوام المطلوبة</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalScheduledHours)}</dd></div>
+              <div><dt>إجمالي ساعات العمل الفعلية</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalActualWorkedHours)}</dd></div>
+              <div><dt>إجمالي التأخير الفعلي</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalLateHours)}</dd></div>
+              <div><dt>إجمالي الانصراف المبكر</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</dd></div>
+              <div><dt>إجمالي التعويض بعد الدوام</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalCompensatedLateHours)}</dd></div>
+              <div><dt>إجمالي نقص الساعات</dt><dd>{formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</dd></div>
+              <div><dt>أيام ناقصة البصمة</dt><dd>{entry.attendanceSummary.incompleteDays}</dd></div>
+              <div><dt>إجمالي الساعات الزائدة المكتشفة</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
             </dl>
           </section>
 
           {(entry.attendanceSummary.attendanceNotes || []).length ? (
             <section>
-              <h3>ظ…ظ„ط§ط­ط¸ط§طھ ط§ظ„ط­ط¶ظˆط±</h3>
+              <h3>ملاحظات الحضور</h3>
               <div className="payroll-attendance-note-list">
                 {entry.attendanceSummary.attendanceNotes!.map((note, index) => (
                   <span key={`${note}:${index}`}>{note}</span>
@@ -1034,73 +1034,72 @@ function PayrollDetailsModal({
           ) : null}
 
           <section>
-            <h3>ط§ظ„ط§ط³طھط­ظ‚ط§ظ‚ط§طھ</h3>
+            <h3>الاستحقاقات</h3>
             <dl>
-              <div><dt>ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ</dt><dd>{formatBaseSalary(entry)}</dd></div>
-              <div><dt>ط§ظ„ط¨ط¯ظ„ط§طھ</dt><dd>{formatPayrollMoney(entry.allowancesHalalas)}</dd></div>
-              <div><dt>ط§ظ„ظ…ظƒط§ظپط¢طھ ظˆط§ظ„ط¥ط¶ط§ظپط§طھ</dt><dd>{formatPayrollMoney(entry.manualAdditionsHalalas)}</dd></div>
-              <div><dt>ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط²ط§ط¦ط¯ط© ط§ظ„ظ…ظƒطھط´ظپط©</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
-              <div><dt>ط§ط­طھط³ط§ط¨ ط§ظ„ط£ظˆظپط± طھط§ظٹظ…</dt><dd>{entry.overtimeEnabled ? "ظ…ظپط¹ظ„" : "ط؛ظٹط± ظ…ظپط¹ظ„"}</dd></div>
-              <div><dt>ظ‚ظٹظ…ط© ط§ظ„ط£ظˆظپط± طھط§ظٹظ…</dt><dd>{formatSetupMoney(entry, entry.overtimeValueHalalas)}</dd></div>
+              <div><dt>الراتب الأساسي</dt><dd>{formatBaseSalary(entry)}</dd></div>
+              <div><dt>البدلات</dt><dd>{formatPayrollMoney(entry.allowancesHalalas)}</dd></div>
+              <div><dt>المكافآت والإضافات</dt><dd>{formatPayrollMoney(entry.manualAdditionsHalalas)}</dd></div>
+              <div><dt>الساعات الزائدة المكتشفة</dt><dd>{formatAttendanceHours(entry.detectedExtraHours)}</dd></div>
+              <div><dt>احتساب الأوفر تايم</dt><dd>{entry.overtimeEnabled ? "مفعل" : "غير مفعل"}</dd></div>
+              <div><dt>قيمة الأوفر تايم</dt><dd>{formatSetupMoney(entry, entry.overtimeValueHalalas)}</dd></div>
             </dl>
-            <button type="button" onClick={() => onAdd("addition")}><FiPlus />ط¥ط¶ط§ظپط© ط§ط³طھط­ظ‚ط§ظ‚</button>
+            <button type="button" onClick={() => onAdd("addition")}><FiPlus />إضافة استحقاق</button>
           </section>
 
           <section>
-            <h3>ط§ظ„ط®طµظˆظ…ط§طھ</h3>
+            <h3>الخصومات</h3>
             <dl>
-              <div><dt>ط®طµظ… ط§ظ„ط­ط¶ظˆط±</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
-              <div><dt>ط§ظ„ط³ظ„ظپ</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
-              <div><dt>ط®طµظˆظ…ط§طھ ظٹط¯ظˆظٹط© ظˆط¬ط²ط§ط،ط§طھ</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
-              <div><dt>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ط®طµظˆظ…ط§طھ</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>
+              <div><dt>خصم الحضور</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
+              <div><dt>خصومات يدوية وجزاءات</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
+              <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>
             </dl>
-            <button type="button" onClick={() => onAdd("deduction")}><FiPlus />ط¥ط¶ط§ظپط© ط®طµظ…</button>
+            <button type="button" onClick={() => onAdd("deduction")}><FiPlus />إضافة خصم</button>
           </section>
         </div>
 
         <section className="payroll-net-panel">
-          <div><span>إجمالي الراتب</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
-          <div><span>إجمالي الإضافات</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
-          <div><span>إجمالي الخصومات</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
+          <div><span>grossSalary</span><strong>{formatSetupMoney(entry, entry.grossSalaryHalalas)}</strong></div>
+          <div><span>totalAdditions</span><strong>{formatPayrollMoney(entry.totalAdditionsHalalas)}</strong></div>
+          <div><span>totalDeductions</span><strong>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</strong></div>
           <div className="is-net">
-            <span>{payrollMoney.isPartial ? "ط§ظ„ظ…ط³طھط­ظ‚ ط­طھظ‰ ط§ظ„ظٹظˆظ…" : "طµط§ظپظٹ ط§ظ„ط±ط§طھط¨ ط§ظ„ظ†ظ‡ط§ط¦ظٹ"}</span>
+            <span>{payrollMoney.isPartial ? "المستحق حتى اليوم" : "صافي الراتب النهائي"}</span>
             <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
           </div>
           {payrollMoney.isPartial ? (
             <div>
-              <span>ط§ظ„طµط§ظپظٹ ط§ظ„ظ…طھظˆظ‚ط¹ ظ†ظ‡ط§ظٹط© ط§ظ„ظپطھط±ط©</span>
+              <span>الصافي المتوقع نهاية الفترة</span>
               <strong>{formatSetupMoney(entry, payrollMoney.expectedNetHalalas)}</strong>
             </div>
           ) : null}
         </section>
 
         <section className="payroll-adjustment-list">
-          <h3>ط§ظ„ط¨ظ†ظˆط¯ ط§ظ„ظٹط¯ظˆظٹط©</h3>
+          <h3>البنود اليدوية</h3>
           {[...entry.additions, ...entry.deductions].length ? (
             [...entry.additions, ...entry.deductions].map((item) => (
               <article key={item.id}>
                 <strong>{itemKindLabel(item.kind)}</strong>
                 <span>{formatPayrollMoney(item.amountHalalas)}</span>
-                <small>{item.reason}{item.note ? ` آ· ${item.note}` : ""}</small>
+                <small>{item.reason}{item.note ? ` · ${item.note}` : ""}</small>
               </article>
             ))
           ) : (
-            <p>ظ„ط§ طھظˆط¬ط¯ ط¨ظ†ظˆط¯ ظٹط¯ظˆظٹط©.</p>
+            <p>لا توجد بنود يدوية.</p>
           )}
         </section>
 
         <section className="payroll-audit-list">
-          <h3>ط³ط¬ظ„ ظ…ط®طھطµط±</h3>
+          <h3>سجل مختصر</h3>
           {(entry.auditLog || []).length ? (
             entry.auditLog!.map((item, index) => (
-              <span key={`${item.action || "event"}:${index}`}>{String(item.action || "event")} آ· {String(item.at || "")}</span>
+              <span key={`${item.action || "event"}:${index}`}>{String(item.action || "event")} · {String(item.at || "")}</span>
             ))
           ) : (
-            <span>طھظ… ط§ظ„ط¥ظ†ط´ط§ط، ظƒظ…ط³ظˆط¯ط©</span>
+            <span>تم الإنشاء كمسودة</span>
           )}
         </section>
       </aside>
     </div>
   );
 }
-
