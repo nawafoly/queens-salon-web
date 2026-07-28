@@ -49,6 +49,16 @@ export type PayrollEntryView = PayrollSnapshot & {
   auditLog?: Array<Record<string, unknown>>;
 };
 
+export type PayrollAccrualView = {
+  payrollMonth: string;
+  completedThroughDate: string | null;
+  isPartial: boolean;
+  progressRatio: number;
+  accruedGrossHalalas: number;
+  earnedToDateHalalas: number;
+  expectedNetHalalas: number;
+};
+
 export type PayrollAbsenceEntry = {
   id: string;
   dateKey: string;
@@ -193,6 +203,64 @@ function dayValue(value: unknown) {
 function positiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+export function payrollAccrualPeriodStatus(payrollMonth: string) {
+  const [year, month] = String(payrollMonth || "").split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return { completedThroughDate: null, isPartial: false };
+  }
+  const bounds = payrollMonthBounds(year, month);
+  const rawCompletedThrough = completedPayrollThroughDate(bounds);
+  const completedThroughDate =
+    rawCompletedThrough >= bounds.monthStart ? rawCompletedThrough : null;
+  return {
+    completedThroughDate,
+    isPartial: Boolean(completedThroughDate && completedThroughDate < bounds.monthEnd),
+  };
+}
+
+export function calculatePayrollAccrualView(entry: PayrollEntryView): PayrollAccrualView {
+  const period = payrollAccrualPeriodStatus(entry.payrollMonth);
+  const isPartial = period.isPartial;
+  const monthlyHours = positiveNumber(entry.monthlyHours);
+  const scheduledHours = positiveNumber(entry.attendanceSummary?.totalScheduledHours);
+  const progressRatio = isPartial
+    ? monthlyHours > 0
+      ? Math.min(1, Math.max(0, scheduledHours / monthlyHours))
+      : 0
+    : 1;
+
+  const baseAndAllowancesHalalas =
+    numberValue(entry.baseSalaryHalalas) + numberValue(entry.allowancesHalalas);
+  const accruedGrossHalalas = isPartial
+    ? Math.round(baseAndAllowancesHalalas * progressRatio)
+    : numberValue(entry.grossSalaryHalalas);
+
+  const variableAdditionsHalalas =
+    numberValue(entry.manualAdditionsHalalas) + numberValue(entry.overtimeValueHalalas);
+  const earnedToDateHalalas = entry.payrollSetupComplete
+    ? isPartial
+      ? Math.max(
+          0,
+          Math.round(
+            accruedGrossHalalas +
+              variableAdditionsHalalas -
+              numberValue(entry.totalDeductionsHalalas)
+          )
+        )
+      : numberValue(entry.netSalaryHalalas)
+    : 0;
+
+  return {
+    payrollMonth: entry.payrollMonth,
+    completedThroughDate: period.completedThroughDate,
+    isPartial,
+    progressRatio: Math.round(progressRatio * 10000) / 10000,
+    accruedGrossHalalas,
+    earnedToDateHalalas,
+    expectedNetHalalas: numberValue(entry.netSalaryHalalas),
+  };
 }
 
 function boolValue(value: unknown) {
