@@ -89,6 +89,12 @@ import {
   leaveRequestMatchesProfile,
 } from "../helpers/hr/attendanceCalendarData";
 import {
+  appendDateEffectiveScheduleVersion,
+  normalizeScheduleDateKey,
+  normalizeStaffScheduleVersions,
+  scheduleSnapshotsEqual,
+} from "../helpers/hr/staffScheduleHistory";
+import {
   computeStaffPayrollForMonth,
   normalizePayrollConfig,
   PAYROLL_CLOSE_DAY,
@@ -658,6 +664,8 @@ export default function DashboardEmployees() {
   const [modalCustomWorkingHours, setModalCustomWorkingHours] =
     useState<Record<WeekdayKey, StaffWorkingDay>>(createDefaultWorkingHours());
   const [modalCustomHourOverrides, setModalCustomHourOverrides] = useState<StaffWorkingHourOverride[]>([]);
+  const [modalScheduleEffectiveFrom, setModalScheduleEffectiveFrom] = useState(() => todayIso());
+  const [modalScheduleChangeReason, setModalScheduleChangeReason] = useState("");
   const [modalHourOverrideFromDate, setModalHourOverrideFromDate] = useState("");
   const [modalHourOverrideToDate, setModalHourOverrideToDate] = useState("");
   const [modalHourOverrideCalendar, setModalHourOverrideCalendar] = useState<DateCalendar>("gregory");
@@ -1328,6 +1336,8 @@ export default function DashboardEmployees() {
     setModalUseCustomWorkingHours(false);
     setModalCustomWorkingHours(createDefaultWorkingHours());
     setModalCustomHourOverrides([]);
+    setModalScheduleEffectiveFrom(todayIso());
+    setModalScheduleChangeReason("");
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
     setModalHourOverrideCalendar("gregory");
@@ -1409,6 +1419,8 @@ export default function DashboardEmployees() {
     setModalCustomHourOverrides(
       normalizeWorkingHourOverrides((x as any).customWorkingHourOverrides)
     );
+    setModalScheduleEffectiveFrom(todayIso());
+    setModalScheduleChangeReason("");
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
     setModalHourOverrideCalendar("gregory");
@@ -2327,6 +2339,38 @@ export default function DashboardEmployees() {
         }
       : null;
 
+    const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
+    const previousScheduleSnapshot = {
+      useCustomWorkingHours: !!(editingStaff as any)?.useCustomWorkingHours,
+      customWorkingHours: normalizeWorkingHours((editingStaff as any)?.customWorkingHours),
+    };
+    const nextScheduleSnapshot = {
+      useCustomWorkingHours: !!modalUseCustomWorkingHours,
+      customWorkingHours: normalizedCustomWorkingHours,
+    };
+    const scheduleChanged = !editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot);
+    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
+    const scheduleChangeReason = cleanText(modalScheduleChangeReason);
+    if (scheduleChanged && !scheduleEffectiveFrom) {
+      setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
+      return;
+    }
+    if (editId && scheduleChanged && !scheduleChangeReason) {
+      setErrorMsg("اكتبي سبب تغيير جدول الدوام لحفظ سجل تدقيق واضح.");
+      return;
+    }
+    let workingScheduleVersions = normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions);
+    if (scheduleChanged) {
+      workingScheduleVersions = appendDateEffectiveScheduleVersion({
+        versions: workingScheduleVersions,
+        effectiveFrom: scheduleEffectiveFrom,
+        next: nextScheduleSnapshot,
+        previous: editId ? previousScheduleSnapshot : null,
+        changeReason: scheduleChangeReason || "إنشاء جدول الموظفة",
+        createdByUid: cleanText(authUser?.uid),
+      });
+    }
+
     setSaving(true);
     setErrorMsg("");
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
@@ -2334,7 +2378,6 @@ export default function DashboardEmployees() {
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
-    const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
     const normalizedExceptionalWeekdays = modalUseCustomWorkingHours
       ? WEEKDAY_OPTIONS.filter(
           (day) => normalizedCustomWorkingHours[day.key]?.enabled === false
@@ -2375,6 +2418,7 @@ export default function DashboardEmployees() {
       exceptionalLeaveWeekdays: normalizedExceptionalWeekdays,
       useCustomWorkingHours: !!modalUseCustomWorkingHours,
       customWorkingHours: normalizedCustomWorkingHours,
+      workingScheduleVersions,
       customWorkingHourOverrides: normalizedCustomHourOverrides,
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
       attendanceZoneId: normalizedAttendanceZoneId,
@@ -4861,6 +4905,9 @@ export default function DashboardEmployees() {
                 employmentEndDate={employmentEndDate}
                 modalUseCustomWorkingHours={modalUseCustomWorkingHours}
                 modalCustomWorkingHours={modalCustomWorkingHours}
+                scheduleEffectiveFrom={modalScheduleEffectiveFrom}
+                scheduleChangeReason={modalScheduleChangeReason}
+                scheduleVersionCount={normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions).length}
                 attendanceZones={attendanceZones}
                 attendanceZonesLoading={attendanceZonesLoading}
                 selectedAttendanceZoneId={selectedAttendanceZoneId}
@@ -4868,6 +4915,8 @@ export default function DashboardEmployees() {
                 overrideEditor={modalOverrideEditor}
                 onEmploymentEndDateChange={setEmploymentEndDate}
                 onModalUseCustomWorkingHoursChange={setModalUseCustomWorkingHours}
+                onScheduleEffectiveFromChange={setModalScheduleEffectiveFrom}
+                onScheduleChangeReasonChange={setModalScheduleChangeReason}
                 onSelectedAttendanceZoneIdChange={setSelectedAttendanceZoneId}
                 onReloadAttendanceZones={() => void loadAttendanceZones()}
                 onUpdateModalWorkingDay={updateModalWorkingDay}

@@ -23,6 +23,7 @@ import {
   type AttendanceStatus,
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
+import { resolveStaffScheduleVersionForDate } from "../helpers/hr/staffScheduleHistory";
 
 type AttendanceViewerMode = "employee" | "admin";
 
@@ -36,8 +37,16 @@ type AttendanceScheduleInput = ShiftSchedule & {
   offDays?: unknown;
   weeklyOffDay?: unknown;
   exceptionalLeaveWeekdays?: unknown;
+  useCustomWorkingHours?: boolean;
   customWorkingHours?: Record<string, { enabled?: boolean; start?: string; end?: string }> | null;
   customWorkingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
+  workingScheduleVersions?: Array<{
+    id?: string;
+    effectiveFrom?: string;
+    effectiveTo?: string;
+    useCustomWorkingHours?: boolean;
+    customWorkingHours?: Record<string, { enabled?: boolean; start?: string; end?: string }>;
+  }> | null;
 };
 
 type AttendanceMonthViewProps = {
@@ -150,35 +159,52 @@ function isDateSpecificOff(dateKey: string, input?: AttendanceScheduleInput | nu
 
 function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null): ShiftSchedule {
   const source = input || {};
+  const historicalVersion = resolveStaffScheduleVersionForDate(source.workingScheduleVersions, dateKey);
+  const effectiveSource: AttendanceScheduleInput = historicalVersion
+    ? {
+        ...source,
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      } as AttendanceScheduleInput
+    : source;
   const weekdayKey = weekdayKeyForDate(dateKey);
-  const customDay = source.customWorkingHours?.[weekdayKey];
+  const useCustomWorkingHours = historicalVersion
+    ? historicalVersion.useCustomWorkingHours
+    : effectiveSource.useCustomWorkingHours === true;
+  const customDay = useCustomWorkingHours ? effectiveSource.customWorkingHours?.[weekdayKey] : undefined;
   const override = getDayOverride(dateKey, source);
-  const customOffDays = Object.entries(source.customWorkingHours || {})
-    .filter(([, day]) => day?.enabled === false)
-    .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
-    .filter(Boolean);
+  const customHours = (effectiveSource.customWorkingHours || {}) as Record<
+    string,
+    { enabled?: boolean; start?: string; end?: string }
+  >;
+  const customOffDays = useCustomWorkingHours
+    ? Object.entries(customHours)
+        .filter(([, day]) => day?.enabled === false)
+        .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
+        .filter(Boolean)
+    : [];
   const explicitOffDays = [
-    ...(Array.isArray(source.weeklyOffDays) ? source.weeklyOffDays : []),
-    ...(Array.isArray(source.offDays) ? source.offDays : []),
-    ...(Array.isArray(source.exceptionalLeaveWeekdays) ? source.exceptionalLeaveWeekdays : []),
-    ...(source.weeklyOffDay ? [source.weeklyOffDay] : []),
+    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
   ];
 
   const startTime =
     cleanTime(override?.start) ||
     cleanTime(customDay?.start) ||
-    cleanTime(source.startTime) ||
-    cleanTime(source.start) ||
-    cleanTime(source.workStartTime) ||
-    cleanTime(source.shiftStartTime) ||
+    cleanTime(effectiveSource.startTime) ||
+    cleanTime(effectiveSource.start) ||
+    cleanTime(effectiveSource.workStartTime) ||
+    cleanTime(effectiveSource.shiftStartTime) ||
     "09:00";
   const endTime =
     cleanTime(override?.end) ||
     cleanTime(customDay?.end) ||
-    cleanTime(source.endTime) ||
-    cleanTime(source.end) ||
-    cleanTime(source.workEndTime) ||
-    cleanTime(source.shiftEndTime) ||
+    cleanTime(effectiveSource.endTime) ||
+    cleanTime(effectiveSource.end) ||
+    cleanTime(effectiveSource.workEndTime) ||
+    cleanTime(effectiveSource.shiftEndTime) ||
     "17:00";
 
   return {

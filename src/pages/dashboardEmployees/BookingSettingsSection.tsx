@@ -12,6 +12,9 @@ type BookingSettingsSectionProps = {
   employmentEndDate: string;
   modalUseCustomWorkingHours: boolean;
   modalCustomWorkingHours: Record<WeekdayKey, StaffWorkingDay>;
+  scheduleEffectiveFrom: string;
+  scheduleChangeReason: string;
+  scheduleVersionCount: number;
   attendanceZones: WorkZone[];
   attendanceZonesLoading: boolean;
   selectedAttendanceZoneId: string;
@@ -19,6 +22,8 @@ type BookingSettingsSectionProps = {
   overrideEditor: WorkHourOverridesEditorProps["editor"];
   onEmploymentEndDateChange: (value: string) => void;
   onModalUseCustomWorkingHoursChange: (value: boolean) => void;
+  onScheduleEffectiveFromChange: (value: string) => void;
+  onScheduleChangeReasonChange: (value: string) => void;
   onSelectedAttendanceZoneIdChange: (value: string) => void;
   onReloadAttendanceZones: () => void;
   onUpdateModalWorkingDay: (day: WeekdayKey, patch: StaffWorkingDay) => void;
@@ -67,6 +72,9 @@ export default function BookingSettingsSection({
   employmentEndDate,
   modalUseCustomWorkingHours,
   modalCustomWorkingHours,
+  scheduleEffectiveFrom,
+  scheduleChangeReason,
+  scheduleVersionCount,
   attendanceZones,
   attendanceZonesLoading,
   selectedAttendanceZoneId,
@@ -74,6 +82,8 @@ export default function BookingSettingsSection({
   overrideEditor,
   onEmploymentEndDateChange,
   onModalUseCustomWorkingHoursChange,
+  onScheduleEffectiveFromChange,
+  onScheduleChangeReasonChange,
   onSelectedAttendanceZoneIdChange,
   onReloadAttendanceZones,
   onUpdateModalWorkingDay,
@@ -198,8 +208,45 @@ export default function BookingSettingsSection({
               </span>
             </label>
 
+            <section className="emp-panel" style={{ marginBottom: 16 }}>
+              <div className="emp-panel-head">
+                <div>
+                  <h4 className="emp-panel-title">تاريخ سريان الجدول</h4>
+                  <p className="emp-field-note">
+                    أي تعديل يبدأ من التاريخ المحدد فقط. البصمات الأقدم تبقى مرتبطة بالجدول السابق.
+                  </p>
+                </div>
+                <span className="emp-hours-master-toggle__state is-on">
+                  {scheduleVersionCount > 0 ? `${scheduleVersionCount} نسخة محفوظة` : "أول نسخة"}
+                </span>
+              </div>
+              <div className="emp-form-grid">
+                <label className="dash-field">
+                  <span className="emp-label">يبدأ التطبيق من</span>
+                  <input
+                    className="dash-input"
+                    type="date"
+                    value={scheduleEffectiveFrom}
+                    disabled={busy}
+                    onChange={(event) => onScheduleEffectiveFromChange(event.target.value)}
+                  />
+                </label>
+                <label className="dash-field">
+                  <span className="emp-label">سبب التغيير</span>
+                  <input
+                    className="dash-input"
+                    value={scheduleChangeReason}
+                    disabled={busy}
+                    placeholder="مثال: تغيير الدوام الرسمي من 2–10 إلى 1–9"
+                    onChange={(event) => onScheduleChangeReasonChange(event.target.value)}
+                  />
+                </label>
+              </div>
+            </section>
+
             {modalUseCustomWorkingHours ? (
-              <div className="emp-hours-board">
+              <>
+                <div className="emp-hours-board">
                 <div className="emp-hours-board__toolbar">
                   <div>
                     <strong>توزيع الأسبوع</strong>
@@ -298,7 +345,8 @@ export default function BookingSettingsSection({
                     })}
                   </div>
                 </div>
-              </div>
+                </div>
+              </>
             ) : (
               <div className="emp-hours-inherited-note">
                 <span aria-hidden="true">✓</span>
