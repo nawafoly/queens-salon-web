@@ -113,6 +113,7 @@ import {
 } from './repositories/payroll.js';
 import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
 import {
+  cancelShiftAssignment,
   createScheduleException,
   createShiftAssignment,
   listScheduleExceptions,
@@ -120,6 +121,8 @@ import {
   listShiftTemplates,
   resolveEmployeeShift,
   saveShiftTemplate,
+  updateScheduleException,
+  updateShiftAssignment,
 } from './repositories/shift-control.js';
 import {
   deleteAdminProfile,
@@ -817,12 +820,15 @@ async function dispatch(ctx, route, method, body, query, env) {
       requireRole(ctx.role, ADMIN_ROLES);
       if (method === "GET") return listShiftAssignments(db, ctx.salonId, query);
       if (method === "POST") return createShiftAssignment(db, ctx.salonId, body, actorInfo);
+      if (method === "PATCH" && route.id) return updateShiftAssignment(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "DELETE" && route.id) return cancelShiftAssignment(db, ctx.salonId, route.id, body, actorInfo);
       break;
 
     case "schedule-exceptions":
       requireRole(ctx.role, ADMIN_ROLES);
       if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
       if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
+      if (method === "PATCH" && route.id) return updateScheduleException(db, ctx.salonId, route.id, body, actorInfo);
       break;
 
     case "hr-shift:resolve":
