@@ -1,4 +1,4 @@
-// CORE D1 ONLY — reusable shift templates and date-effective assignments.
+// CORE D1 ONLY - reusable shift templates and date-effective assignments.
 import {
   activeFlag,
   cleanText,
@@ -390,7 +390,15 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
     WHERE e.salon_id=? AND e.employee_id=? AND e.status='approved' AND e.date_from<=? AND e.date_to>=?
     ORDER BY e.created_at DESC LIMIT 1`, [salonId, employeeId, date, date]);
   if (exception) return { source: 'exception', date, ...exception };
-  const assignment = await dbFirst(db, `SELECT a.*, t.name AS shift_name FROM hr_shift_assignments a
+  const assignment = await dbFirst(db, `SELECT a.*, t.name AS shift_name,
+    t.start_time AS template_start_time,
+    t.end_time AS template_end_time,
+    t.crosses_midnight,
+    t.break_minutes,
+    t.late_grace_minutes,
+    t.early_leave_grace_minutes,
+    t.overtime_after_minutes
+    FROM hr_shift_assignments a
     LEFT JOIN hr_shift_templates t ON t.id=a.shift_template_id
     WHERE a.salon_id=? AND a.employee_id=? AND a.status='published' AND a.effective_from<=?
       AND (a.effective_to IS NULL OR a.effective_to>=?) ORDER BY a.effective_from DESC LIMIT 1`,
