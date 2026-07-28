@@ -1231,7 +1231,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [showAddedItemsPanel, setShowAddedItemsPanel] = useState(false);
   const [autoAddPackageId, setAutoAddPackageId] = useState<string>("");
   const [offerStartTime, setOfferStartTime] = useState<string>("");
-  const [pickerScope, setPickerScope] = useState<PickerScope | "">("");
+  const [pickerScope, setPickerScope] = useState<PickerScope | "">("services");
   const bookingScopeCards = useMemo<Array<{
     scope: PickerScope;
     title: string;
@@ -7873,8 +7873,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const step1HintText = `عدد الخدمات المضافة (${cartItems.length})`;
   const stepRows: Array<{ id: BookingStep; title: string; hint: string; summary: string; action: string }> = [
     { id: 1, title: "الخدمة", hint: step1HintText, summary: step1SummaryText, action: "اختيار وإضافة" },
-    { id: 2, title: "الموعد", hint: "اختاري التاريخ ثم الموظفة والوقت لكل خدمة", summary: step2SummaryText, action: "تحديد الموعد" },
-    { id: 3, title: "بيانات العميل", hint: "أدخلي الاسم والجوال ثم أضيفي الملاحظة أو كود الخصم إن رغبتِ", summary: step3SummaryText, action: "إكمال البيانات" },
+    { id: 2, title: "المختصة والموعد", hint: "اختاري المختصة والتاريخ والوقت", summary: step2SummaryText, action: "تحديد الموعد" },
+    { id: 3, title: "بيانات العميلة", hint: "أكملي بيانات التواصل", summary: step3SummaryText, action: "إكمال البيانات" },
     { id: 4, title: "تأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText, action: "مراجعة نهائية" },
   ];
   const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
@@ -7964,28 +7964,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         <strong>{finalPrice.toFixed(0)} ريال</strong>
       </div>
 
-      {variant === "desktop" ? (
-        <div className="booking-lux-summary__steps" aria-label="اختصار خطوات الحجز">
-          {stepRows.map((row) => {
-            const isActive = row.id === currentStep;
-            const isUnlocked = row.id <= maxUnlockedStep;
-            return (
-              <button
-                key={`lux-summary-step-${row.id}`}
-                type="button"
-                className={isActive ? "is-active" : ""}
-                disabled={!isUnlocked}
-                onClick={() => {
-                  if (isUnlocked) setCurrentStep(row.id);
-                }}
-              >
-                <span>{row.id}</span>
-                {row.title}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
     </div>
   );
   const bookingMobileSummaryPortal =
@@ -8043,7 +8021,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   return (
 
-    <div className="booking-page py-5">
+    <div className="booking-page booking-page--app-ui py-5">
       <ConfirmModal
         open={uiModal.open}
         title={uiModal.title}
@@ -8197,28 +8175,80 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         </div>
       </Modal>
 
-      <section className="booking-lux-hero" aria-label="حجز ملكات صالون">
-        <img className="booking-lux-hero__image" src={servicesImg} alt="" aria-hidden="true" />
-        <div className="booking-lux-hero__overlay" aria-hidden="true" />
-        <div className="container booking-lux-hero__inner">
-          <div className="booking-lux-hero__content">
-            <span className="booking-lux-hero__eyebrow">Queens Salon · Luxury Booking</span>
-            <h1>احجزي تجربتك بجمال يليق بك</h1>
-            <p>
-              اختاري الخدمة، المختصة، والوقت المناسب لك بخطوات واضحة وتجربة فاخرة من أول اختيار حتى تأكيد الموعد.
-            </p>
-            <div className="booking-lux-hero__badges" aria-label="مزايا الحجز">
-              <span><FiCheckCircle /> تأكيد فوري</span>
-              <span><FiHome /> خدمات منزلية</span>
-              <span><FiGift /> عروض وباقات</span>
-              <span><FiShield /> دفع آمن</span>
+      <section className="booking-app-stage" aria-label="حجز مليكات صالون">
+        <div className="booking-app-canvas">
+          <div className="booking-app-web-hero" aria-label="واجهة حجز مليكات">
+            <div className="booking-app-hero-visual">
+              <img src={servicesImg} alt="" aria-hidden="true" />
+              <span className="booking-app-hero-monogram">M</span>
+            </div>
+            <div className="booking-app-hero-copy">
+              <img src={logo} alt="MALIKAT SALON" />
+              <span>تجربة حجز فاخرة</span>
+              <h1>احجزي موعدك في مليكات صالون</h1>
+              <p>اختاري الخدمة والوقت والمختصة بخطوات خفيفة تشبه التطبيق.</p>
+              <div className="booking-app-hero-badges" aria-label="مزايا الحجز">
+                <span><FiCheckCircle /> تأكيد فوري</span>
+                <span><FiHome /> خدمة منزلية</span>
+                <span><FiGift /> عروض وباقات</span>
+                <span><FiShield /> دفع آمن</span>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      <div className="container booking-lux-container">
-        <div className="row justify-content-center booking-lux-layout">
+          <div className="booking-app-device-grid">
+            <div className="booking-app-device booking-app-device--main">
+              <div className="booking-app-device__status" aria-hidden="true">
+                <span>9:41</span>
+                <span>●●●</span>
+              </div>
+
+              <div className="booking-app-device__brand">
+                <button type="button" aria-label="القائمة"><span /></button>
+                <img src={logo} alt="MALIKAT SALON" />
+                <button type="button" aria-label="التنبيهات"><FiHeart /></button>
+              </div>
+
+              <div className="booking-app-intro">
+                <span>مرحبًا بك في مليكات</span>
+                <h2>ماذا ترغبين اليوم؟</h2>
+                <div className="booking-app-search" aria-hidden="true">
+                  <FiEdit3 />
+                  <span>ابحثي عن خدمة</span>
+                  <FiShoppingBag />
+                </div>
+              </div>
+
+              <div className="booking-app-flow" style={bookingSummaryProgressStyle} aria-label="خطوات الحجز">
+                <div className="booking-app-flow__track" aria-hidden="true"><span /></div>
+                <div className="booking-app-flow__chips" role="tablist" aria-label="خطوات الحجز">
+                  {stepRows.map((stepRow) => {
+                    const isActive = currentStep === stepRow.id;
+                    const isUnlocked = stepRow.id <= maxUnlockedStep;
+                    const isDone = stepRow.id < currentStep && isUnlocked;
+                    const label = stepRow.id === 1 ? "الخدمة" : stepRow.id === 2 ? "الموعد" : stepRow.id === 3 ? "بياناتك" : "التأكيد";
+                    return (
+                      <button
+                        key={`booking-app-flow-${stepRow.id}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        disabled={!isUnlocked}
+                        className={`booking-app-flow__chip ${isActive ? "is-active" : ""} ${isDone ? "is-done" : ""}`}
+                        onClick={() => {
+                          if (isUnlocked) setCurrentStep(stepRow.id);
+                        }}
+                      >
+                        <span>{isDone ? "✓" : stepRow.id}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="container booking-lux-container booking-app-container">
+                <div className="row justify-content-center booking-lux-layout booking-app-layout">
           <div className="col-lg-8 booking-lux-main">
             <div className="booking-card" ref={bookingCardRef}>
 
@@ -8257,92 +8287,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
               ) : null}
 
               <form className="booking-form" onSubmit={handleSubmit}>
-                <div className="booking-step-focus mb-4" aria-label="مسار إتمام الحجز">
-                  <div className="booking-step-focus__top">
-                    <div className="booking-step-focus__kicker">
-                      <span className="booking-step-focus__pill">
-                        الخطوة {currentStep} من {stepRows.length}
-                      </span>
-                      <span className="booking-step-focus__status">
-                        {activeStepRow.action}
-                      </span>
-                    </div>
-                    <div className="booking-step-focus__title-wrap">
-                      <div className="booking-step-focus__title">{activeStepRow.title}</div>
-                      <div className="booking-step-focus__hint">{activeStepRow.hint}</div>
-                    </div>
-                    <div className="booking-step-focus__summary">
-                      {activeStepRow.id === 1 && step1SummaryRows.length > 0 ? (
-                        <div className="booking-step-focus__summary-list">
-                          {step1SummaryRows.map((row) => (
-                            <div key={`step1-summary-${row.itemId}`} className="booking-step-focus__summary-row">
-                              <span className="booking-step-focus__summary-text">
-                                {row.index}- {row.label}
-                              </span>
-                              <button
-                                type="button"
-                                className="booking-step-focus__summary-remove"
-                                onClick={() => removeServiceFromCart(row.itemId)}
-                              >
-                                حذفها
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        activeStepRow.summary
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="booking-step-focus__progress" role="tablist" aria-label="خطوات الحجز">
-                    {stepRows.map((stepRow) => {
-                      const isActive = currentStep === stepRow.id;
-                      const isUnlocked = stepRow.id <= maxUnlockedStep;
-                      const isDone = stepRow.id < currentStep && isUnlocked;
-                      const stateLabel = isActive ? "الحالية" : isDone ? "مكتملة" : isUnlocked ? "متاحة" : "لاحقًا";
-                      return (
-                        <button
-                          key={`step-dot-${stepRow.id}`}
-                          type="button"
-                          role="tab"
-                          aria-selected={isActive}
-                          aria-label={`الخطوة ${stepRow.id}: ${stepRow.title}`}
-                          disabled={!isUnlocked}
-                          className={`booking-step-focus__dot ${isActive ? "is-active" : ""} ${isDone ? "is-done" : ""}`}
-                          onClick={() => {
-                            if (!isUnlocked) return;
-                            setCurrentStep(stepRow.id);
-                          }}
-                        >
-                          <span className="booking-step-focus__dot-index">{stepRow.id}</span>
-                          <span className="booking-step-focus__dot-body">
-                            <span className="booking-step-focus__dot-title">{stepRow.title}</span>
-                            <span className="booking-step-focus__dot-hint">{stepRow.action}</span>
-                          </span>
-                          <span className="booking-step-focus__dot-state">{stateLabel}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {stepRows.some((row) => row.id < currentStep && row.id <= maxUnlockedStep) ? (
-                    <div className="booking-step-focus__quick-edit">
-                      <span className="booking-step-focus__quick-label">رجوع سريع</span>
-                      {stepRows
-                        .filter((row) => row.id < currentStep && row.id <= maxUnlockedStep)
-                        .map((row) => (
-                          <button
-                            key={`step-edit-${row.id}`}
-                            type="button"
-                            className="btn btn-sm btn-outline-dark booking-step-focus__edit-btn"
-                            onClick={() => setCurrentStep(row.id)}
-                          >
-                            تعديل {row.title}
-                          </button>
-                        ))}
-                    </div>
-                  ) : null}
+                <div className="booking-app-current mb-4" aria-label="المرحلة الحالية">
+                  <span>{activeStepRow.action}</span>
+                  <strong>{activeStepRow.title}</strong>
+                  <p>
+                    {activeStepRow.id === 1 && step1SummaryRows.length > 0
+                      ? `${cartItems.length} خدمة مختارة`
+                      : activeStepRow.summary}
+                  </p>
                 </div>
 
                 {currentStep === 2 ? (
@@ -10421,8 +10373,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           <div className="col-lg-4 booking-lux-side" aria-label="ملخص الحجز">
             {renderBookingSummaryPanel("desktop")}
           </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
       {bookingMobileSummaryPortal}
     </div>
   );
