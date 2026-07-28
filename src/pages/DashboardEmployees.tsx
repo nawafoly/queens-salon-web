@@ -4744,6 +4744,7 @@ export default function DashboardEmployees() {
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
                 schedule={editingStaff}
+                employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}

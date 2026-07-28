@@ -11606,3 +11606,29 @@
     gap: 4px;
   }
 }
+
+.attendance-month__shift-chip {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+  padding: 9px 11px;
+  border: 1px solid rgba(137, 99, 38, 0.22);
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(245, 236, 219, 0.92), rgba(255, 255, 255, 0.96));
+  color: #5f4322;
+}
+
+.attendance-month__shift-chip span {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #9a6a25;
+}
+
+.attendance-month__shift-chip strong {
+  font-size: 0.82rem;
+  color: #2f2417;
+}
+
+.attendance-month__shift-chip small {
+  color: #6b5a46;
+}

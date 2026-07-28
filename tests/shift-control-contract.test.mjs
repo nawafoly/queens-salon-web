@@ -30,3 +30,13 @@ test('core routes expose templates, assignments, exceptions, and resolved shift'
     assert.ok(worker.includes(route), `missing route ${route}`);
   }
 });
+
+
+test('payroll generation loads Core shift templates assignments and exceptions', () => {
+  const payroll = fs.readFileSync(new URL('../src/services/CorePayrollService.ts', import.meta.url), 'utf8');
+  assert.match(payroll, /listShiftTemplates\(\{ active: "all" \}\)/);
+  assert.match(payroll, /listShiftAssignments\(\)/);
+  assert.match(payroll, /listScheduleExceptions\(\)/);
+  assert.match(payroll, /coreScheduleForDate/);
+  assert.match(payroll, /تم احتساب الحضور بناءً على قوالب الشفتات/);
+});

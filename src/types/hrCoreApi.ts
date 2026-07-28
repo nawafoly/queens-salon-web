@@ -9,6 +9,8 @@ export type CoreHrEmployee = {
   status: string;
   employment?: Record<string, unknown> | null;
   schedules?: CoreHrSchedule[];
+  shiftAssignments?: CoreShiftAssignment[];
+  scheduleExceptions?: CoreScheduleException[];
   createdAt: string;
   updatedAt: string;
 };
@@ -203,4 +205,35 @@ export type CoreScheduleException = {
   shiftName?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type CoreResolvedShift = Record<string, unknown> & {
+  source: "exception" | "assignment" | "none" | string;
+  date: string;
+  employeeId?: string | null;
+  employee_id?: string | null;
+  exceptionType?: "shift" | "off" | "custom" | string | null;
+  exception_type?: "shift" | "off" | "custom" | string | null;
+  shiftTemplateId?: string | null;
+  shift_template_id?: string | null;
+  startTime?: string | null;
+  start_time?: string | null;
+  endTime?: string | null;
+  end_time?: string | null;
+  templateStartTime?: string | null;
+  template_start_time?: string | null;
+  templateEndTime?: string | null;
+  template_end_time?: string | null;
+  shiftName?: string | null;
+  shift_name?: string | null;
+  snapshotJson?: string | null;
+  snapshot_json?: string | null;
+  crossesMidnight?: boolean | number | null;
+  crosses_midnight?: boolean | number | null;
+  breakMinutes?: number | null;
+  break_minutes?: number | null;
+  lateGraceMinutes?: number | null;
+  late_grace_minutes?: number | null;
+  earlyLeaveGraceMinutes?: number | null;
+  early_leave_grace_minutes?: number | null;
 };

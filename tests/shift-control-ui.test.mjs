@@ -4,6 +4,8 @@ import fs from 'node:fs';
 
 const section = fs.readFileSync(new URL('../src/pages/dashboardEmployees/ShiftControlSection.tsx', import.meta.url), 'utf8');
 const dashboard = fs.readFileSync(new URL('../src/pages/DashboardEmployees.tsx', import.meta.url), 'utf8');
+const attendance = fs.readFileSync(new URL('../src/pages/dashboardEmployees/AttendanceSection.tsx', import.meta.url), 'utf8');
+const monthView = fs.readFileSync(new URL('../src/components/AttendanceMonthView.tsx', import.meta.url), 'utf8');
 const shared = fs.readFileSync(new URL('../src/pages/dashboardEmployees/shared.ts', import.meta.url), 'utf8');
 const service = fs.readFileSync(new URL('../src/services/CoreHrService.ts', import.meta.url), 'utf8');
 const repository = fs.readFileSync(new URL('../workers/core/repositories/shift-control.js', import.meta.url), 'utf8');
@@ -32,4 +34,13 @@ test('shift-control API supports lifecycle updates from the UI', () => {
   assert.match(repository, /cancelShiftAssignment/);
   assert.match(worker, /method === "PATCH" && route\.id\) return updateShiftAssignment/);
   assert.match(worker, /method === "DELETE" && route\.id\) return cancelShiftAssignment/);
+});
+
+
+test('attendance calendar resolves Core shifts before calculating day status', () => {
+  assert.match(attendance, /CoreHrService\.resolveEmployeeShift/);
+  assert.match(attendance, /coreResolvedShifts/);
+  assert.match(monthView, /resolvedShiftWindow/);
+  assert.match(monthView, /الشفت المستخدم للحساب/);
+  assert.match(dashboard, /employeeId=\{selectedEmployeeId \|\| \(editingStaff as any\)\?\.id/);
 });

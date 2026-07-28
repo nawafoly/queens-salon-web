@@ -6,6 +6,7 @@ import type {
   CoreAttendanceState,
   CoreHrEmployee,
   CoreHrSchedule,
+  CoreResolvedShift,
   CoreScheduleException,
   CoreShiftAssignment,
   CoreShiftTemplate,
@@ -77,7 +78,7 @@ export const CoreHrService = {
   },
   async resolveEmployeeShift(employeeId: string, date: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/resolved-shift`, { query: { date } });
-    return camel<Record<string, unknown>>(row);
+    return camel<CoreResolvedShift>(row);
   },
   async listAttendance(query: { employeeId?: string; date?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/attendance", { query });

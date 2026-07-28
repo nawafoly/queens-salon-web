@@ -24,6 +24,7 @@ import {
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
 import { resolveStaffScheduleVersionForDate } from "../helpers/hr/staffScheduleHistory";
+import type { CoreResolvedShift } from "../types/hrCoreApi";
 
 type AttendanceViewerMode = "employee" | "admin";
 
@@ -67,6 +68,7 @@ type AttendanceMonthViewProps = {
   showAdminActions?: boolean;
   showSummaryTools?: boolean;
   schedule?: AttendanceScheduleInput | null;
+  coreResolvedShifts?: Record<string, CoreResolvedShift | null> | null;
   approvedLeaveDateKeys?: Iterable<string>;
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
@@ -145,6 +147,71 @@ function cleanTime(value: unknown) {
   return /^\d{1,2}:\d{2}$/.test(raw) ? raw : "";
 }
 
+function cleanShiftText(value: unknown) {
+  return String(value || "").trim();
+}
+
+function parseShiftSnapshot(row?: CoreResolvedShift | null) {
+  const raw = cleanShiftText((row as any)?.snapshotJson || (row as any)?.snapshot_json);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolvedShiftSourceLabel(row?: CoreResolvedShift | null) {
+  const source = cleanShiftText((row as any)?.source);
+  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
+  if (source === "exception") {
+    if (exceptionType === "off") return "استثناء: يوم راحة";
+    if (exceptionType === "custom") return "استثناء: وقت مخصص";
+    return "استثناء: شفت بديل";
+  }
+  if (source === "assignment") return "شفت منشور";
+  return "جدول الموظفة";
+}
+
+function resolvedShiftName(row?: CoreResolvedShift | null) {
+  const snapshot = parseShiftSnapshot(row);
+  return (
+    cleanShiftText((row as any)?.shiftName || (row as any)?.shift_name) ||
+    cleanShiftText(snapshot.name) ||
+    cleanShiftText(snapshot.code) ||
+    resolvedShiftSourceLabel(row)
+  );
+}
+
+function resolvedShiftWindow(row?: CoreResolvedShift | null) {
+  if (!row || cleanShiftText((row as any).source) === "none") return null;
+  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
+  if (exceptionType === "off") return { startTime: "09:00", endTime: "17:00", isOff: true };
+  const snapshot = parseShiftSnapshot(row);
+  const startTime =
+    cleanTime((row as any)?.startTime) ||
+    cleanTime((row as any)?.start_time) ||
+    cleanTime((row as any)?.templateStartTime) ||
+    cleanTime((row as any)?.template_start_time) ||
+    cleanTime(snapshot.start_time) ||
+    cleanTime(snapshot.startTime);
+  const endTime =
+    cleanTime((row as any)?.endTime) ||
+    cleanTime((row as any)?.end_time) ||
+    cleanTime((row as any)?.templateEndTime) ||
+    cleanTime((row as any)?.template_end_time) ||
+    cleanTime(snapshot.end_time) ||
+    cleanTime(snapshot.endTime);
+  if (!startTime && !endTime) return null;
+  return { startTime: startTime || "09:00", endTime: endTime || "17:00", isOff: false };
+}
+
+function isCoreResolvedOff(row?: CoreResolvedShift | null) {
+  return cleanShiftText((row as any)?.source) === "exception" &&
+    cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type) === "off";
+}
+
 function getDayOverride(dateKey: string, input?: AttendanceScheduleInput | null) {
   const overrides = Array.isArray(input?.customWorkingHourOverrides)
     ? input?.customWorkingHourOverrides || []
@@ -157,7 +224,15 @@ function isDateSpecificOff(dateKey: string, input?: AttendanceScheduleInput | nu
   return override?.enabled === false;
 }
 
-function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null): ShiftSchedule {
+function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null, resolved?: CoreResolvedShift | null): ShiftSchedule {
+  const coreWindow = resolvedShiftWindow(resolved);
+  if (coreWindow && !coreWindow.isOff) {
+    return {
+      startTime: coreWindow.startTime,
+      endTime: coreWindow.endTime,
+      weeklyOffDays: [],
+    };
+  }
   const source = input || {};
   const historicalVersion = resolveStaffScheduleVersionForDate(source.workingScheduleVersions, dateKey);
   const effectiveSource: AttendanceScheduleInput = historicalVersion
@@ -360,6 +435,7 @@ export default function AttendanceMonthView({
   showAdminActions = false,
   showSummaryTools = true,
   schedule,
+  coreResolvedShifts,
   approvedLeaveDateKeys,
   onMonthChange,
   onSelectedDateChange,
@@ -382,7 +458,8 @@ export default function AttendanceMonthView({
         : `${safeMonthKey}-01`;
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
   const selectedDayRecords = recordsFromRow(selectedRow);
-  const selectedSchedule = scheduleForDate(safeSelectedDate, schedule);
+  const selectedCoreShift = coreResolvedShifts?.[safeSelectedDate] || null;
+  const selectedSchedule = scheduleForDate(safeSelectedDate, schedule, selectedCoreShift);
   const selectedComputation = computeAttendanceDay(
     safeSelectedDate,
     selectedDayRecords,
@@ -396,7 +473,7 @@ export default function AttendanceMonthView({
     todayDateKey: todayKey,
     weeklyOffDays: selectedSchedule.weeklyOffDays,
     approvedLeaveDateKeys: leaveDateKeys,
-    holidayDateKeys: isDateSpecificOff(safeSelectedDate, schedule) ? [safeSelectedDate] : [],
+    holidayDateKeys: isDateSpecificOff(safeSelectedDate, schedule) || isCoreResolvedOff(selectedCoreShift) ? [safeSelectedDate] : [],
   });
   const selectedTone = statusTone(selectedStatus);
   const selectedCount = selectedEventCount(selectedRow);
@@ -408,7 +485,8 @@ export default function AttendanceMonthView({
       const day = index + 1;
       const dateKey = `${safeMonthKey}-${pad2(day)}`;
       const row = rowsByDate.get(dateKey) || null;
-      const daySchedule = scheduleForDate(dateKey, schedule);
+      const dayCoreShift = coreResolvedShifts?.[dateKey] || null;
+      const daySchedule = scheduleForDate(dateKey, schedule, dayCoreShift);
       const dayRecords = recordsFromRow(row);
       const computation = computeAttendanceDay(dateKey, dayRecords, daySchedule);
       const status = getAttendanceDayStatus({
@@ -419,7 +497,7 @@ export default function AttendanceMonthView({
         todayDateKey: todayKey,
         weeklyOffDays: daySchedule.weeklyOffDays,
         approvedLeaveDateKeys: leaveDateKeys,
-        holidayDateKeys: isDateSpecificOff(dateKey, schedule) ? [dateKey] : [],
+        holidayDateKeys: isDateSpecificOff(dateKey, schedule) || isCoreResolvedOff(dayCoreShift) ? [dateKey] : [],
       });
       return {
         key: dateKey,
@@ -525,6 +603,11 @@ export default function AttendanceMonthView({
             </div>
             <strong>{fullDateLabel(safeSelectedDate)}</strong>
             <small>{emptySummaryText}</small>
+            {selectedCoreShift && cleanShiftText((selectedCoreShift as any).source) !== "none" ? (
+              <small>
+                الشفت المستخدم للحساب: {resolvedShiftName(selectedCoreShift)} — {resolvedShiftSourceLabel(selectedCoreShift)}
+              </small>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -609,6 +692,13 @@ export default function AttendanceMonthView({
         </div>
 
         <div className="attendance-month__records-meta">
+          {selectedCoreShift && cleanShiftText((selectedCoreShift as any).source) !== "none" ? (
+            <div className="attendance-month__shift-chip">
+              <span>{resolvedShiftSourceLabel(selectedCoreShift)}</span>
+              <strong>{resolvedShiftName(selectedCoreShift)}</strong>
+              <small>{isCoreResolvedOff(selectedCoreShift) ? "راحة" : `${selectedSchedule.startTime} — ${selectedSchedule.endTime}`}</small>
+            </div>
+          ) : null}
           {canShowAdminControls &&
           !isRestDay &&
           !isLeaveDay ? (
