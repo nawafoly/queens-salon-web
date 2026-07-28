@@ -5,9 +5,13 @@
   --payroll-panel: #ffffff;
   --payroll-soft: #f7f8fb;
   --payroll-maroon: #8f294f;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 100%;
   padding: 22px;
   color: var(--payroll-ink);
+  overflow-x: clip;
 }
 
 .payroll-hero {
@@ -219,7 +223,13 @@
 }
 
 .payroll-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
   border: 1px solid var(--payroll-border);
   border-radius: 12px;
   background: var(--payroll-panel);
@@ -228,6 +238,7 @@
 .payroll-table {
   width: 100%;
   min-width: 1180px;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
@@ -237,8 +248,65 @@
   border-bottom: 1px solid #edf0f5;
   text-align: right;
   vertical-align: middle;
-  white-space: nowrap;
+  white-space: normal;
   font-size: .78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.payroll-table th:nth-child(1),
+.payroll-table td:nth-child(1) {
+  width: 11%;
+}
+
+.payroll-table th:nth-child(2),
+.payroll-table td:nth-child(2) {
+  width: 10%;
+}
+
+.payroll-table th:nth-child(3),
+.payroll-table td:nth-child(3) {
+  width: 9%;
+}
+
+.payroll-table th:nth-child(4),
+.payroll-table td:nth-child(4) {
+  width: 17%;
+}
+
+.payroll-table th:nth-child(5),
+.payroll-table td:nth-child(5) {
+  width: 6%;
+}
+
+.payroll-table th:nth-child(6),
+.payroll-table td:nth-child(6) {
+  width: 8%;
+}
+
+.payroll-table th:nth-child(7),
+.payroll-table td:nth-child(7) {
+  width: 7%;
+}
+
+.payroll-table th:nth-child(8),
+.payroll-table td:nth-child(8) {
+  width: 8%;
+}
+
+.payroll-table th:nth-child(9),
+.payroll-table td:nth-child(9) {
+  width: 8%;
+}
+
+.payroll-table th:nth-child(10),
+.payroll-table td:nth-child(10) {
+  width: 6%;
+}
+
+.payroll-table th:nth-child(11),
+.payroll-table td:nth-child(11) {
+  width: 10%;
 }
 
 .payroll-table th {
@@ -264,6 +332,20 @@
   background: #f8f9fb;
 }
 
+.payroll-table th:last-child,
+.payroll-table td:last-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: 1px 0 0 var(--payroll-border);
+}
+
+.payroll-table th:last-child {
+  z-index: 3;
+  background: #f8f9fb;
+}
+
 .payroll-table td strong,
 .payroll-table td small {
   display: block;
@@ -281,7 +363,7 @@
 }
 
 .payroll-employee-cell {
-  min-width: 170px;
+  min-width: 0;
 }
 
 .payroll-row-badges {
@@ -326,7 +408,7 @@
 }
 
 .payroll-attendance-cell {
-  min-width: 260px;
+  min-width: 0;
   white-space: normal !important;
 }
 
@@ -356,7 +438,7 @@
 }
 
 .payroll-setup-cell {
-  min-width: 190px;
+  min-width: 0;
   white-space: normal;
 }
 
@@ -454,22 +536,26 @@
 }
 
 .payroll-row-actions {
-  display: flex;
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 6px;
-  flex-wrap: wrap;
-  min-width: 320px;
 }
 
 .payroll-action-help {
-  display: inline-flex;
+  grid-column: 1 / -1;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
-  max-width: 280px;
+  width: 100%;
+  max-width: none;
   white-space: normal;
 }
 
 .payroll-action-help small {
-  max-width: 150px;
+  max-width: none;
   margin: 0;
   color: #8a5a0a;
   font-size: .68rem;
@@ -479,9 +565,14 @@
 
 .payroll-row-actions button,
 .payroll-action-link {
+  width: 100%;
+  min-width: 0;
   min-height: 32px;
-  padding: 0 9px;
+  padding: 4px 7px;
   font-size: .72rem;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .payroll-action-link {
