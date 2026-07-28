@@ -149,3 +149,48 @@ export type CoreFileMetadata = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type CoreShiftTemplate = {
+  id: string;
+  salonId: string;
+  name: string;
+  code?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  crossesMidnight: boolean | number;
+  breakMinutes: number;
+  breakPaid: boolean | number;
+  lateGraceMinutes: number;
+  earlyLeaveGraceMinutes: number;
+  overtimeAfterMinutes: number;
+  active: boolean | number;
+};
+
+export type CoreShiftAssignment = {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  shiftTemplateId?: string | null;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  assignmentType: "permanent" | "temporary" | string;
+  status: "draft" | "published" | "cancelled" | string;
+  reason?: string | null;
+  snapshotJson: string;
+  shiftName?: string | null;
+};
+
+export type CoreScheduleException = {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  dateFrom: string;
+  dateTo: string;
+  exceptionType: "shift" | "off" | "custom" | string;
+  shiftTemplateId?: string | null;
+  enabled: boolean | number;
+  startTime?: string | null;
+  endTime?: string | null;
+  note?: string | null;
+  status: string;
+};

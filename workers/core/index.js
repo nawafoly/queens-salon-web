@@ -113,6 +113,15 @@ import {
 } from './repositories/payroll.js';
 import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
 import {
+  createScheduleException,
+  createShiftAssignment,
+  listScheduleExceptions,
+  listShiftAssignments,
+  listShiftTemplates,
+  resolveEmployeeShift,
+  saveShiftTemplate,
+} from './repositories/shift-control.js';
+import {
   deleteAdminProfile,
   listAdminProfiles,
   upsertAdminProfile,
@@ -313,6 +322,8 @@ function match(url, method) {
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+  const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
+  if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
@@ -332,6 +343,9 @@ function match(url, method) {
     ["refunds", "/api/core/refunds"],
     ["audit", "/api/core/audit"],
     ["hr-employees", "/api/core/hr/employees"],
+    ["shift-templates", "/api/core/hr/shift-templates"],
+    ["shift-assignments", "/api/core/hr/shift-assignments"],
+    ["schedule-exceptions", "/api/core/hr/schedule-exceptions"],
     ["attendance", "/api/core/hr/attendance"],
     ["leaves", "/api/core/hr/leaves"],
     ["absences", "/api/core/hr/absences"],
@@ -792,6 +806,28 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "hr-employee:schedules":
       requireRole(ctx.role, ADMIN_ROLES);
       return replaceHrSchedules(db, ctx.salonId, route.id, body.schedules || []);
+
+    case "shift-templates":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listShiftTemplates(db, ctx.salonId, query);
+      if (["POST", "PATCH"].includes(method)) return saveShiftTemplate(db, ctx.salonId, { ...body, ...(route.id ? { id: route.id } : {}) }, actorInfo);
+      break;
+
+    case "shift-assignments":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listShiftAssignments(db, ctx.salonId, query);
+      if (method === "POST") return createShiftAssignment(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "schedule-exceptions":
+      requireRole(ctx.role, ADMIN_ROLES);
+      if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
+      if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
+      break;
+
+    case "hr-shift:resolve":
+      requireRole(ctx.role, ADMIN_ROLES);
+      return resolveEmployeeShift(db, ctx.salonId, route.id, query.date);
 
     case "attendance":
       requireRole(ctx.role, ADMIN_ROLES);
