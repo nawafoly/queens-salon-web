@@ -1623,3 +1623,559 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* =========================================================
+   Malikat App Booking Exact Direction V4
+   Inspired by selected mobile booking reference
+   ========================================================= */
+
+.booking-page--app-ui.booking-page.py-5 {
+  min-height: 100vh;
+  padding: 0 !important;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(185, 145, 113, 0.2), transparent 34%),
+    radial-gradient(circle at 82% 0%, rgba(96, 22, 37, 0.12), transparent 38%),
+    linear-gradient(135deg, #fbf3ec 0%, #fff8f3 44%, #f4e1d8 100%);
+  color: #2c1514;
+}
+
+.booking-page--app-ui .booking-app-stage {
+  min-height: 100vh;
+  padding: clamp(18px, 3vw, 34px) 0 calc(42px + env(safe-area-inset-bottom, 0px));
+}
+
+.booking-page--app-ui .booking-app-canvas {
+  width: min(1480px, calc(100% - 26px));
+  margin: 0 auto;
+}
+
+.booking-page--app-ui .booking-app-web-hero {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.35fr);
+  gap: clamp(18px, 3vw, 38px);
+  align-items: center;
+  min-height: clamp(245px, 30vw, 360px);
+  overflow: hidden;
+  border: 1px solid rgba(96, 22, 37, 0.08);
+  border-radius: 34px 34px 0 0;
+  padding: clamp(18px, 3vw, 36px);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255,255,255,.95), transparent 20%),
+    linear-gradient(135deg, rgba(255,255,255,.78), rgba(255,244,237,.84));
+  box-shadow: 0 26px 70px rgba(88, 36, 28, .13);
+}
+
+.booking-page--app-ui .booking-app-hero-visual {
+  position: relative;
+  min-height: 220px;
+}
+
+.booking-page--app-ui .booking-app-hero-visual img {
+  width: min(300px, 86%);
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 999px 999px 36px 36px;
+  border: 6px solid rgba(127, 73, 48, .25);
+  box-shadow: 0 24px 60px rgba(75, 30, 24, .18);
+}
+
+.booking-page--app-ui .booking-app-hero-monogram {
+  position: absolute;
+  inset-inline-start: min(220px, 62%);
+  top: 44%;
+  display: grid;
+  width: 86px;
+  height: 86px;
+  place-items: center;
+  border: 2px solid rgba(210, 158, 112, .46);
+  border-radius: 50%;
+  background: rgba(255,255,255,.86);
+  color: #7a1d33;
+  font-family: Georgia, serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  box-shadow: 0 18px 38px rgba(96, 22, 37, .12);
+}
+
+.booking-page--app-ui .booking-app-hero-copy {
+  text-align: right;
+}
+
+.booking-page--app-ui .booking-app-hero-copy img {
+  width: 140px;
+  height: auto;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+.booking-page--app-ui .booking-app-hero-copy > span {
+  display: inline-flex;
+  padding: 7px 14px;
+  border: 1px solid rgba(96, 22, 37, .12);
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+  color: #7a1d33;
+  font-size: .78rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-hero-copy h1 {
+  max-width: 620px;
+  margin: 12px 0 8px;
+  margin-inline-start: auto;
+  color: #5b1427;
+  font-size: clamp(2.15rem, 4.2vw, 4.2rem);
+  font-weight: 950;
+  line-height: 1.08;
+}
+
+.booking-page--app-ui .booking-app-hero-copy p {
+  margin: 0;
+  color: rgba(44, 21, 20, .68);
+  font-size: clamp(.95rem, 1.4vw, 1.15rem);
+  font-weight: 800;
+}
+
+.booking-page--app-ui .booking-app-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.booking-page--app-ui .booking-app-hero-badges span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(96, 22, 37, .1);
+  border-radius: 999px;
+  background: rgba(255,255,255,.68);
+  color: #6a2735;
+  font-size: .8rem;
+  font-weight: 900;
+}
+
+.booking-page--app-ui .booking-app-device-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: -44px;
+  padding: 0 clamp(12px, 2vw, 44px);
+}
+
+.booking-page--app-ui .booking-app-device {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(96, 22, 37, .08);
+  border-radius: 36px;
+  background: rgba(255,255,255,.92);
+  box-shadow:
+    0 26px 75px rgba(78, 28, 24, .14),
+    inset 0 1px 0 rgba(255,255,255,.95);
+}
+
+.booking-page--app-ui .booking-app-device--main {
+  padding: 22px 24px 26px;
+}
+
+.booking-page--app-ui .booking-app-device__status,
+.booking-page--app-ui .booking-app-device__brand,
+.booking-page--app-ui .booking-app-intro,
+.booking-page--app-ui .booking-app-flow {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.booking-page--app-ui .booking-app-device__status {
+  display: none;
+  justify-content: space-between;
+  color: #1e1010;
+  font-size: .8rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-device__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.booking-page--app-ui .booking-app-device__brand img {
+  width: 112px;
+  height: auto;
+  object-fit: contain;
+}
+
+.booking-page--app-ui .booking-app-device__brand button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(96,22,37,.08);
+  border-radius: 13px;
+  background: rgba(255,255,255,.82);
+  color: #691a31;
+}
+
+.booking-page--app-ui .booking-app-device__brand button span,
+.booking-page--app-ui .booking-app-device__brand button span::before,
+.booking-page--app-ui .booking-app-device__brand button span::after {
+  display: block;
+  width: 15px;
+  height: 2px;
+  border-radius: 99px;
+  background: currentColor;
+  content: "";
+}
+
+.booking-page--app-ui .booking-app-device__brand button span::before { transform: translateY(-5px); }
+.booking-page--app-ui .booking-app-device__brand button span::after { transform: translateY(3px); }
+
+.booking-page--app-ui .booking-app-intro {
+  text-align: center;
+}
+
+.booking-page--app-ui .booking-app-intro > span {
+  display: block;
+  color: rgba(92, 27, 46, .62);
+  font-size: .86rem;
+  font-weight: 900;
+}
+
+.booking-page--app-ui .booking-app-intro h2 {
+  margin: 4px 0 18px;
+  color: #5b1427;
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid rgba(96,22,37,.06);
+  border-radius: 18px;
+  background: #fbf6f1;
+  color: rgba(44,21,20,.36);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
+}
+
+.booking-page--app-ui .booking-app-search span {
+  flex: 1;
+  text-align: right;
+  font-size: .86rem;
+  font-weight: 850;
+}
+
+.booking-page--app-ui .booking-app-flow {
+  margin-top: 18px;
+}
+
+.booking-page--app-ui .booking-app-flow__track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(96,22,37,.07);
+}
+
+.booking-page--app-ui .booking-app-flow__track span {
+  display: block;
+  width: var(--booking-summary-progress, 25%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7a1d33, #a55d6b, #d0a069);
+}
+
+.booking-page--app-ui .booking-app-flow__chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: none;
+}
+
+.booking-page--app-ui .booking-app-flow__chips::-webkit-scrollbar { display: none; }
+
+.booking-page--app-ui .booking-app-flow__chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 11px;
+  border: 1px solid rgba(96,22,37,.08);
+  border-radius: 999px;
+  background: #fff;
+  color: rgba(44,21,20,.54);
+  font-size: .78rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-flow__chip span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(96,22,37,.08);
+  color: #691a31;
+  font-size: .68rem;
+}
+
+.booking-page--app-ui .booking-app-flow__chip.is-active {
+  border-color: #691a31;
+  background: #691a31;
+  color: #fff;
+}
+
+.booking-page--app-ui .booking-app-flow__chip.is-active span {
+  background: #fff;
+  color: #691a31;
+}
+
+.booking-page--app-ui .booking-app-flow__chip.is-done {
+  border-color: rgba(208,160,105,.42);
+  background: rgba(208,160,105,.13);
+  color: #704922;
+}
+
+.booking-page--app-ui .booking-app-flow__chip.is-done span {
+  background: #d0a069;
+  color: #fff;
+}
+
+.booking-page--app-ui .booking-app-container {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin-top: 22px;
+}
+
+.booking-page--app-ui .booking-app-layout {
+  gap: 22px;
+  margin: 0;
+}
+
+.booking-page--app-ui .booking-app-layout > .booking-lux-main,
+.booking-page--app-ui .booking-app-layout > .booking-lux-side {
+  padding: 0;
+}
+
+.booking-page--app-ui .booking-app-layout > .booking-lux-main {
+  flex: 1 1 680px;
+  max-width: none;
+}
+
+.booking-page--app-ui .booking-app-layout > .booking-lux-side {
+  flex: 0 0 330px;
+  max-width: 330px;
+}
+
+.booking-page--app-ui .booking-card {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.booking-page--app-ui .booking-card > .text-center.mb-3 {
+  display: none;
+}
+
+.booking-page--app-ui .booking-form {
+  display: block;
+}
+
+.booking-page--app-ui .booking-app-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 2px 8px;
+}
+
+.booking-page--app-ui .booking-app-current span {
+  display: block;
+  color: rgba(92, 27, 46, .56);
+  font-size: .76rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-current strong {
+  display: block;
+  margin-top: 3px;
+  color: #5b1427;
+  font-size: 1.15rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-app-current p {
+  margin: 0;
+  color: rgba(44,21,20,.52);
+  font-size: .84rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.booking-page--app-ui .booking-step-card-shell,
+.booking-page--app-ui .booking-date-field,
+.booking-page--app-ui .booking-summary,
+.booking-page--app-ui .booking-signed-client-card {
+  border: 1px solid rgba(96,22,37,.06) !important;
+  border-radius: 24px !important;
+  background: rgba(255,255,255,.84) !important;
+  box-shadow: 0 12px 28px rgba(70, 28, 22, .07) !important;
+}
+
+.booking-page--app-ui .booking-step-card-shell {
+  padding: 18px !important;
+}
+
+.booking-page--app-ui .booking-step-card-shell__header {
+  border-bottom: 0 !important;
+  padding-bottom: 12px !important;
+}
+
+.booking-page--app-ui .booking-step-card-shell__title,
+.booking-page--app-ui .booking-step-card-shell h3,
+.booking-page--app-ui .booking-step-card-shell h4 {
+  color: #3a1718 !important;
+  font-weight: 950 !important;
+}
+
+.booking-page--app-ui .booking-step-card-shell__badge {
+  border-radius: 18px !important;
+  background: #fbf4ee !important;
+  color: #7a1d33 !important;
+  border: 1px solid rgba(208,160,105,.25) !important;
+}
+
+.booking-page--app-ui .booking-category-card,
+.booking-page--app-ui .booking-section-card {
+  border-radius: 22px !important;
+  border: 1px solid rgba(96,22,37,.06) !important;
+  background: rgba(255,255,255,.9) !important;
+  box-shadow: 0 11px 28px rgba(70, 28, 22, .08) !important;
+}
+
+.booking-page--app-ui .booking-category-card img,
+.booking-page--app-ui .booking-section-card img,
+.booking-page--app-ui .booking-service-card img {
+  border-radius: 18px !important;
+}
+
+.booking-page--app-ui .booking-service-card {
+  min-height: 190px;
+  border: 1px solid rgba(96,22,37,.06) !important;
+  border-radius: 24px !important;
+  background: rgba(255,255,255,.9) !important;
+  box-shadow: 0 14px 34px rgba(70, 28, 22, .08) !important;
+}
+
+.booking-page--app-ui .booking-service-card .btn,
+.booking-page--app-ui .booking-submit-btn,
+.booking-page--app-ui .booking-step-action-bar .btn,
+.booking-page--app-ui .btn-primary,
+.booking-page--app-ui .btn-dark {
+  border-color: #741d33 !important;
+  background: linear-gradient(135deg, #6b182e, #84253c) !important;
+  color: #fff !important;
+  border-radius: 16px !important;
+  font-weight: 950 !important;
+  box-shadow: 0 14px 26px rgba(116,29,51,.2) !important;
+}
+
+.booking-page--app-ui .form-control,
+.booking-page--app-ui .form-select,
+.booking-page--app-ui input,
+.booking-page--app-ui select,
+.booking-page--app-ui textarea {
+  border-color: rgba(96,22,37,.08) !important;
+  border-radius: 17px !important;
+  background-color: #fffaf6 !important;
+}
+
+.booking-page--app-ui .booking-lux-side {
+  position: sticky;
+  top: 24px;
+  align-self: flex-start;
+}
+
+.booking-page--app-ui .booking-lux-summary--desktop {
+  position: relative;
+  overflow: hidden;
+  border: 8px solid #fff !important;
+  border-radius: 34px !important;
+  padding: 24px 18px 18px !important;
+  background: linear-gradient(180deg, #fffaf6, #fff4ed) !important;
+  box-shadow: 0 26px 60px rgba(78, 28, 24, .17) !important;
+}
+
+.booking-page--app-ui .booking-lux-summary--desktop::before {
+  content: "9:41";
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  color: #1d1010;
+  font-size: .78rem;
+  font-weight: 950;
+}
+
+.booking-page--app-ui .booking-lux-summary__head strong {
+  color: #6b182e !important;
+}
+
+.booking-page--app-ui .booking-lux-summary__facts {
+  grid-template-columns: 1fr !important;
+}
+
+.booking-page--app-ui .booking-lux-summary__facts > div,
+.booking-page--app-ui .booking-lux-summary__item,
+.booking-page--app-ui .booking-lux-summary__total,
+.booking-page--app-ui .booking-lux-summary__discount {
+  border: 1px solid rgba(96,22,37,.06) !important;
+  border-radius: 18px !important;
+  background: rgba(255,255,255,.82) !important;
+  box-shadow: 0 10px 22px rgba(70,28,22,.06) !important;
+}
+
+.booking-page--app-ui .booking-lux-summary__steps { display: none !important; }
+
+@media (max-width: 1199px) {
+  .booking-page--app-ui .booking-app-web-hero { grid-template-columns: 1fr; }
+  .booking-page--app-ui .booking-app-hero-visual { display: none; }
+  .booking-page--app-ui .booking-app-layout > .booking-lux-side { display: none; }
+}
+
+@media (max-width: 768px) {
+  .booking-page--app-ui .booking-app-stage { padding-top: 10px; }
+  .booking-page--app-ui .booking-app-canvas { width: min(100% - 18px, 520px); }
+  .booking-page--app-ui .booking-app-web-hero {
+    display: none;
+  }
+  .booking-page--app-ui .booking-app-device-grid {
+    margin-top: 0;
+    padding: 0;
+  }
+  .booking-page--app-ui .booking-app-device--main {
+    border-radius: 34px;
+    padding: 18px 14px calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+  .booking-page--app-ui .booking-app-device__status { display: flex; }
+  .booking-page--app-ui .booking-app-device__brand { margin-top: 10px; }
+  .booking-page--app-ui .booking-app-intro h2 { font-size: 1.55rem; }
+  .booking-page--app-ui .booking-app-search { height: 46px; }
+  .booking-page--app-ui .booking-app-layout { display: block; }
+  .booking-page--app-ui .booking-app-current { display: grid; }
+  .booking-page--app-ui .booking-app-current p { text-align: right; }
+  .booking-page--app-ui .booking-step-card-shell { padding: 14px !important; }
+  .booking-page--app-ui .booking-service-card { min-height: 156px; }
+}
