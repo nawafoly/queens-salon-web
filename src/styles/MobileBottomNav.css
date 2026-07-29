@@ -30,7 +30,7 @@
       linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.96),
-        rgba(255, 250, 252, 0.98)
+        rgba(255, 255, 255, 0.98)
       );
     box-shadow:
       0 -10px 35px rgba(68, 31, 48, 0.12),
@@ -51,7 +51,7 @@
     gap: 3px;
     padding: 4px 2px;
     border-radius: 14px;
-    color: #7c6a72;
+    color: #515659;
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
@@ -91,8 +91,8 @@
   }
 
   .mobile-bottom-nav__item--active {
-    color: #a64f72;
-    background: rgba(180, 84, 123, 0.09);
+    color: #253140;
+    background: rgba(37, 49, 64, 0.09);
   }
 
   .mobile-bottom-nav__item--active::after {
@@ -101,7 +101,7 @@
     width: 18px;
     height: 3px;
     border-radius: 999px;
-    background: #b4547b;
+    background: #253140;
     content: "";
   }
 
@@ -118,11 +118,11 @@
     background:
       linear-gradient(
         135deg,
-        #c2678d,
-        #963f64
+        #253140,
+        #1f2a38
       );
     box-shadow:
-      0 8px 22px rgba(150, 63, 100, 0.32),
+      0 8px 22px rgba(37, 49, 64, 0.32),
       0 2px 6px rgba(69, 26, 45, 0.16);
     color: #fff;
   }
@@ -133,7 +133,7 @@
   }
 
   .mobile-bottom-nav__item--primary .mobile-bottom-nav__label {
-    color: #8e3e60;
+    color: #253140;
   }
 
   .mobile-bottom-nav__item--primary.mobile-bottom-nav__item--active {

@@ -7,7 +7,6 @@ import type React from "react"; // ✅ ADD: عشان React.ChangeEvent / React.F
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import EmployeeAvatar from "../components/EmployeeAvatar";
 import {
   FiCheckCircle,
   FiClock,
@@ -55,6 +54,78 @@ const BOOKING_STAFF_IMAGE_BY_FILE = new Map(
     String(path.split("/").pop() || path).toLowerCase(),
     String(url || ""),
   ])
+);
+const BOOKING_STAFF_FALLBACK_IMAGES = [
+  "ava.webp",
+  "emma.webp",
+  "sophie.webp",
+  "PHOTO-1.webp",
+  "PHOTO-2.webp",
+  "PHOTO-7.webp",
+]
+  .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+  .filter((url): url is string => !!url);
+const BOOKING_SERVICE_HAIR_IMAGES = [
+  "booking-hair-blowdry.jpg",
+  "booking-hair-foils.jpg",
+  "booking-hair-waves.jpg",
+  "booking-hair-wash.jpg",
+  "booking-hair-curling.jpg",
+]
+  .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+  .filter((url): url is string => !!url);
+const BOOKING_SERVICE_MAKEUP_IMAGES = [
+  "booking-makeup-service.jpg",
+  "makeup.png",
+]
+  .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+  .filter((url): url is string => !!url);
+const BOOKING_SERVICE_NAIL_IMAGES = [
+  "booking-nails-service.jpg",
+  "booking-manicure-polish.jpg",
+  "nails.png",
+  "nails1.jpg",
+  "nails2.webp",
+]
+  .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+  .filter((url): url is string => !!url);
+const BOOKING_SERVICE_GENERAL_IMAGES = [
+  "booking-hair-blowdry.jpg",
+  "booking-makeup-service.jpg",
+  "booking-nails-service.jpg",
+  "booking-manicure-polish.jpg",
+  "services.png",
+  "home-services.png",
+  "packages.png",
+  "makeup.png",
+  "nails.png",
+  "nails1.jpg",
+  "nails2.webp",
+  "skin.png",
+  "skin1.webp",
+  "massage.png",
+]
+  .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+  .filter((url): url is string => !!url);
+const BOOKING_GENERIC_SERVICE_IMAGE_FILES = [
+  "hair.png",
+  "hair1.webp",
+  "hair-color-treatments.png",
+  "skin.png",
+  "skin1.webp",
+  "nails.png",
+  "nails1.jpg",
+  "nails2.webp",
+  "makeup.png",
+  "massage.png",
+  "services.png",
+  "home-services.png",
+  "packages.png",
+];
+const BOOKING_GENERIC_SERVICE_IMAGE_URLS = new Set(
+  BOOKING_GENERIC_SERVICE_IMAGE_FILES
+    .map((file) => BOOKING_STAFF_IMAGE_BY_FILE.get(file))
+    .filter((url): url is string => !!url)
 );
 const STAFF_DISPLAY_CACHE_TTL_MS = 15_000;
 
@@ -524,6 +595,18 @@ type SessionPackageOption = {
   remainingSessions?: number;
 };
 
+function isExpectedPublicPackageAuthError(error: unknown) {
+  const code = String((error as any)?.code || "").trim().toLowerCase();
+  const message = String((error as any)?.message || error || "").trim().toLowerCase();
+  return (
+    code === "unauthenticated" ||
+    code === "auth/unauthenticated" ||
+    message.includes("unauthenticated") ||
+    message.includes("not authenticated") ||
+    message.includes("يجب تسجيل الدخول")
+  );
+}
+
 const MANI_PEDI_TOOLS_FEE_FIXED = 15;
 type TimeSlotCard = {
   slot: TimeSlot;
@@ -844,6 +927,44 @@ function pickBookingSectionImage(sectionId: string, title?: string) {
   return servicesImg;
 }
 
+function pickBookingServiceImage(service: any, listIndex = 0) {
+  const hay = normalizeSearchText(
+    `${service?.id || ""} ${service?.name || ""} ${service?.category || ""} ${service?.sectionTitle || ""}`
+  );
+  const index = Math.max(0, Number(listIndex || 0));
+  const candidates = [
+    service?.imageUrl,
+    service?.imageURL,
+    service?.photoUrl,
+    service?.photoURL,
+    service?.coverImage,
+    service?.coverImageUrl,
+    service?.thumbnail,
+    service?.image,
+  ];
+  for (const raw of candidates) {
+    const imageRef = String(raw || "").trim();
+    const imageRefLower = imageRef.toLowerCase();
+    if (BOOKING_GENERIC_SERVICE_IMAGE_FILES.some((file) => imageRefLower.includes(file))) continue;
+    const url = resolveBookingStaffAvatarUrl(imageRef);
+    if (url && BOOKING_GENERIC_SERVICE_IMAGE_URLS.has(url)) continue;
+    if (url) return url;
+  }
+
+  if (hay.includes("شعر") || hay.includes("hair") || hay.includes("تسريح") || hay.includes("استشوار") || hay.includes("قص")) {
+    return BOOKING_SERVICE_HAIR_IMAGES[index % Math.max(1, BOOKING_SERVICE_HAIR_IMAGES.length)] || hairImg;
+  }
+  if (hay.includes("مكياج") || hay.includes("makeup")) {
+    return BOOKING_SERVICE_MAKEUP_IMAGES[index % Math.max(1, BOOKING_SERVICE_MAKEUP_IMAGES.length)] || makeupImg;
+  }
+  if (hay.includes("اظافر") || hay.includes("أظافر") || hay.includes("nail")) {
+    return BOOKING_SERVICE_NAIL_IMAGES[index % Math.max(1, BOOKING_SERVICE_NAIL_IMAGES.length)] || nailsImg;
+  }
+  if (hay.includes("بشرة") || hay.includes("skin") || hay.includes("facial")) return skinImg;
+  if (hay.includes("مساج") || hay.includes("massage") || hay.includes("spa")) return massageImg;
+  return BOOKING_SERVICE_GENERAL_IMAGES[index % Math.max(1, BOOKING_SERVICE_GENERAL_IMAGES.length)] || servicesImg;
+}
+
 function pickBookingCategoryIcon(categoryTitle: string, sectionTitle?: string) {
   const hay = normalizeSearchText(`${categoryTitle || ""} ${sectionTitle || ""}`)
     .replace(/[أإآ]/g, "ا")
@@ -874,6 +995,23 @@ function resolveBookingStaffAvatarUrl(raw: string) {
   return value;
 }
 
+function pickFallbackStaffAvatarUrl(staff: any) {
+  if (!BOOKING_STAFF_FALLBACK_IMAGES.length) return "";
+  const seed = String(
+    staff?.id ||
+      staff?.uid ||
+      staff?.employeeId ||
+      staff?.name ||
+      staff?.displayName ||
+      ""
+  ).trim();
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return BOOKING_STAFF_FALLBACK_IMAGES[hash % BOOKING_STAFF_FALLBACK_IMAGES.length] || "";
+}
+
 function pickStaffAvatarUrl(staff: any) {
   const candidates = [
     staff?.avatarUrl,
@@ -891,7 +1029,7 @@ function pickStaffAvatarUrl(staff: any) {
     const url = resolveBookingStaffAvatarUrl(String(raw || "").trim());
     if (url) return url;
   }
-  return "";
+  return pickFallbackStaffAvatarUrl(staff);
 }
 
 function pickStaffSpecialtyLabel(staff: any) {
@@ -1211,6 +1349,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [coreSections, setCoreSections] = useState<SectionDoc[]>([]);
   const [coreCategories, setCoreCategories] = useState<CategoryDoc[]>([]);
   const [coreServices, setCoreServices] = useState<ServiceDoc[]>([]);
+  const [coreAllServices, setCoreAllServices] = useState<ServiceDoc[]>([]);
   const [corePackages, setCorePackages] = useState<ServicePackageDoc[]>([]);
   const [sessionPackageOptions, setSessionPackageOptions] = useState<SessionPackageOption[]>([]);
   const [sequenceOffers, setSequenceOffers] = useState<CoreOfferDoc[]>([]);
@@ -1220,53 +1359,52 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   >({});
   const serviceByIdCacheRef = useRef<Record<string, FlatService>>({});
 
-  const [selectedSectionId, setSelectedSectionId] = useState<string>("hair-care");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
-  const [servicePickerList, setServicePickerList] = useState<string[]>([]);
+  const [, setServicePickerList] = useState<string[]>([]);
   const [sessionPackageServicePicker, setSessionPackageServicePicker] = useState<string[]>([]);
   const [sessionPackageAllowedServices, setSessionPackageAllowedServices] = useState<FlatService[]>([]);
   const [sessionPackageServicesLoading, setSessionPackageServicesLoading] = useState(false);
   const [sessionPackageServicesError, setSessionPackageServicesError] = useState("");
   const [showAddedItemsPanel, setShowAddedItemsPanel] = useState(false);
+  const [floatingCartOpen, setFloatingCartOpen] = useState(false);
+  const [floatingCartAnimationKey, setFloatingCartAnimationKey] = useState(0);
+  const [showCartFlyFeedback, setShowCartFlyFeedback] = useState(false);
   const [autoAddPackageId, setAutoAddPackageId] = useState<string>("");
   const [offerStartTime, setOfferStartTime] = useState<string>("");
-  const [pickerScope, setPickerScope] = useState<PickerScope | "">("services");
+  const [pickerScope, setPickerScope] = useState<PickerScope | "">("");
+  const [bookingSearchQuery, setBookingSearchQuery] = useState("");
   const bookingScopeCards = useMemo<Array<{
     scope: PickerScope;
     title: string;
     hint: string;
     image: string;
-    badge: string;
   }>>(
     () => [
       {
         scope: "services",
-        title: "الخدمات",
-        hint: "قسم • تصنيف • خدمة",
+        title: "ابدئي بالخدمات",
+        hint: "اختاري القسم ثم الخدمة",
         image: servicesImg,
-        badge: "خدمة",
       },
       {
         scope: "offers",
         title: "العروض",
-        hint: "خصومات",
+        hint: "خصومات جاهزة",
         image: packagesImg,
-        badge: "عرض",
       },
       {
         scope: "session_packages",
         title: "الباقات",
-        hint: "جلسات",
+        hint: "رصيد جلساتك",
         image: homeServicesImg,
-        badge: "جلسات",
       },
       {
         scope: "offers_packages",
         title: "البكجات",
-        hint: "مجموعة",
+        hint: "خدمات مجمعة",
         image: hairColorTreatmentsImg,
-        badge: "بكج",
       },
     ],
     []
@@ -2059,7 +2197,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const [sections, packages, allServices] = await Promise.all([
           listActiveSections(SALON_ID, "core"),
           PackageService.getActive().catch((error) => {
-            console.warn("Public booking packages load skipped:", error);
+            if (!isExpectedPublicPackageAuthError(error)) {
+              console.warn("Public booking packages load skipped:", error);
+            }
             return [];
           }),
           listActiveServices({ sectionId: "" }, SALON_ID, "core"),
@@ -2068,6 +2208,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         setCatalogMode("core");
         const safeSections = Array.isArray(sections) ? sections : [];
+        setCoreAllServices(Array.isArray(allServices) ? allServices : []);
         setCoreSections(safeSections);
 
         safeSections
@@ -2090,6 +2231,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           setCoreSections([]);
           setCoreCategories([]);
           setCoreServices([]);
+          setCoreAllServices([]);
           setCorePackages([]);
         }
       } finally {
@@ -2356,26 +2498,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return sectionOptions.filter((x) => x.id && x.title && x.id !== PACKAGE_SECTION_ID);
   }, [catalogMode, coreSections, corePackages, sectionOptions]);
 
-  // ✅ WIP Booking redesign: when services scope opens, auto-select first section
-  // so the catalog is visible immediately instead of showing an empty services screen.
-  useEffect(() => {
-    if (pickerScope !== "services") return;
-    if (String(selectedSectionId || "").trim()) return;
-
-    const firstSectionId =
-      sectionOptionsSafe
-        .map((section) => String(section?.id || "").trim())
-        .find(Boolean) ||
-      sectionOptions
-        .map((section) => String(section?.id || "").trim())
-        .find(Boolean) ||
-      "";
-
-    if (firstSectionId) {
-      setSelectedSectionId(firstSectionId);
-    }
-  }, [pickerScope, selectedSectionId, sectionOptionsSafe, sectionOptions]);
-
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
     if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
@@ -2612,9 +2734,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         try {
           const [packages, services] = await Promise.all([
             PackageService.getActive().catch((error) => {
-            console.warn("Public booking packages load skipped:", error);
-            return [];
-          }),
+              if (!isExpectedPublicPackageAuthError(error)) {
+                console.warn("Public booking packages load skipped:", error);
+              }
+              return [];
+            }),
             listActiveServices({ sectionId: "" }, SALON_ID, "core"),
           ]);
           const sourcePackage = (packages || []).find(
@@ -2774,15 +2898,33 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return all.filter((s) => String(s.category || "").trim() === sel);
   }, [servicesFlat, selectedSectionId, selectedCategory, catalogMode, coreCategories.length]);
 
+  const bookingSearchTerm = useMemo(
+    () => normalizeSearchText(bookingSearchQuery).replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه"),
+    [bookingSearchQuery]
+  );
+
+  const visibleServicesInSection = useMemo(() => {
+    if (!bookingSearchTerm) return servicesInSection;
+    return servicesInSection.filter((sv) => {
+      const hay = normalizeSearchText(
+        `${sv.name || ""} ${sv.category || ""} ${sv.sectionTitle || ""} ${sv.priceText || ""}`
+      )
+        .replace(/[أإآ]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ة/g, "ه");
+      return hay.includes(bookingSearchTerm);
+    });
+  }, [servicesInSection, bookingSearchTerm]);
+
   const servicesGrouped = useMemo(() => {
     const map = new Map<string, FlatService[]>();
-    servicesInSection.forEach((sv) => {
+    visibleServicesInSection.forEach((sv) => {
       const arr = map.get(sv.category) || [];
       arr.push(sv);
       map.set(sv.category, arr);
     });
     return Array.from(map.entries());
-  }, [servicesInSection]);
+  }, [visibleServicesInSection]);
 
   // ✅ عرض السعر في الـ dropdown حسب (طور الموسم/العادي) + تاريخ الحجز المختار
   function servicePickerPriceText(sv: FlatService) {
@@ -7835,7 +7977,39 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     ? formatBookingDateForView(String(bookingDate || "").trim(), calendarViewMode)
     : "";
   const calendarViewModeLabel = calendarViewMode === "hijri" ? "هجري" : "ميلادي";
+  const bookingQuickDateOptions = useMemo(() => {
+    const startISO = String(bookingDate || "").trim() || todayISO();
+    return Array.from({ length: 5 }, (_, index) => {
+      const iso = addDaysISO(startISO, index);
+      const date = new Date(`${iso}T00:00:00`);
+      const weekday = Number.isNaN(date.getTime())
+        ? ""
+        : date.toLocaleDateString("ar-SA", { weekday: "short" });
+      const day = Number.isNaN(date.getTime())
+        ? ""
+        : date.toLocaleDateString("ar-SA", { day: "numeric" });
+      const month = Number.isNaN(date.getTime())
+        ? ""
+        : date.toLocaleDateString("ar-SA", { month: "short" });
+      return {
+        iso,
+        weekday,
+        day,
+        month,
+        active: iso === String(bookingDate || "").trim(),
+      };
+    });
+  }, [bookingDate]);
   const cartItems = formData.items || [];
+  const serviceIdsInCart = useMemo(
+    () =>
+      new Set(
+        cartItems
+          .map((it) => String(it?.serviceId || "").trim())
+          .filter(Boolean)
+      ),
+    [cartItems]
+  );
   const firstCartItem = cartItems[0] || null;
   const selectedVariantId = String(firstCartItem?.serviceId || servicePicker || "").trim();
   const selectedServiceLabels = cartItems
@@ -7903,7 +8077,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     { id: 3, title: "بيانات العميلة", hint: "أكملي بيانات التواصل", summary: step3SummaryText, action: "إكمال البيانات" },
     { id: 4, title: "تأكيد", hint: "راجعي التفاصيل واضغطي تأكيد", summary: step4SummaryText, action: "مراجعة نهائية" },
   ];
-  const activeStepRow = stepRows.find((x) => x.id === currentStep) || stepRows[0];
   const bookingSummaryDurationMin = cartItems.reduce(
     (sum, item) => sum + Math.max(0, Number(item.durationMin || 0)),
     0
@@ -7926,6 +8099,300 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const bookingSummaryProgressStyle = {
     "--booking-summary-progress": `${bookingSummaryProgress}%`,
   } as React.CSSProperties;
+  const referenceHeroImage = pickBookingSectionImage(
+    selectedSectionId || "hair-care",
+    selectedSectionOption?.title || "الشعر"
+  );
+  const referenceCategoryCards = useMemo(() => {
+    const orderScore = (value: string) => {
+      const hay = normalizeSearchText(value)
+        .replace(/[أإآ]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ة/g, "ه");
+      if (hay.includes("شعر") || hay.includes("hair")) return 1;
+      if (hay.includes("مكياج") || hay.includes("makeup")) return 2;
+      if (hay.includes("اظافر") || hay.includes("nail")) return 3;
+      if (hay.includes("بشر") || hay.includes("skin") || hay.includes("facial")) return 4;
+      if (hay.includes("مساج") || hay.includes("massage") || hay.includes("spa")) return 5;
+      return 20;
+    };
+
+    const rows = sectionOptionsSafe
+      .map((sec) => ({
+        id: String(sec.id || "").trim(),
+        title: String(sec.title || "").trim(),
+        image: pickBookingSectionImage(sec.id, sec.title),
+      }))
+      .filter((sec) => sec.id && sec.title)
+      .sort((a, b) => orderScore(`${a.id} ${a.title}`) - orderScore(`${b.id} ${b.title}`));
+
+    if (rows.length) return rows.slice(0, 5);
+
+    return [
+      { id: "", title: "الشعر", image: hairImg },
+      { id: "", title: "المكياج", image: makeupImg },
+      { id: "", title: "الأظافر", image: nailsImg },
+      { id: "", title: "البشرة", image: skinImg },
+      { id: "", title: "المساج", image: massageImg },
+    ];
+  }, [sectionOptionsSafe]);
+  const referenceFeaturedServices = useMemo(() => {
+    const fromCurrentSection = (visibleServicesInSection.length ? visibleServicesInSection : servicesInSection)
+      .slice(0, 4)
+      .map((sv, index) => ({
+        id: String(sv.id || "").trim(),
+        name: String(sv.name || "").trim(),
+        priceText: servicePickerPriceText(sv),
+        durationLabel: sv.durationMin ? `${Number(sv.durationMin || 0)} دقيقة` : "حسب الخدمة",
+        image: pickBookingServiceImage(sv, index),
+        sectionId: String(sv.sectionId || "").trim(),
+        categoryId: String(sv.categoryId || sv.category || "").trim(),
+      }))
+      .filter((sv) => sv.id && sv.name);
+
+    if (fromCurrentSection.length) return fromCurrentSection;
+
+    const fromAllServices = (coreAllServices || [])
+      .map((raw: any, index: number) => {
+        const id = String(raw?.id || "").trim();
+        const sectionId = String(raw?.sectionId || "").trim();
+        const categoryId = String(raw?.categoryId || "").trim();
+        const name = readDisplayLabel(raw, id);
+        const basePriceNum = Number(raw?.["السعر"] ?? raw?.price ?? 0);
+        const seasonPriceRaw =
+          raw?.seasonPrice ??
+          raw?.["سعر_الموسم"] ??
+          raw?.season_price ??
+          raw?.seasonPriceValue ??
+          0;
+        const seasonPriceNum = Number(String(seasonPriceRaw).replace(/[^\d.]/g, "")) || 0;
+        const effective = pickEffectivePrice({
+          basePrice: Number.isFinite(basePriceNum) ? basePriceNum : 0,
+          seasonPrice: seasonPriceNum > 0 ? seasonPriceNum : undefined,
+          appSettings,
+          dateISO: String(bookingDate || "").trim() || todayISO(),
+        });
+        const durationMin = Number(raw?.["المدة"] ?? raw?.durationMin ?? DEFAULT_SERVICE_DURATION_MIN);
+        const sectionTitle =
+          String(sectionLabelById.get(sectionId) || "").trim() ||
+          String(raw?.sectionTitle || raw?.sectionName || sectionId || "الخدمات").trim();
+
+        return {
+          id,
+          name,
+          priceText:
+            Number(effective.price || 0) > 0
+              ? `ابتداءً من ${Number(effective.price || 0).toFixed(0)} ريال`
+              : "حسب الخدمة",
+          durationLabel: durationMin ? `${durationMin} دقيقة` : "حسب الخدمة",
+          image: pickBookingServiceImage({ ...raw, id, sectionId, sectionTitle, name }, index),
+          sectionId,
+          categoryId,
+        };
+      })
+      .filter((sv) => sv.id && sv.name)
+      .slice(0, 4);
+
+    if (fromAllServices.length) return fromAllServices;
+
+    return [
+      {
+        id: "",
+        name: "استشوار",
+        priceText: "ابتداءً من 150 ريال",
+        durationLabel: "45 دقيقة",
+        image: hairImg,
+        sectionId: "",
+        categoryId: "",
+      },
+      {
+        id: "",
+        name: "صبغة شعر",
+        priceText: "ابتداءً من 300 ريال",
+        durationLabel: "60 دقيقة",
+        image: hairColorTreatmentsImg,
+        sectionId: "",
+        categoryId: "",
+      },
+      {
+        id: "",
+        name: "بروتين شعر",
+        priceText: "ابتداءً من 450 ريال",
+        durationLabel: "90 دقيقة",
+        image: hairImg,
+        sectionId: "",
+        categoryId: "",
+      },
+      {
+        id: "",
+        name: "ميك أب ناعم",
+        priceText: "ابتداءً من 250 ريال",
+        durationLabel: "60 دقيقة",
+        image: makeupImg,
+        sectionId: "",
+        categoryId: "",
+      },
+    ];
+  }, [
+    visibleServicesInSection,
+    servicesInSection,
+    coreAllServices,
+    appSettings,
+    bookingDate,
+    sectionLabelById,
+  ]);
+  const selectReferenceScope = (scope: PickerScope) => {
+    setPickerScope(scope);
+    setServicePicker("");
+    setServicePickerList([]);
+    resetSessionPackageSelection();
+    setSelectedSectionId("");
+    setSelectedCategory("");
+    setShowHairGuide(false);
+    setOfferStartTime("");
+  };
+  const openReferenceSection = (sectionId: string) => {
+    const sid = String(sectionId || "").trim();
+    if (!sid) return;
+    setPickerScope("services");
+    setServicePicker("");
+    setServicePickerList([]);
+    resetSessionPackageSelection();
+    setShowHairGuide(false);
+    setOfferStartTime("");
+    handleSectionChange({ target: { value: sid } } as React.ChangeEvent<HTMLSelectElement>);
+  };
+  const resetReferencePicker = () => {
+    setPickerScope("");
+    setServicePicker("");
+    setServicePickerList([]);
+    resetSessionPackageSelection();
+    setSelectedSectionId("");
+    setSelectedCategory("");
+    setShowHairGuide(false);
+    setOfferStartTime("");
+  };
+  const goToReferenceAppointmentStep = () => {
+    if (!String(bookingDate || "").trim()) {
+      applyBookingDate(todayISO());
+    }
+    setShowAddedItemsPanel(false);
+    setCurrentStep(2);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        document
+          .querySelector(".booking-step-card-shell--cart")
+          ?.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+    }
+  };
+  const triggerFloatingCartFeedback = () => {
+    setShowAddedItemsPanel(false);
+    setFloatingCartOpen(false);
+    setFloatingCartAnimationKey((key) => key + 1);
+    setShowCartFlyFeedback(true);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => setShowCartFlyFeedback(false), 760);
+    }
+  };
+  const addServiceDirectlyToCart = (serviceIdRaw: string) => {
+    const pickedServiceId = String(serviceIdRaw || "").trim();
+    if (!pickedServiceId) return;
+    if (serviceIdsInCart.has(pickedServiceId)) {
+      setFloatingCartOpen(true);
+      return;
+    }
+    void (async () => {
+      await addServiceToCart(pickedServiceId, {
+        preventDuplicate: true,
+        preserveSelectionContext: true,
+      });
+      triggerFloatingCartFeedback();
+    })();
+  };
+  const canAddPickerSelection =
+    pickerScope === "session_packages"
+        ? !!servicePicker && sessionPackageServicePicker.length > 0
+        : pickerScope === "offers"
+          ? !!servicePicker && sequenceOfferOptions.length > 0 && !hasOfferServiceInCart
+          : pickerScope === "offers_packages"
+            ? !!servicePicker && packageOptions.length > 0
+            : false;
+  const pickerSelectionButtonLabel =
+    pickerScope === "offers_packages"
+        ? "إضافة البكج"
+        : pickerScope === "session_packages" && sessionPackageServicePicker.length > 1
+          ? `إضافة ${sessionPackageServicePicker.length} خدمات`
+          : "إضافة";
+  const addCurrentPickerSelection = () => {
+    if (pickerScope === "offers") {
+      void addOfferFromPicker();
+      return;
+    }
+
+    if (pickerScope === "session_packages" && selectedSessionPackage) {
+      const pickedSessionServiceIds = [...sessionPackageServicePicker];
+      const allowedServicesSnapshot: PackageServiceItem[] = sessionPackageAllowedServices.map((sv) => ({
+        serviceId: String(sv.id || "").trim(),
+        serviceName: String(sv.name || "").trim(),
+        sectionId: String(sv.sectionId || "").trim() || undefined,
+        categoryId: String(sv.categoryId || "").trim() || undefined,
+        price: Math.max(0, Number(sv.basePrice || 0)),
+        durationMin: Math.max(1, Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)),
+      }));
+      const sessionPackageSelection = {
+        packageId: String(selectedSessionPackage.id || "").replace(/^spkg:/, ""),
+        packageName: String(selectedSessionPackage.title || "").trim(),
+        packagePrice: Math.max(0, Number(selectedSessionPackage.price || 0)),
+        sessionsCount: Math.max(1, Number(selectedSessionPackage.sessionsCount || 1)),
+        allowedServiceIds: Array.isArray(selectedSessionPackage.allowedServiceIds)
+          ? selectedSessionPackage.allowedServiceIds
+          : [],
+        allowedServicesSnapshot,
+      };
+
+      void (async () => {
+        for (const pickedServiceId of pickedSessionServiceIds) {
+          await addServiceToCart(pickedServiceId, { sessionPackageSelection });
+        }
+        resetBookingPickerForNextAdd();
+      })();
+      return;
+    }
+
+    if (pickerScope === "offers_packages") {
+      void (async () => {
+        await addServiceToCart(servicePicker);
+        resetBookingPickerForNextAdd();
+      })();
+    }
+  };
+  const addReferenceFeaturedService = (serviceId: string, sectionId?: string, categoryId?: string) => {
+    const sid = String(serviceId || "").trim();
+    if (!sid) {
+      const firstSectionId = String(sectionId || referenceCategoryCards[0]?.id || "").trim();
+      if (firstSectionId) openReferenceSection(firstSectionId);
+      return;
+    }
+
+    void (async () => {
+      const resolved = getServiceById(sid) || (await ensureServiceByIdForOffer(sid));
+      if (resolved?.sectionId) {
+        setPickerScope("services");
+        setSelectedSectionId(String(resolved.sectionId || "").trim());
+        setSelectedCategory(String(resolved.categoryId || categoryId || "").trim());
+      }
+      await addServiceToCart(sid);
+      goToReferenceAppointmentStep();
+    })();
+  };
+  const applyReferencePromoCode = () => {
+    const code = "MALIKAT20";
+    setCouponCode(code);
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(code).catch(() => undefined);
+    }
+  };
   const renderBookingSummaryPanel = (variant: "desktop" | "mobile") => (
     <div className={`booking-lux-summary booking-lux-summary--${variant}`}>
       <div className="booking-lux-summary__head">
@@ -7993,8 +8460,65 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     </div>
   );
   const bookingMobileSummaryPortal =
-    typeof document !== "undefined"
+    typeof document !== "undefined" && cartItems.length > 0 && currentStep > 1
       ? createPortal(renderBookingSummaryPanel("mobile"), document.body)
+      : null;
+  const bookingFloatingCartPortal =
+    typeof document !== "undefined" && currentStep === 1 && cartItems.length > 0
+      ? createPortal(
+          <div
+            key={`booking-floating-cart-${floatingCartAnimationKey}`}
+            className={["booking-floating-cart booking-floating-cart--reference-v6", floatingCartOpen ? "is-open" : ""]
+              .filter(Boolean)
+              .join(" ")}
+            role="status"
+            aria-live="polite"
+          >
+            {showCartFlyFeedback ? (
+              <span className="booking-floating-cart__fly" aria-hidden="true">
+                <FiCheckCircle />
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="booking-floating-cart__button"
+              onClick={() => setFloatingCartOpen((open) => !open)}
+              aria-expanded={floatingCartOpen}
+              aria-label="سلة الحجز"
+            >
+              <FiShoppingBag aria-hidden="true" />
+              <span className="booking-floating-cart__badge">{cartItems.length}</span>
+            </button>
+            {floatingCartOpen ? (
+              <div className="booking-floating-cart__panel">
+                <div className="booking-floating-cart__panel-head">
+                  <span>سلة الحجز</span>
+                  <strong>{finalPrice.toFixed(0)} ريال</strong>
+                </div>
+                <div className="booking-floating-cart__panel-list">
+                  {cartItems.slice(0, 3).map((item, idx) => (
+                    <div key={String(item.id || idx)} className="booking-floating-cart__panel-item">
+                      <span>{idx + 1}</span>
+                      <strong>{String(item.serviceName || "").trim() || "خدمة"}</strong>
+                      <small>{resolveCartItemPriceText(item)}</small>
+                    </div>
+                  ))}
+                  {cartItems.length > 3 ? (
+                    <div className="booking-floating-cart__more">+{cartItems.length - 3} خدمات أخرى</div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="booking-floating-cart__next"
+                  onClick={goToReferenceAppointmentStep}
+                >
+                  التالي: الموظفة والموعد
+                </button>
+              </div>
+            ) : null}
+          </div>,
+          document.body
+        )
       : null;
 
   useEffect(() => {
@@ -8047,7 +8571,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
   return (
 
-    <div className="booking-page booking-page--app-ui py-5">
+    <div className={[
+      "booking-page booking-page--reference-v6 py-5",
+      cartItems.length > 0 ? "booking-page--has-mobile-summary" : "",
+      currentStep === 1 && cartItems.length > 0 ? "booking-page--has-floating-cart" : "",
+    ].filter(Boolean).join(" ")}>
       <ConfirmModal
         open={uiModal.open}
         title={uiModal.title}
@@ -8201,91 +8729,67 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         </div>
       </Modal>
 
-      <section className="booking-app-stage" aria-label="حجز مليكات صالون">
-        <div className="booking-app-canvas">
-          <div className="booking-app-web-hero" aria-label="واجهة حجز مليكات">
-            <div className="booking-app-hero-visual">
-              <img src={servicesImg} alt="" aria-hidden="true" />
-              <span className="booking-app-hero-monogram">M</span>
-            </div>
-            <div className="booking-app-hero-copy">
+      <section className="booking-reference-page" aria-label="حجز مليكات صالون">
+        <div className="booking-reference-layout">
+          <main className="booking-reference-main-card">
+            <header className="booking-reference-topbar">
               <img src={logo} alt="MALIKAT SALON" />
-              <span>تجربة حجز فاخرة</span>
-              <h1>احجزي موعدك في مليكات صالون</h1>
-              <p>اختاري الخدمة والوقت والمختصة بخطوات خفيفة تشبه التطبيق.</p>
-              <div className="booking-app-hero-badges" aria-label="مزايا الحجز">
-                <span><FiCheckCircle /> تأكيد فوري</span>
-                <span><FiHome /> خدمة منزلية</span>
-                <span><FiGift /> عروض وباقات</span>
-                <span><FiShield /> دفع آمن</span>
-              </div>
+              <button type="button">
+                <FiUserCheck aria-hidden="true" />
+                <span>تواصل معنا</span>
+              </button>
+            </header>
+
+            <div className="booking-reference-mobile-head">
+              <span>مرحبًا بك في مليكات</span>
+              <h1>ماذا ترغبين اليوم؟</h1>
             </div>
-          </div>
 
-          <div className="booking-app-device-grid">
-            <div className="booking-app-device booking-app-device--main">
-              <div className="booking-app-device__status" aria-hidden="true">
-                <span>9:41</span>
-                <span>●●●</span>
+            <section className="booking-reference-hero" aria-label="مقدمة الحجز">
+              <div className="booking-reference-hero__visual" aria-hidden="true">
+                <img src={referenceHeroImage} alt="" />
+                <span>M</span>
               </div>
-
-              <div className="booking-app-device__brand">
-                <button type="button" aria-label="القائمة"><span /></button>
-                <img src={logo} alt="MALIKAT SALON" />
-                <button type="button" aria-label="التنبيهات"><FiHeart /></button>
-              </div>
-
-              <div className="booking-app-intro">
-                <span>مرحبًا بك في مليكات</span>
-                <h2>ماذا ترغبين اليوم؟</h2>
-                <div className="booking-app-search" aria-hidden="true">
-                  <FiEdit3 />
-                  <span>ابحثي عن خدمة</span>
-                  <FiShoppingBag />
+              <div className="booking-reference-hero__copy">
+                <h1>احجزي موعدك في مليكات صالون</h1>
+                <p>تجربة جمال متكاملة بخطوات بسيطة وسريعة.</p>
+                <div className="booking-reference-hero__badges" aria-label="مميزات الحجز">
+                  <span><FiShield aria-hidden="true" /> تأكيد فوري</span>
+                  <span><FiCheckCircle aria-hidden="true" /> دفع آمن</span>
+                  <span><FiHome aria-hidden="true" /> خدمة منزلية</span>
                 </div>
               </div>
+            </section>
 
-              <div className="booking-app-flow" style={bookingSummaryProgressStyle} aria-label="خطوات الحجز">
-                <div className="booking-app-flow__track" aria-hidden="true"><span /></div>
-                <div className="booking-app-flow__chips" role="tablist" aria-label="خطوات الحجز">
-                  {stepRows.map((stepRow) => {
-                    const isActive = currentStep === stepRow.id;
-                    const isUnlocked = stepRow.id <= maxUnlockedStep;
-                    const isDone = stepRow.id < currentStep && isUnlocked;
-                    const label = stepRow.id === 1 ? "الخدمة" : stepRow.id === 2 ? "الموعد" : stepRow.id === 3 ? "بياناتك" : "التأكيد";
-                    return (
-                      <button
-                        key={`booking-app-flow-${stepRow.id}`}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        disabled={!isUnlocked}
-                        className={`booking-app-flow__chip ${isActive ? "is-active" : ""} ${isDone ? "is-done" : ""}`}
-                        onClick={() => {
-                          if (isUnlocked) setCurrentStep(stepRow.id);
-                        }}
-                      >
-                        <span>{isDone ? "✓" : stepRow.id}</span>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+            <div className="booking-reference-stepper" style={bookingSummaryProgressStyle} role="tablist" aria-label="خطوات الحجز">
+              <div className="booking-reference-stepper__track" aria-hidden="true"><span /></div>
+              {stepRows.map((stepRow) => {
+                const isActive = currentStep === stepRow.id;
+                const isUnlocked = stepRow.id <= maxUnlockedStep;
+                const isDone = stepRow.id < currentStep && isUnlocked;
+                return (
+                  <button
+                    key={`booking-reference-step-${stepRow.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    disabled={!isUnlocked}
+                    className={["booking-reference-stepper__item", isActive ? "is-active" : "", isDone ? "is-done" : ""]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => {
+                      if (isUnlocked) setCurrentStep(stepRow.id);
+                    }}
+                  >
+                    <span>{isDone ? "✓" : stepRow.id}</span>
+                    <strong>{stepRow.title}</strong>
+                  </button>
+                );
+              })}
+            </div>
 
-              <div className="container booking-lux-container booking-app-container">
-                <div className="row justify-content-center booking-lux-layout booking-app-layout">
-          <div className="col-lg-8 booking-lux-main">
-            <div className="booking-card" ref={bookingCardRef}>
-
-              {/* ✅ Logo */}
-              <div className="text-center mb-3">
-                <img
-                  src={logo}
-                  alt="MALIKAT SALON"
-                  style={{ height: 80, objectFit: "contain" }}
-                />
-              </div>
+            <div className="booking-reference-form-wrap">
+              <div className="booking-card" ref={bookingCardRef}>
 
               {offerLandingMsg && (
                 <div className="alert alert-success py-2 mb-3" role="status" aria-live="polite">
@@ -8312,19 +8816,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 </div>
               ) : null}
 
-              <form className="booking-form" onSubmit={handleSubmit}>
-                <div className="booking-app-current mb-4" aria-label="المرحلة الحالية">
-                  <span>{activeStepRow.action}</span>
-                  <strong>{activeStepRow.title}</strong>
-                  <p>
-                    {activeStepRow.id === 1 && step1SummaryRows.length > 0
-                      ? `${cartItems.length} خدمة مختارة`
-                      : activeStepRow.summary}
-                  </p>
-                </div>
+              <form className="booking-form booking-reference-form" onSubmit={handleSubmit}>
 
                 {currentStep === 2 ? (
-                  <div className="booking-step-card-shell mb-4">
+                  <div className="booking-step-card-shell booking-step-card-shell--date mb-4">
                     <div className="booking-step-card-shell__header">
                       <div>
                         <div className="booking-step-card-shell__title">
@@ -8405,6 +8900,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                 />
                               )}
                             </div>
+                            <div className="booking-quick-date-strip" aria-label="اختيار سريع للتاريخ">
+                              {bookingQuickDateOptions.map((option) => (
+                                <button
+                                  key={option.iso}
+                                  type="button"
+                                  className={["booking-quick-date", option.active ? "is-active" : ""]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                  onClick={() => applyBookingDate(option.iso)}
+                                  aria-pressed={option.active}
+                                >
+                                  <span>{option.weekday}</span>
+                                  <strong>{option.day}</strong>
+                                  <small>{option.month}</small>
+                                </button>
+                              ))}
+                            </div>
                             {calendarViewMode === "hijri" && hijriPickerOpen && (
                               <div className="booking-hijri-picker">
                                 <div className="booking-hijri-picker__head">
@@ -8473,35 +8985,51 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
 
                 {currentStep === 1 ? (
-                  <div className="booking-step-card-shell mb-4">
-                    <div className="booking-step-card-shell__header">
-                      <div>
-                        <div className="booking-step-card-shell__title">الخدمة</div>
-                        <p className="booking-step-card-shell__subtitle">
-                          اختاري وأضيفي.
-                        </p>
-                      </div>
-                      <span className="booking-step-card-shell__badge">01</span>
+                  <div className="booking-reference-step-one">
+                    <div className="booking-reference-search" role="search">
+                      <FiEdit3 aria-hidden="true" />
+                      <input
+                        type="search"
+                        value={bookingSearchQuery}
+                        onChange={(e) => setBookingSearchQuery(e.target.value)}
+                        placeholder="ابحثي عن خدمة"
+                        aria-label="البحث عن خدمة"
+                      />
+                      {bookingSearchQuery ? (
+                        <button type="button" onClick={() => setBookingSearchQuery("")}>مسح</button>
+                      ) : (
+                        <FiShoppingBag aria-hidden="true" />
+                      )}
                     </div>
-                    <div className="mb-0 bk-service-adder">
-                      <div className="booking-service-adder-head">
+
+                    <section className="booking-reference-scope" aria-label="نوع الحجز">
+                      <div className="booking-reference-section-head">
                         <div>
-                          <label className="form-label mb-1">نوع الحجز</label>
-                          <p className="booking-service-adder-hint">خدمة واحدة كل مرة.</p>
+                          <span>ابدئي من هنا</span>
+                          <h2>اختاري نوع الحجز</h2>
                         </div>
-                        <button
-                          type="button"
-                          className={`booking-service-adder-count booking-service-adder-count--action${cartItems.length ? "" : " is-empty"}`}
-                          disabled={!cartItems.length}
-                          onClick={() => setShowAddedItemsPanel((prev) => !prev)}
-                          aria-expanded={showAddedItemsPanel}
-                        >
-                          <span>{cartItems.length} مضافة</span>
-                          <FontAwesomeIcon icon={faPen} aria-hidden="true" />
-                        </button>
+                        {cartItems.length ? (
+                          <button
+                            type="button"
+                            className="booking-reference-mini-action"
+                            onClick={() => setShowAddedItemsPanel((open) => !open)}
+                          >
+                            {cartItems.length} مضافة
+                          </button>
+                        ) : null}
                       </div>
-                      {showAddedItemsPanel && cartItems.length ? (
-                        <div className="booking-added-items-panel" aria-label="الخدمات المضافة">
+
+                      {cartItems.length && showAddedItemsPanel ? (
+                        <div className="booking-added-items-panel booking-added-items-panel--visible" aria-label="الخدمات المضافة">
+                          <div className="booking-added-items-panel__head">
+                            <div>
+                              <span>{showAddedItemsPanel ? "تمت الإضافة إلى" : "سلة الحجز"}</span>
+                              <strong>ملخص الحجز</strong>
+                            </div>
+                            <button type="button" onClick={goToReferenceAppointmentStep}>
+                              التالي
+                            </button>
+                          </div>
                           {cartItems.map((item, idx) => (
                             <div key={String(item.id || idx)} className="booking-added-item">
                               <span className="booking-added-item__index">{idx + 1}</span>
@@ -8512,10 +9040,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               <button
                                 type="button"
                                 className="booking-added-item__edit"
-                                onClick={() => {
-                                  setShowAddedItemsPanel(false);
-                                  setCurrentStep(2);
-                                }}
+                                onClick={goToReferenceAppointmentStep}
                               >
                                 تعديل
                               </button>
@@ -8528,99 +9053,116 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               </button>
                             </div>
                           ))}
+                          <div className="booking-added-items-total">
+                            <span>{cartItems.length === 1 ? "خدمة واحدة مضافة" : `${cartItems.length} خدمات مضافة`}</span>
+                            <strong>{finalPrice.toFixed(0)} ريال</strong>
+                          </div>
+                          <button
+                            type="button"
+                            className="booking-added-items-panel__primary"
+                            onClick={goToReferenceAppointmentStep}
+                          >
+                            متابعة لاختيار الموظفة والموعد
+                          </button>
                         </div>
                       ) : null}
-                      {!pickerScope ? (
-                        <div className="booking-type-card-grid mb-3" role="list" aria-label="نوع الحجز">
-                          {bookingScopeCards.map((card) => (
-                            <button
-                              key={card.scope}
-                              type="button"
-                              role="listitem"
-                              className="booking-type-card"
-                              onClick={() => {
-                                setPickerScope(card.scope);
-                                setServicePicker("");
-                                setServicePickerList([]);
-                                resetSessionPackageSelection();
-                                setSelectedSectionId("");
-                                setSelectedCategory("");
-                                setShowHairGuide(false);
-                                setOfferStartTime("");
-                              }}
-                              aria-pressed={false}
-                            >
-                              <span className="booking-type-card__media" aria-hidden="true">
-                                <img src={card.image} alt="" />
-                              </span>
-                              <span className="booking-type-card__body">
-                                <span className="booking-type-card__badge">{card.badge}</span>
-                                <span className="booking-type-card__title">{card.title}</span>
-                                <span className="booking-type-card__hint">{card.hint}</span>
-                              </span>
-                              <span className="booking-type-card__check" aria-hidden="true" />
-                            </button>
-                          ))}
+
+                      <div className="booking-reference-scope-grid" role="list">
+                        {bookingScopeCards.map((card) => (
+                          <button
+                            key={card.scope}
+                            type="button"
+                            role="listitem"
+                            className={[
+                              "booking-reference-scope-card",
+                              `booking-reference-scope-card--${card.scope}`,
+                              pickerScope === card.scope ? "is-active" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            onClick={() => selectReferenceScope(card.scope)}
+                            aria-pressed={pickerScope === card.scope}
+                          >
+                            <span className="booking-reference-scope-card__media" aria-hidden="true">
+                              <img src={card.image} alt="" />
+                            </span>
+                            <span className="booking-reference-scope-card__body">
+                              <strong>{card.title}</strong>
+                              <small>{card.hint}</small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="booking-reference-categories" aria-label="الأقسام">
+                      <div className="booking-reference-section-head">
+                        <div>
+                          <span>الأقسام</span>
+                          <h2>ماذا ترغبين اليوم؟</h2>
+                        </div>
+                        <button type="button" className="booking-reference-link" onClick={() => selectReferenceScope("services")}>
+                          عرض الكل
+                        </button>
+                      </div>
+                      <div className="booking-reference-category-row" role="list">
+                        {referenceCategoryCards.map((sec) => (
+                          <button
+                            key={sec.id || sec.title}
+                            type="button"
+                            role="listitem"
+                            className={["booking-reference-category", sec.id && selectedSectionId === sec.id ? "is-active" : ""]
+                              .filter(Boolean)
+                              .join(" ")}
+                            onClick={() => openReferenceSection(sec.id)}
+                            disabled={!sec.id}
+                            aria-pressed={!!sec.id && selectedSectionId === sec.id}
+                          >
+                            <img src={sec.image} alt="" />
+                            <span>{sec.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="booking-reference-promo" aria-label="عرض خاص">
+                      <div className="booking-reference-promo__copy">
+                        <span className="booking-reference-promo__title">
+                          <FiGift aria-hidden="true" />
+                          خصم 20%
+                        </span>
+                        <strong>على جميع خدمات الشعر</strong>
+                        <small>استخدمي كود: MALIKAT20</small>
+                      </div>
+                      <button type="button" onClick={applyReferencePromoCode}>
+                        نسخ الكود
+                      </button>
+                    </section>
+
+                    <section className="booking-reference-selection-panel" aria-label="اختيارات الحجز">
+                      {pickerScope ? (
+                        <div className="booking-picker-route-head">
+                          <button type="button" className="booking-picker-route-head__back" onClick={resetReferencePicker}>
+                            رجوع
+                          </button>
+                          <div className="booking-picker-route-head__body">
+                            <span className="booking-picker-route-head__eyebrow">نوع الحجز</span>
+                            <strong>{activeBookingScopeCard?.title || "اختيار"}</strong>
+                            <span>{activeBookingScopeCard?.hint || "إضافة"}</span>
+                          </div>
                         </div>
                       ) : (
-                        <>
-                          <div className="booking-picker-route-head">
-                            <button
-                              type="button"
-                              className="booking-picker-route-head__back"
-                              onClick={() => {
-                                setPickerScope("");
-                                setServicePicker("");
-                                setServicePickerList([]);
-                                resetSessionPackageSelection();
-                                setSelectedSectionId("");
-                                setSelectedCategory("");
-                                setShowHairGuide(false);
-                                setOfferStartTime("");
-                              }}
-                            >
-                              رجوع
-                            </button>
-                            <div className="booking-picker-route-head__body">
-                              <span className="booking-picker-route-head__eyebrow">نوع الحجز</span>
-                              <strong>{activeBookingScopeCard?.title || "الخدمة"}</strong>
-                              <span>{activeBookingScopeCard?.hint || "إضافة"}</span>
-                            </div>
-                          </div>
+                        <div className="booking-reference-start-card">
+                          <strong>اختاري نوع الحجز أو افتحي أحد الأقسام</strong>
+                          <span>الخدمات، العروض، الباقات، والبكجات كلها متاحة بدون فرض قسم محدد.</span>
+                        </div>
+                      )}
 
                       {pickerScope === "services" ? (
                         <div className="booking-catalog-flow">
                           {!selectedSectionId ? (
-                            <div className="booking-catalog-flow__panel">
-                              <div className="booking-catalog-flow__title">القسم</div>
-                              <div className="booking-catalog-grid">
-                                {sectionOptionsSafe.map((sec) => {
-                                  const sectionImage = pickBookingSectionImage(sec.id, sec.title);
-                                  return (
-                                    <button
-                                      key={sec.id}
-                                      type="button"
-                                      className="booking-catalog-card"
-                                      onClick={() => {
-                                        setServicePicker("");
-                                        setServicePickerList([]);
-                                        handleSectionChange({ target: { value: sec.id } } as React.ChangeEvent<HTMLSelectElement>);
-                                      }}
-                                    >
-                                      <span className="booking-catalog-card__check" aria-hidden="true" />
-                                      <span className="booking-catalog-card__media" aria-hidden="true">
-                                        <img src={sectionImage} alt="" />
-                                      </span>
-                                      <span className="booking-catalog-card__body">
-                                        <span className="booking-catalog-card__title">{sec.title}</span>
-                                        <span className="booking-catalog-card__sub">
-                                          فتح
-                                        </span>
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                            <div className="booking-service-multi-empty">
+                              اختاري قسمًا من الصف العلوي لعرض الخدمات.
                             </div>
                           ) : (
                             <>
@@ -8636,48 +9178,38 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                     setShowHairGuide(false);
                                   }}
                                 >
-                                  رجوع للأقسام
+                                  تغيير القسم
                                 </button>
                                 <div className="booking-picker-route-head__body">
                                   <span className="booking-picker-route-head__eyebrow">القسم</span>
                                   <strong>{selectedSectionOption?.title || "القسم المحدد"}</strong>
-                                  <span>
-                                    {categoryOptionsSafe.length > 1 && !selectedCategory
-                                      ? "التصنيف"
-                                      : "الخدمة"}
-                                  </span>
+                                  <span>{categoryOptionsSafe.length > 1 && !selectedCategory ? "اختاري التصنيف" : "اختاري الخدمة"}</span>
                                 </div>
                               </div>
 
                               {categoryOptionsSafe.length > 1 && !selectedCategory ? (
                                 <div className="booking-catalog-flow__panel">
                                   <div className="booking-catalog-flow__title">التصنيف</div>
-                                  <div className="booking-catalog-grid">
+                                  <div className="booking-catalog-grid booking-catalog-grid--reference">
                                     {categoryOptionsSafe.map((cat) => {
-                                      const CategoryIcon = pickBookingCategoryIcon(
-                                        cat.name,
-                                        selectedSectionOption?.title || ""
-                                      );
+                                      const CategoryIcon = pickBookingCategoryIcon(cat.name, selectedSectionOption?.title || "");
                                       return (
                                         <button
                                           key={cat.id}
                                           type="button"
                                           className="booking-catalog-card"
                                           onClick={() => {
-                                          setServicePicker("");
-                                          setServicePickerList([]);
-                                          setSelectedCategory(String(cat.id || "").trim());
+                                            setServicePicker("");
+                                            setServicePickerList([]);
+                                            setSelectedCategory(String(cat.id || "").trim());
                                           }}
                                         >
-                                          <span className="booking-catalog-card__check" aria-hidden="true" />
                                           <span className="booking-catalog-card__media booking-catalog-card__media--icon" aria-hidden="true">
                                             <CategoryIcon />
                                           </span>
                                           <span className="booking-catalog-card__body">
                                             <span className="booking-catalog-card__title">{cat.name}</span>
-                                            <span className="booking-catalog-card__sub">
-                                              فتح
-                                            </span>
+                                            <span className="booking-catalog-card__sub">فتح</span>
                                           </span>
                                         </button>
                                       );
@@ -8685,12 +9217,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   </div>
                                 </div>
                               ) : (
-                                <>
+                                <div className="booking-catalog-flow__panel">
                                   {categoryOptionsSafe.length > 1 ? (
-                                    <div className="booking-picker-route-head booking-picker-route-head--sub">
+                                    <div className="booking-reference-subhead">
+                                      <strong>{selectedCategoryOption?.name || "التصنيف المحدد"}</strong>
                                       <button
                                         type="button"
-                                        className="booking-picker-route-head__back"
+                                        className="booking-reference-link"
                                         onClick={() => {
                                           setSelectedCategory("");
                                           setServicePicker("");
@@ -8699,70 +9232,50 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       >
                                         تغيير التصنيف
                                       </button>
-                                      <div className="booking-picker-route-head__body">
-                                        <span className="booking-picker-route-head__eyebrow">التصنيف</span>
-                                        <strong>{selectedCategoryOption?.name || "التصنيف المحدد"}</strong>
-                                        <span>الخدمة</span>
-                                      </div>
                                     </div>
                                   ) : null}
 
-                                  <div className="booking-catalog-flow__panel">
-                                    <div className="booking-catalog-flow__title">
-                                      الخدمة
-                                    </div>
-                                    {servicesGrouped.length ? (
-                                      <div className="booking-service-list">
-                                        {servicesGrouped.map(([cat, items]) => (
-                                          <div key={cat} className="booking-service-group">
-                                            {categoryOptionsSafe.length > 1 ? (
-                                              <div className="booking-service-group__title">{cat}</div>
-                                            ) : null}
-                                            <div className="booking-service-grid">
-                                              {items.map((sv) => {
-                                                const serviceId = String(sv.id || "").trim();
-                                                const isSelected = servicePickerList.includes(serviceId);
-                                                return (
-                                                  <button
-                                                    key={sv.id}
-                                                    type="button"
-                                                    className={`booking-service-option${isSelected ? " is-selected" : ""}`}
-                                                    onClick={() => {
-                                                      setServicePickerList((prev) =>
-                                                        prev.includes(serviceId)
-                                                          ? prev.filter((id) => id !== serviceId)
-                                                          : [...prev, serviceId]
-                                                      );
-                                                      setServicePicker("");
-                                                    }}
-                                                    aria-pressed={isSelected}
-                                                  >
-                                                    <span className="booking-service-option__check" aria-hidden="true">
-                                                      {isSelected ? "✓" : ""}
-                                                    </span>
-                                                    <span className="booking-service-option__body">
-                                                      <span className="booking-service-option__name">{sv.name}</span>
-                                                      <span className="booking-service-option__sub">
-                                                        {sv.durationMin ? `${Number(sv.durationMin || 0)} دقيقة` : "مدة الخدمة"}
-                                                      </span>
-                                                      <span className="booking-service-price-pill">
-                                                        {servicePickerPriceText(sv)}
-                                                      </span>
-                                                    </span>
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
+                                  {servicesGrouped.length ? (
+                                    <div className="booking-service-list">
+                                      {servicesGrouped.map(([cat, items]) => (
+                                        <div key={cat} className="booking-service-group">
+                                          {categoryOptionsSafe.length > 1 ? (
+                                            <div className="booking-service-group__title">{cat}</div>
+                                          ) : null}
+                                          <div className="booking-reference-service-grid">
+                                            {items.map((sv, serviceIndex) => {
+                                              const serviceId = String(sv.id || "").trim();
+                                              const isSelected = serviceIdsInCart.has(serviceId);
+                                              return (
+                                                <button
+                                                  key={sv.id}
+                                                  type="button"
+                                                  className={["booking-reference-service-card", isSelected ? "is-selected" : ""]
+                                                    .filter(Boolean)
+                                                    .join(" ")}
+                                                  onClick={() => addServiceDirectlyToCart(serviceId)}
+                                                  aria-pressed={isSelected}
+                                                >
+                                                  <img src={pickBookingServiceImage(sv, serviceIndex)} alt="" />
+                                                  <span className="booking-reference-service-card__body">
+                                                    <strong>{sv.name}</strong>
+                                                    <small>{sv.durationMin ? String(Number(sv.durationMin || 0)) + " دقيقة" : "مدة الخدمة"}</small>
+                                                    <span>{servicePickerPriceText(sv)}</span>
+                                                  </span>
+                                                  <span className="booking-reference-plus" aria-hidden="true">{isSelected ? "✓" : "+"}</span>
+                                                </button>
+                                              );
+                                            })}
                                           </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div className="booking-service-multi-empty">
-                                        لا توجد خدمات متاحة لهذا القسم أو التصنيف.
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="booking-service-multi-empty">
+                                      {bookingSearchQuery ? "لا توجد نتائج مطابقة للبحث." : "لا توجد خدمات متاحة لهذا القسم أو التصنيف."}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </>
                           )}
@@ -8772,19 +9285,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           <div className="booking-choice-panel__head">
                             <div>
                               <div className="booking-choice-panel__title">العروض</div>
-                              <p className="booking-choice-panel__hint">
-                                اختاري وأضيفي.
-                              </p>
+                              <p className="booking-choice-panel__hint">اختاري العرض المناسب.</p>
                             </div>
-                            <span className="booking-choice-panel__count">
-                              {sequenceOfferOptions.length} عروض
-                            </span>
+                            <span className="booking-choice-panel__count">{sequenceOfferOptions.length} عروض</span>
                           </div>
 
                           {hasOfferServiceInCart ? (
-                            <div className="booking-service-multi-empty">
-                              مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز.
-                            </div>
+                            <div className="booking-service-multi-empty">مسموح بإضافة خدمة عرض واحدة فقط في نفس الحجز.</div>
                           ) : sequenceOfferOptions.length ? (
                             <div className="booking-choice-card-grid">
                               {sequenceOfferOptions.map((offer) => {
@@ -8793,13 +9300,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   <button
                                     key={offer.id}
                                     type="button"
-                                    className={`booking-choice-card${isSelected ? " is-selected" : ""}`}
+                                    className={["booking-choice-card", isSelected ? "is-selected" : ""]
+                                      .filter(Boolean)
+                                      .join(" ")}
                                     onClick={() => handleServicePickerChange(offer.id)}
                                     aria-pressed={isSelected}
                                   >
-                                    <span className="booking-choice-card__check" aria-hidden="true">
-                                      {isSelected ? "✓" : ""}
-                                    </span>
+                                    <span className="booking-choice-card__check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
                                     <span className="booking-choice-card__tag">عرض</span>
                                     <span className="booking-choice-card__title">{offer.title}</span>
                                     <span className="booking-choice-card__meta">{offer.priceText}</span>
@@ -8809,26 +9316,21 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             </div>
                           ) : (
                             <div className="booking-empty-choice">
-                              <span className="booking-empty-choice__icon" aria-hidden="true">
-                                <FiGift />
-                              </span>
+                              <span className="booking-empty-choice__icon" aria-hidden="true"><FiGift /></span>
                               <strong>لا توجد عروض حاليًا</strong>
                               <span>ارجعي للخدمات أو جرّبي لاحقًا.</span>
                             </div>
                           )}
+                          {offerMsg ? <div className={["booking-choice-note", offerMsgKind === "error" ? "is-error" : ""].filter(Boolean).join(" ")}>{offerMsg}</div> : null}
                         </div>
                       ) : pickerScope === "session_packages" ? (
                         <div className="booking-choice-panel">
                           <div className="booking-choice-panel__head">
                             <div>
                               <div className="booking-choice-panel__title">الباقات</div>
-                              <p className="booking-choice-panel__hint">
-                                باقة ثم خدمة.
-                              </p>
+                              <p className="booking-choice-panel__hint">اختاري باقة ثم خدمة زيارة واحدة.</p>
                             </div>
-                            <span className="booking-choice-panel__count">
-                              {sessionPackageOptions.length} باقات
-                            </span>
+                            <span className="booking-choice-panel__count">{sessionPackageOptions.length} باقات</span>
                           </div>
 
                           {sessionPackageOptions.length ? (
@@ -8839,13 +9341,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   <button
                                     key={pkg.id}
                                     type="button"
-                                    className={`booking-choice-card${isSelected ? " is-selected" : ""}`}
+                                    className={["booking-choice-card", isSelected ? "is-selected" : ""]
+                                      .filter(Boolean)
+                                      .join(" ")}
                                     onClick={() => handleServicePickerChange(pkg.id)}
                                     aria-pressed={isSelected}
                                   >
-                                    <span className="booking-choice-card__check" aria-hidden="true">
-                                      {isSelected ? "✓" : ""}
-                                    </span>
+                                    <span className="booking-choice-card__check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
                                     <span className="booking-choice-card__tag">{pkg.sessionsCount} جلسات</span>
                                     <span className="booking-choice-card__title">{pkg.title}</span>
                                     <span className="booking-choice-card__meta">{pkg.priceText}</span>
@@ -8855,11 +9357,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             </div>
                           ) : (
                             <div className="booking-empty-choice">
-                              <span className="booking-empty-choice__icon" aria-hidden="true">
-                              <FiGift />
-                              </span>
+                              <span className="booking-empty-choice__icon" aria-hidden="true"><FiGift /></span>
                               <strong>{isSignedClient ? "لا يوجد رصيد باقة صالح" : "رصيد الباقات يتطلب التحقق"}</strong>
-                              <span>{isSignedClient ? "لا توجد باقات فعالة مرتبطة بحسابك." : "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك. يمكنك متابعة الحجز العادي المدفوع."}</span>
+                              <span>{isSignedClient ? "لا توجد باقات فعالة مرتبطة بحسابك." : "سجّلي الدخول أو تحققي من رقم الجوال للوصول إلى رصيد باقاتك."}</span>
                             </div>
                           )}
 
@@ -8877,58 +9377,44 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       <button
                                         key={sv.id}
                                         type="button"
-                                        className={`booking-choice-card booking-choice-card--service${isSelected ? " is-selected" : ""}`}
-                                        onClick={() =>
-                                          setSessionPackageServicePicker((prev) =>
-                                            prev.includes(serviceId) ? [] : [serviceId]
-                                          )
-                                        }
+                                        className={["booking-choice-card booking-choice-card--service", isSelected ? "is-selected" : ""]
+                                          .filter(Boolean)
+                                          .join(" ")}
+                                        onClick={() => setSessionPackageServicePicker((prev) => (prev.includes(serviceId) ? [] : [serviceId]))}
                                         aria-pressed={isSelected}
                                       >
-                                        <span className="booking-choice-card__check" aria-hidden="true">
-                                          {isSelected ? "✓" : ""}
-                                        </span>
+                                        <span className="booking-choice-card__check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
                                         <span className="booking-choice-card__tag">خدمة</span>
                                         <span className="booking-choice-card__title">{sv.name}</span>
-                                        <span className="booking-choice-card__meta">
-                                          {sv.durationMin ? `${Number(sv.durationMin || 0)} دقيقة` : "مدة الخدمة"}
-                                        </span>
+                                        <span className="booking-choice-card__meta">{sv.durationMin ? String(Number(sv.durationMin || 0)) + " دقيقة" : "مدة الخدمة"}</span>
                                       </button>
                                     );
                                   })}
                                 </div>
                               ) : (
                                 <div className="booking-empty-choice">
-                                  <span className="booking-empty-choice__icon" aria-hidden="true">
-                                    <FiShoppingBag />
-                                  </span>
+                                  <span className="booking-empty-choice__icon" aria-hidden="true"><FiShoppingBag /></span>
                                   <strong>لا توجد خدمات للباقة</strong>
                                   <span>اختاري باقة أخرى.</span>
                                 </div>
                               )}
                               <div className="booking-choice-note">
                                 {sessionPackageServicePicker.length > 0
-                                  ? `خدمة محددة من ${selectedSessionPackage.title}. المتبقي بعد الحجز: ${Math.max(0, Number(selectedSessionPackage.remainingSessions || 0) - 1)}.`
-                                  : `اختاري خدمة واحدة مشمولة في ${selectedSessionPackage.title}.`}
+                                  ? "خدمة محددة من " + selectedSessionPackage.title + ". المتبقي بعد الحجز: " + Math.max(0, Number(selectedSessionPackage.remainingSessions || 0) - 1) + "."
+                                  : "اختاري خدمة واحدة مشمولة في " + selectedSessionPackage.title + "."}
                               </div>
-                              {sessionPackageServicesError ? (
-                                <div className="booking-choice-note is-error">{sessionPackageServicesError}</div>
-                              ) : null}
+                              {sessionPackageServicesError ? <div className="booking-choice-note is-error">{sessionPackageServicesError}</div> : null}
                             </div>
                           ) : null}
                         </div>
-                      ) : (
+                      ) : pickerScope === "offers_packages" ? (
                         <div className="booking-choice-panel">
                           <div className="booking-choice-panel__head">
                             <div>
                               <div className="booking-choice-panel__title">البكجات</div>
-                              <p className="booking-choice-panel__hint">
-                                البكج يضيف خدماته كسطور مستقلة في السلة مع الحفاظ على سعره.
-                              </p>
+                              <p className="booking-choice-panel__hint">البكج يضيف خدماته كسطور مستقلة مع الحفاظ على سعره.</p>
                             </div>
-                            <span className="booking-choice-panel__count">
-                              {packageOptions.length} بكجات
-                            </span>
+                            <span className="booking-choice-panel__count">{packageOptions.length} بكجات</span>
                           </div>
 
                           {packageOptions.length ? (
@@ -8939,13 +9425,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   <button
                                     key={pkg.id}
                                     type="button"
-                                    className={`booking-choice-card${isSelected ? " is-selected" : ""}`}
+                                    className={["booking-choice-card", isSelected ? "is-selected" : ""]
+                                      .filter(Boolean)
+                                      .join(" ")}
                                     onClick={() => handleServicePickerChange(pkg.id)}
                                     aria-pressed={isSelected}
                                   >
-                                    <span className="booking-choice-card__check" aria-hidden="true">
-                                      {isSelected ? "✓" : ""}
-                                    </span>
+                                    <span className="booking-choice-card__check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
                                     <span className="booking-choice-card__tag">بكج</span>
                                     <span className="booking-choice-card__title">{pkg.title}</span>
                                     <span className="booking-choice-card__meta">{pkg.priceText}</span>
@@ -8955,105 +9441,28 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             </div>
                           ) : (
                             <div className="booking-empty-choice">
-                              <span className="booking-empty-choice__icon" aria-hidden="true">
-                                <FiShoppingBag />
-                              </span>
+                              <span className="booking-empty-choice__icon" aria-hidden="true"><FiShoppingBag /></span>
                               <strong>لا توجد بكجات حاليًا</strong>
                               <span>ارجعي للخدمات أو جرّبي لاحقًا.</span>
                             </div>
                           )}
                         </div>
-                      )}
-
-                      {(pickerScope === "services" ||
-                        (pickerScope === "offers" && sequenceOfferOptions.length > 0 && !hasOfferServiceInCart) ||
-                        (pickerScope === "session_packages" && sessionPackageOptions.length > 0) ||
-                        (pickerScope === "offers_packages" && packageOptions.length > 0)) ? (
-                      <div className="row g-2 mt-2">
-                        <div className="col-12 d-grid">
-                          <button
-                            type="button"
-                            className="btn btn-dark booking-service-add-btn"
-                            disabled={
-                              (pickerScope === "services"
-                                ? servicePickerList.length <= 0
-                                : pickerScope === "session_packages"
-                                  ? !servicePicker || sessionPackageServicePicker.length <= 0
-                                  : !servicePicker) ||
-                              (pickerScope === "offers" && hasOfferServiceInCart)
-                            }
-                            onClick={() => {
-                              if (pickerScope === "services") {
-                                const pickedServiceIds = [...servicePickerList];
-                                void (async () => {
-                                  for (const pickedServiceId of pickedServiceIds) {
-                                    await addServiceToCart(pickedServiceId);
-                                  }
-                                  resetBookingPickerForNextAdd();
-                                })();
-                                return;
-                              }
-                              if (pickerScope === "offers") {
-                                void addOfferFromPicker();
-                                return;
-                              }
-                              if (pickerScope === "session_packages" && selectedSessionPackage) {
-                                const pickedSessionServiceIds = [...sessionPackageServicePicker];
-                                const allowedServicesSnapshot: PackageServiceItem[] = sessionPackageAllowedServices.map((sv) => ({
-                                  serviceId: String(sv.id || "").trim(),
-                                  serviceName: String(sv.name || "").trim(),
-                                  sectionId: String(sv.sectionId || "").trim() || undefined,
-                                  categoryId: String(sv.categoryId || "").trim() || undefined,
-                                  price: Math.max(0, Number(sv.basePrice || 0)),
-                                  durationMin: Math.max(
-                                    1,
-                                    Number(sv.durationMin || DEFAULT_SERVICE_DURATION_MIN)
-                                  ),
-                                }));
-                                const sessionPackageSelection = {
-                                  packageId: String(selectedSessionPackage.id || "").replace(/^spkg:/, ""),
-                                  packageName: String(selectedSessionPackage.title || "").trim(),
-                                  packagePrice: Math.max(0, Number(selectedSessionPackage.price || 0)),
-                                  sessionsCount: Math.max(1, Number(selectedSessionPackage.sessionsCount || 1)),
-                                  allowedServiceIds: Array.isArray(selectedSessionPackage.allowedServiceIds)
-                                    ? selectedSessionPackage.allowedServiceIds
-                                    : [],
-                                  allowedServicesSnapshot,
-                                };
-                                void (async () => {
-                                  for (const pickedServiceId of pickedSessionServiceIds) {
-                                    await addServiceToCart(pickedServiceId, {
-                                      sessionPackageSelection,
-                                    });
-                                  }
-                                  resetBookingPickerForNextAdd();
-                                })();
-                                return;
-                              }
-                              if (pickerScope === "offers_packages") {
-                                void (async () => {
-                                  await addServiceToCart(servicePicker);
-                                  resetBookingPickerForNextAdd();
-                                })();
-                              }
-                            }}
-                          >
-                            {pickerScope === "services"
-                              ? servicePickerList.length > 1
-                                ? `إضافة ${servicePickerList.length} خدمات`
-                                : "إضافة الخدمة"
-                              : pickerScope === "offers_packages"
-                                ? "إضافة البكج"
-                                : pickerScope === "session_packages" && sessionPackageServicePicker.length > 1
-                                  ? `إضافة ${sessionPackageServicePicker.length} خدمات`
-                                  : "إضافة"}
-                          </button>
-                        </div>
-                      </div>
                       ) : null}
 
-                      {/* ✅ دليل أطوال الشعر */}
-                      {selectedSectionId && isHairSection && (
+                      {pickerScope && pickerScope !== "services" ? (
+                        <div className="booking-reference-actions">
+                          <button
+                            type="button"
+                            className="booking-reference-primary-btn"
+                            disabled={!canAddPickerSelection}
+                            onClick={addCurrentPickerSelection}
+                          >
+                            {pickerSelectionButtonLabel}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {selectedSectionId && isHairSection ? (
                         <div className="mt-3 booking-hair-guide-panel">
                           <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                             <div className="booking-hair-guide-panel__title-wrap">
@@ -9063,22 +9472,22 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             <div className="d-flex align-items-center gap-2">
                               <button
                                 type="button"
-                                className={`btn btn-sm booking-hair-guide-toggle ${showHairGuide ? "btn-outline-dark is-close" : "booking-hair-guide-panel__btn-secondary"}`}
-                                onClick={() => setShowHairGuide(v => !v)}
+                                className={["btn btn-sm booking-hair-guide-toggle", showHairGuide ? "btn-outline-dark is-close" : "booking-hair-guide-panel__btn-secondary"]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                onClick={() => setShowHairGuide((v) => !v)}
                                 aria-label={showHairGuide ? "إغلاق الصورة" : "عرض الصورة"}
                               >
-                                {showHairGuide ? (
-                                  <span className="booking-hair-guide-close-icon">✕</span>
-                                ) : "عرض الصورة"}
+                                {showHairGuide ? <span className="booking-hair-guide-close-icon">×</span> : "عرض الصورة"}
                               </button>
 
-                              {isOwner && (
+                              {isOwner ? (
                                 <>
                                   <input
                                     id="hairGuideUploadInput"
                                     type="file"
                                     accept="image/*"
-                                    style={{ display: 'none' }}
+                                    style={{ display: "none" }}
                                     onChange={(e) => {
                                       const f = e.target.files?.[0];
                                       if (f) uploadHairGuide(f);
@@ -9094,37 +9503,64 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                     {uploadingGuide ? "جاري الرفع..." : "رفع صورة"}
                                   </button>
                                 </>
-                              )}
+                              ) : null}
                             </div>
                           </div>
 
-                          {showHairGuide && (
+                          {showHairGuide ? (
                             <div className="mt-3 text-center booking-hair-guide-panel__image-wrap">
-                              <img
-                                src={hairGuideUrl}
-                                alt="دليل أطوال الشعر"
-                                className="booking-hair-guide-panel__image"
-                              />
+                              <img src={hairGuideUrl} alt="دليل أطوال الشعر" className="booking-hair-guide-panel__image" />
                             </div>
-                          )}
+                          ) : null}
                         </div>
-                      )}
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-3 d-grid">
+                      ) : null}
+                    </section>
+
+                    {!pickerScope ? (
+                    <section className="booking-reference-featured" aria-label="الخدمات المميزة">
+                      <div className="booking-reference-section-head">
+                        <div>
+                          <span>مختارة لك</span>
+                          <h2>الخدمات المميزة</h2>
+                        </div>
+                        <button type="button" className="booking-reference-link" onClick={() => selectReferenceScope("services")}>
+                          عرض الكل
+                        </button>
+                      </div>
+                      <div className="booking-reference-featured-grid">
+                        {referenceFeaturedServices.map((sv) => (
+                          <article key={sv.id || sv.name} className="booking-reference-feature-card">
+                            <img src={sv.image} alt="" />
+                            <div>
+                              <h3>{sv.name}</h3>
+                              <p>{sv.priceText}</p>
+                              <span>{sv.durationLabel}</span>
+                            </div>
+                            <button
+                              type="button"
+                              aria-label={"إضافة " + sv.name}
+                              onClick={() => addReferenceFeaturedService(sv.id, sv.sectionId, sv.categoryId)}
+                            >
+                              +
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                    ) : null}
+
+                    <div className="booking-reference-next">
                       <button
                         type="button"
-                      className="btn btn-dark"
-                      disabled={!isStep1Complete}
-                      onClick={() => setCurrentStep(2)}
-                    >
-                        التالي: الموظفة
+                        className="booking-reference-primary-btn"
+                        disabled={!isStep1Complete}
+                        onClick={goToReferenceAppointmentStep}
+                      >
+                        التالي: الموظفة والموعد
                       </button>
                     </div>
                   </div>
                 ) : null}
-
 
                 {currentStep === 2 ? (
                   <div className="booking-step-helper mb-3">
@@ -9542,17 +9978,17 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                   </div>
                                 </div>
                               ) : null}
-                              <div className="mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
-                                <div className="d-flex justify-content-between align-items-start mb-3">
+                              <div className="booking-appointment-item mb-3 p-3" style={{ border: '1px solid rgba(13,13,13,0.12)', borderRadius: 12, background: canEditThis ? '#fff' : 'rgba(245,245,244,0.75)', opacity: canEditThis ? 1 : 0.7 }}>
+                                <div className="booking-appointment-item__summary d-flex justify-content-between align-items-start mb-3">
                                   <div>
                                     <h5 className="m-0" style={{ fontWeight: 800, color: '#0D0D0D' }}>
                                       {cardTitle}
                                     </h5>
-                                    <div className="small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
+                                    <div className="booking-appointment-item__price small text-muted" style={{ marginTop: 4, fontWeight: 700 }}>
                                       {showAsPackageBlock ? `باكيج - ${cardPriceText}` : cardPriceText}
                                     </div>
                                   </div>
-                                  <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
+                                  <button type="button" className="booking-appointment-item__remove btn btn-outline-danger btn-sm" onClick={() => removeServiceFromCart(it.id)}>حذف</button>
                                 </div>
 
                                 {!canEditThis ? (
@@ -9680,7 +10116,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                         </div>
                                       </div>
                                     ) : null}
-                                    <div className="col-12">
+                                    <div className="booking-appointment-item__meta col-12">
                                       <div className="small" style={{ color: "#4b5563", fontWeight: 700 }}>
                                         القسم: {serviceSectionLabel}
                                       </div>
@@ -9736,8 +10172,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                     ) : null}
 
                                     {!usePackageQuickMode && staffChoiceMode === "manual" && (
-                                      <div className="col-12">
-                                        <label className="form-label small fw-bold">1. اختاري موظفة هذه الخدمة</label>
+                                      <div className="booking-specialist-picker col-12">
+                                        <label className="booking-specialist-picker__label form-label small fw-bold">اختاري المختصة</label>
                                         {staffLoading ? (
                                           <div className="booking-stylist-card__loading">
                                             <FontAwesomeIcon icon={faSpinner} spin /> جاري تحميل الموظفات...
@@ -9745,7 +10181,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                         ) : staffError ? (
                                           <div className="booking-stylist-card__error">{staffError}</div>
                                         ) : staffChoicesForItem.length ? (
-                                          <div className="booking-stylist-list booking-stylist-list--item">
+                                          <div className="booking-stylist-list booking-stylist-list--item booking-specialist-picker__list">
                                             {staffChoicesForItem.map((emp: any, empIdx: number) => {
                                               const empId = String(emp?.id || "").trim();
                                               const displayEmp = empId
@@ -9754,6 +10190,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                               const empName = String(displayEmp?.name || emp?.name || "").trim() || "موظفة";
                                               const selected = !!empId && empId === String(it.employeeId || "").trim();
                                               const avatarUrl = pickStaffAvatarUrl(displayEmp);
+                                              const fallbackAvatarUrl = pickFallbackStaffAvatarUrl(displayEmp);
                                               const ratingMeta = pickStaffRatingMeta(displayEmp);
                                               return (
                                                 <button
@@ -9772,12 +10209,23 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                                   }}
                                                   aria-pressed={selected}
                                                 >
-                                                  <EmployeeAvatar
-                                                    className="booking-stylist-row__avatar"
-                                                    src={avatarUrl}
-                                                    name={empName || firstDisplayLetter(empName)}
-                                                    alt=""
-                                                  />
+                                                  <span className="booking-stylist-row__avatar" aria-hidden="true">
+                                                    <img
+                                                      className="booking-stylist-row__image"
+                                                      src={avatarUrl || fallbackAvatarUrl}
+                                                      alt=""
+                                                      loading="eager"
+                                                      decoding="async"
+                                                      data-fallback={fallbackAvatarUrl || BOOKING_STAFF_FALLBACK_IMAGES[0] || ""}
+                                                      onError={(event) => {
+                                                        const img = event.currentTarget;
+                                                        const fallback = img.dataset.fallback || "";
+                                                        if (fallback && img.getAttribute("src") !== fallback) {
+                                                          img.src = fallback;
+                                                        }
+                                                      }}
+                                                    />
+                                                  </span>
                                                   <span className="booking-stylist-row__body">
                                                     <span className="booking-stylist-row__name">{empName}</span>
                                                     <span className={`booking-stylist-row__rating${ratingMeta ? "" : " is-empty"}`}>
@@ -9810,9 +10258,32 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                                       </div>
                                     )}
 
+                                    {!usePackageQuickMode ? (
+                                      <div className="booking-item-date-strip col-12">
+                                        <label className="form-label small fw-bold">اختاري التاريخ</label>
+                                        <div className="booking-item-quick-date-strip" aria-label="اختيار سريع للتاريخ">
+                                          {bookingQuickDateOptions.map((option) => (
+                                            <button
+                                              key={`${it.id}-${option.iso}`}
+                                              type="button"
+                                              className={["booking-item-quick-date", option.active ? "is-active" : ""]
+                                                .filter(Boolean)
+                                                .join(" ")}
+                                              onClick={() => applyBookingDate(option.iso)}
+                                              aria-pressed={option.active}
+                                            >
+                                              <span>{option.weekday}</span>
+                                              <strong>{option.day}</strong>
+                                              <small>{option.month}</small>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+
                                     {hasSelectedBookingDate && !usePackageQuickMode ? (
                                       <div className="col-12">
-                                        <label className="form-label small fw-bold">2. اختاري الوقت المتاح</label>
+                                        <label className="form-label small fw-bold">اختاري الوقت</label>
                                         {String(it.time || "").trim() && String(expandedTimePickerItemId || "").trim() !== String(it.id || "").trim() ? (
                                           <div className="bk-selected-time-summary">
                                             <div>
@@ -10394,17 +10865,54 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                   </div>
                 ) : null}
               </form>
+              </div>
             </div>
-          </div>
-          <div className="col-lg-4 booking-lux-side" aria-label="ملخص الحجز">
-            {renderBookingSummaryPanel("desktop")}
-          </div>
+          </main>
+
+          <aside className="booking-reference-rail">
+            <div className="booking-reference-summary" aria-label="ملخص الحجز">
+              {renderBookingSummaryPanel("desktop")}
+            </div>
+
+            <div className="booking-reference-mockups" aria-hidden="true">
+              <div className="booking-reference-phone booking-reference-phone--home">
+                <div className="booking-reference-phone__status">
+                  <span>9:41</span>
+                  <span>●●●</span>
+                </div>
+                <img src={logo} alt="" />
+                <span>مرحبًا بك في مليكات</span>
+                <strong>ماذا ترغبين اليوم؟</strong>
+                <div className="booking-reference-phone__search">ابحثي عن خدمة</div>
+                <div className="booking-reference-phone__cats">
+                  {referenceCategoryCards.slice(0, 4).map((sec) => (
+                    <span key={`mock-cat-${sec.id || sec.title}`}>
+                      <img src={sec.image} alt="" />
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="booking-reference-phone booking-reference-phone--list">
+                <div className="booking-reference-phone__status">
+                  <span>9:41</span>
+                  <span>●●●</span>
+                </div>
+                <strong>اختاري الخدمة</strong>
+                <div className="booking-reference-phone__items">
+                  {referenceFeaturedServices.slice(0, 3).map((sv) => (
+                    <span key={`mock-service-${sv.id || sv.name}`}>
+                      <img src={sv.image} alt="" />
+                      <b>{sv.name}</b>
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       </section>
+      {bookingFloatingCartPortal}
       {bookingMobileSummaryPortal}
     </div>
   );

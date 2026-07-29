@@ -76,6 +76,18 @@ type UiOffer = {
 
 const SALON_ID = "main";
 
+function isExpectedPublicPackageAuthError(error: unknown) {
+  const code = String((error as any)?.code || "").trim().toLowerCase();
+  const message = String((error as any)?.message || error || "").trim().toLowerCase();
+  return (
+    code === "unauthenticated" ||
+    code === "auth/unauthenticated" ||
+    message.includes("unauthenticated") ||
+    message.includes("not authenticated") ||
+    message.includes("يجب تسجيل الدخول")
+  );
+}
+
 function toISODate(v: any): string {
   if (!v) return "";
   if (typeof v === "string") return v;
@@ -295,14 +307,14 @@ const Offers = () => {
     try {
       await navigator.clipboard.writeText(code);
       openModal({
-        title: "تم النسخ ✅",
+        title: "تم النسخ",
         message: `تم نسخ الكود: ${code}`,
         variant: "success",
       });
     } catch {
       openModal({
         title: "تعذر النسخ",
-        message: "ما قدرت أنسخ الكود تلقائيًا… انسخيه يدويًا.",
+        message: "ما قدرت أنسخ الكود تلقائيًا. انسخيه يدويًا.",
         variant: "danger",
       });
     }
@@ -419,7 +431,9 @@ const Offers = () => {
       })
       .catch((error) => {
         if (cancelled) return;
-        console.error("Core package catalog load failed:", error);
+        if (!isExpectedPublicPackageAuthError(error)) {
+          console.error("Core package catalog load failed:", error);
+        }
         setPackageOffers([]);
       });
 
@@ -428,7 +442,7 @@ const Offers = () => {
     };
   }, []);
 
-  const { activeNow, endedOrPaused, activeCount, maxPercent } = useMemo(() => {
+  const { endedOrPaused, activeCount, maxPercent, gridOffers } = useMemo(() => {
     const onlyRealOffers = offers.filter((o) => !o.packageLike);
     const activeNow = onlyRealOffers.filter((o) => isActiveNow(o));
     const endedOrPaused = onlyRealOffers.filter((o) => !isActiveNow(o) && !o.deletedAt);
@@ -455,7 +469,7 @@ const Offers = () => {
         ? Math.min(50, Math.max(...onlyRealOffers.map((o) => o.discountPercent || 0)))
         : 0;
 
-    // ✅ القائمة الأساسية: الساري الآن أولاً، ثم الباقي
+    // ترتيب العرض فقط: الساري الآن أولاً، ثم الباقي
     const ordered = [
       ...activeNow.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
       ...rest
@@ -498,8 +512,29 @@ const Offers = () => {
     return base + totalOfferUsage + totalPackageUsage;
   }, [totalOfferUsage, totalPackageUsage]);
 
+  const liveOfferCards = useMemo(() => {
+    return (gridOffers || []).filter((offer) => isActiveNow(offer));
+  }, [gridOffers]);
+
+  const featuredOffer = liveOfferCards[0] || null;
+
+  const formatDateLabel = (value?: string) => {
+    const iso = toISODate(value);
+    if (!iso) return "بدون تاريخ محدد";
+    return new Date(`${iso}T00:00:00`).toLocaleDateString("ar-SA", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const formatDiscountLabel = (offer: UiOffer) => {
+    if (offer.discountType === "percent") return `${offer.discountPercent}% خصم`;
+    return `${Number(offer.value || 0).toLocaleString("ar-SA")} ريال خصم`;
+  };
+
   return (
-    <div className="offers-page">
+    <div className="offers-page offers-premium-page">
       <ConfirmModal
         open={modal.open}
         title={modal.title}
@@ -511,35 +546,74 @@ const Offers = () => {
       />
 
       {/* HERO */}
-      <section className="offers-hero bg-gradient-primary py-5">
+      <section className="offers-hero offers-premium-hero bg-gradient-primary py-5">
         <div className="container">
           <div className="row align-items-center justify-content-center">
             <div className="col-lg-10">
               <div className="hero-content animate-fade-in text-center">
                 <h1
                   className="display-4 fw-bold mb-3"
-                  style={{ color: "var(--qs-wine)" }}
+                  style={{ color: "#0d0d0d" }}
                 >
                   <FontAwesomeIcon icon={faGift} className="me-3" />
-                  عروضنا الخاصة
+                  عروض مليكات
                 </h1>
 
                 <p className="lead mb-4">
-                  العروض تُدار من لوحة الأونر وتظهر هنا تلقائيًا… اختاري العرض وطبّقي الكود عند الحجز
+                  عروض مختارة لخدمات الشعر والجمال، اختاري العرض المناسب واحجزي مباشرة من نفس الصفحة.
                 </p>
 
                 <div className="hero-stats justify-content-center">
                   <div className="stat-item text-center">
                     <div className="stat-number">{maxPercent}%</div>
-                    <div className="stat-label">خصم يصل إلى</div>
+                    <div className="stat-label">أعلى خصم</div>
                   </div>
                   <div className="stat-item text-center">
                     <div className="stat-number">{activeCount}</div>
-                    <div className="stat-label">عروض سارية الآن</div>
+                    <div className="stat-label">عروض متاحة</div>
                   </div>
                   <div className="stat-item text-center">
                     <div className="stat-number">+{beneficiariesCount.toLocaleString("en-US")}</div>
-                    <div className="stat-label">عميله استفادت</div>
+                    <div className="stat-label">عميلة استفادت</div>
+                  </div>
+                </div>
+
+                <div className="offers-premium-featured" aria-label="العرض الأبرز">
+                  <div
+                    className="offers-premium-featured__image"
+                    style={{ backgroundImage: `url(${featuredOffer?.image || hair})` }}
+                  />
+                  <div className="offers-premium-featured__body">
+                    <span className="offers-premium-kicker">العرض الأبرز</span>
+                    <h2>{featuredOffer?.title || "عروض جديدة قريبًا"}</h2>
+                    <p>
+                      {featuredOffer?.description ||
+                        "تابعي هذه الصفحة لاكتشاف أحدث عروض مليكات على الخدمات والباقات."}
+                    </p>
+                    {featuredOffer ? (
+                      <div className="offers-premium-featured__meta">
+                        <span>{formatDiscountLabel(featuredOffer)}</span>
+                        <span>حتى {formatDateLabel(featuredOffer.validUntil)}</span>
+                      </div>
+                    ) : null}
+                    <div className="offers-premium-featured__actions">
+                      {featuredOffer?.code ? (
+                        <button type="button" onClick={() => copyCode(featuredOffer.code)}>
+                          <FontAwesomeIcon icon={faCopy} />
+                          نسخ الكود
+                        </button>
+                      ) : null}
+                      <Link
+                        to={{
+                          pathname: "/booking",
+                          search: featuredOffer?.code
+                            ? `?coupon=${encodeURIComponent(String(featuredOffer.code || "").trim())}&fromOffer=1`
+                            : "",
+                        }}
+                      >
+                        احجزي الآن
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -552,11 +626,12 @@ const Offers = () => {
       <section className="offers-grid py-5">
         <div className="container">
           <div className="text-center mb-4">
+            <span className="offers-premium-section-label">اختاري العرض</span>
             <h2 className="h1 fw-bold text-gradient mb-2">العروض السارية الآن</h2>
           </div>
 
           <div className="cards-grid-2">
-            {activeNow.map((offer, index) => {
+            {liveOfferCards.map((offer, index) => {
               const offerServiceNames = offerServiceNamesById[offer.id] || [];
 
               return (
@@ -582,8 +657,8 @@ const Offers = () => {
                       <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
                         <span className="discount-badge">
                           {offer.discountType === "percent"
-                            ? `وفّري ${offer.discountPercent}%`
-                            : `خصم ${offer.value} ريال`}
+                            ? `${offer.discountPercent}% خصم`
+                            : `${offer.value} ريال خصم`}
                         </span>
 
                         <span className="save-badge">
@@ -597,7 +672,7 @@ const Offers = () => {
                           disabled={!offer.code}
                         >
                           <FontAwesomeIcon icon={faCopy} className="me-2" />
-                          نسخ
+                          نسخ الكود
                         </button>
 
                         <span className="status-pill active">فعال</span>
@@ -607,12 +682,12 @@ const Offers = () => {
                       </div>
 
                       <div className="offer-validity">
-                        <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
-                        {offer.startDate
-                          ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — `
-                          : ""}
-                        ساري حتى: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
-                      </div>
+                          <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
+                          {offer.startDate
+                            ? `من ${formatDateLabel(offer.startDate)} إلى `
+                            : ""}
+                          {formatDateLabel(offer.validUntil)}
+                        </div>
 
                       <div className="offer-details">
                         {String(offer.description || "").trim() ? (
@@ -623,7 +698,7 @@ const Offers = () => {
                           <div className="pkg-services-block">
                             <div className="pkg-services-title">
                               <FontAwesomeIcon icon={faTag} className="me-2" />
-                              الخدمات المشمولة في العرض
+                              الخدمات المشمولة
                             </div>
                             {offerServiceNames.length > 0 ? (
                               <div className="pkg-services-chips">
@@ -635,7 +710,7 @@ const Offers = () => {
                               </div>
                             ) : (
                               <div className="pkg-services-empty">
-                                هذا العرض ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
+                                ينطبق على {Array.isArray(offer.serviceIds) ? offer.serviceIds.length : 0} خدمة محددة.
                               </div>
                             )}
                           </div>
@@ -648,7 +723,7 @@ const Offers = () => {
                           }}
                           className="btn btn-primary w-100 btn-lg rounded-pill"
                         >
-                          احجزي واستعملي الكود
+                          احجزي بهذا العرض
                         </Link>
                       </div>
                     </div>
@@ -658,7 +733,7 @@ const Offers = () => {
             })}
           </div>
 
-          {activeNow.length === 0 && (
+          {liveOfferCards.length === 0 && (
             <div className="offers-empty-state" role="status">
               <span className="offers-empty-state__icon">
                 <FontAwesomeIcon icon={faTag} aria-hidden="true" />
@@ -667,7 +742,7 @@ const Offers = () => {
               <strong>لا توجد عروض سارية الآن</strong>
 
               <span>
-                ستظهر العروض الجديدة هنا تلقائيًا فور تفعيلها.
+                ستظهر العروض الجديدة هنا فور تفعيلها من لوحة الإدارة.
               </span>
             </div>
           )}
@@ -675,7 +750,8 @@ const Offers = () => {
           {activePackages.length > 0 && (
             <div className="package-offers-wrap">
               <div className="text-center mb-4">
-                <h2 className="h1 fw-bold text-gradient mb-2">عروض الباكيج</h2>
+                <span className="offers-premium-section-label">باقات جاهزة</span>
+                <h2 className="h1 fw-bold text-gradient mb-2">الباقات والعروض الخاصة</h2>
               </div>
 
               <div className="cards-grid-2">
@@ -698,17 +774,17 @@ const Offers = () => {
                         <div
                           className="offer-image"
                           style={{ backgroundImage: `url(${String((p as any).imageUrl || "").trim() || emma})` }}
-                          aria-label={String(p.name || "باكيج")}
+                          aria-label={String(p.name || "باقة")}
                         />
 
                         <div className="offer-content">
-                          <h3 className="offer-title">{String(p.name || "باكيج")}</h3>
+                          <h3 className="offer-title">{String(p.name || "باقة")}</h3>
 
                           <div className="offer-mini-row" style={{ flexWrap: "wrap" }}>
                             <span className="discount-badge">
                               {Math.max(1, Number(p.sessionsCount || 1))} جلسات
                             </span>
-                            <span className="save-badge">{packageFinal} ريال</span>
+                            <span className="save-badge">{packageFinal.toLocaleString("ar-SA")} ريال</span>
                             {p.validityDays ? (
                               <span className="save-badge">
                                 صلاحية {p.validityDays} يوم
@@ -721,10 +797,10 @@ const Offers = () => {
                           <div className="offer-validity">
                             <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
                             {pkgStart
-                              ? `يبدأ: ${new Date(pkgStart).toLocaleDateString("ar-SA")} — `
-                              : "يبدأ: الآن — "}
+                              ? `من ${formatDateLabel(pkgStart)} إلى `
+                              : "من الآن إلى "}
                             {pkgEnd
-                              ? `ينتهي: ${new Date(pkgEnd).toLocaleDateString("ar-SA")}`
+                              ? formatDateLabel(pkgEnd)
                               : "بدون تاريخ انتهاء"}
                           </div>
 
@@ -735,7 +811,7 @@ const Offers = () => {
                             <div className="pkg-services-block">
                               <div className="pkg-services-title">
                                 <FontAwesomeIcon icon={faTag} className="me-2" />
-                                الخدمات المشمولة في الباكيج
+                                الخدمات داخل الباقة
                               </div>
                               {packageServiceNames.length > 0 ? (
                                 <div className="pkg-services-chips">
@@ -758,7 +834,7 @@ const Offers = () => {
                               }}
                               className="btn btn-primary w-100 btn-lg rounded-pill"
                             >
-                              احجزي هذا الباكيج
+                              احجزي هذه الباقة
                             </Link>
                           </div>
                         </div>
@@ -783,9 +859,9 @@ const Offers = () => {
                     <FontAwesomeIcon icon={showEnded ? faEyeSlash : faEye} />
                   </span>
                   <span className="offers-ended-toggle-text">
-                    {showEnded ? "إخفاء العروض المنتهية/الموقوفة" : "إظهار العروض المنتهية/الموقوفة"}
+                    {showEnded ? "إخفاء العروض السابقة" : "إظهار العروض السابقة"}
                   </span>
-                  <span className="offers-ended-toggle-count" aria-label="عدد العروض المنتهية">
+                  <span className="offers-ended-toggle-count" aria-label="عدد العروض السابقة">
                     {endedOrPaused.length}
                   </span>
                 </button>
@@ -794,9 +870,9 @@ const Offers = () => {
               {showEnded && (
                 <div className="offers-ended-panel">
                   <div className="text-center mb-3">
-                    <h3 style={{ margin: 0 }}>عروض منتهية أو موقوفة</h3>
+                    <h3 style={{ margin: 0 }}>عروض سابقة</h3>
                     <p style={{ opacity: 0.75, marginTop: 8 }}>
-                      للعرض فقط — لن تظهر كعروض سارية ولن يمكن تطبيقها في الحجز.
+                      تظهر هنا للمتابعة فقط ولا يمكن تطبيقها في الحجز.
                     </p>
                   </div>
 
@@ -847,9 +923,9 @@ const Offers = () => {
                               <div className="offer-validity">
                                 <FontAwesomeIcon icon={faCalendarAlt} className="me-2 text-primary" />
                                 {offer.startDate
-                                  ? `يبدأ: ${new Date(offer.startDate).toLocaleDateString("ar-SA")} — `
+                                  ? `من ${formatDateLabel(offer.startDate)} إلى `
                                   : ""}
-                                ينتهي: {new Date(offer.validUntil).toLocaleDateString("ar-SA")}
+                                {formatDateLabel(offer.validUntil)}
                               </div>
                             </div>
                           </div>
@@ -869,15 +945,15 @@ const Offers = () => {
         <div className="container">
           <div className="row justify-content-center text-center">
             <div className="col-lg-8">
-              <h2 className="h1 fw-bold text-gradient mb-3">لا تفوتي الفرصة!</h2>
+              <h2 className="h1 fw-bold text-gradient mb-3">ابدئي حجزك مع مليكات</h2>
               <p className="lead mb-4">
-                عروضنا محدودة الوقت. احجزي موعدك الآن واستمتعي بأفضل خدمات التجميل بأسعار مميزة
+                اختاري الخدمة المناسبة، وطبقي الكود أثناء الحجز إذا كان العرض يتضمن كود خصم.
               </p>
 
               <div className="cta-actions">
-                <Link to="/contact" className="btn btn-outline btn-lg rounded-pill offers-cta-btn">
+                <Link to="/booking" className="btn btn-outline btn-lg rounded-pill offers-cta-btn">
                   <FontAwesomeIcon icon={faTag} className="me-2" />
-                  استفسري عن العروض
+                  الانتقال للحجز
                 </Link>
               </div>
             </div>
