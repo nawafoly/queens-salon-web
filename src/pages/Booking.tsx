@@ -1220,7 +1220,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   >({});
   const serviceByIdCacheRef = useRef<Record<string, FlatService>>({});
 
-  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("hair-care");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [servicePicker, setServicePicker] = useState<string>("");
   const [servicePickerList, setServicePickerList] = useState<string[]>([]);
@@ -2058,7 +2058,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         const [sections, packages, allServices] = await Promise.all([
           listActiveSections(SALON_ID, "core"),
-          PackageService.getActive(),
+          PackageService.getActive().catch((error) => {
+            console.warn("Public booking packages load skipped:", error);
+            return [];
+          }),
           listActiveServices({ sectionId: "" }, SALON_ID, "core"),
         ]);
         if (cancelled) return;
@@ -2353,6 +2356,26 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     return sectionOptions.filter((x) => x.id && x.title && x.id !== PACKAGE_SECTION_ID);
   }, [catalogMode, coreSections, corePackages, sectionOptions]);
 
+  // ✅ WIP Booking redesign: when services scope opens, auto-select first section
+  // so the catalog is visible immediately instead of showing an empty services screen.
+  useEffect(() => {
+    if (pickerScope !== "services") return;
+    if (String(selectedSectionId || "").trim()) return;
+
+    const firstSectionId =
+      sectionOptionsSafe
+        .map((section) => String(section?.id || "").trim())
+        .find(Boolean) ||
+      sectionOptions
+        .map((section) => String(section?.id || "").trim())
+        .find(Boolean) ||
+      "";
+
+    if (firstSectionId) {
+      setSelectedSectionId(firstSectionId);
+    }
+  }, [pickerScope, selectedSectionId, sectionOptionsSafe, sectionOptions]);
+
   const categoryOptions: CategoryOption[] = useMemo(() => {
     if (!selectedSectionId) return [];
     if (String(selectedSectionId).trim() === PACKAGE_SECTION_ID) return [];
@@ -2588,7 +2611,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       void (async () => {
         try {
           const [packages, services] = await Promise.all([
-            PackageService.getActive(),
+            PackageService.getActive().catch((error) => {
+            console.warn("Public booking packages load skipped:", error);
+            return [];
+          }),
             listActiveServices({ sectionId: "" }, SALON_ID, "core"),
           ]);
           const sourcePackage = (packages || []).find(
