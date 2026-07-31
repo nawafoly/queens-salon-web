@@ -52,6 +52,9 @@ export type PayrollAttendanceSummarySnapshot = {
   totalLateHours: number;
   totalEarlyLeaveHours?: number;
   totalCompensatedLateHours: number;
+  totalRawMissingHours?: number;
+  totalPermissionRequestedHours?: number;
+  totalPermissionCoveredHours?: number;
   totalMissingHours: number;
   totalExtraHours: number;
   attendanceDays: number;

@@ -1,3 +1,9 @@
+﻿import {
+  calculatePermissionCoverage,
+  roundPermissionHours,
+  type PermissionIntervalInput,
+} from "./permissionAttendance";
+
 const RIYADH_TIME_ZONE = "Asia/Riyadh";
 const MINUTES_PER_DAY = 24 * 60;
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -7,6 +13,7 @@ export type AttendanceDayStatus =
   | "complete_with_compensated_late"
   | "missing_hours"
   | "complete_with_extra_hours"
+  | "complete_with_permission"
   | "compensated_late_with_extra_hours"
   | "incomplete"
   | "absent"
@@ -24,6 +31,7 @@ export type AttendanceDisciplineDayInput = {
   isApprovedLeave?: boolean;
   isAbsent?: boolean;
   treatMissingPunchesAsAbsent?: boolean;
+  permissionIntervals?: PermissionIntervalInput[];
 };
 
 export type AttendanceDisciplineDaySummary = {
@@ -33,6 +41,9 @@ export type AttendanceDisciplineDaySummary = {
   lateHours: number;
   earlyLeaveHours: number;
   compensatedLateHours: number;
+  rawMissingHours?: number;
+  permissionRequestedHours?: number;
+  permissionCoveredHours?: number;
   missingHours: number;
   extraHours: number;
   afterScheduleHours: number;
@@ -47,6 +58,9 @@ export type AttendanceDisciplineMonthSummary = {
   totalLateHours: number;
   totalEarlyLeaveHours: number;
   totalCompensatedLateHours: number;
+  totalRawMissingHours?: number;
+  totalPermissionRequestedHours?: number;
+  totalPermissionCoveredHours?: number;
   totalMissingHours: number;
   totalExtraHours: number;
   attendanceDays: number;
@@ -251,18 +265,30 @@ export function calculateAttendanceDisciplineDay(
 
   const shouldTreatMissingPunchesAsAbsent = input.treatMissingPunchesAsAbsent !== false;
   if ((input.isAbsent || (shouldTreatMissingPunchesAsAbsent && !hasCheckIn && !hasCheckOut)) && scheduledMinutes > 0) {
+    const coverage = calculatePermissionCoverage({
+      date,
+      scheduledStart: input.scheduledStart,
+      scheduledEnd: input.scheduledEnd,
+      rawMissingMinutes: scheduledMinutes,
+      intervals: input.permissionIntervals,
+    });
+    const adjustedMissingHours = roundPermissionHours(coverage.adjustedMissingMinutes);
+    const fullyCovered = coverage.coveredMissingMinutes > 0 && coverage.adjustedMissingMinutes === 0;
     return makeDaySummary(input, {
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,
       lateHours: 0,
       earlyLeaveHours: 0,
       compensatedLateHours: 0,
-      missingHours: roundHours(scheduledMinutes),
+      rawMissingHours: roundHours(scheduledMinutes),
+      permissionRequestedHours: roundPermissionHours(coverage.requestedMinutes),
+      permissionCoveredHours: roundPermissionHours(coverage.coveredMissingMinutes),
+      missingHours: adjustedMissingHours,
       extraHours: 0,
       afterScheduleHours: 0,
-      netHourDifference: -roundHours(scheduledMinutes),
-      status: "absent",
-      statusLabel: "غياب",
+      netHourDifference: -adjustedMissingHours,
+      status: fullyCovered ? "complete_with_permission" : "absent",
+      statusLabel: fullyCovered ? "مكتمل باستئذان" : "غياب",
     });
   }
 
@@ -322,14 +348,27 @@ export function calculateAttendanceDisciplineDay(
   const earlyLeaveMinutes = Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes);
   const afterScheduleMinutes = Math.max(0, actualCheckOutMinutes - scheduledEndMinutes!);
   const compensatedLateMinutes = Math.min(lateMinutes, afterScheduleMinutes);
-  const missingMinutes = Math.max(0, scheduledMinutes - actualMinutes);
-  const extraMinutes = Math.max(0, actualMinutes - scheduledMinutes);
-  const status = statusForCompleteDay({
-    lateMinutes,
-    compensatedLateMinutes,
-    missingMinutes,
-    extraMinutes,
+  const rawMissingMinutes = Math.max(0, scheduledMinutes - actualMinutes);
+  const permissionCoverage = calculatePermissionCoverage({
+    date,
+    scheduledStart: input.scheduledStart,
+    scheduledEnd: input.scheduledEnd,
+    checkInAt: input.checkInAt,
+    checkOutAt: input.checkOutAt,
+    rawMissingMinutes,
+    intervals: input.permissionIntervals,
   });
+  const missingMinutes = permissionCoverage.adjustedMissingMinutes;
+  const extraMinutes = Math.max(0, actualMinutes - scheduledMinutes);
+  const status =
+    permissionCoverage.coveredMissingMinutes > 0 && missingMinutes === 0
+      ? { status: "complete_with_permission" as const, statusLabel: "مكتمل باستئذان معتمد" }
+      : statusForCompleteDay({
+          lateMinutes,
+          compensatedLateMinutes,
+          missingMinutes,
+          extraMinutes,
+        });
 
   return makeDaySummary(input, {
     scheduledHours: roundHours(scheduledMinutes),
@@ -337,10 +376,15 @@ export function calculateAttendanceDisciplineDay(
     lateHours: roundHours(lateMinutes),
     earlyLeaveHours: roundHours(earlyLeaveMinutes),
     compensatedLateHours: roundHours(compensatedLateMinutes),
+    rawMissingHours: roundHours(rawMissingMinutes),
+    permissionRequestedHours: roundPermissionHours(permissionCoverage.requestedMinutes),
+    permissionCoveredHours: roundPermissionHours(permissionCoverage.coveredMissingMinutes),
     missingHours: roundHours(missingMinutes),
     extraHours: roundHours(extraMinutes),
     afterScheduleHours: roundHours(afterScheduleMinutes),
-    netHourDifference: roundHours(actualMinutes - scheduledMinutes),
+    netHourDifference: roundHours(
+      actualMinutes + permissionCoverage.coveredMissingMinutes - scheduledMinutes
+    ),
     status: status.status,
     statusLabel: status.statusLabel,
   });
@@ -355,6 +399,9 @@ export function summarizeAttendanceDisciplineMonth(
     totalLateHours: 0,
     totalEarlyLeaveHours: 0,
     totalCompensatedLateHours: 0,
+    totalRawMissingHours: 0,
+    totalPermissionRequestedHours: 0,
+    totalPermissionCoveredHours: 0,
     totalMissingHours: 0,
     totalExtraHours: 0,
     attendanceDays: 0,
@@ -368,6 +415,9 @@ export function summarizeAttendanceDisciplineMonth(
     summary.totalLateHours += day.lateHours;
     summary.totalEarlyLeaveHours += day.earlyLeaveHours;
     summary.totalCompensatedLateHours += day.compensatedLateHours;
+    summary.totalRawMissingHours = (summary.totalRawMissingHours || 0) + (day.rawMissingHours ?? day.missingHours);
+    summary.totalPermissionRequestedHours = (summary.totalPermissionRequestedHours || 0) + (day.permissionRequestedHours || 0);
+    summary.totalPermissionCoveredHours = (summary.totalPermissionCoveredHours || 0) + (day.permissionCoveredHours || 0);
     summary.totalMissingHours += day.missingHours;
     summary.totalExtraHours += day.extraHours;
 
@@ -385,6 +435,9 @@ export function summarizeAttendanceDisciplineMonth(
     totalEarlyLeaveHours: Math.round(summary.totalEarlyLeaveHours * 100) / 100,
     totalCompensatedLateHours:
       Math.round(summary.totalCompensatedLateHours * 100) / 100,
+    totalRawMissingHours: Math.round((summary.totalRawMissingHours || 0) * 100) / 100,
+    totalPermissionRequestedHours: Math.round((summary.totalPermissionRequestedHours || 0) * 100) / 100,
+    totalPermissionCoveredHours: Math.round((summary.totalPermissionCoveredHours || 0) * 100) / 100,
     totalMissingHours: Math.round(summary.totalMissingHours * 100) / 100,
     totalExtraHours: Math.round(summary.totalExtraHours * 100) / 100,
     attendanceDays: summary.attendanceDays,

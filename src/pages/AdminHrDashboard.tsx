@@ -1,10 +1,11 @@
-import "../styles/AdminHrMobileShell.css";
+﻿import "../styles/AdminHrMobileShell.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
   faChartLine,
+  faClock,
   faChevronLeft,
   faChevronRight,
   faEnvelope,
@@ -29,6 +30,8 @@ import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import CreateStaffAccountPage from "./hr/CreateStaffAccount";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
+import AdminPermissionRequestsPage from "./hr/AdminPermissionRequests";
+import { getPermissionPayrollSummary, listEmployeePermissionRequests } from "../services/employeePermissionRequests";
 import { listEmployeeDirectory } from "../services/employeeDirectory";
 import {
   createEmployeeAbsenceRecord,
@@ -675,7 +678,7 @@ function HrOverview({
       );
       const payableWorkDateKeySet = new Set(payableWorkDateKeys);
 
-      const [attendanceRows, absenceRows] = await Promise.all([
+      const [attendanceRows, absenceRows, permissionSummary] = await Promise.all([
         listAttendanceByDateRangeForEmployeeFromWorker({
           employeeUid,
           employeeId,
@@ -688,11 +691,16 @@ function HrOverview({
           fromDate: parsedMonth.monthStart,
           toDate: calculationEndDate,
         }),
+        getPermissionPayrollSummary({
+          employeeId,
+          fromDate: parsedMonth.monthStart,
+          toDate: calculationEndDate,
+        }),
       ]);
 
       const attendanceRecords: AttendanceRecord[] = [];
       const attendanceDateKeys = new Set<string>();
-      attendanceRows.forEach((row) => {
+      attendanceRows.forEach((row: (typeof attendanceRows)[number]) => {
         if (row.checkInAtClient) {
           attendanceRecords.push({
             id: `${row.id}-in`,
@@ -717,6 +725,7 @@ function HrOverview({
         workDateKeys: payableWorkDateKeys,
         todayDateKey: today,
         approvedLeaveDateKeys: approvedLeaveDateKeySet,
+        permissionEntries: permissionSummary.entries,
       });
       const expectedWorkHours = payableWorkDateKeys.length * getShiftExpectedHours(schedule);
       const actualWorkedHours = attendanceSummary.actualHours;
@@ -1141,11 +1150,34 @@ export default function AdminHrDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { hasPermission, hasAnyPermission, hasAllPermissions } = usePermissions();
+  const [pendingPermissionCount, setPendingPermissionCount] = useState(0);
+
+  useEffect(() => {
+    let disposed = false;
+    const refreshPermissionCount = async () => {
+      try {
+        const rows = await listEmployeePermissionRequests(100);
+        if (!disposed) {
+          setPendingPermissionCount(rows.filter((item) => item.status === "pending").length);
+        }
+      } catch {
+        if (!disposed) setPendingPermissionCount(0);
+      }
+    };
+    void refreshPermissionCount();
+    const timer = window.setInterval(() => void refreshPermissionCount(), 30_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [session.uid]);
+
   const adminNavItems = useMemo(
     () =>
       [
         { to: "/admin/overview", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
         { to: "/admin/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
+        { to: "/admin/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "attendance.leaves.manage" as AppPermission },
         { to: "/admin/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
         { to: "/admin/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
         { to: "/admin/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
@@ -1159,7 +1191,7 @@ export default function AdminHrDashboard() {
       ].filter((item) =>
         item.allOf ? hasAllPermissions(item.allOf) : hasPermission(item.permission)
       ),
-    [hasAllPermissions, hasPermission]
+    [hasAllPermissions, hasPermission, pendingPermissionCount]
   );
   const adminLandingPath = adminNavItems[0]?.to || "/employee/overview";
   const canOpenDashboard = hasPermission("workspace.dashboard.view");
@@ -1177,6 +1209,25 @@ export default function AdminHrDashboard() {
   }, [location.pathname]);
   const isOverviewRoute = adminSection === "overview";
   const isEmployeesRoute = adminSection === "employees";
+  const isFilesRoute = adminSection === "files";
+  const isPermissionsRoute = adminSection === "permissions";
+  const isCompactWorkspaceRoute =
+    isEmployeesRoute || isFilesRoute || isPermissionsRoute;
+  const compactWorkspaceTitle = isEmployeesRoute
+    ? "إدارة الموظفات"
+    : isFilesRoute
+      ? "ملفات الموظفات"
+      : "إدارة الاستئذانات";
+  const compactWorkspaceLoadingText = isEmployeesRoute
+    ? "جاري فتح إدارة الموظفات..."
+    : isFilesRoute
+      ? "جاري فتح ملفات الموظفات..."
+      : "جاري فتح إدارة الاستئذانات...";
+  const compactWorkspaceLoadingHint = isEmployeesRoute
+    ? "يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات."
+    : isFilesRoute
+      ? "يتم تجهيز ملفات الموظفات والمرفقات دون توسيع مساحة الصفحة."
+      : "يتم تجهيز طلبات الاستئذان المعتمدة دون توسيع مساحة الصفحة.";
   const isEmployeeProfileRoute = /^\/admin\/employees\/[^/]+/.test(location.pathname);
   const routeMeta = useMemo(() => {
     const meta: Record<string, { kicker: string; title: string; subtitle: string }> = {
@@ -1184,6 +1235,11 @@ export default function AdminHrDashboard() {
         kicker: "الموارد البشرية",
         title: "نظرة عامة على الموارد البشرية",
         subtitle: "ملخص تشغيلي سريع للحضور والطلبات والملفات، بينما تتم إدارة الموظفات من الصفحة المخصصة.",
+      },
+      permissions: {
+        kicker: "الحضور والاستئذان",
+        title: "إدارة الاستئذانات",
+        subtitle: "مراجعة طلبات الموظفات وتسجيل الخروج والعودة مباشرة من الإدارة.",
       },
       "recruitment-applications": {
         kicker: "التوظيف",
@@ -1297,28 +1353,30 @@ export default function AdminHrDashboard() {
 
   if (session.loading) {
     return (
-      <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees" : ""}`} dir="rtl">
+      <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
         <aside className="hr-shell-sidebar hr-shell-sidebar--loading">
           <div className="hr-sidebar-header">
             <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
           </div>
         </aside>
 
-        <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
+        <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}`}>
           <DashboardHeader
             theme="admin"
-            title={isEmployeesRoute ? "إدارة الموظفات" : "جاري تحميل لوحة الموارد البشرية..."}
+            title={isCompactWorkspaceRoute ? compactWorkspaceTitle : "جاري تحميل لوحة الموارد البشرية..."}
             subtitle="Queens Salon"
-            className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}
+            className={`hr-shell-header ${isCompactWorkspaceRoute ? "hr-shell-header--compact" : ""}`}
             showProfileButton={false}
           />
 
-          {isEmployeesRoute ? (
+          {isCompactWorkspaceRoute ? (
             <section className="hr-stage hr-stage--workspace">
               <div className="hr-workspace-loading" role="status" aria-live="polite">
                 <span className="hr-workspace-loading__spinner" />
-                <strong>جاري فتح إدارة الموظفات...</strong>
-                <small>يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات.</small>
+                <div>
+                  <strong>{compactWorkspaceLoadingText}</strong>
+                  <small>{compactWorkspaceLoadingHint}</small>
+                </div>
               </div>
             </section>
           ) : (
@@ -1333,7 +1391,7 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+    <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <aside className="hr-shell-sidebar">
         <div className="hr-sidebar-header">
           <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
@@ -1357,6 +1415,9 @@ export default function AdminHrDashboard() {
             >
               <FontAwesomeIcon icon={item.icon} />
               <span>{item.label}</span>
+              {"badge" in item && Number(item.badge || 0) > 0 ? (
+                <em className="hr-shell-link__badge">{item.badge}</em>
+              ) : null}
             </NavLink>
           ))}
         </nav>
@@ -1370,7 +1431,7 @@ export default function AdminHrDashboard() {
 
       <DashboardHeader
         theme="admin"
-        title={isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}
+        title={isCompactWorkspaceRoute ? compactWorkspaceTitle : routeMeta.title}
         subtitle="Queens Salon"
         className="hr-mobile-appbar dashboard-header--mobile-shell"
         actions={
@@ -1414,7 +1475,7 @@ export default function AdminHrDashboard() {
 
         {isOverviewRoute && error ? <div className="hr-alert">{error}</div> : null}
 
-        <section className={`hr-stage ${isEmployeesRoute ? "hr-stage--workspace" : ""}`}>
+        <section className={`hr-stage ${isCompactWorkspaceRoute ? "hr-stage--workspace" : ""}`}>
           <Routes>
             <Route index element={<Navigate to={adminLandingPath} replace />} />
             <Route
@@ -1433,6 +1494,14 @@ export default function AdminHrDashboard() {
                     onRefresh={() => void loadData(true)}
                     session={session}
                   />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="permissions"
+              element={
+                <PermissionRoute permission="attendance.leaves.manage">
+                  <AdminPermissionRequestsPage session={session} />
                 </PermissionRoute>
               }
             />
@@ -1484,6 +1553,9 @@ export default function AdminHrDashboard() {
           >
             <FontAwesomeIcon icon={item.icon} />
             <span>{item.label.replace("إدارة ", "").replace(" الداخلية", "")}</span>
+            {"badge" in item && Number(item.badge || 0) > 0 ? (
+              <em className="hr-mobile-bottom-nav__badge">{item.badge}</em>
+            ) : null}
           </NavLink>
         ))}
       </nav>

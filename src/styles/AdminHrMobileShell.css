@@ -585,3 +585,223 @@
     padding-top: 14px !important;
   }
 }
+.hr-shell-link__badge,
+.hr-mobile-bottom-nav__badge {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding-inline: 5px;
+  border-radius: 999px;
+  color: #111827;
+  background: #f2b705;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.hr-shell-link__badge {
+  margin-inline-start: auto;
+}
+
+.hr-mobile-bottom-nav__badge {
+  position: absolute;
+  top: 4px;
+  inset-inline-end: 8px;
+}
+/* HR COMPACT WORKSPACES V2.3.6 START */
+
+@media (min-width: 821px) {
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    > .hr-shell-main.hr-shell-main--workspace {
+    display: grid !important;
+    grid-template-rows: 74px auto !important;
+    align-content: start !important;
+
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    overflow: visible !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    > .hr-shell-main.hr-shell-main--workspace
+    > .dashboard-header.hr-shell-header.hr-shell-header--compact {
+    position: sticky !important;
+    inset: auto !important;
+    top: 0 !important;
+    z-index: 1500 !important;
+
+    display: flex !important;
+    align-self: start !important;
+
+    width: 100% !important;
+    height: 74px !important;
+    min-height: 74px !important;
+    max-height: 74px !important;
+
+    margin: 0 !important;
+    padding: 9px 20px !important;
+
+    overflow: hidden !important;
+    border-radius: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    > .hr-shell-main.hr-shell-main--workspace
+    > .dashboard-header.hr-shell-header.hr-shell-header--compact
+    :is(.dashboard-header__primary, .dashboard-header__meta) {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    > .hr-shell-main.hr-shell-main--workspace
+    > .hr-stage.hr-stage--workspace {
+    display: block !important;
+    align-self: start !important;
+
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+
+    margin: 0 !important;
+    padding: 16px 18px 32px !important;
+
+    overflow: visible !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    .hr-stage--workspace
+    > .hr-workspace-loading {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-direction: row !important;
+    gap: 12px !important;
+
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 88px !important;
+    max-height: 112px !important;
+
+    margin: 0 !important;
+    padding: 16px 20px !important;
+
+    overflow: hidden !important;
+    border-radius: 16px !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    .hr-stage--workspace
+    > .hr-workspace-loading
+    > div {
+    display: grid !important;
+    gap: 3px !important;
+    min-width: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell.hr-shell--compact-workspace
+    .hr-stage--workspace
+    > .hr-workspace-loading
+    :is(strong, small) {
+    margin: 0 !important;
+    line-height: 1.45 !important;
+  }
+}
+
+/* HR COMPACT WORKSPACES V2.3.6 END */
+
+/* HR FILES + PERMISSIONS ACTUAL CONTENT LAYOUT V2.3.7 START */
+
+@media (min-width: 821px) {
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .hr-files-page),
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .permission-workspace--admin) {
+    display: grid !important;
+    grid-template-rows: 74px auto !important;
+    align-content: start !important;
+
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    overflow: visible !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .hr-files-page)
+    > .dashboard-header.hr-shell-header,
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .permission-workspace--admin)
+    > .dashboard-header.hr-shell-header {
+    position: sticky !important;
+    inset: auto !important;
+    top: 0 !important;
+    z-index: 1500 !important;
+
+    display: flex !important;
+    align-self: start !important;
+
+    width: 100% !important;
+    height: 74px !important;
+    min-height: 74px !important;
+    max-height: 74px !important;
+
+    margin: 0 !important;
+    padding: 9px 20px !important;
+
+    overflow: hidden !important;
+
+    border-radius: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .hr-files-page)
+    > .hr-stage,
+  .hr-shell.madan-admin-shell
+    .hr-shell-main:has(> .hr-stage > .permission-workspace--admin)
+    > .hr-stage {
+    display: block !important;
+    align-self: start !important;
+
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+
+    margin: 0 !important;
+    padding: 16px 18px 32px !important;
+
+    overflow: visible !important;
+  }
+
+  .hr-shell.madan-admin-shell
+    .hr-stage
+    > :is(.hr-files-page, .permission-workspace--admin) {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+
+    align-content: start !important;
+    align-self: start !important;
+
+    margin: 0 !important;
+  }
+}
+
+/* HR FILES + PERMISSIONS ACTUAL CONTENT LAYOUT V2.3.7 END */

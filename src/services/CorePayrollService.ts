@@ -11,6 +11,9 @@
   CorePayrollPeriod,
 } from "../types/hrCoreApi.ts";
 import {
+  permissionIntervalsFromAttendanceRecords,
+} from "../helpers/hr/permissionAttendance.ts";
+import {
   calculateAttendanceDisciplineDay,
   summarizeAttendanceDisciplineMonth,
   type AttendanceDisciplineDaySummary,
@@ -806,9 +809,13 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     const records = [...(recordsByDate.get(date) || [])].sort(
       (left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)
     );
-    if (!schedule.enabled && !records.length) continue;
-    const firstCheckIn = records.find((record) => record.recordType === "check_in");
-    const lastCheckOut = [...records].reverse().find((record) => record.recordType === "check_out");
+    const punchRecords = records.filter((record) =>
+      record.recordType === "check_in" || record.recordType === "check_out"
+    );
+    const permissionIntervals = permissionIntervalsFromAttendanceRecords(records, date);
+    if (!schedule.enabled && !punchRecords.length && !permissionIntervals.length) continue;
+    const firstCheckIn = punchRecords.find((record) => record.recordType === "check_in");
+    const lastCheckOut = [...punchRecords].reverse().find((record) => record.recordType === "check_out");
     days.push(
       calculateAttendanceDisciplineDay({
         date,
@@ -818,28 +825,42 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
         isApprovedLeave: approvedLeaveDates.has(date) || approvedAbsenceDates.has(date),
         checkInAt: firstCheckIn?.recordedAt,
         checkOutAt: lastCheckOut?.recordedAt,
+        permissionIntervals,
         isAbsent:
           schedule.enabled &&
-          !records.length &&
+          !punchRecords.length &&
           !approvedLeaveDates.has(date) &&
           !approvedAbsenceDates.has(date),
       })
     );
   }
 
+  const disciplineSummary = summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot;
+  const permissionCoveredHours = Number(disciplineSummary.totalPermissionCoveredHours || 0);
+  const permissionRequestedHours = Number(disciplineSummary.totalPermissionRequestedHours || 0);
+  const punchRecordCount = periodRecords.filter(
+    (record) => record.recordType === "check_in" || record.recordType === "check_out"
+  ).length;
+
   return {
     days,
     summary: {
-      ...(summarizeAttendanceDisciplineMonth(days) as PayrollAttendanceSummarySnapshot),
+      ...disciplineSummary,
       approvedLeaveDays: approvedLeaveDates.size,
       approvedAbsenceDays: approvedAbsenceDates.size,
       attendanceNotes: [
         ...(approvedLeaveDates.size ? [`${approvedLeaveDates.size} أيام إجازة معتمدة لم تدخل في خصم الحضور.`] : []),
         ...(approvedAbsenceDates.size ? [`${approvedAbsenceDates.size} أيام غياب/استثناء معتمد لم تدخل في خصم الحضور.`] : []),
         ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
+        ...(permissionRequestedHours > 0
+          ? [`الاستئذانات المعتمدة: ${permissionRequestedHours} ساعة، والمحتسب لتغطية نقص الدوام: ${permissionCoveredHours} ساعة.`]
+          : []),
         ...(employeeHasCoreShiftControl(input.employee) ? ["تم احتساب الحضور بناءً على قوالب الشفتات والاستثناءات المنشورة في Core."] : []),
       ],
-      ...attendanceMetadata(periodRecords.length, "confirmed"),
+      ...attendanceMetadata(
+        punchRecordCount,
+        punchRecordCount > 0 ? "confirmed" : "unlinked"
+      ),
     },
   };
 }

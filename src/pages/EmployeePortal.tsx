@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -32,9 +32,11 @@ import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeNotificationsPage from "./hr/EmployeeNotifications";
 import EmployeeOverviewPage from "./hr/EmployeeOverview";
 import EmployeeLeavePage from "./hr/EmployeeLeave";
+import EmployeePermissionRequestsPage from "./hr/EmployeePermissionRequests";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
-import { useEmployeeSession } from "./hr/shared";
+import { useEmployeeSession, type HrSession } from "./hr/shared";
+import EmployeeAvatar from "../components/EmployeeAvatar";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
@@ -61,6 +63,56 @@ function displayInitial(name: string, email: string) {
   return source.slice(0, 1).toUpperCase();
 }
 
+function resolvePortalAvatarUrl(session: HrSession) {
+  const records = [
+    session.employeeDoc,
+    session.staffDoc,
+    session.userDoc,
+  ].filter(Boolean) as Array<Record<string, any>>;
+
+  for (const record of records) {
+    const employeeProfile =
+      record.employeeProfile && typeof record.employeeProfile === "object"
+        ? record.employeeProfile
+        : {};
+    const personal =
+      employeeProfile.personal && typeof employeeProfile.personal === "object"
+        ? employeeProfile.personal
+        : record.personal && typeof record.personal === "object"
+          ? record.personal
+          : {};
+
+    const candidates = [
+      record.avatarUrl,
+      record.avatarURL,
+      record.photoURL,
+      record.photoUrl,
+      record.imageUrl,
+      record.imageURL,
+      record.profileImageUrl,
+      record.profileImage,
+      record.picture,
+      record.avatar,
+      employeeProfile.avatarUrl,
+      employeeProfile.avatarURL,
+      employeeProfile.photoURL,
+      employeeProfile.photoUrl,
+      employeeProfile.imageUrl,
+      employeeProfile.profileImageUrl,
+      personal.avatarUrl,
+      personal.photoURL,
+      personal.photoUrl,
+      personal.imageUrl,
+      personal.profileImageUrl,
+    ];
+
+    const resolved = candidates.map(cleanPortalText).find(Boolean);
+    if (resolved) return resolved;
+  }
+
+  return cleanPortalText(session.user?.photoURL);
+}
+
 function portalRoleLabel(role: unknown) {
   const normalized = cleanPortalText(role).toLowerCase();
   if (normalized === "owner") return "المالك";
@@ -81,6 +133,7 @@ function getEmployeePortalTitle(pathname: string) {
     messages: "الرسائل",
     files: "الملفات",
     leave: "الإجازات والطلبات",
+    permission: "الاستئذانات",
     payroll: "الراتب",
   };
 
@@ -90,6 +143,7 @@ function getEmployeePortalTitle(pathname: string) {
 type EmployeeMorePageProps = {
   displayName: string;
   roleLabel: string;
+  avatarUrl: string;
   notificationCounts: {
     all: number;
     messages: number;
@@ -103,6 +157,7 @@ type EmployeeMorePageProps = {
 function EmployeeMorePage({
   displayName,
   roleLabel,
+  avatarUrl,
   notificationCounts,
 }: EmployeeMorePageProps) {
   const { hasPermission } = usePermissions();
@@ -145,7 +200,12 @@ function EmployeeMorePage({
     <section className="employee-more-page">
       <header className="employee-more-hero">
         <span className="employee-more-hero__avatar">
-          {displayInitial(displayName, "")}
+          <EmployeeAvatar
+            src={avatarUrl}
+            name={displayName}
+            alt={displayName}
+            loading="eager"
+          />
         </span>
 
         <div>
@@ -273,6 +333,7 @@ export default function EmployeePortal() {
   }, [notifications]);
 
   const displayName = cleanPortalText(session.displayName) || cleanPortalText(session.email) || "الموظفة";
+  const avatarUrl = resolvePortalAvatarUrl(session);
   const role = cleanPortalText(session.role).toLowerCase();
   const roleLabel = portalRoleLabel(role);
   const portalSubtitle = "الدوام، الإجازات، الملفات والرسائل";
@@ -298,6 +359,7 @@ export default function EmployeePortal() {
     { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
     { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/permission", label: "الاستئذانات", description: "الخروج المؤقت والعودة", icon: faTriangleExclamation, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
     { to: "/employee/files", label: "الملفات", description: "المستندات والعقود", icon: faFileLines, badge: notificationCounts.files, permission: "workspace.employee_portal.view" as AppPermission },
@@ -307,7 +369,7 @@ export default function EmployeePortal() {
 
   const requestItems = [
     { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/attendance", permission: "attendance.own.view" as AppPermission },
-    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/messages", permission: "messages.view" as AppPermission },
+    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/permission?new=1", permission: "workspace.employee_portal.view" as AppPermission },
     { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/messages", permission: "messages.view" as AppPermission },
     { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/payroll", permission: "workspace.employee_portal.view" as AppPermission },
     { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/leave", permission: "workspace.employee_portal.view" as AppPermission },
@@ -379,7 +441,14 @@ export default function EmployeePortal() {
             </button>
           </div>
           <div className="employee-portal-sidebar__profile">
-            <span className="employee-portal-sidebar__avatar">{displayInitial(displayName, session.email)}</span>
+            <span className="employee-portal-sidebar__avatar">
+              <EmployeeAvatar
+                src={avatarUrl}
+                name={displayName}
+                alt={displayName}
+                loading="eager"
+              />
+            </span>
             <div>
               <small>بوابة الموظف</small>
               <strong>{displayName}</strong>
@@ -473,7 +542,12 @@ export default function EmployeePortal() {
               path="more"
               element={
                 <PermissionRoute permission="workspace.employee_portal.view">
-                  <EmployeeMorePage displayName={displayName} roleLabel={roleLabel} notificationCounts={notificationCounts} />
+                  <EmployeeMorePage
+                    displayName={displayName}
+                    roleLabel={roleLabel}
+                    avatarUrl={avatarUrl}
+                    notificationCounts={notificationCounts}
+                  />
                 </PermissionRoute>
               }
             />
@@ -481,6 +555,7 @@ export default function EmployeePortal() {
             <Route path="messages" element={<PermissionRoute permission="messages.view"><EmployeeMessagesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeFilesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="leave" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeLeavePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="permission" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePermissionRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>

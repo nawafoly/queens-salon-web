@@ -24,6 +24,8 @@ import {
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
 import { resolveStaffScheduleVersionForDate } from "../helpers/hr/staffScheduleHistory";
+import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
+import type { EmployeePermissionRequest } from "../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../types/hrCoreApi";
 
 type AttendanceViewerMode = "employee" | "admin";
@@ -70,6 +72,7 @@ type AttendanceMonthViewProps = {
   schedule?: AttendanceScheduleInput | null;
   coreResolvedShifts?: Record<string, CoreResolvedShift | null> | null;
   approvedLeaveDateKeys?: Iterable<string>;
+  permissionEntries?: EmployeePermissionRequest[];
   onMonthChange: (monthKey: string) => void;
   onSelectedDateChange: (dateKey: string) => void;
   onGenerateSummary?: () => void;
@@ -437,6 +440,7 @@ export default function AttendanceMonthView({
   schedule,
   coreResolvedShifts,
   approvedLeaveDateKeys,
+  permissionEntries,
   onMonthChange,
   onSelectedDateChange,
   onGenerateSummary,
@@ -463,7 +467,8 @@ export default function AttendanceMonthView({
   const selectedComputation = computeAttendanceDay(
     safeSelectedDate,
     selectedDayRecords,
-    selectedSchedule
+    selectedSchedule,
+    permissionIntervalsFromRequests(permissionEntries, safeSelectedDate)
   );
   const selectedStatus = getAttendanceDayStatus({
     date: safeSelectedDate,
@@ -488,7 +493,12 @@ export default function AttendanceMonthView({
       const dayCoreShift = coreResolvedShifts?.[dateKey] || null;
       const daySchedule = scheduleForDate(dateKey, schedule, dayCoreShift);
       const dayRecords = recordsFromRow(row);
-      const computation = computeAttendanceDay(dateKey, dayRecords, daySchedule);
+      const computation = computeAttendanceDay(
+        dateKey,
+        dayRecords,
+        daySchedule,
+        permissionIntervalsFromRequests(permissionEntries, dateKey)
+      );
       const status = getAttendanceDayStatus({
         date: dateKey,
         hasAttendance: dayRecords.length > 0,
@@ -543,6 +553,9 @@ export default function AttendanceMonthView({
 
   const hasLate =
     selectedComputation.lateHours > 0.001;
+
+  const hasPermissionCoverage =
+    selectedComputation.permissionCoveredHours > 0.001;
 
   const hasMissingHours =
     selectedComputation.missingHours > 0.001;
@@ -900,6 +913,14 @@ export default function AttendanceMonthView({
                           selectedComputation.lateHours
                         )}
                       </b>
+                    </div>
+                  ) : null}
+
+                  {hasPermissionCoverage ? (
+                    <div className="attendance-month__performance-item is-review">
+                      <span>استئذان محتسب</span>
+                      <b>{formatHours(selectedComputation.permissionCoveredHours)}</b>
+                      <small>مدة الطلب: {formatHours(selectedComputation.permissionRequestedHours)}</small>
                     </div>
                   ) : null}
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FiActivity,
   FiAlertTriangle,
@@ -22,6 +22,12 @@ import {
 } from "react-icons/fi";
 import { usePermissions } from "../security/PermissionContext";
 import { listActiveStaffAll } from "../services/bookingDataSourceCompat";
+import { CoreHrService } from "../services/CoreHrService";
+import {
+  getPermissionPayrollSummary,
+  type EmployeePermissionRequest,
+} from "../services/employeePermissionRequests";
+import type { CoreResolvedShift } from "../types/hrCoreApi";
 import {
   fetchAttendanceSecurityDashboard,
   updateAttendanceDeviceStatus,
@@ -32,6 +38,7 @@ import {
   type AttendanceSecurityEvent,
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
+import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
 import {
   calculateAttendanceDisciplineDay,
   formatAttendanceHours,
@@ -428,11 +435,88 @@ function resolveApprovedScheduleForDate(
   };
 }
 
+function attendanceShiftKey(employeeId: string, date: string) {
+  return `${employeeId}:${date}`;
+}
+
+function parseResolvedShiftSnapshot(row?: CoreResolvedShift | null) {
+  const raw = String((row as any)?.snapshotJson || (row as any)?.snapshot_json || "").trim();
+  if (!raw) return {} as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
+function resolvedShiftTime(row: CoreResolvedShift, snapshot: Record<string, unknown>, kind: "start" | "end") {
+  const values = kind === "start"
+    ? [
+        (row as any).startTime,
+        (row as any).start_time,
+        (row as any).templateStartTime,
+        (row as any).template_start_time,
+        snapshot.startTime,
+        snapshot.start_time,
+      ]
+    : [
+        (row as any).endTime,
+        (row as any).end_time,
+        (row as any).templateEndTime,
+        (row as any).template_end_time,
+        snapshot.endTime,
+        snapshot.end_time,
+      ];
+  for (const value of values) {
+    const normalized = normalizeAttendanceTimeHHMM(String(value || ""));
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function resolveCoreAttendanceSchedule(
+  row: CoreResolvedShift | null | undefined,
+  fallback: ReturnType<typeof resolveApprovedScheduleForDate>
+): ReturnType<typeof resolveApprovedScheduleForDate> {
+  const source = String((row as any)?.source || "").trim();
+  if (!row || !source || source === "none") return fallback;
+
+  const exceptionType = String(
+    (row as any)?.exceptionType || (row as any)?.exception_type || ""
+  ).trim();
+  if (source === "exception" && exceptionType === "off") {
+    return {
+      enabled: false,
+      start: undefined,
+      end: undefined,
+      label: "غير مجدول",
+      note: "استثناء منشور في Core",
+    };
+  }
+
+  const snapshot = parseResolvedShiftSnapshot(row);
+  const start = resolvedShiftTime(row, snapshot, "start");
+  const end = resolvedShiftTime(row, snapshot, "end");
+  if (!start || !end) return fallback;
+
+  return {
+    enabled: true,
+    start,
+    end,
+    label: `${start} - ${end}`,
+    note: source === "exception" ? "استثناء منشور في Core" : "شفت منشور في Core",
+  };
+}
+
 function disciplineStatusTone(status: AttendanceDayStatus) {
   if (status === "absent" || status === "missing_hours" || status === "incomplete") {
     return "danger";
   }
   if (
+    status === "complete_with_permission" ||
     status === "complete_with_compensated_late" ||
     status === "complete_with_extra_hours" ||
     status === "compensated_late_with_extra_hours" ||
@@ -454,6 +538,8 @@ export default function DashboardAttendanceSecurity() {
   const [dashboard, setDashboard] = useState<AttendanceSecurityDashboard>(EMPTY_DASHBOARD);
   const [staffNames, setStaffNames] = useState<Map<string, string>>(new Map());
   const [staffProfiles, setStaffProfiles] = useState<Map<string, Record<string, unknown>>>(new Map());
+  const [coreResolvedShifts, setCoreResolvedShifts] = useState<Record<string, CoreResolvedShift | null>>({});
+  const [permissionEntriesByEmployee, setPermissionEntriesByEmployee] = useState<Record<string, EmployeePermissionRequest[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -482,6 +568,62 @@ export default function DashboardAttendanceSecurity() {
 
       if (result.status === "rejected") throw result.reason;
       setDashboard(result.value);
+
+      const attendancePairs = new Map<string, { employeeId: string; date: string }>();
+      for (const record of result.value.records) {
+        if (record.result !== "allowed") continue;
+        const employeeId = String(record.employeeDocId || record.employeeUid || "").trim();
+        const date = riyadhDateKeyFromTimestamp(record.serverTime);
+        if (!employeeId || !date) continue;
+        attendancePairs.set(attendanceShiftKey(employeeId, date), { employeeId, date });
+      }
+
+      const employeeIds = Array.from(
+        new Set(Array.from(attendancePairs.values()).map((item) => item.employeeId))
+      );
+      const [resolvedShiftPairs, permissionPairs] = await Promise.all([
+        Promise.all(
+          Array.from(attendancePairs.values()).map(async ({ employeeId, date }) => {
+            try {
+              return [
+                attendanceShiftKey(employeeId, date),
+                await CoreHrService.resolveEmployeeShift(employeeId, date),
+              ] as const;
+            } catch (contextError) {
+              console.warn("attendance discipline Core context load failed", {
+                kind: "resolved-shift",
+                employeeId,
+                date,
+                error: contextError,
+              });
+              return [attendanceShiftKey(employeeId, date), null] as const;
+            }
+          })
+        ),
+        Promise.all(
+          employeeIds.map(async (employeeId) => {
+            try {
+              const summary = await getPermissionPayrollSummary({
+                employeeId,
+                fromDate,
+                toDate,
+              });
+              return [employeeId, summary.entries || []] as const;
+            } catch (contextError) {
+              console.warn("attendance discipline Core context load failed", {
+                kind: "permissions",
+                employeeId,
+                fromDate,
+                toDate,
+                error: contextError,
+              });
+              return [employeeId, [] as EmployeePermissionRequest[]] as const;
+            }
+          })
+        ),
+      ]);
+      setCoreResolvedShifts(Object.fromEntries(resolvedShiftPairs));
+      setPermissionEntriesByEmployee(Object.fromEntries(permissionPairs));
 
       if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
         const next = new Map<string, string>();
@@ -623,7 +765,15 @@ export default function DashboardAttendanceSecurity() {
       const staffProfile = firstRecord
         ? resolveStaffProfile(firstRecord, staffProfiles)
         : undefined;
-      const schedule = resolveApprovedScheduleForDate(staffProfile, group.date);
+      const fallbackSchedule = resolveApprovedScheduleForDate(staffProfile, group.date);
+      const schedule = resolveCoreAttendanceSchedule(
+        coreResolvedShifts[attendanceShiftKey(group.employeeId, group.date)],
+        fallbackSchedule
+      );
+      const permissionIntervals = permissionIntervalsFromRequests(
+        permissionEntriesByEmployee[group.employeeId],
+        group.date
+      );
       const summary = calculateAttendanceDisciplineDay({
         date: group.date,
         scheduledStart: schedule.start,
@@ -631,6 +781,7 @@ export default function DashboardAttendanceSecurity() {
         isScheduledWorkDay: schedule.enabled,
         checkInAt: firstCheckIn?.serverTime,
         checkOutAt: lastCheckOut?.serverTime,
+        permissionIntervals,
       });
 
       return {
@@ -662,7 +813,14 @@ export default function DashboardAttendanceSecurity() {
         if (dateSort !== 0) return dateSort;
         return left.employeeName.localeCompare(right.employeeName, "ar");
       });
-  }, [dashboard.records, search, staffNames, staffProfiles]);
+  }, [
+    coreResolvedShifts,
+    dashboard.records,
+    permissionEntriesByEmployee,
+    search,
+    staffNames,
+    staffProfiles,
+  ]);
 
   const disciplineSummary = useMemo(
     () => summarizeAttendanceDisciplineMonth(disciplineRows.map((row) => row.summary)),
@@ -834,6 +992,7 @@ export default function DashboardAttendanceSecurity() {
               <article><span><FiActivity /></span><small>ساعات العمل الفعلية</small><strong>{formatAttendanceHours(disciplineSummary.totalActualWorkedHours)}</strong></article>
               <article><span><FiAlertTriangle /></span><small>التأخير الفعلي</small><strong>{formatAttendanceHours(disciplineSummary.totalLateHours)}</strong></article>
               <article><span><FiCheck /></span><small>التعويض بعد الدوام</small><strong>{formatAttendanceHours(disciplineSummary.totalCompensatedLateHours)}</strong></article>
+              <article className="is-warning"><span><FiCheckCircle /></span><small>الاستئذان المحتسب</small><strong>{formatAttendanceHours(disciplineSummary.totalPermissionCoveredHours || 0)}</strong></article>
               <article className="is-danger"><span><FiXCircle /></span><small>نقص الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalMissingHours)}</strong></article>
               <article className="is-warning"><span><FiClock /></span><small>زيادة الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalExtraHours)}</strong></article>
             </div>
@@ -850,6 +1009,7 @@ export default function DashboardAttendanceSecurity() {
                     <th>مدة العمل الفعلية</th>
                     <th>التأخير الفعلي</th>
                     <th>التعويض بعد الدوام</th>
+                    <th>الاستئذان المحتسب</th>
                     <th>نقص الساعات</th>
                     <th>زيادة الساعات</th>
                     <th>صافي فرق الساعات</th>
@@ -869,6 +1029,7 @@ export default function DashboardAttendanceSecurity() {
                         <td>{formatAttendanceHours(row.summary.actualWorkedHours)}</td>
                         <td>{formatAttendanceHours(row.summary.lateHours)}</td>
                         <td>{formatAttendanceHours(row.summary.compensatedLateHours)}</td>
+                        <td>{formatAttendanceHours(row.summary.permissionCoveredHours || 0)}</td>
                         <td>{formatAttendanceHours(row.summary.missingHours)}</td>
                         <td>{formatAttendanceHours(row.summary.extraHours)}</td>
                         <td>{formatSignedAttendanceHours(row.summary.netHourDifference)}</td>

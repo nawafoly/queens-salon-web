@@ -6765,7 +6765,7 @@
 
 /* EMPLOYEE FILES APP UI START */
 
-.employee-portal.madan-employee-portal .hr-files-page {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page {
   display: grid;
   gap: 16px;
   width: 100%;
@@ -6773,7 +6773,7 @@
   padding-bottom: 24px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero {
   min-height: 155px;
   position: relative;
   overflow: hidden;
@@ -6791,7 +6791,7 @@
   box-shadow: 0 20px 45px rgba(3, 6, 64, 0.18);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero::before {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero::before {
   content: "";
   position: absolute;
   width: 190px;
@@ -6803,7 +6803,7 @@
   pointer-events: none;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero__icon {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero__icon {
   width: 58px;
   height: 58px;
   position: relative;
@@ -6817,37 +6817,37 @@
   font-size: 21px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero > div {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero > div {
   position: relative;
   z-index: 1;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero span {
   color: #f2b705;
   font-size: 10px;
   font-weight: 900;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero h2 {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero h2 {
   margin: 5px 0 0;
   color: #fff;
   font-size: 27px;
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero p {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero p {
   margin: 7px 0 0;
   color: rgba(226, 232, 240, 0.74);
   font-size: 11px;
   line-height: 1.8;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero__actions {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero__actions {
   display: flex;
   gap: 9px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-button {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-button {
   min-height: 45px;
   display: inline-flex;
   align-items: center;
@@ -6861,26 +6861,26 @@
   cursor: pointer;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-button--ghost {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-button--ghost {
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-button--primary {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-button--primary {
   border: 1px solid #f2b705;
   color: #030640;
   background: #f2b705;
   box-shadow: 0 11px 26px rgba(242, 183, 5, 0.22);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article {
   min-height: 105px;
   position: relative;
   display: grid;
@@ -6895,13 +6895,13 @@
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article::before,
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article::after {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article::before,
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article::after {
   content: none !important;
   display: none !important;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article > span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article > span {
   grid-column: 1;
   grid-row: 1;
   color: #64748b;
@@ -6909,7 +6909,7 @@
   font-weight: 850;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article > strong {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article > strong {
   grid-column: 1;
   grid-row: 2;
   color: #0f172a;
@@ -6917,7 +6917,7 @@
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article > svg {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article > svg {
   grid-column: 2;
   grid-row: 1 / 3;
   position: static !important;
@@ -6931,17 +6931,17 @@
   transform: none !important;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article.is-warning {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article.is-warning {
   border-color: rgba(242, 183, 5, 0.28);
   background: #fffaf0;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article.is-success {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article.is-success {
   border-color: rgba(34, 197, 94, 0.2);
   background: #f0fdf4;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-alert {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-alert {
   padding: 13px 15px;
   border: 1px solid rgba(242, 183, 5, 0.25);
   border-radius: 16px;
@@ -6951,7 +6951,7 @@
   font-weight: 800;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-board {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board {
   overflow: hidden;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
@@ -6959,7 +6959,7 @@
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.055);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-board__head {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6969,33 +6969,33 @@
   background: linear-gradient(180deg, #fff, #fbfcfe);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-board__head span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board__head span {
   color: #d99d00;
   font-size: 9px;
   font-weight: 900;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-board__head h3 {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board__head h3 {
   margin: 4px 0 0;
   color: #0f172a;
   font-size: 20px;
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-board__head p {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board__head p {
   margin: 6px 0 0;
   color: #64748b;
   font-size: 10px;
   line-height: 1.7;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-search {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-search {
   width: min(330px, 100%);
   position: relative;
   flex: 0 0 auto;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-search > svg {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-search > svg {
   position: absolute;
   top: 50%;
   right: 14px;
@@ -7006,7 +7006,7 @@
   pointer-events: none;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-search input {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-search input {
   width: 100%;
   min-height: 45px;
   padding: 10px 39px 10px 13px;
@@ -7018,7 +7018,7 @@
   font-size: 10px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs {
   display: flex;
   gap: 7px;
   overflow-x: auto;
@@ -7027,11 +7027,11 @@
   scrollbar-width: none;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs::-webkit-scrollbar {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs::-webkit-scrollbar {
   display: none;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs button {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs button {
   min-height: 37px;
   flex: 0 0 auto;
   display: inline-flex;
@@ -7048,7 +7048,7 @@
   cursor: pointer;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs button em {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs button em {
   min-width: 20px;
   height: 20px;
   display: grid;
@@ -7060,19 +7060,19 @@
   font-size: 8px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs button.is-active {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs button.is-active {
   border-color: #f2b705;
   color: #030640;
   background: #fff8dc;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-files-list {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-list {
   display: grid;
   gap: 12px;
   padding: 16px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card {
   min-width: 0;
   display: grid;
   grid-template-columns: 65px minmax(0, 1fr) auto;
@@ -7085,12 +7085,12 @@
   box-shadow: 0 9px 24px rgba(15, 23, 42, 0.045);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card.is-unread {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card.is-unread {
   border-inline-start: 4px solid #f2b705;
   background: linear-gradient(90deg, rgba(242, 183, 5, 0.06), #fff 25%);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__type {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__type {
   width: 65px;
   height: 65px;
   display: grid;
@@ -7102,18 +7102,18 @@
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__body {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__body {
   min-width: 0;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges span {
   min-height: 25px;
   display: inline-flex;
   align-items: center;
@@ -7125,41 +7125,41 @@
   font-weight: 850;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges .is-inbound {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges .is-inbound {
   color: #1d4ed8;
   background: #eff6ff;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges .is-outbound {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges .is-outbound {
   color: #7c3aed;
   background: #f5f3ff;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges .is-new {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges .is-new {
   color: #92400e;
   background: #fef3c7;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__badges .is-read {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__badges .is-read {
   color: #166534;
   background: #dcfce7;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card h4 {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card h4 {
   margin: 9px 0 0;
   color: #0f172a;
   font-size: 14px;
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card p {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card p {
   margin: 6px 0 0;
   color: #64748b;
   font-size: 10px;
   line-height: 1.7;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__meta {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 7px 15px;
@@ -7168,11 +7168,11 @@
   font-size: 9px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__meta strong {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__meta strong {
   color: #334155;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__filename {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__filename {
   margin-top: 9px;
   overflow: hidden;
   color: #94a3b8;
@@ -7181,12 +7181,12 @@
   white-space: nowrap;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__actions {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__actions {
   display: grid;
   gap: 8px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__actions a {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__actions a {
   min-width: 112px;
   min-height: 40px;
   display: inline-flex;
@@ -7203,18 +7203,18 @@
   text-decoration: none;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__actions a:first-child {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__actions a:first-child {
   border-color: #f2b705;
   background: #fff8dc;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-file-card__missing {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__missing {
   color: #94a3b8;
   font-size: 9px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-empty,
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-loading {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-empty,
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-loading {
   min-height: 190px;
   display: grid;
   place-items: center;
@@ -7226,7 +7226,7 @@
   font-size: 10px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal {
   position: fixed;
   inset: 0;
   z-index: 3500;
@@ -7235,7 +7235,7 @@
   padding: 20px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__backdrop {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__backdrop {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -7245,7 +7245,7 @@
   backdrop-filter: blur(6px);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card {
   width: min(720px, 100%);
   max-height: calc(100dvh - 40px);
   position: relative;
@@ -7256,7 +7256,7 @@
   box-shadow: 0 25px 70px rgba(3, 6, 64, 0.28);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > header {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -7265,26 +7265,26 @@
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > header span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > header span {
   color: #d99d00;
   font-size: 9px;
   font-weight: 900;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > header h3 {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > header h3 {
   margin: 4px 0 0;
   color: #0f172a;
   font-size: 20px;
   font-weight: 950;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > header p {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > header p {
   margin: 6px 0 0;
   color: #64748b;
   font-size: 10px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > header > button {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > header > button {
   width: 40px;
   height: 40px;
   flex: 0 0 auto;
@@ -7297,29 +7297,29 @@
   cursor: pointer;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-form-grid {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 13px;
   padding: 18px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-field {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-field {
   display: grid;
   gap: 7px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-field--wide {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-field--wide {
   grid-column: 1 / -1;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-field > span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-field > span {
   color: #475569;
   font-size: 10px;
   font-weight: 850;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-field :where(input, select, textarea) {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-field :where(input, select, textarea) {
   width: 100%;
   min-height: 47px;
   padding: 11px 13px;
@@ -7331,7 +7331,7 @@
   font-size: 11px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-upload-drop {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-upload-drop {
   min-height: 145px;
   position: relative;
   display: flex;
@@ -7347,30 +7347,30 @@
   text-align: center;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-upload-drop input {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-upload-drop input {
   position: absolute;
   inset: 0;
   opacity: 0;
   cursor: pointer;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-upload-drop svg {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-upload-drop svg {
   width: 24px !important;
   height: 24px !important;
   color: #d99d00;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-upload-drop strong {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-upload-drop strong {
   color: #0f172a;
   font-size: 11px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-upload-drop span {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-upload-drop span {
   color: #64748b;
   font-size: 9px;
 }
 
-.employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > footer {
+:is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > footer {
   display: flex;
   justify-content: flex-end;
   gap: 9px;
@@ -7380,131 +7380,131 @@
 }
 
 @media (max-width: 900px) {
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card {
     grid-template-columns: 58px minmax(0, 1fr);
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card__type {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__type {
     width: 58px;
     height: 58px;
     border-radius: 16px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card__actions {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__actions {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card__actions a {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__actions a {
     min-width: 0;
   }
 }
 
 @media (max-width: 640px) {
-  .employee-portal.madan-employee-portal .hr-files-page {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page {
     gap: 12px;
     padding-bottom: 16px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero {
     grid-template-columns: 48px minmax(0, 1fr);
     padding: 18px;
     border-radius: 21px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero__icon {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero__icon {
     width: 48px;
     height: 48px;
     border-radius: 15px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero h2 {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero h2 {
     font-size: 22px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-hero__actions {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-hero__actions {
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats {
     gap: 9px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-stats article {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-stats article {
     min-height: 92px;
     padding: 14px;
     border-radius: 17px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-files-board {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board {
     border-radius: 21px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-files-board__head {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-board__head {
     align-items: stretch;
     flex-direction: column;
     padding: 16px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-search {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-search {
     width: 100%;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-files-tabs {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-tabs {
     padding: 12px 14px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-files-list {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-files-list {
     gap: 10px;
     padding: 12px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card {
     grid-template-columns: 50px minmax(0, 1fr);
     gap: 11px;
     padding: 13px;
     border-radius: 17px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card__type {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__type {
     width: 50px;
     height: 50px;
     border-radius: 14px;
     font-size: 10px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-file-card__meta {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-file-card__meta {
     display: grid;
     gap: 5px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal {
     align-items: end;
     padding: 0;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card {
     width: 100%;
     max-height: 92dvh;
     border-radius: 23px 23px 0 0;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-form-grid {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-form-grid {
     grid-template-columns: 1fr;
     padding: 15px;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-field--wide {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-field--wide {
     grid-column: auto;
   }
 
-  .employee-portal.madan-employee-portal .hr-files-page .hr-ops-modal__card > footer {
+  :is(.employee-portal.madan-employee-portal, .hr-shell.madan-admin-shell) .hr-files-page .hr-ops-modal__card > footer {
     position: sticky;
     bottom: 0;
     z-index: 3;
@@ -8665,3 +8665,199 @@
 }
 
 /* EMPLOYEE DESKTOP TYPOGRAPHY SCALE END */
+
+/* EMPLOYEE ATTENDANCE DESKTOP WIDTH + LEGEND V2.3.4 START */
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: wrap !important;
+  gap: 8px 16px !important;
+
+  margin: 10px 0 0 !important;
+  padding: 10px 4px 0 !important;
+
+  border-top: 1px solid #edf1f5 !important;
+
+  direction: rtl !important;
+  color: #667085 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  span {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  color: #667085 !important;
+
+  font-size: 0.56rem !important;
+  font-weight: 850 !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  span::before {
+  content: "" !important;
+
+  display: block !important;
+  flex: 0 0 auto !important;
+
+  width: 9px !important;
+  height: 9px !important;
+
+  border-radius: 999px !important;
+
+  background: #98a2b3 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  .is-complete::before {
+  background: #22a66f !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  .is-partial::before {
+  background: #d99a13 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  .is-absent::before {
+  background: #d94b61 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  .is-leave::before {
+  background: #7c3aed !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-attendance-month-page
+  .attendance-month__legend
+  .is-off-day::before {
+  background: #0e7490 !important;
+}
+
+@media (min-width: 821px) {
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month,
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month__calendar-shell,
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month__detail {
+    width: 100% !important;
+    max-width: none !important;
+    margin-inline: 0 !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month__detail {
+    padding-inline: 18px !important;
+  }
+}
+
+@media (max-width: 820px) {
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month__legend {
+    gap: 7px 12px !important;
+    padding-inline: 2px !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-attendance-month-page
+    .attendance-month__legend
+    span {
+    font-size: 0.51rem !important;
+  }
+}
+
+/* EMPLOYEE ATTENDANCE DESKTOP WIDTH + LEGEND V2.3.4 END */
+
+/* EMPLOYEE PORTAL PROFILE PHOTO V2.3.8 START */
+
+.employee-portal.madan-employee-portal
+  .employee-portal-sidebar__avatar,
+.employee-portal.madan-employee-portal
+  .employee-more-hero__avatar {
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-portal-sidebar__avatar
+  > .employee-avatar,
+.employee-portal.madan-employee-portal
+  .employee-more-hero__avatar
+  > .employee-avatar {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-portal-sidebar__avatar
+  .employee-avatar__image,
+.employee-portal.madan-employee-portal
+  .employee-more-hero__avatar
+  .employee-avatar__image {
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+/* EMPLOYEE PORTAL PROFILE PHOTO V2.3.8 END */
+/* EMPLOYEE INTRO NAME FORCE WHITE V2.3.9 START */
+
+.employee-portal.madan-employee-portal
+  .employee-panel.employee-overview
+  .employee-app-intro
+  .employee-app-intro__identity
+  > div
+  > h1 {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+
+  background: none !important;
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+
+  opacity: 1 !important;
+  filter: none !important;
+
+  font-size: 1.35rem !important;
+  font-weight: 950 !important;
+  line-height: 1.3 !important;
+
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(255, 255, 255, 0.12) !important;
+}
+
+/* EMPLOYEE INTRO NAME FORCE WHITE V2.3.9 END */

@@ -98,6 +98,14 @@ import {
   recordAttendance,
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
+import {
+  createPermissionRequest,
+  decidePermissionRequest,
+  listPermissionRequests,
+  markPermissionOut,
+  markPermissionReturned,
+  permissionPayrollSummary,
+} from './repositories/permissions.js';
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   approvePayrollEntry,
@@ -159,6 +167,9 @@ import {
   listFileMetadata,
   putFileContent,
 } from './repositories/files.js';
+
+const HR_MANAGEMENT_ROLES = new Set(["owner", "admin", "hr"]);
+const PAYROLL_MANAGEMENT_ROLES = new Set(["owner", "admin", "hr", "accountant"]);
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
@@ -325,6 +336,13 @@ function match(url, method) {
   if (attendanceState && method === "GET") return { name: "attendance:state", id: attendanceState[1] };
   if (path === "/api/core/hr/attendance/check-in" && method === "POST") return { name: "attendance:check-in" };
   if (path === "/api/core/hr/attendance/check-out" && method === "POST") return { name: "attendance:check-out" };
+  if (path === "/api/core/hr/permissions/payroll-summary" && method === "GET") {
+    return { name: "permission:payroll-summary" };
+  }
+  const permissionAction = /^\/api\/core\/hr\/permissions\/([^/]+)\/(approve|reject|cancel|out|return)$/.exec(path);
+  if (permissionAction && method === "POST") {
+    return { name: `permission:${permissionAction[2]}`, id: permissionAction[1] };
+  }
   const leaveDecision = /^\/api\/core\/hr\/leaves\/([^/]+)\/(approve|reject)$/.exec(path);
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
@@ -358,6 +376,7 @@ function match(url, method) {
     ["shift-payroll-period-locks", "/api/core/hr/shift-payroll-period-locks"],
     ["attendance", "/api/core/hr/attendance"],
     ["leaves", "/api/core/hr/leaves"],
+    ["permissions", "/api/core/hr/permissions"],
     ["absences", "/api/core/hr/absences"],
     ["payroll-periods", "/api/core/hr/payroll-periods"],
     ["payroll-entries", "/api/core/hr/payroll-entries"],
@@ -884,6 +903,68 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "leave:reject":
       requireRole(ctx.role, ADMIN_ROLES);
       return decideLeave(db, ctx.salonId, route.id, { ...body, status: "rejected" }, actorInfo);
+
+    case "permissions": {
+      const permissionActor = { ...actorInfo, employeeId: ctx.employeeId || "" };
+      const isManager = HR_MANAGEMENT_ROLES.has(ctx.role);
+      if (method === "GET") {
+        return listPermissionRequests(
+          db,
+          ctx.salonId,
+          isManager
+            ? query
+            : {
+                ...query,
+                employeeId: ctx.employeeId || "",
+                employeeUid: ctx.identity?.uid || "",
+              }
+        );
+      }
+      if (method === "POST") {
+        const source = cleanText(body.source).toLowerCase() === "admin_direct"
+          ? "admin_direct"
+          : "employee_request";
+        if (source === "admin_direct") requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+        return createPermissionRequest(
+          db,
+          ctx.salonId,
+          source === "admin_direct"
+            ? { ...body, source }
+            : {
+                ...body,
+                source,
+                employeeId: ctx.employeeId || "",
+                employeeUid: ctx.identity?.uid || "",
+              },
+          permissionActor
+        );
+      }
+      break;
+    }
+
+    case "permission:approve":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "approved" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+
+    case "permission:reject":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "rejected" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+
+    case "permission:cancel":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      return decidePermissionRequest(db, ctx.salonId, route.id, { ...body, status: "cancelled" }, { ...actorInfo, employeeId: ctx.employeeId || "" });
+
+    case "permission:out":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      return markPermissionOut(db, ctx.salonId, route.id, body, { ...actorInfo, employeeId: ctx.employeeId || "" });
+
+    case "permission:return":
+      requireRole(ctx.role, HR_MANAGEMENT_ROLES);
+      return markPermissionReturned(db, ctx.salonId, route.id, body, { ...actorInfo, employeeId: ctx.employeeId || "" });
+
+    case "permission:payroll-summary":
+      requireRole(ctx.role, PAYROLL_MANAGEMENT_ROLES);
+      return permissionPayrollSummary(db, ctx.salonId, query);
 
     case "absences":
       requireRole(ctx.role, ADMIN_ROLES);

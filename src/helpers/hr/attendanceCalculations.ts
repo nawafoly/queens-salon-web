@@ -1,4 +1,11 @@
 ﻿import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule";
+import {
+  calculatePermissionCoverage,
+  permissionIntervalsFromAttendanceRecords,
+  permissionIntervalsFromRequests,
+  roundPermissionHours,
+  type PermissionIntervalInput,
+} from "./permissionAttendance";
 
 export type AttendanceRecord = {
   id?: string;
@@ -22,6 +29,9 @@ export type AttendanceDayComputation = {
   expectedHours: number;
   actualHours: number;
   lateHours: number;
+  rawMissingHours: number;
+  permissionRequestedHours: number;
+  permissionCoveredHours: number;
   missingHours: number;
   overtimeHours: number;
   isComplete: boolean;
@@ -55,6 +65,7 @@ export type AttendancePayrollSummaryOptions = {
   approvedLeaveDateKeys?: Iterable<string>;
   holidayDateKeys?: Iterable<string>;
   absenceDateKeys?: Iterable<string>;
+  permissionEntries?: Array<Record<string, unknown>>;
 };
 
 function roundHours(value: number) {
@@ -163,7 +174,8 @@ export function getShiftExpectedHours(schedule: ShiftSchedule) {
 export function computeAttendanceDay(
   date: string,
   records: AttendanceRecord[],
-  schedule: ShiftSchedule
+  schedule: ShiftSchedule,
+  permissionIntervals: PermissionIntervalInput[] = permissionIntervalsFromAttendanceRecords(records, date)
 ): AttendanceDayComputation {
   const sorted = [...records].sort(
     (left, right) =>
@@ -204,7 +216,17 @@ export function computeAttendanceDay(
     checkOutMs > scheduleEndMs
       ? roundHours((checkOutMs - scheduleEndMs) / 3600000)
       : 0;
-  const missingHours = roundHours(Math.max(0, expectedHours - actualHours));
+  const rawMissingHours = roundHours(Math.max(0, expectedHours - actualHours));
+  const permissionCoverage = calculatePermissionCoverage({
+    date,
+    scheduledStart: schedule.startTime,
+    scheduledEnd: schedule.endTime,
+    checkInAt: checkIn?.serverTime,
+    checkOutAt: checkOut?.serverTime,
+    rawMissingMinutes: Math.round(rawMissingHours * 60),
+    intervals: permissionIntervals,
+  });
+  const missingHours = roundPermissionHours(permissionCoverage.adjustedMissingMinutes);
 
   return {
     date,
@@ -213,6 +235,9 @@ export function computeAttendanceDay(
     expectedHours,
     actualHours,
     lateHours,
+    rawMissingHours,
+    permissionRequestedHours: roundPermissionHours(permissionCoverage.requestedMinutes),
+    permissionCoveredHours: roundPermissionHours(permissionCoverage.coveredMissingMinutes),
     missingHours,
     overtimeHours,
     isComplete,
@@ -234,7 +259,14 @@ export function summarizeAttendanceForPayroll(
   }
 
   const days = Array.from(grouped.entries())
-    .map(([date, dayRecords]) => computeAttendanceDay(date, dayRecords, schedule))
+    .map(([date, dayRecords]) =>
+      computeAttendanceDay(
+        date,
+        dayRecords,
+        schedule,
+        permissionIntervalsFromRequests(options.permissionEntries, date)
+      )
+    )
     .sort((left, right) => left.date.localeCompare(right.date));
   const dayMap = new Map(days.map(day => [day.date, day]));
   const todayDateKey = options.todayDateKey || riyadhDateKey(new Date().toISOString());

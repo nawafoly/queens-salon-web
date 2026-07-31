@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
@@ -56,6 +56,10 @@ import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarD
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
 import AttendanceMonthView from "../../components/AttendanceMonthView";
+import {
+  listPermissionRequestsByEmployee,
+  type EmployeePermissionRequest,
+} from "../../services/employeePermissionRequests";
 
 type Props = {
   session: HrSession;
@@ -158,6 +162,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
   const [attendanceMonth, setAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
+  const [attendancePermissionEntries, setAttendancePermissionEntries] = useState<EmployeePermissionRequest[]>([]);
   const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
@@ -354,10 +359,31 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     };
   }, [session.uid]);
 
+  const loadAttendancePermissions = useCallback(async () => {
+    if (!session.uid) {
+      setAttendancePermissionEntries([]);
+      return;
+    }
+
+    try {
+      const rows = await listPermissionRequestsByEmployee(session.uid, 250);
+      setAttendancePermissionEntries(rows);
+    } catch (error) {
+      console.warn("employee attendance permissions load failed", {
+        employeeUid: session.uid,
+        error,
+      });
+      setAttendancePermissionEntries([]);
+    }
+  }, [session.uid]);
+
   useEffect(() => {
     if (!attendanceOnly) return;
-    void loadAttendanceMonth();
-  }, [attendanceOnly, loadAttendanceMonth]);
+    void Promise.all([
+      loadAttendanceMonth(),
+      loadAttendancePermissions(),
+    ]);
+  }, [attendanceOnly, loadAttendanceMonth, loadAttendancePermissions]);
 
   useEffect(() => {
     AppSettingsService.fetchRemote()
@@ -565,6 +591,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           viewerMode="employee"
           schedule={profile}
           approvedLeaveDateKeys={approvedLeaveDateKeys}
+          permissionEntries={attendancePermissionEntries}
           onMonthChange={(monthKey) => {
             setAttendanceMonth(monthKey);
             setAttendanceSelectedDate((current) =>
@@ -573,7 +600,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           }}
           onSelectedDateChange={setAttendanceSelectedDate}
           onGenerateSummary={() => {
-            void loadAttendanceMonth();
+            void Promise.all([
+              loadAttendanceMonth(),
+              loadAttendancePermissions(),
+            ]);
           }}
         />
 

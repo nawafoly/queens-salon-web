@@ -3,6 +3,10 @@ import AttendanceMonthView from "../../components/AttendanceMonthView";
 import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
 import { CoreHrService } from "../../services/CoreHrService";
 import type { CoreResolvedShift } from "../../types/hrCoreApi";
+import {
+  getPermissionPayrollSummary,
+  type EmployeePermissionRequest,
+} from "../../services/employeePermissionRequests";
 
 type AttendanceSectionProps = {
   isVisible: boolean;
@@ -70,6 +74,7 @@ export default function AttendanceSection({
   onCancelLeave,
 }: AttendanceSectionProps) {
   const [coreResolvedShifts, setCoreResolvedShifts] = useState<Record<string, CoreResolvedShift | null>>({});
+  const [permissionEntries, setPermissionEntries] = useState<EmployeePermissionRequest[]>([]);
   const shiftLookupKey = useMemo(() => (employeeId ? resolvedShiftCacheKey(employeeId, monthKey) : ""), [employeeId, monthKey]);
 
   useEffect(() => {
@@ -97,6 +102,28 @@ export default function AttendanceSection({
     };
   }, [employeeId, isVisible, monthKey, shiftLookupKey]);
 
+  useEffect(() => {
+    if (!isVisible || !employeeId) {
+      setPermissionEntries([]);
+      return;
+    }
+    let cancelled = false;
+    const dates = monthDateKeys(monthKey);
+    const fromDate = dates[0] || `${normalizeMonthKey(monthKey)}-01`;
+    const toDate = dates[dates.length - 1] || fromDate;
+    void getPermissionPayrollSummary({ employeeId, fromDate, toDate })
+      .then((summary) => {
+        if (!cancelled) setPermissionEntries(summary.entries || []);
+      })
+      .catch((error) => {
+        console.warn("attendance permission load failed", { employeeId, fromDate, toDate, error });
+        if (!cancelled) setPermissionEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, isVisible, monthKey]);
+
   if (!isVisible) return null;
 
   return (
@@ -113,6 +140,7 @@ export default function AttendanceSection({
         schedule={schedule}
         coreResolvedShifts={coreResolvedShifts}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
+        permissionEntries={permissionEntries}
         canEdit={canEdit}
         canDelete={canDelete}
         canReview={canReview}

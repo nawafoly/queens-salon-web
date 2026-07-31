@@ -1,4 +1,4 @@
-import {
+﻿import {
   currentGeneratedAt,
   exportReportToExcel,
   exportReportToPdf,
@@ -44,6 +44,7 @@ type AttendanceReportRow = {
   actualWorkedHours: string;
   lateHours: string;
   compensatedLateHours: string;
+  permissionCoveredHours: string;
   missingHours: string;
   extraHours: string;
   netHourDifference: string;
@@ -60,6 +61,7 @@ const ATTENDANCE_COLUMNS: ReportColumn<AttendanceReportRow>[] = [
   { key: "actualWorkedHours", header: "مدة العمل", width: 14 },
   { key: "lateHours", header: "التأخير", width: 14 },
   { key: "compensatedLateHours", header: "التعويض بعد الدوام", width: 18 },
+  { key: "permissionCoveredHours", header: "الاستئذان المحتسب", width: 18 },
   { key: "missingHours", header: "نقص الساعات", width: 15 },
   { key: "extraHours", header: "ساعات زائدة", width: 15 },
   { key: "netHourDifference", header: "صافي الفرق", width: 15 },
@@ -86,6 +88,7 @@ export function buildAttendanceReportData(input: {
     actualWorkedHours: formatAttendanceHours(row.summary.actualWorkedHours),
     lateHours: formatAttendanceHours(row.summary.lateHours),
     compensatedLateHours: formatAttendanceHours(row.summary.compensatedLateHours),
+    permissionCoveredHours: formatAttendanceHours(row.summary.permissionCoveredHours || 0),
     missingHours: formatAttendanceHours(row.summary.missingHours),
     extraHours: formatAttendanceHours(row.summary.extraHours),
     netHourDifference: formatSignedAttendanceHours(row.summary.netHourDifference),
@@ -104,6 +107,7 @@ export function buildAttendanceReportData(input: {
       { label: "عدد أيام الحضور", value: input.summary.attendanceDays },
       { label: "إجمالي ساعات العمل الفعلية", value: formatAttendanceHours(input.summary.totalActualWorkedHours) },
       { label: "إجمالي التأخير", value: formatAttendanceHours(input.summary.totalLateHours) },
+      { label: "إجمالي الاستئذان المحتسب", value: formatAttendanceHours(input.summary.totalPermissionCoveredHours || 0) },
       { label: "إجمالي نقص الساعات", value: formatAttendanceHours(input.summary.totalMissingHours) },
       { label: "إجمالي الساعات الزائدة المكتشفة", value: formatAttendanceHours(input.summary.totalExtraHours) },
       { label: "الفترة", value: period },
