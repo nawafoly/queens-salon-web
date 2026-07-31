@@ -1047,7 +1047,7 @@
     overflow: visible !important;
   }
 
-  /* ط§ظ„ط³ط§ظٹط¯ط¨ط§ط± ظٹطھط­ط±ظƒ ظ…ط¹ Scroll ط§ظ„طµظپط­ط© */
+  /* السايدبار يتحرك مع Scroll الصفحة */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .dashboard-sidebar {
     position: relative !important;
@@ -1059,7 +1059,7 @@
     overflow: visible !important;
   }
 
-  /* ط¨ط¯ظˆظ† Scroll ط¯ط§ط®ظ„ظٹ ظ…ظ†ظپطµظ„ */
+  /* بدون Scroll داخلي منفصل */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .sidebar-nav {
     flex: 0 0 auto !important;
@@ -1075,7 +1075,7 @@
     overflow: visible !important;
   }
 
-  /* ط§ظ„ظ†ط§ظپط¨ط§ط± ط§ظ„ط£ط¨ظٹط¶ ط«ط§ط¨طھ ط£ط¹ظ„ظ‰ ط§ظ„طµظپط­ط© */
+  /* النافبار الأبيض ثابت أعلى الصفحة */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .dash-topbar {
     position: sticky !important;
