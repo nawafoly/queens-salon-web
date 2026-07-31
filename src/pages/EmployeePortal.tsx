@@ -563,7 +563,7 @@ export default function EmployeePortal() {
         </main>
       </div>
 
-      {location.pathname.startsWith("/employee/leave") ? (
+      {hasPermission("workspace.employee_portal.view") ? (
         <button
           type="button"
           className="employee-floating-request"
