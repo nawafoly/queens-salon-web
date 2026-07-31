@@ -1039,7 +1039,7 @@
 
 /* DESKTOP DASHBOARD SCROLL LAYOUT START */
 
-@media (min-width: 768px) {
+@media (min-width: 992px) {
   .dashboard-skin.madan-admin-shell.dashboard-page
     > .container-fluid
     > .row {
@@ -1047,7 +1047,7 @@
     overflow: visible !important;
   }
 
-  /* السايدبار يتحرك مع Scroll الصفحة */
+  /* ط§ظ„ط³ط§ظٹط¯ط¨ط§ط± ظٹطھط­ط±ظƒ ظ…ط¹ Scroll ط§ظ„طµظپط­ط© */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .dashboard-sidebar {
     position: relative !important;
@@ -1059,7 +1059,7 @@
     overflow: visible !important;
   }
 
-  /* بدون Scroll داخلي منفصل */
+  /* ط¨ط¯ظˆظ† Scroll ط¯ط§ط®ظ„ظٹ ظ…ظ†ظپطµظ„ */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .sidebar-nav {
     flex: 0 0 auto !important;
@@ -1075,7 +1075,7 @@
     overflow: visible !important;
   }
 
-  /* النافبار الأبيض ثابت أعلى الصفحة */
+  /* ط§ظ„ظ†ط§ظپط¨ط§ط± ط§ظ„ط£ط¨ظٹط¶ ط«ط§ط¨طھ ط£ط¹ظ„ظ‰ ط§ظ„طµظپط­ط© */
   .dashboard-skin.madan-admin-shell.dashboard-page
     .dash-topbar {
     position: sticky !important;
