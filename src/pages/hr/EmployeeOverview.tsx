@@ -743,6 +743,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       : visibleAccuracy <= 150
         ? `دقة الموقع مقبولة: ${visibleAccuracy} م`
         : `دقة الموقع ضعيفة: ${visibleAccuracy} م`;
+  const hasAttendanceVerificationMeta =
+    Boolean(visibleZoneName) ||
+    Boolean(visibleAccuracyLabel) ||
+    visibleDistance !== null;
+  const shouldShowAttendanceNote =
+    Boolean(attendanceMessage) ||
+    hasAttendanceVerificationMeta;
   const leaveBalanceValue = cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "") || "—";
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
   const punchHint = attendanceStatus === "checked_out"
@@ -813,18 +820,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
       <section className="employee-overview-kpis" aria-label="ملخص التنبيهات">
         <Link to="/employee/notifications" className="employee-overview-kpi">
+          <FontAwesomeIcon icon={faBell} />
           <span>التنبيهات غير المقروءة</span>
           <strong>{summary.all}</strong>
         </Link>
         <Link to="/employee/messages" className="employee-overview-kpi">
+          <FontAwesomeIcon icon={faPaperPlane} />
           <span>الرسائل</span>
           <strong>{summary.message}</strong>
         </Link>
         <Link to="/employee/files" className="employee-overview-kpi">
+          <FontAwesomeIcon icon={faFileLines} />
           <span>تحديثات الملفات</span>
           <strong>{summary.file}</strong>
         </Link>
         <Link to="/employee/leave" className="employee-overview-kpi">
+          <FontAwesomeIcon icon={faCalendarCheck} />
           <span>الإجازات والرواتب</span>
           <strong>{summary.leave + summary.payroll}</strong>
         </Link>
@@ -873,22 +884,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           </div>
         </div>
 
-        <div
-          className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span>
-            {attendanceMessage || attendanceDayStatusLabel}
-            {visibleAccuracyLabel ? ` · ${visibleAccuracyLabel}` : ""}
-            {visibleDistance !== null ? ` · المسافة: ${visibleDistance} م` : visibleZoneName ? ` · النطاق: ${visibleZoneName}` : ""}
-          </span>
-          <div>
-            {visibleZoneName ? <small>{visibleZoneName}</small> : null}
-            {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
-            {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
+        {shouldShowAttendanceNote ? (
+          <div
+            className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"} ${attendanceMessage ? "has-message" : "is-meta-only"}`}
+            role="status"
+            aria-live="polite"
+          >
+            {attendanceMessage ? <span>{attendanceMessage}</span> : null}
+            {hasAttendanceVerificationMeta ? (
+              <div>
+                {visibleZoneName ? <small>{visibleZoneName}</small> : null}
+                {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
+                {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
       </section>
 
       <section className="employee-overview-block">
