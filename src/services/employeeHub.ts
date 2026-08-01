@@ -198,7 +198,7 @@ export type EmployeeNotification = {
   id: string;
   targetUid?: string;
   targetEmployeeId?: string;
-  type?: "leave" | "file" | "message" | "system" | "payroll";
+  type?: "leave" | "file" | "message" | "system" | "payroll" | "employee_request";
   title: string;
   body?: string;
   route?: string;

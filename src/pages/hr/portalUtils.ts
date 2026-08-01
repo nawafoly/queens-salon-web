@@ -48,6 +48,7 @@ export function notificationTypeLabel(type?: string) {
   if (normalized === "file") return "ملف";
   if (normalized === "leave") return "إجازة";
   if (normalized === "payroll") return "رواتب";
+  if (normalized === "employee_request") return "طلب موظفة";
   if (normalized === "system") return "تنبيه";
   return "تنبيه";
 }
@@ -58,5 +59,6 @@ export function notificationTone(type?: string) {
   if (normalized === "file") return "file";
   if (normalized === "leave") return "leave";
   if (normalized === "payroll") return "payroll";
+  if (normalized === "employee_request") return "system";
   return "system";
 }

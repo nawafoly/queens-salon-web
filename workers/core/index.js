@@ -167,9 +167,40 @@ import {
   listFileMetadata,
   putFileContent,
 } from './repositories/files.js';
+import {
+  addEmployeeRequestAttachment,
+  addEmployeeRequestComment,
+  createEmployeeRequest,
+  employeeRequestStats,
+  getEmployeeRequest,
+  getEmployeeRequestPayrollImpact,
+  listEmployeeRequests,
+  listEmployeeRequestNotifications,
+  listEmployeeRequestAssignees,
+  markAllEmployeeRequestNotificationsRead,
+  markEmployeeRequestNotificationRead,
+  notifyOverdueEmployeeRequests,
+  transitionEmployeeRequest,
+} from './repositories/employee-requests.js';
 
 const HR_MANAGEMENT_ROLES = new Set(["owner", "admin", "hr"]);
 const PAYROLL_MANAGEMENT_ROLES = new Set(["owner", "admin", "hr", "accountant"]);
+
+function hasAnyPermissionKey(ctx, keys) {
+  return keys.some((key) => Array.isArray(ctx.permissions) && ctx.permissions.includes(key));
+}
+
+async function assertFileAccess(ctx, fileId, write = false) {
+  const metadata = await getFileMetadata(ctx.coreDb, ctx.salonId, fileId);
+  const ownFile = cleanText(ctx.employeeId) && cleanText(metadata.employee_id) === cleanText(ctx.employeeId);
+  const ownRequestFile = ownFile && cleanText(metadata.category) === "employee_request";
+  if (ownFile && (!write || ownRequestFile)) return metadata;
+  const required = write
+    ? ["employees.files.manage", "employee_requests.manage"]
+    : ["employees.files.view", "employees.files.manage", "employee_requests.view"];
+  requireAnyPermission(ctx, required);
+  return metadata;
+}
 
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
@@ -332,6 +363,26 @@ function match(url, method) {
   }
 
 
+  if (path === "/api/core/hr/employee-request-payroll-impact/mine" && method === "GET") return { name: "employee-request:payroll-impact-mine" };
+  if (path === "/api/core/hr/employee-request-notifications/read-all" && method === "POST") return { name: "employee-request-notification:read-all" };
+  const employeeRequestNotificationRead = /^\/api\/core\/hr\/employee-request-notifications\/([^/]+)\/read$/.exec(path);
+  if (employeeRequestNotificationRead && method === "POST") return { name: "employee-request-notification:read", id: employeeRequestNotificationRead[1] };
+  if (path === "/api/core/hr/employee-request-notifications" && method === "GET") return { name: "employee-request-notifications" };
+  if (path === "/api/core/hr/employee-request-assignees" && method === "GET") return { name: "employee-request-assignees" };
+  if (path === "/api/core/hr/employee-requests/mine") return { name: "employee-request:mine" };
+  if (path === "/api/core/hr/employee-requests/stats") return { name: "employee-request:stats" };
+  const employeeRequestSubresource = /^\/api\/core\/hr\/employee-requests\/([^/]+)\/(comments|attachments)$/.exec(path);
+  if (employeeRequestSubresource) {
+    return { name: `employee-request:${employeeRequestSubresource[2]}`, id: employeeRequestSubresource[1] };
+  }
+  const employeeRequestAction = /^\/api\/core\/hr\/employee-requests\/([^/]+)\/(receive|assign|start-review|request-info|answer-info|approve|reject|execute|complete|cancel|record-exit|record-return|reopen)$/.exec(path);
+  if (employeeRequestAction && method === "POST") {
+    return { name: "employee-request:action", id: employeeRequestAction[1], action: employeeRequestAction[2] };
+  }
+  const employeeRequestDetail = /^\/api\/core\/hr\/employee-requests\/([^/]+)$/.exec(path);
+  if (employeeRequestDetail) return { name: "employee-request:detail", id: employeeRequestDetail[1] };
+  if (path === "/api/core/hr/employee-requests") return { name: "employee-requests" };
+
   const attendanceState = /^\/api\/core\/hr\/attendance\/state\/([^/]+)$/.exec(path);
   if (attendanceState && method === "GET") return { name: "attendance:state", id: attendanceState[1] };
   if (path === "/api/core/hr/attendance/check-in" && method === "POST") return { name: "attendance:check-in" };
@@ -448,6 +499,7 @@ async function dispatch(ctx, route, method, body, query, env) {
     userId: ctx.user?.id || "",
     ip: ctx.requestMeta?.ip || "",
     userAgent: ctx.requestMeta?.userAgent || "",
+    employeeId: ctx.employeeId || "",
   };
 
   switch (route.name) {
@@ -824,6 +876,111 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") return recordAudit(db, ctx.salonId, body, actorInfo);
       break;
 
+    case "employee-request:payroll-impact-mine":
+      requireAnyPermission(ctx, ["employee_requests.own.view", "payroll.view"]);
+      return getEmployeeRequestPayrollImpact(db, ctx.salonId, actorInfo);
+
+    case "employee-request-notifications":
+      requireAnyPermission(ctx, ["employee_requests.own.view", "employee_requests.view"]);
+      return listEmployeeRequestNotifications(db, ctx.salonId, actorInfo, query);
+
+    case "employee-request-assignees":
+      requirePermission(ctx, "employee_requests.assign");
+      return listEmployeeRequestAssignees(db, ctx.salonId, query);
+
+    case "employee-request-notification:read":
+      requireAnyPermission(ctx, ["employee_requests.own.view", "employee_requests.view"]);
+      return markEmployeeRequestNotificationRead(db, ctx.salonId, route.id, actorInfo);
+
+    case "employee-request-notification:read-all":
+      requireAnyPermission(ctx, ["employee_requests.own.view", "employee_requests.view"]);
+      return markAllEmployeeRequestNotificationsRead(db, ctx.salonId, actorInfo);
+
+    case "employee-request:mine":
+      requireAnyPermission(ctx, ["employee_requests.own.view", "workspace.employee_portal.view"]);
+      if (method === "GET") return listEmployeeRequests(db, ctx.salonId, query, actorInfo, { ownOnly: true });
+      if (method === "POST") {
+        requirePermission(ctx, "employee_requests.own.create");
+        return createEmployeeRequest(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "employee-requests":
+      requirePermission(ctx, "employee_requests.view");
+      if (method === "GET") return listEmployeeRequests(db, ctx.salonId, query, actorInfo);
+      if (method === "POST") {
+        requirePermission(ctx, "employee_requests.manage");
+        return createEmployeeRequest(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "employee-request:stats":
+      requirePermission(ctx, "employee_requests.view");
+      if (method === "GET") return employeeRequestStats(db, ctx.salonId, query);
+      break;
+
+    case "employee-request:detail": {
+      if (method !== "GET") break;
+      const ownAccess = ctx.permissions.includes("employee_requests.own.view") && !ctx.permissions.includes("employee_requests.view");
+      if (ownAccess) return getEmployeeRequest(db, ctx.salonId, route.id, actorInfo, { ownOnly: true });
+      requireAnyPermission(ctx, ["employee_requests.view", "employee_requests.own.view"]);
+      try {
+        return await getEmployeeRequest(db, ctx.salonId, route.id, actorInfo, { ownOnly: false });
+      } catch (error) {
+        if (!ctx.permissions.includes("employee_requests.view")) throw error;
+        throw error;
+      }
+    }
+
+    case "employee-request:comments": {
+      if (method !== "POST") break;
+      const canManage = ctx.permissions.includes("employee_requests.manage");
+      if (canManage) {
+        if (cleanText(body.visibility) === "internal") requirePermission(ctx, "employee_requests.internal_notes");
+        return addEmployeeRequestComment(db, ctx.salonId, route.id, body, actorInfo);
+      }
+      requirePermission(ctx, "employee_requests.own.comment");
+      return addEmployeeRequestComment(db, ctx.salonId, route.id, body, actorInfo, { ownOnly: true });
+    }
+
+    case "employee-request:attachments": {
+      if (method !== "POST") break;
+      const canManage = ctx.permissions.includes("employee_requests.manage");
+      if (canManage) return addEmployeeRequestAttachment(db, ctx.salonId, route.id, body, actorInfo);
+      requirePermission(ctx, "employee_requests.own.comment");
+      return addEmployeeRequestAttachment(db, ctx.salonId, route.id, body, actorInfo, { ownOnly: true });
+    }
+
+    case "employee-request:action": {
+      const employeeActions = new Set(["answer-info", "cancel"]);
+      if (employeeActions.has(route.action) && !ctx.permissions.includes("employee_requests.manage")) {
+        requirePermission(ctx, route.action === "cancel" ? "employee_requests.own.cancel" : "employee_requests.own.comment");
+        return transitionEmployeeRequest(db, ctx.salonId, route.id, route.action, body, actorInfo, { ownOnly: true, externalAttendanceDb: env.ATTENDANCE_DB || null });
+      }
+      const actionPermission = {
+        receive: "employee_requests.receive", assign: "employee_requests.assign",
+        "start-review": "employee_requests.manage", "request-info": "employee_requests.request_info",
+        approve: "employee_requests.approve", reject: "employee_requests.reject",
+        execute: "employee_requests.execute", complete: "employee_requests.complete",
+        cancel: "employee_requests.manage", reopen: "employee_requests.reopen", "record-exit": "employee_requests.execute",
+        "record-return": "employee_requests.complete",
+      }[route.action] || "employee_requests.manage";
+      requirePermission(ctx, actionPermission);
+      if (["approve", "execute"].includes(route.action)) {
+        const requestRow = await getEmployeeRequest(db, ctx.salonId, route.id, actorInfo);
+        if (requestRow.request_type === "salary_advance" && route.action === "approve") {
+          requirePermission(ctx, "employee_requests.salary_advance.approve");
+        }
+        if (requestRow.request_type === "attendance_correction" && route.action === "execute") {
+          requirePermission(ctx, "employee_requests.attendance_correction.execute");
+        }
+        if (requestRow.request_type === "resignation" && route.action === "execute") {
+          requirePermission(ctx, "employee_requests.resignation.execute");
+        }
+      }
+      return transitionEmployeeRequest(db, ctx.salonId, route.id, route.action, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
+    }
+
     case "hr-employees":
       requireRole(ctx.role, ADMIN_ROLES);
       if (method === "GET" && route.id) return getHrEmployee(db, ctx.salonId, route.id);
@@ -1047,11 +1204,32 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "DELETE" && route.id) return deleteAdminProfile(db, ctx.salonId, route.id, actorInfo);
       break;
 
-    case "files":
-      if (method === "GET" && route.id) return getFileMetadata(db, ctx.salonId, route.id);
-      if (method === "GET") return listFileMetadata(db, ctx.salonId, query);
-      if (method === "POST") return createFileMetadata(db, ctx.salonId, body, actorInfo);
+    case "files": {
+      const fileManager = hasAnyPermissionKey(ctx, ["employees.files.view", "employees.files.manage", "employee_requests.view"]);
+      if (method === "GET" && route.id) {
+        await assertFileAccess(ctx, route.id, false);
+        return getFileMetadata(db, ctx.salonId, route.id);
+      }
+      if (method === "GET") {
+        if (fileManager) return listFileMetadata(db, ctx.salonId, query);
+        if (!ctx.employeeId) throw new AppError(403, "files_r2:employee_link_required");
+        return listFileMetadata(db, ctx.salonId, { ...query, employeeId: ctx.employeeId });
+      }
+      if (method === "POST") {
+        if (fileManager) return createFileMetadata(db, ctx.salonId, body, actorInfo);
+        if (!ctx.employeeId) throw new AppError(403, "files_r2:employee_link_required");
+        const employeeFile = {
+          ...body,
+          employeeId: ctx.employeeId,
+          category: "employee_request",
+          visibility: "private",
+        };
+        delete employeeFile.storageKey;
+        delete employeeFile.storage_key;
+        return createFileMetadata(db, ctx.salonId, employeeFile, actorInfo);
+      }
       break;
+    }
 
     default:
       break;
@@ -1099,8 +1277,11 @@ export async function handleRequest(request, env) {
     touchLogin: route.name === "auth:me",
   });
   if (rawContentRoute) {
+    const fileMetadata = await assertFileAccess(ctx, route.id, request.method === "PUT");
     const response = request.method === "PUT"
-      ? await putFileContent(ctx.coreDb, ctx.salonId, route.id, request, env)
+      ? await putFileContent(ctx.coreDb, ctx.salonId, route.id, request, env, {
+          maxBytes: cleanText(fileMetadata.category) === "employee_request" ? 10 * 1024 * 1024 : 0,
+        })
       : await getFileContent(ctx.coreDb, ctx.salonId, route.id, env);
     if (response instanceof Response) {
       const headers = new Headers(response.headers);
@@ -1135,6 +1316,9 @@ export default {
     }
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }));
+    ctx.waitUntil(Promise.all([
+      expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
+      notifyOverdueEmployeeRequests(env.CORE_DB, cleanText(env.SALON_ID) || "main"),
+    ]));
   },
 };

@@ -426,5 +426,30 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
       existing.id,
     ]
   );
+  const installments = await dbAll(
+    db,
+    `SELECT advance_id, SUM(amount_halalas) AS amount_halalas
+       FROM salary_advance_installments
+      WHERE salon_id = ? AND payroll_entry_id = ? AND status = 'scheduled'
+      GROUP BY advance_id`,
+    [salonId, existing.id]
+  );
+  for (const installment of installments) {
+    const amount = Math.max(0, Number(installment.amount_halalas || 0));
+    await dbRun(
+      db,
+      `UPDATE salary_advance_installments SET status = 'deducted', deducted_at = ?, updated_at = ?
+        WHERE salon_id = ? AND payroll_entry_id = ? AND advance_id = ? AND status = 'scheduled'`,
+      [now, now, salonId, existing.id, installment.advance_id]
+    );
+    await dbRun(
+      db,
+      `UPDATE salary_advances SET paid_halalas = MIN(approved_halalas, paid_halalas + ?),
+       remaining_halalas = MAX(0, remaining_halalas - ?),
+       payment_status = CASE WHEN remaining_halalas <= ? THEN 'repaid' ELSE 'partially_repaid' END,
+       updated_at = ? WHERE salon_id = ? AND id = ?`,
+      [amount, amount, amount, now, salonId, installment.advance_id]
+    );
+  }
   return getPayrollEntry(db, salonId, existing.id);
 }

@@ -6,6 +6,10 @@ import {
   markEmployeeNotificationsRead,
   type EmployeeNotification,
 } from "../../services/employeeHub";
+import {
+  markAllEmployeeRequestNotificationsRead,
+  markEmployeeRequestNotificationRead,
+} from "../../services/employeeRequests";
 import { cleanText, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
 
@@ -15,7 +19,7 @@ type Props = {
   onRefresh?: () => void | Promise<void>;
 };
 
-type FilterKey = "all" | "unread" | "message" | "file" | "leave" | "payroll" | "system";
+type FilterKey = "all" | "unread" | "message" | "file" | "leave" | "payroll" | "employee_request" | "system";
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: "all", label: "الكل" },
@@ -24,6 +28,7 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: "file", label: "ملفات" },
   { key: "leave", label: "إجازات" },
   { key: "payroll", label: "رواتب" },
+  { key: "employee_request", label: "الطلبات" },
   { key: "system", label: "تنبيهات" },
 ];
 
@@ -54,16 +59,22 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
       file: unread.filter((note) => note.type === "file").length,
       leave: unread.filter((note) => note.type === "leave").length,
       payroll: unread.filter((note) => note.type === "payroll").length,
+      employee_request: unread.filter((note) => note.type === "employee_request").length,
     };
   }, [notifications]);
 
   const markAllRead = async () => {
     if (!session.uid) return;
-    const unreadIds = notifications.filter((note) => !note.isRead).map((note) => note.id);
-    if (!unreadIds.length) return;
+    const unread = notifications.filter((note) => !note.isRead);
+    if (!unread.length) return;
+    const coreIds = unread.filter((note) => note.id.startsWith("request_notification_")).map((note) => note.id);
+    const legacyIds = unread.filter((note) => !note.id.startsWith("request_notification_")).map((note) => note.id);
     setBusyId("all");
     try {
-      await markEmployeeNotificationsRead({ notificationIds: unreadIds, readerUid: session.uid });
+      await Promise.all([
+        legacyIds.length ? markEmployeeNotificationsRead({ notificationIds: legacyIds, readerUid: session.uid }) : Promise.resolve(),
+        coreIds.length ? markAllEmployeeRequestNotificationsRead() : Promise.resolve(),
+      ]);
       await Promise.resolve(onRefresh?.());
     } finally {
       setBusyId("");
@@ -75,7 +86,11 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
     setBusyId(note.id);
     try {
       if (!note.isRead) {
-        await markEmployeeNotificationRead({ notificationId: note.id, readerUid: session.uid });
+        if (note.id.startsWith("request_notification_")) {
+          await markEmployeeRequestNotificationRead(note.id);
+        } else {
+          await markEmployeeNotificationRead({ notificationId: note.id, readerUid: session.uid });
+        }
       }
       await Promise.resolve(onRefresh?.());
       if (note.route) {
@@ -136,6 +151,10 @@ export default function EmployeeNotificationsPage({ session, notifications, onRe
         <article className="employee-summary-card">
           <span>رواتب</span>
           <strong>{stats.payroll}</strong>
+        </article>
+        <article className="employee-summary-card">
+          <span>الطلبات</span>
+          <strong>{stats.employee_request}</strong>
         </article>
       </section>
 

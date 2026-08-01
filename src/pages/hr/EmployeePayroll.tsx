@@ -18,6 +18,10 @@ import {
   type EmployeePayrollRecord,
 } from "../../services/employeeHub";
 import { cleanText, type HrSession } from "./shared";
+import {
+  getMyEmployeeRequestPayrollImpact,
+  type EmployeeRequestPayrollImpact,
+} from "../../services/employeeRequests";
 
 function money(value: unknown) {
   const amount = Number(value || 0);
@@ -44,6 +48,7 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("all");
+  const [requestImpact, setRequestImpact] = useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [] });
 
   const profile = session.employeeDoc || session.staffDoc || session.userDoc || {};
   const currentBaseSalary = Number(profile.baseSalary || profile.salary || 0);
@@ -53,8 +58,12 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
     setLoading(true);
     setMessage("");
     try {
-      const rows = await listPayrollRecordsByEmployee(session.uid);
+      const [rows, impact] = await Promise.all([
+        listPayrollRecordsByEmployee(session.uid),
+        getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [] })),
+      ]);
       setRecords(rows);
+      setRequestImpact(impact);
     } catch (error) {
       setMessage(cleanText((error as any)?.message || "تعذر تحميل سجلات الرواتب."));
     } finally {
@@ -98,6 +107,8 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
   const latestNet = Number(latest?.salary ?? latest?.total ?? 0);
   const latestOvertime = Number(latest?.overtime || 0);
   const latestDeductions = Number(latest?.deductions || 0) + Number(latest?.insurance || 0) + Number(latest?.absencePenalties || 0) + Number(latest?.delay || 0);
+  const approvedOvertimeMinutes = requestImpact.overtime.reduce((sum, item) => sum + Number(item.approved_minutes || 0), 0);
+  const activeAdvanceHalalas = requestImpact.advances.reduce((sum, item) => sum + Number(item.remaining_halalas || 0), 0);
 
   if (!session.user) {
     return (
@@ -209,6 +220,54 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
               <p>سيظهر السجل هنا بعد اعتماد راتب الشهر من الإدارة.</p>
             </div>
           ) : null}
+        </div>
+      </section>
+
+      <section className="employee-workspace-panel employee-request-payroll-impact">
+        <div className="employee-workspace-panel__head">
+          <div>
+            <span className="employee-workspace-kicker">الطلبات المالية المعتمدة</span>
+            <h2>الأوفرتايم والصرف المعجل</h2>
+            <p>تظهر هنا الآثار التشغيلية التي تم تنفيذها من مركز طلبات الموظفات.</p>
+          </div>
+        </div>
+
+        <div className="employee-request-payroll-summary">
+          <article>
+            <span>أوفر تايم معتمد</span>
+            <strong>{Math.floor(approvedOvertimeMinutes / 60)} س {approvedOvertimeMinutes % 60} د</strong>
+          </article>
+          <article>
+            <span>رصيد السلف المتبقي</span>
+            <strong>{money(activeAdvanceHalalas / 100)} ر.س</strong>
+          </article>
+          <article>
+            <span>أقساط مجدولة</span>
+            <strong>{requestImpact.installments.filter((item) => item.status === "scheduled").length}</strong>
+          </article>
+        </div>
+
+        <div className="employee-request-payroll-lists">
+          <div>
+            <h3>سجلات الأوفرتايم</h3>
+            {requestImpact.overtime.length ? requestImpact.overtime.map((item) => (
+              <article key={item.id}>
+                <strong>{item.date_key}</strong>
+                <span>{item.approved_minutes} دقيقة معتمدة</span>
+                <small>{item.task_summary || item.reason || item.payout_status}</small>
+              </article>
+            )) : <p>لا يوجد أوفرتايم معتمد من الطلبات.</p>}
+          </div>
+          <div>
+            <h3>الصرف المعجل والأقساط</h3>
+            {requestImpact.advances.length ? requestImpact.advances.map((advance) => (
+              <article key={advance.id}>
+                <strong>{money(Number(advance.approved_halalas || 0) / 100)} ر.س</strong>
+                <span>المتبقي {money(Number(advance.remaining_halalas || 0) / 100)} ر.س</span>
+                <small>{advance.installment_count} قسط • {advance.payment_status}</small>
+              </article>
+            )) : <p>لا توجد سلف منفذة.</p>}
+          </div>
         </div>
       </section>
     </div>

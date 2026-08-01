@@ -10,6 +10,8 @@ type LeaveRequestLike = {
   toDate?: unknown;
   startDate?: unknown;
   endDate?: unknown;
+  durationKind?: unknown;
+  duration_kind?: unknown;
 };
 
 function cleanText(value: unknown) {
@@ -96,6 +98,7 @@ export function buildApprovedLeaveDateKeys(input: {
 
   (input.leaveRequests || [])
     .filter((request) => cleanText(request.status).toLowerCase() === "approved")
+    .filter((request) => cleanText(request.durationKind || request.duration_kind).toLowerCase() !== "partial")
     .filter((request) => leaveRequestMatchesProfile(request, profile, input.extraIds || []))
     .forEach((request) => {
       addDateRange(

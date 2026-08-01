@@ -1,11 +1,14 @@
 ﻿import "../styles/AdminHrMobileShell.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
+  faBell,
   faChartLine,
   faClock,
+  faClipboardList,
   faChevronLeft,
   faChevronRight,
   faEnvelope,
@@ -31,7 +34,14 @@ import CreateStaffAccountPage from "./hr/CreateStaffAccount";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import AdminPermissionRequestsPage from "./hr/AdminPermissionRequests";
+import AdminEmployeeRequestsPage from "./hr/AdminEmployeeRequests";
 import { getPermissionPayrollSummary, listEmployeePermissionRequests } from "../services/employeePermissionRequests";
+import {
+  listEmployeeRequestNotifications,
+  markAllEmployeeRequestNotificationsRead,
+  markEmployeeRequestNotificationRead,
+  type CoreEmployeeRequestNotification,
+} from "../services/employeeRequests";
 import { listEmployeeDirectory } from "../services/employeeDirectory";
 import {
   createEmployeeAbsenceRecord,
@@ -154,6 +164,24 @@ function formatLongDate(value: unknown) {
       year: "numeric",
       month: "long",
       day: "numeric",
+    }).format(new Date(parsed));
+  } catch {
+    return raw;
+  }
+}
+
+function formatRequestNotificationTime(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return raw;
+  try {
+    return new Intl.DateTimeFormat("ar-SA", {
+      timeZone: "Asia/Riyadh",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }).format(new Date(parsed));
   } catch {
     return raw;
@@ -1151,6 +1179,10 @@ export default function AdminHrDashboard() {
   const location = useLocation();
   const { hasPermission, hasAnyPermission, hasAllPermissions } = usePermissions();
   const [pendingPermissionCount, setPendingPermissionCount] = useState(0);
+  const [requestNotifications, setRequestNotifications] = useState<CoreEmployeeRequestNotification[]>([]);
+  const [requestNotificationCount, setRequestNotificationCount] = useState(0);
+  const [requestNotificationsOpen, setRequestNotificationsOpen] = useState(false);
+  const [requestNotificationsLoading, setRequestNotificationsLoading] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -1172,10 +1204,94 @@ export default function AdminHrDashboard() {
     };
   }, [session.uid]);
 
+  const refreshRequestNotifications = useCallback(async () => {
+    if (!session.uid || !hasPermission("employee_requests.view")) {
+      setRequestNotifications([]);
+      setRequestNotificationCount(0);
+      return;
+    }
+    setRequestNotificationsLoading(true);
+    try {
+      const rows = await listEmployeeRequestNotifications(100);
+      const unreadRows = rows.filter((item) => Number(item.is_read) !== 1);
+      setRequestNotifications(unreadRows);
+      setRequestNotificationCount(unreadRows.length);
+    } catch {
+      setRequestNotifications([]);
+      setRequestNotificationCount(0);
+    } finally {
+      setRequestNotificationsLoading(false);
+    }
+  }, [hasPermission, session.uid]);
+
+  useEffect(() => {
+    void refreshRequestNotifications();
+    const timer = window.setInterval(() => void refreshRequestNotifications(), 30_000);
+    const handleNotificationsChanged = () => void refreshRequestNotifications();
+    window.addEventListener("employee-request-notifications-changed", handleNotificationsChanged);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("employee-request-notifications-changed", handleNotificationsChanged);
+    };
+  }, [refreshRequestNotifications]);
+
+  useEffect(() => {
+    if (!requestNotificationsOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".hr-request-notification-shell") && !target?.closest(".hr-request-notification-popover")) {
+        setRequestNotificationsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRequestNotificationsOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [requestNotificationsOpen]);
+
+  const openRequestNotification = useCallback(async (notification: CoreEmployeeRequestNotification) => {
+    if (Number(notification.is_read) !== 1) {
+      try {
+        await markEmployeeRequestNotificationRead(notification.id);
+        setRequestNotifications((current) =>
+          current.filter((item) => item.id !== notification.id)
+        );
+        setRequestNotificationCount((count) => Math.max(0, count - 1));
+        window.dispatchEvent(new CustomEvent("employee-request-notifications-changed"));
+      } catch {
+        // Navigation remains available even if the read state could not be synchronized.
+      }
+    }
+    setRequestNotificationsOpen(false);
+    if (notification.related_id) {
+      navigate(`/admin/requests?request=${encodeURIComponent(notification.related_id)}`);
+    } else {
+      navigate("/admin/requests");
+    }
+  }, [navigate]);
+
+  const markAllRequestNotificationsRead = useCallback(async () => {
+    if (!requestNotificationCount) return;
+    try {
+      await markAllEmployeeRequestNotificationsRead();
+      setRequestNotifications([]);
+      setRequestNotificationCount(0);
+      window.dispatchEvent(new CustomEvent("employee-request-notifications-changed"));
+    } catch {
+      // Keep the current badge when the server rejects the action.
+    }
+  }, [requestNotificationCount]);
+
   const adminNavItems = useMemo(
     () =>
       [
         { to: "/admin/overview", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
+        { to: "/admin/requests", label: "طلبات الموظفات", icon: faClipboardList, badge: requestNotificationCount, permission: "employee_requests.view" as AppPermission },
         { to: "/admin/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
         { to: "/admin/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "attendance.leaves.manage" as AppPermission },
         { to: "/admin/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
@@ -1191,7 +1307,7 @@ export default function AdminHrDashboard() {
       ].filter((item) =>
         item.allOf ? hasAllPermissions(item.allOf) : hasPermission(item.permission)
       ),
-    [hasAllPermissions, hasPermission, pendingPermissionCount]
+    [hasAllPermissions, hasPermission, pendingPermissionCount, requestNotificationCount]
   );
   const adminLandingPath = adminNavItems[0]?.to || "/employee/overview";
   const canOpenDashboard = hasPermission("workspace.dashboard.view");
@@ -1202,6 +1318,7 @@ export default function AdminHrDashboard() {
     "messages.manage",
     "employees.files.view",
     "admin_accounts.view",
+    "employee_requests.view",
   ]);
   const adminSection = useMemo(() => {
     const section = location.pathname.replace(/^\/admin\/?/, "").split("/")[0];
@@ -1210,24 +1327,31 @@ export default function AdminHrDashboard() {
   const isOverviewRoute = adminSection === "overview";
   const isEmployeesRoute = adminSection === "employees";
   const isFilesRoute = adminSection === "files";
+  const isRequestsRoute = adminSection === "requests";
   const isPermissionsRoute = adminSection === "permissions";
   const isCompactWorkspaceRoute =
-    isEmployeesRoute || isFilesRoute || isPermissionsRoute;
+    isEmployeesRoute || isFilesRoute || isPermissionsRoute || isRequestsRoute;
   const compactWorkspaceTitle = isEmployeesRoute
     ? "إدارة الموظفات"
     : isFilesRoute
       ? "ملفات الموظفات"
-      : "إدارة الاستئذانات";
+      : isRequestsRoute
+        ? "طلبات الموظفات"
+        : "إدارة الاستئذانات";
   const compactWorkspaceLoadingText = isEmployeesRoute
     ? "جاري فتح إدارة الموظفات..."
     : isFilesRoute
       ? "جاري فتح ملفات الموظفات..."
-      : "جاري فتح إدارة الاستئذانات...";
+      : isRequestsRoute
+        ? "جاري فتح مركز الطلبات..."
+        : "جاري فتح إدارة الاستئذانات...";
   const compactWorkspaceLoadingHint = isEmployeesRoute
     ? "يتم تجهيز الصلاحيات والجلسة داخل نفس إطار صفحة الموظفات."
     : isFilesRoute
       ? "يتم تجهيز ملفات الموظفات والمرفقات دون توسيع مساحة الصفحة."
-      : "يتم تجهيز طلبات الاستئذان المعتمدة دون توسيع مساحة الصفحة.";
+      : isRequestsRoute
+        ? "يتم تجهيز دورة الاستلام والمراجعة والتنفيذ من Core D1."
+        : "يتم تجهيز طلبات الاستئذان المعتمدة دون توسيع مساحة الصفحة.";
   const isEmployeeProfileRoute = /^\/admin\/employees\/[^/]+/.test(location.pathname);
   const routeMeta = useMemo(() => {
     const meta: Record<string, { kicker: string; title: string; subtitle: string }> = {
@@ -1235,6 +1359,16 @@ export default function AdminHrDashboard() {
         kicker: "الموارد البشرية",
         title: "نظرة عامة على الموارد البشرية",
         subtitle: "ملخص تشغيلي سريع للحضور والطلبات والملفات، بينما تتم إدارة الموظفات من الصفحة المخصصة.",
+      },
+      employees: {
+        kicker: "الموارد البشرية",
+        title: "إدارة الموظفات",
+        subtitle: "ملفات الموظفات والدوام والرواتب والصلاحيات من مساحة موحدة.",
+      },
+      requests: {
+        kicker: "الخدمة الذاتية",
+        title: "مركز طلبات الموظفات",
+        subtitle: "استلام ومراجعة واعتماد وتنفيذ الطلبات مع سجل زمني كامل.",
       },
       permissions: {
         kicker: "الحضور والاستئذان",
@@ -1340,6 +1474,78 @@ export default function AdminHrDashboard() {
     };
   }, [isOverviewRoute, loadData]);
 
+  const renderRequestNotificationButton = () => {
+    if (!hasPermission("employee_requests.view")) return null;
+    return (
+      <div className="hr-request-notification-shell">
+        <button
+          type="button"
+          className={`hr-request-notification-button ${requestNotificationsOpen ? "is-open" : ""}`}
+          onClick={() => {
+            setRequestNotificationsOpen((value) => !value);
+            if (!requestNotificationsOpen) void refreshRequestNotifications();
+          }}
+          aria-label={`تنبيهات طلبات الموظفات${requestNotificationCount ? `، ${requestNotificationCount} غير مقروء` : ""}`}
+          aria-expanded={requestNotificationsOpen}
+          title="تنبيهات طلبات الموظفات"
+        >
+          <FontAwesomeIcon icon={faBell} />
+          {requestNotificationCount > 0 ? (
+            <span>{requestNotificationCount > 99 ? "99+" : requestNotificationCount}</span>
+          ) : null}
+        </button>
+      </div>
+    );
+  };
+
+  const renderRequestNotificationPopover = () => {
+    if (!requestNotificationsOpen || !hasPermission("employee_requests.view") || typeof document === "undefined") return null;
+    return createPortal(
+      <section className="hr-request-notification-popover" aria-label="تنبيهات طلبات الموظفات">
+        <header>
+          <div>
+            <small>التنبيهات</small>
+            <strong>طلبات الموظفات</strong>
+          </div>
+          {requestNotificationCount > 0 ? (
+            <button type="button" onClick={() => void markAllRequestNotificationsRead()}>
+              تعليم الكل كمقروء
+            </button>
+          ) : null}
+        </header>
+        <div className="hr-request-notification-popover__list">
+          {requestNotificationsLoading ? (
+            <p>جاري تحديث التنبيهات...</p>
+          ) : requestNotifications.length ? (
+            requestNotifications.slice(0, 12).map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={Number(item.is_read) === 1 ? "is-read" : "is-unread"}
+                onClick={() => void openRequestNotification(item)}
+              >
+                <span className="hr-request-notification-popover__dot" />
+                <span>
+                  <strong>{item.title}</strong>
+                  {item.body ? <small>{item.body}</small> : null}
+                  <time>{formatRequestNotificationTime(item.created_at)}</time>
+                </span>
+              </button>
+            ))
+          ) : (
+            <p>لا توجد تنبيهات جديدة.</p>
+          )}
+        </div>
+        <footer>
+          <button type="button" onClick={() => { setRequestNotificationsOpen(false); navigate("/admin/requests"); }}>
+            فتح مركز الطلبات
+          </button>
+        </footer>
+      </section>,
+      document.body
+    );
+  };
+
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -1363,9 +1569,9 @@ export default function AdminHrDashboard() {
         <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}`}>
           <DashboardHeader
             theme="admin"
-            title={isCompactWorkspaceRoute ? compactWorkspaceTitle : "جاري تحميل لوحة الموارد البشرية..."}
+            title={isCompactWorkspaceRoute ? routeMeta.title : "جاري تحميل لوحة الموارد البشرية..."}
             subtitle="Queens Salon"
-            className={`hr-shell-header ${isCompactWorkspaceRoute ? "hr-shell-header--compact" : ""}`}
+            className="hr-shell-header hr-shell-header--unified"
             showProfileButton={false}
           />
 
@@ -1435,23 +1641,27 @@ export default function AdminHrDashboard() {
         subtitle="Queens Salon"
         className="hr-mobile-appbar dashboard-header--mobile-shell"
         actions={
+          <>
+            {renderRequestNotificationButton()}
             <InternalPortalSwitcher
               canOpenDashboard={canOpenDashboard}
               canOpenHr={canOpenHr}
               loggingOut={loggingOut}
               onLogout={handleLogout}
               className="hr-mobile-appbar__actions"
-          />
+            />
+          </>
         }
       />
-      <main className={`hr-shell-main ${isEmployeesRoute ? "hr-shell-main--workspace" : ""}`}>
+      <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}`}>
         {!isEmployeeProfileRoute ? <DashboardHeader
           theme="admin"
-          title={isEmployeesRoute ? "إدارة الموظفات" : routeMeta.title}
+          title={routeMeta.title}
           subtitle="Queens Salon"
-          className={`hr-shell-header ${isEmployeesRoute ? "hr-shell-header--compact" : ""}`}
+          className="hr-shell-header hr-shell-header--unified"
           actions={
             <>
+            {renderRequestNotificationButton()}
             <InternalPortalSwitcher
               canOpenDashboard={canOpenDashboard}
               canOpenHr={canOpenHr}
@@ -1494,6 +1704,14 @@ export default function AdminHrDashboard() {
                     onRefresh={() => void loadData(true)}
                     session={session}
                   />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="requests"
+              element={
+                <PermissionRoute permission="employee_requests.view">
+                  <AdminEmployeeRequestsPage session={session} />
                 </PermissionRoute>
               }
             />
@@ -1559,6 +1777,7 @@ export default function AdminHrDashboard() {
           </NavLink>
         ))}
       </nav>
+      {renderRequestNotificationPopover()}
     </div>
   );
 }

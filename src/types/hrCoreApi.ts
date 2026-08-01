@@ -63,6 +63,10 @@ export type CoreLeave = {
   startDate: string;
   endDate: string;
   daysCount: number;
+  durationKind?: "full_day" | "partial" | string;
+  partialStartTime?: string | null;
+  partialEndTime?: string | null;
+  requestId?: string | null;
   employeeNote?: string | null;
   hrNote?: string | null;
   createdAt: string;

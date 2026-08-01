@@ -20,7 +20,7 @@ export type LegacyPermission =
   | "SETTINGS_MANAGE"
   | "USERS_MANAGE";
 
-export const PERMISSION_SCHEMA_VERSION = 3;
+export const PERMISSION_SCHEMA_VERSION = 4;
 
 export type PermissionGroup =
   | "workspace"
@@ -103,6 +103,24 @@ export type AppPermission =
   | "roles.assign"
   | "roles.manage"
   | "permissions.read"
+  | "employee_requests.own.view"
+  | "employee_requests.own.create"
+  | "employee_requests.own.comment"
+  | "employee_requests.own.cancel"
+  | "employee_requests.view"
+  | "employee_requests.manage"
+  | "employee_requests.receive"
+  | "employee_requests.assign"
+  | "employee_requests.request_info"
+  | "employee_requests.approve"
+  | "employee_requests.reject"
+  | "employee_requests.execute"
+  | "employee_requests.complete"
+  | "employee_requests.internal_notes"
+  | "employee_requests.resignation.execute"
+  | "employee_requests.salary_advance.approve"
+  | "employee_requests.attendance_correction.execute"
+  | "employee_requests.reopen"
   | "employee_links.read"
   | "employee_links.manage"
   | "audit.read"
@@ -183,6 +201,25 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "attendance.leaves.manage", label: "إدارة الإجازات", hint: "مراجعة واعتماد ورفض الإجازات.", group: "workforce", action: "manage" },
   { key: "attendance.export", label: "تصدير الحضور", hint: "تصدير تقارير الحضور والانصراف.", group: "workforce", action: "export", sensitive: true },
   { key: "attendance.settings.manage", label: "إعدادات الحضور والبصمة", hint: "إدارة النطاقات والموقع وسياسات البصمة.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.own.view", label: "عرض طلباتي", hint: "عرض الموظفة لطلباتها الخاصة.", group: "workforce", action: "view" },
+  { key: "employee_requests.own.create", label: "إنشاء طلب شخصي", hint: "إنشاء طلبات الموظفة التشغيلية.", group: "workforce", action: "create" },
+  { key: "employee_requests.own.comment", label: "الرد على طلباتي", hint: "إضافة رد ومعلومات إضافية للطلب الشخصي.", group: "workforce", action: "update" },
+  { key: "employee_requests.own.cancel", label: "إلغاء طلباتي", hint: "إلغاء الطلب قبل بدء التنفيذ.", group: "workforce", action: "manage" },
+  { key: "employee_requests.view", label: "عرض مركز الطلبات", hint: "عرض طلبات الموظفات وحالاتها.", group: "workforce", action: "view", sensitive: true },
+  { key: "employee_requests.manage", label: "إدارة الطلبات", hint: "إدارة دورة حياة طلبات الموظفات.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.receive", label: "استلام الطلبات", hint: "تأكيد استلام الطلب من الإدارة.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.assign", label: "تعيين مسؤول الطلب", hint: "تعيين مسؤول لمتابعة الطلب.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.request_info", label: "طلب معلومات إضافية", hint: "إرجاع الطلب للموظفة لاستكمال البيانات.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.approve", label: "الموافقة على الطلبات", hint: "اعتماد الطلب قبل التنفيذ.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.reject", label: "رفض الطلبات", hint: "رفض الطلب مع تسجيل السبب.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.execute", label: "تنفيذ الطلبات", hint: "تنفيذ الأثر التشغيلي للطلب الموافق عليه.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.complete", label: "إكمال الطلبات", hint: "تأكيد اكتمال التنفيذ.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.internal_notes", label: "ملاحظات الطلب الداخلية", hint: "إضافة ملاحظات لا تظهر للموظفة.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.resignation.execute", label: "تنفيذ إنهاء الاستقالة", hint: "تعطيل الحساب بعد إخلاء الطرف وفي الموعد الفعلي.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.salary_advance.approve", label: "اعتماد الصرف المعجل", hint: "اعتماد القيمة وجدولة الاستقطاع.", group: "finance", action: "manage", sensitive: true },
+  { key: "employee_requests.attendance_correction.execute", label: "تنفيذ تصحيح الحضور", hint: "تعديل سجل الحضور الفعلي بعد الاعتماد.", group: "workforce", action: "manage", sensitive: true },
+  { key: "employee_requests.reopen", label: "إعادة فتح الطلب", hint: "إعادة فتح طلب مرفوض أو ملغي للمراجعة.", group: "workforce", action: "manage", sensitive: true },
+
   { key: "payroll.view", label: "عرض الرواتب", hint: "عرض سجلات الرواتب والاستحقاقات.", group: "workforce", action: "view", sensitive: true },
   { key: "payroll.manage", label: "إدارة الرواتب", hint: "إنشاء وتعديل واعتماد الرواتب والخصومات.", group: "workforce", action: "manage", sensitive: true },
   { key: "staffPerformance.view", label: "عرض أداء الموظفات", hint: "عرض مؤشرات أداء الموظفات من الحجوزات والحضور.", group: "workforce", action: "view", sensitive: true },
@@ -270,6 +307,10 @@ const COMMON_INTERNAL: AppPermission[] = [
   "workspace.employee_portal.view",
   "attendance.own.view",
   "messages.view",
+  "employee_requests.own.view",
+  "employee_requests.own.create",
+  "employee_requests.own.comment",
+  "employee_requests.own.cancel",
 ];
 
 export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
@@ -311,6 +352,24 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.settings.manage",
     "payroll.view",
     "payroll.manage",
+    "employee_requests.own.view",
+    "employee_requests.own.create",
+    "employee_requests.own.comment",
+    "employee_requests.own.cancel",
+    "employee_requests.view",
+    "employee_requests.manage",
+    "employee_requests.receive",
+    "employee_requests.assign",
+    "employee_requests.request_info",
+    "employee_requests.approve",
+    "employee_requests.reject",
+    "employee_requests.execute",
+    "employee_requests.complete",
+    "employee_requests.internal_notes",
+    "employee_requests.resignation.execute",
+    "employee_requests.salary_advance.approve",
+    "employee_requests.attendance_correction.execute",
+    "employee_requests.reopen",
     "staffPerformance.view",
     "staffPerformance.manage",
     "recruitment.view",
@@ -363,6 +422,24 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.export",
     "payroll.view",
     "payroll.manage",
+    "employee_requests.own.view",
+    "employee_requests.own.create",
+    "employee_requests.own.comment",
+    "employee_requests.own.cancel",
+    "employee_requests.view",
+    "employee_requests.manage",
+    "employee_requests.receive",
+    "employee_requests.assign",
+    "employee_requests.request_info",
+    "employee_requests.approve",
+    "employee_requests.reject",
+    "employee_requests.execute",
+    "employee_requests.complete",
+    "employee_requests.internal_notes",
+    "employee_requests.resignation.execute",
+    "employee_requests.salary_advance.approve",
+    "employee_requests.attendance_correction.execute",
+    "employee_requests.reopen",
     "staffPerformance.view",
     "staffPerformance.manage",
     "recruitment.view",
@@ -391,6 +468,21 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "reports.export",
     "logs.view",
     "audit.read",
+    "employee_requests.own.view",
+    "employee_requests.own.create",
+    "employee_requests.own.comment",
+    "employee_requests.own.cancel",
+    "employee_requests.view",
+    "employee_requests.manage",
+    "employee_requests.receive",
+    "employee_requests.assign",
+    "employee_requests.request_info",
+    "employee_requests.approve",
+    "employee_requests.reject",
+    "employee_requests.execute",
+    "employee_requests.complete",
+    "employee_requests.internal_notes",
+    "employee_requests.salary_advance.approve",
   ],
   reception: [
     "workspace.dashboard.view",
@@ -409,6 +501,10 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.own.view",
     "attendance.view",
     "messages.view",
+    "employee_requests.own.view",
+    "employee_requests.own.create",
+    "employee_requests.own.comment",
+    "employee_requests.own.cancel",
   ],
   staff: [...COMMON_INTERNAL],
   pending: [],

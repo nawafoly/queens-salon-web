@@ -57,11 +57,15 @@ export async function createFileMetadata(db, salonId, data, actor = {}) {
   return row;
 }
 
-export async function putFileContent(db, salonId, idValue, request, env) {
+export async function putFileContent(db, salonId, idValue, request, env, options = {}) {
   const metadata = await getFileMetadata(db, salonId, idValue);
   const bucket = requireBucket(env);
   const contentType = request.headers.get('Content-Type') || metadata.content_type || 'application/octet-stream';
   const body = await request.arrayBuffer();
+  const maxBytes = Math.max(0, Number(options.maxBytes || 0) || 0);
+  if (maxBytes && body.byteLength > maxBytes) {
+    throw new AppError(413, 'files_r2:file_too_large', `File exceeds the ${maxBytes} byte limit`);
+  }
   await bucket.put(metadata.storage_key, body, { httpMetadata: { contentType } });
   await dbRun(db, 'UPDATE file_metadata SET content_type = ?, size_bytes = ?, updated_at = ? WHERE salon_id = ? AND id = ?', [contentType, body.byteLength, nowIso(), salonId, metadata.id]);
   return getFileMetadata(db, salonId, metadata.id);

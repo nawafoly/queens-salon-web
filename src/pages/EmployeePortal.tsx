@@ -27,12 +27,14 @@ import {
   type EmployeeNotification,
 } from "../services/employeeHub";
 import { logoutFirebase } from "../services/authService";
+import { listEmployeeRequestNotifications } from "../services/employeeRequests";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeNotificationsPage from "./hr/EmployeeNotifications";
 import EmployeeOverviewPage from "./hr/EmployeeOverview";
 import EmployeeLeavePage from "./hr/EmployeeLeave";
 import EmployeePermissionRequestsPage from "./hr/EmployeePermissionRequests";
+import EmployeeRequestsPage from "./hr/EmployeeRequests";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession, type HrSession } from "./hr/shared";
@@ -134,6 +136,7 @@ function getEmployeePortalTitle(pathname: string) {
     files: "الملفات",
     leave: "الإجازات والطلبات",
     permission: "الاستئذانات",
+    requests: "طلباتي",
     payroll: "الراتب",
   };
 
@@ -151,6 +154,7 @@ type EmployeeMorePageProps = {
     leave: number;
     payroll: number;
     profile: number;
+    requests: number;
   };
 };
 
@@ -169,6 +173,14 @@ function EmployeeMorePage({
       icon: faBell,
       badge: notificationCounts.all,
       permission: "workspace.employee_portal.view" as AppPermission,
+    },
+    {
+      to: "/employee/requests",
+      label: "طلباتي",
+      description: "متابعة الطلبات والقرارات والتنفيذ",
+      icon: faPaperPlane,
+      badge: notificationCounts.requests,
+      permission: "employee_requests.own.view" as AppPermission,
     },
     {
       to: "/employee/messages",
@@ -265,13 +277,32 @@ export default function EmployeePortal() {
 
     setNotificationsLoading(true);
     try {
-      const rows = await listEmployeeNotifications({
-        targetUid: session.uid,
-        targetEmployeeId: session.employeeId,
-        limitCount: 200,
-      });
+      const [legacyRows, requestRows] = await Promise.all([
+        listEmployeeNotifications({
+          targetUid: session.uid,
+          targetEmployeeId: session.employeeId,
+          limitCount: 200,
+        }).catch(() => []),
+        hasPermission("employee_requests.own.view")
+          ? listEmployeeRequestNotifications(200).catch(() => [])
+          : Promise.resolve([]),
+      ]);
       if (requestId !== notificationsRequestRef.current) return;
-      setNotifications(rows);
+      const coreRows: EmployeeNotification[] = requestRows.map((row) => ({
+        id: row.id,
+        targetUid: row.target_uid,
+        type: "employee_request",
+        title: row.title,
+        body: row.body || undefined,
+        route: row.related_id ? `/employee/requests/${row.related_id}` : "/employee/requests",
+        isRead: Number(row.is_read) === 1,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        readAt: row.read_at || undefined,
+      }));
+      const merged = new Map<string, EmployeeNotification>();
+      [...coreRows, ...legacyRows].forEach((row) => merged.set(row.id, row));
+      setNotifications(Array.from(merged.values()));
     } catch {
       if (requestId !== notificationsRequestRef.current) return;
       setNotifications([]);
@@ -280,7 +311,7 @@ export default function EmployeePortal() {
         setNotificationsLoading(false);
       }
     }
-  }, [session.employeeId, session.uid]);
+  }, [hasPermission, session.employeeId, session.uid]);
 
   useEffect(() => {
     void loadNotifications();
@@ -329,6 +360,7 @@ export default function EmployeePortal() {
       leave: unread.filter((note) => note.type === "leave" || note.route === "/employee/leave").length,
       payroll: unread.filter((note) => note.type === "payroll" || note.route === "/employee/payroll").length,
       profile: unread.filter((note) => note.type === "system" || note.route === "/employee/profile").length,
+      requests: unread.filter((note) => note.type === "employee_request" || String(note.route || "").startsWith("/employee/requests")).length,
     };
   }, [notifications]);
 
@@ -336,7 +368,7 @@ export default function EmployeePortal() {
   const avatarUrl = resolvePortalAvatarUrl(session);
   const role = cleanPortalText(session.role).toLowerCase();
   const roleLabel = portalRoleLabel(role);
-  const portalSubtitle = "الدوام، الإجازات، الملفات والرسائل";
+  const portalSubtitle = "الدوام، الطلبات، الملفات والرسائل";
   const canOpenHr = hasAnyPermission([
     "employees.view",
     "attendance.view",
@@ -350,7 +382,7 @@ export default function EmployeePortal() {
   const bottomNavItems = [
     { to: "/employee/overview", label: "الرئيسية", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور", icon: faCalendarDays, end: true, permission: "attendance.own.view" as AppPermission },
-    { to: "/employee/leave", label: "الطلبات", icon: faPaperPlane, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/requests", label: "الطلبات", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/more", label: "المزيد", icon: faTableColumns, badge: notificationCounts.all, permission: "workspace.employee_portal.view" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
@@ -358,6 +390,7 @@ export default function EmployeePortal() {
   const desktopNavItems = [
     { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
+    { to: "/employee/requests", label: "طلباتي", description: "المتابعة والقرارات والتنفيذ", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
     { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/permission", label: "الاستئذانات", description: "الخروج المؤقت والعودة", icon: faTriangleExclamation, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
@@ -368,13 +401,13 @@ export default function EmployeePortal() {
   ].filter((item) => hasPermission(item.permission));
 
   const requestItems = [
-    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/attendance", permission: "attendance.own.view" as AppPermission },
-    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/permission?new=1", permission: "workspace.employee_portal.view" as AppPermission },
-    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/messages", permission: "messages.view" as AppPermission },
-    { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/payroll", permission: "workspace.employee_portal.view" as AppPermission },
-    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/leave", permission: "workspace.employee_portal.view" as AppPermission },
-    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/messages", permission: "messages.view" as AppPermission },
-    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/messages", permission: "messages.view" as AppPermission },
+    { label: "طلب تصحيح", description: "تصحيح بصمة أو وقت حضور", icon: faFingerprint, to: "/employee/requests?new=attendance_correction", permission: "employee_requests.own.create" as AppPermission },
+    { label: "طلب استئذان", description: "طلب خروج مؤقت أو تأخير", icon: faTriangleExclamation, to: "/employee/requests?new=permission", permission: "employee_requests.own.create" as AppPermission },
+    { label: "طلب أوفرتايم", description: "تسجيل ساعات عمل إضافية", icon: faChartLine, to: "/employee/requests?new=overtime", permission: "employee_requests.own.create" as AppPermission },
+    { label: "صرف معجل للراتب", description: "طلب مالي يراجع من HR", icon: faWallet, to: "/employee/requests?new=salary_advance", permission: "employee_requests.own.create" as AppPermission },
+    { label: "طلب إجازة", description: "رفع طلب إجازة جديد", icon: faPaperPlane, to: "/employee/requests?new=leave", permission: "employee_requests.own.create" as AppPermission },
+    { label: "طلب خروج وعودة", description: "طلب إداري للمتابعة", icon: faRightFromBracket, to: "/employee/requests?new=exit_return", permission: "employee_requests.own.create" as AppPermission },
+    { label: "طلب استقالة", description: "يرسل للإدارة للمراجعة", icon: faFileLines, to: "/employee/requests?new=resignation", permission: "employee_requests.own.create" as AppPermission },
   ].filter((item) => hasPermission(item.permission));
   const employeeHeaderTitle = getEmployeePortalTitle(location.pathname);
   const renderEmployeeHeaderActions = () => (
@@ -551,6 +584,8 @@ export default function EmployeePortal() {
                 </PermissionRoute>
               }
             />
+            <Route path="requests" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="requests/:requestId" element={<PermissionRoute permission="employee_requests.own.view"><EmployeeRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="profile" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeProfilePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="messages" element={<PermissionRoute permission="messages.view"><EmployeeMessagesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeFilesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
@@ -563,7 +598,7 @@ export default function EmployeePortal() {
         </main>
       </div>
 
-      {hasPermission("workspace.employee_portal.view") ? (
+      {hasPermission("employee_requests.own.create") ? (
         <button
           type="button"
           className="employee-floating-request"

@@ -18,7 +18,6 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
-  listLeaveRequestsByEmployee,
   markEmployeeNotificationRead,
   type EmployeeLeaveRequest,
   type EmployeeNotification,
@@ -29,6 +28,7 @@ import {
   type StaffAttendanceToday,
 } from "../../services/firestoreAttendance";
 import { AppSettingsService } from "../../services/AppSettingsService";
+import { CoreHrService } from "../../services/CoreHrService";
 import {
   listEmployeeBookings,
   type BookingDocWithId,
@@ -345,8 +345,21 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
     async function loadEmployeeLeaveRequests() {
       try {
-        const rows = await listLeaveRequestsByEmployee(session.uid, 120);
-        if (alive) setEmployeeLeaveRequests(rows);
+        const rows = await CoreHrService.listLeaves({ employeeId: attendanceEmployeeId });
+        if (alive) setEmployeeLeaveRequests(rows.map((row) => ({
+          id: row.id,
+          employeeUid: String(row.employeeUid || session.uid),
+          employeeId: row.employeeId,
+          type: row.leaveType as EmployeeLeaveRequest["type"],
+          fromDate: row.startDate,
+          toDate: row.endDate,
+          days: row.daysCount,
+          note: row.employeeNote || undefined,
+          status: row.status as EmployeeLeaveRequest["status"],
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          durationKind: row.durationKind,
+        } as EmployeeLeaveRequest & { durationKind?: string })));
       } catch {
         if (alive) setEmployeeLeaveRequests([]);
       }
@@ -357,7 +370,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [session.uid]);
+  }, [attendanceEmployeeId, session.uid]);
 
   const loadAttendancePermissions = useCallback(async () => {
     if (!session.uid) {
