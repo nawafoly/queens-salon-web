@@ -61,6 +61,7 @@ export type EmployeeTargetLedgerRow = {
   bookingId?: string | null;
   bookingItemId?: string | null;
   serviceId?: string | null;
+  serviceName?: string | null;
   transactionType: string;
   grossAmount: number;
   discountAmount: number;
@@ -68,18 +69,93 @@ export type EmployeeTargetLedgerRow = {
   eligibleAmount: number;
   performedAt: string;
   detailsJson?: string;
+  reason?: string | null;
+  rawEmployeeId?: string | null;
+  bookingItemStaffId?: string | null;
+  bookingStaffId?: string | null;
+  details?: Record<string, unknown>;
+};
+
+export type EmployeeTargetExcludedTransaction = {
+  bookingId?: string | null;
+  bookingItemId?: string | null;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  transactionDate?: string | null;
+  performedAt?: string | null;
+  bookingStatus?: string | null;
+  rawEmployeeId?: string | null;
+  bookingItemStaffId?: string | null;
+  bookingStaffId?: string | null;
+  invoicePaidAmount: number;
+  grossAmount: number;
+  discountAmount: number;
+  eligibleAmount: number;
+  exclusionReason: string;
 };
 
 export type EmployeeTargetDashboard = {
   period: { id?: string | null; payrollMonth?: string | null; monthStart: string; monthEnd: string };
   summary: {
     totalEligibleSales: number;
+    unassignedSales?: number;
+    unmatchedEmployeeIds?: Array<{
+      rawEmployeeId: string;
+      eligibleAmount: number;
+      rowCount: number;
+      bookingIds: string[];
+    }>;
     achievedCount: number;
     expectedBonuses: number;
     closeToNextTierCount: number;
     topEmployee: { employeeId: string; employeeName: string; amount: number } | null;
   };
   rows: EmployeeTargetDashboardRow[];
+};
+
+export type EmployeeTargetMineSummary = EmployeeTargetDashboardRow & {
+  countedBookingCount?: number;
+  countedServiceItemCount?: number;
+  refundDeductionAmount?: number;
+  manualAdjustmentAmount?: number;
+  serviceEligibleAmount?: number;
+  lastUpdatedAt?: string | null;
+  hasTargetPlan?: boolean;
+};
+
+export type EmployeeTargetMine = {
+  period: {
+    id?: string | null;
+    payrollMonth?: string | null;
+    monthStart: string;
+    monthEnd: string;
+    status?: string | null;
+    isClosed?: number | boolean;
+  };
+  summary: EmployeeTargetMineSummary;
+  groupedByService: Array<{ name: string; amount: number }>;
+  groupedByDate: Array<{ date: string; amount: number }>;
+  ledger: EmployeeTargetLedgerRow[];
+  countedTransactions: EmployeeTargetLedgerRow[];
+  refundDeductions: EmployeeTargetLedgerRow[];
+  manualAdjustments: EmployeeTargetLedgerRow[];
+  excludedTransactions: EmployeeTargetExcludedTransaction[];
+  targetCalculation: {
+    planId?: string | null;
+    planName?: string | null;
+    targetAmount: number;
+    netTargetAmount: number;
+    progressRatio: number;
+    achievedTier: EmployeeTargetTier | null;
+    nextTier: EmployeeTargetTier | null;
+    earnedBonusAmount: number;
+    remainingToNextTier: number;
+    cumulativeTiers?: number | boolean;
+    bonusType?: "fixed" | "percentage" | string;
+  };
+  lastUpdatedAt?: string | null;
+  isPayrollClosed?: boolean;
+  authScope?: { ownOnly?: boolean };
 };
 
 export const CoreEmployeeTargetService = {
@@ -89,7 +165,7 @@ export const CoreEmployeeTargetService = {
   },
   async mine(query: Record<string, string | undefined> = {}) {
     const row = await coreApiRequest<Record<string, unknown>>("/api/core/hr/employee-targets/mine", { query });
-    return camel<Record<string, unknown>>(row);
+    return camel<EmployeeTargetMine>(row);
   },
   async details(employeeId: string, query: Record<string, string | undefined> = {}) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employee-targets/${encodeURIComponent(employeeId)}`, { query });

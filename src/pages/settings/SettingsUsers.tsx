@@ -512,6 +512,141 @@ export default function SettingsUsers({
           </div>
         ) : null}
 
+        <section className="accounts-mobile-shell" aria-label="إدارة الحسابات للجوال">
+          <header className="accounts-mobile-hero">
+            <div>
+              <span>Cloudflare D1</span>
+              <h1>{pageTitle}</h1>
+              <p>إدارة الحسابات، الصلاحيات، والربط الوظيفي من مكان واحد.</p>
+            </div>
+            {canCreateAccounts ? (
+              <button type="button" className="accounts-mobile-create" onClick={() => setCreateOpen(true)}>
+                إنشاء
+              </button>
+            ) : null}
+          </header>
+
+          <div className="accounts-mobile-stats" aria-label="ملخص الحسابات">
+            <span><b>{stats.total}</b><small>الإجمالي</small></span>
+            <span><b>{stats.active}</b><small>نشطة</small></span>
+            <span><b>{stats.linked}</b><small>مرتبطة</small></span>
+            <span><b>{stats.unlinked}</b><small>غير مرتبطة</small></span>
+          </div>
+
+          <section className="accounts-mobile-filters" aria-label="تصفية الحسابات">
+            <label className="accounts-mobile-field accounts-mobile-field--search">
+              <span>بحث</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="اسم، بريد، UID" />
+            </label>
+            <label className="accounts-mobile-field">
+              <span>الدور</span>
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
+                <option value="all">كل الأدوار</option>
+                {roleOptions.map((role) => (
+                  <option key={role.role_key} value={role.role_key}>
+                    {getRoleLabel(role.role_key)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="accounts-mobile-field">
+              <span>الحالة</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
+                <option value="all">كل الحالات</option>
+                <option value="active">نشط</option>
+                <option value="pending">قيد المراجعة</option>
+                <option value="disabled">معطل</option>
+                <option value="deleted">محذوف</option>
+              </select>
+            </label>
+            <label className="accounts-mobile-field">
+              <span>الربط</span>
+              <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as LinkFilter)}>
+                <option value="all">الكل</option>
+                <option value="linked">مرتبط</option>
+                <option value="unlinked">غير مرتبط</option>
+              </select>
+            </label>
+          </section>
+
+          <section className="accounts-mobile-list">
+            <div className="accounts-mobile-list__head">
+              <span>الحسابات</span>
+              <strong>{filteredAccounts.length}</strong>
+            </div>
+            {filteredAccounts.map((account) => {
+              const selectedRow = selected?.id === account.id;
+              const role = normalizeRole(account.role || account.primaryRole);
+              const permissionCount = normalizeAppPermissions(account.effectivePermissions || account.permissions || []).length;
+              return (
+                <article key={`mobile-${account.id}`} className={`accounts-mobile-card ${selectedRow ? "is-selected" : ""}`}>
+                  <button
+                    type="button"
+                    className="accounts-mobile-card__main"
+                    onClick={() => {
+                      setSelectedId(account.id);
+                      setPermissionsExpanded(true);
+                    }}
+                  >
+                    <EmployeeAvatar name={account.displayName || account.email} className="accounts-mobile-card__avatar" />
+                    <span className="accounts-mobile-card__copy">
+                      <strong>{account.displayName || account.email || "حساب بدون اسم"}</strong>
+                      <small>{account.email || account.firebaseUid || "-"}</small>
+                      <span>
+                        <em>{getRoleLabel(role)}</em>
+                        <em>{statusLabel(account.status)}</em>
+                        <em>{account.employeeLink?.employeeId ? "مرتبط" : "غير مرتبط"}</em>
+                      </span>
+                    </span>
+                    <span className="accounts-mobile-card__metric">
+                      <b>{permissionCount}</b>
+                      <small>صلاحية</small>
+                    </span>
+                  </button>
+
+                  {selectedRow ? (
+                    <div className="accounts-mobile-card__detail">
+                      <div className="accounts-mobile-detail-grid">
+                        <span><small>الجوال</small><b>{account.phone || "-"}</b></span>
+                        <span><small>آخر دخول</small><b>{formatDate(account.lastLoginAt)}</b></span>
+                        <span><small>ملف الموظفة</small><b>{account.employeeLink?.employee?.name || account.employeeLink?.employeeId || "غير مرتبط"}</b></span>
+                      </div>
+                      <div className="accounts-mobile-actions">
+                        {canEditTarget(account) ? (
+                          <button type="button" className="accounts-mobile-action is-primary" onClick={() => openEdit(account)}>
+                            تعديل
+                          </button>
+                        ) : null}
+                        {canResetPassword ? (
+                          <button type="button" className="accounts-mobile-action" disabled={saving || !account.email} onClick={() => void runAccountAction("reset", account)}>
+                            كلمة المرور
+                          </button>
+                        ) : null}
+                        {canDisableAccounts && account.status === "active" ? (
+                          <button type="button" className="accounts-mobile-action is-danger" disabled={saving} onClick={() => void runAccountAction("disable", account)}>
+                            تعطيل
+                          </button>
+                        ) : null}
+                        {canRestoreAccounts && ["disabled", "deleted"].includes(account.status) ? (
+                          <button type="button" className="accounts-mobile-action is-primary" disabled={saving} onClick={() => void runAccountAction("restore", account)}>
+                            استعادة
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+            {!filteredAccounts.length ? (
+              <div className="accounts-mobile-empty">
+                <strong>لا توجد حسابات مطابقة</strong>
+                <p>غيّر التصفية أو أنشئ حساب D1 جديد.</p>
+              </div>
+            ) : null}
+          </section>
+        </section>
+
         <section className="accounts-toolbar" aria-label="تصفية الحسابات">
           <div className="accounts-toolbar__row">
             <label className="accounts-search">

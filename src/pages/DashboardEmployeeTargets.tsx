@@ -56,6 +56,102 @@ function progressPercent(row: EmployeeTargetDashboardRow) {
   return Math.round(Math.max(0, Math.min(1, Number(row.progressRatio || 0))) * 100);
 }
 
+function targetAmountForRow(row: EmployeeTargetDashboardRow) {
+  return Number(row.currentTargetAmount || row.nextTier?.targetAmount || row.achievedTier?.targetAmount || 0);
+}
+
+function targetNameKey(value: string | undefined | null) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ar-SA");
+}
+
+function emptyTargetDashboard(payrollBounds: ReturnType<typeof payrollMonthBounds>): EmployeeTargetDashboard {
+  return {
+    period: {
+      payrollMonth: payrollBounds.payrollMonth,
+      monthStart: payrollBounds.monthStart,
+      monthEnd: payrollBounds.monthEnd,
+    },
+    summary: {
+      totalEligibleSales: 0,
+      achievedCount: 0,
+      expectedBonuses: 0,
+      closeToNextTierCount: 0,
+      topEmployee: null,
+    },
+    rows: [],
+  };
+}
+
+function zeroTargetRow(employee: CoreHrEmployee): EmployeeTargetDashboardRow {
+  return {
+    employeeId: employee.id,
+    employeeName: employee.name || employee.id,
+    plan: null,
+    achievedTier: null,
+    nextTier: null,
+    currentTargetAmount: 0,
+    totalEligibleServices: 0,
+    totalRefunds: 0,
+    netTargetAmount: 0,
+    earnedBonusAmount: 0,
+    progressRatio: 0,
+    remainingToNextTier: 0,
+    ledger: [],
+  };
+}
+
+function betterTargetRow(left: EmployeeTargetDashboardRow, right: EmployeeTargetDashboardRow) {
+  if (Number(left.netTargetAmount || 0) !== Number(right.netTargetAmount || 0)) {
+    return Number(left.netTargetAmount || 0) > Number(right.netTargetAmount || 0) ? left : right;
+  }
+  if (targetAmountForRow(left) !== targetAmountForRow(right)) return targetAmountForRow(left) > targetAmountForRow(right) ? left : right;
+  return left.plan ? left : right;
+}
+
+function dedupeTargetRows(targetRows: EmployeeTargetDashboardRow[]) {
+  const byId = new Map<string, EmployeeTargetDashboardRow>();
+  for (const row of targetRows) {
+    const existing = byId.get(row.employeeId);
+    byId.set(row.employeeId, existing ? betterTargetRow(existing, row) : row);
+  }
+
+  const rows: EmployeeTargetDashboardRow[] = [];
+  const byName = new Map<string, number>();
+  for (const row of byId.values()) {
+    const nameKey = targetNameKey(row.employeeName);
+    const existingIndex = byName.get(nameKey);
+    if (nameKey && existingIndex !== undefined) {
+      const existing = rows[existingIndex];
+      if (Number(existing.netTargetAmount || 0) === 0 || Number(row.netTargetAmount || 0) === 0) {
+        rows[existingIndex] = betterTargetRow(existing, row);
+        continue;
+      }
+    }
+    byName.set(nameKey, rows.length);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function mergeTargetRowsWithEmployees(
+  targetRows: EmployeeTargetDashboardRow[],
+  employeeRows: CoreHrEmployee[]
+) {
+  const dedupedRows = dedupeTargetRows(targetRows);
+  const byEmployee = new Map(dedupedRows.map((row) => [row.employeeId, row]));
+  const existingNames = new Set(dedupedRows.map((row) => targetNameKey(row.employeeName)).filter(Boolean));
+  for (const employee of employeeRows) {
+    if (!employee.id || byEmployee.has(employee.id)) continue;
+    if (existingNames.has(targetNameKey(employee.name))) continue;
+    byEmployee.set(employee.id, zeroTargetRow(employee));
+  }
+  return Array.from(byEmployee.values()).sort((left, right) => {
+    const amountSort = Number(right.netTargetAmount || 0) - Number(left.netTargetAmount || 0);
+    if (amountSort !== 0) return amountSort;
+    return String(left.employeeName || "").localeCompare(String(right.employeeName || ""), "ar");
+  });
+}
+
 function detailReason(row: EmployeeTargetLedgerRow) {
   try {
     const details = JSON.parse(String(row.detailsJson || "{}")) as Record<string, unknown>;
@@ -96,7 +192,7 @@ function draftFromPlan(plan: EmployeeTargetPlan | null, fallbackStart: string): 
 
 export default function DashboardEmployeeTargets() {
   const initial = currentPayrollParts();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const queryMonth = String(searchParams.get("payrollMonth") || "");
   const [year, setYear] = useState(() => Number(queryMonth.slice(0, 4)) || initial.year);
   const [month, setMonth] = useState(() => Number(queryMonth.slice(5, 7)) || initial.month);
@@ -122,22 +218,20 @@ export default function DashboardEmployeeTargets() {
     setLoading(true);
     setError("");
     try {
-      const [targetRows, planRows, employeeRows] = await Promise.all([
-        CoreEmployeeTargetService.dashboard({ payrollMonth: payrollBounds.payrollMonth }),
+      const [targetResult, planRows, employeeRows] = await Promise.all([
+        CoreEmployeeTargetService.dashboard({
+          payrollMonth: payrollBounds.payrollMonth,
+          rebuild: canManage ? "true" : undefined,
+        }).catch(async () =>
+          CoreEmployeeTargetService.dashboard({ payrollMonth: payrollBounds.payrollMonth })
+        ),
         CoreEmployeeTargetService.plans(),
         CoreHrService.listEmployees({ status: "active" }),
       ]);
+      const targetRows = targetResult || emptyTargetDashboard(payrollBounds);
       setDashboard(targetRows);
       setPlans(planRows);
       setEmployees(employeeRows);
-      const focusedEmployee = String(searchParams.get("employee") || "");
-      if (focusedEmployee) {
-        const row = targetRows.rows.find((item) => item.employeeId === focusedEmployee);
-        if (row) {
-          setSelected(row);
-          setDetails(await CoreEmployeeTargetService.details(row.employeeId, { payrollMonth: payrollBounds.payrollMonth }));
-        }
-      }
       if (!planRows.length && !planDraft.id) {
         setPlanDraft(draftFromPlan(null, payrollBounds.monthStart));
       }
@@ -146,15 +240,19 @@ export default function DashboardEmployeeTargets() {
     } finally {
       setLoading(false);
     }
-  }, [payrollBounds.monthStart, payrollBounds.payrollMonth, planDraft.id, searchParams]);
+  }, [canManage, payrollBounds, payrollBounds.monthStart, payrollBounds.payrollMonth, planDraft.id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const rows = dashboard?.rows || [];
+  const rows = useMemo(
+    () => mergeTargetRowsWithEmployees(dashboard?.rows || [], employees),
+    [dashboard?.rows, employees]
+  );
   const topCards = [
     { label: "المبيعات المؤهلة", value: formatMoney(dashboard?.summary.totalEligibleSales), icon: FiTrendingUp },
+    { label: "مبيعات غير مسندة", value: formatMoney(dashboard?.summary.unassignedSales), icon: FiActivity },
     { label: "حققت التارقت", value: String(dashboard?.summary.achievedCount || 0), icon: FiCheckCircle },
     { label: "البونص المتوقع", value: formatMoney(dashboard?.summary.expectedBonuses), icon: FiTarget },
     { label: "قريبة من الشريحة", value: String(dashboard?.summary.closeToNextTierCount || 0), icon: FiActivity },
@@ -163,7 +261,6 @@ export default function DashboardEmployeeTargets() {
   const openDetails = async (row: EmployeeTargetDashboardRow) => {
     setSelected(row);
     setDetails(null);
-    setSearchParams({ payrollMonth: payrollBounds.payrollMonth, employee: row.employeeId });
     try {
       setDetails(await CoreEmployeeTargetService.details(row.employeeId, { payrollMonth: payrollBounds.payrollMonth }));
     } catch (detailError) {
@@ -177,10 +274,10 @@ export default function DashboardEmployeeTargets() {
     setError("");
     try {
       const result = await CoreEmployeeTargetService.rebuild({ payrollMonth: payrollBounds.payrollMonth });
-      setMessage(`تمت إعادة بناء السجل. عدد الحركات: ${result.inserted}`);
+      setMessage(`تم تحديث مبيعات الشهر. عدد الحركات: ${result.inserted}`);
       await load();
     } catch (rebuildError) {
-      setError(rebuildError instanceof Error ? rebuildError.message : "تعذرت إعادة بناء سجل التارقت.");
+      setError(rebuildError instanceof Error ? rebuildError.message : "تعذر تحديث مبيعات الشهر.");
     } finally {
       setWorking(false);
     }
@@ -253,7 +350,7 @@ export default function DashboardEmployeeTargets() {
         </div>
         <button type="button" onClick={rebuild} disabled={!canManage || working}>
           <FiRefreshCw className={working ? "is-spinning" : ""} />
-          إعادة بناء السجل
+          تحديث المبيعات
         </button>
       </header>
 
@@ -263,7 +360,7 @@ export default function DashboardEmployeeTargets() {
           <input type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
         </label>
         <label>
-          <span>شهر الراتب</span>
+          <span>الشهر</span>
           <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
             {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
               <option key={value} value={value}>{String(value).padStart(2, "0")}</option>
@@ -310,6 +407,7 @@ export default function DashboardEmployeeTargets() {
                 <tr>
                   <th>الموظفة</th>
                   <th>الخطة</th>
+                  <th>التارقت</th>
                   <th>المبيعات المؤهلة</th>
                   <th>التقدم</th>
                   <th>الشريحة</th>
@@ -319,11 +417,12 @@ export default function DashboardEmployeeTargets() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7}>جاري تحميل تارقت الموظفات...</td></tr>
+                  <tr><td colSpan={8}>جاري تحميل تارقت الموظفات...</td></tr>
                 ) : rows.length ? rows.map((row) => (
                   <tr key={row.employeeId}>
                     <td><strong>{row.employeeName}</strong><small>{row.employeeId}</small></td>
                     <td>{row.plan?.name || "لا توجد خطة"}</td>
+                    <td><strong>{formatMoney(targetAmountForRow(row))}</strong></td>
                     <td>{formatMoney(row.netTargetAmount)}</td>
                     <td>
                       <div className="targets-progress">
@@ -336,10 +435,48 @@ export default function DashboardEmployeeTargets() {
                     <td><button type="button" onClick={() => void openDetails(row)}>التفاصيل</button></td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={7}>لا توجد مبيعات مؤهلة في هذه الفترة. استخدم إعادة بناء السجل بعد اكتمال الحجوزات.</td></tr>
+                  <tr><td colSpan={8}>لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</td></tr>
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="targets-mobile-list" aria-label="تقدم الموظفات للجوال">
+            {loading ? (
+              <p className="targets-empty">جاري تحميل تارقت الموظفات...</p>
+            ) : rows.length ? rows.map((row) => (
+              <article key={row.employeeId} className="targets-mobile-card">
+                <header>
+                  <div>
+                    <strong>{row.employeeName}</strong>
+                    <small>{row.employeeId}</small>
+                  </div>
+                  <span>{formatMoney(row.earnedBonusAmount)}</span>
+                </header>
+
+                <div className="targets-mobile-plan">
+                  <span>الخطة</span>
+                  <strong>{row.plan?.name || "لا توجد خطة"}</strong>
+                </div>
+
+                <div className="targets-mobile-progress">
+                  <div className="targets-progress">
+                    <span style={{ width: `${progressPercent(row)}%` }} />
+                  </div>
+                  <small>{progressPercent(row)}% · المتبقي {formatMoney(row.remainingToNextTier)}</small>
+                </div>
+
+                <dl>
+                  <div><dt>التارقت</dt><dd>{formatMoney(targetAmountForRow(row))}</dd></div>
+                  <div><dt>المبيعات المؤهلة</dt><dd>{formatMoney(row.netTargetAmount)}</dd></div>
+                  <div><dt>الشريحة</dt><dd>{row.achievedTier?.tierName || row.nextTier?.tierName || "-"}</dd></div>
+                </dl>
+
+                <button type="button" onClick={() => void openDetails(row)}>عرض التفاصيل</button>
+              </article>
+            )) : (
+              <p className="targets-empty">لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</p>
+            )}
           </div>
         </section>
 
@@ -467,6 +604,7 @@ export default function DashboardEmployeeTargets() {
             </header>
 
             <div className="targets-detail-metrics">
+              <div><span>التارقت</span><strong>{formatMoney(targetAmountForRow(selected))}</strong></div>
               <div><span>المؤهل</span><strong>{formatMoney(selected.netTargetAmount)}</strong></div>
               <div><span>الاسترجاعات</span><strong>{formatMoney(selected.totalRefunds)}</strong></div>
               <div><span>البونص</span><strong>{formatMoney(selected.earnedBonusAmount)}</strong></div>

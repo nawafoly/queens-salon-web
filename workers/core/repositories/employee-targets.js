@@ -17,6 +17,7 @@ import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
 
 const AUTOMATED_TYPES = new Set(['service_completed', 'service_refund', 'package_session', 'reversal']);
+export const UNASSIGNED_TARGET_EMPLOYEE_ID = '__unassigned_employee_sales__';
 export const TARGET_BONUS_SOURCE = 'employee_target_bonus';
 export const TARGET_BONUS_LABEL = 'Target Achievement Bonus';
 
@@ -55,6 +56,154 @@ function parseJson(value, fallback) {
 function readJsonList(value) {
   const parsed = parseJson(value, []);
   return Array.isArray(parsed) ? parsed.map(cleanText).filter(Boolean) : [];
+}
+
+function addAlias(index, alias, employeeId) {
+  const cleanAlias = cleanText(alias);
+  const cleanEmployeeId = cleanText(employeeId);
+  if (!cleanAlias || !cleanEmployeeId || cleanAlias === UNASSIGNED_TARGET_EMPLOYEE_ID) return;
+  if (!index.aliasToEmployeeId.has(cleanAlias)) index.aliasToEmployeeId.set(cleanAlias, cleanEmployeeId);
+}
+
+function addEmployeeRecord(index, row, source) {
+  const id = cleanText(row?.id);
+  if (!id || index.employeesById.has(id)) {
+    if (id) {
+      const existing = index.employeesById.get(id);
+      index.employeesById.set(id, {
+        ...row,
+        ...existing,
+        name: existing?.name || row?.name || row?.display_name || id,
+        source: existing?.source || source,
+      });
+    }
+    return;
+  }
+  index.employeesById.set(id, {
+    ...row,
+    id,
+    name: cleanText(row?.name || row?.display_name) || id,
+    source,
+  });
+}
+
+function targetNameKey(value) {
+  return cleanText(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function createTargetIdentityIndex({ employeeProfiles = [], staffRows = [], appUsers = [], links = [] } = {}) {
+  const index = {
+    aliasToEmployeeId: new Map(),
+    employeesById: new Map(),
+  };
+
+  for (const row of employeeProfiles) {
+    const id = cleanText(row.id);
+    if (!id) continue;
+    addEmployeeRecord(index, row, 'employee_profiles');
+    addAlias(index, id, id);
+    addAlias(index, row.firebase_uid, id);
+  }
+
+  for (const row of staffRows) {
+    const staffId = cleanText(row.id);
+    if (!staffId) continue;
+    const sameUidEmployee = cleanText(row.firebase_uid)
+      ? employeeProfiles.find((employee) => cleanText(employee.firebase_uid) === cleanText(row.firebase_uid))
+      : null;
+    const sameNameEmployee = !sameUidEmployee && targetNameKey(row.name)
+      ? employeeProfiles.find((employee) => targetNameKey(employee.name) === targetNameKey(row.name))
+      : null;
+    const canonicalId = cleanText(sameUidEmployee?.id || sameNameEmployee?.id || staffId);
+    if (!index.employeesById.has(canonicalId)) addEmployeeRecord(index, { ...row, id: canonicalId }, 'staff');
+    addAlias(index, staffId, canonicalId);
+    addAlias(index, row.firebase_uid, canonicalId);
+  }
+
+  for (const link of links.filter((row) => cleanText(row.link_status || 'active') === 'active')) {
+    const employeeId = cleanText(link.employee_id);
+    const userId = cleanText(link.user_id);
+    if (!employeeId || !userId) continue;
+    addAlias(index, employeeId, employeeId);
+    addAlias(index, userId, employeeId);
+  }
+
+  for (const user of appUsers) {
+    const linkedEmployeeId = cleanText(links.find((link) =>
+      cleanText(link.link_status || 'active') === 'active' && cleanText(link.user_id) === cleanText(user.id)
+    )?.employee_id);
+    const directEmployee = cleanText(user.firebase_uid)
+      ? employeeProfiles.find((employee) => cleanText(employee.firebase_uid) === cleanText(user.firebase_uid))
+        || staffRows.find((staff) => cleanText(staff.firebase_uid) === cleanText(user.firebase_uid))
+      : null;
+    const employeeId = cleanText(linkedEmployeeId || directEmployee?.id || '');
+    if (!employeeId) continue;
+    addAlias(index, user.id, employeeId);
+    addAlias(index, user.firebase_uid, employeeId);
+  }
+
+  return index;
+}
+
+async function loadTargetIdentityIndex(db, salonId) {
+  const [employeeProfiles, staffRows, appUsers, links] = await Promise.all([
+    dbAll(db, 'SELECT id, firebase_uid, name, email, phone_normalized, avatar_file_id, status FROM employee_profiles WHERE salon_id = ?', [salonId]),
+    dbAll(db, 'SELECT id, firebase_uid, name, phone_normalized, active, employment_status FROM staff WHERE salon_id = ?', [salonId]),
+    dbAll(db, 'SELECT id, firebase_uid, display_name, email, primary_role, status FROM app_users WHERE salon_id = ?', [salonId]),
+    dbAll(db, "SELECT user_id, employee_id, link_status FROM user_employee_links WHERE salon_id = ? AND link_status = 'active'", [salonId]),
+  ]);
+  return createTargetIdentityIndex({ employeeProfiles, staffRows, appUsers, links });
+}
+
+function resolveTargetEmployeeId(index, rawEmployeeId) {
+  const raw = cleanText(rawEmployeeId);
+  if (!raw || raw === UNASSIGNED_TARGET_EMPLOYEE_ID) return null;
+  return cleanText(index?.aliasToEmployeeId?.get(raw) || raw);
+}
+
+export function canonicalizeTargetLedgerRows(rows = [], index = createTargetIdentityIndex()) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const details = parseJson(row.details_json, {});
+    const rawEmployeeId = cleanText(row.raw_employee_id || details.rawEmployeeId || row.employee_id);
+    const canonicalEmployeeId = resolveTargetEmployeeId(index, rawEmployeeId);
+    const employeeExists = canonicalEmployeeId && index.employeesById.has(canonicalEmployeeId);
+    const employeeId = employeeExists ? canonicalEmployeeId : UNASSIGNED_TARGET_EMPLOYEE_ID;
+    return {
+      ...row,
+      employee_id: employeeId,
+      canonical_employee_id: employeeId,
+      raw_employee_id: rawEmployeeId || null,
+      is_unassigned_target_sale: employeeId === UNASSIGNED_TARGET_EMPLOYEE_ID ? 1 : 0,
+    };
+  });
+}
+
+function groupUnassignedTargetRows(rows = []) {
+  const byRaw = new Map();
+  for (const row of rows) {
+    const raw = cleanText(row.raw_employee_id) || '(empty)';
+    const entry = byRaw.get(raw) || {
+      rawEmployeeId: raw,
+      eligibleAmount: 0,
+      rowCount: 0,
+      bookingIds: new Set(),
+    };
+    entry.eligibleAmount += Number(row.eligible_amount || 0);
+    entry.rowCount += 1;
+    if (cleanText(row.booking_id)) entry.bookingIds.add(cleanText(row.booking_id));
+    byRaw.set(raw, entry);
+  }
+  return [...byRaw.values()].map((entry) => ({
+    ...entry,
+    bookingIds: [...entry.bookingIds],
+  }));
+}
+
+export function targetDashboardInvariant(rows = [], unassignedSales = 0, totalEligibleSales = 0) {
+  const employeeTotal = (Array.isArray(rows) ? rows : [])
+    .filter((row) => cleanText(row.employee_id || row.employeeId) !== UNASSIGNED_TARGET_EMPLOYEE_ID)
+    .reduce((sum, row) => sum + Number(row.net_target_amount ?? row.netTargetAmount ?? 0), 0);
+  return employeeTotal + Number(unassignedSales || 0) === Number(totalEligibleSales || 0);
 }
 
 function statusPlan(value) {
@@ -423,22 +572,56 @@ async function bookingRowsForPeriod(db, salonId, periodStart, periodEnd, booking
             b.total_halalas AS booking_total_halalas,
             i.id AS invoice_id, i.total_halalas AS invoice_total_halalas, i.paid_halalas AS invoice_paid_halalas,
             i.discount_halalas AS invoice_discount_halalas,
-            bi.id AS booking_item_id, bi.service_id, bi.service_name_snapshot, bi.staff_id AS employee_id,
-            bi.category_id, bi.client_package_id, bi.package_reservation_id, bi.package_covered,
+            bi.id AS booking_item_id, bi.service_id, bi.service_name_snapshot,
+            bi.staff_id AS booking_item_staff_id, b.staff_id AS booking_staff_id,
+            COALESCE(NULLIF(bi.staff_id, ''), NULLIF(b.staff_id, '')) AS employee_id,
+            s.category_id, bi.client_package_id, bi.package_reservation_id, bi.package_covered,
             bi.total_halalas, bi.discount_halalas, bi.final_total_halalas,
             COALESCE(bi.booking_date, b.booking_date) AS performed_date,
             COALESCE(bi.start_time, b.start_time, '00:00') AS performed_time
        FROM bookings b
        INNER JOIN booking_items bi ON bi.booking_id = b.id AND bi.salon_id = b.salon_id
        LEFT JOIN invoices i ON i.booking_id = b.id AND i.salon_id = b.salon_id
+       LEFT JOIN services s ON s.id = bi.service_id AND s.salon_id = bi.salon_id
       WHERE b.salon_id = ?
         ${idWhere}
         AND COALESCE(b.deleted_at, '') = ''
-        AND LOWER(COALESCE(b.status, '')) = 'completed'
+        AND LOWER(COALESCE(b.status, '')) <> 'cancelled'
+        AND (
+          LOWER(COALESCE(b.status, '')) = 'completed'
+          OR COALESCE(i.paid_halalas, 0) > 0
+        )
         AND COALESCE(bi.booking_date, b.booking_date) >= ?
         AND COALESCE(bi.booking_date, b.booking_date) <= ?
       ORDER BY b.booking_date, b.start_time, bi.created_at, bi.id`,
     params
+  );
+}
+
+async function bookingAuditRowsForPeriod(db, salonId, periodStart, periodEnd) {
+  return dbAll(
+    db,
+    `SELECT b.id AS booking_id, b.salon_id, b.status AS booking_status, b.booking_date, b.start_time, b.discount_halalas AS booking_discount_halalas,
+            b.total_halalas AS booking_total_halalas,
+            i.id AS invoice_id, i.total_halalas AS invoice_total_halalas, i.paid_halalas AS invoice_paid_halalas,
+            i.discount_halalas AS invoice_discount_halalas,
+            bi.id AS booking_item_id, bi.service_id, bi.service_name_snapshot,
+            bi.staff_id AS booking_item_staff_id, b.staff_id AS booking_staff_id,
+            COALESCE(NULLIF(bi.staff_id, ''), NULLIF(b.staff_id, '')) AS employee_id,
+            s.category_id, bi.client_package_id, bi.package_reservation_id, bi.package_covered,
+            bi.total_halalas, bi.discount_halalas, bi.final_total_halalas,
+            COALESCE(bi.booking_date, b.booking_date) AS performed_date,
+            COALESCE(bi.start_time, b.start_time, '00:00') AS performed_time
+       FROM bookings b
+       INNER JOIN booking_items bi ON bi.booking_id = b.id AND bi.salon_id = b.salon_id
+       LEFT JOIN invoices i ON i.booking_id = b.id AND i.salon_id = b.salon_id
+       LEFT JOIN services s ON s.id = bi.service_id AND s.salon_id = bi.salon_id
+      WHERE b.salon_id = ?
+        AND COALESCE(b.deleted_at, '') = ''
+        AND COALESCE(bi.booking_date, b.booking_date) >= ?
+        AND COALESCE(bi.booking_date, b.booking_date) <= ?
+      ORDER BY b.booking_date, b.start_time, bi.created_at, bi.id`,
+    [salonId, periodStart, periodEnd]
   );
 }
 
@@ -461,10 +644,42 @@ async function refundRowsForPeriod(db, salonId, periodStart, periodEnd, bookingI
   );
 }
 
-function buildServiceLedgerRows(rows, period, now) {
+function resolveBookingRowEmployee(row, identityIndex) {
+  const rawEmployeeId = cleanText(row.booking_item_staff_id) || cleanText(row.booking_staff_id) || cleanText(row.employee_id);
+  if (!identityIndex) {
+    return {
+      rawEmployeeId,
+      employeeId: rawEmployeeId || UNASSIGNED_TARGET_EMPLOYEE_ID,
+      unassigned: !rawEmployeeId,
+    };
+  }
+  const canonicalEmployeeId = resolveTargetEmployeeId(identityIndex, rawEmployeeId);
+  const employeeId = canonicalEmployeeId && identityIndex.employeesById.has(canonicalEmployeeId)
+    ? canonicalEmployeeId
+    : UNASSIGNED_TARGET_EMPLOYEE_ID;
+  return {
+    rawEmployeeId,
+    employeeId,
+    unassigned: employeeId === UNASSIGNED_TARGET_EMPLOYEE_ID,
+  };
+}
+
+function withResolvedBookingEmployees(rows, identityIndex) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const resolution = resolveBookingRowEmployee(row, identityIndex);
+    return {
+      ...row,
+      employee_id: resolution.employeeId,
+      raw_employee_id: resolution.rawEmployeeId,
+      is_unassigned_target_sale: resolution.unassigned ? 1 : 0,
+    };
+  });
+}
+
+function buildServiceLedgerRows(rows, period, now, identityIndex = null) {
+  const resolvedRows = withResolvedBookingEmployees(rows, identityIndex);
   const rowsByBooking = new Map();
-  for (const row of rows) {
-    if (!cleanText(row.employee_id)) continue;
+  for (const row of resolvedRows) {
     if (!rowsByBooking.has(row.booking_id)) rowsByBooking.set(row.booking_id, []);
     rowsByBooking.get(row.booking_id).push(row);
   }
@@ -504,6 +719,10 @@ function buildServiceLedgerRows(rows, period, now) {
           collectedRatio: amount.collectedRatio,
           invoiceId: row.invoice_id || null,
           packageCovered: Number(row.package_covered || 0) === 1,
+          rawEmployeeId: row.raw_employee_id || null,
+          bookingItemStaffId: row.booking_item_staff_id || null,
+          bookingStaffId: row.booking_staff_id || null,
+          employeeResolution: row.is_unassigned_target_sale ? 'unassigned' : 'canonical',
         }),
         created_by_uid: null,
         created_at: now,
@@ -514,10 +733,10 @@ function buildServiceLedgerRows(rows, period, now) {
   return ledger;
 }
 
-function buildRefundLedgerRows(serviceRows, refunds, period, now) {
+function buildRefundLedgerRows(serviceRows, refunds, period, now, identityIndex = null) {
+  const resolvedServiceRows = withResolvedBookingEmployees(serviceRows, identityIndex);
   const serviceByBooking = new Map();
-  for (const row of serviceRows) {
-    if (!cleanText(row.employee_id)) continue;
+  for (const row of resolvedServiceRows) {
     if (!serviceByBooking.has(row.booking_id)) serviceByBooking.set(row.booking_id, []);
     serviceByBooking.get(row.booking_id).push(row);
   }
@@ -551,6 +770,10 @@ function buildRefundLedgerRows(serviceRows, refunds, period, now) {
           refundId: refund.id,
           reason: refund.reason || null,
           method: refund.method || null,
+          rawEmployeeId: row.raw_employee_id || null,
+          bookingItemStaffId: row.booking_item_staff_id || null,
+          bookingStaffId: row.booking_staff_id || null,
+          employeeResolution: row.is_unassigned_target_sale ? 'unassigned' : 'canonical',
         }),
         created_by_uid: refund.created_by_uid || null,
         created_at: now,
@@ -608,10 +831,11 @@ export async function rebuildEmployeeTargetLedgerForPeriod(db, salonId, data = {
         AND SUBSTR(performed_at, 1, 10) <= ?`,
     [salonId, periodStart, periodEnd]
   );
+  const identityIndex = await loadTargetIdentityIndex(db, salonId);
   const serviceRows = await bookingRowsForPeriod(db, salonId, periodStart, periodEnd);
   const refunds = await refundRowsForPeriod(db, salonId, periodStart, periodEnd);
-  const serviceLedger = buildServiceLedgerRows(serviceRows, period, now);
-  const refundLedger = buildRefundLedgerRows(serviceRows, refunds, period, now);
+  const serviceLedger = buildServiceLedgerRows(serviceRows, period, now, identityIndex);
+  const refundLedger = buildRefundLedgerRows(serviceRows, refunds, period, now, identityIndex);
   const rows = await insertLedgerRows(db, [...serviceLedger, ...refundLedger]);
   return { period, inserted: rows.length };
 }
@@ -632,11 +856,12 @@ export async function refreshEmployeeTargetLedgerForBooking(db, salonId, booking
         AND transaction_type IN ('service_completed', 'service_refund', 'package_session', 'reversal')`,
     [salonId, id]
   );
+  const identityIndex = await loadTargetIdentityIndex(db, salonId);
   const serviceRows = await bookingRowsForPeriod(db, salonId, period.month_start, period.month_end, id);
   const refunds = await refundRowsForPeriod(db, salonId, period.month_start, period.month_end, id);
   const rows = await insertLedgerRows(db, [
-    ...buildServiceLedgerRows(serviceRows, period, now),
-    ...buildRefundLedgerRows(serviceRows, refunds, period, now),
+    ...buildServiceLedgerRows(serviceRows, period, now, identityIndex),
+    ...buildRefundLedgerRows(serviceRows, refunds, period, now, identityIndex),
   ]);
   return { inserted: rows.length, period };
 }
@@ -656,6 +881,120 @@ async function ledgerForPeriod(db, salonId, period, employeeId = '') {
       ORDER BY performed_at DESC, created_at DESC`,
     params
   );
+}
+
+function targetLedgerDetails(row) {
+  return parseJson(row?.details_json, {});
+}
+
+function targetLedgerDisplayRow(row) {
+  const details = targetLedgerDetails(row);
+  return {
+    ...row,
+    service_name: cleanText(details.serviceName) || cleanText(row.service_id) || null,
+    reason: cleanText(details.reason) || cleanText(details.notes) || null,
+    raw_employee_id: cleanText(row.raw_employee_id || details.rawEmployeeId) || null,
+    booking_item_staff_id: cleanText(details.bookingItemStaffId) || null,
+    booking_staff_id: cleanText(details.bookingStaffId) || null,
+    details,
+  };
+}
+
+function targetPeriodClosed(period) {
+  const status = cleanText(period?.status || period?.period_status || period?.lock_status).toLowerCase();
+  return ['closed', 'locked', 'posted', 'posted_to_payroll', 'paid'].includes(status);
+}
+
+function decorateTargetSummary(summary) {
+  const nextTarget = Number(summary?.nextTier?.target_amount || 0);
+  const achievedTarget = Number(summary?.achievedTier?.target_amount || 0);
+  const currentTargetAmount = nextTarget || achievedTarget || 0;
+  const netTargetAmount = Number(summary?.net_target_amount || 0);
+  const ledger = (summary?.ledger || []).map(targetLedgerDisplayRow);
+  const progressRatio = currentTargetAmount > 0 ? Math.min(1, Math.max(0, netTargetAmount / currentTargetAmount)) : 0;
+  const positiveServiceRows = ledger.filter((row) =>
+    ['service_completed', 'package_session'].includes(cleanText(row.transaction_type)) && Number(row.eligible_amount || 0) > 0
+  );
+  const manualRows = ledger.filter((row) => cleanText(row.transaction_type) === 'manual_adjustment');
+  const refundRows = ledger.filter((row) => cleanText(row.transaction_type) === 'service_refund' || Number(row.refund_amount || 0) > 0);
+  const lastUpdatedAt = ledger
+    .map((row) => cleanText(row.updated_at || row.created_at || row.performed_at))
+    .filter(Boolean)
+    .sort()
+    .pop() || null;
+  return {
+    ...summary,
+    ledger,
+    current_target_amount: currentTargetAmount,
+    progress_ratio: Math.round(progressRatio * 10000) / 10000,
+    remaining_to_next_tier: summary?.nextTier ? Math.max(0, Number(summary.nextTier.target_amount || 0) - netTargetAmount) : 0,
+    counted_booking_count: new Set(positiveServiceRows.map((row) => cleanText(row.booking_id)).filter(Boolean)).size,
+    counted_service_item_count: new Set(positiveServiceRows.map((row) => cleanText(row.booking_item_id)).filter(Boolean)).size,
+    refund_deduction_amount: refundRows.reduce((sum, row) => sum + Math.max(0, Number(row.refund_amount || 0)), 0),
+    manual_adjustment_amount: manualRows.reduce((sum, row) => sum + Number(row.eligible_amount || 0), 0),
+    service_eligible_amount: positiveServiceRows.reduce((sum, row) => sum + Number(row.eligible_amount || 0), 0),
+    last_updated_at: lastUpdatedAt,
+    has_target_plan: Boolean(summary?.plan),
+  };
+}
+
+function bookingAuditExclusionReason(row, amount, plan, countedSources) {
+  const sourceReference = `${Number(row.package_covered || 0) === 1 ? 'package_session' : 'service'}:${row.booking_item_id}`;
+  const status = cleanText(row.booking_status).toLowerCase();
+  if (countedSources.has(sourceReference)) return '';
+  if (status === 'cancelled') return 'الحجز ملغي';
+  if (!serviceIncludedByPlan(plan, row)) return 'الخدمة خارج خطة التارقت';
+  if (Number(row.invoice_paid_halalas || 0) <= 0) return 'لم يتم تحصيل مبلغ مدفوع';
+  if (amount.eligible <= 0) return 'المبلغ المحصل غير مؤهل للتارقت';
+  return 'غير محتسبة لمنع التكرار أو لعدم اكتمال شروط التارقت';
+}
+
+async function excludedTargetTransactionsForEmployee(db, salonId, period, employeeId, summary, identityIndex) {
+  const auditRows = await bookingAuditRowsForPeriod(db, salonId, period.month_start, period.month_end);
+  const resolvedRows = withResolvedBookingEmployees(auditRows, identityIndex)
+    .filter((row) => cleanText(row.employee_id) === cleanText(employeeId));
+  const rowsByBooking = new Map();
+  for (const row of resolvedRows) {
+    if (!rowsByBooking.has(row.booking_id)) rowsByBooking.set(row.booking_id, []);
+    rowsByBooking.get(row.booking_id).push(row);
+  }
+  const countedSources = new Set((summary.ledger || []).map((row) => cleanText(row.source_reference)).filter(Boolean));
+  const excluded = [];
+  for (const group of rowsByBooking.values()) {
+    const grossWeights = group.map((row) => Math.max(0, Number(row.total_halalas || 0)));
+    const invoiceDiscount = Math.max(0, Number(group[0].invoice_discount_halalas ?? group[0].booking_discount_halalas ?? 0));
+    const explicitItemDiscountTotal = group.reduce((sum, row) => sum + Math.max(0, Number(row.discount_halalas || 0)), 0);
+    const allocatedDiscounts = explicitItemDiscountTotal > 0 ? group.map((row) => Math.max(0, Number(row.discount_halalas || 0))) : distributeAmountByWeights(invoiceDiscount, grossWeights);
+    for (let index = 0; index < group.length; index += 1) {
+      const row = group[index];
+      const amount = eligibleServiceAmount(
+        row,
+        allocatedDiscounts[index] || 0,
+        Number(row.invoice_paid_halalas || 0),
+        Number(row.invoice_total_halalas || row.booking_total_halalas || 0)
+      );
+      const reason = bookingAuditExclusionReason(row, amount, summary.plan, countedSources);
+      if (!reason) continue;
+      excluded.push({
+        booking_id: row.booking_id,
+        booking_item_id: row.booking_item_id,
+        service_id: row.service_id,
+        service_name: cleanText(row.service_name_snapshot) || cleanText(row.service_id) || 'Service',
+        transaction_date: cleanText(row.performed_date || row.booking_date),
+        performed_at: `${row.performed_date || row.booking_date}T${row.performed_time || row.start_time || '00:00'}:00`,
+        booking_status: row.booking_status,
+        raw_employee_id: row.raw_employee_id || null,
+        booking_item_staff_id: row.booking_item_staff_id || null,
+        booking_staff_id: row.booking_staff_id || null,
+        invoice_paid_amount: Number(row.invoice_paid_halalas || 0),
+        gross_amount: amount.gross,
+        discount_amount: amount.discount,
+        eligible_amount: amount.eligible,
+        exclusion_reason: reason,
+      });
+    }
+  }
+  return excluded;
 }
 
 async function summarizeEmployee(db, salonId, period, employeeId, rows) {
@@ -690,26 +1029,49 @@ async function summarizeEmployee(db, salonId, period, employeeId, rows) {
 
 export async function calculateTargetSummaries(db, salonId, data = {}) {
   const period = await resolvePayrollPeriodForTargets(db, salonId, data);
-  const employeeId = optionalText(data.employeeId || data.employee_id);
-  const rows = await ledgerForPeriod(db, salonId, period, employeeId || '');
-  const employeeIds = employeeId
-    ? [employeeId]
-    : [...new Set(rows.map((row) => cleanText(row.employee_id)).filter(Boolean))];
+  const identityIndex = await loadTargetIdentityIndex(db, salonId);
+  const requestedEmployeeId = optionalText(data.employeeId || data.employee_id);
+  const requestedCanonicalId = requestedEmployeeId ? resolveTargetEmployeeId(identityIndex, requestedEmployeeId) || requestedEmployeeId : '';
+  const allRows = await ledgerForPeriod(db, salonId, period, '');
+  const canonicalRows = canonicalizeTargetLedgerRows(allRows, identityIndex);
+  const scopedRows = requestedCanonicalId
+    ? canonicalRows.filter((row) => cleanText(row.employee_id) === requestedCanonicalId)
+    : canonicalRows;
+  const assignedRows = scopedRows.filter((row) => cleanText(row.employee_id) !== UNASSIGNED_TARGET_EMPLOYEE_ID);
+  const unassignedRows = requestedCanonicalId
+    ? []
+    : scopedRows.filter((row) => cleanText(row.employee_id) === UNASSIGNED_TARGET_EMPLOYEE_ID);
+  const employeeIds = requestedCanonicalId
+    ? [requestedCanonicalId]
+    : [
+        ...new Set([
+          ...assignedRows.map((row) => cleanText(row.employee_id)).filter(Boolean),
+          ...identityIndex.employeesById.keys(),
+        ]),
+      ];
   const summaries = [];
   for (const id of employeeIds) {
-    summaries.push(await summarizeEmployee(db, salonId, period, id, rows.filter((row) => cleanText(row.employee_id) === id)));
+    if (!id || id === UNASSIGNED_TARGET_EMPLOYEE_ID) continue;
+    summaries.push(await summarizeEmployee(db, salonId, period, id, assignedRows.filter((row) => cleanText(row.employee_id) === id)));
   }
-  return { period, summaries };
+  const unassignedSales = unassignedRows.reduce((sum, row) => sum + Number(row.eligible_amount || 0), 0);
+  const totalEligibleSales = summaries.reduce((sum, row) => sum + Number(row.net_target_amount || 0), 0) + unassignedSales;
+  return {
+    period,
+    summaries,
+    unassignedSales,
+    unassignedRows,
+    unmatchedEmployeeIds: groupUnassignedTargetRows(unassignedRows),
+    totalEligibleSales,
+    identityIndex,
+  };
 }
 
 export async function listEmployeeTargetDashboard(db, salonId, query = {}) {
   if (cleanText(query.rebuild) === 'true') await rebuildEmployeeTargetLedgerForPeriod(db, salonId, query);
   const result = await calculateTargetSummaries(db, salonId, query);
-  const employees = await dbAll(db, 'SELECT * FROM employee_profiles WHERE salon_id = ? ORDER BY name', [salonId]);
-  const staffRows = await dbAll(db, 'SELECT * FROM staff WHERE salon_id = ? ORDER BY name', [salonId]);
-  const employeeById = new Map([...employees, ...staffRows].map((row) => [cleanText(row.id), row]));
   const rows = result.summaries.map((summary) => {
-    const employee = employeeById.get(summary.employee_id) || {};
+    const employee = result.identityIndex?.employeesById?.get(summary.employee_id) || {};
     const currentTarget = summary.nextTier?.target_amount || summary.achievedTier?.target_amount || 0;
     const progress = currentTarget > 0 ? Math.min(1, Math.max(0, summary.net_target_amount / currentTarget)) : 0;
     return {
@@ -724,10 +1086,16 @@ export async function listEmployeeTargetDashboard(db, salonId, query = {}) {
   const achievedCount = rows.filter((row) => row.achievedTier).length;
   const top = [...rows].sort((left, right) => right.net_target_amount - left.net_target_amount)[0] || null;
   const closeCount = rows.filter((row) => row.nextTier && row.progressRatio >= 0.8).length;
+  const totalEligibleSales = Number(result.totalEligibleSales || 0);
+  if (!targetDashboardInvariant(rows, result.unassignedSales, totalEligibleSales)) {
+    throw new AppError(500, 'employee_targets:dashboard_invariant_failed');
+  }
   return {
     period: result.period,
     summary: {
-      totalEligibleSales: rows.reduce((sum, row) => sum + row.net_target_amount, 0),
+      totalEligibleSales,
+      unassignedSales: Number(result.unassignedSales || 0),
+      unmatchedEmployeeIds: result.unmatchedEmployeeIds || [],
       achievedCount,
       expectedBonuses: rows.reduce((sum, row) => sum + row.earned_bonus_amount, 0),
       topEmployee: top ? { employeeId: top.employee_id, employeeName: top.employeeName, amount: top.net_target_amount } : null,
@@ -739,26 +1107,68 @@ export async function listEmployeeTargetDashboard(db, salonId, query = {}) {
 
 export async function getEmployeeTargetDetails(db, salonId, employeeId, query = {}) {
   const result = await calculateTargetSummaries(db, salonId, { ...query, employeeId });
-  const summary = result.summaries[0] || await summarizeEmployee(db, salonId, result.period, employeeId, []);
+  const canonicalEmployeeId = cleanText(result.summaries[0]?.employee_id || resolveTargetEmployeeId(result.identityIndex, employeeId) || employeeId);
+  const summary = decorateTargetSummary(result.summaries[0] || await summarizeEmployee(db, salonId, result.period, canonicalEmployeeId, []));
   const byService = new Map();
   const byDate = new Map();
   for (const row of summary.ledger) {
-    const service = cleanText(parseJson(row.details_json, {}).serviceName) || cleanText(row.service_id) || 'Service';
+    const service = cleanText(row.service_name) || cleanText(row.service_id) || 'Service';
     byService.set(service, (byService.get(service) || 0) + Number(row.eligible_amount || 0));
     const date = cleanText(row.performed_at).slice(0, 10);
     byDate.set(date, (byDate.get(date) || 0) + Number(row.eligible_amount || 0));
   }
+  const countedTransactions = summary.ledger.filter((row) =>
+    ['service_completed', 'package_session'].includes(cleanText(row.transaction_type)) && Number(row.eligible_amount || 0) > 0
+  );
+  const refundDeductions = summary.ledger.filter((row) =>
+    cleanText(row.transaction_type) === 'service_refund' || Number(row.refund_amount || 0) > 0
+  );
+  const manualAdjustments = summary.ledger.filter((row) => cleanText(row.transaction_type) === 'manual_adjustment');
+  const excludedTransactions = await excludedTargetTransactionsForEmployee(
+    db,
+    salonId,
+    result.period,
+    canonicalEmployeeId,
+    summary,
+    result.identityIndex
+  );
   return {
-    period: result.period,
+    period: {
+      ...result.period,
+      is_closed: targetPeriodClosed(result.period) ? 1 : 0,
+    },
     summary,
     groupedByService: [...byService.entries()].map(([name, amount]) => ({ name, amount })),
     groupedByDate: [...byDate.entries()].map(([date, amount]) => ({ date, amount })),
     ledger: summary.ledger,
+    countedTransactions,
+    refundDeductions,
+    manualAdjustments,
+    excludedTransactions,
+    targetCalculation: {
+      plan_id: summary.plan_id || null,
+      plan_name: summary.plan?.name || null,
+      target_amount: summary.current_target_amount,
+      net_target_amount: summary.net_target_amount,
+      progress_ratio: summary.progress_ratio,
+      achieved_tier: summary.achievedTier || null,
+      next_tier: summary.nextTier || null,
+      earned_bonus_amount: summary.earned_bonus_amount,
+      remaining_to_next_tier: summary.remaining_to_next_tier,
+      cumulative_tiers: Number(summary.plan?.cumulative_tiers || 0) === 1 ? 1 : 0,
+      bonus_type: cleanText(summary.plan?.bonus_type || 'fixed'),
+    },
+    lastUpdatedAt: summary.last_updated_at,
+    isPayrollClosed: targetPeriodClosed(result.period),
+    authScope: { own_only: Boolean(query?.ownOnly) },
   };
 }
 
 export async function createTargetAdjustment(db, salonId, data = {}, actor = {}) {
-  const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
+  const requestedEmployeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
+  const identityIndex = await loadTargetIdentityIndex(db, salonId);
+  const employeeId = requiredId(resolveTargetEmployeeId(identityIndex, requestedEmployeeId) || requestedEmployeeId, 'employeeId');
+  if (!identityIndex.employeesById.has(employeeId)) throw new AppError(404, 'employee_targets:employee_not_found');
   const reason = cleanText(data.reason);
   if (!reason) throw new AppError(400, 'employee_targets:adjustment_reason_required');
   const period = await resolvePayrollPeriodForTargets(db, salonId, data);

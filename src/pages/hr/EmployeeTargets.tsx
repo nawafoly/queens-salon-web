@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FiRefreshCw, FiTarget, FiTrendingUp } from "react-icons/fi";
+import type { ReactNode } from "react";
+import {
+  FiAlertCircle,
+  FiCalendar,
+  FiCheckCircle,
+  FiClock,
+  FiFileText,
+  FiRefreshCw,
+  FiTarget,
+  FiTrendingUp,
+} from "react-icons/fi";
 
 import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
+import { CoreApiError } from "../../services/coreApiClient";
 import {
   CoreEmployeeTargetService,
   type EmployeeTargetLedgerRow,
+  type EmployeeTargetMine,
 } from "../../services/CoreEmployeeTargetService";
 import "../../styles/DashboardEmployeeTargets.css";
 
@@ -21,19 +33,109 @@ function formatMoney(halalas: number | undefined | null) {
   }).format(Number(halalas || 0) / 100);
 }
 
-function progressPercent(summary: any) {
-  const currentTarget = Number(summary?.nextTier?.targetAmount || summary?.achievedTier?.targetAmount || 0);
-  const net = Number(summary?.netTargetAmount || 0);
-  return currentTarget > 0 ? Math.round(Math.min(1, Math.max(0, net / currentTarget)) * 100) : 0;
+function formatPercent(value: number | undefined | null) {
+  return `${(Number(value || 0) * 100).toLocaleString("ar-SA", {
+    maximumFractionDigits: 1,
+  })}%`;
 }
 
-function ledgerLabel(row: EmployeeTargetLedgerRow) {
-  try {
-    const details = JSON.parse(String(row.detailsJson || "{}")) as Record<string, unknown>;
-    return String(details.serviceName || details.reason || row.transactionType || "");
-  } catch {
-    return String(row.transactionType || "");
+function formatDate(value: string | undefined | null) {
+  if (!value) return "—";
+  const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function formatDateTime(value: string | undefined | null) {
+  if (!value) return "—";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return formatDate(value);
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function transactionLabel(row: EmployeeTargetLedgerRow) {
+  if (row.serviceName) return row.serviceName;
+  if (row.reason) return row.reason;
+  if (row.transactionType === "serviceRefund") return "استرجاع";
+  if (row.transactionType === "manualAdjustment") return "تسوية يدوية";
+  if (row.transactionType === "packageSession") return "جلسة باقة";
+  return "خدمة محتسبة";
+}
+
+function targetErrorMessage(error: unknown) {
+  if (error instanceof CoreApiError) {
+    if (error.status === 401) return "انتهت جلسة الدخول. سجلي الدخول مرة أخرى لعرض التارقت.";
+    if (error.code.includes("employee_link_required")) {
+      return "حسابك غير مربوط بملف موظفة نشط. تواصلي مع الإدارة لتفعيل الربط.";
+    }
+    if (error.status === 403) return "لا تملكين صلاحية عرض التارقت لهذا الحساب.";
   }
+  return error instanceof Error ? error.message : "تعذر تحميل بيانات التارقت.";
+}
+
+function TargetState({
+  icon,
+  title,
+  text,
+}: {
+  icon: ReactNode;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="employee-target-state">
+      <span>{icon}</span>
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function LedgerSection({
+  title,
+  subtitle,
+  rows,
+  empty,
+}: {
+  title: string;
+  subtitle: string;
+  rows: EmployeeTargetLedgerRow[];
+  empty: string;
+}) {
+  return (
+    <section className="employee-target-detail-panel">
+      <header>
+        <div>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        <strong>{rows.length}</strong>
+      </header>
+
+      <div className="employee-target-ledger-list">
+        {rows.length ? rows.map((row) => (
+          <article key={row.id}>
+            <div>
+              <strong>{transactionLabel(row)}</strong>
+              <small>{formatDateTime(row.performedAt)} · {row.bookingId || "بدون حجز"}</small>
+            </div>
+            <span>{formatMoney(row.eligibleAmount)}</span>
+          </article>
+        )) : (
+          <p>{empty}</p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export default function EmployeeTargetsPage() {
@@ -41,7 +143,7 @@ export default function EmployeeTargetsPage() {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const payrollBounds = useMemo(() => payrollMonthBounds(year, month), [year, month]);
-  const [data, setData] = useState<Record<string, any> | null>(null);
+  const [data, setData] = useState<EmployeeTargetMine | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -51,7 +153,8 @@ export default function EmployeeTargetsPage() {
     try {
       setData(await CoreEmployeeTargetService.mine({ payrollMonth: payrollBounds.payrollMonth }));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "تعذر تحميل تارقتك.");
+      setData(null);
+      setError(targetErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -61,22 +164,26 @@ export default function EmployeeTargetsPage() {
     void load();
   }, [load]);
 
-  const summary = data?.summary || {};
-  const ledger = (data?.ledger || summary.ledger || []) as EmployeeTargetLedgerRow[];
-  const nextTier = summary.nextTier;
-  const achievedTier = summary.achievedTier;
-  const percent = progressPercent(summary);
-  const remaining = nextTier
-    ? Math.max(0, Number(nextTier.targetAmount || 0) - Number(summary.netTargetAmount || 0))
-    : 0;
+  const summary = data?.summary;
+  const targetAmount = Number(summary?.currentTargetAmount || data?.targetCalculation?.targetAmount || 0);
+  const eligibleSales = Number(summary?.netTargetAmount || 0);
+  const progressRatio = Number(summary?.progressRatio || 0);
+  const remaining = Number(summary?.remainingToNextTier || data?.targetCalculation?.remainingToNextTier || 0);
+  const nextTier = summary?.nextTier || data?.targetCalculation?.nextTier || null;
+  const achievedTier = summary?.achievedTier || data?.targetCalculation?.achievedTier || null;
+  const hasPlan = Boolean(summary?.hasTargetPlan ?? summary?.plan);
+  const hasSales = eligibleSales !== 0 || Boolean((data?.ledger || []).length);
+  const isClosed = Boolean(data?.isPayrollClosed || data?.period?.isClosed);
 
   return (
-    <section className="targets-page employee-targets-page" dir="rtl">
-      <header className="targets-hero">
+    <section className="targets-page employee-targets-page employee-targets-page--staff" dir="rtl">
+      <header className="employee-target-hero">
         <div>
-          <span>My Sales Target</span>
-          <h1>تارقتي وبونص المبيعات</h1>
-          <p>متابعة مبيعاتك المؤهلة من الخدمات المكتملة والبونص المتوقع لدورة الراتب الحالية.</p>
+          <span>تارقتي</span>
+          <h1>تقدم المبيعات والبونص</h1>
+          <p>
+            دورة الراتب من {formatDate(payrollBounds.monthStart)} إلى {formatDate(payrollBounds.monthEnd)}
+          </p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading}>
           <FiRefreshCw className={loading ? "is-spinning" : ""} />
@@ -84,7 +191,7 @@ export default function EmployeeTargetsPage() {
         </button>
       </header>
 
-      <div className="targets-toolbar">
+      <div className="employee-target-month-switcher">
         <label>
           <span>السنة</span>
           <input type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
@@ -97,76 +204,126 @@ export default function EmployeeTargetsPage() {
             ))}
           </select>
         </label>
-        <div className="targets-period">
+        <div>
+          <FiCalendar />
           <span>{payrollBounds.payrollMonth}</span>
           <strong>{payrollBounds.monthStart} إلى {payrollBounds.monthEnd}</strong>
         </div>
       </div>
 
-      {error ? <div className="targets-alert is-error">{error}</div> : null}
+      {loading ? (
+        <TargetState icon={<FiClock />} title="جاري تحميل التارقت" text="نراجع مبيعاتك المحصلة لهذه الدورة." />
+      ) : error ? (
+        <TargetState icon={<FiAlertCircle />} title="تعذر عرض التارقت" text={error} />
+      ) : !hasPlan ? (
+        <TargetState icon={<FiTarget />} title="لا توجد خطة تارقت" text="لم يتم تعيين خطة تارقت لهذه الدورة حتى الآن." />
+      ) : (
+        <>
+          {isClosed ? (
+            <div className="targets-alert is-readonly">دورة الراتب مغلقة. الأرقام المعروضة للقراءة فقط.</div>
+          ) : null}
 
-      <div className="targets-summary-grid">
-        <article>
-          <FiTrendingUp />
-          <span>المبيعات المؤهلة</span>
-          <strong>{formatMoney(summary.netTargetAmount)}</strong>
-        </article>
-        <article>
-          <FiTarget />
-          <span>الشريحة الحالية</span>
-          <strong>{achievedTier?.tierName || nextTier?.tierName || "-"}</strong>
-        </article>
-        <article>
-          <FiTarget />
-          <span>المتبقي للشريحة التالية</span>
-          <strong>{formatMoney(remaining)}</strong>
-        </article>
-        <article>
-          <FiTrendingUp />
-          <span>البونص المتوقع</span>
-          <strong>{formatMoney(summary.earnedBonusAmount)}</strong>
-        </article>
-      </div>
-
-      <section className="targets-main-panel">
-        <div className="targets-panel-head">
-          <div>
-            <h2>تقدم الدورة</h2>
-            <p>{summary.plan?.name || "لا توجد خطة تارقت مفعلة لهذه الفترة."}</p>
-          </div>
-        </div>
-        <div className="employee-target-progress-card">
-          <div className="targets-progress">
-            <span style={{ width: `${percent}%` }} />
-          </div>
-          <strong>{percent}%</strong>
-          <small>المبيعات المؤهلة تحتسب بعد الخصومات، التحصيل، والاسترجاعات.</small>
-        </div>
-      </section>
-
-      <section className="targets-main-panel">
-        <div className="targets-panel-head">
-          <div>
-            <h2>حركاتي المحتسبة</h2>
-            <p>آخر الخدمات والتسويات الداخلة في التارقت.</p>
-          </div>
-        </div>
-        <div className="targets-ledger-list employee-target-ledger">
-          {loading ? (
-            <p className="targets-empty">جاري تحميل التارقت...</p>
-          ) : ledger.length ? ledger.map((row) => (
-            <article key={row.id}>
+          <section className="employee-target-summary-card">
+            <div className="employee-target-summary-card__top">
               <div>
-                <strong>{ledgerLabel(row)}</strong>
-                <small>{String(row.performedAt || "").slice(0, 10)} · {row.transactionType}</small>
+                <span>المبيعات المحصلة</span>
+                <strong>{formatMoney(eligibleSales)}</strong>
               </div>
-              <span>{formatMoney(row.eligibleAmount)}</span>
+              <div>
+                <span>التارقت</span>
+                <strong>{formatMoney(targetAmount)}</strong>
+              </div>
+            </div>
+
+            <div className="employee-target-progress">
+              <span style={{ width: `${Math.min(100, progressRatio * 100)}%` }} />
+            </div>
+
+            <div className="employee-target-summary-card__meta">
+              <span>نسبة الإنجاز: {formatPercent(progressRatio)}</span>
+              <span>الشريحة الحالية: {achievedTier?.tierName || "لم تتحقق بعد"}</span>
+              <span>البونص الحالي: {formatMoney(summary?.earnedBonusAmount)}</span>
+            </div>
+
+            <p>
+              {nextTier
+                ? `متبقي ${formatMoney(remaining)} للحصول على بونص ${formatMoney(nextTier.bonusAmount)}`
+                : "تم تحقيق أعلى شريحة في الخطة الحالية."}
+            </p>
+          </section>
+
+          <section className="employee-target-metrics">
+            <article>
+              <FiCheckCircle />
+              <span>الحجوزات المحتسبة</span>
+              <strong>{summary?.countedBookingCount || 0}</strong>
             </article>
-          )) : (
-            <p className="targets-empty">لا توجد حركات مؤهلة في هذه الدورة حتى الآن.</p>
-          )}
-        </div>
-      </section>
+            <article>
+              <FiFileText />
+              <span>بنود الخدمات</span>
+              <strong>{summary?.countedServiceItemCount || 0}</strong>
+            </article>
+            <article>
+              <FiTrendingUp />
+              <span>خصم الاسترجاعات</span>
+              <strong>{formatMoney(summary?.refundDeductionAmount)}</strong>
+            </article>
+            <article>
+              <FiTarget />
+              <span>آخر تحديث</span>
+              <strong>{formatDateTime(data?.lastUpdatedAt || summary?.lastUpdatedAt)}</strong>
+            </article>
+          </section>
+
+          {!hasSales ? (
+            <TargetState icon={<FiTarget />} title="لا توجد مبيعات مؤهلة بعد" text="أي حجز مدفوع ومكتمل سيظهر هنا بعد تحديث السجل." />
+          ) : null}
+
+          <LedgerSection
+            title="الحركات المحتسبة"
+            subtitle="الخدمات والباقات التي دخلت في حساب التارقت."
+            rows={data?.countedTransactions || []}
+            empty="لا توجد خدمات محتسبة في هذه الدورة."
+          />
+
+          <LedgerSection
+            title="الاسترجاعات"
+            subtitle="أي استرجاع يقلل المبيعات المؤهلة."
+            rows={data?.refundDeductions || []}
+            empty="لا توجد استرجاعات على تارقت هذه الدورة."
+          />
+
+          <LedgerSection
+            title="التسويات اليدوية"
+            subtitle="تعديلات الإدارة إن وجدت، للقراءة فقط."
+            rows={data?.manualAdjustments || []}
+            empty="لا توجد تسويات يدوية."
+          />
+
+          <section className="employee-target-detail-panel">
+            <header>
+              <div>
+                <h2>الحركات المستبعدة</h2>
+                <p>حركات مرتبطة بحسابك لكنها لم تدخل في التارقت مع سبب الاستبعاد.</p>
+              </div>
+              <strong>{data?.excludedTransactions?.length || 0}</strong>
+            </header>
+            <div className="employee-target-ledger-list">
+              {data?.excludedTransactions?.length ? data.excludedTransactions.map((row) => (
+                <article key={`${row.bookingId}-${row.bookingItemId}-${row.exclusionReason}`}>
+                  <div>
+                    <strong>{row.serviceName || "خدمة"}</strong>
+                    <small>{formatDate(row.transactionDate || row.performedAt)} · {row.exclusionReason}</small>
+                  </div>
+                  <span>{formatMoney(row.eligibleAmount)}</span>
+                </article>
+              )) : (
+                <p>لا توجد حركات مستبعدة لهذه الدورة.</p>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </section>
   );
 }

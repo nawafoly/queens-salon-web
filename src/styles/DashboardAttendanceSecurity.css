@@ -448,6 +448,182 @@
   background: #fffafb;
 }
 
+.attendance-discipline-mobile-list,
+.attendance-records-mobile-list {
+  display: none;
+}
+
+.attendance-discipline-mobile-card,
+.attendance-record-mobile-card {
+  min-width: 0;
+  border: 1px solid var(--att-line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(25, 30, 45, .055);
+}
+
+.attendance-discipline-mobile-card header,
+.attendance-record-mobile-card header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.attendance-discipline-mobile-card header strong,
+.attendance-record-mobile-card header strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--att-ink);
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attendance-discipline-mobile-card header small,
+.attendance-record-mobile-card header small {
+  display: block;
+  margin-top: 3px;
+  color: #8a92a3;
+  font-size: .7rem;
+}
+
+.attendance-discipline-mobile-card.is-warning { border-color: #edd59e; }
+.attendance-discipline-mobile-card.is-active { border-color: #b9d8ee; }
+.attendance-discipline-mobile-card.is-danger,
+.attendance-record-mobile-card.is-rejected,
+.attendance-record-mobile-card.is-risk { border-color: #efc0c9; }
+
+.attendance-discipline-mobile-date,
+.attendance-discipline-mobile-shift {
+  display: grid;
+  gap: 3px;
+  margin: 12px 14px 0;
+  padding: 12px;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+
+.attendance-discipline-mobile-date strong,
+.attendance-discipline-mobile-shift strong {
+  color: var(--att-ink);
+  font-weight: 950;
+}
+
+.attendance-discipline-mobile-date small,
+.attendance-discipline-mobile-shift small,
+.attendance-discipline-mobile-shift span {
+  color: #7c8597;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.attendance-discipline-mobile-times,
+.attendance-record-mobile-main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 14px 0;
+}
+
+.attendance-discipline-mobile-times > div,
+.attendance-record-mobile-main > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.attendance-discipline-mobile-times span,
+.attendance-record-mobile-main span {
+  display: block;
+  color: #7c8597;
+  font-size: .68rem;
+  font-weight: 900;
+}
+
+.attendance-discipline-mobile-times strong,
+.attendance-record-mobile-main strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--att-ink);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.attendance-record-mobile-main small {
+  display: block;
+  margin-top: 3px;
+  color: #8a92a3;
+  font-size: .68rem;
+}
+
+.attendance-discipline-mobile-metrics,
+.attendance-record-mobile-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 14px 14px;
+}
+
+.attendance-discipline-mobile-metrics > div,
+.attendance-record-mobile-card dl > div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8f9fb;
+}
+
+.attendance-discipline-mobile-metrics > div.is-wide {
+  grid-column: 1 / -1;
+}
+
+.attendance-discipline-mobile-metrics dt,
+.attendance-record-mobile-card dt {
+  color: #7f8899;
+  font-size: .66rem;
+  font-weight: 850;
+}
+
+.attendance-discipline-mobile-metrics dd,
+.attendance-record-mobile-card dd {
+  margin: 5px 0 0;
+  color: #1d2538;
+  font-size: .78rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.attendance-record-mobile-card header {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+}
+
+.attendance-record-mobile-card .attendance-security-result {
+  min-height: 26px;
+  padding: 0 9px;
+}
+
+.attendance-record-mobile-card .attendance-security-row-action {
+  width: calc(100% - 28px);
+  justify-content: center;
+  margin: 0 14px 14px;
+}
+
+.attendance-record-mobile-reason {
+  margin: 0 14px 12px;
+  padding: 10px 12px;
+  border: 1px solid #f0c4cc;
+  border-radius: 12px;
+  background: #fff7f8;
+  color: #9d1d36;
+  font-size: .74rem;
+  font-weight: 900;
+}
+
 .attendance-security-row-action {
   min-height: 36px;
   display: inline-flex;
@@ -728,4 +904,326 @@
   .attendance-security-device-card > dl,
   .attendance-security-detail dl { grid-template-columns: 1fr; }
   .attendance-security-detail { width: 100%; padding: 18px; }
+}
+
+@media (max-width: 760px) {
+  .attendance-security-page {
+    padding: 0;
+    background: #f4f6f9;
+  }
+
+  .attendance-security-heading {
+    gap: 14px;
+    padding: 20px 16px 16px;
+    border-bottom: 1px solid #e4e8ef;
+    background: #fff;
+  }
+
+  .attendance-security-heading h1 {
+    font-size: 1.42rem;
+    line-height: 1.25;
+  }
+
+  .attendance-security-heading > div > p:last-child {
+    max-width: 28rem;
+    font-size: .82rem;
+    line-height: 1.75;
+  }
+
+  .attendance-security-eyebrow {
+    font-size: .68rem;
+    letter-spacing: .02em;
+  }
+
+  .attendance-security-refresh {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  .attendance-security-shell {
+    min-height: auto;
+    padding: 14px 10px 22px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .attendance-security-tabs {
+    gap: 7px;
+    padding: 0 0 12px;
+    border-bottom: 0;
+    scrollbar-width: none;
+  }
+
+  .attendance-security-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .attendance-security-tabs button {
+    min-height: 40px;
+    padding: 0 13px;
+    border-radius: 12px;
+    background: #fff;
+    color: #596278;
+    box-shadow: 0 7px 20px rgba(20, 26, 40, .055);
+  }
+
+  .attendance-security-tabs button.is-active {
+    box-shadow: 0 10px 22px rgba(91, 0, 22, .18);
+  }
+
+  .attendance-security-toolbar {
+    display: grid;
+    gap: 10px;
+    margin-top: 4px;
+    padding: 12px;
+    border: 1px solid #e2e7ef;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 10px 26px rgba(20, 26, 40, .055);
+  }
+
+  .attendance-security-search {
+    min-width: 0;
+    width: 100%;
+    height: 44px;
+    border-radius: 13px;
+  }
+
+  .attendance-security-search input {
+    min-width: 0;
+    font-size: .82rem;
+  }
+
+  .attendance-security-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .attendance-security-filters > * {
+    min-width: 0;
+  }
+
+  .attendance-security-filters input,
+  .attendance-security-filters select {
+    width: 100%;
+    height: 43px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: .78rem;
+  }
+
+  .attendance-security-export-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .attendance-security-export-actions button {
+    min-width: 0;
+    height: 43px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: .78rem;
+  }
+
+  .attendance-security-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .attendance-security-stats article {
+    min-height: 92px;
+    gap: 6px;
+    padding: 12px;
+    border-radius: 15px;
+    box-shadow: 0 9px 22px rgba(20, 26, 40, .045);
+  }
+
+  .attendance-security-stats article > span {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    font-size: .86rem;
+  }
+
+  .attendance-security-stats small {
+    font-size: .68rem;
+    line-height: 1.45;
+  }
+
+  .attendance-security-stats strong {
+    font-size: 1.06rem;
+    line-height: 1.2;
+  }
+
+  .attendance-discipline-table-wrap,
+  .attendance-records-table-wrap {
+    display: none;
+  }
+
+  .attendance-discipline-mobile-list,
+  .attendance-records-mobile-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .attendance-security-overview-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .attendance-security-panel,
+  .attendance-security-device-card,
+  .attendance-security-alert-list > article,
+  .attendance-security-zone-grid > article {
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(20, 26, 40, .05);
+  }
+
+  .attendance-security-panel > header {
+    padding: 14px;
+  }
+
+  .attendance-security-panel header button {
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #e0e5ed;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .attendance-security-compact-list > button {
+    min-height: 68px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 11px 13px;
+  }
+
+  .attendance-security-compact-list > button > em {
+    grid-column: auto;
+  }
+
+  .attendance-security-device-grid,
+  .attendance-security-zone-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .attendance-security-device-card {
+    padding: 14px;
+  }
+
+  .attendance-security-device-card > header {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .attendance-security-device-card > dl,
+  .attendance-security-zone-grid dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-security-device-card footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-security-device-card footer button {
+    justify-content: center;
+    min-width: 0;
+    padding: 0 9px;
+    font-size: .74rem;
+  }
+
+  .attendance-security-alert-list {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .attendance-security-alert-list > article {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 11px;
+    padding: 13px;
+  }
+
+  .attendance-security-alert-list footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .attendance-security-alert-list footer button {
+    min-width: 0;
+  }
+
+  .attendance-security-zone-grid > article {
+    padding: 14px;
+  }
+
+  .attendance-security-empty {
+    margin-top: 12px;
+    padding: 26px 12px;
+    border: 1px dashed #d8dee8;
+    border-radius: 16px;
+    background: #fff;
+  }
+
+  .attendance-security-detail-backdrop {
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .attendance-security-detail {
+    width: 100%;
+    max-height: 88vh;
+    height: auto;
+    padding: 18px;
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -24px 60px rgba(14, 19, 31, .22);
+  }
+}
+
+@media (max-width: 420px) {
+  .attendance-security-heading {
+    padding-inline: 12px;
+  }
+
+  .attendance-security-shell {
+    padding-inline: 8px;
+  }
+
+  .attendance-security-filters,
+  .attendance-security-export-actions,
+  .attendance-discipline-mobile-times,
+  .attendance-record-mobile-main,
+  .attendance-discipline-mobile-metrics,
+  .attendance-record-mobile-card dl,
+  .attendance-security-device-card > dl,
+  .attendance-security-zone-grid dl {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-discipline-mobile-metrics > div.is-wide {
+    grid-column: auto;
+  }
+
+  .attendance-record-mobile-card header {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .attendance-record-mobile-card header .attendance-security-result {
+    grid-column: 2;
+    width: max-content;
+  }
 }

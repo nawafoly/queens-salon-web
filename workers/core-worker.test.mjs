@@ -48,6 +48,10 @@ class FakeD1 {
       "employee_absences",
       "payroll_periods",
       "payroll_entries",
+      "employee_target_plans",
+      "employee_target_tiers",
+      "employee_target_assignments",
+      "employee_target_ledger",
     ].map((table) => [table, new Map()]));
     this.seedIdentity();
   }
@@ -106,6 +110,10 @@ class FakeD1 {
       "reports.view",
       "payroll.view",
       "payroll.manage",
+      "targets.view",
+      "targets.view_all",
+      "targets.view_own",
+      "targets.manage",
     ];
     for (const permission_key of permissionKeys) {
       this.seed("permissions", { permission_key, group_key: permission_key.split(".")[0], label: permission_key, description: "", sensitive: permission_key.includes("delete") ? 1 : 0, created_at: now, updated_at: now });
@@ -119,7 +127,7 @@ class FakeD1 {
     grantRole("hr", ["accounts.read", "accounts.update", "roles.read", "permissions.read", "employee_links.read", "employee_links.manage", "admin_accounts.view"]);
     grantRole("accountant", ["finance.view", "finance.manage", "reports.view", "audit.read"]);
     grantRole("reception", ["admin_accounts.view", "bookings.view", "bookings.create", "bookings.update"]);
-    grantRole("staff", ["bookings.view"]);
+    grantRole("staff", ["bookings.view", "targets.view_own"]);
 
     const accounts = [
       ["user-owner1", "owner1", "owner@example.com", "Owner", "owner", "active"],
@@ -340,6 +348,155 @@ class FakeD1 {
       return this.rows("payroll_periods")
         .filter((row) => row.salon_id === salonId && row.payroll_month === payrollMonth)
         .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM payroll_periods WHERE salon_id = ? AND id = ?")) {
+      const [salonId, id] = params;
+      return this.rows("payroll_periods")
+        .filter((row) => row.salon_id === salonId && row.id === id)
+        .slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT id, firebase_uid, name, email, phone_normalized, avatar_file_id, status FROM employee_profiles WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("employee_profiles")
+        .filter((row) => row.salon_id === salonId)
+        .map((row) => ({
+          id: row.id,
+          firebase_uid: row.firebase_uid,
+          name: row.name,
+          email: row.email,
+          phone_normalized: row.phone_normalized,
+          avatar_file_id: row.avatar_file_id || null,
+          status: row.status,
+        }));
+    }
+    if (normalized.startsWith("SELECT id, firebase_uid, name, phone_normalized, active, employment_status FROM staff WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("staff")
+        .filter((row) => row.salon_id === salonId)
+        .map((row) => ({
+          id: row.id,
+          firebase_uid: row.firebase_uid,
+          name: row.name,
+          phone_normalized: row.phone_normalized,
+          active: row.active,
+          employment_status: row.employment_status,
+        }));
+    }
+    if (normalized.startsWith("SELECT id, firebase_uid, display_name, email, primary_role, status FROM app_users WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("app_users")
+        .filter((row) => row.salon_id === salonId)
+        .map((row) => ({
+          id: row.id,
+          firebase_uid: row.firebase_uid,
+          display_name: row.display_name,
+          email: row.email,
+          primary_role: row.primary_role,
+          status: row.status,
+        }));
+    }
+    if (normalized.startsWith("SELECT user_id, employee_id, link_status FROM user_employee_links WHERE salon_id = ?")) {
+      const [salonId] = params;
+      return this.rows("user_employee_links")
+        .filter((row) => row.salon_id === salonId && row.link_status === "active")
+        .map((row) => ({ user_id: row.user_id, employee_id: row.employee_id, link_status: row.link_status }));
+    }
+    if (normalized.startsWith("SELECT * FROM employee_target_ledger WHERE salon_id = ?")) {
+      const [salonId, start, end] = params;
+      const employeeId = normalized.includes("AND employee_id = ?") ? params[3] : "";
+      return this.rows("employee_target_ledger")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          String(row.performed_at || "").slice(0, 10) >= start &&
+          String(row.performed_at || "").slice(0, 10) <= end &&
+          (!employeeId || row.employee_id === employeeId)
+        )
+        .sort((a, b) => `${String(b.performed_at || "")}\u0000${String(b.created_at || "")}`.localeCompare(`${String(a.performed_at || "")}\u0000${String(a.created_at || "")}`));
+    }
+    if (normalized.startsWith("SELECT p.*, a.scope_type")) {
+      const [salonId, periodEndA, periodStartA, periodEndB, periodStartB, employeeId] = params;
+      const rows = this.rows("employee_target_assignments")
+        .filter((assignment) => {
+          const plan = this.find("employee_target_plans", salonId, assignment.plan_id);
+          return assignment.salon_id === salonId &&
+            assignment.status === "active" &&
+            plan?.status === "active" &&
+            assignment.effective_start <= periodEndA &&
+            (assignment.effective_end || "9999-12-31") >= periodStartA &&
+            plan.effective_start <= periodEndB &&
+            (plan.effective_end || "9999-12-31") >= periodStartB &&
+            (assignment.scope_type === "default" || (assignment.scope_type === "employee" && assignment.employee_id === employeeId));
+        })
+        .map((assignment) => ({
+          ...this.find("employee_target_plans", salonId, assignment.plan_id),
+          scope_type: assignment.scope_type,
+          assigned_employee_id: assignment.employee_id,
+          assigned_branch_id: assignment.branch_id,
+        }))
+        .sort((left, right) => {
+          const leftRank = left.scope_type === "employee" ? 0 : 1;
+          const rightRank = right.scope_type === "employee" ? 0 : 1;
+          if (leftRank !== rightRank) return leftRank - rightRank;
+          return String(right.effective_start || "").localeCompare(String(left.effective_start || ""));
+        });
+      return rows.slice(0, 1);
+    }
+    if (normalized.startsWith("SELECT * FROM employee_target_tiers WHERE salon_id = ? AND plan_id = ?")) {
+      const [salonId, planId] = params;
+      return this.rows("employee_target_tiers")
+        .filter((row) => row.salon_id === salonId && row.plan_id === planId)
+        .sort((a, b) => Number(a.tier_order || 0) - Number(b.tier_order || 0) || Number(a.target_amount || 0) - Number(b.target_amount || 0));
+    }
+    if (normalized.startsWith("SELECT b.id AS booking_id")) {
+      const salonId = params[0];
+      const hasBookingFilter = normalized.includes("AND b.id = ?");
+      const bookingId = hasBookingFilter ? params[1] : "";
+      const start = hasBookingFilter ? params[2] : params[1];
+      const end = hasBookingFilter ? params[3] : params[2];
+      return this.rows("booking_items")
+        .map((item) => {
+          const booking = this.find("bookings", item.salon_id, item.booking_id);
+          const invoice = this.rows("invoices").find((row) => row.salon_id === item.salon_id && row.booking_id === item.booking_id) || {};
+          const service = this.find("services", item.salon_id, item.service_id) || {};
+          if (!booking) return null;
+          const performedDate = item.booking_date || booking.booking_date;
+          return {
+            booking_id: booking.id,
+            salon_id: booking.salon_id,
+            booking_status: booking.status,
+            booking_date: booking.booking_date,
+            start_time: booking.start_time,
+            booking_discount_halalas: booking.discount_halalas || 0,
+            booking_total_halalas: booking.total_halalas || 0,
+            invoice_id: invoice.id || null,
+            invoice_total_halalas: invoice.total_halalas || 0,
+            invoice_paid_halalas: invoice.paid_halalas || 0,
+            invoice_discount_halalas: invoice.discount_halalas || 0,
+            booking_item_id: item.id,
+            service_id: item.service_id,
+            service_name_snapshot: item.service_name_snapshot,
+            booking_item_staff_id: item.staff_id,
+            booking_staff_id: booking.staff_id,
+            employee_id: item.staff_id || booking.staff_id,
+            category_id: service.category_id || null,
+            client_package_id: item.client_package_id || null,
+            package_reservation_id: item.package_reservation_id || null,
+            package_covered: item.package_covered || 0,
+            total_halalas: item.total_halalas || 0,
+            discount_halalas: item.discount_halalas || 0,
+            final_total_halalas: item.final_total_halalas ?? item.total_halalas ?? 0,
+            performed_date: performedDate,
+            performed_time: item.start_time || booking.start_time || "00:00",
+          };
+        })
+        .filter((row) =>
+          row &&
+          row.salon_id === salonId &&
+          (!bookingId || row.booking_id === bookingId) &&
+          !this.find("bookings", row.salon_id, row.booking_id)?.deleted_at &&
+          row.performed_date >= start &&
+          row.performed_date <= end
+        );
     }
     if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
@@ -1076,6 +1233,96 @@ function seedCore(fake) {
   fake.seed("staff", { id: "staff-a", salon_id: "main", firebase_uid: "staff1", name: "Staff A", phone_normalized: null, active: 1, employment_status: "active", created_at: now, updated_at: now });
 }
 
+function seedEmployeeTargetAuthScenario(fake) {
+  const now = "2027-01-01T00:00:00.000Z";
+  fake.seed("app_users", {
+    id: "user-staff-a",
+    firebase_uid: "staff-a-uid",
+    salon_id: "main",
+    email: "staff-a@example.com",
+    display_name: "Staff A",
+    primary_role: "staff",
+    status: "active",
+    email_verified: 1,
+    created_at: now,
+    updated_at: now,
+  });
+  fake.seed("app_users", {
+    id: "user-staff-unlinked",
+    firebase_uid: "staff-unlinked-uid",
+    salon_id: "main",
+    email: "staff-unlinked@example.com",
+    display_name: "Unlinked Staff",
+    primary_role: "staff",
+    status: "active",
+    email_verified: 1,
+    created_at: now,
+    updated_at: now,
+  });
+  fake.seed("employee_profiles", { id: "emp-a", salon_id: "main", firebase_uid: "staff-a-uid", name: "Employee A", email: "a@example.com", phone_normalized: null, status: "active", created_at: now, updated_at: now });
+  fake.seed("employee_profiles", { id: "emp-b", salon_id: "main", firebase_uid: "staff-b-uid", name: "Employee B", email: "b@example.com", phone_normalized: null, status: "active", created_at: now, updated_at: now });
+  fake.seed("user_employee_links", { id: "link-a", salon_id: "main", user_id: "user-staff-a", employee_id: "emp-a", link_status: "active", linked_at: now, updated_at: now });
+  fake.seed("payroll_periods", { id: "period-2026-07", salon_id: "main", payroll_month: "2026-07", month_start: "2026-06-21", month_end: "2026-07-20", status: "open", created_at: now, updated_at: now });
+  fake.seed("employee_target_plans", {
+    id: "plan-a",
+    salon_id: "main",
+    name: "Plan A",
+    status: "active",
+    effective_start: "2026-01-01",
+    effective_end: null,
+    cumulative_tiers: 0,
+    bonus_type: "fixed",
+    included_service_ids_json: "[]",
+    included_category_ids_json: "[]",
+    excluded_service_ids_json: "[]",
+    excluded_category_ids_json: "[]",
+    created_at: now,
+    updated_at: now,
+  });
+  fake.seed("employee_target_tiers", { id: "tier-a-1", salon_id: "main", plan_id: "plan-a", tier_name: "Tier 1", tier_order: 1, target_amount: 1000000, bonus_amount: 30000, bonus_percent_bps: 0, status: "active", created_at: now, updated_at: now });
+  fake.seed("employee_target_assignments", { id: "assign-default", salon_id: "main", plan_id: "plan-a", scope_type: "default", employee_id: null, branch_id: null, status: "active", effective_start: "2026-01-01", effective_end: null, created_at: now, updated_at: now });
+  fake.seed("employee_target_ledger", {
+    id: "ledger-a",
+    salon_id: "main",
+    employee_id: "emp-a",
+    booking_id: "booking-a",
+    booking_item_id: "item-a",
+    service_id: "svc-a",
+    package_session_id: null,
+    transaction_type: "service_completed",
+    gross_amount: 875000,
+    discount_amount: 0,
+    refund_amount: 0,
+    eligible_amount: 875000,
+    performed_at: "2026-07-10T15:00:00.000Z",
+    payroll_period_id: "period-2026-07",
+    source_reference: "service:item-a",
+    details_json: JSON.stringify({ serviceName: "Service A", rawEmployeeId: "emp-a" }),
+    created_at: now,
+    updated_at: now,
+  });
+  fake.seed("employee_target_ledger", {
+    id: "ledger-b",
+    salon_id: "main",
+    employee_id: "emp-b",
+    booking_id: "booking-b",
+    booking_item_id: "item-b",
+    service_id: "svc-a",
+    package_session_id: null,
+    transaction_type: "service_completed",
+    gross_amount: 500000,
+    discount_amount: 0,
+    refund_amount: 0,
+    eligible_amount: 500000,
+    performed_at: "2026-07-11T15:00:00.000Z",
+    payroll_period_id: "period-2026-07",
+    source_reference: "service:item-b",
+    details_json: JSON.stringify({ serviceName: "Service A", rawEmployeeId: "emp-b" }),
+    created_at: now,
+    updated_at: now,
+  });
+}
+
 function seedDiscount(fake, overrides = {}) {
   const now = "2027-01-01T00:00:00.000Z";
   const code = String(overrides.code || overrides.code_key || "SAVE10").toUpperCase();
@@ -1107,6 +1354,51 @@ function seedDiscount(fake, overrides = {}) {
   fake.seed("discounts", row);
   return row;
 }
+
+test("employee target mine endpoint returns only the linked employee target", async () => {
+  const fake = new FakeD1();
+  seedEmployeeTargetAuthScenario(fake);
+
+  const response = await worker.fetch(request("/api/core/hr/employee-targets/mine?payrollMonth=2026-07", {
+    token: "test:staff-a-uid:staff",
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.data.summary.employee_id, "emp-a");
+  assert.equal(body.data.summary.net_target_amount, 875000);
+  assert.equal(body.data.summary.current_target_amount, 1000000);
+  assert.equal(body.data.summary.remaining_to_next_tier, 125000);
+  assert.equal(body.data.summary.earned_bonus_amount, 0);
+  assert.equal(body.data.authScope.own_only, true);
+  assert.ok(!JSON.stringify(body.data).includes("ledger-b"), "own target response must not include Employee B ledger");
+});
+
+test("employee target detail endpoint rejects another employee for own-only staff accounts", async () => {
+  const fake = new FakeD1();
+  seedEmployeeTargetAuthScenario(fake);
+
+  const response = await worker.fetch(request("/api/core/hr/employee-targets/emp-b?payrollMonth=2026-07", {
+    token: "test:staff-a-uid:staff",
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(body.error, "core_auth:missing_permission");
+});
+
+test("employee target mine endpoint rejects unlinked staff accounts clearly", async () => {
+  const fake = new FakeD1();
+  seedEmployeeTargetAuthScenario(fake);
+
+  const response = await worker.fetch(request("/api/core/hr/employee-targets/mine?payrollMonth=2026-07", {
+    token: "test:staff-unlinked-uid:staff",
+  }), env(fake));
+  const body = await json(response);
+
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assert.equal(body.error, "employee_targets:employee_link_required");
+});
 
 async function createCoreBooking(fake, overrides = {}) {
   const id = overrides.id || "booking-a";

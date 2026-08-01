@@ -1480,6 +1480,16 @@ const Dashboard: React.FC<DashboardProps> = ({
   const refreshRequestIdRef = useRef(0);
   const hasDashboardDataRef = useRef(Boolean(initialDashboardSnapshot));
 
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 992px)");
+    const syncSidebarMode = () => {
+      if (query.matches) setIsSidebarOpen(false);
+    };
+    syncSidebarMode();
+    query.addEventListener("change", syncSidebarMode);
+    return () => query.removeEventListener("change", syncSidebarMode);
+  }, []);
+
   const markDashboardBootstrapped = () => {
     setHasBootstrappedDashboard(true);
     try {
