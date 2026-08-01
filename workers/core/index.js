@@ -119,6 +119,14 @@ import {
   upsertPayrollEntry,
   upsertPayrollPeriod,
 } from './repositories/payroll.js';
+import {
+  createTargetAdjustment,
+  getEmployeeTargetDetails,
+  listEmployeeTargetDashboard,
+  listTargetPlans,
+  rebuildEmployeeTargetLedgerForPeriod,
+  saveTargetPlan,
+} from './repositories/employee-targets.js';
 import { getSetting, listSettings, upsertSetting } from './repositories/settings.js';
 import {
   cancelShiftAssignment,
@@ -403,6 +411,14 @@ function match(url, method) {
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
+  if (path === "/api/core/hr/employee-targets/mine" && method === "GET") return { name: "employee-targets:mine" };
+  if (path === "/api/core/hr/employee-targets/rebuild" && method === "POST") return { name: "employee-targets:rebuild" };
+  if (path === "/api/core/hr/employee-targets/adjustments" && method === "POST") return { name: "employee-targets:adjustments" };
+  const targetPlanDetail = /^\/api\/core\/hr\/employee-targets\/plans\/([^/]+)$/.exec(path);
+  if (targetPlanDetail) return { name: "employee-targets:plan", id: targetPlanDetail[1] };
+  if (path === "/api/core/hr/employee-targets/plans") return { name: "employee-targets:plans" };
+  const targetEmployeeDetail = /^\/api\/core\/hr\/employee-targets\/([^/]+)$/.exec(path);
+  if (targetEmployeeDetail && method === "GET") return { name: "employee-targets:detail", id: targetEmployeeDetail[1] };
   const fileContent = /^\/api\/core\/files\/([^/]+)\/content$/.exec(path);
   if (fileContent && ["GET", "PUT"].includes(method)) return { name: "file:content", id: fileContent[1] };
 
@@ -431,6 +447,7 @@ function match(url, method) {
     ["absences", "/api/core/hr/absences"],
     ["payroll-periods", "/api/core/hr/payroll-periods"],
     ["payroll-entries", "/api/core/hr/payroll-entries"],
+    ["employee-targets", "/api/core/hr/employee-targets"],
     ["settings", "/api/core/settings"],
     ["admin-profiles", "/api/core/admin-profiles"],
     ["files", "/api/core/files"],
@@ -1180,6 +1197,48 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-entry:paid":
       requirePermission(ctx, "payroll.manage");
       if (method === "POST") return markPayrollEntryPaid(db, ctx.salonId, route.id, actorInfo);
+      break;
+
+    case "employee-targets":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["targets.view", "targets.view_all", "payroll.view"]);
+        return listEmployeeTargetDashboard(db, ctx.salonId, query);
+      }
+      break;
+
+    case "employee-targets:detail":
+      requireAnyPermission(ctx, ["targets.view", "targets.view_all", "payroll.view"]);
+      return getEmployeeTargetDetails(db, ctx.salonId, route.id, query);
+
+    case "employee-targets:mine":
+      requirePermission(ctx, "targets.view_own");
+      if (!ctx.employeeId) throw new AppError(403, "employee_targets:employee_link_required");
+      return getEmployeeTargetDetails(db, ctx.salonId, ctx.employeeId, query);
+
+    case "employee-targets:plans":
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["targets.view", "targets.manage", "payroll.view"]);
+        return listTargetPlans(db, ctx.salonId);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "targets.manage");
+        return saveTargetPlan(db, ctx.salonId, body, actorInfo);
+      }
+      break;
+
+    case "employee-targets:plan":
+      requirePermission(ctx, "targets.manage");
+      if (method === "PATCH" || method === "POST") return saveTargetPlan(db, ctx.salonId, { ...body, id: route.id }, actorInfo);
+      break;
+
+    case "employee-targets:rebuild":
+      requirePermission(ctx, "targets.manage");
+      if (method === "POST") return rebuildEmployeeTargetLedgerForPeriod(db, ctx.salonId, body);
+      break;
+
+    case "employee-targets:adjustments":
+      requirePermission(ctx, "targets.adjust");
+      if (method === "POST") return createTargetAdjustment(db, ctx.salonId, body, actorInfo);
       break;
 
     case "settings": {

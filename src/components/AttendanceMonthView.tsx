@@ -27,6 +27,7 @@ import { resolveStaffScheduleVersionForDate } from "../helpers/hr/staffScheduleH
 import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
 import type { EmployeePermissionRequest } from "../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../types/hrCoreApi";
+import "../styles/AttendanceMonthView.css";
 
 type AttendanceViewerMode = "employee" | "admin";
 
@@ -402,6 +403,9 @@ function recordLocationLabel(record: AttendanceRecord) {
 
 function statusTone(status: AttendanceStatus) {
   if (status === "present") return "complete";
+  if (status === "late") return "late";
+  if (status === "missing_hours") return "partial";
+  if (status === "in_progress") return "partial";
   if (status === "partial" || status === "today_pending") return "partial";
   if (status === "absent") return "absent";
   if (status === "off_day") return "off-day";
@@ -411,7 +415,10 @@ function statusTone(status: AttendanceStatus) {
 
 function statusLabel(status: AttendanceStatus) {
   if (status === "present") return "حضور مكتمل";
-  if (status === "partial") return "يحتاج إكمال";
+  if (status === "late") return "متأخر";
+  if (status === "missing_hours") return "ناقص ساعات";
+  if (status === "in_progress") return "بانتظار الانصراف";
+  if (status === "partial") return "بصمة تحتاج إكمال";
   if (status === "absent") return "غياب";
   if (status === "off_day") return "يوم راحة";
   if (status === "leave") return "إجازة";
@@ -563,6 +570,18 @@ export default function AttendanceMonthView({
   const hasOvertime =
     selectedComputation.overtimeHours > 0.001;
 
+  const currentMonthKey = todayKey.slice(0, 7);
+  const canGoNextMonth = safeMonthKey < currentMonthKey;
+
+  const goToPreviousMonth = () => {
+    onMonthChange(shiftMonth(safeMonthKey, -1));
+  };
+
+  const goToNextMonth = () => {
+    if (!canGoNextMonth) return;
+    onMonthChange(shiftMonth(safeMonthKey, 1));
+  };
+
   const goToToday = () => {
     const currentToday = getTodayAttendanceDateKey();
     onMonthChange(currentToday.slice(0, 7));
@@ -570,7 +589,7 @@ export default function AttendanceMonthView({
   };
 
   return (
-    <section className={["attendance-month", className].filter(Boolean).join(" ")} dir="rtl">
+    <section className={["attendance-month", "attendance-month--premium-v3", className].filter(Boolean).join(" ")} dir="rtl">
       {showSummaryTools ? (
         <div className="attendance-month__summary attendance-month__command-center">
           <div className="attendance-month__command-intro">
@@ -585,17 +604,6 @@ export default function AttendanceMonthView({
           </div>
 
           <div className="attendance-month__command-controls">
-            <label className="attendance-month__month-control">
-              <span className="attendance-month__control-label">الشهر المعروض</span>
-              <span className="attendance-month__control-field">
-                <FontAwesomeIcon icon={faCalendarDay} />
-                <input
-                  type="month"
-                  value={safeMonthKey}
-                  onChange={(event) => onMonthChange(normalizeMonthKey(event.target.value))}
-                />
-              </span>
-            </label>
             <button
               type="button"
               className="attendance-month__refresh-button"
@@ -630,7 +638,7 @@ export default function AttendanceMonthView({
           <button
             type="button"
             className="attendance-month__arrow attendance-month__arrow--prev"
-            onClick={() => onMonthChange(shiftMonth(safeMonthKey, -1))}
+            onClick={goToPreviousMonth}
             aria-label="الشهر السابق"
           >
             <FontAwesomeIcon icon={faChevronRight} />
@@ -639,6 +647,18 @@ export default function AttendanceMonthView({
             <span>تقويم الحضور</span>
             <h3>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</h3>
           </div>
+          <label className="attendance-month__calendar-month-control attendance-month__month-control">
+            <span className="attendance-month__control-label">الشهر المعروض</span>
+            <span className="attendance-month__control-field">
+              <FontAwesomeIcon icon={faCalendarDay} />
+              <input
+                type="month"
+                value={safeMonthKey}
+                max={currentMonthKey}
+                onChange={(event) => onMonthChange(normalizeMonthKey(event.target.value))}
+              />
+            </span>
+          </label>
           <div className="attendance-month__calendar-actions">
             <button type="button" className="attendance-month__today-button" onClick={goToToday}>
               <FontAwesomeIcon icon={faCalendarDay} />
@@ -647,7 +667,8 @@ export default function AttendanceMonthView({
             <button
               type="button"
               className="attendance-month__arrow attendance-month__arrow--next"
-              onClick={() => onMonthChange(shiftMonth(safeMonthKey, 1))}
+              onClick={goToNextMonth}
+              disabled={!canGoNextMonth}
               aria-label="الشهر التالي"
             >
               <FontAwesomeIcon icon={faChevronLeft} />
@@ -686,7 +707,8 @@ export default function AttendanceMonthView({
         </div>
         <div className="attendance-month__legend" aria-label="دليل حالات الحضور">
           <span className="is-complete">حاضر</span>
-          <span className="is-partial">متأخر</span>
+          <span className="is-late">متأخر</span>
+          <span className="is-partial">يحتاج مراجعة</span>
           <span className="is-absent">غياب</span>
           <span className="is-leave">إجازة</span>
           <span className="is-off-day">يوم راحة</span>

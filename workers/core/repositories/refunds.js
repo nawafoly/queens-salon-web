@@ -13,6 +13,7 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { recordAudit } from './audit.js';
+import { safeRefreshTargetsForBooking } from './employee-targets.js';
 
 function invoiceStatus(total, paid) {
   if (paid <= 0) return 'unpaid';
@@ -128,6 +129,7 @@ export async function createRefund(db, salonId, data, actor = {}) {
     action: 'refund_created', entityType: 'refund', entityId: row.id,
     description: 'Refund recorded in Core D1', after: row, source: 'dashboard',
   }, actor);
+  if (row.booking_id) await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
   return row;
 }
 
@@ -196,6 +198,7 @@ export async function patchRefund(db, salonId, id, data, actor = {}) {
     action: 'refund_updated', entityType: 'refund', entityId: id,
     description: 'Refund updated in Core D1', before: refund, after: row, source: 'dashboard',
   }, actor);
+  if (row.booking_id) await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
   return row;
 }
 
@@ -237,5 +240,6 @@ export async function voidRefund(db, salonId, id, actor = {}) {
     action: 'refund_voided', entityType: 'refund', entityId: id,
     description: 'Refund voided in Core D1', before: refund, after: row, source: 'dashboard',
   }, actor);
+  if (row.booking_id) await safeRefreshTargetsForBooking(db, salonId, row.booking_id);
   return row;
 }

@@ -13,6 +13,10 @@ import {
   validDate,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import {
+  applyTargetBonusToPayrollData,
+  approveEmployeeTargetSummary,
+} from './employee-targets.js';
 
 function intMoney(value) {
   const number = Number(value ?? 0);
@@ -37,6 +41,11 @@ function optionalNumber(value) {
 
 function activeFlag(value) {
   return value === true || value === 1 || value === '1' || value === 'true' ? 1 : 0;
+}
+
+function targetSchemaUnavailable(error) {
+  const message = cleanText(error?.message).toLowerCase();
+  return message.includes('no such table') || message.includes('unhandled fake d1');
 }
 
 function jsonText(value, fallback) {
@@ -198,6 +207,26 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   }
   const now = nowIso();
   const status = cleanStatus(data.status || existing?.status || 'draft');
+  let targetBonus = null;
+  if (!['approved', 'paid'].includes(cleanText(existing?.status || '')) && data.skipTargetBonus !== true) {
+    try {
+      targetBonus = await applyTargetBonusToPayrollData(db, salonId, {
+        ...data,
+        employeeId,
+        payrollMonth,
+      }, actor);
+      data = {
+        ...data,
+        additions: targetBonus.additions,
+        manualAdditionsHalalas: targetBonus.manualAdditionsHalalas,
+        grossSalaryHalalas: targetBonus.grossSalaryHalalas,
+        finalSalaryHalalas: targetBonus.finalSalaryHalalas,
+        netSalaryHalalas: targetBonus.netSalaryHalalas,
+      };
+    } catch (error) {
+      if (!targetSchemaUnavailable(error)) throw error;
+    }
+  }
   const overtimeEnabled = activeFlag(data.overtimeEnabled ?? data.overtime_enabled ?? existing?.overtime_enabled ?? 0);
   const auditLog = existing?.audit_log_json || jsonText([{ action: 'created', byUid: optionalText(actor.uid) || null, at: now }], []);
   const row = {
@@ -304,7 +333,20 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
       approved_at = excluded.approved_at, approved_by_uid = excluded.approved_by_uid,
       paid_at = excluded.paid_at, paid_by_uid = excluded.paid_by_uid, notes = excluded.notes,
       audit_log_json = excluded.audit_log_json, updated_at = excluded.updated_at`, Object.values(row));
-  return dbFirst(db, 'SELECT * FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ? LIMIT 1', [salonId, employeeId, payrollMonth]);
+  const saved = await dbFirst(db, 'SELECT * FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ? LIMIT 1', [salonId, employeeId, payrollMonth]);
+  if (targetBonus?.targetSummary?.id && saved?.id) {
+    await dbRun(
+      db,
+      `UPDATE employee_target_period_summaries
+          SET payroll_entry_id = ?, status = CASE WHEN status = 'open' THEN 'posted_to_payroll' ELSE status END,
+              updated_at = ?
+        WHERE salon_id = ? AND id = ?`,
+      [saved.id, nowIso(), salonId, targetBonus.targetSummary.id]
+    ).catch((error) => {
+      if (!targetSchemaUnavailable(error)) throw error;
+    });
+  }
+  return saved;
 }
 
 export async function updatePayrollEntryAdjustments(db, salonId, id, data, actor = {}) {
@@ -350,6 +392,15 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}) {
   if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
   assertPayrollSetupComplete(existing);
   const now = nowIso();
+  try {
+    await approveEmployeeTargetSummary(db, salonId, {
+      employeeId: existing.employee_id,
+      payrollMonth: existing.payroll_month,
+      periodId: existing.period_id,
+    }, actor, existing.id);
+  } catch (error) {
+    if (!targetSchemaUnavailable(error)) throw error;
+  }
   await dbRun(
     db,
     `UPDATE payroll_entries

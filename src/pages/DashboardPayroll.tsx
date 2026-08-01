@@ -13,6 +13,7 @@ import {
   FiSave,
   FiShield,
   FiSliders,
+  FiTarget,
   FiUnlock,
   FiX,
 } from "react-icons/fi";
@@ -182,6 +183,10 @@ function formatMonthlyHours(entry: PayrollEntryView) {
 
 function employeePayrollPath(entry: PayrollEntryView) {
   return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll#payroll-settings`;
+}
+
+function employeeTargetPath(entry: PayrollEntryView) {
+  return `/dashboard/employee-targets?employee=${encodeURIComponent(entry.employeeId)}&payrollMonth=${encodeURIComponent(entry.payrollMonth)}`;
 }
 
 function attendanceDeductionBlocked(entry: PayrollEntryView) {
@@ -946,6 +951,7 @@ function PayrollDetailsModal({
             <p>{entry.jobTitle || "موظفة"} · {STATUS_LABELS[entry.status] || entry.status}</p>
           </div>
           <div className="payroll-modal-actions">
+            <a className="payroll-action-link" href={employeeTargetPath(entry)}><FiTarget />تارقت الموظفة</a>
             <button type="button" onClick={onExportPayslip}><FiFileText /> تصدير كشف راتب PDF</button>
             <button type="button" onClick={onClose} aria-label="إغلاق"><FiX /></button>
           </div>

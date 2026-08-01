@@ -46,15 +46,21 @@ export async function createAbsence(db, salonId, data, actor = {}) {
   };
   const allowPermissionConflict = data.allowPermissionConflict === true || data.allow_permission_conflict === true;
   if (!allowPermissionConflict) {
-    const permissionConflict = await dbFirst(
-      db,
-      `SELECT id, status, requested_exit_time, expected_return_time, actual_exit_time, actual_return_time
-         FROM employee_permission_requests
-        WHERE salon_id = ? AND employee_id = ? AND date_key = ?
-          AND status IN ('approved', 'out', 'returned')
-        ORDER BY created_at DESC LIMIT 1`,
-      [salonId, row.employee_id, row.date_key]
-    );
+    let permissionConflict = null;
+    try {
+      permissionConflict = await dbFirst(
+        db,
+        `SELECT id, status, requested_exit_time, expected_return_time, actual_exit_time, actual_return_time
+           FROM employee_permission_requests
+          WHERE salon_id = ? AND employee_id = ? AND date_key = ?
+            AND status IN ('approved', 'out', 'returned')
+          ORDER BY created_at DESC LIMIT 1`,
+        [salonId, row.employee_id, row.date_key]
+      );
+    } catch (error) {
+      const message = cleanText(error?.message).toLowerCase();
+      if (!message.includes('no such table') && !message.includes('unhandled fake d1')) throw error;
+    }
     if (permissionConflict) {
       throw new AppError(409, 'core_absence:permission_conflict');
     }

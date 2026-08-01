@@ -15,6 +15,7 @@ export type AttendanceDayStatus =
   | "complete_with_extra_hours"
   | "complete_with_permission"
   | "compensated_late_with_extra_hours"
+  | "in_progress"
   | "incomplete"
   | "absent"
   | "off_day"
@@ -136,6 +137,14 @@ export function riyadhDateKeyFromTimestamp(value?: string | null) {
 function timestampMinutesFromDayStart(value: string | null | undefined, dateKey: string) {
   const baseSerial = dateSerial(dateKey);
   const parts = riyadhParts(value);
+  const currentSerial = parts ? dateSerial(parts.dateKey) : null;
+  if (baseSerial == null || currentSerial == null || !parts) return null;
+  return Math.round(currentSerial - baseSerial) * MINUTES_PER_DAY + parts.minutes;
+}
+
+function currentMinutesFromDayStart(dateKey: string) {
+  const baseSerial = dateSerial(dateKey);
+  const parts = riyadhParts(new Date().toISOString());
   const currentSerial = parts ? dateSerial(parts.dateKey) : null;
   if (baseSerial == null || currentSerial == null || !parts) return null;
   return Math.round(currentSerial - baseSerial) * MINUTES_PER_DAY + parts.minutes;
@@ -293,6 +302,30 @@ export function calculateAttendanceDisciplineDay(
   }
 
   if (!hasCompletePunches) {
+    const currentMinutes = currentMinutesFromDayStart(date);
+    const isAwaitingCurrentCheckout =
+      hasCheckIn &&
+      !hasCheckOut &&
+      currentMinutes != null &&
+      scheduledEndMinutes != null &&
+      currentMinutes <= scheduledEndMinutes;
+
+    if (isAwaitingCurrentCheckout) {
+      return makeDaySummary(input, {
+        scheduledHours: roundHours(scheduledMinutes),
+        actualWorkedHours: 0,
+        lateHours: 0,
+        earlyLeaveHours: 0,
+        compensatedLateHours: 0,
+        missingHours: 0,
+        extraHours: 0,
+        afterScheduleHours: 0,
+        netHourDifference: 0,
+        status: "in_progress",
+        statusLabel: "بانتظار الانصراف",
+      });
+    }
+
     return makeDaySummary(input, {
       scheduledHours: roundHours(scheduledMinutes),
       actualWorkedHours: 0,

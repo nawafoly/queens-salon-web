@@ -515,6 +515,7 @@ function disciplineStatusTone(status: AttendanceDayStatus) {
   if (status === "absent" || status === "missing_hours" || status === "incomplete") {
     return "danger";
   }
+  if (status === "in_progress") return "active";
   if (
     status === "complete_with_permission" ||
     status === "complete_with_compensated_late" ||
