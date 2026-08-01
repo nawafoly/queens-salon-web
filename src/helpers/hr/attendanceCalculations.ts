@@ -35,10 +35,14 @@ export type AttendanceDayComputation = {
   missingHours: number;
   overtimeHours: number;
   isComplete: boolean;
+  isBeforeScheduledEnd: boolean;
 };
 
 export type AttendanceStatus =
   | "present"
+  | "late"
+  | "missing_hours"
+  | "in_progress"
   | "partial"
   | "absent"
   | "leave"
@@ -142,7 +146,12 @@ export function getAttendanceDayStatus(input: {
       : new Set(input.absenceDateKeys || []);
 
   if (input.hasAttendance) {
-    return input.computation?.isComplete ? "present" : "partial";
+    if (input.computation?.isComplete) {
+      if (input.computation.missingHours > 0.001) return "missing_hours";
+      if (input.computation.lateHours > 0.001) return "late";
+      return "present";
+    }
+    return input.computation?.isBeforeScheduledEnd ? "in_progress" : "partial";
   }
 
   if (approvedLeaveDateKeys.has(input.date)) return "leave";
@@ -216,6 +225,13 @@ export function computeAttendanceDay(
     checkOutMs > scheduleEndMs
       ? roundHours((checkOutMs - scheduleEndMs) / 3600000)
       : 0;
+  const isBeforeScheduledEnd =
+    !isComplete &&
+    Number.isFinite(checkInMs) &&
+    !Number.isFinite(checkOutMs) &&
+    scheduleEndMs !== null &&
+    date === riyadhDateKey(new Date().toISOString()) &&
+    Date.now() <= scheduleEndMs;
   const rawMissingHours = roundHours(Math.max(0, expectedHours - actualHours));
   const permissionCoverage = calculatePermissionCoverage({
     date,
@@ -241,6 +257,7 @@ export function computeAttendanceDay(
     missingHours,
     overtimeHours,
     isComplete,
+    isBeforeScheduledEnd,
   };
 }
 
@@ -329,7 +346,7 @@ export function summarizeAttendanceForPayroll(
         summary.overtimeHours + (countsAsWorkDay ? day.overtimeHours : 0)
       );
       summary.completeDays += day.isComplete ? 1 : 0;
-      summary.incompleteDays += day.checkIn && !day.checkOut ? 1 : 0;
+      summary.incompleteDays += day.checkIn && !day.checkOut && status !== "in_progress" ? 1 : 0;
       summary.days.push(day);
       return summary;
     },

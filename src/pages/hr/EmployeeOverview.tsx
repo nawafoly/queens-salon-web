@@ -51,7 +51,9 @@ import {
   getAttendanceDayStatus,
   type AttendanceStatus,
   type AttendanceRecord,
+  type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
+import { resolveStaffScheduleVersionForDate } from "../../helpers/hr/staffScheduleHistory";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
@@ -60,6 +62,7 @@ import {
   listPermissionRequestsByEmployee,
   type EmployeePermissionRequest,
 } from "../../services/employeePermissionRequests";
+import type { CoreResolvedShift } from "../../types/hrCoreApi";
 
 type Props = {
   session: HrSession;
@@ -105,6 +108,134 @@ function getProfileSource(session: HrSession) {
   return session.staffDoc || session.employeeDoc || session.userDoc || {};
 }
 
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
+  sun: "sunday",
+  mon: "monday",
+  tue: "tuesday",
+  wed: "wednesday",
+  thu: "thursday",
+  fri: "friday",
+  sat: "saturday",
+};
+
+function cleanTime(value: unknown) {
+  const raw = cleanText(value);
+  return /^\d{1,2}:\d{2}$/.test(raw) ? raw : "";
+}
+
+function weekdayKeyForDate(dateKey: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return "sun";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
+}
+
+function getDayOverride(dateKey: string, input: Record<string, any>) {
+  const overrides = Array.isArray(input.customWorkingHourOverrides)
+    ? input.customWorkingHourOverrides
+    : [];
+  return overrides.find((override: Record<string, unknown>) => cleanText(override.date) === dateKey) || null;
+}
+
+function resolvedShiftWindow(row?: CoreResolvedShift | null) {
+  if (!row || cleanText((row as any).source) === "none") return null;
+  const exceptionType = cleanText((row as any)?.exceptionType || (row as any)?.exception_type);
+  if (exceptionType === "off") return null;
+  const snapshotRaw = cleanText((row as any)?.snapshotJson || (row as any)?.snapshot_json);
+  let snapshot: Record<string, unknown> = {};
+  if (snapshotRaw) {
+    try {
+      const parsed = JSON.parse(snapshotRaw);
+      snapshot = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+    } catch {
+      snapshot = {};
+    }
+  }
+  const startTime =
+    cleanTime((row as any)?.startTime) ||
+    cleanTime((row as any)?.start_time) ||
+    cleanTime((row as any)?.templateStartTime) ||
+    cleanTime((row as any)?.template_start_time) ||
+    cleanTime(snapshot.startTime) ||
+    cleanTime(snapshot.start_time);
+  const endTime =
+    cleanTime((row as any)?.endTime) ||
+    cleanTime((row as any)?.end_time) ||
+    cleanTime((row as any)?.templateEndTime) ||
+    cleanTime((row as any)?.template_end_time) ||
+    cleanTime(snapshot.endTime) ||
+    cleanTime(snapshot.end_time);
+  if (!startTime && !endTime) return null;
+  return { startTime: startTime || "09:00", endTime: endTime || "17:00" };
+}
+
+function scheduleForEmployeeDate(
+  dateKey: string,
+  profile: Record<string, any>,
+  resolvedShift?: CoreResolvedShift | null
+): ShiftSchedule {
+  const coreWindow = resolvedShiftWindow(resolvedShift);
+  if (coreWindow) {
+    return {
+      startTime: coreWindow.startTime,
+      endTime: coreWindow.endTime,
+      weeklyOffDays: [],
+    };
+  }
+
+  const historicalVersion = resolveStaffScheduleVersionForDate(profile.workingScheduleVersions, dateKey);
+  const effectiveSource = historicalVersion
+    ? {
+        ...profile,
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      }
+    : profile;
+  const weekdayKey = weekdayKeyForDate(dateKey);
+  const useCustomWorkingHours = historicalVersion
+    ? historicalVersion.useCustomWorkingHours
+    : effectiveSource.useCustomWorkingHours === true;
+  const customDay = useCustomWorkingHours ? effectiveSource.customWorkingHours?.[weekdayKey] : undefined;
+  const override = getDayOverride(dateKey, profile);
+  const customHours = (effectiveSource.customWorkingHours || {}) as Record<
+    string,
+    { enabled?: boolean; start?: string; end?: string }
+  >;
+  const customOffDays = useCustomWorkingHours
+    ? Object.entries(customHours)
+        .filter(([, day]) => day?.enabled === false)
+        .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
+        .filter(Boolean)
+    : [];
+  const explicitOffDays = [
+    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
+  ];
+
+  return {
+    startTime:
+      cleanTime(override?.start) ||
+      cleanTime(customDay?.start) ||
+      cleanTime(effectiveSource.startTime) ||
+      cleanTime(effectiveSource.start) ||
+      cleanTime(effectiveSource.workStartTime) ||
+      cleanTime(effectiveSource.shiftStartTime) ||
+      "09:00",
+    endTime:
+      cleanTime(override?.end) ||
+      cleanTime(customDay?.end) ||
+      cleanTime(effectiveSource.endTime) ||
+      cleanTime(effectiveSource.end) ||
+      cleanTime(effectiveSource.workEndTime) ||
+      cleanTime(effectiveSource.shiftEndTime) ||
+      "17:00",
+    weeklyOffDays: [...explicitOffDays, ...customOffDays],
+  };
+}
+
 function formatAttendanceTime(value: unknown) {
   const raw = cleanText(value);
   if (!raw) return "—";
@@ -124,6 +255,9 @@ function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
 
 function getAttendanceDayStatusLabel(status: AttendanceStatus) {
   if (status === "present") return "حضور مكتمل";
+  if (status === "late") return "متأخر";
+  if (status === "missing_hours") return "ناقص ساعات";
+  if (status === "in_progress") return "بانتظار تسجيل الانصراف";
   if (status === "partial") return "حضور يحتاج مراجعة";
   if (status === "absent") return "غياب";
   if (status === "leave") return "إجازة";
@@ -163,6 +297,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceMonth, setAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const [attendancePermissionEntries, setAttendancePermissionEntries] = useState<EmployeePermissionRequest[]>([]);
+  const [todayResolvedShift, setTodayResolvedShift] = useState<CoreResolvedShift | null>(null);
   const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
@@ -207,6 +342,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     [attendanceDate, employeeLeaveRequests, profile, session.employeeId, session.uid]
   );
 
+  const todayAttendanceSchedule = useMemo(
+    () => scheduleForEmployeeDate(attendanceDate, profile, todayResolvedShift),
+    [attendanceDate, profile, todayResolvedShift]
+  );
+
   const attendanceComputation = useMemo(() => {
     const records: AttendanceRecord[] = [];
     if (attendance?.checkInAtClient) {
@@ -215,12 +355,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     if (attendance?.checkOutAtClient) {
       records.push({ id: `${attendance.id}-out`, type: "check_out", serverTime: attendance.checkOutAtClient });
     }
-    return computeAttendanceDay(attendanceDate, records, {
-      startTime: cleanText(profile.startTime || profile.workStartTime || profile.shiftStartTime || "09:00"),
-      endTime: cleanText(profile.endTime || profile.workEndTime || profile.shiftEndTime || "17:00"),
-      weeklyOffDays: profile.weeklyOffDays || profile.offDays || null,
-    });
-  }, [attendance, attendanceDate, profile.endTime, profile.offDays, profile.shiftEndTime, profile.shiftStartTime, profile.startTime, profile.weeklyOffDays, profile.workEndTime, profile.workStartTime]);
+    return computeAttendanceDay(attendanceDate, records, todayAttendanceSchedule);
+  }, [attendance, attendanceDate, todayAttendanceSchedule]);
 
   const attendanceDayStatus = getAttendanceDayStatus({
     date: attendanceDate,
@@ -228,7 +364,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     checkOut: attendanceComputation.checkOut,
     computation: attendanceComputation,
     todayDateKey: attendanceDate,
-    weeklyOffDays: profile.weeklyOffDays || profile.offDays || null,
+    weeklyOffDays: todayAttendanceSchedule.weeklyOffDays,
     approvedLeaveDateKeys,
   });
 
@@ -306,6 +442,30 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   useEffect(() => {
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attendanceEmployeeId, attendanceDate]);
+
+  useEffect(() => {
+    if (!attendanceEmployeeId) {
+      setTodayResolvedShift(null);
+      return;
+    }
+
+    let alive = true;
+
+    async function loadTodayResolvedShift() {
+      try {
+        const row = await CoreHrService.resolveEmployeeShift(attendanceEmployeeId, attendanceDate);
+        if (alive) setTodayResolvedShift(row);
+      } catch {
+        if (alive) setTodayResolvedShift(null);
+      }
+    }
+
+    void loadTodayResolvedShift();
+
+    return () => {
+      alive = false;
+    };
   }, [attendanceEmployeeId, attendanceDate]);
 
   useEffect(() => {
@@ -589,7 +749,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     ? "تم حفظ الحضور والانصراف لهذا اليوم"
     : attendanceBusy
       ? "لا تغلق الصفحة أثناء التحقق"
-      : "اضغط بعد السماح بالوصول إلى الموقع والبصمة";
+      : "";
 
   if (attendanceOnly) {
     return (
@@ -681,33 +841,20 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </div>
 
         <div className="employee-attendance-console">
-<button
+          <button
             type="button"
             className={`employee-punch-button employee-punch-button--${punchTone}`}
             onClick={() => void handleAttendancePunch(punchAction)}
             disabled={punchDisabled}
-            aria-describedby="employee-punch-hint"
+            aria-describedby={punchHint ? "employee-punch-hint" : undefined}
           >
             <span><FontAwesomeIcon icon={faFingerprint} /></span>
             <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
-            <small id="employee-punch-hint">{punchHint}</small>
+            {punchHint ? <small id="employee-punch-hint">{punchHint}</small> : null}
           </button>
 </div>
 
-        <div className={`employee-attendance-status employee-attendance-status--${attendanceStatus}`} aria-live="polite">
-          <span>{attendanceLoading ? "جاري تحديث حالة اليوم..." : getAttendanceStatusLabel(attendanceStatus)}</span>
-          <small>{attendanceDayStatusLabel}</small>
-        </div>
-
         <div className="employee-attendance-records">
-          <div className={attendance?.checkOutAtClient ? "is-out" : ""}>
-            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faClock} /></span>
-            <div>
-              <strong>سجل الانصراف</strong>
-              <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
-            </div>
-            <b>{checkOutTime}</b>
-          </div>
           <div className={attendance?.checkInAtClient ? "is-in" : ""}>
             <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faFingerprint} /></span>
             <div>
@@ -715,6 +862,14 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
               <small>{attendance?.checkInAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل حضور"}</small>
             </div>
             <b>{checkInTime}</b>
+          </div>
+          <div className={attendance?.checkOutAtClient ? "is-out" : ""}>
+            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faClock} /></span>
+            <div>
+              <strong>سجل الانصراف</strong>
+              <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
+            </div>
+            <b>{checkOutTime}</b>
           </div>
         </div>
 
