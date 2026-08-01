@@ -1213,7 +1213,7 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "employee-targets:mine":
       requirePermission(ctx, "targets.view_own");
       if (!ctx.employeeId) throw new AppError(403, "employee_targets:employee_link_required");
-      return getEmployeeTargetDetails(db, ctx.salonId, ctx.employeeId, query);
+      return getEmployeeTargetDetails(db, ctx.salonId, ctx.employeeId, { ...query, ownOnly: true });
 
     case "employee-targets:plans":
       if (method === "GET") {

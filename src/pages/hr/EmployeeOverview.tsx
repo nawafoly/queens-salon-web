@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import {
   faBell,
+  faChartLine,
   faBriefcase,
   faCalendarCheck,
   faCalendarDays,
@@ -54,6 +55,7 @@ import {
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
 import { resolveStaffScheduleVersionForDate } from "../../helpers/hr/staffScheduleHistory";
+import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
@@ -63,6 +65,11 @@ import {
   type EmployeePermissionRequest,
 } from "../../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../../types/hrCoreApi";
+import { CoreApiError } from "../../services/coreApiClient";
+import {
+  CoreEmployeeTargetService,
+  type EmployeeTargetMine,
+} from "../../services/CoreEmployeeTargetService";
 
 type Props = {
   session: HrSession;
@@ -247,6 +254,41 @@ function formatAttendanceTime(value: unknown) {
   }).format(new Date(parsed));
 }
 
+function formatTargetMoney(halalas: number | undefined | null) {
+  return new Intl.NumberFormat("ar-SA", {
+    style: "currency",
+    currency: "SAR",
+    maximumFractionDigits: 0,
+  }).format(Number(halalas || 0) / 100);
+}
+
+function formatTargetPercent(value: number | undefined | null) {
+  return `${(Number(value || 0) * 100).toLocaleString("ar-SA", {
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function formatTargetUpdatedAt(value: string | undefined | null) {
+  if (!value) return "لم يحدث بعد";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function employeeTargetErrorMessage(error: unknown) {
+  if (error instanceof CoreApiError) {
+    if (error.status === 401) return "انتهت جلسة الدخول.";
+    if (error.code.includes("employee_link_required")) return "الحساب غير مربوط بملف موظفة.";
+    if (error.status === 403) return "لا توجد صلاحية لعرض التارقت.";
+  }
+  return "تعذر تحميل التارقت.";
+}
+
 function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
   if (status === "checked_out") return "انصرف";
   if (status === "checked_in") return "حاضر";
@@ -301,9 +343,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
+  const [employeeTarget, setEmployeeTarget] = useState<EmployeeTargetMine | null>(null);
+  const [employeeTargetLoading, setEmployeeTargetLoading] = useState(false);
+  const [employeeTargetError, setEmployeeTargetError] = useState("");
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
   const assignedAttendanceZoneId = resolveAssignedAttendanceZoneId(profile);
   const attendanceDate = getTodayAttendanceDateKey();
+  const currentTargetPeriod = useMemo(() => {
+    const today = new Date();
+    return payrollMonthBounds(today.getFullYear(), today.getMonth() + 1);
+  }, []);
 
   const unread = notifications.filter((note) => !note.isRead);
   const summary = {
@@ -532,6 +581,32 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     };
   }, [attendanceEmployeeId, session.uid]);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadEmployeeTarget() {
+      setEmployeeTargetLoading(true);
+      setEmployeeTargetError("");
+      try {
+        const row = await CoreEmployeeTargetService.mine({ payrollMonth: currentTargetPeriod.payrollMonth });
+        if (alive) setEmployeeTarget(row);
+      } catch (error) {
+        if (alive) {
+          setEmployeeTarget(null);
+          setEmployeeTargetError(employeeTargetErrorMessage(error));
+        }
+      } finally {
+        if (alive) setEmployeeTargetLoading(false);
+      }
+    }
+
+    void loadEmployeeTarget();
+
+    return () => {
+      alive = false;
+    };
+  }, [currentTargetPeriod.payrollMonth]);
+
   const loadAttendancePermissions = useCallback(async () => {
     if (!session.uid) {
       setAttendancePermissionEntries([]);
@@ -757,6 +832,24 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     : attendanceBusy
       ? "لا تغلق الصفحة أثناء التحقق"
       : "";
+  const targetSummary = employeeTarget?.summary;
+  const targetAmount = Number(targetSummary?.currentTargetAmount || employeeTarget?.targetCalculation?.targetAmount || 0);
+  const targetSales = Number(targetSummary?.netTargetAmount || 0);
+  const targetProgress = Number(targetSummary?.progressRatio || 0);
+  const targetRemaining = Number(targetSummary?.remainingToNextTier || employeeTarget?.targetCalculation?.remainingToNextTier || 0);
+  const targetNextTier = targetSummary?.nextTier || employeeTarget?.targetCalculation?.nextTier || null;
+  const targetAchievedTier = targetSummary?.achievedTier || employeeTarget?.targetCalculation?.achievedTier || null;
+  const targetHasPlan = Boolean(targetSummary?.hasTargetPlan ?? targetSummary?.plan);
+  const targetClosed = Boolean(employeeTarget?.isPayrollClosed || employeeTarget?.period?.isClosed);
+  const targetCardStatus = employeeTargetLoading
+    ? "loading"
+    : employeeTargetError
+      ? "error"
+      : !targetHasPlan
+        ? "empty"
+        : targetClosed
+          ? "closed"
+          : "ready";
 
   if (attendanceOnly) {
     return (
@@ -839,6 +932,61 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <span>الإجازات والرواتب</span>
           <strong>{summary.leave + summary.payroll}</strong>
         </Link>
+      </section>
+
+      <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label="تارقتي">
+        <div className="employee-target-home-card__head">
+          <span><FontAwesomeIcon icon={faChartLine} /></span>
+          <div>
+            <small>تارقتي</small>
+            <h2>تقدم المبيعات والبونص</h2>
+          </div>
+          <Link to="/employee/targets">عرض التفاصيل</Link>
+        </div>
+
+        {employeeTargetLoading ? (
+          <p className="employee-target-home-card__message">جاري تحميل تارقتك...</p>
+        ) : employeeTargetError ? (
+          <p className="employee-target-home-card__message">{employeeTargetError}</p>
+        ) : !targetHasPlan ? (
+          <p className="employee-target-home-card__message">لا توجد خطة تارقت مخصصة لهذه الدورة حتى الآن.</p>
+        ) : (
+          <>
+            <div className="employee-target-home-card__numbers">
+              <div>
+                <span>المبيعات المحصلة</span>
+                <strong>{formatTargetMoney(targetSales)}</strong>
+              </div>
+              <div>
+                <span>التارقت</span>
+                <strong>{formatTargetMoney(targetAmount)}</strong>
+              </div>
+              <div>
+                <span>البونص الحالي</span>
+                <strong>{formatTargetMoney(targetSummary?.earnedBonusAmount)}</strong>
+              </div>
+            </div>
+
+            <div className="employee-target-home-progress">
+              <span style={{ width: `${Math.min(100, targetProgress * 100)}%` }} />
+            </div>
+
+            <div className="employee-target-home-card__foot">
+              <strong>{formatTargetPercent(targetProgress)}</strong>
+              <span>{targetAchievedTier?.tierName || "لم تتحقق شريحة بعد"}</span>
+              <small>
+                {targetNextTier
+                  ? `متبقي ${formatTargetMoney(targetRemaining)} للحصول على بونص ${formatTargetMoney(targetNextTier.bonusAmount)}`
+                  : "تم تحقيق أعلى شريحة في الخطة الحالية."}
+              </small>
+            </div>
+
+            <div className="employee-target-home-card__updated">
+              <span>{targetClosed ? "دورة الراتب مغلقة" : "دورة الراتب الحالية"}</span>
+              <span>آخر تحديث: {formatTargetUpdatedAt(employeeTarget?.lastUpdatedAt || targetSummary?.lastUpdatedAt)}</span>
+            </div>
+          </>
+        )}
       </section>
 
       <section className={`employee-attendance-card employee-attendance-card--${attendanceStatus}`} data-status={attendanceStatus}>

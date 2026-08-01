@@ -1040,8 +1040,58 @@ export default function DashboardAttendanceSecurity() {
                   })}
                 </tbody>
               </table>
-              {!loading && !disciplineRows.length ? <p className="attendance-security-empty">لا توجد سجلات حضور مكتملة أو مطابقة للفترة المحددة.</p> : null}
             </div>
+
+            <div className="attendance-discipline-mobile-list" aria-label="سجل الحضور والانضباط للجوال">
+              {disciplineRows.map((row) => {
+                const tone = disciplineStatusTone(row.summary.status);
+                return (
+                  <article key={row.key} className={`attendance-discipline-mobile-card is-${tone}`}>
+                    <header>
+                      <div>
+                        <strong>{row.employeeName}</strong>
+                        <small>{row.employeeId}</small>
+                      </div>
+                      <span className={`attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span>
+                    </header>
+
+                    <div className="attendance-discipline-mobile-date">
+                      <strong>{formatRecordDate(`${row.date}T00:00:00+03:00`)}</strong>
+                      <small dir="ltr">{row.date}</small>
+                    </div>
+
+                    <div className="attendance-discipline-mobile-shift">
+                      <span>الدوام المعتمد</span>
+                      <strong dir="ltr">{row.shiftLabel}</strong>
+                      <small>{row.scheduleNote}</small>
+                    </div>
+
+                    <div className="attendance-discipline-mobile-times">
+                      <div>
+                        <span>أول حضور</span>
+                        <strong dir="ltr">{formatRecordTime(row.firstCheckInAt)}</strong>
+                      </div>
+                      <div>
+                        <span>آخر انصراف</span>
+                        <strong dir="ltr">{formatRecordTime(row.lastCheckOutAt)}</strong>
+                      </div>
+                    </div>
+
+                    <dl className="attendance-discipline-mobile-metrics">
+                      <div><dt>العمل الفعلي</dt><dd>{formatAttendanceHours(row.summary.actualWorkedHours)}</dd></div>
+                      <div><dt>التأخير</dt><dd>{formatAttendanceHours(row.summary.lateHours)}</dd></div>
+                      <div><dt>التعويض</dt><dd>{formatAttendanceHours(row.summary.compensatedLateHours)}</dd></div>
+                      <div><dt>الاستئذان</dt><dd>{formatAttendanceHours(row.summary.permissionCoveredHours || 0)}</dd></div>
+                      <div><dt>النقص</dt><dd>{formatAttendanceHours(row.summary.missingHours)}</dd></div>
+                      <div><dt>الزيادة</dt><dd>{formatAttendanceHours(row.summary.extraHours)}</dd></div>
+                      <div className="is-wide"><dt>صافي فرق الساعات</dt><dd>{formatSignedAttendanceHours(row.summary.netHourDifference)}</dd></div>
+                    </dl>
+                  </article>
+                );
+              })}
+            </div>
+
+            {!loading && !disciplineRows.length ? <p className="attendance-security-empty">لا توجد سجلات حضور مكتملة أو مطابقة للفترة المحددة.</p> : null}
           </>
         ) : null}
 
@@ -1092,29 +1142,79 @@ export default function DashboardAttendanceSecurity() {
         ) : null}
 
         {!error && activeTab === "records" ? (
-          <div className="attendance-security-table-wrap">
-            <table className="attendance-security-table">
-              <thead><tr><th>الموظفة</th><th>العملية</th><th>الوقت</th><th>النطاق</th><th>الدقة</th><th>الجهاز</th><th>النتيجة</th><th>التفاصيل</th></tr></thead>
-              <tbody>
-                {visibleRecords.map((record) => {
-                  const deviceView = recordDevicePresentation(record, devicesById);
-                  return (
-                    <tr key={record.id} className={deviceView.hasRisk ? "is-risk" : ""}>
-                      <td><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.employeeDocId || record.employeeUid}</small></td>
-                      <td><span className={`attendance-security-kind is-${record.type}`}>{recordTypeLabel(record.type)}</span></td>
-                      <td><strong>{formatRecordDate(record.serverTime)}</strong><small dir="ltr">{formatRecordTime(record.serverTime)}</small></td>
-                      <td><strong>{record.zoneName || "—"}</strong><small>{record.distanceMeters == null ? "" : `${Math.round(record.distanceMeters)} م`}</small></td>
-                      <td>{Math.round(Number(record.location?.accuracy || 0))} م</td>
-                      <td><strong>{deviceView.label}</strong><small className={deviceView.hasRisk ? "is-warning" : undefined}>{deviceView.status}</small></td>
-                      <td><span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>{record.rejectionReason ? <small>{rejectionLabel(record.rejectionReason)}</small> : null}</td>
-                      <td><button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}><FiEye />عرض</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <>
+            <div className="attendance-security-table-wrap attendance-records-table-wrap">
+              <table className="attendance-security-table">
+                <thead><tr><th>الموظفة</th><th>العملية</th><th>الوقت</th><th>النطاق</th><th>الدقة</th><th>الجهاز</th><th>النتيجة</th><th>التفاصيل</th></tr></thead>
+                <tbody>
+                  {visibleRecords.map((record) => {
+                    const deviceView = recordDevicePresentation(record, devicesById);
+                    return (
+                      <tr key={record.id} className={deviceView.hasRisk ? "is-risk" : ""}>
+                        <td><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.employeeDocId || record.employeeUid}</small></td>
+                        <td><span className={`attendance-security-kind is-${record.type}`}>{recordTypeLabel(record.type)}</span></td>
+                        <td><strong>{formatRecordDate(record.serverTime)}</strong><small dir="ltr">{formatRecordTime(record.serverTime)}</small></td>
+                        <td><strong>{record.zoneName || "—"}</strong><small>{record.distanceMeters == null ? "" : `${Math.round(record.distanceMeters)} م`}</small></td>
+                        <td>{Math.round(Number(record.location?.accuracy || 0))} م</td>
+                        <td><strong>{deviceView.label}</strong><small className={deviceView.hasRisk ? "is-warning" : undefined}>{deviceView.status}</small></td>
+                        <td><span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>{record.rejectionReason ? <small>{rejectionLabel(record.rejectionReason)}</small> : null}</td>
+                        <td><button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}><FiEye />عرض</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="attendance-records-mobile-list" aria-label="سجل البصمات للجوال">
+              {visibleRecords.map((record) => {
+                const deviceView = recordDevicePresentation(record, devicesById);
+                return (
+                  <article key={record.id} className={`attendance-record-mobile-card is-${record.result}${deviceView.hasRisk ? " is-risk" : ""}`}>
+                    <header>
+                      <span className={`attendance-security-record-icon is-${record.result}`}>
+                        <FiActivity />
+                      </span>
+                      <div>
+                        <strong>{resolveStaffName(record, staffNames)}</strong>
+                        <small>{record.employeeDocId || record.employeeUid}</small>
+                      </div>
+                      <span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>
+                    </header>
+
+                    <div className="attendance-record-mobile-main">
+                      <div>
+                        <span>العملية</span>
+                        <strong>{recordTypeLabel(record.type)}</strong>
+                      </div>
+                      <div>
+                        <span>الوقت</span>
+                        <strong>{formatRecordTime(record.serverTime)}</strong>
+                        <small>{formatRecordDate(record.serverTime)}</small>
+                      </div>
+                    </div>
+
+                    <dl>
+                      <div><dt>النطاق</dt><dd>{record.zoneName || "—"}</dd></div>
+                      <div><dt>المسافة</dt><dd>{record.distanceMeters == null ? "—" : `${Math.round(record.distanceMeters)} م`}</dd></div>
+                      <div><dt>دقة GPS</dt><dd>{Math.round(Number(record.location?.accuracy || 0))} م</dd></div>
+                      <div><dt>الجهاز</dt><dd>{deviceView.status}</dd></div>
+                    </dl>
+
+                    {record.rejectionReason ? (
+                      <p className="attendance-record-mobile-reason">{rejectionLabel(record.rejectionReason)}</p>
+                    ) : null}
+
+                    <button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}>
+                      <FiEye /> عرض التفاصيل
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+
             {!loading && !visibleRecords.length ? <p className="attendance-security-empty">لا توجد بصمات مطابقة للفلاتر.</p> : null}
-          </div>
+          </>
         ) : null}
 
         {!error && activeTab === "devices" ? (

@@ -3,10 +3,14 @@ import { describe, it } from 'node:test';
 
 import {
   calculateTierBonus,
+  canonicalizeTargetLedgerRows,
+  createTargetIdentityIndex,
   distributeAmountByWeights,
   eligibleServiceAmount,
   stripTargetBonusItems,
+  targetDashboardInvariant,
   TARGET_BONUS_SOURCE,
+  UNASSIGNED_TARGET_EMPLOYEE_ID,
 } from './core/repositories/employee-targets.js';
 
 const tiers = [
@@ -70,5 +74,33 @@ describe('employee target bonus math', () => {
       { id: 'target_legacy', source_type: TARGET_BONUS_SOURCE, amount_halalas: 20_000 },
     ];
     assert.deepEqual(stripTargetBonusItems(items), [{ id: 'manual', source: 'manual', amountHalalas: 5_000 }]);
+  });
+
+  it('canonicalizes duplicate employee identities and preserves unassigned sales invariant', () => {
+    const index = createTargetIdentityIndex({
+      employeeProfiles: [{ id: 'emp-1', firebase_uid: 'firebase-1', name: 'Employee One' }],
+      staffRows: [{ id: 'staff-legacy-1', firebase_uid: 'firebase-1', name: 'Employee One' }],
+      appUsers: [{ id: 'account-1', firebase_uid: 'firebase-1', display_name: 'Employee One' }],
+      links: [{ user_id: 'account-1', employee_id: 'emp-1', link_status: 'active' }],
+    });
+    const ledgerRows = canonicalizeTargetLedgerRows([
+      { id: 'a', employee_id: 'staff-legacy-1', eligible_amount: 100_00, booking_id: 'booking-a' },
+      { id: 'b', employee_id: 'account-1', eligible_amount: 200_00, booking_id: 'booking-b' },
+      { id: 'c', employee_id: 'unknown-staff', eligible_amount: 50_00, booking_id: 'booking-c' },
+    ], index);
+
+    const assignedTotal = ledgerRows
+      .filter((row) => row.employee_id === 'emp-1')
+      .reduce((sum, row) => sum + row.eligible_amount, 0);
+    const unassignedSales = ledgerRows
+      .filter((row) => row.employee_id === UNASSIGNED_TARGET_EMPLOYEE_ID)
+      .reduce((sum, row) => sum + row.eligible_amount, 0);
+
+    assert.equal(assignedTotal, 300_00);
+    assert.equal(unassignedSales, 50_00);
+    assert.equal(
+      targetDashboardInvariant([{ employee_id: 'emp-1', net_target_amount: assignedTotal }], unassignedSales, 350_00),
+      true
+    );
   });
 });

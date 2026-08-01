@@ -1342,6 +1342,224 @@
 }
 
 /* =========================================================
+   Employee target home card
+   ========================================================= */
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(240, 253, 250, 0.96), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__head {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__head > span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 16px;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-size: 1rem;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__head small {
+  display: block;
+  color: #0f766e;
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__head h2 {
+  margin: 2px 0 0;
+  color: #081432;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__head a {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 999px;
+  color: #0f766e;
+  background: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__numbers div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__numbers span,
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__updated span,
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__foot span,
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__foot small {
+  color: #64748b;
+  font-size: 0.6rem;
+  font-weight: 850;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__numbers strong {
+  display: block;
+  margin-top: 4px;
+  color: #081432;
+  font-size: 0.92rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.employee-target-home-progress {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbe7e7;
+}
+
+.employee-target-home-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0f766e, #f2b800);
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__foot {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__foot strong {
+  color: #0f766e;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__foot small {
+  justify-self: end;
+  color: #0f766e;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__updated {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card__message {
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.84);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.employee-portal.madan-employee-portal
+  .employee-target-home-card--error {
+  border-color: rgba(225, 29, 72, 0.22);
+  background: #fff7f7;
+}
+
+@media (max-width: 560px) {
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__head {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__head a {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__numbers {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__numbers div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__numbers strong {
+    margin: 0;
+    font-size: 0.88rem;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__foot {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-target-home-card__foot small {
+    justify-self: stretch;
+  }
+}
+
+/* =========================================================
    KPI cards
    ========================================================= */
 
