@@ -118,6 +118,13 @@ export default function DashboardMobileNav({
         permission: "payroll.view",
       },
       {
+        to: "/dashboard/employee-targets",
+        label: "تارقت الموظفات",
+        description: "متابعة المبيعات المؤهلة والشرائح وبونص الرواتب",
+        icon: faChartPie,
+        permission: "targets.view",
+      },
+      {
         to: "/dashboard/partners",
         label: "الشريكات والمساحات",
         description: "إدارة المستأجرات ومقاعد العمل",

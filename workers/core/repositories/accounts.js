@@ -51,6 +51,12 @@ const ADMIN_PERMISSION_FALLBACK = new Set([
   'attendance.settings.manage',
   'payroll.view',
   'payroll.manage',
+  'targets.view',
+  'targets.manage',
+  'targets.approve',
+  'targets.adjust',
+  'targets.view_all',
+  'targets.view_own',
   'admin_accounts.view',
   'admin_accounts.manage',
   'accounts.read',
@@ -158,7 +164,9 @@ export async function getRoleCatalog(db, salonId) {
 
 export async function knownPermissionSet(db) {
   const rows = await dbAll(db, 'SELECT permission_key FROM permissions', []);
-  return new Set(rows.map((row) => cleanText(row.permission_key)).filter(Boolean));
+  const known = new Set(rows.map((row) => cleanText(row.permission_key)).filter(Boolean));
+  ADMIN_PERMISSION_FALLBACK.forEach((permission) => known.add(permission));
+  return known;
 }
 
 export async function getAccountById(db, salonId, id) {

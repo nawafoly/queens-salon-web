@@ -36,6 +36,7 @@ import EmployeeLeavePage from "./hr/EmployeeLeave";
 import EmployeePermissionRequestsPage from "./hr/EmployeePermissionRequests";
 import EmployeeRequestsPage from "./hr/EmployeeRequests";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
+import EmployeeTargetsPage from "./hr/EmployeeTargets";
 import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession, type HrSession } from "./hr/shared";
 import EmployeeAvatar from "../components/EmployeeAvatar";
@@ -138,6 +139,7 @@ function getEmployeePortalTitle(pathname: string) {
     permission: "الاستئذانات",
     requests: "طلباتي",
     payroll: "الراتب",
+    targets: "تارقتي",
   };
 
   return titles[section] || "بوابة الموظف";
@@ -205,6 +207,14 @@ function EmployeeMorePage({
       icon: faWallet,
       badge: notificationCounts.payroll,
       permission: "workspace.employee_portal.view" as AppPermission,
+    },
+    {
+      to: "/employee/targets",
+      label: "تارقتي",
+      description: "المبيعات المؤهلة والبونص المتوقع",
+      icon: faChartLine,
+      badge: 0,
+      permission: "targets.view_own" as AppPermission,
     },
   ];
 
@@ -394,6 +404,7 @@ export default function EmployeePortal() {
     { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/permission", label: "الاستئذانات", description: "الخروج المؤقت والعودة", icon: faTriangleExclamation, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
+    { to: "/employee/targets", label: "تارقتي", description: "المبيعات المؤهلة والبونص المتوقع", icon: faChartLine, permission: "targets.view_own" as AppPermission },
     { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
     { to: "/employee/files", label: "الملفات", description: "المستندات والعقود", icon: faFileLines, badge: notificationCounts.files, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/profile", label: "الملف الشخصي", description: "البيانات الوظيفية", icon: faUser, badge: notificationCounts.profile, permission: "workspace.employee_portal.view" as AppPermission },
@@ -592,6 +603,7 @@ export default function EmployeePortal() {
             <Route path="leave" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeLeavePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="permission" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePermissionRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="targets" element={<PermissionRoute permission="targets.view_own"><EmployeeTargetsPage /></PermissionRoute>} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />
           </Routes>
           </div>

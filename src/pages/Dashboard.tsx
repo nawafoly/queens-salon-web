@@ -50,6 +50,7 @@ import DashboardAdminProfile from "../pages/DashboardAdminProfile";
 import DashboardPartners from "../pages/DashboardPartners";
 import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
 import DashboardPayroll from "../pages/DashboardPayroll";
+import DashboardEmployeeTargets from "../pages/DashboardEmployeeTargets";
 import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
 import "../styles/DashboardEnterpriseWorkspacesV2.css";
 
@@ -1391,6 +1392,7 @@ function getDashboardHeaderTitle(pathname: string) {
     "booking-internal": "الحجز الإداري",
     attendance: "سجل البصمة والأجهزة",
     "staff-performance": "أداء الموظفات",
+    "employee-targets": "تارقت الموظفات",
     "tv-queue": "شاشة نداء الحجوزات",
     "day-audit": "إغلاق اليوم / الشفت",
     clients: "العملاء",
@@ -2154,6 +2156,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     "income.view",
     "expenses.view",
     "payroll.view",
+    "targets.view",
+    "targets.view_all",
     "staffPerformance.view",
   ]);
   const hasManagementNavigation = hasAnyPermission([
@@ -2173,6 +2177,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       "settings.content.manage",
       "attendance.view",
       "attendance.settings.manage",
+      "targets.view",
+      "targets.view_all",
       "staffPerformance.view",
     ]);
 
@@ -2890,6 +2896,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {hasAnyPermission(["targets.view", "targets.view_all", "payroll.view"]) ? (
+                  <li>
+                    <NavLink to="/dashboard/employee-targets" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faChartLine} />
+                      تارقت الموظفات
+                    </NavLink>
+                  </li>
+                ) : null}
+
                 {hasPermission("staffPerformance.view") ? (
                   <li>
                     <NavLink to="/dashboard/staff-performance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
@@ -3145,6 +3160,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <Route path="income" element={<PermissionRoute permission="income.view"><DashboardIncome /></PermissionRoute>} />
                 <Route path="expenses" element={<PermissionRoute permission="expenses.view"><DashboardExpenses /></PermissionRoute>} />
                 <Route path="payroll" element={<PermissionRoute permission="payroll.view"><DashboardPayroll /></PermissionRoute>} />
+                <Route path="employee-targets" element={<PermissionRoute anyOf={["targets.view", "targets.view_all", "payroll.view"]}><DashboardEmployeeTargets /></PermissionRoute>} />
                 <Route path="staff-performance" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
                 <Route path="staff-performance/:employeeId" element={<PermissionRoute permission="staffPerformance.view"><DashboardStaffPerformance /></PermissionRoute>} />
                 <Route
@@ -3396,4 +3412,3 @@ const Dashboard: React.FC<DashboardProps> = ({
 };
 
 export default Dashboard;
-

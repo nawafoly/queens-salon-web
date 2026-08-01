@@ -30,6 +30,7 @@ import {
   staffIsAvailableForDate,
 } from './staff.js';
 import { resolveBookingDiscount } from './discount-application.js';
+import { safeRefreshTargetsForBooking } from './employee-targets.js';
 
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 const LOCK_GRANULARITY_MIN = 5;
@@ -1358,6 +1359,7 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
     throw error;
   }
 
+  await safeRefreshTargetsForBooking(db, salonId, bookingId);
   return getBooking(db, salonId, bookingId);
 }
 
@@ -1369,6 +1371,7 @@ export async function completeBooking(db, salonId, id) {
     [now, now, salonId, requiredId(id)]
   );
   if (!changes(result)) rowNotFound("booking");
+  await safeRefreshTargetsForBooking(db, salonId, id);
   return getBooking(db, salonId, id);
 }
 
@@ -1394,6 +1397,7 @@ export async function cancelBooking(db, salonId, id, reason = "") {
     },
   ]);
   if (!changes(results[0])) rowNotFound("booking");
+  await safeRefreshTargetsForBooking(db, salonId, bookingId);
   return getBooking(db, salonId, bookingId);
 }
 

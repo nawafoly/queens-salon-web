@@ -72,6 +72,12 @@ export type AppPermission =
   | "attendance.settings.manage"
   | "payroll.view"
   | "payroll.manage"
+  | "targets.view"
+  | "targets.manage"
+  | "targets.approve"
+  | "targets.adjust"
+  | "targets.view_all"
+  | "targets.view_own"
   | "staffPerformance.view"
   | "staffPerformance.manage"
   | "recruitment.view"
@@ -222,6 +228,12 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
 
   { key: "payroll.view", label: "عرض الرواتب", hint: "عرض سجلات الرواتب والاستحقاقات.", group: "workforce", action: "view", sensitive: true },
   { key: "payroll.manage", label: "إدارة الرواتب", hint: "إنشاء وتعديل واعتماد الرواتب والخصومات.", group: "workforce", action: "manage", sensitive: true },
+  { key: "targets.view", label: "عرض تارقت الموظفات", hint: "عرض تارقت المبيعات ونسب الإنجاز والشرائح والبونص المتوقع.", group: "workforce", action: "view", sensitive: true },
+  { key: "targets.manage", label: "إدارة تارقت الموظفات", hint: "إنشاء خطط التارقت والشرائح والتعيينات وإعادة بناء سجل الاحتساب.", group: "workforce", action: "manage", sensitive: true },
+  { key: "targets.approve", label: "اعتماد بونص التارقت", hint: "اعتماد بونص تحقيق التارقت وترحيله إلى مسير الرواتب.", group: "workforce", action: "manage", sensitive: true },
+  { key: "targets.adjust", label: "تعديل سجل التارقت", hint: "إضافة تسويات يدوية على تارقت الموظفات مع سبب قابل للتدقيق.", group: "workforce", action: "manage", sensitive: true },
+  { key: "targets.view_all", label: "عرض كل التارقت", hint: "عرض تقدم جميع الموظفات في دورات الرواتب.", group: "workforce", action: "view", sensitive: true },
+  { key: "targets.view_own", label: "عرض تارقتي", hint: "السماح للموظفة بمراجعة تقدمها الشخصي داخل بوابة الموظف.", group: "workforce", action: "view" },
   { key: "staffPerformance.view", label: "عرض أداء الموظفات", hint: "عرض مؤشرات أداء الموظفات من الحجوزات والحضور.", group: "workforce", action: "view", sensitive: true },
   { key: "staffPerformance.manage", label: "إدارة أداء الموظفات", hint: "إدارة إعدادات وملاحظات أداء الموظفات مستقبلًا.", group: "workforce", action: "manage", sensitive: true },
   { key: "recruitment.view", label: "عرض طلبات التوظيف", hint: "استعراض طلبات التوظيف الواردة.", group: "workforce", action: "view" },
@@ -307,6 +319,7 @@ const COMMON_INTERNAL: AppPermission[] = [
   "workspace.employee_portal.view",
   "attendance.own.view",
   "messages.view",
+  "targets.view_own",
   "employee_requests.own.view",
   "employee_requests.own.create",
   "employee_requests.own.comment",
@@ -352,6 +365,12 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.settings.manage",
     "payroll.view",
     "payroll.manage",
+    "targets.view",
+    "targets.manage",
+    "targets.approve",
+    "targets.adjust",
+    "targets.view_all",
+    "targets.view_own",
     "employee_requests.own.view",
     "employee_requests.own.create",
     "employee_requests.own.comment",
@@ -422,6 +441,12 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "attendance.export",
     "payroll.view",
     "payroll.manage",
+    "targets.view",
+    "targets.manage",
+    "targets.approve",
+    "targets.adjust",
+    "targets.view_all",
+    "targets.view_own",
     "employee_requests.own.view",
     "employee_requests.own.create",
     "employee_requests.own.comment",
@@ -464,6 +489,9 @@ export const ROLE_APP_PERMISSIONS: Record<UserRole, AppPermission[]> = {
     "income.manage",
     "expenses.view",
     "expenses.manage",
+    "targets.view",
+    "targets.view_all",
+    "targets.view_own",
     "reports.view",
     "reports.export",
     "logs.view",
