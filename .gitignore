@@ -79,3 +79,9 @@ vite-*.err.log
 
 # Public Vite web configuration required by Vercel builds
 !/.env.web
+
+# Local rollback and backup files
+.rollback/
+*.bak
+*.tmp
+*~
