@@ -8,8 +8,8 @@ const isCustomerApp = requestedVariant === "customer" || requestedVariant === "c
 
 const config: CapacitorConfig = isStaffApp
   ? {
-      appId: "com.queenssalon.staff",
-      appName: "Queens Staff Portal",
+      appId: "com.Malikatsalon.staff",
+      appName: "Malikat HR",
       webDir: "dist-staff",
       backgroundColor: "#05093f",
       android: {

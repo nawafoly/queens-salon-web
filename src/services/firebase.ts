@@ -5,25 +5,49 @@ import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
-function readEnv(name: string, fallback: string) {
-  const v = (import.meta as any).env?.[name];
-  if (!v) {
+function readEnv(name: string, value: unknown, fallback = "") {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) {
     if (import.meta.env.DEV) {
-      // نخلي التطبيق يشتغل في المعاينة بدل الشاشة السوداء
-      console.error(`[Firebase ENV Missing] ${name} is not set in .env — using fallback in DEV.`);
+      console.error(`[Firebase ENV Missing] ${name} is not set.`);
     }
+
     return fallback;
   }
-  return String(v);
+
+  return normalized;
 }
 
 const firebaseConfig = {
-  apiKey: readEnv("VITE_FIREBASE_API_KEY", "dev-api-key"),
-  authDomain: readEnv("VITE_FIREBASE_AUTH_DOMAIN", "dev.local"),
-  projectId: readEnv("VITE_FIREBASE_PROJECT_ID", "dev-project"),
-  storageBucket: readEnv("VITE_FIREBASE_STORAGE_BUCKET", "dev-project.appspot.com"),
-  messagingSenderId: readEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "000000000000"),
-  appId: readEnv("VITE_FIREBASE_APP_ID", "1:000000000000:web:dev"),
+  apiKey: readEnv(
+    "VITE_FIREBASE_API_KEY",
+    import.meta.env.VITE_FIREBASE_API_KEY,
+    "dev-api-key",
+  ),
+  authDomain: readEnv(
+    "VITE_FIREBASE_AUTH_DOMAIN",
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    "dev.local",
+  ),
+  projectId: readEnv(
+    "VITE_FIREBASE_PROJECT_ID",
+    import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    "dev-project",
+  ),
+  storageBucket: readEnv(
+    "VITE_FIREBASE_STORAGE_BUCKET",
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    "dev-project.appspot.com",
+  ),
+  messagingSenderId: readEnv(
+    "VITE_FIREBASE_MESSAGING_SENDER_ID",
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  ),
+  appId: readEnv(
+    "VITE_FIREBASE_APP_ID",
+    import.meta.env.VITE_FIREBASE_APP_ID,
+  ),
 };
 
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);

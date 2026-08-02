@@ -85,3 +85,5 @@ vite-*.err.log
 *.bak
 *.tmp
 *~
+/android-hr/*.jks
+/android-hr/keystore.properties

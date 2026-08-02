@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Queens Staff Portal</string>
-    <string name="title_activity_main">Queens Staff Portal</string>
-    <string name="package_name">com.queenssalon.staff</string>
-    <string name="custom_url_scheme">com.queenssalon.staff</string>
+    <string name="app_name">Malikat HR</string>
+    <string name="title_activity_main">Malikat HR</string>
+    <string name="package_name">com.Malikatsalon.staff</string>
+    <string name="custom_url_scheme">com.Malikatsalon.staff</string>
 </resources>
