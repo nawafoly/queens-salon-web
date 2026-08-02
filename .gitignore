@@ -87,3 +87,5 @@ vite-*.err.log
 *~
 /android-hr/*.jks
 /android-hr/keystore.properties
+
+master/
