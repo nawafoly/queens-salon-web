@@ -10095,9 +10095,11 @@
   .employee-portal.madan-employee-portal
     .attendance-month__control-field
     input[type="month"]::-webkit-calendar-picker-indicator {
-    opacity: 0.72;
-
-    cursor: pointer;
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 
   .employee-portal.madan-employee-portal
@@ -10254,3 +10256,76 @@
 }
 
 /* EMPLOYEE ATTENDANCE COMMAND CENTER MOBILE V2.4 END */
+
+/* Attendance month header: final no-arrows layout for employee portal shells. */
+.employee-portal.madan-employee-portal .attendance-month__calendar-head,
+.hr-shell.madan-admin-shell .attendance-month__calendar-head {
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  grid-template-areas: "title month actions" !important;
+  align-items: center !important;
+}
+
+.employee-portal.madan-employee-portal .attendance-month__title,
+.hr-shell.madan-admin-shell .attendance-month__title {
+  grid-area: title !important;
+}
+
+.employee-portal.madan-employee-portal .attendance-month__calendar-month-control,
+.hr-shell.madan-admin-shell .attendance-month__calendar-month-control {
+  grid-area: month !important;
+  min-width: 150px !important;
+  justify-self: end !important;
+}
+
+.employee-portal.madan-employee-portal .attendance-month__calendar-actions,
+.hr-shell.madan-admin-shell .attendance-month__calendar-actions {
+  grid-area: actions !important;
+}
+
+.employee-portal.madan-employee-portal .attendance-month__month-picker-label,
+.hr-shell.madan-admin-shell .attendance-month__month-picker-label {
+  display: inline !important;
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  font-weight: 950 !important;
+}
+
+.employee-portal.madan-employee-portal .attendance-month__month-picker-text,
+.hr-shell.madan-admin-shell .attendance-month__month-picker-text {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+.employee-portal.madan-employee-portal
+  :is(.attendance-month__selected-status.is-complete, .attendance-month__badge.is-complete),
+.hr-shell.madan-admin-shell
+  :is(.attendance-month__selected-status.is-complete, .attendance-month__badge.is-complete) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: #047857 !important;
+  border-color: #03664f !important;
+}
+
+@media (max-width: 820px) {
+  .employee-portal.madan-employee-portal .attendance-month__calendar-head,
+  .hr-shell.madan-admin-shell .attendance-month__calendar-head {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "title actions"
+      "month month" !important;
+  }
+
+  .employee-portal.madan-employee-portal .attendance-month__calendar-month-control,
+  .hr-shell.madan-admin-shell .attendance-month__calendar-month-control {
+    min-width: min(100%, 240px) !important;
+    justify-self: center !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .employee-portal.madan-employee-portal .attendance-month__calendar-month-control,
+  .hr-shell.madan-admin-shell .attendance-month__calendar-month-control {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}

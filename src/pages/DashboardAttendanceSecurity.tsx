@@ -410,6 +410,8 @@ function resolveApprovedScheduleForDate(
       enabled: false,
       start: undefined,
       end: undefined,
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
       label: "غير مجدول",
       note: override ? "استثناء اليوم" : "دوام الموظفة",
     };
@@ -426,6 +428,8 @@ function resolveApprovedScheduleForDate(
     enabled: true,
     start,
     end,
+    lateGraceMinutes: 0,
+    earlyLeaveGraceMinutes: 0,
     label: `${start} - ${end}`,
     note: override
       ? "استثناء اليوم"
@@ -477,6 +481,15 @@ function resolvedShiftTime(row: CoreResolvedShift, snapshot: Record<string, unkn
   return "";
 }
 
+function readPolicyMinutes(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) return Math.round(number);
+  }
+  return undefined;
+}
+
 function resolveCoreAttendanceSchedule(
   row: CoreResolvedShift | null | undefined,
   fallback: ReturnType<typeof resolveApprovedScheduleForDate>
@@ -492,6 +505,8 @@ function resolveCoreAttendanceSchedule(
       enabled: false,
       start: undefined,
       end: undefined,
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
       label: "غير مجدول",
       note: "استثناء منشور في Core",
     };
@@ -506,6 +521,18 @@ function resolveCoreAttendanceSchedule(
     enabled: true,
     start,
     end,
+    lateGraceMinutes: readPolicyMinutes(
+      (row as any)?.lateGraceMinutes,
+      (row as any)?.late_grace_minutes,
+      snapshot.lateGraceMinutes,
+      snapshot.late_grace_minutes
+    ) ?? 0,
+    earlyLeaveGraceMinutes: readPolicyMinutes(
+      (row as any)?.earlyLeaveGraceMinutes,
+      (row as any)?.early_leave_grace_minutes,
+      snapshot.earlyLeaveGraceMinutes,
+      snapshot.early_leave_grace_minutes
+    ) ?? 0,
     label: `${start} - ${end}`,
     note: source === "exception" ? "استثناء منشور في Core" : "شفت منشور في Core",
   };
@@ -779,6 +806,8 @@ export default function DashboardAttendanceSecurity() {
         date: group.date,
         scheduledStart: schedule.start,
         scheduledEnd: schedule.end,
+        lateGraceMinutes: schedule.lateGraceMinutes,
+        earlyLeaveGraceMinutes: schedule.earlyLeaveGraceMinutes,
         isScheduledWorkDay: schedule.enabled,
         checkInAt: firstCheckIn?.serverTime,
         checkOutAt: lastCheckOut?.serverTime,

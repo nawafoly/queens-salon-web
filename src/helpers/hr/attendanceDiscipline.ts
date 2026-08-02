@@ -26,6 +26,8 @@ export type AttendanceDisciplineDayInput = {
   date: string;
   scheduledStart?: string | null;
   scheduledEnd?: string | null;
+  lateGraceMinutes?: number | string | null;
+  earlyLeaveGraceMinutes?: number | string | null;
   checkInAt?: string | null;
   checkOutAt?: string | null;
   isScheduledWorkDay?: boolean;
@@ -81,6 +83,12 @@ const RIYADH_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-CA", {
 
 function roundHours(minutes: number) {
   return Math.round((minutes / 60) * 100) / 100;
+}
+
+function policyMinutes(value: unknown, max = MINUTES_PER_DAY) {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.min(max, Math.round(number));
 }
 
 function normalizeDateKey(value: string) {
@@ -377,11 +385,21 @@ export function calculateAttendanceDisciplineDay(
     });
   }
 
-  const lateMinutes = Math.max(0, actualCheckInMinutes - scheduledStartMinutes!);
-  const earlyLeaveMinutes = Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes);
+  const lateGraceMinutes = policyMinutes(input.lateGraceMinutes);
+  const earlyLeaveGraceMinutes = policyMinutes(input.earlyLeaveGraceMinutes);
+  const actualLateMinutes = Math.max(0, actualCheckInMinutes - scheduledStartMinutes!);
+  const actualEarlyLeaveMinutes = Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes);
+  const lateMinutes = Math.max(0, actualLateMinutes - lateGraceMinutes);
+  const earlyLeaveMinutes = Math.max(0, actualEarlyLeaveMinutes - earlyLeaveGraceMinutes);
   const afterScheduleMinutes = Math.max(0, actualCheckOutMinutes - scheduledEndMinutes!);
   const compensatedLateMinutes = Math.min(lateMinutes, afterScheduleMinutes);
-  const rawMissingMinutes = Math.max(0, scheduledMinutes - actualMinutes);
+  const rawMissingBeforeGraceMinutes = Math.max(0, scheduledMinutes - actualMinutes);
+  const graceCoveredMissingMinutes = Math.min(
+    rawMissingBeforeGraceMinutes,
+    Math.min(actualLateMinutes, lateGraceMinutes) +
+      Math.min(actualEarlyLeaveMinutes, earlyLeaveGraceMinutes)
+  );
+  const rawMissingMinutes = Math.max(0, rawMissingBeforeGraceMinutes - graceCoveredMissingMinutes);
   const permissionCoverage = calculatePermissionCoverage({
     date,
     scheduledStart: input.scheduledStart,
@@ -416,7 +434,10 @@ export function calculateAttendanceDisciplineDay(
     extraHours: roundHours(extraMinutes),
     afterScheduleHours: roundHours(afterScheduleMinutes),
     netHourDifference: roundHours(
-      actualMinutes + permissionCoverage.coveredMissingMinutes - scheduledMinutes
+      actualMinutes +
+        graceCoveredMissingMinutes +
+        permissionCoverage.coveredMissingMinutes -
+        scheduledMinutes
     ),
     status: status.status,
     statusLabel: status.statusLabel,

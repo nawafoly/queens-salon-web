@@ -1247,8 +1247,12 @@
 }
 
 .employee-profile-page .employee-attendance-admin .attendance-month__month-input input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  opacity: 0.85;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  filter: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .employee-profile-page .employee-attendance-admin .attendance-month__summary-empty {
@@ -3764,3 +3768,842 @@
 }
 
 /* EMPLOYEE WORKING HOURS HOTFIX V7 END */
+
+/* Attendance command center final override: keep this after legacy profile rules. */
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__summary.attendance-month__command-center {
+  display: grid !important;
+  grid-template-columns: minmax(360px, 1.35fr) auto minmax(280px, 0.85fr) !important;
+  grid-template-areas: "intro controls selected" !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 16px 18px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-right: 4px solid #8a0020 !important;
+  border-radius: 14px !important;
+  color: #111827 !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+  overflow: hidden !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-center::before {
+  display: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-intro {
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 0 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-icon {
+  width: 48px !important;
+  height: 48px !important;
+  flex-basis: 48px !important;
+  border: 1px solid #ffd6dd !important;
+  border-radius: 12px !important;
+  color: #8a0020 !important;
+  background: #fff1f3 !important;
+  box-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__eyebrow {
+  display: inline-flex !important;
+  width: fit-content !important;
+  min-height: 24px !important;
+  align-items: center !important;
+  margin: 0 0 7px !important;
+  padding: 0 9px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 999px !important;
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  background: #f1f5f9 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-copy h2 {
+  margin: 0 0 3px !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: clamp(22px, 1.8vw, 28px) !important;
+  line-height: 1.2 !important;
+  text-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-copy p,
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-overview small,
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-overview-head > span:first-child {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-copy p {
+  margin: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.65 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__command-controls {
+  grid-area: controls !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__refresh-button {
+  width: auto !important;
+  min-width: 154px !important;
+  min-height: 46px !important;
+  padding: 0 18px !important;
+  border: 1px solid #8a0020 !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: #8a0020 !important;
+  box-shadow: 0 12px 24px rgba(138, 0, 32, 0.18) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-overview {
+  grid-area: selected !important;
+  gap: 7px !important;
+  padding: 13px 14px !important;
+  border: 1px solid #e5ebf3 !important;
+  border-radius: 12px !important;
+  color: #111827 !important;
+  background: #fbfcfe !important;
+  box-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-overview strong {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-status {
+  border: 0 !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  background: #eef2f7 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-complete {
+  color: #065f46 !important;
+  -webkit-text-fill-color: #065f46 !important;
+  background: #d1fae5 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-partial {
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+  background: #e0f2fe !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__selected-status.is-absent {
+  color: #991b1b !important;
+  -webkit-text-fill-color: #991b1b !important;
+  background: #fee2e2 !important;
+}
+
+@media (max-width: 1120px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__summary.attendance-month__command-center {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.82fr) !important;
+    grid-template-areas:
+      "intro selected"
+      "controls controls" !important;
+  }
+}
+
+@media (max-width: 760px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__summary.attendance-month__command-center {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "intro"
+      "controls"
+      "selected" !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__refresh-button {
+    width: 100% !important;
+  }
+}
+
+/* Attendance calendar header final override. */
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+  display: grid !important;
+  grid-template-columns: 46px minmax(180px, 0.38fr) minmax(260px, 1fr) auto !important;
+  grid-template-areas: "prev month title actions" !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 76px !important;
+  margin: 0 0 14px !important;
+  padding: 12px 14px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-radius: 14px !important;
+  color: #111827 !important;
+  background: #ffffff !important;
+  box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.62) !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__arrow--prev {
+  grid-area: prev !important;
+  justify-self: stretch !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__title {
+  grid-area: title !important;
+  justify-self: center !important;
+  display: grid !important;
+  place-items: center !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  padding: 0 10px !important;
+  text-align: center !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__title span {
+  color: #8a6470 !important;
+  -webkit-text-fill-color: #8a6470 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__title h3 {
+  margin: 0 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: clamp(24px, 2.2vw, 32px) !important;
+  line-height: 1.15 !important;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control {
+  grid-area: month !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 46px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 8px 6px 10px !important;
+  border: 1px solid #e5ebf3 !important;
+  border-radius: 12px !important;
+  background: #fbfcfe !important;
+  box-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__control-label {
+  min-width: max-content !important;
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__control-field {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  padding: 0 8px !important;
+  border: 1px solid #e8edf5 !important;
+  border-radius: 9px !important;
+  color: #8a0020 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__control-field input {
+  width: 116px !important;
+  max-width: 100% !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-actions {
+  grid-area: actions !important;
+  justify-self: end !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: end !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__arrow,
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__today-button {
+  min-height: 42px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-radius: 11px !important;
+  color: #8a0020 !important;
+  -webkit-text-fill-color: #8a0020 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__arrow {
+  width: 42px !important;
+  height: 42px !important;
+  padding: 0 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__today-button {
+  padding: 0 13px !important;
+  background: #fff5f7 !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile :where(.attendance-month__arrow, .attendance-month__today-button):hover {
+  border-color: #d6b7c0 !important;
+  background: #fff1f4 !important;
+}
+
+@media (max-width: 960px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+    grid-template-columns: 42px minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "prev title actions"
+      "month month month" !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control {
+    max-width: 360px !important;
+    justify-self: center !important;
+  }
+}
+
+@media (max-width: 560px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-head {
+    gap: 8px !important;
+    min-height: 0 !important;
+    padding: 10px !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__title h3 {
+    font-size: 20px !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control {
+    max-width: none !important;
+    grid-template-columns: 1fr !important;
+    gap: 5px !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__control-label {
+    text-align: center !important;
+  }
+}
+
+/* Month picker must never expose the browser's native date text/icon. */
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__month-picker {
+  position: relative !important;
+  min-width: 168px !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  cursor: pointer !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__month-picker-text {
+  min-width: 0 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page) .employee-attendance-admin .attendance-month.attendance-month--employee-profile .attendance-month__calendar-month-control .attendance-month__native-month-input {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}
+
+/* Isolated attendance view. This class intentionally avoids legacy employee-profile selectors. */
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean {
+  gap: 16px !important;
+  color: #111827 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__summary.attendance-month__command-center {
+  display: grid !important;
+  grid-template-columns: minmax(360px, 1.35fr) auto minmax(280px, 0.85fr) !important;
+  grid-template-areas: "intro controls overview" !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 16px 18px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-right: 4px solid #8a0020 !important;
+  border-radius: 14px !important;
+  color: #111827 !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+  overflow: hidden !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-center::before {
+  display: none !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-intro {
+  grid-area: intro !important;
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 0 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-icon {
+  width: 48px !important;
+  height: 48px !important;
+  flex-basis: 48px !important;
+  border: 1px solid #ffd6dd !important;
+  border-radius: 12px !important;
+  color: #8a0020 !important;
+  background: #fff1f3 !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__eyebrow {
+  display: inline-flex !important;
+  width: fit-content !important;
+  min-height: 24px !important;
+  align-items: center !important;
+  margin: 0 0 7px !important;
+  padding: 0 9px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 999px !important;
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  background: #f1f5f9 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-copy h2 {
+  margin: 0 0 3px !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: clamp(22px, 1.8vw, 28px) !important;
+  line-height: 1.2 !important;
+  text-shadow: none !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-copy p,
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__selected-overview small,
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__selected-overview-head > span:first-child {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-copy p {
+  margin: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.65 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__command-controls {
+  grid-area: controls !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__refresh-button {
+  width: auto !important;
+  min-width: 154px !important;
+  min-height: 46px !important;
+  padding: 0 18px !important;
+  border: 1px solid #8a0020 !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: #8a0020 !important;
+  box-shadow: 0 12px 24px rgba(138, 0, 32, 0.18) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__selected-overview {
+  grid-area: overview !important;
+  gap: 7px !important;
+  padding: 13px 14px !important;
+  border: 1px solid #e5ebf3 !important;
+  border-radius: 12px !important;
+  color: #111827 !important;
+  background: #fbfcfe !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__selected-overview strong {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-shell.attendance-month__calendar-card {
+  padding: 12px 14px 16px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-head {
+  display: grid !important;
+  grid-template-columns: 46px minmax(0, 1fr) 176px auto !important;
+  grid-template-areas: "prev title month actions" !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-height: 62px !important;
+  margin: 0 0 14px !important;
+  padding: 8px 10px !important;
+  border: 1px solid #e7edf5 !important;
+  border-radius: 14px !important;
+  background: #fbfcfe !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__arrow--prev {
+  grid-area: prev !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__title {
+  grid-area: title !important;
+  justify-self: center !important;
+  display: grid !important;
+  place-items: center !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  padding: 0 10px !important;
+  text-align: center !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__title span {
+  color: #8a6470 !important;
+  -webkit-text-fill-color: #8a6470 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__title h3 {
+  margin: 0 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: clamp(24px, 2.2vw, 32px) !important;
+  font-weight: 950 !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-month-control {
+  grid-area: month !important;
+  width: 176px !important;
+  min-width: 0 !important;
+  display: block !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-month-control .attendance-month__control-label {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__month-picker {
+  position: relative !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 12px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-radius: 11px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  overflow: hidden !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__month-picker-text {
+  min-width: 0 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__native-month-input {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-actions {
+  grid-area: actions !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: end !important;
+  gap: 8px !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__arrow,
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__today-button {
+  min-height: 42px !important;
+  border: 1px solid #e4e9f1 !important;
+  border-radius: 11px !important;
+  color: #8a0020 !important;
+  -webkit-text-fill-color: #8a0020 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__arrow {
+  width: 42px !important;
+  height: 42px !important;
+  padding: 0 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__today-button {
+  padding: 0 13px !important;
+  background: #fff5f7 !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+}
+
+.employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean :where(.attendance-month__arrow, .attendance-month__today-button):hover {
+  border-color: #d6b7c0 !important;
+  background: #fff1f4 !important;
+}
+
+@media (max-width: 1040px) {
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__summary.attendance-month__command-center {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.82fr) !important;
+    grid-template-areas:
+      "intro overview"
+      "controls controls" !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-head {
+    grid-template-columns: 42px minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "prev title actions"
+      "month month month" !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-month-control {
+    width: 210px !important;
+    justify-self: center !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__summary.attendance-month__command-center {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "intro"
+      "controls"
+      "overview" !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-head {
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__title h3 {
+    font-size: 20px !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__calendar-month-control {
+    width: 100% !important;
+  }
+
+  .employee-profile-page .employee-attendance-admin .attendance-month.attendance-month--employee-clean .attendance-month__refresh-button {
+    width: 100% !important;
+  }
+}
+
+/* Attendance month header: final no-arrows layout. */
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__calendar-head {
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  grid-template-areas: "title month actions" !important;
+  align-items: center !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__title {
+  grid-area: title !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__calendar-month-control {
+  grid-area: month !important;
+  width: auto !important;
+  min-width: 150px !important;
+  justify-self: end !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__month-picker-button {
+  min-height: 42px !important;
+  gap: 10px !important;
+  padding: 0 14px !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__month-picker-label {
+  display: inline !important;
+  color: #172033 !important;
+  -webkit-text-fill-color: #172033 !important;
+  font-size: 0.82rem !important;
+  font-weight: 950 !important;
+  white-space: nowrap !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__month-picker-text {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  .attendance-month__calendar-actions {
+  grid-area: actions !important;
+}
+
+:is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+  .employee-attendance-admin
+  .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+  :is(.attendance-month__selected-status.is-complete, .attendance-month__badge.is-complete) {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: #047857 !important;
+  border-color: #03664f !important;
+  box-shadow: 0 8px 16px rgba(4, 120, 87, 0.16) !important;
+}
+
+@media (max-width: 1040px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+    .employee-attendance-admin
+    .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+    .attendance-month__calendar-head {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "title actions"
+      "month month" !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+    .employee-attendance-admin
+    .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+    .attendance-month__calendar-month-control {
+    min-width: min(100%, 240px) !important;
+    justify-self: center !important;
+  }
+}
+
+@media (max-width: 680px) {
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+    .employee-attendance-admin
+    .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+    .attendance-month__calendar-head {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "title actions"
+      "month month" !important;
+  }
+
+  :is(.hr-shell.madan-admin-shell.hr-shell--employees, .employee-profile-page)
+    .employee-attendance-admin
+    .attendance-month:is(.attendance-month--employee-profile, .attendance-month--employee-clean)
+    .attendance-month__calendar-month-control {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}

@@ -3089,8 +3089,12 @@ html body
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-calendar-picker-indicator {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
   filter: none;
-  opacity: 0.86;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .hr-shell.madan-admin-shell.hr-shell--employees .attendance-month.attendance-month--employee-profile .attendance-month__month-input input::-webkit-datetime-edit,

@@ -15583,7 +15583,12 @@
 }
 
 .dashboard-skin.madan-admin-shell .day-audit-date-row input::-webkit-calendar-picker-indicator {
-  filter: invert(1) opacity(0.8);
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  filter: none !important;
+  pointer-events: none !important;
 }
 
 .dashboard-skin.madan-admin-shell .day-audit-badge {

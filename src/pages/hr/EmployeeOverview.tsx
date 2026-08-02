@@ -145,6 +145,15 @@ function getDayOverride(dateKey: string, input: Record<string, any>) {
   return overrides.find((override: Record<string, unknown>) => cleanText(override.date) === dateKey) || null;
 }
 
+function readPolicyMinutes(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) return Math.round(number);
+  }
+  return undefined;
+}
+
 function resolvedShiftWindow(row?: CoreResolvedShift | null) {
   if (!row || cleanText((row as any).source) === "none") return null;
   const exceptionType = cleanText((row as any)?.exceptionType || (row as any)?.exception_type);
@@ -174,7 +183,22 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
     cleanTime(snapshot.endTime) ||
     cleanTime(snapshot.end_time);
   if (!startTime && !endTime) return null;
-  return { startTime: startTime || "09:00", endTime: endTime || "17:00" };
+  return {
+    startTime: startTime || "09:00",
+    endTime: endTime || "17:00",
+    lateGraceMinutes: readPolicyMinutes(
+      (row as any)?.lateGraceMinutes,
+      (row as any)?.late_grace_minutes,
+      snapshot.lateGraceMinutes,
+      snapshot.late_grace_minutes
+    ),
+    earlyLeaveGraceMinutes: readPolicyMinutes(
+      (row as any)?.earlyLeaveGraceMinutes,
+      (row as any)?.early_leave_grace_minutes,
+      snapshot.earlyLeaveGraceMinutes,
+      snapshot.early_leave_grace_minutes
+    ),
+  };
 }
 
 function scheduleForEmployeeDate(
@@ -187,6 +211,8 @@ function scheduleForEmployeeDate(
     return {
       startTime: coreWindow.startTime,
       endTime: coreWindow.endTime,
+      lateGraceMinutes: coreWindow.lateGraceMinutes,
+      earlyLeaveGraceMinutes: coreWindow.earlyLeaveGraceMinutes,
       weeklyOffDays: [],
     };
   }
@@ -239,6 +265,14 @@ function scheduleForEmployeeDate(
       cleanTime(effectiveSource.workEndTime) ||
       cleanTime(effectiveSource.shiftEndTime) ||
       "17:00",
+    lateGraceMinutes: readPolicyMinutes(
+      effectiveSource.lateGraceMinutes,
+      effectiveSource.late_grace_minutes
+    ),
+    earlyLeaveGraceMinutes: readPolicyMinutes(
+      effectiveSource.earlyLeaveGraceMinutes,
+      effectiveSource.early_leave_grace_minutes
+    ),
     weeklyOffDays: [...explicitOffDays, ...customOffDays],
   };
 }

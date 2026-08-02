@@ -79,7 +79,22 @@ function formatShiftWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment
   return `${start || "--:--"} — ${end || "--:--"}`;
 }
 
-function assignmentStatusLabel(status: string) {
+function isAssignmentExpired(assignment: CoreShiftAssignment, date = todayKey()) {
+  return cleanText(assignment.status) !== "cancelled" && Boolean(assignment.effectiveTo) && cleanText(assignment.effectiveTo) < date;
+}
+
+function isAssignmentCurrent(assignment: CoreShiftAssignment, date = todayKey()) {
+  if (cleanText(assignment.status) !== "published") return false;
+  if (assignment.effectiveFrom > date) return false;
+  if (assignment.effectiveTo && assignment.effectiveTo < date) return false;
+  return true;
+}
+
+function assignmentStatusLabel(assignment: CoreShiftAssignment) {
+  const status = cleanText(assignment.status);
+  if (isAssignmentExpired(assignment)) return "منتهي";
+  if (status === "published" && assignment.effectiveFrom > todayKey()) return "مجدول";
+  if (isAssignmentCurrent(assignment)) return "نشط";
   if (status === "published") return "منشور";
   if (status === "draft") return "مسودة";
   if (status === "cancelled") return "ملغي";
@@ -100,6 +115,48 @@ function parseSnapshot(row: CoreShiftAssignment) {
   } catch {
     return {};
   }
+}
+
+function activeAssignmentForDate(assignments: CoreShiftAssignment[], date: string) {
+  const cleanDate = cleanText(date) || todayKey();
+  return [...assignments]
+    .filter((assignment) => isAssignmentCurrent(assignment, cleanDate))
+    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0] || null;
+}
+
+function shiftTemplateIdForDate(input: {
+  date: string;
+  assignments: CoreShiftAssignment[];
+  templates: CoreShiftTemplate[];
+  resolvedShift?: Record<string, unknown> | null;
+}) {
+  const date = cleanText(input.date) || todayKey();
+  const resolvedDate = cleanText((input.resolvedShift as any)?.date);
+  const resolvedTemplateId =
+    resolvedDate === date
+      ? cleanText(
+          (input.resolvedShift as any)?.shiftTemplateId ||
+            (input.resolvedShift as any)?.shift_template_id
+        )
+      : "";
+  if (resolvedTemplateId) return resolvedTemplateId;
+
+  const assignment = activeAssignmentForDate(input.assignments, date);
+  const assignmentSnapshot = assignment ? parseSnapshot(assignment) : {};
+  const assignmentTemplateId = cleanText(
+    (assignment as any)?.shiftTemplateId ||
+      (assignment as any)?.shift_template_id ||
+      assignmentSnapshot.id
+  );
+  if (assignmentTemplateId) return assignmentTemplateId;
+
+  const assignmentName = cleanText(assignment?.shiftName || assignmentSnapshot.name);
+  if (assignmentName) {
+    const matched = input.templates.find((template) => cleanText(template.name) === assignmentName);
+    if (matched) return matched.id;
+  }
+
+  return input.templates.find((item) => boolish(item.active))?.id || "";
 }
 
 function previewCount(value: unknown) {
@@ -189,8 +246,27 @@ export default function ShiftControlSection({
   );
 
   const openAssignment = useMemo(
-    () => assignments.find((item) => item.status !== "cancelled" && !item.effectiveTo) || null,
+    () => assignments.find((item) => isAssignmentCurrent(item) && !item.effectiveTo) || null,
     [assignments]
+  );
+
+  const defaultTemplateIdForExceptionDate = useCallback(
+    (date: string) =>
+      shiftTemplateIdForDate({
+        date,
+        assignments,
+        templates,
+        resolvedShift,
+      }),
+    [assignments, resolvedShift, templates]
+  );
+
+  const selectedExceptionTemplateName = useMemo(
+    () =>
+      activeTemplates.find((template) => template.id === exceptionForm.shiftTemplateId)?.name ||
+      templates.find((template) => template.id === exceptionForm.shiftTemplateId)?.name ||
+      "لا يوجد شفت محدد",
+    [activeTemplates, exceptionForm.shiftTemplateId, templates]
   );
 
   const load = useCallback(async () => {
@@ -218,7 +294,15 @@ export default function ShiftControlSection({
       }));
       setExceptionForm((current) => ({
         ...current,
-        shiftTemplateId: current.shiftTemplateId || templateRows.find((item) => boolish(item.active))?.id || "",
+        shiftTemplateId:
+          current.exceptionType === "shift" && current.shiftTemplateId
+            ? current.shiftTemplateId
+            : shiftTemplateIdForDate({
+                date: current.dateFrom,
+                assignments: assignmentRows,
+                templates: templateRows,
+                resolvedShift: resolved,
+              }),
       }));
     } catch (err) {
       console.warn("shift control load failed", err);
@@ -584,10 +668,28 @@ export default function ShiftControlSection({
             </div>
           </div>
           <div className="shift-control-form-grid shift-control-form-grid--wide">
-            <label><span>من تاريخ</span><input className="dash-input" type="date" value={exceptionForm.dateFrom} onChange={(e) => setExceptionForm((x) => ({ ...x, dateFrom: e.target.value, dateTo: x.dateTo || e.target.value }))} disabled={!canManage || saving} /></label>
+            <label><span>من تاريخ</span><input className="dash-input" type="date" value={exceptionForm.dateFrom} onChange={(e) => {
+              const dateFrom = e.target.value;
+              setExceptionForm((x) => ({
+                ...x,
+                dateFrom,
+                dateTo: x.dateTo || dateFrom,
+                shiftTemplateId: defaultTemplateIdForExceptionDate(dateFrom),
+              }));
+            }} disabled={!canManage || saving} /></label>
             <label><span>إلى تاريخ</span><input className="dash-input" type="date" value={exceptionForm.dateTo} onChange={(e) => setExceptionForm((x) => ({ ...x, dateTo: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>نوع الاستثناء</span><select className="dash-input" value={exceptionForm.exceptionType} onChange={(e) => setExceptionForm((x) => ({ ...x, exceptionType: e.target.value as ExceptionForm["exceptionType"] }))} disabled={!canManage || saving}><option value="shift">شفت بديل</option><option value="custom">وقت مخصص</option><option value="off">راحة / لا دوام</option></select></label>
-            <label><span>قالب الشفت</span><select className="dash-input" value={exceptionForm.shiftTemplateId} onChange={(e) => setExceptionForm((x) => ({ ...x, shiftTemplateId: e.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "shift"}>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+            <label><span>نوع الاستثناء</span><select className="dash-input" value={exceptionForm.exceptionType} onChange={(e) => {
+              const exceptionType = e.target.value as ExceptionForm["exceptionType"];
+              setExceptionForm((x) => ({
+                ...x,
+                exceptionType,
+                shiftTemplateId:
+                  exceptionType === "shift" && x.exceptionType === "shift" && x.shiftTemplateId
+                    ? x.shiftTemplateId
+                    : defaultTemplateIdForExceptionDate(x.dateFrom),
+              }));
+            }} disabled={!canManage || saving}><option value="shift">شفت بديل</option><option value="custom">وقت مخصص</option><option value="off">راحة / لا دوام</option></select></label>
+            <label><span>{exceptionForm.exceptionType === "shift" ? "قالب الشفت" : "الشفت الحالي"}</span>{exceptionForm.exceptionType === "shift" ? <select className="dash-input" value={exceptionForm.shiftTemplateId} onChange={(e) => setExceptionForm((x) => ({ ...x, shiftTemplateId: e.target.value }))} disabled={!canManage || saving}><option value="">{activeTemplates.length ? "اختر قالب الشفت" : "لا توجد قوالب نشطة"}</option>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select> : <input className="dash-input" value={selectedExceptionTemplateName} readOnly disabled />}</label>
             <label><span>بداية مخصصة</span><input className="dash-input" type="time" value={exceptionForm.startTime} onChange={(e) => setExceptionForm((x) => ({ ...x, startTime: e.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} /></label>
             <label><span>نهاية مخصصة</span><input className="dash-input" type="time" value={exceptionForm.endTime} onChange={(e) => setExceptionForm((x) => ({ ...x, endTime: e.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} /></label>
           </div>
@@ -618,12 +720,14 @@ export default function ShiftControlSection({
           <div className="shift-control-list">
             {assignments.map((assignment) => {
               const snapshot = parseSnapshot(assignment);
+              const isExpired = isAssignmentExpired(assignment);
+              const isCurrent = isAssignmentCurrent(assignment);
               return (
                 <div className="shift-control-row" key={assignment.id}>
                   <div><strong>{assignment.shiftName || cleanText(snapshot.name) || "شفت محفوظ"}</strong><span>{assignment.effectiveFrom} ← {assignment.effectiveTo || "مستمر"} · {formatShiftWindow(snapshot as any)}</span></div>
-                  <span className={assignment.status === "published" ? "shift-badge success" : "shift-badge muted"}>{assignmentStatusLabel(assignment.status)}</span>
+                  <span className={isCurrent ? "shift-badge success" : "shift-badge muted"}>{assignmentStatusLabel(assignment)}</span>
                   <div className="shift-control-row-actions">
-                    <button type="button" className="exp-btn ghost" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled"}>إنهاء</button>
+                    <button type="button" className="exp-btn ghost" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled" || isExpired}>إنهاء</button>
                     <button type="button" className="exp-btn danger" onClick={() => void cancelAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled"}>إلغاء</button>
                   </div>
                 </div>

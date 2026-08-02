@@ -1240,9 +1240,11 @@
 }
 
 .dashboard-skin .ov-date-filter input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 1;
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  cursor: pointer;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .dashboard-skin .ov-table {
@@ -2204,16 +2206,16 @@
 }
 
 .bk-page-wrapper .bk-date-input::-webkit-calendar-picker-indicator {
-  display: block;
-  width: 18px;
-  height: 18px;
-  opacity: 1;
-  cursor: pointer;
-  margin-left: 4px;
-  padding: 0;
-  border-radius: 0;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  cursor: default;
+  margin: 0 !important;
+  padding: 0 !important;
   background: transparent !important;
   filter: none !important;
+  pointer-events: none !important;
 }
 
 .bk-page-wrapper .bk-date-input::-webkit-inner-spin-button,
@@ -20657,9 +20659,12 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .offers-modal input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  opacity: 1;
-  cursor: pointer;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  filter: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .of-modal-title h3 {
@@ -24742,9 +24747,12 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
 }
 
 .dashboard-skin .settings-date-input::-webkit-calendar-picker-indicator {
-  opacity: 1;
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  cursor: pointer;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  filter: none !important;
+  pointer-events: none !important;
 }
 
 /* âœ… Lists */

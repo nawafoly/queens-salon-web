@@ -1,9 +1,8 @@
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
   faCheck,
-  faChevronLeft,
-  faChevronRight,
   faClock,
   faEllipsisVertical,
   faFingerprint,
@@ -123,12 +122,6 @@ function monthYearLabel(monthKey: string) {
   return new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year).replace(/\u066c/g, "") || String(year);
 }
 
-function shiftMonth(monthKey: string, delta: number) {
-  const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}`;
-}
-
 function daysInMonth(monthKey: string) {
   const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -153,6 +146,15 @@ function cleanTime(value: unknown) {
 
 function cleanShiftText(value: unknown) {
   return String(value || "").trim();
+}
+
+function readPolicyMinutes(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) return Math.round(number);
+  }
+  return undefined;
 }
 
 function parseShiftSnapshot(row?: CoreResolvedShift | null) {
@@ -191,7 +193,15 @@ function resolvedShiftName(row?: CoreResolvedShift | null) {
 function resolvedShiftWindow(row?: CoreResolvedShift | null) {
   if (!row || cleanShiftText((row as any).source) === "none") return null;
   const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
-  if (exceptionType === "off") return { startTime: "09:00", endTime: "17:00", isOff: true };
+  if (exceptionType === "off") {
+    return {
+      startTime: "09:00",
+      endTime: "17:00",
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+      isOff: true,
+    };
+  }
   const snapshot = parseShiftSnapshot(row);
   const startTime =
     cleanTime((row as any)?.startTime) ||
@@ -208,7 +218,23 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
     cleanTime(snapshot.end_time) ||
     cleanTime(snapshot.endTime);
   if (!startTime && !endTime) return null;
-  return { startTime: startTime || "09:00", endTime: endTime || "17:00", isOff: false };
+  return {
+    startTime: startTime || "09:00",
+    endTime: endTime || "17:00",
+    lateGraceMinutes: readPolicyMinutes(
+      (row as any)?.lateGraceMinutes,
+      (row as any)?.late_grace_minutes,
+      snapshot.lateGraceMinutes,
+      snapshot.late_grace_minutes
+    ),
+    earlyLeaveGraceMinutes: readPolicyMinutes(
+      (row as any)?.earlyLeaveGraceMinutes,
+      (row as any)?.early_leave_grace_minutes,
+      snapshot.earlyLeaveGraceMinutes,
+      snapshot.early_leave_grace_minutes
+    ),
+    isOff: false,
+  };
 }
 
 function isCoreResolvedOff(row?: CoreResolvedShift | null) {
@@ -234,6 +260,8 @@ function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null
     return {
       startTime: coreWindow.startTime,
       endTime: coreWindow.endTime,
+      lateGraceMinutes: coreWindow.lateGraceMinutes,
+      earlyLeaveGraceMinutes: coreWindow.earlyLeaveGraceMinutes,
       weeklyOffDays: [],
     };
   }
@@ -289,6 +317,14 @@ function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null
   return {
     startTime,
     endTime,
+    lateGraceMinutes: readPolicyMinutes(
+      effectiveSource.lateGraceMinutes,
+      (effectiveSource as any).late_grace_minutes
+    ),
+    earlyLeaveGraceMinutes: readPolicyMinutes(
+      effectiveSource.earlyLeaveGraceMinutes,
+      (effectiveSource as any).early_leave_grace_minutes
+    ),
     weeklyOffDays: [...explicitOffDays, ...customOffDays],
   };
 }
@@ -571,16 +607,53 @@ export default function AttendanceMonthView({
     selectedComputation.overtimeHours > 0.001;
 
   const currentMonthKey = todayKey.slice(0, 7);
-  const canGoNextMonth = safeMonthKey < currentMonthKey;
+  const currentYear = Number(currentMonthKey.slice(0, 4));
+  const selectedYear = Number(safeMonthKey.slice(0, 4));
+  const monthPickerRef = useRef<HTMLDivElement | null>(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(selectedYear);
+  const pickerYears = Array.from(
+    new Set([
+      selectedYear,
+      ...Array.from({ length: 6 }, (_, index) => currentYear - index),
+    ])
+  )
+    .filter((year) => Number.isFinite(year) && year <= currentYear)
+    .sort((left, right) => right - left);
+  const pickerMonths = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const key = `${pickerYear}-${pad2(month)}`;
+    return {
+      key,
+      label: monthLabel(key),
+      disabled: key > currentMonthKey,
+      selected: key === safeMonthKey,
+    };
+  });
 
-  const goToPreviousMonth = () => {
-    onMonthChange(shiftMonth(safeMonthKey, -1));
-  };
+  useEffect(() => {
+    setPickerYear(selectedYear);
+  }, [selectedYear]);
 
-  const goToNextMonth = () => {
-    if (!canGoNextMonth) return;
-    onMonthChange(shiftMonth(safeMonthKey, 1));
-  };
+  useEffect(() => {
+    if (!monthPickerOpen) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!monthPickerRef.current?.contains(event.target as Node)) {
+        setMonthPickerOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMonthPickerOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [monthPickerOpen]);
 
   const goToToday = () => {
     const currentToday = getTodayAttendanceDateKey();
@@ -635,43 +708,60 @@ export default function AttendanceMonthView({
 
       <div className="attendance-month__calendar-shell attendance-month__calendar-card">
         <div className="attendance-month__calendar-head">
-          <button
-            type="button"
-            className="attendance-month__arrow attendance-month__arrow--prev"
-            onClick={goToPreviousMonth}
-            aria-label="الشهر السابق"
-          >
-            <FontAwesomeIcon icon={faChevronRight} />
-          </button>
           <div className="attendance-month__title">
             <span>تقويم الحضور</span>
             <h3>{monthLabel(safeMonthKey)} {monthYearLabel(safeMonthKey)}</h3>
           </div>
-          <label className="attendance-month__calendar-month-control attendance-month__month-control">
-            <span className="attendance-month__control-label">الشهر المعروض</span>
-            <span className="attendance-month__control-field">
+          <div className="attendance-month__calendar-month-control attendance-month__month-control" ref={monthPickerRef}>
+            <button
+              type="button"
+              className="attendance-month__control-field attendance-month__month-picker attendance-month__month-picker-button"
+              onClick={() => setMonthPickerOpen((open) => !open)}
+              aria-haspopup="dialog"
+              aria-expanded={monthPickerOpen}
+            >
               <FontAwesomeIcon icon={faCalendarDay} />
-              <input
-                type="month"
-                value={safeMonthKey}
-                max={currentMonthKey}
-                onChange={(event) => onMonthChange(normalizeMonthKey(event.target.value))}
-              />
-            </span>
-          </label>
+              <span className="attendance-month__month-picker-label">اختيار الشهر</span>
+            </button>
+            {monthPickerOpen ? (
+              <div className="attendance-month__month-menu" role="dialog" aria-label="اختيار الشهر">
+                <div className="attendance-month__month-menu-head">
+                  <span>السنة</span>
+                  <select
+                    value={pickerYear}
+                    onChange={(event) => setPickerYear(Number(event.target.value))}
+                    aria-label="اختيار السنة"
+                  >
+                    {pickerYears.map((year) => (
+                      <option key={year} value={year}>
+                        {new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="attendance-month__month-options">
+                  {pickerMonths.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`attendance-month__month-option ${item.selected ? "is-selected" : ""}`}
+                      disabled={item.disabled}
+                      onClick={() => {
+                        onMonthChange(item.key);
+                        setMonthPickerOpen(false);
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="attendance-month__calendar-actions">
             <button type="button" className="attendance-month__today-button" onClick={goToToday}>
               <FontAwesomeIcon icon={faCalendarDay} />
               <span>اليوم</span>
-            </button>
-            <button
-              type="button"
-              className="attendance-month__arrow attendance-month__arrow--next"
-              onClick={goToNextMonth}
-              disabled={!canGoNextMonth}
-              aria-label="الشهر التالي"
-            >
-              <FontAwesomeIcon icon={faChevronLeft} />
             </button>
           </div>
         </div>

@@ -208,6 +208,34 @@ function positiveNumber(value: unknown) {
   return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
 }
 
+function policyMinutes(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.min(24 * 60, Math.round(number)) : 0;
+}
+
+function firstPolicyMinutes(
+  parts: Array<Record<string, unknown> | null | undefined>,
+  camelKey: string,
+  snakeKey: string
+) {
+  for (const source of parts) {
+    if (!source) continue;
+    for (const raw of [(source as any)[camelKey], (source as any)[snakeKey]]) {
+      if (raw !== null && raw !== undefined && raw !== "") return policyMinutes(raw);
+    }
+  }
+  return 0;
+}
+
+type PayrollDaySchedule = {
+  enabled: boolean;
+  start: string | null;
+  end: string | null;
+  source?: string;
+  lateGraceMinutes?: number;
+  earlyLeaveGraceMinutes?: number;
+};
+
 export function payrollAccrualPeriodStatus(payrollMonth: string) {
   const [year, month] = String(payrollMonth || "").split("-").map(Number);
   if (!Number.isFinite(year) || !Number.isFinite(month)) {
@@ -662,27 +690,51 @@ function coreScheduleWindowFromParts(parts: Array<Record<string, unknown> | null
         (source as any).templateEndTime ??
         (source as any).template_end_time
     );
-    if (start || end) return { start: start || DEFAULT_SHIFT_START, end: end || DEFAULT_SHIFT_END };
+    if (start || end) {
+      return {
+        start: start || DEFAULT_SHIFT_START,
+        end: end || DEFAULT_SHIFT_END,
+        lateGraceMinutes: policyMinutes((source as any).lateGraceMinutes ?? (source as any).late_grace_minutes),
+        earlyLeaveGraceMinutes: policyMinutes((source as any).earlyLeaveGraceMinutes ?? (source as any).early_leave_grace_minutes),
+      };
+    }
   }
   return null;
 }
 
-function coreScheduleForDate(employee: CoreHrEmployee, dateKey: string, templates: CoreShiftTemplate[] = []) {
+function mergeCoreSchedulePolicy(
+  window: { start: string; end: string; lateGraceMinutes?: number; earlyLeaveGraceMinutes?: number },
+  parts: Array<Record<string, unknown> | null | undefined>
+) {
+  return {
+    ...window,
+    lateGraceMinutes: firstPolicyMinutes(parts, "lateGraceMinutes", "late_grace_minutes"),
+    earlyLeaveGraceMinutes: firstPolicyMinutes(
+      parts,
+      "earlyLeaveGraceMinutes",
+      "early_leave_grace_minutes"
+    ),
+  };
+}
+
+function coreScheduleForDate(employee: CoreHrEmployee, dateKey: string, templates: CoreShiftTemplate[] = []): PayrollDaySchedule | null {
   const exception = activeCoreScheduleExceptions(employee, dateKey)[0];
   if (exception) {
     const exceptionType = text(exception.exceptionType || (exception as any).exception_type);
     if (exceptionType === "off") return { enabled: false, start: null, end: null, source: "core_exception_off" };
     const template = coreShiftTemplateById(templates, exception.shiftTemplateId || (exception as any).shift_template_id);
-    const window = coreScheduleWindowFromParts([exception as any, template as any]);
-    if (window) return { enabled: true, ...window, source: exceptionType === "custom" ? "core_exception_custom" : "core_exception_shift" };
+    const parts = [exception as any, template as any];
+    const window = coreScheduleWindowFromParts(parts);
+    if (window) return { enabled: true, ...mergeCoreSchedulePolicy(window, parts), source: exceptionType === "custom" ? "core_exception_custom" : "core_exception_shift" };
   }
 
   const assignment = activeCoreShiftAssignments(employee, dateKey)[0];
   if (assignment) {
     const snapshot = parseShiftSnapshot(assignment.snapshotJson || (assignment as any).snapshot_json);
     const template = coreShiftTemplateById(templates, assignment.shiftTemplateId || (assignment as any).shift_template_id);
-    const window = coreScheduleWindowFromParts([assignment as any, snapshot, template as any]);
-    if (window) return { enabled: true, ...window, source: "core_assignment" };
+    const parts = [assignment as any, snapshot, template as any];
+    const window = coreScheduleWindowFromParts(parts);
+    if (window) return { enabled: true, ...mergeCoreSchedulePolicy(window, parts), source: "core_assignment" };
   }
 
   return null;
@@ -692,7 +744,7 @@ function employeeHasCoreShiftControl(employee: CoreHrEmployee) {
   return Array.isArray((employee as any).shiftAssignments) || Array.isArray((employee as any).scheduleExceptions);
 }
 
-function scheduleForDate(employee: CoreHrEmployee, dateKey: string, dailyScheduledHours = 0, shiftTemplates: CoreShiftTemplate[] = []) {
+function scheduleForDate(employee: CoreHrEmployee, dateKey: string, dailyScheduledHours = 0, shiftTemplates: CoreShiftTemplate[] = []): PayrollDaySchedule {
   const coreSchedule = coreScheduleForDate(employee, dateKey, shiftTemplates);
   if (coreSchedule) return coreSchedule;
   const weekday = jsDateFromKey(dateKey).getUTCDay();
@@ -729,6 +781,10 @@ function scheduleForDate(employee: CoreHrEmployee, dateKey: string, dailySchedul
       text(employment.shift_end_time ?? employment.shiftEndTime) ||
       endTimeFromDailyHours(start, dailyScheduledHours) ||
       DEFAULT_SHIFT_END,
+    lateGraceMinutes: policyMinutes(employment.late_grace_minutes ?? employment.lateGraceMinutes),
+    earlyLeaveGraceMinutes: policyMinutes(
+      employment.early_leave_grace_minutes ?? employment.earlyLeaveGraceMinutes
+    ),
   };
 }
 
@@ -821,6 +877,8 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
         date,
         scheduledStart: schedule.start,
         scheduledEnd: schedule.end,
+        lateGraceMinutes: schedule.lateGraceMinutes,
+        earlyLeaveGraceMinutes: schedule.earlyLeaveGraceMinutes,
         isScheduledWorkDay: schedule.enabled,
         isApprovedLeave: approvedLeaveDates.has(date) || approvedAbsenceDates.has(date),
         checkInAt: firstCheckIn?.recordedAt,

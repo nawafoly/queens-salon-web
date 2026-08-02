@@ -133,7 +133,7 @@ export default function AttendanceSection({
         loading={loading}
         monthKey={monthKey}
         selectedDate={selectedDate}
-        className="attendance-month--employee-profile"
+        className="attendance-month--employee-clean"
         title="سجل حضور الموظفة"
         subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
         viewerMode="admin"

@@ -635,8 +635,42 @@ textarea:focus {
   border-color: var(--qs-control-focus-border, rgba(64, 1, 13, 0.75));
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
+input[type="date"],
+input[type="month"],
+input[type="week"],
+input[type="time"],
+input[type="datetime-local"] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+html body input:is([type="date"], [type="month"], [type="week"], [type="time"], [type="datetime-local"])::-webkit-calendar-picker-indicator,
+html body #root input:is([type="date"], [type="month"], [type="week"], [type="time"], [type="datetime-local"])::-webkit-calendar-picker-indicator {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  color: transparent !important;
+  filter: none !important;
+  -webkit-appearance: none !important;
+}
+
+html body input:is([type="date"], [type="month"], [type="week"], [type="time"], [type="datetime-local"])::-webkit-inner-spin-button,
+html body input:is([type="date"], [type="month"], [type="week"], [type="time"], [type="datetime-local"])::-webkit-clear-button {
+  display: none !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  -webkit-appearance: none !important;
 }
 
 /* ===========================
@@ -6562,12 +6596,6 @@ textarea.form-control {
 /* =========================
    Date picker UX
 ========================= */
-.booking-page input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 1;
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  cursor: pointer;
-}
-
 .booking-page .booking-date-group {
   cursor: pointer;
 }
@@ -6577,10 +6605,6 @@ textarea.form-control {
 .booking-page .booking-date-group .input-group-text,
 .booking-page .booking-date-group .booking-date-icon {
   color: #000 !important;
-}
-
-.booking-page .booking-date-input::-webkit-calendar-picker-indicator {
-  opacity: 0;
 }
 
 .booking-page .booking-date-field__head {
@@ -12101,12 +12125,6 @@ textarea.form-control {
   font-size: 0.86rem;
 }
 
-.bk-internal input[type="date"]::-webkit-calendar-picker-indicator {
-  opacity: 1;
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  cursor: pointer;
-}
-
 .bk-internal .booking-date-group,
 .bk-internal .booking-date-group * {
   cursor: pointer;
@@ -17614,12 +17632,6 @@ textarea.form-control {
 }
 
 /* âœ… Profile: make date picker icon black (Chrome/Edge/Safari) */
-.p-root input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: var(--qs-date-picker-icon-filter, brightness(0) saturate(100%));
-  opacity: 1;
-  cursor: pointer;
-}
-
 /* (ط§ط®طھظٹط§ط±ظٹ) ظ„ظˆ ط¹ظ†ط¯ظƒ ط«ظٹظ…ط§طھ طھط­ط· appearance ط؛ط±ظٹط¨ط© */
 .p-root input[type="date"] {
   color-scheme: light;

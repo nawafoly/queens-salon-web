@@ -19,6 +19,8 @@ const RIYADH_TIME_ZONE = "Asia/Riyadh";
 export type ShiftSchedule = {
   startTime?: string | null;
   endTime?: string | null;
+  lateGraceMinutes?: number | string | null;
+  earlyLeaveGraceMinutes?: number | string | null;
   weeklyOffDays?: WorkScheduleWeekday[] | string[] | null;
 };
 
@@ -75,6 +77,12 @@ export type AttendancePayrollSummaryOptions = {
 function roundHours(value: number) {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.round(value * 100) / 100;
+}
+
+function policyMinutes(value: unknown) {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.min(24 * 60, Math.round(number));
 }
 
 function parseTimeParts(value?: string | null) {
@@ -213,11 +221,19 @@ export function computeAttendanceDay(
   const actualHours = isComplete
     ? roundHours((checkOutMs - checkInMs) / 3600000)
     : 0;
+  const lateGraceMs = policyMinutes(schedule.lateGraceMinutes) * 60 * 1000;
+  const earlyLeaveGraceMs = policyMinutes(schedule.earlyLeaveGraceMinutes) * 60 * 1000;
+  const actualLateMs =
+    Number.isFinite(checkInMs) && scheduleStartMs !== null
+      ? Math.max(0, checkInMs - scheduleStartMs)
+      : 0;
+  const actualEarlyLeaveMs =
+    Number.isFinite(checkOutMs) && scheduleEndMs !== null
+      ? Math.max(0, scheduleEndMs - checkOutMs)
+      : 0;
   const lateHours =
-    Number.isFinite(checkInMs) &&
-    scheduleStartMs !== null &&
-    checkInMs > scheduleStartMs
-      ? roundHours((checkInMs - scheduleStartMs) / 3600000)
+    actualLateMs > lateGraceMs
+      ? roundHours((actualLateMs - lateGraceMs) / 3600000)
       : 0;
   const overtimeHours =
     Number.isFinite(checkOutMs) &&
@@ -232,14 +248,32 @@ export function computeAttendanceDay(
     scheduleEndMs !== null &&
     date === riyadhDateKey(new Date().toISOString()) &&
     Date.now() <= scheduleEndMs;
-  const rawMissingHours = roundHours(Math.max(0, expectedHours - actualHours));
+  const expectedMs =
+    scheduleStartMs !== null && scheduleEndMs !== null
+      ? Math.max(0, scheduleEndMs - scheduleStartMs)
+      : expectedHours * 3600000;
+  const rawMissingBeforeGraceMs = isComplete
+    ? Math.max(0, expectedMs - (checkOutMs - checkInMs))
+    : Math.max(0, expectedHours * 3600000 - actualHours * 3600000);
+  const graceCoveredMissingMs = isComplete
+    ? Math.min(
+        rawMissingBeforeGraceMs,
+        Math.min(actualLateMs, lateGraceMs) +
+          Math.min(actualEarlyLeaveMs, earlyLeaveGraceMs)
+      )
+    : 0;
+  const rawMissingMinutes = Math.max(
+    0,
+    Math.round((rawMissingBeforeGraceMs - graceCoveredMissingMs) / 60000)
+  );
+  const rawMissingHours = roundHours(rawMissingMinutes / 60);
   const permissionCoverage = calculatePermissionCoverage({
     date,
     scheduledStart: schedule.startTime,
     scheduledEnd: schedule.endTime,
     checkInAt: checkIn?.serverTime,
     checkOutAt: checkOut?.serverTime,
-    rawMissingMinutes: Math.round(rawMissingHours * 60),
+    rawMissingMinutes,
     intervals: permissionIntervals,
   });
   const missingHours = roundPermissionHours(permissionCoverage.adjustedMissingMinutes);

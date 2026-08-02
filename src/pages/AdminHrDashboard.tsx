@@ -378,6 +378,8 @@ function getEmployeeSchedule(item: DirectoryEmployee | null) {
   return {
     startTime: cleanText(item?.startTime || item?.workStartTime || item?.shiftStartTime || payroll.startTime || "09:00"),
     endTime: cleanText(item?.endTime || item?.workEndTime || item?.shiftEndTime || payroll.endTime || "17:00"),
+    lateGraceMinutes: (item as any)?.lateGraceMinutes ?? (item as any)?.late_grace_minutes ?? payroll.lateGraceMinutes ?? payroll.late_grace_minutes,
+    earlyLeaveGraceMinutes: (item as any)?.earlyLeaveGraceMinutes ?? (item as any)?.early_leave_grace_minutes ?? payroll.earlyLeaveGraceMinutes ?? payroll.early_leave_grace_minutes,
     weeklyOffDays: item?.weeklyOffDays || item?.offDays || payroll.weeklyOffDays || null,
   };
 }

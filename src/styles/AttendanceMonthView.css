@@ -31,19 +31,16 @@
   max-width: 100%;
   min-width: 0;
   display: grid !important;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.8fr);
-  grid-template-areas:
-    "intro overview"
-    "controls overview";
-  gap: 14px 18px;
-  align-items: stretch;
-  padding: 18px;
-  border: 1px solid rgba(219, 226, 239, 0.28);
+  grid-template-columns: minmax(330px, 1.25fr) auto minmax(280px, 0.9fr);
+  grid-template-areas: "intro controls overview";
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid #e4e9f1;
+  border-right: 4px solid #8a0020;
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(8, 26, 61, 0.98), rgba(17, 44, 84, 0.95)),
-    #0b1938;
-  box-shadow: 0 18px 42px rgba(25, 37, 58, 0.18);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   overflow: hidden;
 }
 
@@ -51,21 +48,21 @@
   grid-area: intro;
   min-width: 0;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__command-icon {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  color: #0f1b30;
-  background: #f7c948;
-  box-shadow: 0 10px 24px rgba(247, 201, 72, 0.24);
+  color: #8a0020;
+  background: #fff1f3;
+  border: 1px solid #ffd6dd;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__command-copy {
@@ -76,20 +73,21 @@
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 0 10px;
+  width: fit-content;
+  padding: 0 9px;
   border-radius: 999px;
-  color: #bae6fd;
-  background: rgba(14, 165, 233, 0.12);
-  border: 1px solid rgba(186, 230, 253, 0.22);
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   font-size: 0.78rem;
   font-weight: 800;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__command-copy h2 {
   max-width: 100%;
-  margin: 6px 0 2px;
-  color: #ffffff;
-  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  margin: 7px 0 3px;
+  color: #111827;
+  font-size: clamp(1.28rem, 2vw, 1.7rem);
   line-height: 1.2;
   letter-spacing: 0;
   overflow-wrap: anywhere;
@@ -98,7 +96,7 @@
 .attendance-month.attendance-month--premium-v3 .attendance-month__command-copy p {
   max-width: 70ch;
   margin: 0;
-  color: rgba(235, 244, 255, 0.78);
+  color: #64748b;
   font-size: 0.94rem;
   line-height: 1.7;
 }
@@ -107,21 +105,20 @@
   grid-area: controls;
   min-width: 0;
   width: 100%;
-  display: grid !important;
-  grid-template-columns: auto;
-  gap: 10px;
-  align-items: end;
-  justify-content: start;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__month-control {
   min-width: 0;
+  position: relative;
   display: grid;
   gap: 6px;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__control-label {
-  color: rgba(235, 244, 255, 0.82);
+  color: #64748b;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -153,10 +150,147 @@
   font-weight: 900;
 }
 
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker {
+  position: relative;
+  min-width: 150px;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-button {
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 14px;
+  appearance: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-button svg {
+  color: #8a0020;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-label {
+  color: #172033;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-button:focus-within {
+  border-color: #8a0020;
+  box-shadow: 0 0 0 3px rgba(138, 0, 32, 0.12);
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-menu {
+  position: absolute;
+  inset-block-start: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 50;
+  width: min(300px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-menu-head span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-menu-head select {
+  height: 36px;
+  min-width: 110px;
+  padding: 0 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 900;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-option {
+  min-width: 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-option:hover:not(:disabled) {
+  border-color: #8a0020;
+  background: #fff1f3;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-option.is-selected {
+  color: #ffffff;
+  background: #8a0020;
+  border-color: #8a0020;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-option:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: #f8fafc;
+  opacity: 0.6;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-text {
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attendance-month.attendance-month--premium-v3 .attendance-month__native-month-input {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  background: transparent !important;
+  cursor: pointer !important;
+}
+
 .attendance-month.attendance-month--premium-v3 .attendance-month__month-nav,
 .attendance-month.attendance-month--premium-v3 .attendance-month__refresh-button,
-.attendance-month.attendance-month--premium-v3 .attendance-month__today-button,
-.attendance-month.attendance-month--premium-v3 .attendance-month__arrow {
+.attendance-month.attendance-month--premium-v3 .attendance-month__today-button {
   min-width: 0;
   min-height: 42px;
   display: inline-flex !important;
@@ -172,16 +306,19 @@
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__month-nav {
   padding: 0 14px;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.11);
+  color: #111827;
+  background: #ffffff;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__refresh-button {
-  padding: 0 14px;
-  color: #111827;
-  background: #f7c948;
-  border-color: rgba(247, 201, 72, 0.72);
+  min-width: 160px;
+  min-height: 46px;
+  padding: 0 18px;
+  color: #ffffff;
+  background: #8a0020;
+  border-color: #8a0020;
   font-weight: 900;
+  box-shadow: 0 12px 24px rgba(138, 0, 32, 0.18);
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__today-button {
@@ -195,7 +332,7 @@
 .attendance-month.attendance-month--premium-v3 .attendance-month__month-nav:hover,
 .attendance-month.attendance-month--premium-v3 .attendance-month__refresh-button:hover,
 .attendance-month.attendance-month--premium-v3 .attendance-month__today-button:hover,
-.attendance-month.attendance-month--premium-v3 .attendance-month__arrow:hover {
+.attendance-month.attendance-month--premium-v3 .attendance-month__month-picker-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
 }
@@ -212,12 +349,12 @@
   min-width: 0;
   display: grid;
   align-content: center;
-  gap: 8px;
-  padding: 14px;
+  gap: 7px;
+  padding: 13px 14px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  background: #fbfcfe;
+  border: 1px solid #e5ebf3;
+  color: #111827;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-overview-head {
@@ -229,14 +366,14 @@
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-overview strong {
-  color: #ffffff;
-  font-size: 1.08rem;
+  color: #111827;
+  font-size: 1rem;
   line-height: 1.5;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-overview small {
-  color: rgba(235, 244, 255, 0.78);
-  line-height: 1.6;
+  color: #64748b;
+  line-height: 1.55;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status,
@@ -247,6 +384,7 @@
   justify-content: center;
   padding: 0 10px;
   border-radius: 999px;
+  border: 1px solid transparent;
   font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
@@ -254,8 +392,10 @@
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status.is-complete,
 .attendance-month.attendance-month--premium-v3 .attendance-month__badge.is-complete {
-  color: #065f46;
-  background: #d1fae5;
+  color: #ffffff;
+  background: #047857;
+  border-color: #03664f;
+  box-shadow: 0 8px 16px rgba(4, 120, 87, 0.16);
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__selected-status.is-partial,
@@ -290,7 +430,7 @@
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__calendar-head {
   display: grid !important;
-  grid-template-columns: 42px minmax(0, 1fr) minmax(190px, 260px) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 14px;
@@ -316,15 +456,6 @@
   display: inline-flex !important;
   align-items: center;
   gap: 8px;
-}
-
-.attendance-month.attendance-month--premium-v3 .attendance-month__arrow {
-  width: 42px;
-  height: 42px;
-  padding: 0;
-  color: #172033;
-  background: #ffffff;
-  border-color: #dbe4f0;
 }
 
 .attendance-month.attendance-month--premium-v3 .attendance-month__title {
@@ -614,7 +745,7 @@
   }
 
   .attendance-month.attendance-month--premium-v3 .attendance-month__calendar-head {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .attendance-month.attendance-month--premium-v3 .attendance-month__calendar-month-control {
@@ -659,15 +790,14 @@
   }
 
   .attendance-month.attendance-month--premium-v3 .attendance-month__calendar-head {
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .attendance-month.attendance-month--premium-v3 .attendance-month__today-button span {
     display: none;
   }
 
-  .attendance-month.attendance-month--premium-v3 .attendance-month__today-button,
-  .attendance-month.attendance-month--premium-v3 .attendance-month__arrow {
+  .attendance-month.attendance-month--premium-v3 .attendance-month__today-button {
     width: 38px;
     min-width: 38px;
     height: 38px;
@@ -702,6 +832,15 @@
 
   .attendance-month.attendance-month--premium-v3 .attendance-month__legend {
     padding: 0 8px 10px;
+  }
+
+  .attendance-month.attendance-month--premium-v3 .attendance-month__month-menu {
+    inset-inline: 0;
+    width: 100%;
+  }
+
+  .attendance-month.attendance-month--premium-v3 .attendance-month__month-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
