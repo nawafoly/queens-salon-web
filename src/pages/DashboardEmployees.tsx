@@ -2,11 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import "../styles/AdminDashboardEmployees.css";
-import "../styles/AdminHrEmployees.css";
-import "../styles/AdminHrEmployeeDetail.css";
-import "../styles/AdminHrEmployeeDetailSidebarTheme.css";
-import "../styles/AdminHrEmployeeProfilePage.css";
+import "../styles/dashboard-v2/pages/employees.css";
 import {
   collection,
   getDocs,
@@ -78,6 +74,7 @@ import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection"
 import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
+import { DashboardConfirmV2 } from "../components/dashboard-v2";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -341,7 +338,7 @@ function EmployeeComingSoonSection({
       <header className="emp-section-header emp-linked-module-header">
         <div className="emp-section-header__main">
           <span className="emp-linked-module-eyebrow">
-            EMPLOYEE WORKSPACE
+            مساحة الموظفة
           </span>
 
           <h3 className="emp-modal-section-title">
@@ -602,6 +599,8 @@ export default function DashboardEmployees() {
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [repairConfirmOpen, setRepairConfirmOpen] = useState(false);
+  const [repairMessage, setRepairMessage] = useState("");
   const busy = loading || saving;
 
   const [statsLoading, setStatsLoading] = useState(false);
@@ -1883,12 +1882,10 @@ export default function DashboardEmployees() {
       setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
       return;
     }
-    const ok = confirm(
-      "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
-    );
-    if (!ok) return;
+    setRepairConfirmOpen(false);
     setSaving(true);
     setErrorMsg("");
+    setRepairMessage("");
     try {
       const staffSnap = await getDocs(staffPublicCol());
       const uidByEmployeeId = new Map<string, string>();
@@ -1921,7 +1918,7 @@ export default function DashboardEmployees() {
         }
       }
       await batch.commit();
-      alert("✅ تم إصلاح الحجوزات");
+      setRepairMessage("تم إصلاح ربط الحجوزات القديمة بنجاح.");
     } catch (e) {
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
     } finally {
@@ -4350,26 +4347,22 @@ export default function DashboardEmployees() {
 
   if (!authUser) {
     return (
-      <div className="emp-page-wrapper">
-        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
-          <div className="dash-card">
-            <h3>غير مصرح</h3>
-            <p>سجّل دخول ثم جرّب.</p>
-          </div>
-        </div>
+      <div className="dsv2-page dsv2-employees-page">
+        <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
+          <h2 className="dsv2-section-title">غير مصرح</h2>
+          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
+        </section>
       </div>
     );
   }
 
   if (!canAccessEmployeesDashboard) {
     return (
-      <div className="emp-page-wrapper">
-        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
-          <div className="dash-card">
-            <h3>صلاحيات غير كافية</h3>
-            <p>هذه الصفحة للإدارة فقط.</p>
-          </div>
-        </div>
+      <div className="dsv2-page dsv2-employees-page">
+        <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
+          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
+          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
+        </section>
       </div>
     );
   }
@@ -4498,46 +4491,39 @@ export default function DashboardEmployees() {
 
   return (
     <div
-      className={`emp-page-wrapper employees-workspace ${
+      className={`dsv2-page dsv2-employees-page ${
         isEmployeeProfileRoute
-          ? "employees-workspace--profile is-profile-route"
-          : "employees-workspace--directory"
+          ? "dsv2-employees-page--profile"
+          : "dsv2-employees-page--directory"
       }`}
     >
-      <div
-        className={
-          isEmployeeProfileRoute
-            ? "employee-profile-route-container employees-workspace__profile-container"
-            : "employees-workspace__container"
-        }
-      >
+      <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="employees-hero" aria-label="إدارة الموظفات">
-              <div className="employees-hero__content">
-                <span className="employees-eyebrow">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
+              <div className="employees-v2-page-heading">
+                <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
                   الموارد البشرية
                 </span>
-                <h1>إدارة الموظفات</h1>
-                <p>
-                  لوحة تشغيلية لملفات الموظفات، حالة العمل، الخدمات، الحضور والرواتب مع
-                  إبقاء إدارة حسابات الدخول منفصلة في صفحة الحسابات.
+                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
+                <p className="dsv2-page-subtitle">
+                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
                 </p>
               </div>
 
-              <div className="employees-hero__actions">
+              <div className="employees-v2-page-actions">
                 {canCreateEmployees ? (
-                  <button className="employees-action employees-action--primary" type="button" onClick={openCreateEmployee}>
+                  <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
                     إضافة موظفة
                   </button>
                 ) : null}
                 {canFixBookings ? (
                   <button
-                    className="employees-action employees-action--soft"
+                    className="dsv2-btn dsv2-btn--secondary"
                     type="button"
-                    onClick={fixBookingsEmployeeUid}
+                    onClick={() => setRepairConfirmOpen(true)}
                     title="إصلاح ربط الحجوزات"
                   >
                     <FontAwesomeIcon icon={faScrewdriverWrench} />
@@ -4545,60 +4531,55 @@ export default function DashboardEmployees() {
                   </button>
                 ) : null}
                 <button
-                  className="employees-action employees-action--ghost"
+                  className="dsv2-btn dsv2-btn--secondary"
                   onClick={() => void reloadData(true)}
                   disabled={busy}
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  تحديث
+                  تحديث البيانات
                 </button>
               </div>
             </header>
 
-            <section className="employees-stat-grid" aria-label="إحصاءات الموظفات">
-              <article className="employees-stat-card">
-                <span>إجمالي الملفات</span>
-                <strong>{totalEmployeeCount}</strong>
-                <small>كل الملفات التي يمكن لهذه الصلاحية عرضها</small>
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
+              <article className="dsv2-metric-card dsv2-metric-card--dark">
+                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
+                <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--success">
-                <span>على رأس العمل</span>
-                <strong>{availableEmployeeCount}</strong>
-                <small>نشطات ولسن في إجازة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--success">
+                <p className="dsv2-metric-card__label">على رأس العمل</p>
+                <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--warning">
-                <span>في إجازة</span>
-                <strong>{leaveEmployeeCount}</strong>
-                <small>إجازة حالية من سجل الموظفة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--gold">
+                <p className="dsv2-metric-card__label">في إجازة</p>
+                <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--danger">
-                <span>غير نشطة</span>
-                <strong>{inactiveEmployeeCount}</strong>
-                <small>ملفات موظفات معطلة وظيفيًا</small>
-              </article>
-              <article className="employees-stat-card employees-stat-card--review">
-                <span>تحتاج متابعة</span>
-                <strong>{noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <small>بدون خدمات أو ملفات غير مكتملة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--danger">
+                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
+                <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
               </article>
             </section>
           </>
         ) : null}
 
         {errorMsg ? (
-          <div className="employees-alert" role="alert">
+          <div className="employees-v2-alert" role="alert">
             {errorMsg}
           </div>
         ) : null}
 
-        <div
-          className={
-            isEmployeeProfileRoute
-              ? "employees-workspace__profile-host"
-              : "employees-workspace__directory-host"
-          }
-        >
+        {repairMessage ? (
+          <div className="employees-v2-alert employees-v2-alert--success" role="status">
+            {repairMessage}
+          </div>
+        ) : null}
+
+        <div className={isEmployeeProfileRoute ? "employees-v2-profile-host" : "employees-v2-directory-host"}>
           {!isEmployeeProfileRoute ? (
             <EmployeeListPanel
               qText={qText}
@@ -4619,8 +4600,8 @@ export default function DashboardEmployees() {
               onOpenEmployee={openEdit}
             />
           ) : !editingStaff ? (
-            <section className="employees-profile-loading" aria-live="polite">
-              <span className="employees-loading-ring" aria-hidden="true" />
+            <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
+              <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
                 <strong>جاري فتح ملف الموظفة...</strong>
                 <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
@@ -4967,7 +4948,7 @@ export default function DashboardEmployees() {
                 lead="راجعي طلبات الإجازة والطلبات الإدارية الواردة من الموظفات داخل لوحة الموارد البشرية."
                 actionLabel="فتح لوحة الطلبات"
                 actionHref="/admin/overview"
-                moduleLabel="HR REQUESTS"
+                moduleLabel="طلبات الموارد البشرية"
                 notes={[
                   "مراجعة أحدث طلبات الإجازة",
                   "عرض الطلبات المعلقة",
@@ -4980,7 +4961,7 @@ export default function DashboardEmployees() {
                 lead="افتحي نظام الرسائل الداخلية لبدء محادثة أو متابعة الرسائل السابقة مع الموظفة."
                 actionLabel="فتح الرسائل"
                 actionHref="/admin/messages"
-                moduleLabel="INTERNAL MESSAGES"
+                moduleLabel="الرسائل الداخلية"
                 notes={[
                   "عرض المحادثات السابقة",
                   "إرسال رسالة داخلية جديدة",
@@ -4993,7 +4974,7 @@ export default function DashboardEmployees() {
                 lead="افتحي نظام الملفات الداخلية لرفع المستندات وعرض الملفات المرتبطة بالموظفات."
                 actionLabel="فتح إدارة الملفات"
                 actionHref="/admin/files"
-                moduleLabel="EMPLOYEE FILES"
+                moduleLabel="ملفات الموظفة"
                 notes={[
                   "رفع مستند أو مرفق جديد",
                   "عرض الملفات الواردة والمرسلة",
@@ -5004,6 +4985,20 @@ export default function DashboardEmployees() {
           </EmployeeDetailShell>
         </div>
       </div>
+
+      <DashboardConfirmV2
+        open={repairConfirmOpen}
+        onClose={() => setRepairConfirmOpen(false)}
+        onConfirm={fixBookingsEmployeeUid}
+        title="إصلاح ربط الحجوزات القديمة"
+        description="سيتم استكمال معرف الموظفة في الحجوزات القديمة التي ينقصها الربط فقط، دون حذف أي حجز."
+        tone="gold"
+        confirmLabel="بدء الإصلاح"
+        cancelLabel="إلغاء"
+        pendingLabel="جاري الإصلاح..."
+      >
+        <p className="employees-v2-confirm-note">يُنفذ هذا الإجراء عند وجود حجوزات قديمة غير مرتبطة بحساب الموظفة.</p>
+      </DashboardConfirmV2>
     </div>
   );
 }

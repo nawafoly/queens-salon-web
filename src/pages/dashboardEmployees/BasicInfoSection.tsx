@@ -65,7 +65,7 @@ export default function BasicInfoSection({
     <section className="emp-modal-section emp-basic-section">
       <header className="emp-section-header emp-basic-header">
         <div className="emp-section-header__main">
-          <span className="emp-basic-eyebrow">Employee Profile</span>
+          <span className="emp-basic-eyebrow">الملف الوظيفي</span>
 
           <h3 className="emp-modal-section-title">
             المعلومات الأساسية

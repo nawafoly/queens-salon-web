@@ -1564,7 +1564,7 @@ export default function AdminHrDashboard() {
 
   if (session.loading) {
     return (
-      <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
+      <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
         <MalikatPortalSidebarV2
           variant="admin"
           logoSrc={logo1}
@@ -1607,7 +1607,7 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
       <MalikatPortalSidebarV2
         variant="admin"

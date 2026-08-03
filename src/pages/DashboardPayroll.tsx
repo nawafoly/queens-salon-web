@@ -17,6 +17,7 @@ import {
   FiUnlock,
   FiX,
 } from "react-icons/fi";
+import { DashboardSelectV2 } from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
 import {
@@ -50,13 +51,15 @@ import {
 import { payrollActionVisibility } from "../helpers/hr/payrollActions";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
 import {
-  exportPayrollPayslipPdf,
-  exportPayrollReportExcel,
-  exportPayrollReportPdf,
   isPayrollExportEligible,
   payrollExportExclusionReason,
 } from "../helpers/reports/exportPayrollReport";
-import "../styles/DashboardPayroll.css";
+import {
+  exportPayrollPayslipPdfV2,
+  exportPayrollReportExcelV2,
+  exportPayrollReportPdfV2,
+} from "../helpers/reports/exportPayrollReportV2";
+import "../styles/dashboard-v2/pages/payroll.css";
 
 type AdjustmentMode = "addition" | "deduction";
 
@@ -78,6 +81,21 @@ const STATUS_LABELS: Record<string, string> = {
   approved: "معتمد",
   paid: "مدفوع",
 };
+
+const PAYROLL_MONTH_OPTIONS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+].map((label, index) => ({ value: String(index + 1), label }));
 
 const SETUP_MISSING_LABELS: Record<PayrollSetupMissingKey, string> = {
   employeeId: "معرف الموظفة غير محدد",
@@ -385,11 +403,11 @@ export default function DashboardPayroll() {
   };
 
   const handleExportPayrollPdf = () => {
-    exportPayrollReportPdf(payrollReportInput());
+    exportPayrollReportPdfV2(payrollReportInput());
   };
 
   const handleExportPayrollExcel = () => {
-    exportPayrollReportExcel(payrollReportInput());
+    exportPayrollReportExcelV2(payrollReportInput());
   };
 
   const handleGenerate = async (recalculate = false) => {
@@ -626,76 +644,131 @@ export default function DashboardPayroll() {
   };
 
   return (
-    <section className="payroll-page" dir="rtl">
-      <header className="payroll-hero">
-        <div>
-          <span>نظام الرواتب</span>
-          <h1>إدارة الرواتب</h1>
-          <p>إنشاء ومراجعة واعتماد مسيرات الرواتب الشهرية للموظفات.</p>
+    <section className="dsv2-page dsv2-payroll-page payroll-page" dir="rtl">
+      <header className="dsv2-page-head payroll-page-head">
+        <div className="payroll-page-heading">
+          <span className="dsv2-badge dsv2-badge--gold">نظام الرواتب</span>
+          <h1 className="dsv2-page-title">إدارة الرواتب</h1>
+          <p className="dsv2-page-subtitle">إنشاء ومراجعة واعتماد مسيرات الرواتب الشهرية للموظفات.</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading}>
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--secondary"
+          onClick={() => void load()}
+          disabled={loading}
+        >
           <FiRefreshCw className={loading ? "is-spinning" : ""} />
-          تحديث
+          تحديث البيانات
         </button>
       </header>
 
-      <div className="payroll-toolbar">
-        <label>
-          <span>الشهر</span>
-          <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => (
-              <option key={item} value={item}>{item}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>السنة</span>
-          <input type="number" min="2020" max="2100" value={year} onChange={(event) => setYear(Number(event.target.value))} />
-        </label>
-        <label>
-          <span>الموظفة</span>
-          <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
-            <option value="all">كل الموظفات</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>{employee.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>حالة الراتب</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <div className="payroll-toolbar__actions">
-          <button type="button" onClick={() => void handleGenerate(false)} disabled={!canManage || Boolean(busy)}>
-            <FiSliders /> توليد مسيرة الشهر
-          </button>
-          <button type="button" onClick={() => void handleGenerate(true)} disabled={!canManage || Boolean(busy)}>
-            <FiRefreshCw /> إعادة حساب
-          </button>
-          <button type="button" className="is-primary" onClick={() => void handleSaveDrafts()} disabled={!canManage || Boolean(busy)}>
-            <FiSave /> حفظ المسودات
-          </button>
-          <button type="button" onClick={handleExportPayrollPdf} disabled={loading}>
-            <FiFileText /> تصدير مسيرة الشهر PDF
-          </button>
-          <button type="button" onClick={handleExportPayrollExcel} disabled={loading}>
-            <FiDownload /> تصدير مسيرة الشهر Excel
-          </button>
-          <span className="payroll-export-count">سيصدّر {exportableCount} من {visibleEntries.length}</span>
-          <label className="payroll-export-option">
-            <input
-              type="checkbox"
-              checked={includeIncompleteExport}
-              onChange={(event) => setIncludeIncompleteExport(event.target.checked)}
+      <section className="dsv2-card dsv2-card--padded payroll-control-panel">
+        <div className="payroll-filter-grid">
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">الشهر</span>
+            <DashboardSelectV2
+              value={String(month)}
+              options={PAYROLL_MONTH_OPTIONS}
+              onChange={(value) => setMonth(Number(value))}
             />
-            <span>تضمين غير المكتمل في التصدير</span>
+          </label>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">السنة</span>
+            <input
+              className="dsv2-input"
+              type="number"
+              min="2020"
+              max="2100"
+              value={year}
+              onChange={(event) => setYear(Number(event.target.value))}
+            />
+          </label>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">الموظفة</span>
+            <DashboardSelectV2
+              value={employeeFilter}
+              options={[
+                { value: "all", label: "كل الموظفات" },
+                ...employees.map((employee) => ({
+                  value: employee.id,
+                  label: employee.name || employee.id,
+                })),
+              ]}
+              onChange={setEmployeeFilter}
+            />
+          </label>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">حالة الراتب</span>
+            <DashboardSelectV2
+              value={statusFilter}
+              options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+              onChange={setStatusFilter}
+            />
           </label>
         </div>
-      </div>
+
+        <div className="payroll-actions-bar">
+          <div className="payroll-actions-group payroll-actions-group--workflow">
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={() => void handleGenerate(false)}
+              disabled={!canManage || Boolean(busy)}
+            >
+              <FiSliders /> توليد المسيرة
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={() => void handleGenerate(true)}
+              disabled={!canManage || Boolean(busy)}
+            >
+              <FiRefreshCw /> إعادة الحساب
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--primary"
+              onClick={() => void handleSaveDrafts()}
+              disabled={!canManage || Boolean(busy)}
+            >
+              <FiSave /> حفظ المسودات
+            </button>
+          </div>
+
+          <div className="payroll-actions-group payroll-actions-group--exports">
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={handleExportPayrollPdf}
+              disabled={loading}
+            >
+              <FiFileText /> PDF
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onClick={handleExportPayrollExcel}
+              disabled={loading}
+            >
+              <FiDownload /> Excel
+            </button>
+          </div>
+
+          <div className="payroll-export-meta">
+            <span className="dsv2-badge dsv2-badge--success">
+              سيُصدّر {exportableCount} من {visibleEntries.length}
+            </span>
+            <label className="payroll-export-option">
+              <input
+                type="checkbox"
+                checked={includeIncompleteExport}
+                onChange={(event) => setIncludeIncompleteExport(event.target.checked)}
+              />
+              <span>تضمين غير المكتمل</span>
+            </label>
+          </div>
+        </div>
+      </section>
 
       <div className="payroll-period-banner">
         <FiClock />
@@ -707,19 +780,47 @@ export default function DashboardPayroll() {
       {message ? <div className="payroll-alert"><FiCheckCircle />{message}</div> : null}
       {!canManage ? <div className="payroll-alert is-readonly">وضع قراءة فقط: يمكنك مراجعة الرواتب دون تعديلها.</div> : null}
 
-      <div className="payroll-summary-grid">
-        <article><span><FiShield /></span><small>عدد الموظفات</small><strong>{summary.count}</strong></article>
-        <article><span><FiCheckCircle /></span><small>إعدادات مكتملة</small><strong>{summary.complete}</strong></article>
-        <article><span><FiAlertTriangle /></span><small>إعدادات غير مكتملة</small><strong>{summary.incomplete}</strong></article>
-        <article><span><FiDollarSign /></span><small>إجمالي الرواتب المكتملة</small><strong>{formatPayrollMoney(summary.base)}</strong></article>
-        <article><span><FiPlus /></span><small>إجمالي الإضافات</small><strong>{formatPayrollMoney(summary.additions)}</strong></article>
-        <article><span><FiX /></span><small>إجمالي الخصومات</small><strong>{formatPayrollMoney(summary.deductions)}</strong></article>
-        <article><span><FiDollarSign /></span><small>إجمالي المستحق حتى اليوم</small><strong>{formatPayrollMoney(summary.earned)}</strong></article>
-        <article><span><FiDollarSign /></span><small>إجمالي الصافي المتوقع</small><strong>{formatPayrollMoney(summary.net)}</strong></article>
-        <article><span><FiClock /></span><small>عدد المسودات</small><strong>{summary.drafts}</strong></article>
-        <article><span><FiCheckCircle /></span><small>عدد الرواتب المعتمدة</small><strong>{summary.approved}</strong></article>
-        <article><span><FiDollarSign /></span><small>عدد الرواتب المدفوعة</small><strong>{summary.paid}</strong></article>
-      </div>
+      <section className="dsv2-grid dsv2-grid--metrics payroll-primary-metrics" aria-label="المؤشرات الرئيسية">
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <p className="dsv2-metric-card__label">عدد الموظفات</p>
+          <strong className="dsv2-metric-card__value">{summary.count}</strong>
+          <p className="dsv2-metric-card__meta">المسيرات المطابقة للفلاتر الحالية</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--gold">
+          <p className="dsv2-metric-card__label">المستحق حتى اليوم</p>
+          <strong className="dsv2-metric-card__value">{formatPayrollMoney(summary.earned)}</strong>
+          <p className="dsv2-metric-card__meta">القيمة الفعلية المحسوبة حتى تاريخ اليوم</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--success">
+          <p className="dsv2-metric-card__label">الصافي المتوقع</p>
+          <strong className="dsv2-metric-card__value">{formatPayrollMoney(summary.net)}</strong>
+          <p className="dsv2-metric-card__meta">الصافي المتوقع عند اكتمال فترة الاحتساب</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--danger">
+          <p className="dsv2-metric-card__label">إعدادات غير مكتملة</p>
+          <strong className="dsv2-metric-card__value">{summary.incomplete}</strong>
+          <p className="dsv2-metric-card__meta">تحتاج إلى استكمال بيانات الراتب</p>
+        </article>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded payroll-secondary-summary">
+        <div className="dsv2-section-head">
+          <div>
+            <h2 className="dsv2-section-title">ملخص المسيرة</h2>
+            <p className="dsv2-section-caption">تفاصيل مالية وتشغيلية إضافية للفترة المحددة.</p>
+          </div>
+          <span className="dsv2-badge">{payrollMonth}</span>
+        </div>
+        <div className="payroll-secondary-grid">
+          <div className="dsv2-stat-row"><span>إعدادات مكتملة</span><strong>{summary.complete}</strong></div>
+          <div className="dsv2-stat-row"><span>إجمالي الرواتب</span><strong>{formatPayrollMoney(summary.base)}</strong></div>
+          <div className="dsv2-stat-row"><span>الإضافات</span><strong>{formatPayrollMoney(summary.additions)}</strong></div>
+          <div className="dsv2-stat-row"><span>الخصومات</span><strong>{formatPayrollMoney(summary.deductions)}</strong></div>
+          <div className="dsv2-stat-row"><span>المسودات</span><strong>{summary.drafts}</strong></div>
+          <div className="dsv2-stat-row"><span>المعتمدة</span><strong>{summary.approved}</strong></div>
+          <div className="dsv2-stat-row"><span>المدفوعة</span><strong>{summary.paid}</strong></div>
+        </div>
+      </section>
 
       {summary.incomplete > 0 ? (
         <div className="payroll-alert is-warning payroll-setup-warning" role="status">
@@ -731,8 +832,16 @@ export default function DashboardPayroll() {
         </div>
       ) : null}
 
-      <div className="payroll-table-wrap">
-        <table className="payroll-table">
+      <section className="dsv2-table-card payroll-table-section">
+        <header className="payroll-table-section__head">
+          <div>
+            <h2 className="dsv2-section-title">مسيرات الموظفات</h2>
+            <p className="dsv2-section-caption">التفاصيل الموسعة للحضور والأوفر تايم متاحة من زر عرض.</p>
+          </div>
+          <span className="dsv2-badge">{visibleEntries.length} سجل</span>
+        </header>
+        <div className="dsv2-table-scroll payroll-table-wrap">
+          <table className="dsv2-table payroll-table">
           <thead>
             <tr>
               <th>الموظفة</th>
@@ -845,42 +954,48 @@ export default function DashboardPayroll() {
                   </td>
                   <td><span className={`payroll-status ${statusClass(entry.status)}`}>{STATUS_LABELS[entry.status] || entry.status}</span></td>
                   <td>
-                    <div className="payroll-row-actions">
-                      <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض</button>
-                      <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
-                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
-                      <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة إضافة</button>
-                      {!entry.payrollSetupComplete ? (
-                        <span className="payroll-action-help">
-                          <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
-                          <small>لإكمال الراتب الأساسي، أيام العمل، وساعات الشهر</small>
-                        </span>
-                      ) : null}
-                      {actions.showApprove ? (
-                        <button type="button" disabled={!actions.canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
-                      ) : null}
-                      {actions.showMarkPaid ? (
-                        <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
-                      ) : null}
-                      {actions.showReopen ? (
-                        <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />إعادة فتح الراتب</button>
-                      ) : null}
-                    </div>
+                    <details className="payroll-actions-menu">
+                      <summary>الإجراءات</summary>
+                      <div className="payroll-row-actions">
+                        <button type="button" onClick={() => setSelectedEntry(entry)}><FiEye />عرض التفاصيل</button>
+                        <button type="button" disabled={!actions.canRecalculate} onClick={() => void handleRecalculateEntry(entry)}>إعادة الحساب</button>
+                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "deduction")}>إضافة خصم</button>
+                        <button type="button" disabled={!actions.canEditAdjustments} onClick={() => openAdjustment(entry, "addition")}>إضافة استحقاق</button>
+                        {!entry.payrollSetupComplete ? (
+                          <span className="payroll-action-help">
+                            <a className="payroll-action-link" href={employeePayrollPath(entry)}><FiEdit3 />فتح ملف الموظفة</a>
+                            <small>استكمال الراتب الأساسي وأيام وساعات العمل</small>
+                          </span>
+                        ) : null}
+                        {actions.showApprove ? (
+                          <button type="button" disabled={!actions.canApprove} onClick={() => void handleApprove(entry)}>اعتماد</button>
+                        ) : null}
+                        {actions.showMarkPaid ? (
+                          <button type="button" disabled={!actions.canMarkPaid} onClick={() => void handlePaid(entry)}>تسجيل كمدفوع</button>
+                        ) : null}
+                        {actions.showReopen ? (
+                          <button type="button" disabled={!actions.canReopen || busy === `reopen:${entry.employeeId}`} onClick={() => void handleReopen(entry)}><FiUnlock />إعادة فتح الراتب</button>
+                        ) : null}
+                      </div>
+                    </details>
                   </td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
-        {!loading && !visibleEntries.length ? <p className="payroll-empty">لا توجد رواتب مطابقة. استخدم زر توليد مسيرة الشهر لإنشاء مسودات.</p> : null}
-      </div>
+          </table>
+          {!loading && !visibleEntries.length ? (
+            <p className="payroll-empty">لا توجد رواتب مطابقة. استخدم زر توليد المسيرة لإنشاء مسودات.</p>
+          ) : null}
+        </div>
+      </section>
 
       {selectedEntry ? (
         <PayrollDetailsModal
           entry={selectedEntry}
           onClose={() => setSelectedEntry(null)}
           onAdd={(mode) => openAdjustment(selectedEntry, mode)}
-          onExportPayslip={() => exportPayrollPayslipPdf({ entry: selectedEntry })}
+          onExportPayslip={() => exportPayrollPayslipPdfV2({ entry: selectedEntry, payrollBounds })}
           payrollBounds={payrollBounds}
         />
       ) : null}
@@ -897,11 +1012,13 @@ export default function DashboardPayroll() {
             </header>
             <label>
               <span>النوع</span>
-              <select value={adjustment.kind} onChange={(event) => setAdjustment({ ...adjustment, kind: event.target.value as PayrollManualItemKind })}>
-                {(adjustment.mode === "addition" ? ADDITION_KINDS : DEDUCTION_KINDS).map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </select>
+              <DashboardSelectV2
+                value={adjustment.kind}
+                options={adjustment.mode === "addition" ? ADDITION_KINDS : DEDUCTION_KINDS}
+                onChange={(value) =>
+                  setAdjustment({ ...adjustment, kind: value as PayrollManualItemKind })
+                }
+              />
             </label>
             <label>
               <span>المبلغ</span>

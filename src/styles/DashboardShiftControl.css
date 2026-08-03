@@ -314,3 +314,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.shift-control-created-at {
+  display: block;
+  margin-top: 3px;
+  color: #98a2b3;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.45;
+}

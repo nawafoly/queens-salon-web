@@ -1,15 +1,12 @@
-﻿import {
-  currentGeneratedAt,
-  exportReportToExcel,
-  exportReportToPdf,
-  formatCurrency,
-  formatDate,
-  formatPeriod,
-  normalizeGeneratedBy,
-  safeText,
-  type ExportReport,
-  type ReportCellValue,
-} from "./common.ts";
+import malikatLogo from "../../assets/images/ssunnamed.png";
+import {
+  exportReportToExcelV2,
+  exportReportToPdfV2,
+  exportV2FormatPeriod,
+  exportV2SafeText,
+  type ExportV2Report,
+  type ExportV2Value,
+} from "../../services/exports-v2";
 
 export type FinancialOverviewRevenueRowInput = {
   date?: string | null;
@@ -62,163 +59,288 @@ export type FinancialOverviewReportInput = {
   generatedBy?: string | null;
 };
 
-type OverviewRow = {
-  metric: string;
-  value: string;
-  note: string;
-};
-
-type RevenueRow = Record<string, ReportCellValue> & {
+type FinancialMovementRow = Record<string, ExportV2Value> & {
+  movementType: string;
   date: string;
-  source: string;
-  mkRef: string;
-  employeeName: string;
-  note: string;
-  amount: string;
-  statusLabel: string;
+  reference: string;
+  classification: string;
+  responsible: string;
+  description: string;
+  amount: number;
+  status: string;
 };
 
-type ExpenseRow = Record<string, ReportCellValue> & {
-  date: string;
-  category: string;
-  title: string;
-  amount: string;
-  addedBy: string;
-  note: string;
-};
+function moneyValue(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
+}
 
-type TrendRow = Record<string, ReportCellValue> & {
-  label: string;
-  revenue: string;
-  expenses: string;
-  net: string;
-};
+function normalizePeriodLabel(value?: string | null): string {
+  const label = String(value || "").trim().toLowerCase();
+  if (label === "day") return "اليوم";
+  if (label === "week") return "هذا الأسبوع";
+  if (label === "month") return "هذا الشهر";
+  if (label === "year") return "هذه السنة";
+  if (label === "custom") return "فترة مخصصة";
+  return exportV2SafeText(value, "الفترة الحالية");
+}
 
-function moneyValue(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
+function normalizeStatusLabel(value?: string | null): string {
+  const status = String(value || "").trim().toLowerCase();
+  if (!status || status === "all") return "الكل";
+  if (status === "active") return "نشط";
+  if (status === "refunded") return "مسترجع";
+  if (status === "voided") return "ملغي";
+  return String(value || "").trim();
+}
+
+function expenseDescription(row: FinancialOverviewExpenseRowInput): string {
+  const title = exportV2SafeText(row.title, "مصروف");
+  const note = String(row.note || "").trim();
+  if (!note || note === "-" || note === "—" || note === title) return title;
+  return `${title} — ${note}`;
 }
 
 export function buildFinancialOverviewReportData(
   input: FinancialOverviewReportInput
-): ExportReport<OverviewRow> {
+): ExportV2Report<FinancialMovementRow> {
   const revenueRows = Array.isArray(input.revenueRows) ? input.revenueRows : [];
   const expenseRows = Array.isArray(input.expenseRows) ? input.expenseRows : [];
-  const revenue = revenueRows.reduce((sum, row) => sum + moneyValue(row.amount), 0);
-  const expenses = expenseRows.reduce((sum, row) => sum + moneyValue(row.amount), 0);
-  const net = revenue - expenses;
+  const trendRows = Array.isArray(input.trendRows) ? input.trendRows : [];
+
+  const totalRevenue = revenueRows.reduce(
+    (sum, row) => sum + moneyValue(row.amount),
+    0
+  );
+  const totalExpenses = expenseRows.reduce(
+    (sum, row) => sum + Math.abs(moneyValue(row.amount)),
+    0
+  );
+  const net = totalRevenue - totalExpenses;
+
+  const movements: FinancialMovementRow[] = [
+    ...revenueRows.map((row): FinancialMovementRow => ({
+      movementType: "إيراد",
+      date: String(row.date || "").trim(),
+      reference: exportV2SafeText(row.mkRef, "بدون مرجع"),
+      classification: exportV2SafeText(row.source, "دخل آخر"),
+      responsible: exportV2SafeText(row.employeeName, "غير محددة"),
+      description: exportV2SafeText(row.note, "حركة إيراد"),
+      amount: moneyValue(row.amount),
+      status: exportV2SafeText(row.statusLabel, "نشط"),
+    })),
+    ...expenseRows.map((row): FinancialMovementRow => ({
+      movementType: "مصروف",
+      date: String(row.date || "").trim(),
+      reference: exportV2SafeText(row.category, "أخرى"),
+      classification: exportV2SafeText(row.category, "أخرى"),
+      responsible: exportV2SafeText(row.addedBy, "الإدارة"),
+      description: expenseDescription(row),
+      amount: -Math.abs(moneyValue(row.amount)),
+      status: "مصروف",
+    })),
+  ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+  const strongestTrend = trendRows.reduce<FinancialOverviewTrendRowInput | null>(
+    (best, row) => {
+      const total = Math.abs(moneyValue(row.returns)) + Math.abs(moneyValue(row.investments));
+      if (!best) return row;
+      const bestTotal =
+        Math.abs(moneyValue(best.returns)) + Math.abs(moneyValue(best.investments));
+      return total > bestTotal ? row : best;
+    },
+    null
+  );
+
+  const payrollCycleTotal = moneyValue(input.payrollCycle?.total);
+  const payrollSalary = moneyValue(input.payrollCycle?.salary);
+  const payrollOvertime = moneyValue(input.payrollCycle?.overtime);
+  const payrollOther = moneyValue(input.payrollCycle?.other);
 
   return {
+    slug: "financial-overview",
+    reportCode: "FIN-OVERVIEW",
     title: "التقرير المالي العام",
-    period: formatPeriod(input.filters?.fromDate, input.filters?.toDate),
-    generatedAt: input.generatedAt || currentGeneratedAt(),
-    generatedBy: normalizeGeneratedBy(input.generatedBy),
-    summarySheetName: "ملخص التقرير",
-    summary: [
-      { label: "إجمالي الإيرادات", value: revenue },
-      { label: "إجمالي المصروفات", value: expenses },
-      { label: "صافي الربح / الخسارة", value: net },
-      { label: "عدد حركات الإيراد", value: revenueRows.length },
-      { label: "عدد المصروفات", value: expenseRows.length },
-      { label: "دورة الرواتب", value: safeText(input.payrollCycle?.cycleKey, "غير محددة") },
-      { label: "رواتب الدورة", value: input.payrollCycle?.salary ?? 0 },
-      { label: "أوفر تايم الدورة", value: input.payrollCycle?.overtime ?? 0 },
-      { label: "مصروفات أخرى في الدورة", value: input.payrollCycle?.other ?? 0 },
-    ],
-    table: {
-      name: "ملخص المؤشرات",
-      columns: [
-        { key: "metric", header: "المؤشر", width: 26 },
-        { key: "value", header: "القيمة", width: 20 },
-        { key: "note", header: "ملاحظة", width: 42 },
-      ],
-      rows: [
-        { metric: "إجمالي الإيرادات", value: formatCurrency(revenue), note: "من حركات الإيرادات والمدفوعات المسجلة" },
-        { metric: "إجمالي المصروفات", value: formatCurrency(expenses), note: "من المصروفات اليدوية والرواتب التلقائية" },
-        { metric: "صافي الربح / الخسارة", value: formatCurrency(net), note: net >= 0 ? "صافي موجب" : "صافي سالب" },
-        {
-          metric: "فترة دورة الرواتب",
-          value: `${safeText(input.payrollCycle?.fromDate, "—")} إلى ${safeText(input.payrollCycle?.toDate, "—")}`,
-          note: "تعرض للربط المحاسبي فقط وليست بديلًا عن تقرير الرواتب التفصيلي",
-        },
-      ],
+    subtitle: "ملخص مالي موحد مع الحركات المطابقة للفلاتر الحالية",
+    summarySheetName: "الملخص المالي",
+    detailsSheetName: "الحركات المالية",
+    period: exportV2FormatPeriod(
+      input.filters?.fromDate,
+      input.filters?.toDate
+    ),
+    dateRange: {
+      from: input.filters?.fromDate,
+      to: input.filters?.toDate,
     },
-    extraTables: [
+    generatedAt: input.generatedAt || new Date().toISOString(),
+    generatedBy: exportV2SafeText(input.generatedBy, "لوحة التقارير العامة"),
+    branding: {
+      salonName: "مَلِكات",
+      brandName: "Malikat Salon",
+      logoUrl: malikatLogo,
+    },
+    filters: [
       {
-        name: "تفاصيل الإيرادات",
-        emptyMessage: "لا توجد إيرادات داخل الفترة.",
-        columns: [
-          { key: "date", header: "التاريخ/الوقت", width: 18 },
-          { key: "source", header: "المصدر", width: 14 },
-          { key: "mkRef", header: "رقم الحجز", width: 16 },
-          { key: "employeeName", header: "الموظفة", width: 18 },
-          { key: "note", header: "الملاحظة", width: 30 },
-          { key: "amount", header: "المبلغ", width: 14 },
-          { key: "statusLabel", header: "الحالة", width: 14 },
-        ],
-        rows: revenueRows.map((row): RevenueRow => ({
-          date: `${formatDate(row.date || "")} ${safeText(row.time, "")}`.trim(),
-          source: safeText(row.source, "غير محدد"),
-          mkRef: safeText(row.mkRef, "—"),
-          employeeName: safeText(row.employeeName, "—"),
-          note: safeText(row.note, "—"),
-          amount: formatCurrency(row.amount ?? 0),
-          statusLabel: safeText(row.statusLabel, "نشط"),
-        })),
+        label: "نوع الفترة",
+        value: normalizePeriodLabel(input.filters?.periodLabel),
       },
       {
-        name: "تفاصيل المصروفات",
-        emptyMessage: "لا توجد مصروفات داخل الفترة.",
-        columns: [
-          { key: "date", header: "التاريخ", width: 14 },
-          { key: "category", header: "التصنيف", width: 16 },
-          { key: "title", header: "الوصف", width: 30 },
-          { key: "amount", header: "المبلغ", width: 14 },
-          { key: "addedBy", header: "من أضافه", width: 18 },
-          { key: "note", header: "ملاحظات", width: 28 },
-        ],
-        rows: expenseRows.map((row): ExpenseRow => ({
-          date: formatDate(row.date || ""),
-          category: safeText(row.category, "أخرى"),
-          title: safeText(row.title, "—"),
-          amount: formatCurrency(row.amount ?? 0),
-          addedBy: safeText(row.addedBy, "الإدارة"),
-          note: safeText(row.note, "—"),
-        })),
+        label: "طريقة الدفع",
+        value: exportV2SafeText(input.filters?.incomeMethod, "الكل"),
       },
       {
-        name: "اتجاه الإيرادات والمصروفات",
-        emptyMessage: "لا توجد بيانات اتجاه.",
-        columns: [
-          { key: "label", header: "الفترة", width: 14 },
-          { key: "revenue", header: "الإيرادات", width: 16 },
-          { key: "expenses", header: "المصروفات", width: 16 },
-          { key: "net", header: "الصافي", width: 16 },
-        ],
-        rows: (input.trendRows || []).map((row): TrendRow => {
-          const revenueValue = moneyValue(row.returns);
-          const expenseValue = moneyValue(row.investments);
-          return {
-            label: safeText(row.label, "—"),
-            revenue: formatCurrency(revenueValue),
-            expenses: formatCurrency(expenseValue),
-            net: formatCurrency(revenueValue - expenseValue),
-          };
-        }),
+        label: "مصدر الإيراد",
+        value: exportV2SafeText(input.filters?.incomeSource, "الكل"),
+      },
+      {
+        label: "حالة الإيراد",
+        value: normalizeStatusLabel(input.filters?.incomeStatus),
+      },
+      {
+        label: "دورة الرواتب",
+        value: exportV2SafeText(input.payrollCycle?.cycleKey, "غير محددة"),
+      },
+      {
+        label: "فترة دورة الرواتب",
+        value: `${exportV2SafeText(input.payrollCycle?.fromDate, "—")} إلى ${exportV2SafeText(
+          input.payrollCycle?.toDate,
+          "—"
+        )}`,
       },
     ],
+    summary: [
+      {
+        label: "إجمالي الإيرادات",
+        value: totalRevenue,
+        type: "currency",
+        tone: "success",
+      },
+      {
+        label: "إجمالي المصروفات",
+        value: totalExpenses,
+        type: "currency",
+        tone: "danger",
+      },
+      {
+        label: "صافي الربح / الخسارة",
+        value: net,
+        type: "currency",
+        tone: net >= 0 ? "gold" : "danger",
+      },
+      {
+        label: "عدد حركات الإيراد",
+        value: revenueRows.length,
+        type: "number",
+        tone: "dark",
+      },
+      {
+        label: "عدد المصروفات",
+        value: expenseRows.length,
+        type: "number",
+        tone: "dark",
+      },
+      {
+        label: "رواتب الدورة",
+        value: payrollSalary,
+        type: "currency",
+        tone: "neutral",
+      },
+      {
+        label: "أوفر تايم الدورة",
+        value: payrollOvertime,
+        type: "currency",
+        tone: payrollOvertime > 0 ? "gold" : "neutral",
+      },
+      {
+        label: "إجمالي مصروفات الدورة",
+        value: payrollCycleTotal || payrollSalary + payrollOvertime + payrollOther,
+        type: "currency",
+        tone: "danger",
+      },
+    ],
+    columns: [
+      {
+        key: "movementType",
+        header: "نوع الحركة",
+        type: "status",
+        width: 13,
+        align: "center",
+      },
+      {
+        key: "date",
+        header: "التاريخ",
+        type: "date",
+        width: 14,
+        align: "center",
+      },
+      {
+        key: "reference",
+        header: "المرجع",
+        width: 18,
+        align: "center",
+      },
+      {
+        key: "classification",
+        header: "المصدر / التصنيف",
+        width: 18,
+      },
+      {
+        key: "responsible",
+        header: "الموظفة / من أضافه",
+        width: 21,
+      },
+      {
+        key: "description",
+        header: "الوصف والملاحظات",
+        width: 34,
+      },
+      {
+        key: "amount",
+        header: "الأثر المالي",
+        type: "currency",
+        width: 16,
+        align: "center",
+      },
+      {
+        key: "status",
+        header: "الحالة",
+        type: "status",
+        width: 14,
+        align: "center",
+      },
+    ],
+    rows: movements,
+    totals: {
+      amount: net,
+    },
+    emptyMessage: "لا توجد حركات مالية مطابقة للفلاتر الحالية.",
     notes: [
-      "هذا التقرير يلخص اللوحة المالية الحالية ولا يستبدل تقارير الرواتب أو الإيرادات أو المصروفات التفصيلية.",
-      "تعتمد الإيرادات على حركات الدخل الفعلية، وتعتمد المصروفات على سجلات المصروفات مع الرواتب التلقائية المتاحة في الصفحة.",
+      "تظهر الإيرادات بقيم موجبة والمصروفات بقيم سالبة داخل ورقة الحركات المالية، ويطابق الإجمالي صافي الربح أو الخسارة.",
+      "يشمل ملخص التقرير دورة الرواتب الحالية والرواتب والأوفر تايم والمصروفات الأخرى المحتسبة داخل الدورة.",
+      strongestTrend
+        ? `أعلى فترة حركة في الرسم الحالي: ${exportV2SafeText(
+            strongestTrend.label,
+            "—"
+          )}، بإيرادات ${moneyValue(strongestTrend.returns).toLocaleString(
+            "en-US"
+          )} ر.س ومصروفات ${moneyValue(
+            strongestTrend.investments
+          ).toLocaleString("en-US")} ر.س.`
+        : "لا تتوفر بيانات اتجاه إضافية للفترة الحالية.",
+      "يعتمد التقرير على النتائج والفلاتر الظاهرة وقت التصدير، وليس على السجلات المستبعدة بالفلاتر.",
     ],
+    pdfOrientation: "landscape",
   };
 }
 
-export function exportFinancialOverviewReportPdf(input: FinancialOverviewReportInput) {
-  exportReportToPdf(buildFinancialOverviewReportData(input), "financial-overview-report.pdf");
+export function exportFinancialOverviewReportPdf(
+  input: FinancialOverviewReportInput
+) {
+  return exportReportToPdfV2(buildFinancialOverviewReportData(input));
 }
 
-export function exportFinancialOverviewReportExcel(input: FinancialOverviewReportInput) {
-  exportReportToExcel(buildFinancialOverviewReportData(input), "financial-overview-report.xlsx");
+export function exportFinancialOverviewReportExcel(
+  input: FinancialOverviewReportInput
+) {
+  exportReportToExcelV2(buildFinancialOverviewReportData(input));
 }
-

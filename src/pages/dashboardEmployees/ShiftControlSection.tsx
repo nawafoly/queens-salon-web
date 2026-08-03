@@ -67,6 +67,27 @@ function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
+function formatActionCreatedAt(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return "غير متوفر";
+
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw)
+    ? raw.replace(" ", "T") + "Z"
+    : raw;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Riyadh",
+  }).format(date);
+}
+
 function numberInput(value: unknown, fallback = "0") {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? String(number) : fallback;
@@ -706,7 +727,7 @@ export default function ShiftControlSection({
           <div className="shift-control-list">
             {templates.map((template) => (
               <div className="shift-control-row" key={template.id}>
-                <div><strong>{template.name}</strong><span>{formatShiftWindow(template)} · سماح {template.lateGraceMinutes || 0} د</span></div>
+                <div><strong>{template.name}</strong><span>{formatShiftWindow(template)} · سماح {template.lateGraceMinutes || 0} د</span><small className="shift-control-created-at">تاريخ الإنشاء: {formatActionCreatedAt((template as any).createdAt || (template as any).created_at)}</small></div>
                 <span className={boolish(template.active) ? "shift-badge success" : "shift-badge muted"}>{boolish(template.active) ? "نشط" : "موقف"}</span>
                 <button type="button" className="exp-btn ghost" onClick={() => editTemplate(template)} disabled={!canManage || saving}>تعديل</button>
               </div>
@@ -724,7 +745,7 @@ export default function ShiftControlSection({
               const isCurrent = isAssignmentCurrent(assignment);
               return (
                 <div className="shift-control-row" key={assignment.id}>
-                  <div><strong>{assignment.shiftName || cleanText(snapshot.name) || "شفت محفوظ"}</strong><span>{assignment.effectiveFrom} ← {assignment.effectiveTo || "مستمر"} · {formatShiftWindow(snapshot as any)}</span></div>
+                  <div><strong>{assignment.shiftName || cleanText(snapshot.name) || "شفت محفوظ"}</strong><span>{assignment.effectiveFrom} ← {assignment.effectiveTo || "مستمر"} · {formatShiftWindow(snapshot as any)}</span><small className="shift-control-created-at">تاريخ إنشاء الإجراء: {formatActionCreatedAt((assignment as any).createdAt || (assignment as any).created_at)}</small></div>
                   <span className={isCurrent ? "shift-badge success" : "shift-badge muted"}>{assignmentStatusLabel(assignment)}</span>
                   <div className="shift-control-row-actions">
                     <button type="button" className="exp-btn ghost" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled" || isExpired}>إنهاء</button>
@@ -742,7 +763,7 @@ export default function ShiftControlSection({
           <div className="shift-control-list">
             {exceptions.map((exception) => (
               <div className="shift-control-row" key={exception.id}>
-                <div><strong>{exceptionTypeLabel(exception.exceptionType)}</strong><span>{exception.dateFrom} ← {exception.dateTo} · {exception.shiftName || formatShiftWindow(exception)}</span></div>
+                <div><strong>{exceptionTypeLabel(exception.exceptionType)}</strong><span>{exception.dateFrom} ← {exception.dateTo} · {exception.shiftName || formatShiftWindow(exception)}</span><small className="shift-control-created-at">تاريخ إنشاء الإجراء: {formatActionCreatedAt((exception as any).createdAt || (exception as any).created_at)}</small></div>
                 <span className={exception.status === "approved" ? "shift-badge success" : "shift-badge muted"}>{exception.status === "approved" ? "معتمد" : exception.status}</span>
                 <button type="button" className="exp-btn danger" onClick={() => void cancelException(exception)} disabled={!canManage || saving || exception.status !== "approved"}>إلغاء</button>
               </div>
@@ -755,7 +776,7 @@ export default function ShiftControlSection({
           <div className="shift-control-list">
             {payrollAdjustments.map((adjustment) => (
               <div className="shift-control-row" key={adjustment.id}>
-                <div><strong>{adjustment.changeType}</strong><span>{adjustment.dateFrom} ← {adjustment.dateTo} · {adjustment.reason || "بدون سبب"}</span></div>
+                <div><strong>{adjustment.changeType}</strong><span>{adjustment.dateFrom} ← {adjustment.dateTo} · {adjustment.reason || "بدون سبب"}</span><small className="shift-control-created-at">تاريخ إنشاء الإجراء: {formatActionCreatedAt((adjustment as any).createdAt || (adjustment as any).created_at)}</small></div>
                 <span className="shift-badge muted">{adjustment.status}</span>
               </div>
             ))}
