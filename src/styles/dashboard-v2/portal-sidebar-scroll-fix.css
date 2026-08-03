@@ -1,0 +1,74 @@
+/* =========================================================
+   Malikat Portal Sidebar V2 — scroll contract
+
+   The legacy navigation elements previously received height: 100% while
+   their flex parent had no explicit height. That allowed the navigation to
+   grow to its content height; the outer sidebar then clipped the excess, so
+   a usable internal scroll range was never created.
+========================================================= */
+
+.malikat-portal-sidebar-v2__navigation {
+  position: relative !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  overscroll-behavior: contain !important;
+  pointer-events: auto !important;
+}
+
+.malikat-portal-sidebar-v2__navigation > nav,
+.malikat-portal-sidebar-v2__navigation > .sidebar-nav,
+.malikat-portal-sidebar-v2__navigation > .hr-shell-nav,
+.malikat-portal-sidebar-v2__navigation > .employee-portal-desktop-nav,
+.malikat-portal-sidebar-v2__navigation :where(
+  .sidebar-nav,
+  .hr-shell-nav,
+  .employee-portal-desktop-nav
+) {
+  position: relative !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: contain !important;
+  scrollbar-gutter: stable !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+.malikat-portal-sidebar-v2__navigation :where(
+  .sidebar-nav,
+  .hr-shell-nav,
+  .employee-portal-desktop-nav
+) > ul,
+.malikat-portal-sidebar-v2__navigation .sidebar-nav ul {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Keep the scroll target usable in both expanded and collapsed states. */
+.malikat-portal-sidebar-v2.is-collapsed
+  .malikat-portal-sidebar-v2__navigation {
+  min-height: 0 !important;
+}
+
+@media (max-width: 991.98px) {
+  .malikat-portal-sidebar-v2__navigation > nav,
+  .malikat-portal-sidebar-v2__navigation > .sidebar-nav,
+  .malikat-portal-sidebar-v2__navigation > .hr-shell-nav,
+  .malikat-portal-sidebar-v2__navigation > .employee-portal-desktop-nav {
+    scrollbar-gutter: auto !important;
+  }
+}

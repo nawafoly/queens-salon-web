@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -41,11 +41,14 @@ import EmployeeProfilePage from "./hr/EmployeeProfile";
 import { useEmployeeSession, type HrSession } from "./hr/shared";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import DashboardHeader from "../components/DashboardHeader";
+import DashboardSidebarTooltipV2 from "../components/DashboardSidebarTooltipV2";
+import MalikatPortalSidebarV2 from "../components/MalikatPortalSidebarV2";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
 import { usePermissions } from "../security/PermissionContext";
 import type { AppPermission } from "../helpers/permissions";
 import "../styles/EmployeePortalMobileNav.css";
+import "../styles/dashboard-v2/dashboard-v2.css";
 
 function PortalSkeleton({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -462,7 +465,7 @@ export default function EmployeePortal() {
   }
 
   return (
-    <div className={`employee-portal madan-employee-portal${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+    <div className={`employee-portal madan-employee-portal malikat-portal-shell-v2${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <DashboardHeader
         theme="employee"
         title={employeeHeaderTitle}
@@ -472,79 +475,82 @@ export default function EmployeePortal() {
       />
 
       <div className="employee-portal-layout employee-portal-layout--app">
-        <aside className="employee-portal-sidebar employee-portal-sidebar--desktop" aria-label="التنقل داخل بوابة الموظف">
-          <div className="employee-sidebar-header">
-            <img src={logo1} alt="Malikat" className="employee-sidebar-logo" />
+        <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
+        <MalikatPortalSidebarV2
+          variant="employee"
+          logoSrc={logo1}
+          collapsed={isSidebarCollapsed}
+          onToggleCollapsed={() => setIsSidebarCollapsed((value) => !value)}
+          ariaLabel="التنقل داخل بوابة الموظف"
+          profileTooltip={`${displayName} — ${roleLabel}`}
+          profile={
+            <div className="malikat-sidebar-identity employee-portal-sidebar__profile">
+              <span className="malikat-sidebar-identity__avatar employee-portal-sidebar__avatar">
+                <EmployeeAvatar
+                  src={avatarUrl}
+                  name={displayName}
+                  alt={displayName}
+                  loading="eager"
+                />
+              </span>
+              <div className="malikat-sidebar-identity__copy">
+                <small>بوابة الموظف</small>
+                <strong>{displayName}</strong>
+                <span>{roleLabel}</span>
+              </div>
+            </div>
+          }
+          primaryActionTooltip="إنشاء طلب جديد"
+          primaryAction={
             <button
               type="button"
-              className="employee-sidebar-collapse"
-              onClick={() => setIsSidebarCollapsed((value) => !value)}
-              aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
+              className="employee-sidebar-request"
+              onClick={() => setRequestSheetOpen(true)}
             >
-              <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
+              <FontAwesomeIcon icon={faPlus} />
+              <span>إنشاء طلب جديد</span>
             </button>
-          </div>
-          <div className="employee-portal-sidebar__profile">
-            <span className="employee-portal-sidebar__avatar">
-              <EmployeeAvatar
-                src={avatarUrl}
-                name={displayName}
-                alt={displayName}
-                loading="eager"
-              />
-            </span>
-            <div>
-              <small>بوابة الموظف</small>
-              <strong>{displayName}</strong>
-              <span>{roleLabel}</span>
+          }
+          navigation={
+            <nav className="employee-portal-desktop-nav">
+              {desktopNavItems.map((item) => (
+                <NavLink
+                  key={`${item.to}-${item.label}`}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) => `employee-portal-desktop-link ${isActive ? "is-active" : ""}`}
+                  data-sidebar-tooltip={item.label}
+                >
+                  <span className="employee-portal-desktop-link__icon">
+                    <FontAwesomeIcon icon={item.icon} />
+                  </span>
+                  <span className="employee-portal-desktop-link__copy">
+                    <strong>{item.label}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                  {item.badge ? <em>{item.badge}</em> : null}
+                </NavLink>
+              ))}
+            </nav>
+          }
+          footer={
+            <div className="employee-portal-sidebar__footer">
+              <span>{notificationsLoading ? "جاري تحديث التنبيهات..." : portalSubtitle}</span>
+              <div className="employee-portal-sidebar__switches">
+                {canOpenHr ? (
+                  <Link to="/admin"><FontAwesomeIcon icon={faUserShield} /> لوحة HR</Link>
+                ) : null}
+                {canOpenDashboard ? (
+                  <Link to="/dashboard/overview"><FontAwesomeIcon icon={faTableColumns} /> الداشبورد</Link>
+                ) : null}
+              </div>
+              <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}>
+                <FontAwesomeIcon icon={faRightFromBracket} />
+                {loggingOut ? "جاري الخروج..." : "تسجيل الخروج"}
+              </button>
             </div>
-          </div>
-
-          <button
-            type="button"
-            className="employee-sidebar-request"
-            onClick={() => setRequestSheetOpen(true)}
-          >
-            <FontAwesomeIcon icon={faPlus} />
-            <span>إنشاء طلب جديد</span>
-          </button>
-
-          <nav className="employee-portal-desktop-nav">
-            {desktopNavItems.map((item) => (
-              <NavLink
-                key={`${item.to}-${item.label}`}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `employee-portal-desktop-link ${isActive ? "is-active" : ""}`}
-              >
-                <span className="employee-portal-desktop-link__icon">
-                  <FontAwesomeIcon icon={item.icon} />
-                </span>
-                <span className="employee-portal-desktop-link__copy">
-                  <strong>{item.label}</strong>
-                  <small>{item.description}</small>
-                </span>
-                {item.badge ? <em>{item.badge}</em> : null}
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className="employee-portal-sidebar__footer">
-            <span>{notificationsLoading ? "جاري تحديث التنبيهات..." : portalSubtitle}</span>
-            <div className="employee-portal-sidebar__switches">
-              {canOpenHr ? (
-                <Link to="/admin"><FontAwesomeIcon icon={faUserShield} /> لوحة HR</Link>
-              ) : null}
-              {canOpenDashboard ? (
-                <Link to="/dashboard/overview"><FontAwesomeIcon icon={faTableColumns} /> الداشبورد</Link>
-              ) : null}
-            </div>
-            <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}>
-              <FontAwesomeIcon icon={faRightFromBracket} />
-              {loggingOut ? "جاري الخروج..." : "تسجيل الخروج"}
-            </button>
-          </div>
-        </aside>
+          }
+        />
 
         <main className="employee-portal-main">
           <DashboardHeader

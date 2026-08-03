@@ -1,20 +1,20 @@
-﻿
+
 
 // ✅ src/pages/DashboardIncome.tsx
 import { useEffect, useMemo, useState } from "react";
-import "../styles/AdminDashboardIncome.css";
+import "../styles/dashboard-v2/pages/income.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
   faSearch,
   faFilter,
-  faFileCsv,
+  faFileExcel,
+  faFilePdf,
   faTrash,
   faRotate,
   faPen,
+  faEye,
 } from "@fortawesome/free-solid-svg-icons";
-import Modal from "../components/Modal";
-
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
@@ -26,9 +26,29 @@ import {
 } from "../services/firestoreIncome";
 import { listCoreBookings } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
+import { CoreStaffService } from "../services/CoreStaffService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
-import { exportIncomeReportExcel, exportIncomeReportPdf } from "../helpers/reports/exportIncomeReport";
+import {
+  exportIncomeReportExcel,
+  exportIncomeReportPdf,
+} from "../helpers/reports/exportIncomeReport";
+import {
+  exportV2ResolveEmployeeName,
+  exportV2ResolveFinancialStatus,
+} from "../services/exports-v2";
+import {
+  DashboardDatePickerV2,
+  DashboardDrawerV2,
+  DashboardEmptyStateV2,
+  DashboardErrorStateV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+  DashboardToastProviderV2,
+  useDashboardToastV2,
+} from "../components/dashboard-v2";
 
 const ALL_BOOKINGS_KEY = "allBookings";
 
@@ -38,11 +58,30 @@ const INCOME_MIGRATED_KEY = "income_migrated_to_firestore_v1";
 const INCOME_EDIT_PIN = "598867395";
 const OTHER_INCOME_LABEL = "\u062f\u062e\u0644 \u0622\u062e\u0631";
 
+const INCOME_METHOD_OPTIONS = [
+  { value: "cash", label: "كاش" },
+  { value: "card", label: "شبكة" },
+  { value: "transfer", label: "تحويل" },
+  { value: "mixed", label: "مختلط" },
+  { value: "other", label: "أخرى" },
+] as const;
+
+const INCOME_FILTER_METHOD_OPTIONS = [
+  { value: "all", label: "كل طرق الدفع" },
+  ...INCOME_METHOD_OPTIONS,
+] as const;
+
+const BOOKING_PAYMENT_TYPE_OPTIONS = [
+  { value: "full", label: "دفع كامل" },
+  { value: "partial", label: "عربون" },
+] as const;
+
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 type BookingPaymentType = "full" | "partial";
 type BookingMeta = {
   bookingRef: string;
   clientName: string;
+  employeeName: string;
   bookingDate?: string;
   paymentType: BookingPaymentType;
   paidAmount: number;
@@ -114,6 +153,7 @@ function sourceLabel(source: string) {
   if (s === "booking" || s === "\u062d\u062c\u0632") return "\u062d\u062c\u0632";
   if (s === "invoice" || s === "\u0641\u0627\u062a\u0648\u0631\u0629") return "\u0641\u0627\u062a\u0648\u0631\u0629";
   if (s === "internal_booking") return "\u062d\u062c\u0632 \u062f\u0627\u062e\u0644\u064a";
+  if (s === "package_purchase") return "شراء باقة";
   if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "\u064a\u062f\u0648\u064a";
   if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "\u0627\u0633\u062a\u0631\u062c\u0627\u0639";
   if (
@@ -170,6 +210,13 @@ function formatIncomeNotePart(part: string): string {
   if (lower.startsWith("payment_method:")) {
     const method = p.split(":")[1] || "";
     return `طريقة الدفع (${methodLabelFromRaw(method)})`;
+  }
+  if (lower.startsWith("booking_edit_payment:")) {
+    const method = p.split(":")[1] || "";
+    return `تعديل دفعة الحجز (${methodLabelFromRaw(method)})`;
+  }
+  if (lower === "package_purchase" || lower.startsWith("package_purchase:")) {
+    return "شراء باقة";
   }
 
   return p;
@@ -326,6 +373,50 @@ function buildPaymentSummary(meta?: BookingMeta): string {
   return `${typeText} - ${rowsText}`;
 }
 
+function buildStaffNameById(rows: any[]): Record<string, string> {
+  return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+    const name = exportV2ResolveEmployeeName(
+      [row?.name, row?.employeeName, row?.staffName],
+      ""
+    );
+    if (!name) return acc;
+    for (const key of [row?.id, row?.firebaseUid, row?.uid]) {
+      const normalized = String(key || "").trim();
+      if (normalized) acc[normalized] = name;
+    }
+    return acc;
+  }, {} as Record<string, string>);
+}
+
+function resolveBookingEmployeeName(
+  booking: any,
+  staffNameById: Record<string, string>
+): string {
+  const itemRows = Array.isArray(booking?.items) ? booking.items : [];
+  const itemStaffNames = itemRows.flatMap((item: any) => [
+    item?.employeeName,
+    item?.staffName,
+    staffNameById[String(item?.staffId || "").trim()],
+  ]);
+
+  return exportV2ResolveEmployeeName([
+    booking?.employeeName,
+    booking?.staffName,
+    staffNameById[String(booking?.employeeId || booking?.staffId || "").trim()],
+    ...itemStaffNames,
+  ]);
+}
+
+function resolveDisplayEmployeeName(item: IncomeItem, meta?: BookingMeta): string {
+  const raw = item as any;
+  return exportV2ResolveEmployeeName([
+    meta?.employeeName,
+    raw?.employeeName,
+    raw?.staffName,
+    raw?.addedBy,
+  ]);
+}
+
 function resolveDisplayClientName(item: IncomeItem, meta?: BookingMeta): string {
   const fromMeta = String(meta?.clientName || "").trim();
   if (fromMeta) return fromMeta;
@@ -371,33 +462,6 @@ function buildFallbackPaymentSummaryText(item: IncomeItem, amountToShow: number)
   const kind = sourceKind(item.source || "");
   if (kind === "refund" || signedAmount < 0) return `استرجاع ${absAmount.toFixed(2)} ر.س`;
   return `مدفوع ${absAmount.toFixed(2)} ر.س`;
-}
-
-function toCsv(items: IncomeItem[]) {
-  const header = ["date", "amount", "method", "source", "note", "id"].join(",");
-  const lines = items.map((x) =>
-    [
-      x.date,
-      x.amount,
-      methodLabel(x.method),
-      sourceLabel(x.source || "").replaceAll(",", " "),
-      (x.note || "").replaceAll(",", " "),
-      String(x.id || ""),
-    ].join(",")
-  );
-  return [header, ...lines].join("\n");
-}
-
-function downloadTextFile(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function loadBookings(): any[] {
@@ -486,6 +550,11 @@ function loadLegacyIncome(): IncomeItem[] {
   }
 }
 
+function formatSar(value: number): string {
+  const amount = Number(value || 0);
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} ر.س`;
+}
+
 function firebaseMsg(e: any) {
   const msg = String(e?.message || e || "");
   if (msg.includes("Missing or insufficient permissions"))
@@ -495,11 +564,14 @@ function firebaseMsg(e: any) {
   return "تعذر تنفيذ العملية.";
 }
 
-export default function DashboardIncome() {
+function DashboardIncomeContent() {
   const [items, setItems] = useState<IncomeItem[]>([]);
   const [bookingMetaById, setBookingMetaById] = useState<Record<string, BookingMeta>>({});
   const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [detailsTarget, setDetailsTarget] = useState<IncomeItem | null>(null);
+  const { pushToast } = useDashboardToastV2();
 
   const [addOpen, setAddOpen] = useState(false);
   const [modalMsg, setModalMsg] = useState("");
@@ -532,10 +604,30 @@ export default function DashboardIncome() {
   const editIsRefund = editTarget ? isRefundIncomeRow(editTarget) : false;
   const editCanAdjustPayment = !!editLinkedBookingId && !editIsRefund;
 
-  const refresh = async () => {
+  useEffect(() => {
+    const message = modalMsg.trim();
+    if (!message) return;
+
+    const tone = message.startsWith("تم")
+      ? "success"
+      : message.includes("مخصص") || message.includes("يُدار") || message.includes("لا يوجد")
+        ? "warning"
+        : "danger";
+
+    pushToast({ title: message, tone });
+    setModalMsg("");
+  }, [modalMsg, pushToast]);
+
+  const refresh = async (announce = false) => {
     try {
       setLoading(true);
-      const [incomeRows, bookingRows] = await Promise.all([listAllIncomeCore(), listCoreBookings()]);
+      setLoadError("");
+      const [incomeRows, bookingRows, staffRows] = await Promise.all([
+        listAllIncomeCore(),
+        listCoreBookings(),
+        CoreStaffService.list({ activeOnly: false }),
+      ]);
+      const staffNameById = buildStaffNameById(staffRows);
       const bookingMap = bookingRows.reduce(
         (acc, b: any) => {
           const payment = resolveBookingPayment(b);
@@ -544,6 +636,7 @@ export default function DashboardIncome() {
             clientName: String(
               b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
             ).trim(),
+            employeeName: resolveBookingEmployeeName(b, staffNameById),
             paymentType: payment.paymentType,
             paidAmount: payment.paidAmount,
             remainingAmount: payment.remainingAmount,
@@ -555,8 +648,12 @@ export default function DashboardIncome() {
       );
       setItems(incomeRows);
       setBookingMetaById(bookingMap);
+      setLoadError("");
+      if (announce) setModalMsg("تم تحديث بيانات الإيرادات");
     } catch (e) {
-      setModalMsg(firebaseMsg(e));
+      const message = firebaseMsg(e);
+      setLoadError(message);
+      setModalMsg(message);
     } finally {
       setLoading(false);
     }
@@ -602,7 +699,12 @@ export default function DashboardIncome() {
           localStorage.setItem(INCOME_MIGRATED_KEY, "1");
         }
 
-        const [finalData, bookingRows] = await Promise.all([listAllIncomeCore(), listCoreBookings()]);
+        const [finalData, bookingRows, staffRows] = await Promise.all([
+          listAllIncomeCore(),
+          listCoreBookings(),
+          CoreStaffService.list({ activeOnly: false }),
+        ]);
+        const staffNameById = buildStaffNameById(staffRows);
         const bookingMap = bookingRows.reduce(
           (acc, b: any) => {
             const payment = resolveBookingPayment(b);
@@ -611,6 +713,7 @@ export default function DashboardIncome() {
               clientName: String(
                 b.clientName || b.customerName || b.name || b.client?.name || b.customer?.name || ""
               ).trim(),
+              employeeName: resolveBookingEmployeeName(b, staffNameById),
               bookingDate: normalizeISODate(b?.date),
               paymentType: payment.paymentType,
               paidAmount: payment.paidAmount,
@@ -624,9 +727,14 @@ export default function DashboardIncome() {
         if (mounted) {
           setItems(finalData);
           setBookingMetaById(bookingMap);
+          setLoadError("");
         }
       } catch (e) {
-        if (mounted) setModalMsg(firebaseMsg(e));
+        if (mounted) {
+          const message = firebaseMsg(e);
+          setLoadError(message);
+          setModalMsg(message);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -762,7 +870,7 @@ export default function DashboardIncome() {
       setAddOpen(false);
       setAmount("");
       setNote("");
-      setModalMsg("");
+      setModalMsg("تمت إضافة سجل الإيراد");
     } catch (e) {
       setModalMsg(firebaseMsg(e));
     } finally {
@@ -935,26 +1043,40 @@ export default function DashboardIncome() {
     }
   };
 
-  const buildIncomeReportInput = () => ({
-    rows: filtered.map((x) => {
+  const buildIncomeReportInput = () => {
+    const reportRows = filtered.map((x) => {
       const bookingMeta = rowBookingMeta(x);
-      const amountToShow = rowEffectiveAmount(x);
+      const paidAmount = round2(rowEffectiveAmount(x));
+      const totalAmount = round2(bookingMeta?.totalAmount ?? paidAmount);
+      const isRefund = paidAmount < 0 || isRefundIncomeRow(x);
+      const remainingAmount = isRefund
+        ? 0
+        : round2(Math.max(0, totalAmount - paidAmount));
       const noteText = formatIncomeNote(x.note);
+
       return {
         date: rowEffectiveDate(x),
         invoiceRef: resolveDisplayBookingRef(x, bookingMeta),
         clientName: resolveDisplayClientName(x, bookingMeta),
         services: sourceLabel(x.source || ""),
-        employeeName: "-",
+        employeeName: resolveDisplayEmployeeName(x, bookingMeta),
         paymentMethod: methodLabel(x.method),
         source: sourceLabel(x.source || ""),
-        totalAmount: bookingMeta?.totalAmount ?? amountToShow,
-        paidAmount: amountToShow,
-        remainingAmount: bookingMeta?.remainingAmount ?? 0,
-        status: amountToShow < 0 || isRefundIncomeRow(x) ? "استرجاع" : "نشط",
+        totalAmount,
+        paidAmount,
+        remainingAmount,
+        status: exportV2ResolveFinancialStatus({
+          totalAmount,
+          paidAmount,
+          remainingAmount,
+          isRefund,
+        }).label,
         note: resolveDisplayNoteText(x, noteText),
       };
-    }),
+    });
+
+    return {
+    rows: reportRows,
     filters: {
       fromDate: from || undefined,
       toDate: to || undefined,
@@ -968,20 +1090,23 @@ export default function DashboardIncome() {
       transferRevenue: totalTransfer,
       otherRevenue: totalOtherIncome,
       refundTotal: totalRefund,
-      remainingTotal: filtered.reduce((sum, x) => sum + Number(rowBookingMeta(x)?.remainingAmount || 0), 0),
+      remainingTotal: reportRows.reduce((sum, row) => sum + Number(row.remainingAmount || 0), 0),
     },
     generatedBy: "لوحة الإيرادات",
-  });
-
-  const exportCsv = () => {
-    const csvRows = filtered.map((x) => ({ ...x, date: rowEffectiveDate(x) }));
-    const csv = toCsv(csvRows);
-    downloadTextFile(`income_${todayISO()}.csv`, csv);
+    };
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
-    exportIncomeReportPdf(buildIncomeReportInput());
+    try {
+      setLoading(true);
+      await exportIncomeReportPdf(buildIncomeReportInput());
+      setModalMsg("تم تحميل ملف PDF");
+    } catch (error) {
+      setModalMsg(error instanceof Error ? error.message : "تعذر إنشاء ملف PDF");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const exportExcel = () => {
@@ -995,869 +1120,561 @@ export default function DashboardIncome() {
     setModalMsg("إصلاح طرق الدفع القديمة مخصص لمسار Firestore قبل النقل فقط؛ مدفوعات D1 محفوظة كسجلات مستقلة.");
   };
 
+  const hasActiveFilters = Boolean(q.trim() || fMethod !== "all" || from || to);
+  const detailsBookingMeta = detailsTarget ? rowBookingMeta(detailsTarget) : undefined;
+  const detailsAmount = detailsTarget ? rowEffectiveAmount(detailsTarget) : 0;
+  const detailsNote = detailsTarget ? formatIncomeNote(detailsTarget.note) : "";
+
+  const clearFilters = () => {
+    setQ("");
+    setFMethod("all");
+    setFrom("");
+    setTo("");
+  };
+
   return (
-    <div className="dashboard-section income-page">
-      <div className="income-container">
-        {/* Header */}
-        <div className="income-header">
-          <div className="income-title-block qs-black">
-            <h2 className="income-title">الإيرادات</h2>
-            <p className="income-subtitle">
-              إدارة وتسجيل الإيرادات اليومية
+    <>
+      <div className="dsv2-page income-v2-page">
+        <section className="dsv2-card income-v2-hero">
+          <div className="income-v2-hero__content">
+            <span className="dsv2-badge dsv2-badge--gold">الإدارة المالية</span>
+            <h1 className="dsv2-page-title">الإيرادات</h1>
+            <p className="dsv2-page-subtitle">
+              متابعة وتسجيل الإيرادات اليومية مع توحيد طرق الدفع والتقارير المالية.
             </p>
           </div>
 
-          <div className="income-actions">
-            {canFixPaymentMethods && (
-              <button
-                className="dash-pill dash-pill-outline"
-                onClick={fixPaymentMethods}
-                type="button"
-                disabled={loading}
-                title="إصلاح طرق الدفع"
-              >
-                إصلاح طرق الدفع
-              </button>
-            )}
+          <div className="income-v2-actions" aria-label="إجراءات صفحة الإيرادات">
             <button
-              className="dash-pill dash-pill-outline"
-              onClick={refresh}
+              className="dsv2-btn dsv2-btn--primary"
               type="button"
-              disabled={loading}
-              title="تحديث"
-            >
-              <FontAwesomeIcon icon={faRotate} /> تحديث
-            </button>
-
-            <button
-              className="dash-pill dash-pill-outline"
-              onClick={exportCsv}
-              type="button"
-              disabled={!filtered.length}
-              title="تصدير CSV"
-            >
-              <FontAwesomeIcon icon={faFileCsv} /> تصدير CSV
-            </button>
-
-            <button
-              className="dash-pill dash-pill-outline"
-              onClick={exportPdf}
-              type="button"
-              disabled={!filtered.length}
-              title="تصدير PDF"
-            >
-              <FontAwesomeIcon icon={faFileCsv} /> PDF
-            </button>
-
-            <button
-              className="dash-pill dash-pill-outline"
-              onClick={exportExcel}
-              type="button"
-              disabled={!filtered.length}
-              title="تصدير Excel"
-            >
-              <FontAwesomeIcon icon={faFileCsv} /> Excel
-            </button>
-
-            <button
-              className="dash-pill dash-pill-primary"
               onClick={() => setAddOpen(true)}
-              type="button"
+              disabled={loading}
             >
-              <FontAwesomeIcon icon={faPlus} /> إضافة دخل
+              <FontAwesomeIcon icon={faPlus} />
+              إضافة دخل
+            </button>
+            <button
+              className="dsv2-btn dsv2-btn--secondary"
+              type="button"
+              onClick={() => void refresh(true)}
+              disabled={loading}
+            >
+              <FontAwesomeIcon icon={faRotate} />
+              تحديث
+            </button>
+            <button
+              className="dsv2-btn dsv2-btn--secondary"
+              type="button"
+              onClick={() => void exportPdf()}
+              disabled={!filtered.length || loading}
+            >
+              <FontAwesomeIcon icon={faFilePdf} />
+              تحميل PDF
+            </button>
+            <button
+              className="dsv2-btn dsv2-btn--secondary"
+              type="button"
+              onClick={exportExcel}
+              disabled={!filtered.length || loading}
+            >
+              <FontAwesomeIcon icon={faFileExcel} />
+              Excel منسّق
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Quick Stat */}
-        {/* INCOME_INLINE_STATS_FIX */}
-        <style>{`
-          @media (max-width: 900px) {
-            .income-page .income-container {
-              width: 100% !important;
-              max-width: 100% !important;
-              min-width: 0 !important;
-              padding-inline: 10px !important;
-              overflow-x: hidden !important;
-              box-sizing: border-box !important;
-            }
-
-            .income-page .income-quick {
-              width: 100% !important;
-              max-width: 100% !important;
-              min-width: 0 !important;
-
-              display: grid !important;
-              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-              gap: 8px !important;
-
-              margin: 10px 0 0 !important;
-              padding: 0 !important;
-
-              overflow: hidden !important;
-              overflow-x: hidden !important;
-              box-sizing: border-box !important;
-            }
-
-            .income-page .income-quick > .stat-card {
-              width: 100% !important;
-              max-width: 100% !important;
-              min-width: 0 !important;
-
-              height: 78px !important;
-              min-height: 78px !important;
-
-              margin: 0 !important;
-              padding: 9px !important;
-
-              flex: none !important;
-              grid-column: auto !important;
-
-              overflow: hidden !important;
-              box-sizing: border-box !important;
-              border-radius: 14px !important;
-            }
-
-            .income-page .income-quick .stat-info {
-              width: 100% !important;
-              min-width: 0 !important;
-              max-width: 100% !important;
-            }
-
-            .income-page .income-quick .stat-info h3 {
-              width: 100% !important;
-              margin: 0 !important;
-              overflow: hidden !important;
-
-              color: #101a39 !important;
-              -webkit-text-fill-color: #101a39 !important;
-
-              font-size: 11px !important;
-              line-height: 1.25 !important;
-
-              text-overflow: ellipsis !important;
-              white-space: nowrap !important;
-            }
-
-            .income-page .income-quick .stat-info p {
-              width: 100% !important;
-              margin: 4px 0 0 !important;
-              overflow: hidden !important;
-
-              color: #68758a !important;
-              -webkit-text-fill-color: #68758a !important;
-
-              font-size: 8px !important;
-
-              text-overflow: ellipsis !important;
-              white-space: nowrap !important;
-            }
-          }
-        `}</style>
-        <div className="income-quick">
-          <div className="stat-card stat-card-total">
-            <div className="stat-info">
-              <h3>{total.toLocaleString()} ريال</h3>
-              <p>الإجمالي (حسب الفلترة)</p>
+        {canFixPaymentMethods ? (
+          <section className="income-v2-maintenance" aria-label="أدوات الصيانة المالية">
+            <div>
+              <strong>سلامة طرق الدفع</strong>
+              <span>الأداة القديمة محفوظة للتوافق، بينما سجلات D1 مستقلة حاليًا.</span>
             </div>
+            <button
+              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+              type="button"
+              onClick={fixPaymentMethods}
+              disabled={loading}
+            >
+              إصلاح طرق الدفع
+            </button>
+          </section>
+        ) : null}
+
+        <section className="income-v2-metrics" aria-label="ملخص الإيرادات">
+          <article className="dsv2-metric-card dsv2-metric-card--gold">
+            <p className="dsv2-metric-card__label">إجمالي الإيرادات</p>
+            <p className="dsv2-metric-card__value">{formatSar(total)}</p>
+            <p className="dsv2-metric-card__meta">حسب الفترة المحددة</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--success">
+            <p className="dsv2-metric-card__label">إيرادات الكاش</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalCash)}</p>
+            <p className="dsv2-metric-card__meta">المدفوع نقدًا</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--dark">
+            <p className="dsv2-metric-card__label">إيرادات الشبكة</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalCard)}</p>
+            <p className="dsv2-metric-card__meta">مدفوعات البطاقات</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--gold">
+            <p className="dsv2-metric-card__label">التحويلات</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalTransfer)}</p>
+            <p className="dsv2-metric-card__meta">التحويلات البنكية</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--dark">
+            <p className="dsv2-metric-card__label">دخل آخر</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalOtherIncome)}</p>
+            <p className="dsv2-metric-card__meta">الإيرادات اليدوية والأخرى</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--danger">
+            <p className="dsv2-metric-card__label">إجمالي الاسترجاع</p>
+            <p className="dsv2-metric-card__value">{formatSar(totalRefund)}</p>
+            <p className="dsv2-metric-card__meta">الحركات المالية السالبة</p>
+          </article>
+        </section>
+
+        <section className="dsv2-card dsv2-card--padded income-v2-filter-card">
+          <div className="dsv2-section-head">
+            <div>
+              <h2 className="dsv2-section-title">البحث والفلاتر</h2>
+              <p className="dsv2-section-caption">
+                تؤثر فترة التاريخ في المؤشرات، بينما يطبق البحث وطريقة الدفع على السجلات المعروضة.
+              </p>
+            </div>
+            {hasActiveFilters ? (
+              <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={clearFilters}>
+                مسح الفلاتر
+              </button>
+            ) : null}
           </div>
 
-          <div className="stat-card stat-card-cash">
-            <div className="stat-info">
-              <h3>{totalCash.toLocaleString()} ريال</h3>
-              <p>كاش</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-card-card">
-            <div className="stat-info">
-              <h3>{totalCard.toLocaleString()} ريال</h3>
-              <p>شبكة</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-card-transfer">
-            <div className="stat-info">
-              <h3>{totalTransfer.toLocaleString()} ريال</h3>
-              <p>تحويل</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-card-other">
-            <div className="stat-info">
-              <h3>{totalOtherIncome.toLocaleString()} ريال</h3>
-              <p>دخل آخر</p>
-            </div>
-          </div>
-
-          <div className="stat-card stat-card-refund">
-            <div className="stat-info">
-              <h3>{totalRefund.toLocaleString()} ريال</h3>
-              <p>إجمالي الاسترجاع</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="income-filters">
-          <div className="income-filter-head">
-            <div className="income-filter-title">
-              <FontAwesomeIcon icon={faFilter} /> فلترة وبحث
-            </div>
-          </div>
-
-          <div className="income-filter-grid">
-            <div className="income-input">
-              <div className="income-input__icon">
-                <FontAwesomeIcon icon={faSearch} />
+          <div className="income-v2-filter-grid">
+            <DashboardFieldV2 id="income-v2-search" label="بحث">
+              <div className="income-v2-search-control">
+                <FontAwesomeIcon icon={faSearch} aria-hidden="true" />
+                <input
+                  id="income-v2-search"
+                  name="income-v2-search"
+                  className="dsv2-input"
+                  type="search"
+                  placeholder="المصدر، الملاحظة، المبلغ، العميلة أو رقم الحجز"
+                  value={q}
+                  onChange={(event) => setQ(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
               </div>
-              <input
-                id="income_filters_search"
-                name="income_filters_search"
-                type="search"
-                className="form-control"
-                placeholder="بحث (المصدر / الملاحظة / المبلغ / المعرف...)"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
+            </DashboardFieldV2>
+
+            <DashboardFieldV2 id="income-v2-method" label="طريقة الدفع">
+              <DashboardSelectV2
+                id="income-v2-method"
+                options={INCOME_FILTER_METHOD_OPTIONS}
+                value={fMethod}
+                onChange={(value) => setFMethod(value as PaymentMethod | "all")}
+              />
+            </DashboardFieldV2>
+
+            <DashboardFieldV2 id="income-v2-from" label="من تاريخ">
+              <DashboardDatePickerV2
+                id="income-v2-from"
+                value={from}
+                max={to || undefined}
+                onChange={setFrom}
+                placeholder="بداية الفترة"
+              />
+            </DashboardFieldV2>
+
+            <DashboardFieldV2 id="income-v2-to" label="إلى تاريخ">
+              <DashboardDatePickerV2
+                id="income-v2-to"
+                value={to}
+                min={from || undefined}
+                onChange={setTo}
+                placeholder="نهاية الفترة"
+              />
+            </DashboardFieldV2>
+          </div>
+        </section>
+
+        <section className="dsv2-table-card income-v2-table-card">
+          <header className="income-v2-table-head">
+            <div>
+              <h2 className="dsv2-section-title">سجل الإيرادات</h2>
+              <p className="dsv2-section-caption">
+                {filtered.length.toLocaleString("en-US")} سجل معروض من أصل {items.length.toLocaleString("en-US")}.
+              </p>
+            </div>
+            <div className="income-v2-table-head__status">
+              {loading ? <span className="dsv2-badge dsv2-badge--gold">جارٍ التحديث</span> : null}
+              <span className="dsv2-badge dsv2-badge--success">{formatSar(total)}</span>
+            </div>
+          </header>
+
+          {loadError && !items.length ? (
+            <div className="income-v2-state-wrap">
+              <DashboardErrorStateV2
+                title="تعذر تحميل الإيرادات"
+                description={loadError}
+                action={
+                  <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={() => void refresh()}>
+                    إعادة المحاولة
+                  </button>
+                }
               />
             </div>
-
-            <select
-              className="form-control"
-              value={fMethod}
-              onChange={(e) => setFMethod(e.target.value as any)}
-            >
-              <option value="all">كل طرق الدفع</option>
-              <option value="cash">كاش</option>
-              <option value="card">شبكة</option>
-              <option value="transfer">تحويل</option>
-              <option value="mixed">مختلط</option>
-              <option value="other">أخرى</option>
-            </select>
-
-            <input
-              type="date"
-              className="form-control"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              placeholder="من"
-            />
-
-            <input
-              type="date"
-              className="form-control"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="إلى"
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="income-table-wrap">
-          <div className="income-table-head">
-            <div className="income-table-count">
-              السجلات: {filtered.length.toLocaleString()}
+          ) : loading && !items.length ? (
+            <div className="income-v2-loading-table" role="status" aria-label="جارٍ تحميل الإيرادات">
+              <DashboardSkeletonV2 variant="title" width="34%" />
+              <DashboardSkeletonV2 variant="text" lines={4} />
+              <DashboardSkeletonV2 variant="block" height={150} />
             </div>
-            {loading && (
-              <div className="income-table-loading">...جاري التحميل</div>
-            )}
-          </div>
-
-          <div className="income-table-responsive">
-            <table className="income-table">
-              <thead>
-                <tr>
-                  <th className="income-col-date">التاريخ</th>
-                  <th className="income-col-amount">المبلغ</th>
-                  <th className="income-col-method">الدفع</th>
-                  <th className="income-col-client">العميلة</th>
-                  <th className="income-col-booking">رقم الحجز</th>
-                  <th className="income-col-source">المصدر</th>
-                  <th className="income-col-note">ملاحظة</th>
-                  <th className="income-col-payment-summary">ملخص الدفع</th>
-                  <th className="income-col-actions">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="income-empty-cell">
-                      لا يوجد بيانات مطابقة للفترة الحالية.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((x) => {
-                    const bookingMeta = rowBookingMeta(x);
-                    const paymentSummaryRows = buildPaymentSummaryRows(bookingMeta);
-                    const amountToShow = rowEffectiveAmount(x);
-                    const noteText = formatIncomeNote(x.note);
-                    const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
-                    const srcKind = sourceKind(x.source || "");
-                    const hasPaymentSummary = paymentSummaryRows.length > 0;
-                    const displayClientName = resolveDisplayClientName(x, bookingMeta);
-                    const displayBookingRef = resolveDisplayBookingRef(x, bookingMeta);
-                    const displayNoteText = resolveDisplayNoteText(x, noteText);
-                    const fallbackPaymentSummaryText = buildFallbackPaymentSummaryText(x, amountToShow);
-                    const fallbackPaymentSummaryClass =
-                      srcKind === "refund" || Number(amountToShow) < 0
-                        ? "income-payment-line-remaining"
-                        : "income-payment-line-paid";
-                    return (
-                      <tr key={x.id} className={"income-row income-row-" + x.method}>
-                        <td className="income-col-date income-date">{rowEffectiveDate(x)}</td>
-                        <td className="income-col-amount">
-                          <span className="income-amount">
-                            {(Number(amountToShow) || 0).toLocaleString()} ريال
-                          </span>
-                        </td>
-                        <td className="income-col-method">
-                          <div className="income-method-cell">
-                            <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
+          ) : filtered.length === 0 ? (
+            <div className="income-v2-state-wrap">
+              <DashboardEmptyStateV2
+                title="لا توجد إيرادات مطابقة"
+                description={hasActiveFilters ? "غيّر نطاق البحث أو امسح الفلاتر لعرض بقية السجلات." : "ابدأ بإضافة أول حركة إيراد."}
+                tone="gold"
+                action={
+                  hasActiveFilters ? (
+                    <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={clearFilters}>
+                      مسح الفلاتر
+                    </button>
+                  ) : (
+                    <button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>
+                      إضافة دخل
+                    </button>
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <div className="dsv2-table-scroll income-v2-desktop-table">
+                <table className="dsv2-table income-v2-table">
+                  <thead>
+                    <tr>
+                      <th>التاريخ</th>
+                      <th>المبلغ</th>
+                      <th>الدفع</th>
+                      <th>العميلة والحجز</th>
+                      <th>المصدر</th>
+                      <th>الملاحظة</th>
+                      <th>ملخص الدفع</th>
+                      <th>الإجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((item) => {
+                      const bookingMeta = rowBookingMeta(item);
+                      const paymentRows = buildPaymentSummaryRows(bookingMeta);
+                      const amountToShow = rowEffectiveAmount(item);
+                      const noteText = formatIncomeNote(item.note);
+                      const srcKind = sourceKind(item.source || "");
+                      const displayClientName = resolveDisplayClientName(item, bookingMeta);
+                      const displayBookingRef = resolveDisplayBookingRef(item, bookingMeta);
+                      const displayNoteText = resolveDisplayNoteText(item, noteText);
+                      const fallbackSummary = buildFallbackPaymentSummaryText(item, amountToShow);
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            <span className="dsv2-table__primary">{rowEffectiveDate(item)}</span>
+                          </td>
+                          <td>
+                            <strong className="income-v2-amount" data-negative={amountToShow < 0 ? "true" : "false"}>
+                              {formatSar(amountToShow)}
+                            </strong>
+                          </td>
+                          <td>
+                            <span className="income-v2-method-badge" data-method={item.method}>
+                              {methodLabel(item.method)}
+                            </span>
                             {bookingMeta ? (
-                              <span className={`income-pay-kind ${bookingMeta.paymentType}`}>
-                                {paymentTypeLabel(bookingMeta.paymentType)}
+                              <span className="dsv2-table__secondary">
+                                {bookingMeta.paymentType === "full" ? "دفع كامل" : "عربون"}
                               </span>
                             ) : null}
-                          </div>
-                        </td>
-                        <td className="income-col-client">
-                          <span className="income-client-text">{displayClientName}</span>
-                        </td>
-                        <td className="income-col-booking">
-                          <span className="income-booking-text">{displayBookingRef}</span>
-                        </td>
-                        <td className="income-col-source">
-                          <div className="income-source-cell">
-                            <span className={`income-source-badge ${srcKind}`}>
-                              {sourceLabel(x.source || "")}
+                          </td>
+                          <td>
+                            <span className="dsv2-table__primary">{displayClientName}</span>
+                            <span className="dsv2-table__secondary">{displayBookingRef}</span>
+                          </td>
+                          <td>
+                            <span className="income-v2-source-badge" data-source={srcKind}>
+                              {sourceLabel(item.source || "")}
                             </span>
-                          </div>
-                        </td>
-                        <td className="income-col-note">
-                          <div className="income-note-text">
-                            <span className={noteText ? noteClass : "income-note-primary"}>{displayNoteText}</span>
-                          </div>
-                        </td>
-                        <td className="income-col-payment-summary">
-                          <div className="income-payment-summary-cell">
-                            {hasPaymentSummary ? (
-                              <span className="income-payment-summary">
-                                {paymentSummaryRows.map((row) => (
-                                  <span
-                                    key={row.kind}
-                                    className={`income-payment-line income-payment-line-${row.kind}`}
-                                  >
-                                    {row.label} {row.value.toFixed(2)} ر.س
-                                  </span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span
-                                className={`income-payment-line ${fallbackPaymentSummaryClass}`}
-                              >
-                                {fallbackPaymentSummaryText}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="income-col-actions income-actions-cell">
-                          <div className="income-row-actions">
-                            {isRefundIncomeRow(x) ? (
-                              <span title="يتم تعديل أو إلغاء الاسترجاع من صفحة الحجوزات">
-                                يُدار من الحجوزات
-                              </span>
-                            ) : (
-                              <>
-                                <button
-                                  className="dash-icon-btn qs-black income-edit-btn"
-                                  type="button"
-                                  title="تعديل المبلغ"
-                                  onClick={() => openEditIncomeModal(x)}
-                                  disabled={loading}
-                                >
-                                  <FontAwesomeIcon icon={faPen} />
-                                </button>
-                                <button
-                                  className="dash-icon-btn qs-black income-delete-btn"
-                                  type="button"
-                                  title="حذف"
-                                  onClick={() => openDeleteIncomeModal(x)}
-                                  disabled={loading}
-                                >
-                                  <FontAwesomeIcon icon={faTrash} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="income-mobile-list">
-            {filtered.length === 0 ? (
-              <div className="income-mobile-empty">
-                لا يوجد بيانات مطابقة للفترة الحالية.
+                          </td>
+                          <td className="income-v2-note-cell">{displayNoteText}</td>
+                          <td>
+                            <div className="income-v2-payment-summary">
+                              {paymentRows.length ? paymentRows.map((row) => (
+                                <span key={`${item.id}-${row.kind}`} data-kind={row.kind}>
+                                  {row.label}: {formatSar(row.value)}
+                                </span>
+                              )) : <span data-kind={amountToShow < 0 ? "remaining" : "paid"}>{fallbackSummary}</span>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="income-v2-row-actions">
+                              <button className="dsv2-icon-btn" type="button" title="عرض التفاصيل" onClick={() => setDetailsTarget(item)}>
+                                <FontAwesomeIcon icon={faEye} />
+                              </button>
+                              {!isRefundIncomeRow(item) ? (
+                                <>
+                                  <button className="dsv2-icon-btn" type="button" title="تعديل" onClick={() => openEditIncomeModal(item)} disabled={loading}>
+                                    <FontAwesomeIcon icon={faPen} />
+                                  </button>
+                                  <button className="dsv2-icon-btn income-v2-delete-action" type="button" title="حذف" onClick={() => openDeleteIncomeModal(item)} disabled={loading}>
+                                    <FontAwesomeIcon icon={faTrash} />
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="dsv2-badge dsv2-badge--danger">من الحجوزات</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              filtered.map((x) => {
-                const bookingMeta = rowBookingMeta(x);
-                const paymentSummaryRows = buildPaymentSummaryRows(bookingMeta);
-                const amountToShow = rowEffectiveAmount(x);
-                const noteText = formatIncomeNote(x.note);
-                const noteClass = `income-note-primary${isSystemIncomeNote(x.note) ? " income-note-primary-system" : ""}`;
-                const srcKind = sourceKind(x.source || "");
-                const hasPaymentSummary = paymentSummaryRows.length > 0;
-                const displayClientName = resolveDisplayClientName(x, bookingMeta);
-                const displayBookingRef = resolveDisplayBookingRef(x, bookingMeta);
-                const displayNoteText = resolveDisplayNoteText(x, noteText);
-                const fallbackPaymentSummaryText = buildFallbackPaymentSummaryText(x, amountToShow);
-                const fallbackPaymentSummaryClass =
-                  srcKind === "refund" || Number(amountToShow) < 0
-                    ? "income-payment-line-remaining"
-                    : "income-payment-line-paid";
-                return (
-                  <article className="income-mobile-card" key={"mob_" + x.id}>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">التاريخ</span>
-                      <span className="income-mobile-value income-mobile-value--date">{rowEffectiveDate(x)}</span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">المبلغ</span>
-                      <span className="income-mobile-value income-mobile-amount">
-                        {(Number(amountToShow) || 0).toLocaleString()} ريال
-                      </span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">الدفع</span>
-                      <span className="income-mobile-value">
-                        <span className="income-method-cell">
-                          <span className={"income-method-badge " + x.method}>{methodLabel(x.method)}</span>
-                          {bookingMeta ? (
-                            <span className={`income-pay-kind ${bookingMeta.paymentType}`}>
-                              {paymentTypeLabel(bookingMeta.paymentType)}
-                            </span>
-                          ) : null}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">العميلة</span>
-                      <span className="income-mobile-value">{displayClientName}</span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">رقم الحجز</span>
-                      <span className="income-mobile-value">{displayBookingRef}</span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">المصدر</span>
-                      <span className="income-mobile-value income-source-cell">
-                        <span className={`income-source-badge ${srcKind}`}>
-                          {sourceLabel(x.source || "")}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">ملاحظة</span>
-                      <span className="income-mobile-value">
-                        <span className={noteText ? noteClass : "income-note-primary"}>{displayNoteText}</span>
-                      </span>
-                    </div>
-                    <div className="income-mobile-row">
-                      <span className="income-mobile-label">ملخص الدفع</span>
-                      <span className="income-mobile-value">
-                        {hasPaymentSummary ? (
-                          <span className="income-payment-summary">
-                            {paymentSummaryRows.map((row) => (
-                              <span
-                                key={row.kind}
-                                className={`income-payment-line income-payment-line-${row.kind}`}
-                              >
-                                {row.label} {row.value.toFixed(2)} ر.س
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className={`income-payment-line ${fallbackPaymentSummaryClass}`}>
-                            {fallbackPaymentSummaryText}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="income-mobile-actions">
-                      {isRefundIncomeRow(x) ? (
-                        <span title="يتم تعديل أو إلغاء الاسترجاع من صفحة الحجوزات">
-                          يُدار من الحجوزات
-                        </span>
-                      ) : (
-                        <>
-                          <button
-                            className="dash-pill dash-pill-outline income-mobile-edit"
-                            type="button"
-                            title="تعديل المبلغ"
-                            onClick={() => openEditIncomeModal(x)}
-                            disabled={loading}
-                          >
-                            <FontAwesomeIcon icon={faPen} /> تعديل
-                          </button>
-                          <button
-                            className="dash-pill dash-pill-outline income-mobile-delete"
-                            type="button"
-                            title="حذف"
-                            onClick={() => openDeleteIncomeModal(x)}
-                            disabled={loading}
-                          >
-                            <FontAwesomeIcon icon={faTrash} /> حذف
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </div>
 
-        {/* Errors */}
-        {modalMsg && <p style={{ color: "red", marginTop: 12 }}>{modalMsg}</p>}
+              <div className="income-v2-mobile-list">
+                {filtered.map((item) => {
+                  const bookingMeta = rowBookingMeta(item);
+                  const amountToShow = rowEffectiveAmount(item);
+                  const noteText = formatIncomeNote(item.note);
+                  return (
+                    <article className="income-v2-mobile-card" key={`mobile-${item.id}`}>
+                      <header>
+                        <div>
+                          <span>{rowEffectiveDate(item)}</span>
+                          <strong data-negative={amountToShow < 0 ? "true" : "false"}>{formatSar(amountToShow)}</strong>
+                        </div>
+                        <span className="income-v2-method-badge" data-method={item.method}>{methodLabel(item.method)}</span>
+                      </header>
+                      <dl>
+                        <div><dt>العميلة</dt><dd>{resolveDisplayClientName(item, bookingMeta)}</dd></div>
+                        <div><dt>الحجز</dt><dd>{resolveDisplayBookingRef(item, bookingMeta)}</dd></div>
+                        <div><dt>المصدر</dt><dd>{sourceLabel(item.source || "")}</dd></div>
+                        <div><dt>الملاحظة</dt><dd>{resolveDisplayNoteText(item, noteText)}</dd></div>
+                      </dl>
+                      <footer>
+                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}>
+                          <FontAwesomeIcon icon={faEye} /> عرض
+                        </button>
+                        {!isRefundIncomeRow(item) ? (
+                          <>
+                            <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => openEditIncomeModal(item)} disabled={loading}>
+                              <FontAwesomeIcon icon={faPen} /> تعديل
+                            </button>
+                            <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => openDeleteIncomeModal(item)} disabled={loading}>
+                              <FontAwesomeIcon icon={faTrash} /> حذف
+                            </button>
+                          </>
+                        ) : null}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
       </div>
 
-      {/* ✅ Modal (Scoped to Income CSS) */}
-      {addOpen && (
-        <Modal
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          ariaLabel="إضافة دخل"
-          panelClassName="income-page-modal__card"
-          size="sm"
-        >
-            <div className="income-page-modal__head">
-              <div className="income-page-modal__title">إضافة دخل</div>
-              <button
-                className="income-modal-close-btn"
-                onClick={() => setAddOpen(false)}
-                type="button"
-              >
+      <DashboardModalV2
+        open={addOpen}
+        onClose={() => { if (!loading) setAddOpen(false); }}
+        title="إضافة حركة إيراد"
+        description="سجّل بيانات الحركة المالية، ثم احفظها لتظهر في المؤشرات والتقارير."
+        eyebrow="الإيرادات"
+        size="md"
+        tone="gold"
+        closeOnBackdrop={!loading}
+        closeOnEscape={!loading}
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addIncome()} disabled={loading}>
+              {loading ? "جارٍ الحفظ..." : "حفظ الحركة"}
+            </button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>
+              إلغاء
+            </button>
+          </>
+        }
+      >
+        <div className="income-v2-modal-grid">
+          <DashboardFieldV2 id="income-v2-add-date" label="التاريخ" required>
+            <DashboardDatePickerV2 id="income-v2-add-date" value={date} onChange={setDate} required clearable={false} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="income-v2-add-amount" label="المبلغ (ر.س)" required>
+            <input id="income-v2-add-amount" className="dsv2-input" type="number" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="income-v2-add-method" label="طريقة السداد" required>
+            <DashboardSelectV2 id="income-v2-add-method" options={INCOME_METHOD_OPTIONS} value={method} onChange={(value) => setMethod(value as PaymentMethod)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="income-v2-add-source" label="المصدر" required>
+            <input id="income-v2-add-source" className="dsv2-input" type="text" placeholder="مثال: بيع منتج أو تعديل يدوي" value={source} onChange={(event) => setSource(event.target.value)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="income-v2-add-note" label="السبب أو المرجع" required className="income-v2-field--wide">
+            <textarea id="income-v2-add-note" className="dsv2-textarea" placeholder="اكتب سبب الحركة أو مرجعها" value={note} onChange={(event) => setNote(event.target.value)} />
+          </DashboardFieldV2>
+        </div>
+      </DashboardModalV2>
+
+      <DashboardModalV2
+        open={editOpen && Boolean(editTarget)}
+        onClose={closeEditIncomeModal}
+        title={editCanAdjustPayment ? "تعديل الدفع للحجز" : "تعديل مبلغ الإيراد"}
+        description="يتطلب تعديل الحركات المالية إدخال الرقم السري المعتمد."
+        eyebrow="تعديل آمن"
+        size="md"
+        tone="gold"
+        closeOnBackdrop={!loading}
+        closeOnEscape={!loading}
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void saveEditedIncome()} disabled={loading}>
+              {loading ? "جارٍ الحفظ..." : "حفظ التعديل"}
+            </button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={closeEditIncomeModal} disabled={loading}>
+              إلغاء
+            </button>
+          </>
+        }
+      >
+        {editCanAdjustPayment ? (
+          <div className="income-v2-booking-hint">
+            <span>الحجز: {editBookingMeta?.bookingRef || editLinkedBookingId || "-"}</span>
+            <span>العميلة: {editBookingMeta?.clientName || "-"}</span>
+          </div>
+        ) : null}
+        <div className="income-v2-modal-grid">
+          <DashboardFieldV2 id="income-v2-edit-pin" label="الرقم السري" required className="income-v2-field--wide">
+            <input id="income-v2-edit-pin" name="income_edit_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder="أدخل الرقم السري" value={editPin} onChange={(event) => setEditPin(event.target.value)} disabled={loading} />
+          </DashboardFieldV2>
+          {editCanAdjustPayment ? (
+            <>
+              <DashboardFieldV2 id="income-v2-edit-total" label="إجمالي الحجز (ر.س)" required>
+                <input id="income-v2-edit-total" className="dsv2-input" type="number" min="0" step="0.01" value={editBookingTotal} onChange={(event) => setEditBookingTotal(event.target.value)} disabled={loading} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="income-v2-edit-payment-type" label="نوع الدفع" required>
+                <DashboardSelectV2 id="income-v2-edit-payment-type" options={BOOKING_PAYMENT_TYPE_OPTIONS} value={editPaymentType} onChange={(value) => setEditPaymentType(value as BookingPaymentType)} disabled={loading} />
+              </DashboardFieldV2>
+              {editPaymentType === "partial" ? (
+                <DashboardFieldV2 id="income-v2-edit-paid" label="المبلغ المدفوع (ر.س)" required>
+                  <input id="income-v2-edit-paid" className="dsv2-input" type="number" min="0" step="0.01" value={editPaidAmount} onChange={(event) => setEditPaidAmount(event.target.value)} disabled={loading} />
+                </DashboardFieldV2>
+              ) : null}
+              <div className="income-v2-edit-summary income-v2-field--wide">
+                {(() => {
+                  const totalValue = round2(Math.max(0, parseMoneyInput(editBookingTotal)));
+                  const paidRaw = editPaymentType === "full" ? totalValue : Math.max(0, parseMoneyInput(editPaidAmount));
+                  const paidValue = round2(Math.min(totalValue, paidRaw));
+                  return `المدفوع ${formatSar(paidValue)} — المتبقي ${formatSar(Math.max(0, totalValue - paidValue))}`;
+                })()}
+              </div>
+            </>
+          ) : (
+            <DashboardFieldV2 id="income-v2-edit-amount" label="المبلغ الجديد (ر.س)" required>
+              <input id="income-v2-edit-amount" className="dsv2-input" type="number" min="0" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} disabled={loading} />
+            </DashboardFieldV2>
+          )}
+        </div>
+        {editError ? <div className="income-v2-inline-error" role="alert">{editError}</div> : null}
+      </DashboardModalV2>
+
+      <DashboardModalV2
+        open={deleteOpen && Boolean(deleteTarget)}
+        onClose={closeDeleteIncomeModal}
+        title="حذف سجل الإيراد؟"
+        description="لن يظهر السجل في المؤشرات أو التقارير بعد الحذف."
+        eyebrow="إجراء حساس"
+        size="sm"
+        tone="danger"
+        role="alertdialog"
+        closeOnBackdrop={!loading}
+        closeOnEscape={!loading}
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={() => void confirmDeleteIncome()} disabled={loading}>
+              {loading ? "جارٍ الحذف..." : "تأكيد الحذف"}
+            </button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={closeDeleteIncomeModal} disabled={loading}>
+              تراجع
+            </button>
+          </>
+        }
+      >
+        {deleteTarget ? (
+          <div className="income-v2-delete-summary">
+            <strong>{formatSar(Number(deleteTarget.amount || 0))}</strong>
+            <span>{deleteTarget.date || "-"}</span>
+            <span>{sourceLabel(deleteTarget.source || "")}</span>
+          </div>
+        ) : null}
+        <DashboardFieldV2 id="income-v2-delete-pin" label="الرقم السري للحذف" required>
+          <input id="income-v2-delete-pin" name="income_delete_pin" className="dsv2-input" type="password" inputMode="numeric" autoComplete="new-password" data-lpignore="true" placeholder="أدخل الرقم السري" value={deletePin} onChange={(event) => setDeletePin(event.target.value)} disabled={loading} />
+        </DashboardFieldV2>
+        {deleteError ? <div className="income-v2-inline-error" role="alert">{deleteError}</div> : null}
+      </DashboardModalV2>
+
+      {detailsTarget ? (
+        <DashboardDrawerV2
+          open={Boolean(detailsTarget)}
+          onClose={() => setDetailsTarget(null)}
+          title="تفاصيل حركة الإيراد"
+          description="عرض سريع للسجل وبيانات الحجز المرتبطة."
+          eyebrow={detailsTarget.id}
+          size="md"
+          side="end"
+          tone={detailsAmount < 0 ? "danger" : "success"}
+          footer={
+            <>
+              {!isRefundIncomeRow(detailsTarget) ? (
+                <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { const target = detailsTarget; setDetailsTarget(null); openEditIncomeModal(target); }}>
+                  تعديل الحركة
+                </button>
+              ) : null}
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>
                 إغلاق
               </button>
-            </div>
-
-            <div className="income-page-modal__body">
-              <div className="income-modal-grid">
-                <label className="income-modal-field">
-                  <span>التاريخ</span>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
-
-                <label className="income-modal-field">
-                  <span>المبلغ (ر.س)</span>
-                  <input
-                    type="number"
-                    placeholder="أدخلي المبلغ"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
-
-                <label className="income-modal-field">
-                  <span>طريقة السداد</span>
-                  <select
-                    className="income-modal-input"
-                    value={method}
-                    onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-                  >
-                    <option value="cash">كاش</option>
-                    <option value="card">شبكة</option>
-                    <option value="transfer">تحويل</option>
-                    <option value="mixed">مختلط</option>
-                    <option value="other">أخرى</option>
-                  </select>
-                </label>
-
-                <label className="income-modal-field">
-                  <span>المصدر</span>
-                  <input
-                    type="text"
-                    placeholder="مثال: بيع منتج / تعديل يدوي"
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="income-modal-input"
-                    list="income_source_options"
-                  />
-                  <datalist id="income_source_options">
-                    <option value="\u064a\u062f\u0648\u064a" />
-                    <option value={OTHER_INCOME_LABEL} />
-                  </datalist>
-                </label>
-
-                <label className="income-modal-field">
-                  <span>سبب/مرجع (إلزامي)</span>
-                  <input
-                    type="text"
-                    placeholder="مثال: بيع منتج، عربون، تعديل يدوي"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="income-modal-input"
-                  />
-                </label>
-              </div>
-
-              <div className="income-modal-actions">
-                <button
-                  className="income-modal-btn income-modal-btn--primary"
-                  onClick={addIncome}
-                  type="button"
-                  disabled={loading}
-                >
-                  حفظ
-                </button>
-
-                <button
-                  className="income-modal-btn income-modal-btn--secondary"
-                  onClick={() => setAddOpen(false)}
-                  type="button"
-                  disabled={loading}
-                >
-                  إلغاء
-                </button>
-              </div>
-            </div>
-        </Modal>
-      )}
-
-      {editOpen && editTarget && (
-        <Modal
-          open={editOpen}
-          onClose={closeEditIncomeModal}
-          ariaLabel="تعديل دخل"
-          panelClassName="income-page-modal__card"
-          size="sm"
+            </>
+          }
         >
-          <div className="income-page-modal__head">
-            <div className="income-page-modal__title">
-              {editCanAdjustPayment ? "تعديل الدفع للحجز" : "تعديل مبلغ الدخل"}
-            </div>
-            <button
-              className="income-modal-close-btn"
-              onClick={closeEditIncomeModal}
-              type="button"
-              disabled={loading}
-            >
-              إغلاق
-            </button>
+          <div className="income-v2-drawer-content">
+            <article className={`dsv2-metric-card ${detailsAmount < 0 ? "dsv2-metric-card--danger" : "dsv2-metric-card--success"}`}>
+              <p className="dsv2-metric-card__label">المبلغ المسجل</p>
+              <p className="dsv2-metric-card__value">{formatSar(detailsAmount)}</p>
+              <p className="dsv2-metric-card__meta">{detailsAmount < 0 ? "حركة استرجاع" : "حركة إيراد"}</p>
+            </article>
+            <dl className="income-v2-detail-list">
+              <div><dt>التاريخ</dt><dd>{rowEffectiveDate(detailsTarget)}</dd></div>
+              <div><dt>طريقة الدفع</dt><dd>{methodLabel(detailsTarget.method)}</dd></div>
+              <div><dt>العميلة</dt><dd>{resolveDisplayClientName(detailsTarget, detailsBookingMeta)}</dd></div>
+              <div><dt>رقم الحجز</dt><dd>{resolveDisplayBookingRef(detailsTarget, detailsBookingMeta)}</dd></div>
+              <div><dt>المصدر</dt><dd>{sourceLabel(detailsTarget.source || "")}</dd></div>
+              <div><dt>الملاحظة</dt><dd>{resolveDisplayNoteText(detailsTarget, detailsNote)}</dd></div>
+              <div><dt>نوع الدفع</dt><dd>{detailsBookingMeta?.paymentType === "partial" ? "عربون" : detailsBookingMeta ? "دفع كامل" : "غير مرتبط بحجز"}</dd></div>
+              <div><dt>المتبقي</dt><dd>{formatSar(detailsBookingMeta?.remainingAmount || 0)}</dd></div>
+            </dl>
           </div>
-
-          <div className="income-page-modal__body">
-            {editCanAdjustPayment ? (
-              <div className="income-edit-booking-hint">
-                <span>رقم الحجز: {editBookingMeta?.bookingRef || editLinkedBookingId || "-"}</span>
-                <span>العميلة: {editBookingMeta?.clientName || "-"}</span>
-              </div>
-            ) : null}
-
-            <div className="income-modal-grid">
-              <label className="income-modal-field">
-                <span>الرقم السري</span>
-                <input
-                  type="password"
-                  placeholder="أدخلي الرقم السري"
-                  value={editPin}
-                  onChange={(e) => setEditPin(e.target.value)}
-                  className="income-modal-input"
-                  disabled={loading}
-                  autoComplete="new-password"
-                  name="income_edit_pin"
-                  inputMode="numeric"
-                  data-lpignore="true"
-                />
-              </label>
-
-              {editCanAdjustPayment ? (
-                <>
-                  <label className="income-modal-field">
-                    <span>إجمالي الحجز (ر.س)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={editBookingTotal}
-                      onChange={(e) => setEditBookingTotal(e.target.value)}
-                      className="income-modal-input"
-                      disabled={loading}
-                    />
-                  </label>
-
-                  <label className="income-modal-field">
-                    <span>نوع الدفع</span>
-                    <select
-                      className="income-modal-input"
-                      value={editPaymentType}
-                      onChange={(e) => setEditPaymentType(e.target.value as BookingPaymentType)}
-                      disabled={loading}
-                    >
-                      <option value="full">دفع كامل</option>
-                      <option value="partial">عربون</option>
-                    </select>
-                  </label>
-
-                  {editPaymentType === "partial" ? (
-                    <label className="income-modal-field">
-                      <span>المبلغ المدفوع (ر.س)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={editPaidAmount}
-                        onChange={(e) => setEditPaidAmount(e.target.value)}
-                        className="income-modal-input"
-                        disabled={loading}
-                      />
-                    </label>
-                  ) : null}
-
-                  <div className="income-edit-summary">
-                    {(() => {
-                      const total = round2(Math.max(0, parseMoneyInput(editBookingTotal)));
-                      const paidRaw =
-                        editPaymentType === "full" ? total : Math.max(0, parseMoneyInput(editPaidAmount));
-                      const paid = round2(Math.min(total, paidRaw));
-                      const remaining = round2(Math.max(0, total - paid));
-                      return `دفعت ${paid} ر.س - المتبقي ${remaining} ر.س`;
-                    })()}
-                  </div>
-                </>
-              ) : (
-                <label className="income-modal-field">
-                  <span>المبلغ الجديد (ر.س)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
-                    className="income-modal-input"
-                    disabled={loading}
-                  />
-                </label>
-              )}
-            </div>
-
-            {editError ? <div className="income-edit-error">{editError}</div> : null}
-
-            <div className="income-modal-actions">
-              <button
-                className="income-modal-btn income-modal-btn--primary"
-                onClick={saveEditedIncome}
-                type="button"
-                disabled={loading}
-              >
-                {loading ? "جاري الحفظ..." : "حفظ التعديل"}
-              </button>
-
-              <button
-                className="income-modal-btn income-modal-btn--secondary"
-                onClick={closeEditIncomeModal}
-                type="button"
-                disabled={loading}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {deleteOpen && deleteTarget && (
-        <Modal
-          open={deleteOpen}
-          onClose={closeDeleteIncomeModal}
-          ariaLabel="حذف دخل"
-          panelClassName="income-page-modal__card"
-          size="sm"
-        >
-          <div className="income-page-modal__head">
-            <div className="income-page-modal__title">تأكيد حذف سجل الإيراد</div>
-            <button
-              className="income-modal-close-btn"
-              onClick={closeDeleteIncomeModal}
-              type="button"
-              disabled={loading}
-            >
-              إغلاق
-            </button>
-          </div>
-
-          <div className="income-page-modal__body">
-            <div className="income-edit-booking-hint">
-              <span>التاريخ: {deleteTarget.date || "-"}</span>
-              <span>المبلغ: {Number(deleteTarget.amount || 0).toLocaleString()} ر.س</span>
-              <span>المصدر: {sourceLabel(deleteTarget.source || "")}</span>
-            </div>
-
-            <div className="income-modal-grid">
-              <label className="income-modal-field">
-                <span>الرقم السري للحذف</span>
-                <input
-                  type="password"
-                  placeholder="أدخلي الرقم السري"
-                  value={deletePin}
-                  onChange={(e) => setDeletePin(e.target.value)}
-                  className="income-modal-input"
-                  disabled={loading}
-                  autoComplete="new-password"
-                  name="income_delete_pin"
-                  inputMode="numeric"
-                  data-lpignore="true"
-                />
-              </label>
-            </div>
-
-            {deleteError ? <div className="income-edit-error">{deleteError}</div> : null}
-
-            <div className="income-modal-actions">
-              <button
-                className="income-modal-btn income-modal-btn--primary"
-                onClick={confirmDeleteIncome}
-                type="button"
-                disabled={loading}
-              >
-                {loading ? "جاري الحذف..." : "تأكيد الحذف"}
-              </button>
-
-              <button
-                className="income-modal-btn income-modal-btn--secondary"
-                onClick={closeDeleteIncomeModal}
-                type="button"
-                disabled={loading}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
+        </DashboardDrawerV2>
+      ) : null}
+    </>
   );
 }
 
-// 🔕 silence unused helpers
+export default function DashboardIncome() {
+  return (
+    <DashboardToastProviderV2 position="top-start">
+      <DashboardIncomeContent />
+    </DashboardToastProviderV2>
+  );
+}
+
+// silence legacy helper retained for compatibility
 void loadBookings;
-void isRevenueStatus;
-
-

@@ -1,0 +1,588 @@
+/* =========================================================
+   Malikat Dashboard V2 — sidebar layer
+   Keeps the existing navigation structure and permissions.
+========================================================= */
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page {
+  --dsv2-sidebar-width: 252px;
+  --dsv2-sidebar-collapsed-width: 76px;
+  --dsv2-sidebar-bg: #05080d;
+  --dsv2-sidebar-bg-top: #12110f;
+  --dsv2-sidebar-surface: rgba(255, 255, 255, 0.05);
+  --dsv2-sidebar-surface-hover: rgba(255, 255, 255, 0.075);
+  --dsv2-sidebar-active: rgba(217, 165, 11, 0.105);
+  --dsv2-sidebar-active-strong: rgba(217, 165, 11, 0.17);
+  --dsv2-sidebar-border: rgba(255, 255, 255, 0.085);
+  --dsv2-sidebar-text: rgba(255, 255, 255, 0.82);
+  --dsv2-sidebar-muted: rgba(255, 255, 255, 0.46);
+  --dsv2-sidebar-gold: #d9a50b;
+
+  --dash-pro-sidebar-width: var(--dsv2-sidebar-width);
+  --dash-pro-sidebar-collapsed: var(--dsv2-sidebar-collapsed-width);
+  --dash-pro-sidebar-bg: var(--dsv2-sidebar-bg);
+  --dash-pro-sidebar-line: var(--dsv2-sidebar-border);
+  --dash-pro-sidebar-text: var(--dsv2-sidebar-text);
+  --dash-pro-sidebar-muted: var(--dsv2-sidebar-muted);
+  --dash-pro-sidebar-active: var(--dsv2-sidebar-active);
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dashboard-sidebar {
+  padding: 10px 9px 9px !important;
+  border-inline-start: 1px solid rgba(255, 255, 255, 0.035) !important;
+  border-inline-end: 1px solid var(--dsv2-sidebar-border) !important;
+  background:
+    radial-gradient(circle at 88% -8%, rgba(217, 165, 11, 0.105), transparent 29%),
+    linear-gradient(180deg, var(--dsv2-sidebar-bg-top) 0%, var(--dsv2-sidebar-bg) 44%, #03060a 100%) !important;
+  box-shadow: -10px 0 30px rgba(5, 8, 13, 0.11) !important;
+  isolation: isolate;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dashboard-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.012) 52%, transparent 100%),
+    radial-gradient(circle at 16% 78%, rgba(89, 4, 27, 0.08), transparent 32%);
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-header {
+  min-height: 66px !important;
+  margin: 0 0 8px !important;
+  padding: 8px 10px 12px !important;
+  border-bottom: 1px solid var(--dsv2-sidebar-border) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-logo {
+  max-width: 136px !important;
+  max-height: 44px !important;
+  opacity: 0.98 !important;
+  filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.16)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-sidebar-collapse {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  border: 1px solid var(--dsv2-sidebar-border) !important;
+  border-radius: 9px !important;
+  color: rgba(255, 255, 255, 0.68) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-sidebar-collapse:hover,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-sidebar-collapse:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(217, 165, 11, 0.34) !important;
+  background: rgba(217, 165, 11, 0.105) !important;
+  box-shadow: 0 0 0 3px rgba(217, 165, 11, 0.09) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .user-info {
+  gap: 9px !important;
+  margin: 8px 0 0 !important;
+  padding: 9px 8px !important;
+  border: 1px solid var(--dsv2-sidebar-border) !important;
+  border-radius: 12px !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.022)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+  transition: border-color 160ms ease, background 160ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .user-info:hover {
+  border-color: rgba(217, 165, 11, 0.22) !important;
+  background:
+    linear-gradient(145deg, rgba(217, 165, 11, 0.075), rgba(255, 255, 255, 0.028)) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .user-avatar {
+  flex-basis: 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  border: 1px solid rgba(217, 165, 11, 0.30) !important;
+  border-radius: 10px !important;
+  color: #f3ca4a !important;
+  background: rgba(217, 165, 11, 0.10) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .user-details h5 {
+  margin: 0 0 2px !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  line-height: 1.25 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .user-details p {
+  margin: 0 !important;
+  color: var(--dsv2-sidebar-muted) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+  line-height: 1.25 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav {
+  padding: 3px 1px 10px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.17) transparent !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.17) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav ul {
+  gap: 3px !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav-section {
+  margin: 15px 8px 6px !important;
+  padding: 11px 2px 0 !important;
+  border-top: 1px solid var(--dsv2-sidebar-border) !important;
+  color: var(--dsv2-sidebar-muted) !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.01em !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav-section:first-child {
+  margin-top: 4px !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link {
+  position: relative !important;
+  gap: 10px !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  padding: 10px 11px !important;
+  border: 1px solid transparent !important;
+  border-radius: 11px !important;
+  color: var(--dsv2-sidebar-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link::before {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline-start: 2px !important;
+  top: 9px !important;
+  bottom: 9px !important;
+  width: 3px !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition: background 150ms ease, box-shadow 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link svg,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link .svg-inline--fa {
+  flex: 0 0 17px !important;
+  width: 17px !important;
+  min-width: 17px !important;
+  height: 17px !important;
+  color: rgba(255, 255, 255, 0.50) !important;
+  font-size: 17px !important;
+  transition: color 150ms ease, transform 150ms ease !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link:hover {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.055) !important;
+  background: var(--dsv2-sidebar-surface-hover) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+  transform: none !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link:hover svg,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link:hover .svg-inline--fa {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link.active,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link[aria-current="page"] {
+  color: #ffffff !important;
+  border-color: rgba(217, 165, 11, 0.18) !important;
+  background:
+    linear-gradient(270deg, var(--dsv2-sidebar-active-strong) 0%, var(--dsv2-sidebar-active) 58%, rgba(217, 165, 11, 0.035) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 7px 18px rgba(0, 0, 0, 0.09) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link.active::before,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link[aria-current="page"]::before {
+  background: var(--dsv2-sidebar-gold) !important;
+  box-shadow: 0 0 12px rgba(217, 165, 11, 0.42) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link.active svg,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link.active .svg-inline--fa,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link[aria-current="page"] svg,
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link[aria-current="page"] .svg-inline--fa {
+  color: #f1c843 !important;
+  transform: translateY(-0.5px) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link:focus-visible {
+  outline: none !important;
+  border-color: rgba(217, 165, 11, 0.42) !important;
+  box-shadow: 0 0 0 3px rgba(217, 165, 11, 0.13) !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-nav-label {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-badge {
+  min-width: 18px !important;
+  height: 18px !important;
+  padding: 0 5px !important;
+  border: 1px solid rgba(5, 8, 13, 0.12) !important;
+  color: #05080d !important;
+  background: #d9a50b !important;
+  box-shadow: 0 3px 10px rgba(217, 165, 11, 0.18) !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+}
+
+/* Portal tooltip used only while the desktop sidebar is collapsed. */
+.dsv2-sidebar-tooltip {
+  position: fixed;
+  z-index: 2147483000;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 9px 12px;
+  border: 1px solid rgba(217, 165, 11, 0.22);
+  border-radius: 10px;
+  direction: rtl;
+  color: #ffffff;
+  background: #05080d;
+  box-shadow: 0 14px 34px rgba(5, 8, 13, 0.28);
+  font-family: var(--dsv2-font-family, "Tajawal", system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: dsv2-sidebar-tooltip-in 130ms ease both;
+}
+
+.dsv2-sidebar-tooltip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-top: 1px solid rgba(217, 165, 11, 0.22);
+  border-right: 1px solid rgba(217, 165, 11, 0.22);
+  background: #05080d;
+}
+
+.dsv2-sidebar-tooltip[data-side="left"] {
+  transform: translate(-100%, -50%);
+}
+
+.dsv2-sidebar-tooltip[data-side="left"]::before {
+  right: -5px;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.dsv2-sidebar-tooltip[data-side="right"] {
+  transform: translate(0, -50%);
+}
+
+.dsv2-sidebar-tooltip[data-side="right"]::before {
+  left: -5px;
+  transform: translateY(-50%) rotate(225deg);
+}
+
+@keyframes dsv2-sidebar-tooltip-in {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dashboard-sidebar {
+    padding-inline: 8px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-header {
+    min-height: 74px !important;
+    padding: 10px 5px 38px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-logo {
+    max-width: 46px !important;
+    max-height: 31px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .user-info {
+    min-height: 46px !important;
+    padding: 7px 5px !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .user-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav ul {
+    gap: 4px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav-section {
+    width: 32px !important;
+    margin: 13px auto 7px !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link {
+    width: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link::before {
+    inset-inline-start: 2px !important;
+    top: 9px !important;
+    bottom: 9px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link svg,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link .svg-inline--fa {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    font-size: 18px !important;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dashboard-sidebar {
+    width: min(88vw, 292px) !important;
+    max-width: min(88vw, 292px) !important;
+    padding: 10px 10px 12px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link {
+    min-height: 46px !important;
+    padding: 11px 12px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .sidebar-nav .nav-link svg,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page .dash-sidebar-collapse,
+  .dsv2-sidebar-tooltip {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* DSV2-SIDEBAR-COLLAPSED-FIX-START */
+/*
+ * Stage 1.9.2
+ * Keep the compact desktop sidebar icon-only. The base V2 nav typography is
+ * intentionally restored in expanded mode, so collapsed mode must explicitly
+ * hide raw text nodes as well as wrapped labels.
+ */
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed {
+    --dash-sidebar-width: var(--dsv2-sidebar-collapsed-width) !important;
+    --madan-sidebar-width: var(--dsv2-sidebar-collapsed-width) !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dashboard-sidebar {
+    flex: 0 0 var(--dsv2-sidebar-collapsed-width) !important;
+    flex-basis: var(--dsv2-sidebar-collapsed-width) !important;
+    width: var(--dsv2-sidebar-collapsed-width) !important;
+    min-width: var(--dsv2-sidebar-collapsed-width) !important;
+    max-width: var(--dsv2-sidebar-collapsed-width) !important;
+    padding-inline: 8px !important;
+    overflow-x: hidden !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .user-details,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dash-nav-label {
+    display: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav {
+    overflow-x: hidden !important;
+    padding-inline: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav ul {
+    width: 100% !important;
+    padding-inline: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav ul > li:not(.sidebar-nav-section) {
+    display: flex !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav-section {
+    display: block !important;
+    width: 32px !important;
+    height: 1px !important;
+    min-height: 1px !important;
+    margin: 13px auto 7px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    color: transparent !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+    font-size: 0 !important;
+    font-weight: 0 !important;
+    line-height: 0 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    min-height: 44px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    border-radius: 12px !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    white-space: nowrap !important;
+    text-indent: 0 !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link > svg,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-nav .nav-link .svg-inline--fa {
+    display: block !important;
+    flex: 0 0 18px !important;
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    font-size: 18px !important;
+    line-height: 18px !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dash-badge {
+    position: absolute !important;
+    top: 6px !important;
+    inset-inline-start: 7px !important;
+    width: 8px !important;
+    min-width: 8px !important;
+    height: 8px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+  }
+}
+/* DSV2-SIDEBAR-COLLAPSED-FIX-END */
+
+/* DSV2-SIDEBAR-COLLAPSED-HEADER-FIX-START */
+/*
+ * Stage 1.9.3
+ * The legacy shell positions the collapse button absolutely. In compact mode
+ * that caused the logo and button to split into opposite corners. The compact
+ * header is now a centered two-row stack with explicit static positioning.
+ */
+@media (min-width: 992px) {
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-header {
+    position: relative !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto !important;
+    place-items: center !important;
+    align-content: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    min-height: 92px !important;
+    margin: 0 0 8px !important;
+    padding: 9px 2px 10px !important;
+    overflow: visible !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .sidebar-logo {
+    display: block !important;
+    grid-row: 1 !important;
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+    height: auto !important;
+    max-height: 32px !important;
+    margin: 0 auto !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dash-sidebar-collapse {
+    position: static !important;
+    grid-row: 2 !important;
+    inset: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    margin: 0 auto !important;
+    transform: none !important;
+  }
+
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dash-sidebar-collapse:hover,
+  .dashboard-skin.madan-admin-shell.dashboard-v2.dashboard-page.is-sidebar-collapsed .dash-sidebar-collapse:focus-visible {
+    transform: none !important;
+  }
+}
+/* DSV2-SIDEBAR-COLLAPSED-HEADER-FIX-END */

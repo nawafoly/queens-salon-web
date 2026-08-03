@@ -1,0 +1,259 @@
+/* =========================================================
+   Malikat Dashboard V2 — compact Gregorian date picker
+========================================================= */
+
+.dashboard-v2 .dsv2-date-v2 {
+  position: relative;
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-date-v2__trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--dsv2-control-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  padding: 0 var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  cursor: pointer;
+  text-align: start;
+}
+
+.dashboard-v2 .dsv2-date-v2__trigger:hover {
+  border-color: rgba(var(--dsv2-gold-rgb), 0.42);
+}
+
+.dashboard-v2 .dsv2-date-v2__trigger[data-open="true"] {
+  border-color: var(--dsv2-gold);
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-date-v2__trigger:disabled {
+  color: var(--dsv2-muted-soft);
+  background: var(--dsv2-surface-muted);
+  cursor: not-allowed;
+}
+
+.dashboard-v2 .dsv2-date-v2__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsv2-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-date-v2__value[data-placeholder="true"] {
+  color: var(--dsv2-muted-soft);
+  font-weight: 700;
+  direction: rtl;
+}
+
+.dashboard-v2 .dsv2-date-v2__icon {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2 .dsv2-date-v2__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dashboard-v2 .dsv2-date-v2__trigger[data-open="true"] .dsv2-date-v2__icon {
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-date-v2__panel {
+  position: fixed;
+  z-index: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-lg);
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.dashboard-v2 .dsv2-date-v2__panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.dashboard-v2 .dsv2-date-v2__header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dashboard-v2 .dsv2-date-v2__header strong {
+  color: var(--dsv2-text);
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-date-v2__nav {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-sm);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface);
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-date-v2__nav:hover,
+.dashboard-v2 .dsv2-date-v2__nav:focus-visible {
+  outline: none;
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-black);
+  background: var(--dsv2-gold-softer);
+  box-shadow: 0 0 0 3px rgba(var(--dsv2-gold-rgb), 0.12);
+}
+
+.dashboard-v2 .dsv2-date-v2__nav svg {
+  width: 17px;
+  height: 17px;
+}
+
+.dashboard-v2 .dsv2-date-v2__weekdays,
+.dashboard-v2 .dsv2-date-v2__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.dashboard-v2 .dsv2-date-v2__weekdays {
+  margin-bottom: 3px;
+}
+
+.dashboard-v2 .dsv2-date-v2__weekdays span {
+  display: grid;
+  min-height: 24px;
+  place-items: center;
+  color: var(--dsv2-muted);
+  font-size: 0.59rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-date-v2__day {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  outline: none;
+  color: var(--dsv2-text-soft);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-date-v2__day:hover,
+.dashboard-v2 .dsv2-date-v2__day:focus-visible {
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-black);
+  background: var(--dsv2-gold-softer);
+  box-shadow: 0 0 0 2px rgba(var(--dsv2-gold-rgb), 0.12);
+}
+
+.dashboard-v2 .dsv2-date-v2__day[data-outside="true"] {
+  color: var(--dsv2-muted-soft);
+  opacity: 0.48;
+}
+
+.dashboard-v2 .dsv2-date-v2__day[data-today="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 34%;
+  inset-block-end: 2px;
+  height: 2px;
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-date-v2__day[aria-selected="true"] {
+  border-color: var(--dsv2-gold);
+  color: var(--dsv2-black);
+  background: var(--dsv2-gold);
+  box-shadow: 0 6px 14px rgba(var(--dsv2-gold-rgb), 0.22);
+}
+
+.dashboard-v2 .dsv2-date-v2__day[aria-selected="true"]:focus-visible {
+  border-color: var(--dsv2-black);
+  background: var(--dsv2-gold);
+  box-shadow:
+    0 0 0 2px var(--dsv2-surface),
+    0 0 0 4px rgba(var(--dsv2-gold-rgb), 0.5);
+}
+
+.dashboard-v2 .dsv2-date-v2__day:disabled {
+  color: var(--dsv2-muted-soft);
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.dashboard-v2 .dsv2-date-v2__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-date-v2__footer-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-sm);
+  color: #715400;
+  background: var(--dsv2-gold-softer);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-date-v2__footer-btn:hover,
+.dashboard-v2 .dsv2-date-v2__footer-btn:focus-visible {
+  outline: none;
+  color: var(--dsv2-black);
+  background: var(--dsv2-gold-soft);
+  box-shadow: 0 0 0 3px rgba(var(--dsv2-gold-rgb), 0.12);
+}
+
+.dashboard-v2 .dsv2-date-v2__footer-btn--muted {
+  border-color: var(--dsv2-border);
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-date-v2__footer-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}

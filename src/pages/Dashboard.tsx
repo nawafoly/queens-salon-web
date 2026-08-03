@@ -1,6 +1,7 @@
 import "../styles/AdminDashboardShell.css";
 import "../styles/AdminDashboardOverview.css";
 import "../styles/AdminDashboardBookings.css";
+import "../styles/dashboard-v2/dashboard-v2.css";
 // ✅ src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, NavLink, useNavigate, Navigate, useLocation } from "react-router-dom";
@@ -29,6 +30,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import LoadingBrand from "../components/LoadingBrand";
 import DashboardMobileNav from "../components/DashboardMobileNav";
+import DashboardSidebarTooltipV2 from "../components/DashboardSidebarTooltipV2";
+import MalikatPortalSidebarV2 from "../components/MalikatPortalSidebarV2";
 import DashboardHeader from "../components/DashboardHeader";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
@@ -52,6 +55,7 @@ import DashboardAttendanceSecurity from "../pages/DashboardAttendanceSecurity";
 import DashboardPayroll from "../pages/DashboardPayroll";
 import DashboardEmployeeTargets from "../pages/DashboardEmployeeTargets";
 import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
+import DashboardDesignSystemV2 from "../pages/DashboardDesignSystemV2";
 import "../styles/DashboardEnterpriseWorkspacesV2.css";
 
 
@@ -1404,6 +1408,7 @@ function getDashboardHeaderTitle(pathname: string) {
     expenses: "المصروفات",
     logs: "سجل الحركات",
     "admin-profile": "الملف الشخصي",
+    "design-system-v2": "نظام التصميم V2",
   };
 
   return titles[section] || "لوحة التحكم";
@@ -2338,10 +2343,19 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   if (!userInfo) {
     return (
-      <div className="dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer">
+      <div className="dashboard-skin madan-admin-shell dashboard-v2 malikat-portal-shell-v2 dashboard-page dashboard-skin-page is-sidebar-drawer">
         <div className="container-fluid">
           <div className="row">
-            <div className="col-md-3 col-lg-2 dashboard-sidebar" />
+            <MalikatPortalSidebarV2
+              variant="dashboard"
+              logoSrc={logo1}
+              collapsed={false}
+              onToggleCollapsed={() => undefined}
+              loading
+              className="col-md-3 col-lg-2"
+              ariaLabel="جاري تحميل تنقل لوحة التحكم"
+              navigation={<nav className="sidebar-nav" aria-hidden="true" />}
+            />
             <div className="col-md-9 col-lg-10 dashboard-main">
               <div className="dashboard-inner">
                 <div className="dashboard-loading">جاري تحميل بيانات القسم...</div>
@@ -2362,7 +2376,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
   return (
-    <div className={`dashboard-skin madan-admin-shell dashboard-page dashboard-skin-page is-sidebar-drawer${(isBookingInternalPage || isAttendanceSecurityPage) ? " is-booking-internal-route" : ""}${isBookingsWorkspacePage ? " is-bookings-workspace-route" : ""}${isEnterpriseOperationsPage ? " is-enterprise-workspace-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+    <div className={`dashboard-skin madan-admin-shell dashboard-v2 malikat-portal-shell-v2 dashboard-page dashboard-skin-page is-sidebar-drawer${(isBookingInternalPage || isAttendanceSecurityPage) ? " is-booking-internal-route" : ""}${isBookingsWorkspacePage ? " is-bookings-workspace-route" : ""}${isEnterpriseOperationsPage ? " is-enterprise-workspace-route" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
       {/* ✅ Scoped styles: Booking Details Modal layout (fix broken column/white space) */}
       <style>
         {`
@@ -2779,43 +2793,31 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="container-fluid">
         <div className="row">
           {/* Sidebar */}
-          <div
-            className={`col-md-3 col-lg-2 dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}${isSidebarCollapsed ? " is-collapsed" : ""}`}
-          >
-            <button
-              type="button"
-              className="dash-mobile-close"
-              onClick={() => setIsSidebarOpen(false)}
-              aria-label="إغلاق القائمة"
-              title="إغلاق"
-            >
-              <FontAwesomeIcon icon={faXmark} />
-            </button>
+          <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
 
-            <div className="sidebar-header">
-              <img src={logo1} alt="MALIKAT SALON Logo" className="sidebar-logo" />
-              <button
-                type="button"
-                className="dash-sidebar-collapse"
-                onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-                aria-expanded={!isSidebarCollapsed}
-                aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
-                title={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
-              >
-                <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
-              </button>
-            </div>
-
-            <div className="user-info">
-              <div className="user-avatar">
-                <FontAwesomeIcon icon={getRoleIcon(userInfo.role)} />
+          <MalikatPortalSidebarV2
+            variant="dashboard"
+            logoSrc={logo1}
+            logoAlt="MALIKAT SALON Logo"
+            collapsed={isSidebarCollapsed}
+            onToggleCollapsed={() => setIsSidebarCollapsed((prev) => !prev)}
+            mobileOpen={isSidebarOpen}
+            onMobileClose={() => setIsSidebarOpen(false)}
+            className="col-md-3 col-lg-2"
+            ariaLabel="التنقل داخل لوحة التحكم"
+            profileTooltip={`${userInfo.name} — ${displayedRoleTitle}`}
+            profile={
+              <div className="user-info">
+                <div className="user-avatar">
+                  <FontAwesomeIcon icon={getRoleIcon(userInfo.role)} />
+                </div>
+                <div className="user-details">
+                  <h5>{userInfo.name}</h5>
+                  <p>{displayedRoleTitle}</p>
+                </div>
               </div>
-              <div className="user-details">
-                <h5>{userInfo.name}</h5>
-                <p>{displayedRoleTitle}</p>
-              </div>
-            </div>
-
+            }
+            navigation={
             <nav className="sidebar-nav">
               <ul>
                 {hasPrimaryNavigation ? (
@@ -2824,7 +2826,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink to="/dashboard/overview" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/overview" className="nav-link" data-sidebar-tooltip="نظرة عامة" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
                       نظرة عامة
                     </NavLink>
@@ -2833,7 +2835,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("bookings.view") ? (
                   <li>
-                    <NavLink to="/dashboard/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/bookings" className="nav-link" data-sidebar-tooltip="الحجوزات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
                       الحجوزات
                     </NavLink>
@@ -2842,7 +2844,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("bookings.create") ? (
                   <li>
-                    <NavLink to="/dashboard/booking-internal" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/booking-internal" className="nav-link" data-sidebar-tooltip="الحجز الإداري" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
                       الحجز الإداري
                     </NavLink>
@@ -2851,7 +2853,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("bookings.day_audit.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/day-audit" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/day-audit" className="nav-link" data-sidebar-tooltip="إغلاق اليوم / الشفت" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
                       إغلاق اليوم / الشفت
                     </NavLink>
@@ -2860,7 +2862,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("bookings.queue_tv.view") ? (
                   <li>
-                    <NavLink to="/dashboard/tv-queue" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/tv-queue" className="nav-link" data-sidebar-tooltip="شاشة الحجوزات (TV)" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faTv} />
                       شاشة الحجوزات (TV)
                     </NavLink>
@@ -2869,7 +2871,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("clients.view") ? (
                   <li>
-                    <NavLink to="/dashboard/clients" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/clients" className="nav-link" data-sidebar-tooltip="العملاء" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUsers} />
                       العملاء
                     </NavLink>
@@ -2878,7 +2880,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("income.view") ? (
                   <li>
-                    <NavLink to="/dashboard/income" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/income" className="nav-link" data-sidebar-tooltip="الإيرادات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faWallet} />
                       الإيرادات
                     </NavLink>
@@ -2887,7 +2889,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("expenses.view") ? (
                   <li>
-                    <NavLink to="/dashboard/expenses" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/expenses" className="nav-link" data-sidebar-tooltip="المصروفات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       <span className="dash-nav-label">
                         المصروفات
@@ -2899,7 +2901,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("payroll.view") ? (
                   <li>
-                    <NavLink to="/dashboard/payroll" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/payroll" className="nav-link" data-sidebar-tooltip="إدارة الرواتب" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faMoneyBillWave} />
                       إدارة الرواتب
                     </NavLink>
@@ -2908,7 +2910,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasAnyPermission(["targets.view", "targets.view_all", "payroll.view"]) ? (
                   <li>
-                    <NavLink to="/dashboard/employee-targets" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/employee-targets" className="nav-link" data-sidebar-tooltip="تارقت الموظفات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
                       تارقت الموظفات
                     </NavLink>
@@ -2917,7 +2919,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("staffPerformance.view") ? (
                   <li>
-                    <NavLink to="/dashboard/staff-performance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/staff-performance" className="nav-link" data-sidebar-tooltip="أداء الموظفات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartLine} />
                       أداء الموظفات
                     </NavLink>
@@ -2930,7 +2932,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("partners.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/partners" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/partners" className="nav-link" data-sidebar-tooltip="الشريكات والمساحات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faStore} />
                       الشريكات والمساحات
                     </NavLink>
@@ -2939,7 +2941,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("offers.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/offers" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/offers" className="nav-link" data-sidebar-tooltip="العروض والكوبونات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       العروض والكوبونات
                     </NavLink>
@@ -2948,7 +2950,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("reports.view") ? (
                   <li>
-                    <NavLink to="/dashboard/reports" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/reports" className="nav-link" data-sidebar-tooltip="التقارير" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
                       التقارير
                     </NavLink>
@@ -2957,7 +2959,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("logs.view") ? (
                   <li>
-                    <NavLink to="/dashboard/logs" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/logs" className="nav-link" data-sidebar-tooltip="سجل الحركات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faClockRotateLeft} />
                       سجل الحركات
                     </NavLink>
@@ -2966,7 +2968,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("clients.loyalty.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/loyalty" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/loyalty" className="nav-link" data-sidebar-tooltip="الولاء (VIP)" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faChartPie} />
                       الولاء (VIP)
                     </NavLink>
@@ -2979,7 +2981,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("workspace.dashboard.view") ? (
                   <li>
-                    <NavLink to="/dashboard/admin-profile" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/admin-profile" className="nav-link" data-sidebar-tooltip="الملف الشخصي" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUser} />
                       الملف الشخصي
                     </NavLink>
@@ -2988,7 +2990,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("settings.general.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings" className="nav-link" end onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings" className="nav-link" data-sidebar-tooltip="الإعدادات الأساسية" end onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
                       الإعدادات الأساسية
                     </NavLink>
@@ -2997,7 +2999,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("settings.booking.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/bookings" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/bookings" className="nav-link" data-sidebar-tooltip="إعدادات الحجوزات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCalendarAlt} />
                       إعدادات الحجوزات
                     </NavLink>
@@ -3006,7 +3008,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("catalog.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/catalog" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/catalog" className="nav-link" data-sidebar-tooltip="إدارة الكتالوج" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faPercent} />
                       إدارة الكتالوج
                     </NavLink>
@@ -3015,7 +3017,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("admin_accounts.view") || hasPermission("admin_accounts.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/users" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/users" className="nav-link" data-sidebar-tooltip="إدارة الحسابات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faUserShield} />
                       إدارة الحسابات
                     </NavLink>
@@ -3024,7 +3026,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("settings.content.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/contact" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/contact" className="nav-link" data-sidebar-tooltip="محتوى الموقع" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faHouse} />
                       محتوى الموقع
                     </NavLink>
@@ -3033,7 +3035,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("attendance.view") ? (
                   <li>
-                    <NavLink to="/dashboard/attendance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/attendance" className="nav-link" data-sidebar-tooltip="سجل البصمة والأجهزة" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faFingerprint} />
                       سجل البصمة والأجهزة
                     </NavLink>
@@ -3042,7 +3044,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 {hasPermission("attendance.settings.manage") ? (
                   <li>
-                    <NavLink to="/dashboard/settings/attendance" className="nav-link" onClick={() => setIsSidebarOpen(false)}>
+                    <NavLink to="/dashboard/settings/attendance" className="nav-link" data-sidebar-tooltip="إعدادات البصمة والنطاقات" onClick={() => setIsSidebarOpen(false)}>
                       <FontAwesomeIcon icon={faCog} />
                       إعدادات البصمة والنطاقات
                     </NavLink>
@@ -3050,8 +3052,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 ) : null}
               </ul>
             </nav>
-
-          </div>
+            }
+          />
 
           {/* Main Content */}
           <div className={`col-md-9 col-lg-10 dashboard-main${isSingleScrollWorkspacePage ? " has-single-scroll" : ""}`}>
@@ -3206,6 +3208,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                 />
 
                 <Route path="admin-profile" element={<PermissionRoute permission="workspace.dashboard.view"><DashboardAdminProfile /></PermissionRoute>} />
+                <Route
+                  path="design-system-v2"
+                  element={
+                    <PermissionRoute permission="workspace.dashboard.view">
+                      <DashboardDesignSystemV2 />
+                    </PermissionRoute>
+                  }
+                />
                 <Route path="logs" element={<PermissionRoute permission="logs.view"><DashboardLogs /></PermissionRoute>} />
 
                 <Route

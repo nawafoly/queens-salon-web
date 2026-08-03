@@ -1,0 +1,112 @@
+/* =========================================================
+   Malikat Dashboard V2 — canonical spacing system
+   Stage 4.3
+
+   All page-level and component-level spacing is controlled by
+   semantic tokens. V2 pages must not hard-code outer gutters.
+========================================================= */
+
+/* Page shell ----------------------------------------------------------- */
+.dashboard-v2 .dsv2-page.dsv2-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-inline: 0;
+  padding-inline: var(--dsv2-page-padding-inline);
+  padding-block-start: var(--dsv2-page-padding-block-start);
+  padding-block-end: var(--dsv2-page-padding-block-end);
+}
+
+/* Vertical rhythm ------------------------------------------------------ */
+.dashboard-v2 .dsv2-page.dsv2-preview {
+  gap: var(--dsv2-section-gap);
+  padding-bottom: var(--dsv2-page-padding-block-end);
+}
+
+.dashboard-v2 .dsv2-stack {
+  gap: var(--dsv2-component-gap);
+}
+
+.dashboard-v2 .dsv2-stack--sm {
+  gap: var(--dsv2-compact-gap);
+}
+
+.dashboard-v2 .dsv2-stack--lg {
+  gap: var(--dsv2-section-gap);
+}
+
+.dashboard-v2 .dsv2-page-head {
+  gap: var(--dsv2-page-head-gap);
+}
+
+.dashboard-v2 .dsv2-section-head {
+  gap: var(--dsv2-section-head-gap);
+  margin-bottom: var(--dsv2-section-head-margin);
+}
+
+/* Grids and controls --------------------------------------------------- */
+.dashboard-v2 :is(
+  .dsv2-grid,
+  .dsv2-grid--metrics,
+  .dsv2-grid--2,
+  .dsv2-grid--3
+) {
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .dsv2-cluster {
+  gap: var(--dsv2-control-gap);
+}
+
+.dashboard-v2 .dsv2-card--padded {
+  padding: var(--dsv2-card-padding);
+}
+
+.dashboard-v2 .dsv2-filter-bar {
+  gap: var(--dsv2-control-gap);
+  padding: var(--dsv2-card-padding);
+}
+
+.dashboard-v2 .dsv2-preview__form-grid,
+.dashboard-v2 .dsv2-preview__modal-form {
+  gap: var(--dsv2-field-gap);
+}
+
+/* Responsive semantic values ----------------------------------------- */
+@media (max-width: 1199.98px) {
+  .dashboard-v2 {
+    --dsv2-page-padding-inline: 20px;
+    --dsv2-page-padding-block-start: 20px;
+    --dsv2-page-padding-block-end: 32px;
+    --dsv2-section-gap: 20px;
+    --dsv2-grid-gap: 16px;
+    --dsv2-card-padding: 20px;
+    --dsv2-panel-padding: 20px;
+    --dsv2-page-head-gap: 16px;
+    --dsv2-section-head-gap: 16px;
+    --dsv2-section-head-margin: 16px;
+    --dsv2-field-gap: 16px;
+    --dsv2-control-gap: 12px;
+    --dsv2-component-gap: 16px;
+    --dsv2-compact-gap: 8px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 {
+    --dsv2-page-padding-inline: 12px;
+    --dsv2-page-padding-block-start: 16px;
+    --dsv2-page-padding-block-end: 24px;
+    --dsv2-section-gap: 16px;
+    --dsv2-grid-gap: 12px;
+    --dsv2-card-padding: 16px;
+    --dsv2-panel-padding: 16px;
+    --dsv2-page-head-gap: 16px;
+    --dsv2-section-head-gap: 12px;
+    --dsv2-section-head-margin: 12px;
+    --dsv2-field-gap: 12px;
+    --dsv2-control-gap: 8px;
+    --dsv2-component-gap: 12px;
+    --dsv2-compact-gap: 8px;
+  }
+}

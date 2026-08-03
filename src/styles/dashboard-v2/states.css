@@ -1,0 +1,169 @@
+/* =========================================================
+   Malikat Dashboard V2 — loading, empty and error states
+========================================================= */
+
+.dashboard-v2 .dsv2-skeleton {
+  --dsv2-skeleton-width: 100%;
+  --dsv2-skeleton-height: 14px;
+  position: relative;
+  display: block;
+  width: var(--dsv2-skeleton-width);
+  height: var(--dsv2-skeleton-height);
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--dsv2-radius-sm);
+  background: #e9ebee;
+}
+
+.dashboard-v2 .dsv2-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.82) 48%, transparent 76%);
+  transform: translateX(110%);
+  animation: dsv2-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.dashboard-v2 .dsv2-skeleton--title {
+  --dsv2-skeleton-height: 22px;
+  width: min(var(--dsv2-skeleton-width), 72%);
+}
+
+.dashboard-v2 .dsv2-skeleton--circle {
+  --dsv2-skeleton-width: 46px;
+  --dsv2-skeleton-height: 46px;
+  border-radius: 50%;
+}
+
+.dashboard-v2 .dsv2-skeleton--button {
+  --dsv2-skeleton-width: 110px;
+  --dsv2-skeleton-height: 40px;
+  border-radius: var(--dsv2-radius-md);
+}
+
+.dashboard-v2 .dsv2-skeleton--block {
+  --dsv2-skeleton-height: 96px;
+  border-radius: var(--dsv2-radius-lg);
+}
+
+.dashboard-v2 .dsv2-skeleton-group {
+  display: grid;
+  width: 100%;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-state {
+  --dsv2-state-accent: var(--dsv2-muted);
+  --dsv2-state-tint: var(--dsv2-surface-soft);
+  --dsv2-state-border: var(--dsv2-border);
+  display: grid;
+  min-width: 0;
+  min-height: 260px;
+  align-content: center;
+  justify-items: center;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-space-8);
+  border: 1px dashed var(--dsv2-state-border);
+  border-radius: var(--dsv2-radius-xl);
+  color: var(--dsv2-text);
+  background: linear-gradient(145deg, #ffffff, var(--dsv2-state-tint));
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-state--empty[data-tone="gold"] {
+  --dsv2-state-accent: #7b5b00;
+  --dsv2-state-tint: var(--dsv2-gold-softer);
+  --dsv2-state-border: var(--dsv2-border-gold);
+}
+
+.dashboard-v2 .dsv2-state--error {
+  --dsv2-state-accent: var(--dsv2-burgundy);
+  --dsv2-state-tint: var(--dsv2-burgundy-soft);
+  --dsv2-state-border: var(--dsv2-burgundy-border);
+}
+
+.dashboard-v2 .dsv2-state--compact {
+  min-height: 190px;
+  padding: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .dsv2-state__icon {
+  display: inline-grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid var(--dsv2-state-border);
+  border-radius: 50%;
+  color: var(--dsv2-state-accent);
+  background: var(--dsv2-state-tint);
+}
+
+.dashboard-v2 .dsv2-state__icon svg {
+  width: 31px;
+  height: 31px;
+}
+
+.dashboard-v2 .dsv2-state__content {
+  display: grid;
+  max-width: 470px;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-state__title,
+.dashboard-v2 .dsv2-state__description {
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-state__title {
+  color: var(--dsv2-text);
+  font-size: 0.94rem;
+  font-weight: 950;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .dsv2-state__description {
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
+.dashboard-v2 .dsv2-state__details {
+  justify-self: center;
+  margin-top: var(--dsv2-space-1);
+  padding: var(--dsv2-space-2) var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-state-border);
+  border-radius: var(--dsv2-radius-sm);
+  color: var(--dsv2-state-accent);
+  background: rgba(255, 255, 255, 0.72);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  font-weight: 800;
+  direction: ltr;
+}
+
+.dashboard-v2 .dsv2-state__action {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+}
+
+@keyframes dsv2-skeleton-shimmer {
+  to {
+    transform: translateX(-110%);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .dashboard-v2 .dsv2-state {
+    min-height: 220px;
+    padding: var(--dsv2-space-6) var(--dsv2-space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-v2 .dsv2-skeleton::after {
+    animation: none;
+  }
+}

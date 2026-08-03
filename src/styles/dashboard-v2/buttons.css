@@ -1,0 +1,105 @@
+/* =========================================================
+   Malikat Dashboard V2 — buttons
+========================================================= */
+
+.dashboard-v2 .dsv2-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+  min-height: var(--dsv2-control-height);
+  padding: 0 var(--dsv2-space-5);
+  border: 1px solid transparent;
+  border-radius: var(--dsv2-radius-md);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-btn:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-v2 .dsv2-btn:active {
+  transform: translateY(0);
+}
+
+.dashboard-v2 .dsv2-btn:disabled,
+.dashboard-v2 .dsv2-btn[aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.dashboard-v2 .dsv2-btn--primary {
+  color: var(--dsv2-on-dark);
+  border-color: var(--dsv2-black);
+  background: var(--dsv2-black);
+  box-shadow: 0 8px 20px rgba(var(--dsv2-black-rgb), 0.13);
+}
+
+.dashboard-v2 .dsv2-btn--primary:hover {
+  color: var(--dsv2-on-dark);
+  background: #11151c;
+}
+
+.dashboard-v2 .dsv2-btn--accent {
+  color: var(--dsv2-black);
+  border-color: var(--dsv2-gold);
+  background: var(--dsv2-gold);
+  box-shadow: 0 8px 20px rgba(var(--dsv2-gold-rgb), 0.18);
+}
+
+.dashboard-v2 .dsv2-btn--secondary {
+  color: var(--dsv2-text);
+  border-color: var(--dsv2-border-strong);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-btn--secondary:hover {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-btn--danger {
+  color: var(--dsv2-burgundy);
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+}
+
+.dashboard-v2 .dsv2-btn--success {
+  color: var(--dsv2-green);
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-btn--sm {
+  min-height: var(--dsv2-control-height-sm);
+  padding-inline: var(--dsv2-space-4);
+  border-radius: var(--dsv2-radius-sm);
+  font-size: 0.72rem;
+}
+
+.dashboard-v2 .dsv2-btn--lg {
+  min-height: var(--dsv2-control-height-lg);
+  padding-inline: var(--dsv2-space-6);
+}
+
+.dashboard-v2 .dsv2-btn--block {
+  width: 100%;
+}
+
+.dashboard-v2 .dsv2-icon-btn {
+  display: inline-grid;
+  width: var(--dsv2-control-height);
+  height: var(--dsv2-control-height);
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  cursor: pointer;
+}

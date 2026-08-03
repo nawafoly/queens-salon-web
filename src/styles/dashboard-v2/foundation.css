@@ -1,0 +1,107 @@
+/* =========================================================
+   Malikat Dashboard V2 — foundation
+   No legacy dashboard selector is overridden here.
+========================================================= */
+
+.dashboard-v2 .dsv2-page,
+.dashboard-v2 .dsv2-page *,
+.dashboard-v2 .dsv2-page *::before,
+.dashboard-v2 .dsv2-page *::after {
+  box-sizing: border-box;
+}
+
+.dashboard-v2 .dsv2-page {
+  width: 100%;
+  min-width: 0;
+  color: var(--dsv2-text);
+  font-family: var(--dsv2-font-family);
+  direction: rtl;
+}
+
+.dashboard-v2 .dsv2-page :where(h1, h2, h3, h4, h5, h6, p) {
+  margin-top: 0;
+}
+
+.dashboard-v2 .dsv2-page :where(button, input, select, textarea) {
+  font: inherit;
+}
+
+.dashboard-v2 .dsv2-page :where(button, a, input, select, textarea) {
+  transition:
+    color var(--dsv2-transition-fast),
+    background-color var(--dsv2-transition-fast),
+    border-color var(--dsv2-transition-fast),
+    box-shadow var(--dsv2-transition-fast),
+    transform var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .dsv2-page :where(button, a, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-page ::selection {
+  color: var(--dsv2-black);
+  background: rgba(var(--dsv2-gold-rgb), 0.28);
+}
+
+.dashboard-v2 .dsv2-page-title {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: clamp(1.35rem, 1.7vw, 1.85rem);
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-page-subtitle {
+  margin: var(--dsv2-space-2) 0 0;
+  color: var(--dsv2-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.8;
+}
+
+.dashboard-v2 .dsv2-section-title {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .dsv2-section-caption {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.dashboard-v2 .dsv2-muted {
+  color: var(--dsv2-muted);
+}
+
+
+/* Dashboard V2 stage 4.2: canonical page shell
+ * The outer gutter belongs to the shared V2 page shell, not individual pages.
+ * Repeating .dsv2-page raises specificity above legacy/page-level shorthand padding
+ * without using !important. Future V2 pages only need the dsv2-page class.
+ */
+.dashboard-v2 .dsv2-page.dsv2-page {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  padding-inline: var(--dsv2-page-inline-gutter);
+}
+
+@media (max-width: 1199.98px) {
+  .dashboard-v2 {
+    --dsv2-page-inline-gutter: 18px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 {
+    --dsv2-page-inline-gutter: 12px;
+  }
+}

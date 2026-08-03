@@ -1,0 +1,91 @@
+/* =========================================================
+   Malikat Dashboard V2 — layout primitives
+========================================================= */
+
+.dashboard-v2 .dsv2-stack {
+  display: grid;
+  gap: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-stack--sm {
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .dsv2-stack--lg {
+  gap: var(--dsv2-space-6);
+}
+
+.dashboard-v2 .dsv2-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .dsv2-cluster--between {
+  justify-content: space-between;
+}
+
+.dashboard-v2 .dsv2-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-space-5);
+  padding: var(--dsv2-space-1) 0;
+}
+
+/*
+ * All grid variants own their display and gap declarations.
+ * This prevents a page from silently falling back to block layout when it
+ * uses dsv2-grid--metrics / dsv2-grid--2 / dsv2-grid--3 directly.
+ */
+.dashboard-v2 :is(
+  .dsv2-grid,
+  .dsv2-grid--metrics,
+  .dsv2-grid--2,
+  .dsv2-grid--3
+) {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.dashboard-v2 .dsv2-grid--metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-v2 .dsv2-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-v2 .dsv2-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-v2 .dsv2-span-12 {
+  grid-column: span 12;
+}
+
+.dashboard-v2 .dsv2-span-8 {
+  grid-column: span 8;
+}
+
+.dashboard-v2 .dsv2-span-6 {
+  grid-column: span 6;
+}
+
+.dashboard-v2 .dsv2-span-4 {
+  grid-column: span 4;
+}
+
+.dashboard-v2 .dsv2-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+  margin-bottom: var(--dsv2-space-4);
+}

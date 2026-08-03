@@ -1,18 +1,14 @@
-
-
-// ✅ src/pages/DashboardExpenses.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import "../styles/AdminDashboardExpenses.css";
-import "../styles/DashboardEnterpriseWorkspaces.css";
+import { useEffect, useMemo, useState } from "react";
+import "../styles/dashboard-v2/pages/expenses.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFileCsv, faList, faMoneyBillWave, faTriangleExclamation, faWallet } from "@fortawesome/free-solid-svg-icons";
-/**
- * ✅ قاعدة الاستيراد:
- * - ستايل الصفحة الأصلي أولاً
- * - نظام مساحات العمل المؤسسي أخيرًا لتوحيد الواجهة
- */
-import Modal from "../components/Modal";
-
+import {
+  faEye,
+  faMagnifyingGlass,
+  faPen,
+  faPlus,
+  faRotate,
+  faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import type { Expense, PaymentMethod } from "../types/finance";
 import { FinanceSettingsService } from "../services/FinanceSettingsService";
 import { AppSettingsService } from "../services/AppSettingsService";
@@ -25,22 +21,28 @@ import {
   type StaffPayrollSource,
   type BookingPayrollSource,
 } from "../helpers/staffPayroll";
-
-// ✅ Firebase Auth
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
-
 import { auth, db } from "../services/firebase";
-
-// ✅ Firestore Expenses
 import {
   listAllExpensesFS,
   removeExpenseFS,
   upsertExpenseFS,
-  countMonthlyExpensesMissingNotesFS, // ✅ إضافة
+  countMonthlyExpensesMissingNotesFS,
 } from "../services/firestoreExpenses";
 import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
+import {
+  DashboardConfirmV2,
+  DashboardDatePickerV2,
+  DashboardDrawerV2,
+  DashboardEmptyStateV2,
+  DashboardErrorStateV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../components/dashboard-v2";
 
 type UiRole = "owner" | "admin" | "staff" | "client" | "guest";
 
@@ -84,31 +86,6 @@ function money(n: number) {
   return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 }).format(n);
 }
 
-function toCsv(rows: Record<string, any>[]) {
-  const headers = Object.keys(rows[0] || {});
-  const escape = (v: any) => {
-    const s = String(v ?? "");
-    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
-  ];
-  return lines.join("\n");
-}
-
-function downloadTextFile(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 function firebaseMsg(e: any) {
   const msg = String(e?.message || e || "");
@@ -170,6 +147,30 @@ function isIsoDate(v: string) {
 
 function monthKeyFromIsoDate(v: string) {
   return isIsoDate(v) ? String(v).slice(0, 7) : "";
+}
+
+const GREGORIAN_MONTHS_AR = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+] as const;
+
+function formatMonthKeyLabel(monthKey: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+  if (!match) return String(monthKey || "").trim();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return monthKey;
+  return `${GREGORIAN_MONTHS_AR[month - 1]} ${year}`;
 }
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -299,80 +300,33 @@ function normalizeBookingPayrollRows(rows: any[]): BookingPayrollSource[] {
     .filter(Boolean) as BookingPayrollSource[];
 }
 
-/* =========================================
-   ✅ DashDropdown (مثل DashboardOffers)
-========================================= */
-type DDOption = { value: string; label: string };
 
-function DashDropdown(props: {
-  value: string;
-  onChange: (next: string) => void;
-  options: DDOption[];
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  const { value, onChange, options, placeholder = "اختر", disabled } = props;
+function paymentMethodLabel(value: unknown): string {
+  const raw = String(value || "").trim();
+  const key = raw.toLowerCase();
+  if (key === "cash" || raw.includes("كاش") || raw.includes("نقد")) return "كاش";
+  if (key === "card" || key === "mada" || raw.includes("شبكة") || raw.includes("مدى") || raw.includes("بطاق")) return "شبكة";
+  if (key === "transfer" || raw.includes("تحويل")) return "تحويل";
+  if (key === "mixed" || raw.includes("مختلط")) return "مختلط";
+  return raw || "غير محدد";
+}
 
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+function paymentMethodTone(value: unknown): "cash" | "card" | "transfer" | "other" {
+  const label = paymentMethodLabel(value);
+  if (label === "كاش") return "cash";
+  if (label === "شبكة") return "card";
+  if (label === "تحويل") return "transfer";
+  return "other";
+}
 
-  const label = options.find((o) => o.value === value)?.label || placeholder;
+function formatSar(value: unknown): string {
+  return `${money(Number(value || 0))} ر.س`;
+}
 
-  useEffect(() => {
-    if (!open) return;
-
-    const onDown = (e: MouseEvent) => {
-      const el = wrapRef.current;
-      if (!el) return;
-      if (el.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="dash-dd-wrap" ref={wrapRef}>
-      <button
-        type="button"
-        className="dash-select"
-        onClick={() => !disabled && setOpen((s) => !s)}
-        aria-expanded={open}
-        disabled={disabled}
-      >
-        {label}
-      </button>
-
-      {open && !disabled ? (
-        <div className="dash-dd-menu" role="listbox">
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`dash-dd-item ${
-                value === opt.value ? "is-active" : ""
-              }`}
-              onClick={() => {
-                onChange(opt.value);
-                setOpen(false);
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+function formatDateDisplay(value: unknown): string {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : raw || "—";
 }
 
 const DashboardExpenses: React.FC = () => {
@@ -449,6 +403,9 @@ const DashboardExpenses: React.FC = () => {
     date: todayISO(),
     note: "",
   });
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [detailsTarget, setDetailsTarget] = useState<Expense | null>(null);
 
   useEffect(() => {
     const fallbackPays = ["كاش", "شبكة", "تحويل"] as any;
@@ -777,6 +734,8 @@ const DashboardExpenses: React.FC = () => {
       await upsertExpenseFS(expense);
       await loadExpenses();
       resetForm();
+      setAddOpen(false);
+      setModalMsg("تمت إضافة المصروف بنجاح");
     } catch (e) {
       console.error("upsertExpenseFS error:", e);
       setModalMsg(firebaseMsg(e));
@@ -976,30 +935,6 @@ const DashboardExpenses: React.FC = () => {
     generatedBy: "لوحة المصروفات",
   });
 
-  const exportCsv = () => {
-    if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
-
-    const rows = filtered.map((e) => ({
-      التاريخ: e.date,
-      النوع: expenseTypeLabel(e),
-      الوصف: e.title || e.note || "",
-      الموظفة: expenseEmployeeLabel(e),
-      التصنيف: e.category,
-      المبلغ: e.amount,
-      المصدر: expenseSourceLabel(e),
-      طريقة_الدفع: e.paymentMethod,
-      ملاحظات: e.note || "",
-      دورة_الرواتب:
-        payrollKindFromExpense(e) === "manual"
-          ? ""
-          : String(e.monthKey || payrollCycleKeyFromDate(e.date, PAYROLL_CLOSE_DAY) || ""),
-    }));
-
-    const csv = toCsv(rows);
-    const filename = `expenses_${recordMode}_${selectedMonthKey}_${activeRange.from}_${activeRange.to}.csv`;
-    downloadTextFile(filename, csv);
-  };
-
   const exportPdf = () => {
     if (!filtered.length) return setModalMsg("ما فيه بيانات للتصدير");
     exportExpensesReportPdf(buildExpensesReportInput());
@@ -1032,21 +967,22 @@ const DashboardExpenses: React.FC = () => {
 
   if (!authReady) {
     return (
-      <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
-        <div className="exp-card">
-          <h2>جاري التحقق من الصلاحيات...</h2>
-        </div>
+      <div className="dsv2-page expenses-v2-page">
+        <section className="dsv2-card dsv2-card--padded expenses-v2-auth-state">
+          <DashboardSkeletonV2 variant="title" width="38%" />
+          <DashboardSkeletonV2 lines={3} />
+        </section>
       </div>
     );
   }
 
   if (!allowed) {
     return (
-      <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
-        <div className="exp-card">
-          <h2>غير مصرح</h2>
-          <p>هذه الصفحة خاصة بالمالك/الإدارة فقط.</p>
-        </div>
+      <div className="dsv2-page expenses-v2-page">
+        <DashboardErrorStateV2
+          title="غير مصرح"
+          description="هذه الصفحة خاصة بالمالك والإدارة فقط."
+        />
       </div>
     );
   }
@@ -1057,655 +993,424 @@ const DashboardExpenses: React.FC = () => {
       [...categories, ...allItems.map((e) => String(e.category || "").trim()).filter(Boolean)]
     )
   );
-  const categoryOptions: DDOption[] = [
+  const categoryOptions = [
     { value: "الكل", label: "الكل" },
     ...runtimeCategories.map((c) => ({ value: c, label: c })),
   ];
 
-  const categoryOptionsNoAll: DDOption[] = categories.map((c) => ({
+  const categoryOptionsNoAll = categories.map((c) => ({
     value: c,
     label: c,
   }));
 
-  const paymentOptions: DDOption[] = [
+  // Dashboard Expenses V2 stage 4.1: unified month selector
+  const monthOptions = (() => {
+    const keys = new Set<string>();
+    const currentMonth = todayISO().slice(0, 7);
+
+    allItems.forEach((item) => {
+      const key = monthKeyFromIsoDate(String(item?.date || ""));
+      if (key) keys.add(key);
+    });
+
+    for (let delta = -24; delta <= 12; delta += 1) {
+      const key = shiftMonthKey(currentMonth, delta);
+      if (key) keys.add(key);
+    }
+
+    if (/^\d{4}-\d{2}$/.test(selectedMonthKey)) keys.add(selectedMonthKey);
+
+    return Array.from(keys)
+      .sort((a, b) => b.localeCompare(a))
+      .map((value) => ({ value, label: formatMonthKeyLabel(value) }));
+  })();
+
+  const paymentOptions = [
     { value: "الكل", label: "الكل" },
     ...paymentMethods.map((p) => ({ value: String(p), label: String(p) })),
   ];
 
-  const paymentOptionsNoAll: DDOption[] = paymentMethods.map((p) => ({
+  const paymentOptionsNoAll = paymentMethods.map((p) => ({
     value: String(p),
     label: String(p),
   }));
 
-  const recordModeOptions: DDOption[] = [
+  const recordModeOptions = [
     { value: "calendar", label: "شهر تقويمي (1-آخر الشهر)" },
     { value: "payroll_cycle", label: `دورة رواتب (${PAYROLL_CLOSE_DAY + 1}-${PAYROLL_CLOSE_DAY})` },
   ];
 
+
+  const editTarget = editId ? allItems.find((item) => item.id === editId) || null : null;
+  const hasActiveFilters = Boolean(
+    fCategory !== "الكل" || fPayment !== "الكل" || q.trim() || onlyMissingNotes
+  );
+  const manualAmount = filtered
+    .filter((item) => payrollKindFromExpense(item) === "manual")
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const payrollAmount = Math.max(0, filteredAmount - manualAmount);
+  const categoryCount = new Set(filtered.map((item) => String(item.category || "").trim()).filter(Boolean)).size;
+
+
   return (
-    <div className="exp-page enterprise-workspace-page enterprise-workspace-v2 enterprise-expenses-v2">
-      {/* ✅ Header ثابت: الأزرار تظهر دائمًا (حل اختفاء التصدير) */}
-      <div className="exp-header">
-        <div className="enterprise-page-title">
-          <span className="enterprise-page-eyebrow">FINANCE OPERATIONS</span>
-          <h1>المصروفات</h1>
-          <p>إدارة المصروفات التشغيلية والرواتب، مراجعة النواقص، وتصدير التقارير من مساحة عمل واحدة.</p>
-        </div>
+    <>
+      <div className="dsv2-page expenses-v2-page">
+        <section className="dsv2-card expenses-v2-hero">
+          <div className="expenses-v2-hero__content">
+            <span className="dsv2-badge dsv2-badge--gold">الإدارة المالية</span>
+            <h1 className="dsv2-page-title">المصروفات</h1>
+            <p className="dsv2-page-subtitle">
+              إدارة المصروفات التشغيلية والرواتب، ومراجعة النواقص والتقارير من مساحة واحدة.
+            </p>
+          </div>
 
-        <div className="exp-header-actions">
-          {hasLegacy && !migrated ? (
-            <button
-              className="exp-btn"
-              onClick={migrateLegacyExpensesOnce}
-              disabled={loading}
-              title="ترحيل المصروفات القديمة من LocalStorage إلى Firestore (مرة واحدة)"
-              type="button"
-            >
-              ترحيل من LocalStorage ({legacyCount})
+          <div className="expenses-v2-actions" aria-label="إجراءات صفحة المصروفات">
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setAddOpen(true)} disabled={loading}>
+              <FontAwesomeIcon icon={faPlus} /> إضافة مصروف
             </button>
-          ) : null}
-
-          <button
-            className="exp-btn"
-            onClick={loadExpenses}
-            disabled={loading}
-            type="button"
-          >
-            تحديث
-          </button>
-
-          <button
-            className="reports-btn primary"
-            type="button"
-            onClick={() => {
-              // ✅ تصدير يعتمد على filtered الحالية
-              exportCsv();
-            }}
-            disabled={loading}
-            title="CSV"
-          >
-            <FontAwesomeIcon icon={faFileCsv} /> CSV
-          </button>
-
-          <button
-            className="reports-btn"
-            type="button"
-            onClick={exportPdf}
-            disabled={loading || !filtered.length}
-            title="PDF"
-          >
-            <FontAwesomeIcon icon={faFileCsv} /> PDF
-          </button>
-
-          <button
-            className="reports-btn"
-            type="button"
-            onClick={exportExcel}
-            disabled={loading || !filtered.length}
-            title="Excel"
-          >
-            <FontAwesomeIcon icon={faFileCsv} /> Excel
-          </button>
-        </div>
-      </div>
-
-      <section className="enterprise-metrics" aria-label="ملخص المصروفات المعروضة">
-        <article className="enterprise-metric">
-          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
-          <div><small>إجمالي الفترة</small><strong>{money(filteredAmount)} ريال</strong><em>{activeRange.from} — {activeRange.to}</em></div>
-        </article>
-        <article className="enterprise-metric">
-          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faList} /></span>
-          <div><small>السجلات المعروضة</small><strong>{filtered.length}</strong><em>بعد تطبيق الفلاتر الحالية</em></div>
-        </article>
-        <article className="enterprise-metric">
-          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faWallet} /></span>
-          <div><small>مصروفات الرواتب</small><strong>{filteredPayrollCount}</strong><em>صفوف محسوبة تلقائيًا</em></div>
-        </article>
-        <article className="enterprise-metric">
-          <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
-          <div><small>تحتاج ملاحظة</small><strong>{missingNotesInActiveRange}</strong><em>{filteredManualCount} مصروف يدوي معروض</em></div>
-        </article>
-      </section>
-
-      <div className="exp-card exp-card--controls">
-        <h3 className="exp-card-title">سجل المصروفات الكامل</h3>
-        <div className="exp-control-points">
-          <div>
-            إغلاق دورة الرواتب ثابت يوم <b>{PAYROLL_CLOSE_DAY}</b> من كل شهر.
-          </div>
-          <div>
-            الفترة المعروضة الآن: <b>{activeRange.from}</b> إلى <b>{activeRange.to}</b>.
-          </div>
-          <div>
-            دورة الرواتب المرجعية: <b>{activePayrollCycleKey}</b> | بدون ملاحظات داخل الفترة:{" "}
-            <b>{missingNotesInActiveRange}</b> | هذا الشهر: <b>{missingNotesCountFS}</b>.
-          </div>
-          <div>
-            أي أوفر تايم بعد يوم {PAYROLL_CLOSE_DAY} (مثل 28-31) يترحل تلقائيًا لدورة الشهر التالي، مع الاحتفاظ
-            بتاريخ يومه الفعلي.
-          </div>
-        </div>
-
-        <div className="exp-filters exp-filters--controls">
-          <label>
-            وضع العرض
-            <DashDropdown
-              value={recordMode}
-              onChange={(v) => setRecordMode(v === "payroll_cycle" ? "payroll_cycle" : "calendar")}
-              options={recordModeOptions}
-              disabled={loading}
-            />
-          </label>
-
-          <label>
-            الشهر المرجعي
-            <input
-              type="month"
-              value={selectedMonthKey}
-              onChange={(e) => {
-                const next = String(e.target.value || "").trim();
-                if (/^\d{4}-\d{2}$/.test(next)) setSelectedMonthKey(next);
-              }}
-            />
-          </label>
-
-          <label>
-            التصنيف
-            <DashDropdown
-              value={fCategory}
-              onChange={(v) => setFCategory(v)}
-              options={categoryOptions}
-              disabled={loading}
-            />
-          </label>
-
-          <label>
-            الدفع
-            <DashDropdown
-              value={fPayment}
-              onChange={(v) => setFPayment(v)}
-              options={paymentOptions}
-              disabled={loading}
-            />
-          </label>
-
-          <label className="span-2">
-            بحث
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="الوصف / الموظفة / المصدر / الملاحظات..."
-            />
-          </label>
-
-          <div className="span-2 exp-actions">
-            <button
-              className={`exp-btn ${onlyMissingNotes ? "" : "primary"}`}
-              type="button"
-              onClick={() => setOnlyMissingNotes(false)}
-            >
-              جميع المصروفات
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadExpenses()} disabled={loading}>
+              <FontAwesomeIcon icon={faRotate} /> تحديث
             </button>
-            <button
-              className={`exp-btn ${onlyMissingNotes ? "primary" : ""}`}
-              type="button"
-              onClick={() => setOnlyMissingNotes(true)}
-            >
-              بدون ملاحظات
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportPdf} disabled={loading || !filtered.length}>
+              تحميل PDF
             </button>
-            <button
-              className="exp-btn"
-              type="button"
-              onClick={() => {
-                setOnlyMissingNotes(false);
-                setFCategory("الكل");
-                setFPayment("الكل");
-                setQ("");
-              }}
-            >
-              تصفير الفلاتر
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={exportExcel} disabled={loading || !filtered.length}>
+              Excel منسّق
             </button>
+            {hasLegacy && !migrated ? (
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void migrateLegacyExpensesOnce()} disabled={loading}>
+                ترحيل القديم ({legacyCount})
+              </button>
+            ) : null}
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* ===== Main Grid ===== */}
-      <div className="exp-grid exp-grid--main">
-        <div className="exp-card exp-card--form">
-          <h3>إضافة مصروف</h3>
+        <section className="expenses-v2-metrics" aria-label="ملخص المصروفات">
+          <article className="dsv2-metric-card dsv2-metric-card--danger">
+            <p className="dsv2-metric-card__label">إجمالي المصروفات</p>
+            <p className="dsv2-metric-card__value">{formatSar(filteredAmount)}</p>
+            <p className="dsv2-metric-card__meta">{activeRange.from} — {activeRange.to}</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--gold">
+            <p className="dsv2-metric-card__label">مصروفات الرواتب</p>
+            <p className="dsv2-metric-card__value">{formatSar(payrollAmount)}</p>
+            <p className="dsv2-metric-card__meta">{filteredPayrollCount} سجل محسوب تلقائيًا</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--dark">
+            <p className="dsv2-metric-card__label">المصروفات التشغيلية</p>
+            <p className="dsv2-metric-card__value">{formatSar(manualAmount)}</p>
+            <p className="dsv2-metric-card__meta">{filteredManualCount} سجل يدوي</p>
+          </article>
+          <article className="dsv2-metric-card dsv2-metric-card--gold">
+            <p className="dsv2-metric-card__label">تحتاج ملاحظة</p>
+            <p className="dsv2-metric-card__value">{missingNotesInActiveRange}</p>
+            <p className="dsv2-metric-card__meta">ضمن الفترة الحالية</p>
+          </article>
+        </section>
 
-          <div className="exp-form">
-            <label>
-              اسم المصروف
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="مثال: شراء منتجات..."
-              />
-            </label>
+        <section className="expenses-v2-cycle-strip" aria-label="الفترة المرجعية">
+          <div><strong>الفترة المعروضة</strong><span>{activeRange.from} إلى {activeRange.to}</span></div>
+          <div><strong>الدورة المرجعية</strong><span>{activePayrollCycleKey}</span></div>
+          <div><strong>التصنيفات الظاهرة</strong><span>{categoryCount}</span></div>
+          <div><strong>إغلاق الرواتب</strong><span>يوم {PAYROLL_CLOSE_DAY} من كل شهر</span></div>
+        </section>
 
-            <label>
-              التصنيف
-              <DashDropdown
-                value={category}
-                onChange={(v) => setCategory(v)}
-                options={
-                  categoryOptionsNoAll.length
-                    ? categoryOptionsNoAll
-                    : [{ value: "أخرى", label: "أخرى" }]
-                }
-                disabled={loading}
-              />
-            </label>
-
-            <label>
-              المبلغ (ريال)
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="مثال: 250"
-                inputMode="decimal"
-              />
-            </label>
-
-            <label>
-              التاريخ
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </label>
-
-            <label>
-              طريقة الدفع
-              <DashDropdown
-                value={String(paymentMethod)}
-                onChange={(v) =>
-                  setPaymentMethod(v as unknown as PaymentMethod)
-                }
-                options={
-                  paymentOptionsNoAll.length
-                    ? paymentOptionsNoAll
-                    : [
-                        { value: "كاش", label: "كاش" },
-                        { value: "شبكة", label: "شبكة" },
-                        { value: "تحويل", label: "تحويل" },
-                      ]
-                }
-                disabled={loading}
-              />
-            </label>
-
-            <label className="span-2">
-              ملاحظات (اختياري)
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="أي تفاصيل..."
-              />
-            </label>
-
-            <div className="span-2 exp-actions">
+        <section className="dsv2-card dsv2-card--padded expenses-v2-filter-card">
+          <div className="expenses-v2-section-head">
+            <div>
+              <span className="dsv2-badge dsv2-badge--neutral">الفلاتر</span>
+              <h2>سجل المصروفات</h2>
+              <p>غيّر الفترة والتصنيف وطريقة الدفع أو ابحث داخل السجلات.</p>
+            </div>
+            <div className="expenses-v2-filter-actions">
               <button
-                className="reports-btn primary"
-                onClick={addExpense}
+                className={`dsv2-btn dsv2-btn--sm ${onlyMissingNotes ? "dsv2-btn--accent" : "dsv2-btn--secondary"}`}
                 type="button"
-                disabled={loading}
+                onClick={() => setOnlyMissingNotes((value) => !value)}
               >
-                إضافة المصروف
+                {onlyMissingNotes ? "عرض الكل" : "بدون ملاحظات"}
               </button>
               <button
-                className="reports-btn"
-                onClick={resetForm}
+                className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                 type="button"
-                disabled={loading}
-              >
-                تفريغ
-              </button>
-            </div>
-          </div>
-
-          <div className="exp-divider" />
-
-          <div className="exp-mini">
-            <div className="mini-title">إضافة تصنيف جديد (مؤقتًا هنا)</div>
-            <div className="exp-form">
-              <input
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                placeholder="مثال: تأمين"
-              />
-              <button
-                className="reports-btn"
-                onClick={addCategoryQuick}
-                type="button"
-              >
-                إضافة
-              </button>
-            </div>
-            <div className="mini-hint">
-              لاحقًا بنحطه داخل صفحة الإعدادات بشكل مرتب.
-            </div>
-          </div>
-        </div>
-
-        <div className="exp-card exp-card--table">
-          <div className="exp-table-head">
-            <h3 className="exp-card-title">جميع المصروفات</h3>
-            <span className="exp-results-count">{filtered.length}</span>
-          </div>
-          <div className="exp-table-wrap exp-table-wrap--main">
-            <table className="exp-table">
-              <colgroup>
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "22%" }} />
-                <col style={{ width: "10%" }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>التاريخ</th>
-                  <th>النوع</th>
-                  <th>الوصف</th>
-                  <th>الموظفة</th>
-                  <th>المبلغ</th>
-                  <th>المصدر</th>
-                  <th>ملاحظات</th>
-                  <th>إجراء</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="empty">
-                      جاري تحميل المصروفات...
-                    </td>
-                  </tr>
-                ) : filtered.length ? (
-                  filtered.map((e) => {
-                    const isAutoPayroll = isAutoPayrollExpenseId(e.id);
-                    const isEdit = !isAutoPayroll && editId === e.id;
-                    return (
-                      <tr key={e.id} className={isAutoPayroll ? "exp-row-auto-payroll" : ""}>
-                        <td data-label="التاريخ">
-                          {isEdit ? (
-                            <input
-                              type="date"
-                              value={editForm.date}
-                              onChange={(ev) =>
-                                setEditForm((p) => ({
-                                  ...p,
-                                  date: ev.target.value,
-                                }))
-                              }
-                            />
-                          ) : (
-                            e.date
-                          )}
-                        </td>
-
-                        <td data-label="النوع">{expenseTypeLabel(e)}</td>
-
-                        <td data-label="الوصف" className="strong exp-cell-title">
-                          {isEdit ? (
-                            <input
-                              value={editForm.title}
-                              onChange={(ev) =>
-                                setEditForm((p) => ({
-                                  ...p,
-                                  title: ev.target.value,
-                                }))
-                              }
-                              placeholder="الوصف"
-                            />
-                          ) : (
-                            <div className="exp-row-title">
-                              <span
-                                className="exp-title-text"
-                                title={e.title || e.note || "-"}
-                              >
-                                {e.title || e.note || "-"}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td data-label="الموظفة" className="exp-cell-employee">{expenseEmployeeLabel(e)}</td>
-
-                        <td data-label="المبلغ" className="amount exp-cell-amount">
-                          {isEdit ? (
-                            <input
-                              inputMode="decimal"
-                              value={editForm.amount}
-                              onChange={(ev) =>
-                                setEditForm((p) => ({
-                                  ...p,
-                                  amount: ev.target.value,
-                                }))
-                              }
-                              placeholder="0"
-                            />
-                          ) : (
-                            <>{money(e.amount)} ريال</>
-                          )}
-                        </td>
-
-                        <td data-label="المصدر" className="exp-cell-source">
-                          {isEdit ? (
-                            <div style={{ display: "grid", gap: 6 }}>
-                              <DashDropdown
-                                value={editForm.category}
-                                onChange={(v) => setEditForm((p) => ({ ...p, category: v }))}
-                                options={
-                                  categoryOptionsNoAll.length
-                                    ? categoryOptionsNoAll
-                                    : [{ value: "أخرى", label: "أخرى" }]
-                                }
-                                disabled={loading}
-                              />
-                              <DashDropdown
-                                value={editForm.paymentMethod}
-                                onChange={(v) =>
-                                  setEditForm((p) => ({
-                                    ...p,
-                                    paymentMethod: v,
-                                  }))
-                                }
-                                options={
-                                  paymentOptionsNoAll.length
-                                    ? paymentOptionsNoAll
-                                    : [
-                                        { value: "كاش", label: "كاش" },
-                                        { value: "شبكة", label: "شبكة" },
-                                        { value: "تحويل", label: "تحويل" },
-                                      ]
-                                }
-                                disabled={loading}
-                              />
-                            </div>
-                          ) : (
-                            expenseSourceLabel(e)
-                          )}
-                        </td>
-
-                        <td data-label="ملاحظات" className="muted exp-cell-note">
-                          {isEdit ? (
-                            <input
-                              value={editForm.note}
-                              onChange={(ev) =>
-                                setEditForm((p) => ({
-                                  ...p,
-                                  note: ev.target.value,
-                                }))
-                              }
-                              placeholder="ملاحظة..."
-                            />
-                          ) : (
-                            <span className="exp-note-text" title={e.note || "—"}>
-                              {e.note || "—"}
-                            </span>
-                          )}
-                        </td>
-
-                        <td data-label="إجراء">
-                          {isAutoPayroll ? (
-                            <span className="exp-auto-pill">تلقائي</span>
-                          ) : isEdit ? (
-                            <div className="exp-row-actions">
-                              <button
-                                className="exp-btn primary"
-                                type="button"
-                                disabled={loading}
-                                onClick={() => saveEdit(e)}
-                              >
-                                حفظ
-                              </button>
-                              <button
-                                className="exp-btn"
-                                type="button"
-                                disabled={loading}
-                                onClick={cancelEdit}
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="exp-row-actions">
-                              <button
-                                className="exp-btn"
-                                type="button"
-                                disabled={loading}
-                                onClick={() => startEdit(e)}
-                              >
-                                تعديل
-                              </button>
-                              <button
-                                className="exp-btn danger"
-                                type="button"
-                                disabled={loading}
-                                onClick={() => removeExpense(e.id)}
-                              >
-                                حذف
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="empty">
-                      ما فيه مصروفات ضمن الفترة الحالية.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* ✅ Alert Modal */}
-      {modalMsg ? (
-        <Modal
-          open={!!modalMsg}
-          onClose={() => setModalMsg("")}
-          ariaLabel="تنبيه"
-          panelClassName="modal-box is-info"
-          size="sm"
-        >
-            <div className="modal-head">
-              <div className="modal-title-wrap">
-                <div className="modal-icon">ℹ️</div>
-                <h3 className="modal-title">تنبيه</h3>
-              </div>
-
-              <button
-                className="modal-close"
-                onClick={() => setModalMsg("")}
-                type="button"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <p className="modal-text">{modalMsg}</p>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                className="dash-pill dash-pill-primary"
-                onClick={() => setModalMsg("")}
-                type="button"
-              >
-                حسناً
-              </button>
-            </div>
-          </Modal>
-      ) : null}
-
-      {/* ✅ Confirm Modal */}
-      {confirmState.open ? (
-        <Modal
-          open={confirmState.open}
-          onClose={() => setConfirmState({ open: false })}
-          ariaLabel={confirmState.title || "تأكيد"}
-          panelClassName="modal-box is-danger"
-          size="sm"
-        >
-            <div className="modal-head">
-              <div className="modal-title-wrap">
-                <div className="modal-icon">⚠️</div>
-                <h3 className="modal-title">{confirmState.title || "تأكيد"}</h3>
-              </div>
-
-              <button
-                className="modal-close"
-                onClick={() => setConfirmState({ open: false })}
-                type="button"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <p className="modal-text" style={{ whiteSpace: "pre-line" }}>
-                {confirmState.message || ""}
-              </p>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                className="dash-pill dash-pill-danger"
-                type="button"
-                onClick={async () => {
-                  const fn = confirmState.onConfirm;
-                  if (fn) await fn();
-                  else setConfirmState({ open: false });
+                disabled={!hasActiveFilters}
+                onClick={() => {
+                  setOnlyMissingNotes(false);
+                  setFCategory("الكل");
+                  setFPayment("الكل");
+                  setQ("");
                 }}
               >
-                تأكيد
-              </button>
-              <button
-                className="dash-pill dash-pill-outline"
-                onClick={() => setConfirmState({ open: false })}
-                type="button"
-              >
-                إلغاء
+                تصفير الفلاتر
               </button>
             </div>
-          </Modal>
+          </div>
+
+          <div className="expenses-v2-filter-grid">
+            <DashboardFieldV2 id="expenses-v2-mode" label="وضع العرض">
+              <DashboardSelectV2
+                id="expenses-v2-mode"
+                options={recordModeOptions}
+                value={recordMode}
+                onChange={(value) => setRecordMode(value === "payroll_cycle" ? "payroll_cycle" : "calendar")}
+                disabled={loading}
+              />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="expenses-v2-month" label="الشهر المرجعي">
+              <DashboardSelectV2
+                id="expenses-v2-month"
+                options={monthOptions}
+                value={selectedMonthKey}
+                onChange={(value) => {
+                  if (/^\d{4}-\d{2}$/.test(value)) setSelectedMonthKey(value);
+                }}
+                disabled={loading}
+              />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="expenses-v2-category" label="التصنيف">
+              <DashboardSelectV2 id="expenses-v2-category" options={categoryOptions} value={fCategory} onChange={setFCategory} disabled={loading} />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="expenses-v2-payment" label="طريقة الدفع">
+              <DashboardSelectV2 id="expenses-v2-payment" options={paymentOptions} value={fPayment} onChange={setFPayment} disabled={loading} />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="expenses-v2-search" label="البحث" className="expenses-v2-search-field">
+              <div className="expenses-v2-search-control">
+                <FontAwesomeIcon icon={faMagnifyingGlass} />
+                <input
+                  id="expenses-v2-search"
+                  className="dsv2-input"
+                  value={q}
+                  onChange={(event) => setQ(event.target.value)}
+                  placeholder="الوصف، الموظفة، المصدر أو الملاحظات"
+                />
+              </div>
+            </DashboardFieldV2>
+          </div>
+        </section>
+
+        <section className="dsv2-table-card expenses-v2-table-card">
+          <header className="expenses-v2-table-head">
+            <div>
+              <h2>تفاصيل المصروفات</h2>
+              <p>{filtered.length} سجل مطابق للفلاتر الحالية</p>
+            </div>
+            <span className="dsv2-badge dsv2-badge--gold">{formatSar(filteredAmount)}</span>
+          </header>
+
+          {loading ? (
+            <div className="expenses-v2-loading-table">
+              <DashboardSkeletonV2 variant="title" width="32%" />
+              <DashboardSkeletonV2 lines={8} />
+            </div>
+          ) : !filtered.length ? (
+            <div className="expenses-v2-state-wrap">
+              <DashboardEmptyStateV2
+                title="لا توجد مصروفات مطابقة"
+                description="غيّر الفلاتر أو أضف مصروفًا جديدًا لبدء عرض البيانات."
+                tone="gold"
+                action={<button className="dsv2-btn dsv2-btn--accent" type="button" onClick={() => setAddOpen(true)}>إضافة مصروف</button>}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="dsv2-table-scroll expenses-v2-desktop-table">
+                <table className="dsv2-table expenses-v2-table">
+                  <thead>
+                    <tr>
+                      <th>التاريخ</th><th>النوع</th><th>الوصف</th><th>الموظفة</th><th>التصنيف</th><th>الدفع</th><th>المبلغ</th><th>المصدر</th><th>ملاحظات</th><th>إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((item) => {
+                      const autoPayroll = isAutoPayrollExpenseId(item.id);
+                      return (
+                        <tr key={item.id}>
+                          <td><span className="dsv2-table__primary">{formatDateDisplay(item.date)}</span>{item.monthKey ? <small className="dsv2-table__secondary">{item.monthKey}</small> : null}</td>
+                          <td><span className="expenses-v2-type-badge" data-type={payrollKindFromExpense(item)}>{expenseTypeLabel(item)}</span></td>
+                          <td><span className="dsv2-table__primary expenses-v2-title-cell" title={item.title || item.note || "—"}>{item.title || item.note || "—"}</span></td>
+                          <td>{expenseEmployeeLabel(item)}</td>
+                          <td>{item.category || "أخرى"}</td>
+                          <td><span className="expenses-v2-payment-badge" data-method={paymentMethodTone(item.paymentMethod)}>{paymentMethodLabel(item.paymentMethod)}</span></td>
+                          <td><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></td>
+                          <td>{expenseSourceLabel(item)}</td>
+                          <td className="expenses-v2-note-cell">{item.note || <span className="expenses-v2-missing-note">بدون ملاحظة</span>}</td>
+                          <td>
+                            <div className="expenses-v2-row-actions">
+                              <button className="dsv2-icon-btn" type="button" aria-label="عرض التفاصيل" title="عرض التفاصيل" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /></button>
+                              {!autoPayroll ? <button className="dsv2-icon-btn" type="button" aria-label="تعديل" title="تعديل" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /></button> : null}
+                              {!autoPayroll ? <button className="dsv2-icon-btn expenses-v2-delete-action" type="button" aria-label="حذف" title="حذف" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /></button> : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="expenses-v2-mobile-list">
+                {filtered.map((item) => {
+                  const autoPayroll = isAutoPayrollExpenseId(item.id);
+                  return (
+                    <article className="expenses-v2-mobile-card" key={item.id}>
+                      <header><div><span>{formatDateDisplay(item.date)}</span><strong>{item.title || item.note || "—"}</strong></div><strong className="expenses-v2-amount">{formatSar(item.amount)}</strong></header>
+                      <div className="expenses-v2-mobile-meta"><span>{expenseTypeLabel(item)}</span><span>{item.category || "أخرى"}</span><span>{paymentMethodLabel(item.paymentMethod)}</span><span>{expenseSourceLabel(item)}</span></div>
+                      <p>{item.note || "بدون ملاحظة"}</p>
+                      <footer>
+                        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => setDetailsTarget(item)}><FontAwesomeIcon icon={faEye} /> التفاصيل</button>
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => startEdit(item)}><FontAwesomeIcon icon={faPen} /> تعديل</button> : null}
+                        {!autoPayroll ? <button className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" type="button" onClick={() => void removeExpense(item.id)}><FontAwesomeIcon icon={faTrash} /> حذف</button> : null}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      <DashboardModalV2
+        open={addOpen}
+        onClose={() => { if (!loading) setAddOpen(false); }}
+        title="إضافة مصروف"
+        description="سجّل بيانات المصروف ليظهر مباشرة في السجل والتقارير."
+        eyebrow="المصروفات"
+        size="md"
+        tone="gold"
+        closeOnBackdrop={!loading}
+        closeOnEscape={!loading}
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void addExpense()} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ المصروف"}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setAddOpen(false)} disabled={loading}>إلغاء</button>
+          </>
+        }
+      >
+        <div className="expenses-v2-modal-grid">
+          <DashboardFieldV2 id="expenses-v2-add-title" label="اسم المصروف" required>
+            <input id="expenses-v2-add-title" className="dsv2-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: شراء منتجات" />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-add-category" label="التصنيف" required>
+            <DashboardSelectV2 id="expenses-v2-add-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={category} onChange={setCategory} disabled={loading} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-add-amount" label="المبلغ (ر.س)" required>
+            <input id="expenses-v2-add-amount" className="dsv2-input" type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-add-date" label="التاريخ" required>
+            <DashboardDatePickerV2 id="expenses-v2-add-date" value={date} onChange={setDate} required clearable={false} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-add-payment" label="طريقة الدفع" required>
+            <DashboardSelectV2 id="expenses-v2-add-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={String(paymentMethod)} onChange={(value) => setPaymentMethod(value as PaymentMethod)} disabled={loading} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-add-note" label="ملاحظات" className="expenses-v2-field--wide">
+            <textarea id="expenses-v2-add-note" className="dsv2-textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="أي تفاصيل إضافية" />
+          </DashboardFieldV2>
+          <div className="expenses-v2-quick-category expenses-v2-field--wide">
+            <div><strong>إضافة تصنيف سريع</strong><span>سيُحفظ ضمن إعدادات التصنيفات المالية.</span></div>
+            <input className="dsv2-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="مثال: تأمين" />
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={addCategoryQuick}>إضافة</button>
+          </div>
+        </div>
+      </DashboardModalV2>
+
+      <DashboardModalV2
+        open={Boolean(editTarget)}
+        onClose={cancelEdit}
+        title="تعديل المصروف"
+        description="عدّل بيانات السجل اليدوي ثم احفظ التغييرات."
+        eyebrow="تعديل السجل"
+        size="md"
+        tone="gold"
+        closeOnBackdrop={!loading}
+        closeOnEscape={!loading}
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => editTarget && void saveEdit(editTarget)} disabled={loading}>{loading ? "جارٍ الحفظ..." : "حفظ التعديل"}</button>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={cancelEdit} disabled={loading}>إلغاء</button>
+          </>
+        }
+      >
+        <div className="expenses-v2-modal-grid">
+          <DashboardFieldV2 id="expenses-v2-edit-title" label="اسم المصروف" required>
+            <input id="expenses-v2-edit-title" className="dsv2-input" value={editForm.title} onChange={(event) => setEditForm((prev) => ({ ...prev, title: event.target.value }))} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-edit-category" label="التصنيف" required>
+            <DashboardSelectV2 id="expenses-v2-edit-category" options={categoryOptionsNoAll.length ? categoryOptionsNoAll : [{ value: "أخرى", label: "أخرى" }]} value={editForm.category} onChange={(value) => setEditForm((prev) => ({ ...prev, category: value }))} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-edit-amount" label="المبلغ (ر.س)" required>
+            <input id="expenses-v2-edit-amount" className="dsv2-input" type="number" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((prev) => ({ ...prev, amount: event.target.value }))} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-edit-date" label="التاريخ" required>
+            <DashboardDatePickerV2 id="expenses-v2-edit-date" value={editForm.date} onChange={(value) => setEditForm((prev) => ({ ...prev, date: value }))} required clearable={false} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-edit-payment" label="طريقة الدفع" required>
+            <DashboardSelectV2 id="expenses-v2-edit-payment" options={paymentOptionsNoAll.length ? paymentOptionsNoAll : [{ value: "كاش", label: "كاش" }, { value: "شبكة", label: "شبكة" }, { value: "تحويل", label: "تحويل" }]} value={editForm.paymentMethod} onChange={(value) => setEditForm((prev) => ({ ...prev, paymentMethod: value }))} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="expenses-v2-edit-note" label="ملاحظات" className="expenses-v2-field--wide">
+            <textarea id="expenses-v2-edit-note" className="dsv2-textarea" value={editForm.note} onChange={(event) => setEditForm((prev) => ({ ...prev, note: event.target.value }))} />
+          </DashboardFieldV2>
+        </div>
+      </DashboardModalV2>
+
+      <DashboardConfirmV2
+        open={confirmState.open}
+        onClose={() => setConfirmState({ open: false })}
+        onConfirm={async () => { await confirmState.onConfirm?.(); }}
+        title={confirmState.title || "تأكيد الإجراء"}
+        description={confirmState.message}
+        tone="danger"
+        confirmLabel="تأكيد"
+        cancelLabel="تراجع"
+      />
+
+      <DashboardModalV2
+        open={Boolean(modalMsg)}
+        onClose={() => setModalMsg("")}
+        title={modalMsg.includes("تعذر") || modalMsg.includes("غير مصرح") || modalMsg.includes("⚠️") ? "تعذر تنفيذ العملية" : "تم تنفيذ العملية"}
+        description={modalMsg}
+        size="sm"
+        tone={modalMsg.includes("تعذر") || modalMsg.includes("⚠️") ? "danger" : "success"}
+        footer={<button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setModalMsg("")}>حسنًا</button>}
+      ><div /></DashboardModalV2>
+
+      {detailsTarget ? (
+        <DashboardDrawerV2
+          open={Boolean(detailsTarget)}
+          onClose={() => setDetailsTarget(null)}
+          title="تفاصيل المصروف"
+          description="عرض سريع لبيانات السجل ومصدره."
+          eyebrow={detailsTarget.id}
+          size="md"
+          side="end"
+          tone={payrollKindFromExpense(detailsTarget) === "manual" ? "gold" : "success"}
+          footer={
+            <>
+              {!isAutoPayrollExpenseId(detailsTarget.id) ? <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => { startEdit(detailsTarget); setDetailsTarget(null); }}>تعديل المصروف</button> : null}
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setDetailsTarget(null)}>إغلاق</button>
+            </>
+          }
+        >
+          <div className="expenses-v2-drawer-content">
+            <article className="dsv2-metric-card dsv2-metric-card--danger">
+              <p className="dsv2-metric-card__label">المبلغ المسجل</p>
+              <p className="dsv2-metric-card__value">{formatSar(detailsTarget.amount)}</p>
+              <p className="dsv2-metric-card__meta">{expenseTypeLabel(detailsTarget)}</p>
+            </article>
+            <dl className="expenses-v2-detail-list">
+              <div><dt>الوصف</dt><dd>{detailsTarget.title || "—"}</dd></div>
+              <div><dt>التاريخ</dt><dd>{formatDateDisplay(detailsTarget.date)}</dd></div>
+              <div><dt>التصنيف</dt><dd>{detailsTarget.category || "أخرى"}</dd></div>
+              <div><dt>طريقة الدفع</dt><dd>{paymentMethodLabel(detailsTarget.paymentMethod)}</dd></div>
+              <div><dt>الموظفة</dt><dd>{expenseEmployeeLabel(detailsTarget)}</dd></div>
+              <div><dt>المصدر</dt><dd>{expenseSourceLabel(detailsTarget)}</dd></div>
+              <div><dt>دورة الرواتب</dt><dd>{detailsTarget.monthKey || "—"}</dd></div>
+              <div><dt>ملاحظات</dt><dd>{detailsTarget.note || "لا توجد ملاحظات"}</dd></div>
+            </dl>
+          </div>
+        </DashboardDrawerV2>
       ) : null}
-    </div>
+    </>
   );
 };
 
