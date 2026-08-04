@@ -7,6 +7,7 @@ type ConfirmCopy = {
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel: string;
 };
 
 declare global {
@@ -37,6 +38,7 @@ function resolveConfirmCopy(message: string): ConfirmCopy {
       title: "حذف بصمة الدخول؟",
       description: "سيعاد احتساب اليوم بعد حذف البصمة، وقد يتغير الاستحقاق المالي.",
       confirmLabel: "حذف البصمة",
+      cancelLabel: "تراجع",
     };
   }
 
@@ -45,6 +47,7 @@ function resolveConfirmCopy(message: string): ConfirmCopy {
       title: "حذف السجل؟",
       description: message,
       confirmLabel: "حذف السجل",
+      cancelLabel: "تراجع",
     };
   }
 
@@ -53,6 +56,7 @@ function resolveConfirmCopy(message: string): ConfirmCopy {
       title: "إلغاء الإجازة؟",
       description: message,
       confirmLabel: "إلغاء الإجازة",
+      cancelLabel: "تراجع",
     };
   }
 
@@ -60,6 +64,7 @@ function resolveConfirmCopy(message: string): ConfirmCopy {
     title: "تأكيد الإجراء",
     description: message,
     confirmLabel: "تأكيد",
+    cancelLabel: "إلغاء",
   };
 }
 
@@ -68,33 +73,51 @@ function buildOverlay(message: string) {
 
   const copy = resolveConfirmCopy(message);
   const overlay = document.createElement("div");
-  overlay.className = "dsv2-native-confirm-replacement";
-  overlay.setAttribute("role", "alertdialog");
-  overlay.setAttribute("aria-modal", "true");
+  overlay.className = "dashboard-v2 dsv2-page dsv2-overlay-root dsv2-confirm-shim";
+  overlay.setAttribute("data-tone", "danger");
   overlay.setAttribute("dir", "rtl");
 
   overlay.innerHTML = `
-    <div class="dsv2-native-confirm-replacement__backdrop" data-action="cancel"></div>
-    <section class="dsv2-native-confirm-replacement__dialog">
-      <button type="button" class="dsv2-native-confirm-replacement__close" data-action="cancel" aria-label="إغلاق">×</button>
-      <div class="dsv2-native-confirm-replacement__copy">
-        <strong></strong>
-        <p></p>
-      </div>
-      <div class="dsv2-native-confirm-replacement__icon" aria-hidden="true">!</div>
-      <div class="dsv2-native-confirm-replacement__actions">
-        <button type="button" class="dsv2-native-confirm-replacement__confirm" data-action="confirm"></button>
-        <button type="button" class="dsv2-native-confirm-replacement__cancel" data-action="cancel">تراجع</button>
-      </div>
-    </section>
+    <button type="button" class="dsv2-overlay-backdrop" data-action="cancel" aria-label="${copy.cancelLabel}"></button>
+    <div class="dsv2-overlay-stage" role="presentation">
+      <section class="dsv2-modal dsv2-modal--sm dsv2-confirm" role="alertdialog" aria-modal="true" aria-labelledby="employee-confirm-title" aria-describedby="employee-confirm-description" tabindex="-1">
+        <header class="dsv2-dialog__head">
+          <div class="dsv2-dialog__heading">
+            <span class="dsv2-dialog__eyebrow">تأكيد</span>
+            <h2 id="employee-confirm-title" class="dsv2-dialog__title"></h2>
+            <p id="employee-confirm-description" class="dsv2-dialog__description"></p>
+          </div>
+          <button type="button" class="dsv2-dialog__close" data-action="cancel" aria-label="إغلاق النافذة">
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+              <path d="m5.25 5.25 9.5 9.5m0-9.5-9.5 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        </header>
+        <div class="dsv2-dialog__body">
+          <div class="dsv2-confirm__content">
+            <span class="dsv2-confirm__icon" data-tone="danger" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 7.5v5.25m0 3.75h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+            </span>
+          </div>
+        </div>
+        <footer class="dsv2-dialog__foot">
+          <button type="button" class="dsv2-btn dsv2-btn--danger" data-action="confirm"></button>
+          <button type="button" class="dsv2-btn dsv2-btn--secondary" data-action="cancel"></button>
+        </footer>
+      </section>
+    </div>
   `;
 
-  const titleNode = overlay.querySelector("strong");
-  const messageNode = overlay.querySelector("p");
+  const titleNode = overlay.querySelector("#employee-confirm-title");
+  const messageNode = overlay.querySelector("#employee-confirm-description");
   const confirmNode = overlay.querySelector("[data-action='confirm']");
+  const cancelNode = overlay.querySelector(".dsv2-dialog__foot [data-action='cancel']");
   if (titleNode) titleNode.textContent = copy.title;
   if (messageNode) messageNode.textContent = copy.description;
   if (confirmNode) confirmNode.textContent = copy.confirmLabel;
+  if (cancelNode) cancelNode.textContent = copy.cancelLabel;
 
   overlay.addEventListener("click", (event) => {
     const actionTarget = (event.target as HTMLElement | null)?.closest?.("[data-action]") as HTMLElement | null;
@@ -120,6 +143,7 @@ function buildOverlay(message: string) {
   overlayEl = overlay;
 
   window.setTimeout(() => {
+    (overlay.querySelector("section") as HTMLElement | null)?.focus();
     (overlay.querySelector("[data-action='confirm']") as HTMLButtonElement | null)?.focus();
   }, 0);
 }
