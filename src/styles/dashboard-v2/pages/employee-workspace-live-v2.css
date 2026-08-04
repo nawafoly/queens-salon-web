@@ -1,4 +1,4 @@
-/* Live Dashboard V2 employee components only. No legacy emp-* overrides. */
+/* Live Dashboard V2 employee components only. No broad legacy overrides. */
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -146,6 +146,116 @@
   background: var(--dsv2-color-gold, #d9a50b);
 }
 
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-section {
+  display: grid;
+  gap: var(--dsv2-section-gap, 24px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--dsv2-section-head-gap, 16px);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-eyebrow,
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-label {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--dsv2-ew-gold-soft);
+  color: var(--dsv2-color-gold, #d9a50b);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-header h3,
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-content strong {
+  margin: 0;
+  color: var(--dsv2-color-black, #05080d);
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-header h3 {
+  margin-block-start: 8px;
+  font-size: clamp(1.25rem, 1.8vw, 1.65rem);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-header p,
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-content p {
+  margin: 7px 0 0;
+  color: var(--dsv2-ew-muted);
+  line-height: 1.75;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-status {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--dsv2-ew-success-soft);
+  color: var(--dsv2-color-green, #177348);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: var(--dsv2-grid-gap, 16px);
+  align-items: center;
+  min-width: 0;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--dsv2-color-gold, #d9a50b) 18%, transparent), transparent 32%),
+    linear-gradient(145deg, #fff, var(--dsv2-ew-soft));
+  box-shadow: var(--dsv2-shadow-card, 0 12px 30px rgb(5 8 13 / 8%));
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 64px;
+  block-size: 64px;
+  border-radius: 18px;
+  background: var(--dsv2-color-black, #05080d);
+  color: var(--dsv2-color-gold, #d9a50b);
+  font-size: 1.35rem;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-content {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-content strong {
+  font-size: 1.2rem;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-points span {
+  padding: 8px 11px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--dsv2-color-black, #05080d);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-linked-module-action {
+  justify-self: end;
+}
+
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item {
   position: relative;
   min-height: 170px;
@@ -185,8 +295,13 @@
   }
 
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-panel,
-  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module,
+  .dashboard-v2 .dsv2-employee-workspace .emp-linked-module-card {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .emp-linked-module-action {
+    justify-self: stretch;
   }
 }
 
@@ -197,7 +312,8 @@
 
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-controls,
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-actions,
-  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-actions {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-actions,
+  .dashboard-v2 .dsv2-employee-workspace .emp-linked-module-header {
     display: grid;
     grid-template-columns: 1fr;
   }
