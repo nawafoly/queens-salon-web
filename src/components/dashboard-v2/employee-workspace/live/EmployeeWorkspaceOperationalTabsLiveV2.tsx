@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import {
+  DashboardDrawerV2,
   DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
@@ -26,6 +29,10 @@ function formatNumber(value: unknown) {
 function safeMonthKey(value: string) {
   const clean = cleanText(value);
   return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
+}
+
+function getLocalDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 const AR_WEEKDAY_SHORT = ["ح", "ن", "ث", "ر", "خ", "ج", "س"];
@@ -66,6 +73,25 @@ function buildMonthOptions(monthKey: string) {
     value,
     label: formatMonthLabel(value),
   }));
+}
+
+function daysInMonthKey(monthKey: string) {
+  const normalized = safeMonthKey(monthKey);
+  return new Date(
+    Number(normalized.slice(0, 4)),
+    Number(normalized.slice(5, 7)),
+    0
+  ).getDate();
+}
+
+function coerceDateToMonth(dateKey: string, monthKey: string) {
+  const normalized = safeMonthKey(monthKey);
+  const cleanDate = cleanText(dateKey);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(cleanDate)
+    ? Number(cleanDate.slice(8, 10))
+    : 1;
+  const safeDay = Math.min(Math.max(day || 1, 1), daysInMonthKey(normalized));
+  return `${normalized}-${String(safeDay).padStart(2, "0")}`;
 }
 
 type AttendanceCalendarDayLiveV2 = {
@@ -121,6 +147,11 @@ function attendanceStatusTone(status: string): "default" | "gold" | "success" | 
   return "default";
 }
 
+function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" | "danger" {
+  const tone = attendanceStatusTone(status);
+  return tone === "default" ? "neutral" : tone;
+}
+
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
   if (status === "غياب") return "يحتاج مراجعة";
   if (status === "تأخير") return `تأخير ${formatNumber(row?.lateMinutes || 0)} دقيقة`;
@@ -139,7 +170,7 @@ function buildAttendanceCalendar(
   const year = Number(normalized.slice(0, 4));
   const month = Number(normalized.slice(5, 7));
   const daysInMonth = new Date(year, month, 0).getDate();
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = getLocalDateKey();
   const leaveDates = new Set(approvedLeaveDateKeys.map(cleanText).filter(Boolean));
   const byDate = new Map<string, EmployeeAttendanceRowLiveV2>();
   rows.forEach((row) => {
@@ -369,6 +400,11 @@ export type EmployeeAttendanceRowLiveV2 = {
   checkOutAtClient?: string;
   lateMinutes?: number;
   earlyLeaveMinutes?: number;
+  shiftName?: string;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  lateGraceMinutes?: number;
+  earlyLeaveGraceMinutes?: number;
   notes?: string;
   recordCount?: number;
   workZoneName?: string;
@@ -415,19 +451,27 @@ export function EmployeeAttendanceTabLiveV2({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: EmployeeAttendanceTabLiveV2Props) {
+  const [detailDrawerDate, setDetailDrawerDate] = useState("");
   const normalizedMonth = safeMonthKey(monthKey);
+  const todayKey = getLocalDateKey();
+  const activeSelectedDate = cleanText(selectedDate).startsWith(normalizedMonth)
+    ? selectedDate
+    : coerceDateToMonth(selectedDate, normalizedMonth);
   const normalizedRows = rows.filter((row) => cleanText(row.date).startsWith(normalizedMonth));
   const monthLeaveDates = approvedLeaveDateKeys.filter((date) => cleanText(date).startsWith(normalizedMonth));
   const calendarDays = buildAttendanceCalendar(normalizedMonth, normalizedRows, monthLeaveDates);
-  const selectedDay = calendarDays.find((day) => day.date === selectedDate) || null;
+  const selectedDay = calendarDays.find((day) => day.date === activeSelectedDate) || null;
   const selectedRow = selectedDay?.row || null;
   const selectedStatus = selectedDay?.status && selectedDay.status !== "—"
     ? selectedDay.status
     : selectedRow
       ? attendanceRowStatus(selectedRow)
       : "لا يوجد";
-  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(selectedDate);
+  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate);
   const selectedHasPunch = Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient);
+  const selectedShiftWindow = selectedRow?.scheduledStartTime || selectedRow?.scheduledEndTime
+    ? `${selectedRow?.scheduledStartTime || "-"} - ${selectedRow?.scheduledEndTime || "-"}`
+    : "";
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة").length;
@@ -452,7 +496,39 @@ export function EmployeeAttendanceTabLiveV2({
       ? "تعذر التحميل"
       : viewState === "empty"
         ? "لا توجد سجلات"
-        : "بيانات محملة";
+      : "بيانات محملة";
+  const drawerDate = cleanText(detailDrawerDate) || activeSelectedDate;
+  const drawerDay = calendarDays.find((day) => day.date === drawerDate) || null;
+  const drawerRow = drawerDay?.row || null;
+  const drawerStatus = drawerDay?.status && drawerDay.status !== "—"
+    ? drawerDay.status
+    : drawerRow
+      ? attendanceRowStatus(drawerRow)
+      : "لا يوجد";
+  const drawerShiftWindow = drawerRow?.scheduledStartTime || drawerRow?.scheduledEndTime
+    ? `${drawerRow?.scheduledStartTime || "-"} - ${drawerRow?.scheduledEndTime || "-"}`
+    : "";
+  const handleMonthChange = (nextMonthKey: string) => {
+    const normalizedNextMonth = safeMonthKey(nextMonthKey);
+    onMonthChange(normalizedNextMonth);
+    onSelectedDateChange(coerceDateToMonth(activeSelectedDate, normalizedNextMonth));
+  };
+  const handleSelectedDateChange = (nextDate: string) => {
+    const cleanDate = cleanText(nextDate);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDate) && !cleanDate.startsWith(normalizedMonth)) {
+      onMonthChange(cleanDate.slice(0, 7));
+    }
+    onSelectedDateChange(cleanDate);
+  };
+  const openDayDetails = (nextDate: string) => {
+    const cleanDate = cleanText(nextDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return;
+    handleSelectedDateChange(cleanDate);
+    setDetailDrawerDate(cleanDate);
+  };
+  const goToToday = () => handleSelectedDateChange(todayKey);
+  const openTodayDetails = () => openDayDetails(todayKey);
+  const closeDetailDrawer = () => setDetailDrawerDate("");
 
   return (
     <div className="dsv2-ew-tab-panel">
@@ -489,16 +565,16 @@ export function EmployeeAttendanceTabLiveV2({
               value={normalizedMonth}
               disabled={readOnly || loading}
               options={buildMonthOptions(normalizedMonth)}
-              onChange={onMonthChange}
+              onChange={handleMonthChange}
             />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-attendance-date" label="اليوم">
             <DashboardDatePickerV2
               id="employee-live-v2-attendance-date"
-              value={selectedDate}
+              value={activeSelectedDate}
               disabled={readOnly || loading}
               clearable
-              onChange={onSelectedDateChange}
+              onChange={handleSelectedDateChange}
             />
           </DashboardFieldV2>
         </div>
@@ -534,7 +610,12 @@ export function EmployeeAttendanceTabLiveV2({
             <WorkspaceCardV2
               title={`تقويم ${formatMonthLabel(normalizedMonth)}`}
               description="اضغطي على أي يوم مسجل لفتح تفاصيله."
-              actions={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>}
+              actions={
+                <div className="dsv2-cluster">
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={goToToday} onDoubleClick={openTodayDetails}>اليوم</button>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>
+                </div>
+              }
               className="dsv2-ew-attendance-calendar-card"
             >
               <div className="dsv2-ew-calendar-head" aria-hidden="true">
@@ -547,8 +628,10 @@ export function EmployeeAttendanceTabLiveV2({
                     type="button"
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
-                    data-selected={selectedDate === day.date ? "true" : "false"}
-                    onClick={() => onSelectedDateChange(day.date)}
+                    data-selected={activeSelectedDate === day.date ? "true" : "false"}
+                    data-today={todayKey === day.date ? "true" : "false"}
+                    onClick={() => handleSelectedDateChange(day.date)}
+                    onDoubleClick={() => openDayDetails(day.date)}
                   >
                     <strong>{day.dayNumber}</strong>
                     <span>{day.status === "—" ? "-" : day.status}</span>
@@ -560,7 +643,7 @@ export function EmployeeAttendanceTabLiveV2({
 
             <WorkspaceCardV2
               title="تفاصيل اليوم المحدد"
-              description={formatAttendanceDate(selectedDate)}
+              description={formatAttendanceDate(activeSelectedDate)}
               className="dsv2-ew-attendance-detail-card"
             >
               <div className="dsv2-ew-day-detail">
@@ -583,10 +666,13 @@ export function EmployeeAttendanceTabLiveV2({
                   <div>
                     <dt>الشفت الفعلي</dt>
                     <dd>
-                      {selectedHasPunch
-                        ? `${formatAttendanceTime(selectedRow?.checkInAtClient) || "-"} - ${formatAttendanceTime(selectedRow?.checkOutAtClient) || "-"}`
-                        : "-"}
+                      {selectedShiftWindow || "-"}
+                      {selectedRow?.shiftName ? ` · ${selectedRow.shiftName}` : ""}
                     </dd>
+                  </div>
+                  <div>
+                    <dt>سماحية التأخير</dt>
+                    <dd>{Number(selectedRow?.lateGraceMinutes || 0) ? `${formatNumber(selectedRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                   </div>
                   <div>
                     <dt>الموقع</dt>
@@ -603,21 +689,21 @@ export function EmployeeAttendanceTabLiveV2({
                 </dl>
 
                 <div className="dsv2-ew-action-grid">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={loading || !selectedDate} onClick={onReload}>
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={loading || !activeSelectedDate} onClick={onReload}>
                     مراجعة اليوم
                   </button>
-                  <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !selectedDate} onClick={() => selectedDate && onEditPunch(selectedDate)}>
+                  <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !activeSelectedDate} onClick={() => activeSelectedDate && onEditPunch(activeSelectedDate)}>
                     تعديل البصمة
                   </button>
                   <button type="button" className="dsv2-btn dsv2-btn--danger" disabled={readOnly || !canDelete || !selectedRow?.date} onClick={() => selectedRow?.date && onDeletePunch(selectedRow.date)}>
                     حذف البصمة
                   </button>
                   {selectedHasApprovedLeave ? (
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !selectedDate} onClick={() => selectedDate && onCancelLeave?.(selectedDate)}>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !activeSelectedDate} onClick={() => activeSelectedDate && onCancelLeave?.(activeSelectedDate)}>
                       إلغاء الإجازة
                     </button>
                   ) : (
-                    <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !selectedDate || selectedHasPunch} onClick={() => selectedDate && onCreateEmergencyLeave?.(selectedDate)}>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
                       إجازة طارئة
                     </button>
                   )}
@@ -625,6 +711,78 @@ export function EmployeeAttendanceTabLiveV2({
               </div>
             </WorkspaceCardV2>
           </div>
+
+          <DashboardDrawerV2
+            open={Boolean(detailDrawerDate)}
+            onClose={closeDetailDrawer}
+            title="تفاصيل يوم الحضور"
+            description="عرض البصمات والشفت والموقع والمراجعات."
+            eyebrow={formatAttendanceDate(drawerDate)}
+            size="md"
+            side="end"
+            tone={attendanceStatusTone(drawerStatus)}
+            footer={
+              <>
+                <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !drawerDate} onClick={() => drawerDate && onEditPunch(drawerDate)}>
+                  تعديل البصمة
+                </button>
+                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeDetailDrawer}>
+                  إغلاق
+                </button>
+              </>
+            }
+          >
+            <div className="dsv2-ew-drawer-content">
+              <div className="dsv2-ew-metrics">
+                <WorkspaceMetricV2 label="الدخول" value={formatAttendanceTime(drawerRow?.checkInAtClient) || "-"} tone={attendanceSurfaceTone(drawerStatus)} />
+                <WorkspaceMetricV2 label="الخروج" value={formatAttendanceTime(drawerRow?.checkOutAtClient) || "-"} tone={drawerRow?.checkOutAtClient ? "success" : "neutral"} />
+              </div>
+
+              <WorkspaceTableV2
+                headers={["الحدث", "الوقت", "المصدر", "الحالة"]}
+                rows={[
+                  ["دخول", formatAttendanceTime(drawerRow?.checkInAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="in-status" tone={attendanceStatusTone(drawerStatus)}>{drawerStatus}</WorkspaceStatusBadgeV2>],
+                  ["خروج", formatAttendanceTime(drawerRow?.checkOutAtClient) || "-", cleanText(drawerRow?.workZoneName) || "-", <WorkspaceStatusBadgeV2 key="out-status" tone={drawerRow?.checkOutAtClient ? "success" : "default"}>{drawerRow?.checkOutAtClient ? "مكتمل" : "غير مسجل"}</WorkspaceStatusBadgeV2>],
+                ]}
+              />
+
+              <dl className="dsv2-ew-day-fields">
+                <div>
+                  <dt>الشفت الفعلي</dt>
+                  <dd>
+                    {drawerShiftWindow || "-"}
+                    {drawerRow?.shiftName ? ` · ${drawerRow.shiftName}` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt>سماحية التأخير</dt>
+                  <dd>{Number(drawerRow?.lateGraceMinutes || 0) ? `${formatNumber(drawerRow?.lateGraceMinutes)} د` : "0 د"}</dd>
+                </div>
+                <div>
+                  <dt>سماحية الخروج المبكر</dt>
+                  <dd>{Number(drawerRow?.earlyLeaveGraceMinutes || 0) ? `${formatNumber(drawerRow?.earlyLeaveGraceMinutes)} د` : "0 د"}</dd>
+                </div>
+                <div>
+                  <dt>الموقع</dt>
+                  <dd>{cleanText(drawerRow?.workZoneName) || "-"}</dd>
+                </div>
+                <div>
+                  <dt>السجلات</dt>
+                  <dd>{drawerRow?.recordCount ? `${formatNumber(drawerRow.recordCount)} بصمة` : "-"}</dd>
+                </div>
+                <div>
+                  <dt>الملاحظات</dt>
+                  <dd>{cleanText(drawerRow?.notes) || "-"}</dd>
+                </div>
+              </dl>
+
+              <WorkspaceNoticeV2
+                title="ملاحظة المراجعة"
+                description={attendanceReviewText(drawerStatus, drawerRow)}
+                tone={attendanceSurfaceTone(drawerStatus)}
+              />
+            </div>
+          </DashboardDrawerV2>
 
           <WorkspaceCardV2 title="سجل الشهر" description="السجلات المحملة للموظفة في الشهر الحالي.">
             <WorkspaceTableV2

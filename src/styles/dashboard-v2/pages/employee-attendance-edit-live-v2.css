@@ -8,9 +8,9 @@
   z-index: 2147482500;
   transform: translate(-50%, -50%);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
   inline-size: min(100%, 680px);
-  max-block-size: min(88dvh, 920px);
+  max-block-size: min(82dvh, 680px);
   overflow: hidden;
   margin: 0;
   padding: 0;
@@ -110,6 +110,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--dsv2-space-5, 20px);
   min-block-size: 0;
+  max-block-size: min(52dvh, 430px);
   overflow: auto;
   padding: var(--dsv2-space-6, 24px);
   background: var(--dsv2-surface, #fff);
@@ -153,7 +154,7 @@
 }
 
 .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note .dash-input {
-  min-block-size: 108px;
+  min-block-size: 84px;
   padding-block: 14px;
 }
 

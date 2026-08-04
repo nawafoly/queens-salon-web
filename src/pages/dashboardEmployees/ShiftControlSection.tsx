@@ -509,7 +509,14 @@ export default function ShiftControlSection({
         <div className="dsv2-grid dsv2-grid--metrics">
           <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} tone={source === "exception" ? "gold" : source === "assignment" ? "success" : "neutral"} />
           <WorkspaceMetricV2 label="الوقت" value={formatWindow(resolvedShift)} note={cleanText(resolvedShift?.shiftName || resolvedShift?.shift_name)} tone="dark" />
+          <WorkspaceMetricV2 label="سماحية التأخير" value={`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} د`} note="لا تحتسب على الموظفة ولا تؤثر على الراتب" tone="gold" />
+          <WorkspaceMetricV2 label="سماحية الخروج المبكر" value={`${readNumber(resolvedShift?.earlyLeaveGraceMinutes ?? resolvedShift?.early_leave_grace_minutes)} د`} note="تخصم فقط بعد انتهاء السماحية" tone="gold" />
         </div>
+        <WorkspaceNoticeV2
+          title="ربط الحضور والراتب بالشفت"
+          description="أي حضور داخل سماحية التأخير في قالب الشفت لا يسجل كتأخير فعلي، ولا يدخل في أثر الراتب. يبدأ الاحتساب بعد انتهاء السماحية فقط."
+          tone="gold"
+        />
       </WorkspaceCardV2>
 
       <WorkspaceCardV2 title="معاينة أثر التعديل" description="افحص التداخلات وفترات الرواتب المقفلة قبل الحفظ.">

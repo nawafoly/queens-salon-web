@@ -64,11 +64,38 @@
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
   min-height: 92px;
+  border-radius: 8px;
+  box-shadow: inset 0 -3px 0 transparent;
 }
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-selected="true"] {
   border-color: var(--dsv2-color-black, #05080d);
   box-shadow: inset 0 0 0 2px var(--dsv2-color-black, #05080d);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-today="true"] {
+  outline: 2px solid var(--dsv2-color-black, #05080d);
+  outline-offset: -4px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="حضور"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-green, #177348) 22%, #d7dce3);
+  background: var(--dsv2-ew-success-soft, #edf8f2);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-green, #177348);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="تأخير"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="خروج مبكر"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="إجازة"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-gold, #d9a50b) 30%, #d7dce3);
+  background: var(--dsv2-ew-gold-soft, #fff8df);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-gold, #d9a50b);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="غياب"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-burgundy, #59041b) 28%, #d7dce3);
+  background: var(--dsv2-ew-danger-soft, #fff0f3);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-burgundy, #59041b);
 }
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day small {
@@ -96,6 +123,63 @@
   line-height: 1;
 }
 
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts {
+  align-items: stretch;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, 16px);
+  align-items: start;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, 16px);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-field-gap, 16px);
+  align-items: end;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-field,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-input,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-select-v2,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-date-v2 {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-card__body {
+  gap: var(--dsv2-field-gap, 16px);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-table-wrap {
+  overflow-x: auto;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster .dsv2-btn {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 767px) {
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar[data-dirty="true"] {
     display: grid;
@@ -104,4 +188,12 @@
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
     min-height: 70px;
   }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
 }

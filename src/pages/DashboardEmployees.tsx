@@ -823,7 +823,28 @@ export default function DashboardEmployees() {
         listEmployeeLeaveRequests(500),
       ]);
       if (requestId !== attendanceLoadRequestRef.current) return;
-      setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
+      const shiftRows = await Promise.all(
+        rows.map(async (row) => {
+          const date = cleanText((row as any).date || (row as any).dateKey || (row as any).dayKey);
+          if (!date) return row;
+          try {
+            const resolvedShift = await CoreHrService.resolveEmployeeShift(employeeId, date);
+            return {
+              ...row,
+              resolvedShift,
+              shiftName: cleanText(resolvedShift.shiftName || resolvedShift.shift_name),
+              shiftStartTime: cleanText(resolvedShift.startTime || resolvedShift.start_time || resolvedShift.templateStartTime || resolvedShift.template_start_time),
+              shiftEndTime: cleanText(resolvedShift.endTime || resolvedShift.end_time || resolvedShift.templateEndTime || resolvedShift.template_end_time),
+              lateGraceMinutes: Number(resolvedShift.lateGraceMinutes ?? resolvedShift.late_grace_minutes ?? (row as any).lateGraceMinutes ?? 0),
+              earlyLeaveGraceMinutes: Number(resolvedShift.earlyLeaveGraceMinutes ?? resolvedShift.early_leave_grace_minutes ?? (row as any).earlyLeaveGraceMinutes ?? 0),
+            } as StaffAttendanceWithId;
+          } catch (shiftError) {
+            console.warn("employee attendance shift resolve failed", { employeeId, date, shiftError });
+            return row;
+          }
+        })
+      );
+      setEmployeeAttendanceRows(shiftRows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
       setSelectedEmployeeLeaveRequests(
         leaveRows.filter((request) =>
           leaveRequestMatchesProfile(
