@@ -1,5 +1,11 @@
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClock } from "@fortawesome/free-solid-svg-icons";
+import {
+  WorkspaceCardV2,
+  WorkspaceMetricV2,
+  WorkspaceNoticeV2,
+  WorkspaceStatusBadgeV2,
+  WorkspaceTableV2,
+  WorkspaceTabHeaderV2,
+} from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 
 type ScheduleSummarySectionProps = {
   isVisible: boolean;
@@ -16,12 +22,23 @@ function formatUpdatedTime(nowTick: number): string {
 
 function formatWindowLabel(label: string): string {
   const normalized = String(label || "").trim();
+  return normalized ? normalized.replace(/\s-\s/g, " → ") : "مغلق اليوم";
+}
 
-  if (!normalized) {
-    return "مغلق اليوم";
-  }
+function cleanText(value: unknown): string {
+  return String(value || "").trim();
+}
 
-  return normalized.replace(/\s-\s/g, " → ");
+function getStatus(summary: any) {
+  const isClosed = cleanText(summary?.operationalState).toLowerCase() === "closed";
+  return {
+    isClosed,
+    label: isClosed ? "مغلق اليوم" : "متاح اليوم",
+  };
+}
+
+function rowKey(prefix: string, row: any, index: number) {
+  return cleanText(row?.id) || `${prefix}_${index}`;
 }
 
 export default function ScheduleSummarySection({
@@ -29,13 +46,9 @@ export default function ScheduleSummarySection({
   nowTick,
   summary,
 }: ScheduleSummarySectionProps) {
-  if (!summary || !isVisible) {
-    return null;
-  }
+  if (!summary || !isVisible) return null;
 
-  const savedOverrideRows = Array.isArray(
-    summary.savedOverrideRows
-  )
+  const savedOverrideRows = Array.isArray(summary.savedOverrideRows)
     ? summary.savedOverrideRows.filter(Boolean)
     : [];
 
@@ -43,433 +56,123 @@ export default function ScheduleSummarySection({
     ? summary.detailRows.filter(Boolean)
     : [];
 
-  const overrideTimelineSummary = String(
-    summary.overrideTimelineSummary || ""
-  ).trim();
-
-  const overrideTimelineFallback = String(
-    summary.overrideTimelineFallback || ""
-  ).trim();
-
+  const overrideTimelineSummary = cleanText(summary.overrideTimelineSummary);
+  const overrideTimelineFallback = cleanText(summary.overrideTimelineFallback);
   const upcomingReturn = summary?.upcomingReturn || null;
-
-  const upcomingReturnWindow =
-    upcomingReturn?.windowLabel
-      ? formatWindowLabel(
-          String(upcomingReturn.windowLabel)
-        )
-      : "";
-
-  const finalWindowLabel = formatWindowLabel(
-    summary.finalWindowLabel || "مغلق اليوم"
-  );
-
-  const isClosed =
-    String(summary.operationalState || "")
-      .trim()
-      .toLowerCase() === "closed";
-
-  const statusLabel = isClosed
-    ? "مغلق اليوم"
-    : "متاح اليوم";
-
+  const status = getStatus(summary);
+  const finalWindowLabel = formatWindowLabel(summary.finalWindowLabel || "مغلق اليوم");
   const firstOverrideTitle =
-    savedOverrideRows[0]?.title ||
-    savedOverrideRows[0]?.badge ||
-    "لا توجد استثناءات";
+    cleanText(savedOverrideRows[0]?.title) || cleanText(savedOverrideRows[0]?.badge) || "لا توجد استثناءات";
 
   return (
-    <section className="emp-modal-live-summary emp-schedule-card emp-schedule-card--refined">
-      <header className="emp-schedule-hero">
-        <div className="emp-schedule-hero__copy">
-          <span>WORK SCHEDULE</span>
+    <div className="dsv2-ew-tab-panel dsv2-ew-schedule-summary">
+      <WorkspaceTabHeaderV2
+        title="ساعات العمل الفعلية اليوم"
+        description="ملخص مباشر بعد تطبيق الجدول الأسبوعي والاستثناءات المحفوظة."
+        badge={
+          <WorkspaceStatusBadgeV2 tone={status.isClosed ? "danger" : "success"}>
+            {status.label}
+          </WorkspaceStatusBadgeV2>
+        }
+      />
 
-          <h4>ساعات العمل الفعلية اليوم</h4>
-
-          <p>
-            ملخص دوام الموظفة بعد تطبيق الجدول الأسبوعي
-            والاستثناءات المحفوظة.
-          </p>
-        </div>
-
-        <span
-          className={`emp-schedule-state-badge ${
-            isClosed ? "is-closed" : "is-open"
-          }`}
-        >
-          {statusLabel}
-        </span>
-      </header>
-
-      <div className="emp-schedule-kpi-grid">
-        <article className="emp-schedule-kpi">
-          <span className="emp-schedule-kpi__label">
-            حالة اليوم
-          </span>
-
-          <strong className="emp-schedule-kpi__value">
-            {statusLabel}
-          </strong>
-
-          <small className="emp-schedule-kpi__note">
-            {summary?.weeklyOffToday &&
-            summary?.weeklyOffTodayLabel
-              ? String(summary.weeklyOffTodayLabel)
-              : "حسب الجدول الفعلي"}
-          </small>
-        </article>
-
-        <article className="emp-schedule-kpi emp-schedule-kpi--window">
-          <span className="emp-schedule-kpi__label">
-            نافذة العمل
-          </span>
-
-          <strong className="emp-schedule-kpi__value">
-            {finalWindowLabel}
-          </strong>
-
-          <small className="emp-schedule-kpi__note">
-            بعد تطبيق جميع الاستثناءات
-          </small>
-        </article>
-
-        <article className="emp-schedule-kpi">
-          <span className="emp-schedule-kpi__label">
-            الاستثناءات
-          </span>
-
-          <strong className="emp-schedule-kpi__value">
-            {savedOverrideRows.length}
-          </strong>
-
-          <small className="emp-schedule-kpi__note">
-            {firstOverrideTitle}
-          </small>
-        </article>
-
-        <article className="emp-schedule-kpi">
-          <span className="emp-schedule-kpi__label">
-            آخر تحديث
-          </span>
-
-          <strong className="emp-schedule-kpi__value emp-schedule-kpi__value--time">
-            <FontAwesomeIcon icon={faClock} />
-            {formatUpdatedTime(nowTick)}
-          </strong>
-
-          <small className="emp-schedule-kpi__note">
-            تحديث تلقائي للحالة
-          </small>
-        </article>
+      <div className="dsv2-ew-metrics">
+        <WorkspaceMetricV2
+          label="حالة اليوم"
+          value={status.label}
+          tone={status.isClosed ? "danger" : "success"}
+          hint={summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? String(summary.weeklyOffTodayLabel) : "حسب الجدول الفعلي"}
+        />
+        <WorkspaceMetricV2
+          label="نافذة العمل"
+          value={finalWindowLabel}
+          tone={status.isClosed ? "gold" : "success"}
+          hint="بعد تطبيق جميع الاستثناءات"
+        />
+        <WorkspaceMetricV2
+          label="الاستثناءات"
+          value={savedOverrideRows.length}
+          hint={firstOverrideTitle}
+        />
+        <WorkspaceMetricV2
+          label="آخر تحديث"
+          value={formatUpdatedTime(nowTick)}
+          hint="تحديث تلقائي للحالة"
+        />
       </div>
 
-      {summary?.weeklyOffToday &&
-      summary?.weeklyOffTodayLabel ? (
-        <div className="emp-schedule-inline-note">
-          <strong>سبب الإغلاق</strong>
-          <span>
-            {String(summary.weeklyOffTodayLabel)}
-          </span>
-        </div>
+      {summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? (
+        <WorkspaceNoticeV2
+          title="سبب الإغلاق"
+          description={String(summary.weeklyOffTodayLabel)}
+          tone="gold"
+        />
       ) : null}
 
       {upcomingReturn ? (
-        <section className="emp-schedule-return-compact">
-          <div className="emp-schedule-return-compact__head">
-            <div>
-              <span>العودة القادمة</span>
-              <strong>
-                {upcomingReturnWindow ||
-                  "سيُحدد لاحقًا"}
-              </strong>
-            </div>
-
-            <span className="emp-schedule-return-compact__badge">
-              قادم
-            </span>
-          </div>
-
-          <div className="emp-schedule-return-compact__dates">
-            <div>
-              <span>الميلادي</span>
-              <strong>
-                {upcomingReturn.gregorianDate ||
-                  "غير محدد"}
-              </strong>
-            </div>
-
-            <div>
-              <span>الهجري</span>
-              <strong>
-                {upcomingReturn.hijriDate || "-"}
-              </strong>
-            </div>
-          </div>
-
-          <div className="emp-schedule-return-compact__meta">
-            <div>
-              <span>المصدر</span>
-              <strong>
-                {upcomingReturn.sourceLabel || "-"}
-              </strong>
-            </div>
-
-            <div>
-              <span>إتاحة الحجز</span>
-              <strong>
-                {upcomingReturn.availabilityLabel ||
-                  "-"}
-              </strong>
-            </div>
-
+        <WorkspaceCardV2 title="العودة القادمة" description="أقرب نافذة عودة متوقعة حسب الجدول والاستثناءات.">
+          <div className="dsv2-ew-metrics dsv2-ew-metrics--compact">
+            <WorkspaceMetricV2
+              label="نافذة العودة"
+              value={upcomingReturn?.windowLabel ? formatWindowLabel(String(upcomingReturn.windowLabel)) : "سيُحدد لاحقًا"}
+              tone="success"
+            />
+            <WorkspaceMetricV2 label="الميلادي" value={upcomingReturn.gregorianDate || "غير محدد"} />
+            <WorkspaceMetricV2 label="الهجري" value={upcomingReturn.hijriDate || "-"} />
+            <WorkspaceMetricV2 label="المصدر" value={upcomingReturn.sourceLabel || "-"} />
+            <WorkspaceMetricV2 label="إتاحة الحجز" value={upcomingReturn.availabilityLabel || "-"} />
             {upcomingReturn.leaveEndsLabel ? (
-              <div>
-                <span>نهاية الحالة</span>
-                <strong>
-                  {upcomingReturn.leaveEndsLabel}
-                </strong>
-              </div>
-            ) : null}
-
-            {upcomingReturn.note ? (
-              <div className="is-wide">
-                <span>ملاحظة</span>
-                <strong>
-                  {upcomingReturn.note}
-                </strong>
-              </div>
+              <WorkspaceMetricV2 label="نهاية الحالة" value={upcomingReturn.leaveEndsLabel} tone="gold" />
             ) : null}
           </div>
-        </section>
+          {upcomingReturn.note ? (
+            <WorkspaceNoticeV2 title="ملاحظة" description={String(upcomingReturn.note)} tone="neutral" />
+          ) : null}
+        </WorkspaceCardV2>
       ) : null}
 
-      <details className="emp-schedule-disclosure">
-        <summary>
-          <div className="emp-schedule-disclosure__title">
-            <strong>استثناءات الدوام</strong>
-            <span>
-              عرض الفترات والتواريخ والأسباب المحفوظة
-            </span>
-          </div>
+      <WorkspaceCardV2 title="استثناءات الدوام" description="الفترات والتواريخ والأسباب المحفوظة.">
+        {overrideTimelineSummary ? (
+          <WorkspaceNoticeV2 title="ملخص الاستثناءات" description={overrideTimelineSummary} tone="neutral" />
+        ) : null}
 
-          <span className="emp-schedule-disclosure__count">
-            {savedOverrideRows.length}
-          </span>
-        </summary>
+        <WorkspaceTableV2
+          headers={["الحالة", "العنوان", "الوقت", "الميلادي", "الهجري", "تفاصيل"]}
+          rows={savedOverrideRows.map((row: any, index: number) => [
+            cleanText(row?.badge) || "محفوظ",
+            cleanText(row?.title) || "استثناء محفوظ",
+            formatWindowLabel(cleanText(row?.hoursLabel) || "-"),
+            cleanText(row?.gregorianRange) || "-",
+            cleanText(row?.hijriRange) || "-",
+            [row?.note, row?.appliesToLabel].map(cleanText).filter(Boolean).join(" · ") || "-",
+          ])}
+          emptyText="لا توجد استثناءات دوام محفوظة حاليًا."
+        />
 
-        <div className="emp-schedule-disclosure__body">
-          {overrideTimelineSummary ? (
-            <div className="emp-schedule-disclosure__note">
-              {overrideTimelineSummary}
-            </div>
-          ) : null}
-
-          {savedOverrideRows.length ? (
-            <div className="emp-schedule-exceptions-grid">
-              {savedOverrideRows.map(
-                (row: any, idx: number) => {
-                  const tone = String(
-                    row?.tone || "upcoming"
-                  );
-
-                  const hoursLabel =
-                    formatWindowLabel(
-                      String(row?.hoursLabel || "-")
-                    );
-
-                  const isClosedOverride =
-                    String(
-                      row?.hoursLabel || ""
-                    ).includes("إغلاق");
-
-                  const supportRows = [
-                    row?.note
-                      ? {
-                          label: "السبب",
-                          value: row.note,
-                        }
-                      : null,
-
-                    row?.appliesToLabel
-                      ? {
-                          label: "ينطبق على",
-                          value:
-                            row.appliesToLabel,
-                        }
-                      : null,
-
-                    isClosedOverride
-                      ? {
-                          label: "الحالة",
-                          value:
-                            "مغلق بالكامل خلال الفترة",
-                        }
-                      : null,
-                  ].filter(Boolean) as Array<{
-                    label: string;
-                    value: string;
-                  }>;
-
-                  return (
-                    <article
-                      key={
-                        row?.id ||
-                        `saved_override_${idx}`
-                      }
-                      className={`emp-schedule-exception-card is-${tone}`}
-                    >
-                      <header>
-                        <span>
-                          {row?.badge || "محفوظ"}
-                        </span>
-
-                        <strong>
-                          {row?.title ||
-                            "استثناء محفوظ"}
-                        </strong>
-                      </header>
-
-                      <div className="emp-schedule-exception-card__window">
-                        {hoursLabel}
-                      </div>
-
-                      <div className="emp-schedule-exception-card__dates">
-                        <div>
-                          <span>الميلادي</span>
-                          <strong>
-                            {row?.gregorianRange ||
-                              "-"}
-                          </strong>
-                        </div>
-
-                        <div>
-                          <span>الهجري</span>
-                          <strong>
-                            {row?.hijriRange || "-"}
-                          </strong>
-                        </div>
-                      </div>
-
-                      {supportRows.length ? (
-                        <div className="emp-schedule-exception-card__support">
-                          {supportRows.map(
-                            (
-                              supportRow,
-                              supportIdx
-                            ) => (
-                              <div
-                                key={`saved_override_${idx}_support_${supportIdx}`}
-                              >
-                                <span>
-                                  {
-                                    supportRow.label
-                                  }
-                                </span>
-
-                                <strong>
-                                  {
-                                    supportRow.value
-                                  }
-                                </strong>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                }
-              )}
-            </div>
-          ) : (
-            <div className="emp-schedule-disclosure__empty">
-              لا توجد استثناءات دوام محفوظة حاليًا.
-            </div>
-          )}
-
-          {overrideTimelineFallback ? (
-            <div className="emp-schedule-disclosure__end">
-              {overrideTimelineFallback}
-            </div>
-          ) : null}
-        </div>
-      </details>
+        {overrideTimelineFallback ? (
+          <WorkspaceNoticeV2 title="ملاحظة الجدول" description={overrideTimelineFallback} tone="gold" />
+        ) : null}
+      </WorkspaceCardV2>
 
       {details.length ? (
-        <details className="emp-schedule-disclosure emp-schedule-disclosure--technical">
-          <summary>
-            <div className="emp-schedule-disclosure__title">
-              <strong>تفاصيل احتساب الدوام</strong>
-              <span>
-                المصدر والجدول الأسبوعي والنتيجة النهائية
-              </span>
-            </div>
-
-            <span className="emp-schedule-disclosure__count">
-              {details.length}
-            </span>
-          </summary>
-
-          <div className="emp-schedule-disclosure__body">
-            <div className="emp-schedule-data-grid">
-              {details.map(
-                (row: any, idx: number) => {
-                  const extraLines =
-                    Array.isArray(row?.details)
-                      ? row.details
-                          .map((line: any) =>
-                            String(
-                              line || ""
-                            ).trim()
-                          )
-                          .filter(Boolean)
-                      : [];
-
-                  return (
-                    <article
-                      className="emp-schedule-data-card"
-                      key={`schedule_detail_${idx}`}
-                    >
-                      <span>
-                        {row?.label || "تفصيل"}
-                      </span>
-
-                      <strong>
-                        {formatWindowLabel(
-                          String(
-                            row?.value || "-"
-                          )
-                        )}
-                      </strong>
-
-                      {row?.note ? (
-                        <p>{row.note}</p>
-                      ) : null}
-
-                      {extraLines.length ? (
-                        <div>
-                          {extraLines.map(
-                            (
-                              line: string,
-                              lineIdx: number
-                            ) => (
-                              <small
-                                key={`schedule_detail_${idx}_line_${lineIdx}`}
-                              >
-                                {line}
-                              </small>
-                            )
-                          )}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                }
-              )}
-            </div>
-          </div>
-        </details>
+        <WorkspaceCardV2 title="تفاصيل احتساب الدوام" description="المصدر والجدول الأسبوعي والنتيجة النهائية.">
+          <WorkspaceTableV2
+            headers={["البند", "القيمة", "ملاحظة", "تفاصيل"]}
+            rows={details.map((row: any, index: number) => {
+              const extraLines = Array.isArray(row?.details)
+                ? row.details.map(cleanText).filter(Boolean)
+                : [];
+              return [
+                cleanText(row?.label) || `تفصيل ${index + 1}`,
+                formatWindowLabel(cleanText(row?.value) || "-"),
+                cleanText(row?.note) || "-",
+                extraLines.join(" · ") || "-",
+              ];
+            })}
+            emptyText="لا توجد تفاصيل احتساب إضافية."
+          />
+        </WorkspaceCardV2>
       ) : null}
-    </section>
+    </div>
   );
 }
