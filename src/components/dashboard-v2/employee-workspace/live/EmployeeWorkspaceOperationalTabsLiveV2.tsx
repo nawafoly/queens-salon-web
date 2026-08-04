@@ -391,6 +391,14 @@ export function EmployeeScheduleTabLiveV2({
   );
 }
 
+export type EmployeeAttendanceShiftInfoLiveV2 = {
+  sourceLabel: string;
+  sourceDetail?: string;
+  timeLabel: string;
+  statusLabel: string;
+  tone?: "neutral" | "gold" | "success" | "danger" | "default";
+};
+
 export type EmployeeAttendanceRowLiveV2 = {
   date?: string;
   type?: string;
@@ -401,6 +409,8 @@ export type EmployeeAttendanceRowLiveV2 = {
   lateMinutes?: number;
   earlyLeaveMinutes?: number;
   shiftName?: string;
+  shiftSourceLabel?: string;
+  shiftStatusLabel?: string;
   scheduledStartTime?: string;
   scheduledEndTime?: string;
   lateGraceMinutes?: number;
@@ -418,6 +428,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   monthKey: string;
   selectedDate: string;
   approvedLeaveDateKeys?: string[];
+  effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
   canEdit: boolean;
   canDelete: boolean;
   canCreateEmergencyLeave?: boolean;
@@ -439,6 +450,7 @@ export function EmployeeAttendanceTabLiveV2({
   monthKey,
   selectedDate,
   approvedLeaveDateKeys = [],
+  effectiveShiftInfo = null,
   canEdit,
   canDelete,
   canCreateEmergencyLeave = false,
@@ -469,9 +481,13 @@ export function EmployeeAttendanceTabLiveV2({
       : "لا يوجد";
   const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate);
   const selectedHasPunch = Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient);
+  const effectiveShiftTone: "neutral" | "gold" | "success" | "danger" | "dark" =
+    !effectiveShiftInfo?.tone || effectiveShiftInfo.tone === "default" ? "neutral" : effectiveShiftInfo.tone;
   const selectedShiftWindow = selectedRow?.scheduledStartTime || selectedRow?.scheduledEndTime
     ? `${selectedRow?.scheduledStartTime || "-"} - ${selectedRow?.scheduledEndTime || "-"}`
-    : "";
+    : cleanText(effectiveShiftInfo?.timeLabel);
+  const selectedShiftSource = cleanText(selectedRow?.shiftSourceLabel || effectiveShiftInfo?.sourceLabel);
+  const selectedShiftStatus = cleanText(selectedRow?.shiftStatusLabel || effectiveShiftInfo?.statusLabel);
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
   const leaveDays = calendarDays.filter((day) => day.status === "إجازة").length;
@@ -507,7 +523,9 @@ export function EmployeeAttendanceTabLiveV2({
       : "لا يوجد";
   const drawerShiftWindow = drawerRow?.scheduledStartTime || drawerRow?.scheduledEndTime
     ? `${drawerRow?.scheduledStartTime || "-"} - ${drawerRow?.scheduledEndTime || "-"}`
-    : "";
+    : drawerDate === activeSelectedDate ? cleanText(effectiveShiftInfo?.timeLabel) : "";
+  const drawerShiftSource = cleanText(drawerRow?.shiftSourceLabel || (drawerDate === activeSelectedDate ? effectiveShiftInfo?.sourceLabel : ""));
+  const drawerShiftStatus = cleanText(drawerRow?.shiftStatusLabel || (drawerDate === activeSelectedDate ? effectiveShiftInfo?.statusLabel : ""));
   const handleMonthChange = (nextMonthKey: string) => {
     const normalizedNextMonth = safeMonthKey(nextMonthKey);
     onMonthChange(normalizedNextMonth);
@@ -577,6 +595,17 @@ export function EmployeeAttendanceTabLiveV2({
               onChange={handleSelectedDateChange}
             />
           </DashboardFieldV2>
+        </div>
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="الشفت المطبق اليوم"
+        description="المصدر الفعلي حسب أولوية: إجازة، استثناء، شفت محدد، جدول الموظفة، ثم دوام الصالون."
+      >
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2 label="المصدر" value={effectiveShiftInfo?.sourceLabel || "غير محدد"} note={effectiveShiftInfo?.sourceDetail || "يتم تحديده تلقائياً من البيانات"} tone={effectiveShiftTone} />
+          <WorkspaceMetricV2 label="الوقت الفعلي" value={effectiveShiftInfo?.timeLabel || "-"} tone="dark" />
+          <WorkspaceMetricV2 label="الحالة" value={effectiveShiftInfo?.statusLabel || "غير محدد"} tone={effectiveShiftTone} />
         </div>
       </WorkspaceCardV2>
 
@@ -671,6 +700,14 @@ export function EmployeeAttendanceTabLiveV2({
                     </dd>
                   </div>
                   <div>
+                    <dt>مصدر الشفت</dt>
+                    <dd>{selectedShiftSource || "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>حالة الشفت</dt>
+                    <dd>{selectedShiftStatus || "-"}</dd>
+                  </div>
+                  <div>
                     <dt>سماحية التأخير</dt>
                     <dd>{Number(selectedRow?.lateGraceMinutes || 0) ? `${formatNumber(selectedRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                   </div>
@@ -755,6 +792,14 @@ export function EmployeeAttendanceTabLiveV2({
                   </dd>
                 </div>
                 <div>
+                  <dt>مصدر الشفت</dt>
+                  <dd>{drawerShiftSource || "-"}</dd>
+                </div>
+                <div>
+                  <dt>حالة الشفت</dt>
+                  <dd>{drawerShiftStatus || "-"}</dd>
+                </div>
+                <div>
                   <dt>سماحية التأخير</dt>
                   <dd>{Number(drawerRow?.lateGraceMinutes || 0) ? `${formatNumber(drawerRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                 </div>
@@ -786,7 +831,7 @@ export function EmployeeAttendanceTabLiveV2({
 
           <WorkspaceCardV2 title="سجل الشهر" description="السجلات المحملة للموظفة في الشهر الحالي.">
             <WorkspaceTableV2
-              headers={["اليوم", "الحالة", "الحضور", "الانصراف", "التأخير", "إجراء"]}
+              headers={["اليوم", "الحالة", "الحضور", "الانصراف", "الشفت", "التأخير", "إجراء"]}
               rows={normalizedRows.map((row) => {
                 const date = cleanText(row.date);
                 return [
@@ -794,6 +839,7 @@ export function EmployeeAttendanceTabLiveV2({
                   attendanceRowStatus(row) || "-",
                   formatAttendanceTime(row.checkInAtClient) || "-",
                   formatAttendanceTime(row.checkOutAtClient) || "-",
+                  [cleanText(row.shiftSourceLabel), cleanText(row.scheduledStartTime || row.scheduledEndTime ? `${row.scheduledStartTime || "-"} - ${row.scheduledEndTime || "-"}` : "")].filter(Boolean).join(" · ") || "-",
                   Number(row.lateMinutes || 0) ? `${formatNumber(row.lateMinutes)} د` : "-",
                   <div className="dsv2-cluster" key={`${date}-actions`}>
                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>تعديل</button>

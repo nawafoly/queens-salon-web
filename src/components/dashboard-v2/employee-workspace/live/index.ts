@@ -29,6 +29,7 @@ export type {
   EmployeeScheduleTabLiveV2Props,
   EmployeeAttendanceTabLiveV2Props,
   EmployeeAttendanceRowLiveV2,
+  EmployeeAttendanceShiftInfoLiveV2,
   EmployeePayrollTabLiveV2Props,
   EmployeeLinkedModuleTabLiveV2Props,
 } from "./EmployeeWorkspaceOperationalTabsLiveV2";

@@ -4715,7 +4715,9 @@ export default function DashboardEmployees() {
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
                 schedule={editingStaff}
-                employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
+                salonBusinessHours={((appSettings as any)?.booking || {})?.businessHours || null}
+                employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
+                employeeIds={selectedAttendanceIdentity.allIds}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
@@ -4901,6 +4903,8 @@ export default function DashboardEmployees() {
               <ShiftControlSection
                 isVisible={!!editingStaff && activeTab === "shifts" && canManageSchedule}
                 employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
+                employeeUid={selectedAttendanceIdentity.employeeUid || ""}
+                employeeIds={selectedAttendanceIdentity.allIds}
                 employeeName={name || (editingStaff as any)?.name || ""}
                 canManage={canManageSchedule}
               />
