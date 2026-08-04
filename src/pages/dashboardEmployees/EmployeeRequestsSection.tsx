@@ -12,7 +12,6 @@ import {
 import {
   WorkspaceCardV2,
   WorkspaceNoticeV2,
-  WorkspaceStateShowcaseV2,
   WorkspaceStatusBadgeV2,
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
@@ -29,7 +28,6 @@ type EmployeeRequestsSectionProps = {
 };
 
 type RequestScope = "pending" | "accepted" | "rejected" | "cancelled" | "all";
-type ViewState = "ready" | "loading" | "empty";
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
@@ -157,7 +155,6 @@ export default function EmployeeRequestsSection({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [scope, setScope] = useState<RequestScope>("pending");
-  const [viewState, setViewState] = useState<ViewState>("ready");
   const [adminNote, setAdminNote] = useState("");
 
   const load = useCallback(async () => {
@@ -185,7 +182,6 @@ export default function EmployeeRequestsSection({
   }, [scope, rows]);
 
   const pendingCount = rows.filter((row) => row.status === "pending" || !row.status).length;
-  const visibleState: ViewState = loading ? "loading" : viewState;
 
   const decide = async (request: EmployeeLeaveRequest, nextStatus: "approved" | "rejected" | "cancelled") => {
     if (!canManage) return;
@@ -233,15 +229,15 @@ export default function EmployeeRequestsSection({
     <div className="dsv2-ew-tab-panel dsv2-ew-requests-live">
       <WorkspaceTabHeaderV2
         title="الطلبات"
-        description="مراجعة الطلبات والمرفقات والملاحظات الإدارية وسجل الإجراءات مع حالات الفراغ والتحميل."
-        badge={<WorkspaceStatusBadgeV2 tone={pendingCount ? "gold" : "success"}>{pendingCount ? `${pendingCount} طلبات معلقة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
+        description="مراجعة الطلبات والمرفقات والملاحظات الإدارية وسجل الإجراءات."
+        badge={<WorkspaceStatusBadgeV2 tone={pendingCount ? "gold" : "success"}>{loading ? "جاري التحميل" : pendingCount ? `${pendingCount} طلبات معلقة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
       />
 
       {error ? <WorkspaceNoticeV2 title="تعذر تحميل الطلبات" description={error} tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
       {message ? <WorkspaceNoticeV2 title="تم تحديث الطلب" description={message} tone="success" /> : null}
 
-      <WorkspaceCardV2 title="تصفية الطلبات" description="اختيار الحالة ونموذج العرض لاختبار كل السيناريوهات.">
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+      <WorkspaceCardV2 title="تصفية الطلبات" description="اختيار حالة الطلب للعرض.">
+        <div className="dsv2-ew-form-grid">
           <DashboardFieldV2 id="dsv2-ew-request-scope-live" label="حالة الطلب">
             <DashboardSelectV2
               id="dsv2-ew-request-scope-live"
@@ -256,22 +252,17 @@ export default function EmployeeRequestsSection({
               onChange={(value) => setScope(value as RequestScope)}
             />
           </DashboardFieldV2>
-          <DashboardFieldV2 id="dsv2-ew-request-state-live" label="حالة النموذج">
-            <DashboardSelectV2
-              id="dsv2-ew-request-state-live"
-              value={viewState}
-              options={[
-                { value: "ready", label: "بيانات جاهزة" },
-                { value: "loading", label: "تحميل" },
-                { value: "empty", label: "بدون طلبات" },
-              ]}
-              onChange={(value) => setViewState(value as ViewState)}
-            />
-          </DashboardFieldV2>
         </div>
       </WorkspaceCardV2>
 
-      {visibleState === "ready" ? (
+      {loading ? (
+        <WorkspaceCardV2 title="جاري تحميل الطلبات" description="يتم جلب طلبات الموظفة الفعلية.">
+          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
+            <strong>جاري التحميل...</strong>
+            <span>لن تظهر حالات Preview أو بيانات تجريبية داخل التبويب الحي.</span>
+          </div>
+        </WorkspaceCardV2>
+      ) : (
         <WorkspaceCardV2 title={scopeTitle(scope)} description={`${filteredRows.length} طلبات في الحالة المحددة.`}>
           <WorkspaceTableV2
             headers={["الرقم", "النوع", "تاريخ التقديم", "الفترة المطلوبة", "السبب", "المرفقات", "الإجراءات"]}
@@ -297,7 +288,7 @@ export default function EmployeeRequestsSection({
             ])}
           />
         </WorkspaceCardV2>
-      ) : visibleState === "loading" ? <WorkspaceStateShowcaseV2 /> : <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large"><strong>لا توجد طلبات في هذه الحالة</strong><span>ستظهر الطلبات الجديدة هنا فور تقديمها.</span></div>}
+      )}
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
         <WorkspaceCardV2 title="ملاحظات الإدارة" description="ملاحظة مرتبطة بآخر إجراء على الطلب.">
