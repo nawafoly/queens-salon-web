@@ -30,7 +30,13 @@ type BookingSettingsSectionProps = {
   onCopyModalWorkingDayToAll: (day: WeekdayKey) => void;
 };
 
-function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkingDay>): StaffWorkingDay {
+type ResolvedWorkingDay = {
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkingDay>): ResolvedWorkingDay {
   const current = rows[day] || { enabled: true, start: "10:00", end: "22:00" };
   return {
     enabled: current.enabled !== false,
@@ -70,7 +76,7 @@ export default function BookingSettingsSection({
     return {
       key: day.key,
       label: day.label,
-      enabled: row.enabled !== false,
+      enabled: row.enabled,
       start: row.start,
       end: row.end,
     };
