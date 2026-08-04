@@ -6,6 +6,7 @@ let mountedRoot: Root | null = null;
 let mountedHost: HTMLElement | null = null;
 let lastKey = "";
 let retryTimer: number | null = null;
+let routePatched = false;
 
 function employeeIdFromPath() {
   const match = /^\/admin\/employees\/([^/]+)\/messages\/?$/.exec(window.location.pathname);
@@ -56,7 +57,9 @@ function hydrateMessagesTab() {
   }
 
   const employeeName = employeeNameFromPage();
-  const key = `${employeeId}:${employeeName || "-"}`;
+  if (!employeeName) return false;
+
+  const key = employeeId;
   if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return true;
 
   unmountMessages();
@@ -84,35 +87,43 @@ function hydrateMessagesTab() {
   return true;
 }
 
-function scheduleHydrate(retries = 8) {
+function scheduleHydrate(retries = 12) {
   if (typeof window === "undefined") return;
   if (retryTimer !== null) window.clearTimeout(retryTimer);
 
   const run = (remaining: number) => {
     const done = hydrateMessagesTab();
     if (done || remaining <= 0) return;
-    retryTimer = window.setTimeout(() => run(remaining - 1), 90);
+    retryTimer = window.setTimeout(() => run(remaining - 1), 80);
   };
 
   retryTimer = window.setTimeout(() => run(retries), 0);
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  window.addEventListener("popstate", () => scheduleHydrate());
-  window.addEventListener("focus", () => scheduleHydrate(2));
+  const win = window as typeof window & { __dsv2EmployeeMessagesHydratorInstalled?: boolean };
 
-  const originalPushState = window.history.pushState;
-  const originalReplaceState = window.history.replaceState;
-  window.history.pushState = function pushState(...args) {
-    const result = originalPushState.apply(this, args);
-    scheduleHydrate();
-    return result;
-  };
-  window.history.replaceState = function replaceState(...args) {
-    const result = originalReplaceState.apply(this, args);
-    scheduleHydrate();
-    return result;
-  };
+  if (!win.__dsv2EmployeeMessagesHydratorInstalled) {
+    win.__dsv2EmployeeMessagesHydratorInstalled = true;
+    window.addEventListener("popstate", () => scheduleHydrate());
+    window.addEventListener("focus", () => scheduleHydrate(2));
+
+    if (!routePatched) {
+      routePatched = true;
+      const originalPushState = window.history.pushState;
+      const originalReplaceState = window.history.replaceState;
+      window.history.pushState = function pushState(...args) {
+        const result = originalPushState.apply(this, args);
+        scheduleHydrate();
+        return result;
+      };
+      window.history.replaceState = function replaceState(...args) {
+        const result = originalReplaceState.apply(this, args);
+        scheduleHydrate();
+        return result;
+      };
+    }
+  }
 
   scheduleHydrate();
 }
