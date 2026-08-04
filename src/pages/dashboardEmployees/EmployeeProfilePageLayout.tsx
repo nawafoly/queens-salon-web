@@ -1,7 +1,13 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
-import { normalizeSpecialties } from "./shared";
+import { DashboardSelectV2 } from "../../components/dashboard-v2";
+import {
+  WorkspaceMetricV2,
+  WorkspaceStatusBadgeV2,
+} from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
+import "../../styles/dashboard-v2/pages/employee-workspace.css";
+import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
@@ -9,13 +15,14 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
 
   const employeeName = String(props.editingStaff.name || props.name || "").trim();
   const serviceCount = normalizeSpecialties(props.editingStaff.specialties).length;
-  const activeTab = props.detailTabs?.find((tab) => tab.key === props.activeTab);
+  const tabs = props.detailTabs || [];
+  const activeTab = tabs.find((tab) => tab.key === props.activeTab);
   const activeLabel = activeTab?.label || "البيانات الأساسية";
   const activeHint = activeTab?.hint || "إدارة بيانات الموظفة";
 
   return (
     <section
-      className="employees-v2-profile"
+      className="dsv2-employee-workspace employees-v2-profile employees-v2-profile--workspace"
       dir="rtl"
       aria-label={`ملف الموظفة ${employeeName || "موظفة"}`}
     >
@@ -27,84 +34,170 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         <strong>{activeLabel}</strong>
       </nav>
 
-      <header className="dsv2-page-head employees-v2-profile__head">
-        <div className="employees-v2-profile__identity">
+      <header className="dsv2-card dsv2-card--padded dsv2-ew-profile-head">
+        <div className="dsv2-ew-profile-head__identity">
           <EmployeeAvatar
-            className="employees-v2-profile__avatar"
+            className="dsv2-ew-avatar employees-v2-profile__avatar"
             src={props.editingStaff.avatarUrl}
             name={employeeName || "موظفة"}
             alt={employeeName ? `صورة ${employeeName}` : "صورة الموظفة"}
             loading="eager"
           />
+
           <div>
-            <span className="dsv2-badge dsv2-badge--gold">ملف الموظفة</span>
-            <h1 className="dsv2-page-title">{employeeName || "موظفة"}</h1>
-            <p className="dsv2-page-subtitle">إدارة الملف الوظيفي والحضور والراتب والخدمات من مساحة موحدة.</p>
-            <div className="employees-v2-profile__chips">
+            <div className="dsv2-ew-profile-head__name-row">
+              <h2>{employeeName || "موظفة"}</h2>
               {props.selectedEmployeeStatusLabel ? (
-                <span className="dsv2-badge dsv2-badge--success">{props.selectedEmployeeStatusLabel}</span>
+                <WorkspaceStatusBadgeV2 tone="success">
+                  {props.selectedEmployeeStatusLabel}
+                </WorkspaceStatusBadgeV2>
               ) : null}
-              <span className="dsv2-badge">{serviceCount > 0 ? `${serviceCount} خدمة` : "بدون خدمات"}</span>
+              {!props.canManage ? <WorkspaceStatusBadgeV2>عرض فقط</WorkspaceStatusBadgeV2> : null}
+            </div>
+
+            <div className="dsv2-ew-profile-head__meta">
+              <span>ملف موظفة فعلي</span>
+              <span>{serviceCount > 0 ? `${serviceCount} خدمة مرتبطة` : "بدون خدمات مرتبطة"}</span>
+              <span>{activeLabel}</span>
             </div>
           </div>
+        </div>
+
+        <div className="dsv2-ew-profile-head__summary" aria-label="ملخص الموظفة">
+          <WorkspaceMetricV2
+            label="الحالة"
+            value={props.selectedEmployeeStatusLabel || "غير محددة"}
+            tone="success"
+          />
+          <WorkspaceMetricV2
+            label="الخدمات"
+            value={serviceCount}
+            note="خدمة مرتبطة"
+            tone="gold"
+          />
+          <WorkspaceMetricV2
+            label="القسم الحالي"
+            value={activeLabel}
+            note="بيانات فعلية"
+          />
+        </div>
+      </header>
+
+      <div className="dsv2-ew-intro employees-v2-profile__workspace-intro">
+        <div>
+          <span className="dsv2-ew-intro__eyebrow">مساحة الموظفة</span>
+          <h1>{activeLabel}</h1>
+          <p>{activeHint}</p>
         </div>
 
         <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={props.onClose}>
           <FontAwesomeIcon icon={faArrowRight} />
           العودة إلى الموظفات
         </button>
-      </header>
+      </div>
 
-      <nav className="dsv2-card employees-v2-profile__tabs" aria-label="أقسام ملف الموظفة">
-        {props.detailTabs?.map((tab) => {
+      <nav className="dsv2-ew-tabs" role="tablist" aria-label="أقسام ملف الموظفة">
+        {tabs.map((tab, index) => {
           const isActive = props.activeTab === tab.key;
           return (
             <button
               key={tab.key}
               type="button"
-              className={isActive ? "is-active" : ""}
-              aria-current={isActive ? "page" : undefined}
+              role="tab"
+              className="dsv2-ew-tab"
+              data-active={isActive ? "true" : "false"}
+              aria-selected={isActive}
               onClick={() => props.onDetailTabChange?.(tab.key)}
             >
+              <span className="dsv2-ew-tab__number" aria-hidden="true">{index + 1}</span>
               {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : null}
-              <span>{tab.label}</span>
-              <small>{tab.hint}</small>
+              <span className="dsv2-ew-tab__label">{tab.label}</span>
             </button>
           );
         })}
       </nav>
 
-      <main className="dsv2-card employees-v2-profile__content" aria-label={activeLabel}>
-        <div className="employees-v2-profile__body" data-section-label={activeLabel} data-section-hint={activeHint}>
-          {props.children}
+      <div className="dsv2-ew-mobile-tab-select">
+        <DashboardSelectV2
+          id="employees-v2-live-section"
+          value={props.activeTab || "basic"}
+          options={tabs.map((tab) => ({ value: tab.key, label: tab.label }))}
+          onChange={(value) => props.onDetailTabChange?.(value as EmployeeSplitTab)}
+          ariaLabel="اختيار قسم ملف الموظفة"
+        />
+      </div>
+
+      <main className="dsv2-ew-content" aria-label={activeLabel}>
+        <article className="dsv2-card dsv2-card--padded dsv2-ew-card employees-v2-profile__content">
+          <header className="dsv2-section-head dsv2-ew-card__head">
+            <div>
+              <span className="dsv2-ew-tab-head__eyebrow">إدارة فعلية</span>
+              <h3 className="dsv2-section-title dsv2-ew-card__title">{activeLabel}</h3>
+              <p className="dsv2-section-caption">{activeHint}</p>
+            </div>
+            <WorkspaceStatusBadgeV2 tone={props.canManage ? "gold" : "default"}>
+              {props.canManage ? "قابل للتعديل" : "عرض فقط"}
+            </WorkspaceStatusBadgeV2>
+          </header>
+
+          <fieldset
+            className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
+            disabled={!props.canManage}
+          >
+            <div
+              className="dsv2-ew-card__body employees-v2-profile__body"
+              data-section-label={activeLabel}
+              data-section-hint={activeHint}
+            >
+              {props.children}
+            </div>
+          </fieldset>
+        </article>
+      </main>
+
+      <footer className="dsv2-ew-savebar" data-dirty={props.saving ? "true" : "false"}>
+        <div className="dsv2-ew-savebar__status">
+          <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
+          <div>
+            <strong>{props.saving ? "جاري حفظ التغييرات" : props.canManage ? "ملف الموظفة جاهز للحفظ" : "وضع العرض فقط"}</strong>
+            <small>{props.saving ? "لا تغلق الصفحة حتى يكتمل الحفظ." : "جميع الوظائف والبيانات الحالية محفوظة داخل الصفحة الفعلية."}</small>
+          </div>
         </div>
 
-        <footer className="employees-v2-profile__footer">
-          <div>
-            {props.canManage && props.canDelete && props.onDelete ? (
-              <button
-                className="dsv2-btn dsv2-btn--danger"
-                type="button"
-                onClick={props.onDelete}
-                disabled={props.busy}
-              >
-                <FontAwesomeIcon icon={faTrash} />
-                أرشفة الموظفة
-              </button>
-            ) : null}
-          </div>
-          <div className="employees-v2-profile__footer-actions">
-            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={props.onCancelEdit} disabled={props.busy}>
-              إلغاء التعديلات
+        <div className="dsv2-ew-savebar__actions">
+          {props.canManage && props.canDelete && props.onDelete ? (
+            <button
+              className="dsv2-btn dsv2-btn--danger"
+              type="button"
+              onClick={props.onDelete}
+              disabled={props.busy}
+            >
+              <FontAwesomeIcon icon={faTrash} />
+              أرشفة الموظفة
             </button>
-            {props.canManage ? (
-              <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={props.onSave} disabled={props.busy}>
-                {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
-              </button>
-            ) : null}
-          </div>
-        </footer>
-      </main>
+          ) : null}
+
+          <button
+            className="dsv2-btn dsv2-btn--secondary"
+            type="button"
+            onClick={props.onCancelEdit || props.onClose}
+            disabled={props.busy}
+          >
+            إلغاء التعديلات
+          </button>
+
+          {props.canManage ? (
+            <button
+              className="dsv2-btn dsv2-btn--primary"
+              type="button"
+              onClick={props.onSave}
+              disabled={props.busy}
+            >
+              {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+            </button>
+          ) : null}
+        </div>
+      </footer>
     </section>
   );
 }
