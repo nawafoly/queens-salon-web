@@ -1,4 +1,4 @@
-import { DashboardSelectV2 } from "../../components/dashboard-v2";
+import EmployeeSelect from "../../components/EmployeeSelect";
 import { useMemo, useState } from "react";
 
 import { toArabicSectionLabel, type ServiceOption } from "./shared";
@@ -162,10 +162,10 @@ export default function ServicesSection({
 
         <div className="emp-svc-field emp-svc-field--section">
           <span>القسم</span>
-          <DashboardSelectV2
+          <EmployeeSelect
             id="employee-services-section"
-            className="emp-svc-section-select"
             value={srvSection}
+            ariaLabel="قسم الخدمات"
             placeholder="كل الأقسام"
             options={[
               { value: "all", label: "كل الأقسام" },
