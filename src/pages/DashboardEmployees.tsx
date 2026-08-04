@@ -92,6 +92,7 @@ import {
   appendDateEffectiveScheduleVersion,
   normalizeScheduleDateKey,
   normalizeStaffScheduleVersions,
+  resolveDateEffectiveScheduleSnapshot,
   scheduleSnapshotsEqual,
 } from "../helpers/hr/staffScheduleHistory";
 import {
@@ -1394,13 +1395,20 @@ export default function DashboardEmployees() {
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
-    const initialUseCustomWorkingHours = !!(x as any).useCustomWorkingHours;
-    const initialCustomWorkingHours = normalizeWorkingHours((x as any).customWorkingHours);
+    const currentScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(x as any, todayIso());
+    const initialUseCustomWorkingHours = currentScheduleSnapshot.snapshot
+      ? currentScheduleSnapshot.snapshot.useCustomWorkingHours
+      : !!(x as any).useCustomWorkingHours;
+    const initialCustomWorkingHours = normalizeWorkingHours(
+      currentScheduleSnapshot.snapshot?.customWorkingHours || (x as any).customWorkingHours
+    );
     const initialWeeklyOffDays = initialUseCustomWorkingHours
       ? WEEKDAY_OPTIONS.filter(
           (day) => initialCustomWorkingHours[day.key]?.enabled === false
         ).map((day) => day.key)
-      : resolveStaffWeeklyOffDays(x);
+      : currentScheduleSnapshot.hasHistoricalVersion
+        ? normalizeExceptionalLeaveWeekdays(currentScheduleSnapshot.weeklyOffDays)
+        : resolveStaffWeeklyOffDays(x);
     setModalExceptionalLeaveWeekdays(initialWeeklyOffDays);
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(initialUseCustomWorkingHours);
@@ -2327,7 +2335,12 @@ export default function DashboardEmployees() {
       : null;
 
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
-    const previousScheduleSnapshot = {
+    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
+    const previousEffectiveSchedule = resolveDateEffectiveScheduleSnapshot(
+      editingStaff as any,
+      scheduleEffectiveFrom || todayIso()
+    );
+    const previousScheduleSnapshot = previousEffectiveSchedule.snapshot || {
       useCustomWorkingHours: !!(editingStaff as any)?.useCustomWorkingHours,
       customWorkingHours: normalizeWorkingHours((editingStaff as any)?.customWorkingHours),
     };
@@ -2336,15 +2349,23 @@ export default function DashboardEmployees() {
       customWorkingHours: normalizedCustomWorkingHours,
     };
     const scheduleChanged = !editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot);
-    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
-    const scheduleChangeReason = cleanText(modalScheduleChangeReason);
+    let scheduleChangeReason = cleanText(modalScheduleChangeReason);
     if (scheduleChanged && !scheduleEffectiveFrom) {
       setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
       return;
     }
     if (editId && scheduleChanged && !scheduleChangeReason) {
-      setErrorMsg("اكتبي سبب تغيير جدول الدوام لحفظ سجل تدقيق واضح.");
-      return;
+      const changedClosedDays = WEEKDAY_OPTIONS.filter((day) => {
+        const previousEnabled = previousScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
+        const nextEnabled = nextScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
+        return previousEnabled !== nextEnabled;
+      }).map((day) => day.label);
+
+      scheduleChangeReason = changedClosedDays.length
+        ? `تعديل الإجازة الأسبوعية: ${changedClosedDays.join("، ")}`
+        : "تحديث جدول دوام الموظفة";
+
+      setModalScheduleChangeReason(scheduleChangeReason);
     }
     let workingScheduleVersions = normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions);
     if (scheduleChanged) {
@@ -2887,11 +2908,18 @@ export default function DashboardEmployees() {
         const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
         const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
         const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
-        const exceptionalWeekdays = resolveStaffWeeklyOffDays(staff);
+        const todayScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(staff as any, today);
         const overrides = normalizeWorkingHourOverrides((staff as any).customWorkingHourOverrides);
         const overrideGroups = buildWorkingHourOverrideGroups(overrides);
-        const customWorkingHours = normalizeWorkingHours((staff as any).customWorkingHours);
-        const useCustom = !!(staff as any).useCustomWorkingHours;
+        const customWorkingHours = normalizeWorkingHours(
+          todayScheduleSnapshot.snapshot?.customWorkingHours || (staff as any).customWorkingHours
+        );
+        const useCustom = todayScheduleSnapshot.snapshot
+          ? todayScheduleSnapshot.snapshot.useCustomWorkingHours
+          : !!(staff as any).useCustomWorkingHours;
+        const exceptionalWeekdays = todayScheduleSnapshot.hasHistoricalVersion
+          ? normalizeExceptionalLeaveWeekdays(todayScheduleSnapshot.weeklyOffDays)
+          : resolveStaffWeeklyOffDays(staff);
         const overrideToday = overrides.find((x) => x.date === today);
         const nextSavedOverrideGroup = overrideGroups.find((group) => group.fromDate > today) || null;
         const lastSavedOverrideGroup =
@@ -2960,10 +2988,20 @@ export default function DashboardEmployees() {
             break;
           }
 
+          const targetScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(staff as any, targetDate);
+          const targetCustomWorkingHours = normalizeWorkingHours(
+            targetScheduleSnapshot.snapshot?.customWorkingHours || (staff as any).customWorkingHours
+          );
+          const targetUseCustom = targetScheduleSnapshot.snapshot
+            ? targetScheduleSnapshot.snapshot.useCustomWorkingHours
+            : !!(staff as any).useCustomWorkingHours;
+          const targetExceptionalWeekdays = targetScheduleSnapshot.hasHistoricalVersion
+            ? normalizeExceptionalLeaveWeekdays(targetScheduleSnapshot.weeklyOffDays)
+            : exceptionalWeekdays;
           const targetOverride = overrides.find((x) => x.date === targetDate) || null;
-          const targetBaseDay = targetDayKey ? customWorkingHours[targetDayKey] : undefined;
+          const targetBaseDay = targetDayKey ? targetCustomWorkingHours[targetDayKey] : undefined;
           const targetLeaveByDate = exceptionalDates.includes(targetDate);
-          const targetLeaveByWeekday = targetDayKey ? exceptionalWeekdays.includes(targetDayKey) : false;
+          const targetLeaveByWeekday = targetDayKey ? targetExceptionalWeekdays.includes(targetDayKey) : false;
           const targetLeaveByToggle =
             !!(staff as any).onLeave && (!leaveUntil || leaveUntil >= targetDate);
           const targetLeaveActive = targetLeaveByDate || targetLeaveByWeekday || targetLeaveByToggle;
@@ -2977,7 +3015,7 @@ export default function DashboardEmployees() {
             targetEffectiveEnabled = targetOverride.enabled !== false;
             targetEffectiveStart = normalizeTimeHHMM(targetOverride.start) || targetSalonOpen;
             targetEffectiveEnd = normalizeTimeHHMM(targetOverride.end) || targetSalonClose;
-          } else if (useCustom) {
+          } else if (targetUseCustom) {
             if (!targetBaseDay || targetBaseDay.enabled === false) {
               targetEffectiveEnabled = false;
             } else {
@@ -3000,7 +3038,7 @@ export default function DashboardEmployees() {
             ? "استثناء الموظفة"
             : targetSalonOverride
               ? "ساعات الصالون الخاصة"
-              : useCustom
+              : targetUseCustom
                 ? "الجدول الأسبوعي للموظفة"
                 : "ساعات تشغيل الصالون";
           const targetSourceNote = targetOverride ? String(targetOverride.note || "").trim() : "";

@@ -8,7 +8,7 @@ import {
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate } from "../../helpers/hr/staffScheduleHistory";
+import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
 import {
   EmployeeAttendanceTabLiveV2,
   type EmployeeAttendanceRowLiveV2,
@@ -176,12 +176,17 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
         .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
         .filter(Boolean)
     : [];
-  const explicitOffDays = [
-    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-  ];
+  const explicitOffDays = historicalVersion
+    ? weeklyOffDaysFromScheduleSnapshot({
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      })
+    : [
+        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
+      ];
 
   if (override?.enabled === false || customDay?.enabled === false) {
     return {

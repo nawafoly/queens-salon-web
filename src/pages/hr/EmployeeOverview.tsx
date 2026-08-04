@@ -54,7 +54,7 @@ import {
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate } from "../../helpers/hr/staffScheduleHistory";
+import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
 import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
@@ -241,12 +241,17 @@ function scheduleForEmployeeDate(
         .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
         .filter(Boolean)
     : [];
-  const explicitOffDays = [
-    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-  ];
+  const explicitOffDays = historicalVersion
+    ? weeklyOffDaysFromScheduleSnapshot({
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      })
+    : [
+        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
+      ];
 
   return {
     startTime:

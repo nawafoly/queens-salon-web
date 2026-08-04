@@ -1,4 +1,5 @@
 import { todayISO as salonTodayISO } from "./bookingDateUtils";
+import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
 
 export type StaffAvailabilityLike = {
   active?: boolean;
@@ -23,6 +24,7 @@ export type StaffAvailabilityLike = {
       }
     >
   >;
+  workingScheduleVersions?: unknown;
   customWorkingHourOverrides?: Array<{
     date?: string;
     enabled?: boolean;
@@ -215,11 +217,20 @@ function isLeaveActiveForDate(staff: StaffAvailabilityLike, dateISO?: string) {
     if (!until || target <= until) return true;
   }
 
+  const targetWeekday = weekdayFromISO(target);
+  if (!targetWeekday) return false;
+
+  const historicalVersion = resolveStaffScheduleVersionForDate(staff?.workingScheduleVersions, target);
+  if (historicalVersion) {
+    if (!historicalVersion.useCustomWorkingHours) return false;
+    const historicalDay = (historicalVersion.customWorkingHours || {})[targetWeekday];
+    return historicalDay?.enabled === false;
+  }
+
   const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
     ? staff.exceptionalLeaveWeekdays.map((d) => String(d || "").trim().toLowerCase()).filter(Boolean)
     : [];
-  const targetWeekday = weekdayFromISO(target);
-  if (!targetWeekday || !exceptionalWeekdays.includes(targetWeekday)) return false;
+  if (!exceptionalWeekdays.includes(targetWeekday)) return false;
 
   // Legacy weekly-off values can remain in Firestore after the employee schedule
   // is changed. An explicit enabled override or enabled custom working day is the

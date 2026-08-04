@@ -1,4 +1,5 @@
-﻿export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+﻿import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
+export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 
 export type StaffWorkingDay = {
   enabled?: boolean;
@@ -36,6 +37,7 @@ export type StaffPayrollSource = {
   useCustomWorkingHours?: boolean;
   customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
   customWorkingHourOverrides?: StaffWorkingHourOverride[];
+  workingScheduleVersions?: unknown;
   monthlySalary?: number;
   overtimeMethod?: StaffPayrollMethod;
   overtimeDaysPerMonth?: number;
@@ -480,8 +482,16 @@ function resolveStaffDayHours(
   const day = weekdayFromIso(dateIso);
   if (!day) return 0;
 
-  if (staff.useCustomWorkingHours) {
-    const week = normalizeWorkingHours(staff.customWorkingHours);
+  const historicalVersion = resolveStaffScheduleVersionForDate(staff.workingScheduleVersions, dateIso);
+  const useCustomWorkingHours = historicalVersion
+    ? historicalVersion.useCustomWorkingHours
+    : staff.useCustomWorkingHours === true;
+  const rawWorkingHours = historicalVersion
+    ? historicalVersion.customWorkingHours
+    : staff.customWorkingHours;
+
+  if (useCustomWorkingHours) {
+    const week = normalizeWorkingHours(rawWorkingHours);
     const base = week[day] || {
       enabled: true,
       start: DEFAULT_OPEN_TIME,
@@ -507,6 +517,18 @@ function resolveStaffDayHours(
   }
 
   return resolveSalonDayHours(dateIso, appSettings);
+}
+
+function isWeeklyOffForPayrollDate(dateIso: string, staff: StaffPayrollSource): boolean {
+  const day = weekdayFromIso(dateIso);
+  if (!day) return false;
+  const historicalVersion = resolveStaffScheduleVersionForDate(staff.workingScheduleVersions, dateIso);
+  if (historicalVersion) {
+    if (!historicalVersion.useCustomWorkingHours) return false;
+    const week = normalizeWorkingHours(historicalVersion.customWorkingHours);
+    return week[day]?.enabled === false;
+  }
+  return new Set(normalizeWeekdayList(staff.exceptionalLeaveWeekdays)).has(day);
 }
 
 function safeNumber(v: any, fallback: number): number {
@@ -560,7 +582,6 @@ export function computeScheduledHoursSummaryForMonth(args: {
   }
 
   const leaveDateSet = new Set(normalizeIsoDateList(args.staff.exceptionalLeaveDates));
-  const leaveWeekdaySet = new Set(normalizeWeekdayList(args.staff.exceptionalLeaveWeekdays));
   const employmentEndDate = normalizeIsoDate(args.staff.employmentEndDate);
   const dailyHoursBucketMap = new Map<string, number>();
   let workedDays = 0;
@@ -580,7 +601,7 @@ export function computeScheduledHoursSummaryForMonth(args: {
       continue;
     }
     const outOfEmploymentRange = !!employmentEndDate && cursor > employmentEndDate;
-    const excludedByLeave = leaveDateSet.has(cursor) || leaveWeekdaySet.has(day);
+    const excludedByLeave = leaveDateSet.has(cursor) || isWeeklyOffForPayrollDate(cursor, args.staff);
     if (!outOfEmploymentRange && !excludedByLeave) {
       const dayHours = resolveStaffDayHours(cursor, args.staff, args.appSettings);
       if (dayHours > 0) {
