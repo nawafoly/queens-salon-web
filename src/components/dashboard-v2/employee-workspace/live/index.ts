@@ -5,6 +5,7 @@ import "../../../../styles/dashboard-v2/pages/employee-confirm-replacement-v2.cs
 import "./employeeConfirmShim";
 import "./employeeRequestsHydrator";
 import "./employeeFilesHydrator";
+import "./employeeMessagesHydrator";
 
 export {
   EmployeeBasicTabLiveV2,
