@@ -37,10 +37,6 @@ function getStatus(summary: any) {
   };
 }
 
-function rowKey(prefix: string, row: any, index: number) {
-  return cleanText(row?.id) || `${prefix}_${index}`;
-}
-
 export default function ScheduleSummarySection({
   isVisible,
   nowTick,
@@ -81,23 +77,23 @@ export default function ScheduleSummarySection({
           label="حالة اليوم"
           value={status.label}
           tone={status.isClosed ? "danger" : "success"}
-          hint={summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? String(summary.weeklyOffTodayLabel) : "حسب الجدول الفعلي"}
+          note={summary?.weeklyOffToday && summary?.weeklyOffTodayLabel ? String(summary.weeklyOffTodayLabel) : "حسب الجدول الفعلي"}
         />
         <WorkspaceMetricV2
           label="نافذة العمل"
           value={finalWindowLabel}
           tone={status.isClosed ? "gold" : "success"}
-          hint="بعد تطبيق جميع الاستثناءات"
+          note="بعد تطبيق جميع الاستثناءات"
         />
         <WorkspaceMetricV2
           label="الاستثناءات"
           value={savedOverrideRows.length}
-          hint={firstOverrideTitle}
+          note={firstOverrideTitle}
         />
         <WorkspaceMetricV2
           label="آخر تحديث"
           value={formatUpdatedTime(nowTick)}
-          hint="تحديث تلقائي للحالة"
+          note="تحديث تلقائي للحالة"
         />
       </div>
 
@@ -138,7 +134,7 @@ export default function ScheduleSummarySection({
 
         <WorkspaceTableV2
           headers={["الحالة", "العنوان", "الوقت", "الميلادي", "الهجري", "تفاصيل"]}
-          rows={savedOverrideRows.map((row: any, index: number) => [
+          rows={savedOverrideRows.map((row: any) => [
             cleanText(row?.badge) || "محفوظ",
             cleanText(row?.title) || "استثناء محفوظ",
             formatWindowLabel(cleanText(row?.hoursLabel) || "-"),
