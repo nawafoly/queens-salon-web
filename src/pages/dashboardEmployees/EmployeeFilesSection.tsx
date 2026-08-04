@@ -12,12 +12,12 @@ import {
   DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
+  DashboardSkeletonV2,
 } from "../../components/dashboard-v2";
 import {
   WorkspaceCardV2,
   WorkspaceMetricV2,
   WorkspaceNoticeV2,
-  WorkspaceStateShowcaseV2,
   WorkspaceStatusBadgeV2,
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
@@ -133,7 +133,6 @@ export default function EmployeeFilesSection({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FileCategory>("all");
-  const [viewState, setViewState] = useState<ViewState>("ready");
   const [dragging, setDragging] = useState(false);
   const [title, setTitle] = useState("");
   const [storageUrl, setStorageUrl] = useState("");
@@ -188,7 +187,13 @@ export default function EmployeeFilesSection({
     return category === "all" || categoryOf(row) === category;
   });
 
-  const visibleState: ViewState = loading ? "loading" : viewState;
+  const visibleState: ViewState = loading && !rows.length
+    ? "loading"
+    : error && !rows.length
+      ? "error"
+      : filteredRows.length
+        ? "ready"
+        : "empty";
 
   const createFile = async () => {
     if (!canManage || saving) return;
@@ -379,7 +384,7 @@ export default function EmployeeFilesSection({
         description="حقول انتهاء وملاحظات وإجراءات كاملة لكل مستند."
         actions={<div className="dsv2-cluster"><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()} disabled={loading}>تحديث</button><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void markAllRead()} disabled={!viewerUid || saving || !rows.length}>تعليم الكل كمقروء</button></div>}
       >
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+        <div className="dsv2-ew-form-grid">
           <DashboardFieldV2 id="dsv2-ew-file-category-live" label="التصنيف">
             <DashboardSelectV2
               id="dsv2-ew-file-category-live"
@@ -392,19 +397,6 @@ export default function EmployeeFilesSection({
                 { value: "other", label: "أخرى" },
               ]}
               onChange={(value) => setCategory(value as FileCategory)}
-            />
-          </DashboardFieldV2>
-          <DashboardFieldV2 id="dsv2-ew-files-state-live" label="حالة النموذج">
-            <DashboardSelectV2
-              id="dsv2-ew-files-state-live"
-              value={viewState}
-              options={[
-                { value: "ready", label: "بيانات جاهزة" },
-                { value: "loading", label: "تحميل" },
-                { value: "empty", label: "بدون ملفات" },
-                { value: "error", label: "خطأ" },
-              ]}
-              onChange={(value) => setViewState(value as ViewState)}
             />
           </DashboardFieldV2>
         </div>
@@ -433,7 +425,25 @@ export default function EmployeeFilesSection({
               ];
             })}
           />
-        ) : visibleState === "loading" ? <WorkspaceStateShowcaseV2 /> : visibleState === "empty" ? <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large"><strong>لا توجد ملفات</strong><span>ارفع أول مستند للموظفة ليظهر هنا.</span></div> : <WorkspaceNoticeV2 title="تعذر تحميل الملفات" description="تعذر الوصول إلى مساحة التخزين. أعد المحاولة دون تغيير الملفات الحالية." tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => setViewState("ready")}>إعادة المحاولة</button>} />}
+        ) : visibleState === "loading" ? (
+          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل ملفات الموظفة">
+            <DashboardSkeletonV2 variant="title" width="48%" />
+            <DashboardSkeletonV2 lines={3} />
+            <DashboardSkeletonV2 variant="block" height={84} />
+          </article>
+        ) : visibleState === "empty" ? (
+          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
+            <strong>لا توجد ملفات</strong>
+            <span>ارفع أول مستند للموظفة ليظهر هنا.</span>
+          </div>
+        ) : (
+          <WorkspaceNoticeV2
+            title="تعذر تحميل الملفات"
+            description="تعذر الوصول إلى مساحة التخزين. أعد المحاولة دون تغيير الملفات الحالية."
+            tone="danger"
+            action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
+          />
+        )}
       </WorkspaceCardV2>
 
       <WorkspaceCardV2

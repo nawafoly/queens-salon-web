@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   createEmployeeMessage,
@@ -100,6 +100,7 @@ export default function EmployeeMessagesSection({
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState("");
   const [failed, setFailed] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const targetUid = cleanText(employeeUid || employeeId);
   const targetName = cleanText(employeeName) || "الموظفة";
@@ -283,7 +284,7 @@ export default function EmployeeMessagesSection({
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
             <strong>لا توجد رسائل بعد</strong>
             <span>ابدأ محادثة داخلية لتظهر هنا مع حالة القراءة والوقت.</span>
-            <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" onClick={() => document.getElementById("employee-message-input")?.focus()}>بدء محادثة</button>
+            <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" onClick={() => composerRef.current?.focus()}>بدء محادثة</button>
           </div>
         </WorkspaceCardV2>
       ) : (
@@ -320,6 +321,7 @@ export default function EmployeeMessagesSection({
           <DashboardFieldV2 id="employee-message-input" label="نص الرسالة">
             <textarea
               id="employee-message-input"
+              ref={composerRef}
               className="dsv2-textarea"
               value={draft}
               placeholder="اكتب رسالة داخلية للموظفة..."

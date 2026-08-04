@@ -2,6 +2,7 @@ import {
   DashboardDatePickerV2,
   DashboardFieldV2,
   DashboardSelectV2,
+  DashboardSkeletonV2,
 } from "../../index";
 import {
   WorkspaceCardV2,
@@ -75,11 +76,43 @@ type AttendanceCalendarDayLiveV2 = {
   row?: EmployeeAttendanceRowLiveV2;
 };
 
-function buildAttendanceCalendar(monthKey: string, rows: EmployeeAttendanceRowLiveV2[]): AttendanceCalendarDayLiveV2[] {
+function formatAttendanceTime(value: unknown) {
+  const clean = cleanText(value);
+  if (!clean) return "";
+  if (/^\d{2}:\d{2}/.test(clean)) return clean.slice(0, 5);
+  const date = new Date(clean);
+  if (Number.isNaN(date.getTime())) return clean;
+  return new Intl.DateTimeFormat("ar-SA", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
+  if (!row) return "";
+  const type = cleanText(row.type).toLowerCase();
+  const rawStatus = cleanText(row.status).toLowerCase();
+  if (type === "leave") return "إجازة";
+  if (type === "absent" || row.absentFullDay || rawStatus === "absent") return "غياب";
+  if (Number(row.lateMinutes || 0) > 0) return "تأخير";
+  if (Number(row.earlyLeaveMinutes || 0) > 0) return "خروج مبكر";
+  if (cleanText(row.checkInAtClient || row.checkOutAtClient)) return "حضور";
+  if (rawStatus === "checked_in" || rawStatus === "checked_out") return "حضور";
+  if (rawStatus === "not_started") return "غياب";
+  return cleanText(row.status) || "حضور";
+}
+
+function buildAttendanceCalendar(
+  monthKey: string,
+  rows: EmployeeAttendanceRowLiveV2[],
+  approvedLeaveDateKeys: readonly string[]
+): AttendanceCalendarDayLiveV2[] {
   const normalized = safeMonthKey(monthKey);
   const year = Number(normalized.slice(0, 4));
   const month = Number(normalized.slice(5, 7));
   const daysInMonth = new Date(year, month, 0).getDate();
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const leaveDates = new Set(approvedLeaveDateKeys.map(cleanText).filter(Boolean));
   const byDate = new Map<string, EmployeeAttendanceRowLiveV2>();
   rows.forEach((row) => {
     const date = cleanText(row.date);
@@ -90,13 +123,17 @@ function buildAttendanceCalendar(monthKey: string, rows: EmployeeAttendanceRowLi
     const dayNumber = index + 1;
     const date = `${normalized}-${String(dayNumber).padStart(2, "0")}`;
     const row = byDate.get(date);
-    const checkIn = cleanText(row?.checkInAtClient);
-    const checkOut = cleanText(row?.checkOutAtClient);
+    const checkIn = formatAttendanceTime(row?.checkInAtClient);
+    const checkOut = formatAttendanceTime(row?.checkOutAtClient);
+    const hasLeave = leaveDates.has(date);
+    const status = hasLeave
+      ? "إجازة"
+      : attendanceRowStatus(row) || (date < todayKey ? "غياب" : "—");
     return {
       date,
       dayNumber,
       row,
-      status: cleanText(row?.status) || (row ? "حضور" : "—"),
+      status,
       timeLabel: [checkIn, checkOut].filter(Boolean).join(" → ") || "لا توجد بصمة",
     };
   });
@@ -297,20 +334,25 @@ export function EmployeeScheduleTabLiveV2({
 
 export type EmployeeAttendanceRowLiveV2 = {
   date?: string;
+  type?: string;
   status?: string;
+  absentFullDay?: boolean;
   checkInAtClient?: string;
   checkOutAtClient?: string;
   lateMinutes?: number;
   earlyLeaveMinutes?: number;
   notes?: string;
+  recordCount?: number;
 };
 
 export type EmployeeAttendanceTabLiveV2Props = {
   readOnly: boolean;
   loading: boolean;
+  error?: string;
   rows: EmployeeAttendanceRowLiveV2[];
   monthKey: string;
   selectedDate: string;
+  approvedLeaveDateKeys?: string[];
   canEdit: boolean;
   canDelete: boolean;
   onMonthChange: (value: string) => void;
@@ -323,9 +365,11 @@ export type EmployeeAttendanceTabLiveV2Props = {
 export function EmployeeAttendanceTabLiveV2({
   readOnly,
   loading,
+  error = "",
   rows,
   monthKey,
   selectedDate,
+  approvedLeaveDateKeys = [],
   canEdit,
   canDelete,
   onMonthChange,
@@ -335,50 +379,60 @@ export function EmployeeAttendanceTabLiveV2({
   onDeletePunch,
 }: EmployeeAttendanceTabLiveV2Props) {
   const normalizedMonth = safeMonthKey(monthKey);
-  const calendarDays = buildAttendanceCalendar(normalizedMonth, rows);
+  const normalizedRows = rows.filter((row) => cleanText(row.date).startsWith(normalizedMonth));
+  const monthLeaveDates = approvedLeaveDateKeys.filter((date) => cleanText(date).startsWith(normalizedMonth));
+  const calendarDays = buildAttendanceCalendar(normalizedMonth, normalizedRows, monthLeaveDates);
+  const selectedDay = calendarDays.find((day) => day.date === selectedDate) || null;
+  const selectedRow = selectedDay?.row || null;
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
+  const leaveDays = calendarDays.filter((day) => day.status === "إجازة").length;
+  const loadedDataCount = normalizedRows.length + monthLeaveDates.length;
+  const viewState: "loading" | "error" | "empty" | "data" = loading && !loadedDataCount
+    ? "loading"
+    : cleanText(error) && !loadedDataCount
+      ? "error"
+      : loadedDataCount
+        ? "data"
+        : "empty";
+  const badgeTone = viewState === "error"
+    ? "danger"
+    : viewState === "loading"
+      ? "gold"
+      : viewState === "empty"
+        ? "default"
+        : "success";
+  const badgeLabel = viewState === "loading"
+    ? "تحميل"
+    : viewState === "error"
+      ? "تعذر التحميل"
+      : viewState === "empty"
+        ? "لا توجد سجلات"
+        : "بيانات محملة";
 
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
         title="الحضور"
         description="عرض وتعديل سجل الحضور من مكوّن V2 مستقل."
-        badge={<WorkspaceStatusBadgeV2 tone={loading ? "gold" : "success"}>{loading ? "تحميل" : "جاهز"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={badgeTone}>{badgeLabel}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="أيام الشهر" value={calendarDays.length} />
         <WorkspaceMetricV2 label="أيام عليها بصمة" value={presentRows} tone="success" />
         <WorkspaceMetricV2 label="دقائق التأخير" value={lateTotal} tone={lateTotal ? "gold" : "neutral"} />
-        <WorkspaceMetricV2 label="اليوم المحدد" value={selectedDate || "-"} />
+        <WorkspaceMetricV2 label="أيام الإجازة" value={leaveDays} tone={leaveDays ? "gold" : "neutral"} />
       </div>
 
-      <WorkspaceCardV2
-        title="جدول الحضور الشهري"
-        description="عرض سريع لكل أيام الشهر، مع تمييز اليوم المحدد وحالة البصمة."
-        actions={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>}
-      >
-        <div className="dsv2-ew-calendar-head" aria-hidden="true">
-          {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
-        </div>
-        <div className="dsv2-ew-calendar dsv2-ew-attendance-month-grid">
-          {calendarDays.map((day) => (
-            <button
-              key={day.date}
-              type="button"
-              className="dsv2-ew-calendar__day"
-              data-status={day.status}
-              data-selected={selectedDate === day.date ? "true" : "false"}
-              onClick={() => onSelectedDateChange(day.date)}
-            >
-              <strong>{day.dayNumber}</strong>
-              <span>{day.status === "—" ? "لا يوجد" : day.status}</span>
-              <small>{day.timeLabel}</small>
-            </button>
-          ))}
-        </div>
-      </WorkspaceCardV2>
+      {cleanText(error) && loadedDataCount ? (
+        <WorkspaceNoticeV2
+          title="تعذر تحديث سجل الحضور"
+          description={error}
+          tone="danger"
+          action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
+        />
+      ) : null}
 
       <WorkspaceCardV2
         title="فلاتر الحضور"
@@ -406,26 +460,97 @@ export function EmployeeAttendanceTabLiveV2({
         </div>
       </WorkspaceCardV2>
 
-      <WorkspaceCardV2 title="سجل الشهر" description="السجلات المحملة للموظفة في الشهر الحالي.">
-        <WorkspaceTableV2
-          headers={["اليوم", "الحالة", "الحضور", "الانصراف", "التأخير", "إجراء"]}
-          rows={rows.map((row) => {
-            const date = cleanText(row.date);
-            return [
-              date || "-",
-              cleanText(row.status) || "-",
-              cleanText(row.checkInAtClient) || "-",
-              cleanText(row.checkOutAtClient) || "-",
-              Number(row.lateMinutes || 0) ? `${formatNumber(row.lateMinutes)} د` : "-",
-              <div className="dsv2-cluster" key={`${date}-actions`}>
-                <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>تعديل</button>
-                <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>حذف</button>
-              </div>,
-            ];
-          })}
-          emptyText={loading ? "جاري تحميل السجلات..." : "لا توجد سجلات حضور في هذا الشهر."}
+      {viewState === "loading" ? (
+        <WorkspaceCardV2 title="جاري تحميل الحضور" description="يتم تحميل سجلات الحضور الفعلية لهذا الشهر.">
+          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل سجل حضور الموظفة">
+            <DashboardSkeletonV2 variant="title" width="46%" />
+            <DashboardSkeletonV2 lines={3} />
+            <DashboardSkeletonV2 variant="block" height={140} />
+          </article>
+        </WorkspaceCardV2>
+      ) : viewState === "error" ? (
+        <WorkspaceNoticeV2
+          title="تعذر تحميل سجل الحضور"
+          description={error || "تعذر تحميل سجل حضور الموظفة. أعد المحاولة بعد التحقق من الاتصال."}
+          tone="danger"
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={loading} onClick={onReload}>إعادة المحاولة</button>}
         />
-      </WorkspaceCardV2>
+      ) : viewState === "empty" ? (
+        <WorkspaceCardV2 title="لا توجد سجلات حضور" description="لا توجد بصمات أو إجازات معتمدة في الشهر المحدد.">
+          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
+            <strong>لا توجد سجلات لهذا الشهر</strong>
+            <span>ستظهر البصمات والإجازات تلقائياً عند توفرها من نظام الحضور.</span>
+          </div>
+        </WorkspaceCardV2>
+      ) : null}
+
+      {viewState === "data" ? (
+        <>
+          <WorkspaceCardV2
+            title="تقويم الشهر"
+            description="عرض سريع لكل أيام الشهر، مع تمييز اليوم المحدد وحالة البصمة أو الإجازة."
+            actions={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>}
+          >
+            <div className="dsv2-ew-calendar-head" aria-hidden="true">
+              {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
+            </div>
+            <div className="dsv2-ew-calendar dsv2-ew-attendance-month-grid">
+              {calendarDays.map((day) => (
+                <button
+                  key={day.date}
+                  type="button"
+                  className="dsv2-ew-calendar__day"
+                  data-status={day.status}
+                  data-selected={selectedDate === day.date ? "true" : "false"}
+                  onClick={() => onSelectedDateChange(day.date)}
+                >
+                  <strong>{day.dayNumber}</strong>
+                  <span>{day.status === "—" ? "لا يوجد" : day.status}</span>
+                  <small>{day.timeLabel}</small>
+                </button>
+              ))}
+            </div>
+          </WorkspaceCardV2>
+
+          <WorkspaceCardV2 title="اليوم المحدد" description={selectedDate || "اختر يوماً من التقويم."}>
+            <div className="dsv2-ew-conversation-status dsv2-ew-conversation-status--single">
+              <span className="dsv2-ew-presence" aria-hidden="true" data-state={selectedDay?.status === "غياب" ? "error" : selectedDay?.status === "إجازة" ? "loading" : "ready"} />
+              <div>
+                <strong>{selectedDay?.status && selectedDay.status !== "—" ? selectedDay.status : "لا توجد بصمة"}</strong>
+                <small>
+                  {selectedRow
+                    ? `${formatAttendanceTime(selectedRow.checkInAtClient) || "-"} / ${formatAttendanceTime(selectedRow.checkOutAtClient) || "-"}`
+                    : selectedDay?.timeLabel || "لا توجد بيانات لهذا اليوم"}
+                </small>
+              </div>
+              <WorkspaceStatusBadgeV2 tone={selectedDay?.status === "غياب" ? "danger" : selectedDay?.status === "إجازة" || selectedDay?.status === "تأخير" ? "gold" : selectedRow ? "success" : "default"}>
+                {selectedDay?.status && selectedDay.status !== "—" ? selectedDay.status : "بدون سجل"}
+              </WorkspaceStatusBadgeV2>
+            </div>
+          </WorkspaceCardV2>
+
+          <WorkspaceCardV2 title="سجل الشهر" description="السجلات المحملة للموظفة في الشهر الحالي.">
+            <WorkspaceTableV2
+              headers={["اليوم", "الحالة", "الحضور", "الانصراف", "التأخير", "إجراء"]}
+              rows={normalizedRows.map((row) => {
+                const date = cleanText(row.date);
+                return [
+                  date || "-",
+                  attendanceRowStatus(row) || "-",
+                  formatAttendanceTime(row.checkInAtClient) || "-",
+                  formatAttendanceTime(row.checkOutAtClient) || "-",
+                  Number(row.lateMinutes || 0) ? `${formatNumber(row.lateMinutes)} د` : "-",
+                  <div className="dsv2-cluster" key={`${date}-actions`}>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !canEdit || !date} onClick={() => onEditPunch(date)}>تعديل</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly || !canDelete || !date} onClick={() => onDeletePunch(date)}>حذف</button>
+                  </div>,
+                ];
+              })}
+              emptyText="لا توجد سجلات حضور في هذا الشهر."
+            />
+          </WorkspaceCardV2>
+        </>
+      ) : null}
     </div>
   );
 }

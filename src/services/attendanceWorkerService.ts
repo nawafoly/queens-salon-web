@@ -621,14 +621,20 @@ function recordVerification(
 function recordMatchesEmployee(
   record: AttendanceWorkerRecord,
   employeeUid: string,
-  employeeId: string
+  employeeId: string,
+  extraIds: unknown[] = []
 ) {
   const recordUid = cleanText(record.employeeUid);
   const recordDocId = cleanText(record.employeeDocId);
+  const ids = new Set(
+    [employeeUid, employeeId, ...extraIds]
+      .map(cleanText)
+      .filter(Boolean)
+  );
 
   return (
-    (!!employeeUid && (recordUid === employeeUid || recordDocId === employeeUid)) ||
-    (!!employeeId && (recordDocId === employeeId || recordUid === employeeId))
+    (!!recordUid && ids.has(recordUid)) ||
+    (!!recordDocId && ids.has(recordDocId))
   );
 }
 
@@ -881,30 +887,43 @@ export async function listAttendanceByDateRangeForEmployeeFromWorker(
   input: {
     employeeUid?: string;
     employeeId: string;
+    employeeDocId?: string;
+    employeeIds?: unknown[];
     fromDate: string;
     toDate: string;
   }
 ): Promise<StaffAttendanceWithId[]> {
   const employeeUid = cleanText(input.employeeUid);
   const employeeId = cleanText(input.employeeId);
+  const employeeDocId = cleanText(input.employeeDocId) || employeeId;
+  const employeeIds = Array.from(
+    new Set(
+      [
+        employeeUid,
+        employeeId,
+        employeeDocId,
+        ...(input.employeeIds || []),
+      ].map(cleanText).filter(Boolean)
+    )
+  );
   const fromDate = cleanText(input.fromDate);
   const toDate = cleanText(input.toDate);
 
-  const requestEmployeeUid = employeeUid || employeeId;
+  const requestEmployeeUid = employeeUid || employeeDocId || employeeId;
 
-  if (!requestEmployeeUid || !employeeId || !fromDate || !toDate) {
+  if (!requestEmployeeUid || !employeeDocId || !fromDate || !toDate) {
     return [];
   }
 
   attendanceDebug(
     `employeeUid=${requestEmployeeUid}`,
-    `employeeId=${employeeId}`,
+    `employeeId=${employeeDocId}`,
     `range=${fromDate}..${toDate}`
   );
 
   const result = await fetchAttendanceRecordsFromWorker({
     employeeUid: requestEmployeeUid,
-    employeeDocId: employeeId,
+    employeeDocId,
     fromDate,
     toDate,
     result: "allowed",
@@ -912,7 +931,7 @@ export async function listAttendanceByDateRangeForEmployeeFromWorker(
   });
 
   const employeeRecords = result.records.filter((record) =>
-    recordMatchesEmployee(record, employeeUid, employeeId)
+    recordMatchesEmployee(record, employeeUid, employeeId, employeeIds)
   );
 
   const dates = getRecordDateKeysInRange(employeeRecords, fromDate, toDate);

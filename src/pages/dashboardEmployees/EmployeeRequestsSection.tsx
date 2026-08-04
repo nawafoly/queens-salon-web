@@ -225,7 +225,13 @@ export default function EmployeeRequestsSection({
 
   if (!isVisible) return null;
 
-  const state: "loading" | "error" | "ready" = loading && !rows.length ? "loading" : error && !rows.length ? "error" : "ready";
+  const state: "loading" | "error" | "empty" | "ready" = loading && !rows.length
+    ? "loading"
+    : error && !rows.length
+      ? "error"
+      : filteredRows.length
+        ? "ready"
+        : "empty";
 
   return (
     <div className="dsv2-ew-tab-panel dsv2-ew-requests-live">
@@ -272,6 +278,13 @@ export default function EmployeeRequestsSection({
           tone="danger"
           action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
         />
+      ) : state === "empty" ? (
+        <WorkspaceCardV2 title={scopeTitle(scope)} description="لا توجد طلبات مطابقة للبيانات الحالية.">
+          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
+            <strong>لا توجد طلبات</strong>
+            <span>ستظهر طلبات الموظفة هنا تلقائياً عند وصولها أو عند تغيير فلتر الحالة.</span>
+          </div>
+        </WorkspaceCardV2>
       ) : (
         <WorkspaceCardV2 title={scopeTitle(scope)} description={`${filteredRows.length} طلبات في الحالة المحددة.`}>
           <WorkspaceTableV2

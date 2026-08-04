@@ -916,7 +916,8 @@
 .dashboard-v2 .dsv2-ew-calendar__day span { color: var(--dsv2-ew-muted); font-size: 0.65rem; font-weight: 800; overflow-wrap: anywhere; }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="حضور"] { border-block-end: 3px solid var(--dsv2-color-green, #177348); background: var(--dsv2-ew-success-soft); }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="تأخير"],
-.dashboard-v2 .dsv2-ew-calendar__day[data-status="خروج مبكر"] { border-block-end: 3px solid var(--dsv2-color-gold, #d9a50b); background: var(--dsv2-ew-gold-soft); }
+.dashboard-v2 .dsv2-ew-calendar__day[data-status="خروج مبكر"],
+.dashboard-v2 .dsv2-ew-calendar__day[data-status="إجازة"] { border-block-end: 3px solid var(--dsv2-color-gold, #d9a50b); background: var(--dsv2-ew-gold-soft); }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="غياب"] { border-block-end: 3px solid var(--dsv2-color-burgundy, #59041b); background: var(--dsv2-ew-danger-soft); }
 .dashboard-v2 .dsv2-ew-calendar__day[data-status="—"] { opacity: 0.45; cursor: default; }
 

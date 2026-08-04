@@ -25,7 +25,6 @@ import {
   faClock,
   faEnvelope,
   faFileLines,
-  faFolderOpen,
   faInbox,
   faMoneyBillWave,
   faPlus,
@@ -68,6 +67,9 @@ import EmployeeDetailShell from "./dashboardEmployees/EmployeeDetailShell";
 import EmployeeEditorModal from "./dashboardEmployees/EmployeeEditorModal";
 import EmployeeProfilePageLayout from "./dashboardEmployees/EmployeeProfilePageLayout";
 import EmployeeListPanel from "./dashboardEmployees/EmployeeListPanel";
+import EmployeeFilesSection from "./dashboardEmployees/EmployeeFilesSection";
+import EmployeeMessagesSection from "./dashboardEmployees/EmployeeMessagesSection";
+import EmployeeRequestsSection from "./dashboardEmployees/EmployeeRequestsSection";
 import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
 import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection";
@@ -314,84 +316,6 @@ let employeeBookingStatsCache:
     }
   | null = null;
 
-function EmployeeComingSoonSection({
-  isVisible,
-  title,
-  lead,
-  actionLabel,
-  actionHref,
-  moduleLabel,
-  notes,
-}: {
-  isVisible: boolean;
-  title: string;
-  lead: string;
-  actionLabel: string;
-  actionHref: string;
-  moduleLabel: string;
-  notes: string[];
-}) {
-  if (!isVisible) return null;
-
-  return (
-    <section className="emp-modal-section emp-linked-module-section">
-      <header className="emp-section-header emp-linked-module-header">
-        <div className="emp-section-header__main">
-          <span className="emp-linked-module-eyebrow">
-            مساحة الموظفة
-          </span>
-
-          <h3 className="emp-modal-section-title">
-            {title}
-          </h3>
-
-          <p className="emp-section-lead">
-            {lead}
-          </p>
-        </div>
-
-        <span className="emp-linked-module-status">
-          نظام مفعّل
-        </span>
-      </header>
-
-      <div className="emp-linked-module-card">
-        <div
-          className="emp-linked-module-icon"
-          aria-hidden="true"
-        >
-          <FontAwesomeIcon icon={faFolderOpen} />
-        </div>
-
-        <div className="emp-linked-module-content">
-          <span className="emp-linked-module-label">
-            {moduleLabel}
-          </span>
-
-          <strong>{title}</strong>
-
-          <p>
-            هذا التبويب مرتبط بالنظام الإداري الفعلي،
-            ويمكن فتحه لإدارة البيانات مباشرة.
-          </p>
-
-          <div className="emp-linked-module-points">
-            {notes.map((note) => (
-              <span key={note}>{note}</span>
-            ))}
-          </div>
-        </div>
-
-        <a
-          className="exp-btn primary emp-linked-module-action"
-          href={actionHref}
-        >
-          {actionLabel}
-        </a>
-      </div>
-    </section>
-  );
-}
 function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
   const targetUid = cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId || "");
   return {
@@ -649,9 +573,13 @@ export default function DashboardEmployees() {
   const [selectedAttendanceZoneId, setSelectedAttendanceZoneId] = useState("");
   const [employeeAttendanceRows, setEmployeeAttendanceRows] = useState<StaffAttendanceWithId[]>([]);
   const [employeeAttendanceLoading, setEmployeeAttendanceLoading] = useState(false);
+  const [employeeAttendanceError, setEmployeeAttendanceError] = useState("");
   const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [employeeAttendanceSelectedDate, setEmployeeAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const attendanceLoadRequestRef = useRef(0);
+  const attendanceInFlightKeyRef = useRef("");
+  const attendanceLoadedKeyRef = useRef("");
+  const staffListRef = useRef<StaffPublicUi[]>([]);
   const [selectedEmployeeLeaveRequests, setSelectedEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [attendanceEditOpen, setAttendanceEditOpen] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState("");
@@ -814,12 +742,18 @@ export default function DashboardEmployees() {
     }
   }, [canManageAttendanceZones]);
 
-  const loadSelectedEmployeeAttendance = useCallback(async () => {
-    const requestId = ++attendanceLoadRequestRef.current;
+  useEffect(() => {
+    staffListRef.current = list;
+  }, [list]);
+
+  const loadSelectedEmployeeAttendance = useCallback(async (options: { force?: boolean } = {}) => {
     if (!canViewAttendance) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
+      setEmployeeAttendanceError("");
       setEmployeeAttendanceLoading(false);
+      attendanceInFlightKeyRef.current = "";
+      attendanceLoadedKeyRef.current = "";
       return;
     }
 
@@ -827,6 +761,8 @@ export default function DashboardEmployees() {
     if (!employeeId) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
+      setEmployeeAttendanceError("");
+      setEmployeeAttendanceLoading(false);
       return;
     }
 
@@ -839,18 +775,35 @@ export default function DashboardEmployees() {
     )
       .toISOString()
       .slice(0, 10);
-    setEmployeeAttendanceLoading(true);
-    try {
-      const selectedIdentity = selectedEmployeeIdentityRef.current;
-      const employeeProfile =
-        list.find((item) => item.id === employeeId) ||
-        list.find((item) => employeeMatchesIdentity(item, selectedIdentity)) ||
-        { id: employeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
-        employeeProfile,
-        employeeId
-      );
+    const selectedIdentity = selectedEmployeeIdentityRef.current;
+    const currentList = staffListRef.current;
+    const employeeProfile =
+      currentList.find((item) => item.id === employeeId) ||
+      currentList.find((item) => employeeMatchesIdentity(item, selectedIdentity)) ||
+      { id: employeeId };
+
+    const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+      employeeProfile,
+      employeeId
+    );
+    const attendanceKey = [
+      employeeId,
+      attendanceIdentity.employeeUid,
+      attendanceIdentity.employeeDocId,
+      monthKey,
+    ].join("|");
+
+    if (!options.force) {
+      if (attendanceInFlightKeyRef.current === attendanceKey) return;
+      if (attendanceLoadedKeyRef.current === attendanceKey) return;
+    }
+
+    const requestId = ++attendanceLoadRequestRef.current;
+    attendanceInFlightKeyRef.current = attendanceKey;
+    setEmployeeAttendanceLoading(true);
+    setEmployeeAttendanceError("");
+    try {
       attendanceDebug(
         `employeeUid=${attendanceIdentity.employeeUid}`,
         `employeeDocId=${attendanceIdentity.employeeDocId}`,
@@ -861,7 +814,9 @@ export default function DashboardEmployees() {
       const [rows, leaveRows] = await Promise.all([
         listAttendanceByDateRangeForEmployeeFromWorker({
           employeeUid: attendanceIdentity.employeeUid,
-          employeeId: attendanceIdentity.employeeDocId,
+          employeeId,
+          employeeDocId: attendanceIdentity.employeeDocId,
+          employeeIds: attendanceIdentity.allIds,
           fromDate: monthStart,
           toDate: monthEnd,
         }),
@@ -878,6 +833,7 @@ export default function DashboardEmployees() {
           )
         )
       );
+      attendanceLoadedKeyRef.current = attendanceKey;
     } catch (error) {
       if (requestId !== attendanceLoadRequestRef.current) return;
       setEmployeeAttendanceRows([]);
@@ -886,21 +842,33 @@ export default function DashboardEmployees() {
       if (status === 403) {
         const payload = (error as { payload?: { message?: unknown; detail?: unknown } })?.payload || {};
         const developerCode = cleanText(payload.message || payload.detail || (error as Error)?.message || "forbidden");
-        setErrorMsg(
-          `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`
-        );
+        const message = `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`;
+        setEmployeeAttendanceError(message);
+        setErrorMsg(message);
       } else {
-        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
+        const message = toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة.");
+        setEmployeeAttendanceError(message);
+        setErrorMsg(message);
       }
     } finally {
       if (requestId === attendanceLoadRequestRef.current) {
         setEmployeeAttendanceLoading(false);
+        if (attendanceInFlightKeyRef.current === attendanceKey) {
+          attendanceInFlightKeyRef.current = "";
+        }
       }
     }
   }, [canViewAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
 
   useEffect(() => {
     if (!selectedEmployeeId) return;
+    attendanceLoadRequestRef.current += 1;
+    attendanceInFlightKeyRef.current = "";
+    attendanceLoadedKeyRef.current = "";
+    setEmployeeAttendanceRows([]);
+    setSelectedEmployeeLeaveRequests([]);
+    setEmployeeAttendanceError("");
+    setEmployeeAttendanceLoading(false);
     const todayKey = getTodayAttendanceDateKey();
     setEmployeeAttendanceMonth(todayKey.slice(0, 7));
     setEmployeeAttendanceSelectedDate(todayKey);
@@ -1014,7 +982,7 @@ export default function DashboardEmployees() {
         },
       });
       closeAttendancePunchEditor();
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ تعديل البصمة."));
     } finally {
@@ -1093,7 +1061,7 @@ export default function DashboardEmployees() {
           clearedRecords,
         },
       });
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));
     } finally {
@@ -1216,7 +1184,7 @@ export default function DashboardEmployees() {
         },
       });
 
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة المفاجئة."));
     } finally {
@@ -1296,7 +1264,7 @@ export default function DashboardEmployees() {
         },
       });
 
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
     } finally {
@@ -4721,6 +4689,7 @@ export default function DashboardEmployees() {
               <AttendanceSection
                 isVisible={!!editingStaff && activeTab === "attendance" && canViewAttendance}
                 loading={employeeAttendanceLoading}
+                error={employeeAttendanceError}
                 rows={employeeAttendanceRows}
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
@@ -4740,7 +4709,7 @@ export default function DashboardEmployees() {
                 }}
                 onSelectedDateChange={setEmployeeAttendanceSelectedDate}
                 onReload={() => {
-                  void loadSelectedEmployeeAttendance();
+                  void loadSelectedEmployeeAttendance({ force: true });
                 }}
                 onEditPunch={openAttendancePunchEditor}
                 onDeletePunch={(dateKey) => {
@@ -4942,45 +4911,39 @@ export default function DashboardEmployees() {
                 onToggleSpecialty={toggleSpecialty}
                 onSpecialtiesChange={setSpecialties}
               />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "requests" && canManageLeaveBalance}
-                title="طلبات الموظفة"
-                lead="راجعي طلبات الإجازة والطلبات الإدارية الواردة من الموظفات داخل لوحة الموارد البشرية."
-                actionLabel="فتح لوحة الطلبات"
-                actionHref="/admin/overview"
-                moduleLabel="طلبات الموارد البشرية"
-                notes={[
-                  "مراجعة أحدث طلبات الإجازة",
-                  "عرض الطلبات المعلقة",
-                  "الوصول إلى إجراءات القبول والرفض",
-                ]}
-              />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "messages" && canViewEmployeeMessages}
-                title="رسائل HR مع الموظفة"
-                lead="افتحي نظام الرسائل الداخلية لبدء محادثة أو متابعة الرسائل السابقة مع الموظفة."
-                actionLabel="فتح الرسائل"
-                actionHref="/admin/messages"
-                moduleLabel="الرسائل الداخلية"
-                notes={[
-                  "عرض المحادثات السابقة",
-                  "إرسال رسالة داخلية جديدة",
-                  "متابعة الرسائل غير المقروءة",
-                ]}
-              />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "files" && canViewEmployeeFiles}
-                title="ملفات الموظفة"
-                lead="افتحي نظام الملفات الداخلية لرفع المستندات وعرض الملفات المرتبطة بالموظفات."
-                actionLabel="فتح إدارة الملفات"
-                actionHref="/admin/files"
-                moduleLabel="ملفات الموظفة"
-                notes={[
-                  "رفع مستند أو مرفق جديد",
-                  "عرض الملفات الواردة والمرسلة",
-                  "متابعة حالة القراءة والنسخة الحالية",
-                ]}
-              />
+              {editingStaff ? (
+                <EmployeeRequestsSection
+                  isVisible={activeTab === "requests" && canManageLeaveBalance}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  reviewerUid={authUser?.uid || ""}
+                  reviewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canManageLeaveBalance}
+                />
+              ) : null}
+              {editingStaff ? (
+                <EmployeeMessagesSection
+                  isVisible={activeTab === "messages" && canViewEmployeeMessages}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  viewerUid={authUser?.uid || ""}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canViewEmployeeMessages}
+                />
+              ) : null}
+              {editingStaff ? (
+                <EmployeeFilesSection
+                  isVisible={activeTab === "files" && canViewEmployeeFiles}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  viewerUid={authUser?.uid || ""}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canViewEmployeeFiles}
+                />
+              ) : null}
             </EmployeeEditorSurface>
           </EmployeeDetailShell>
         </div>

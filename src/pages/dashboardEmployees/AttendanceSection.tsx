@@ -7,6 +7,7 @@ import {
 type AttendanceSectionProps = {
   isVisible: boolean;
   loading: boolean;
+  error?: string;
   rows: StaffAttendanceWithId[];
   monthKey: string;
   selectedDate: string;
@@ -41,12 +42,16 @@ function toLiveAttendanceRow(row: StaffAttendanceWithId): EmployeeAttendanceRowL
     lateMinutes: Number(record.lateMinutes || 0),
     earlyLeaveMinutes: Number(record.earlyLeaveMinutes || 0),
     notes: cleanText(record.notes || record.note),
+    type: cleanText(record.type),
+    absentFullDay: record.absentFullDay === true,
+    recordCount: Array.isArray(record.records) ? record.records.length : undefined,
   };
 }
 
 export default function AttendanceSection({
   isVisible,
   loading,
+  error = "",
   rows,
   monthKey,
   selectedDate,
@@ -70,13 +75,15 @@ export default function AttendanceSection({
   const canShowLeaveActions = Boolean(selectedDate && (canCreateEmergencyLeave || canCancelLeave));
 
   return (
-    <section className="dsv2-ew-tab-panel">
+    <>
       <EmployeeAttendanceTabLiveV2
         readOnly={loading}
         loading={loading}
+        error={error}
         rows={liveRows}
         monthKey={monthKey}
         selectedDate={selectedDate}
+        approvedLeaveDateKeys={approvedLeaveDateKeys}
         canEdit={canEdit}
         canDelete={canDelete}
         onMonthChange={onMonthChange}
@@ -124,6 +131,6 @@ export default function AttendanceSection({
           </div>
         </article>
       ) : null}
-    </section>
+    </>
   );
 }
