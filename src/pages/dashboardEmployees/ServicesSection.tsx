@@ -1,4 +1,4 @@
-import EmployeeSelect from "../../components/EmployeeSelect";
+import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import { useMemo, useState } from "react";
 
 import { toArabicSectionLabel, type ServiceOption } from "./shared";
@@ -95,7 +95,6 @@ export default function ServicesSection({
     [filteredServicesForPicks, pickerView, selectedSet]
   );
 
-
   const renderedServices = useMemo(
     () => visibleServices.slice(0, renderLimit),
     [renderLimit, visibleServices]
@@ -163,10 +162,10 @@ export default function ServicesSection({
 
         <div className="emp-svc-field emp-svc-field--section">
           <span>القسم</span>
-          <EmployeeSelect
+          <DashboardSelectV2
             id="employee-services-section"
+            className="emp-svc-section-select"
             value={srvSection}
-            ariaLabel="قسم الخدمات"
             placeholder="كل الأقسام"
             options={[
               { value: "all", label: "كل الأقسام" },
