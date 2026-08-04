@@ -34,6 +34,11 @@ function cleanText(value: unknown) {
 
 function toLiveAttendanceRow(row: StaffAttendanceWithId): EmployeeAttendanceRowLiveV2 {
   const record = row as StaffAttendanceWithId & Record<string, unknown>;
+  const checkInVerification = (record.checkInVerification || {}) as Record<string, unknown>;
+  const checkOutVerification = (record.checkOutVerification || {}) as Record<string, unknown>;
+  const records = Array.isArray(record.records)
+    ? (record.records as Record<string, unknown>[])
+    : [];
   return {
     date: cleanText(record.date || record.dateKey || record.dayKey),
     status: cleanText(record.status || record.attendanceStatus || record.state),
@@ -44,7 +49,12 @@ function toLiveAttendanceRow(row: StaffAttendanceWithId): EmployeeAttendanceRowL
     notes: cleanText(record.notes || record.note),
     type: cleanText(record.type),
     absentFullDay: record.absentFullDay === true,
-    recordCount: Array.isArray(record.records) ? record.records.length : undefined,
+    recordCount: records.length,
+    workZoneName: cleanText(
+      checkInVerification.workZoneName ||
+        checkOutVerification.workZoneName ||
+        records.find((item) => cleanText(item.zoneName))?.zoneName
+    ),
   };
 }
 
@@ -71,8 +81,6 @@ export default function AttendanceSection({
   if (!isVisible) return null;
 
   const liveRows = rows.map(toLiveAttendanceRow);
-  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(selectedDate);
-  const canShowLeaveActions = Boolean(selectedDate && (canCreateEmergencyLeave || canCancelLeave));
 
   return (
     <>
@@ -86,51 +94,16 @@ export default function AttendanceSection({
         approvedLeaveDateKeys={approvedLeaveDateKeys}
         canEdit={canEdit}
         canDelete={canDelete}
+        canCreateEmergencyLeave={canCreateEmergencyLeave}
+        canCancelLeave={canCancelLeave}
         onMonthChange={onMonthChange}
         onSelectedDateChange={onSelectedDateChange}
         onReload={onReload}
         onEditPunch={onEditPunch}
         onDeletePunch={onDeletePunch}
+        onCreateEmergencyLeave={onCreateEmergencyLeave}
+        onCancelLeave={onCancelLeave}
       />
-
-      {canShowLeaveActions ? (
-        <article className="dsv2-card dsv2-card--padded dsv2-ew-card">
-          <header className="dsv2-section-head dsv2-ew-card__head">
-            <div>
-              <h3 className="dsv2-section-title dsv2-ew-card__title">إجراءات اليوم المحدد</h3>
-              <p className="dsv2-section-caption">
-                إجراءات مرتبطة بيوم {selectedDate} بدون الرجوع لمكونات الحضور القديمة.
-              </p>
-            </div>
-          </header>
-
-          <div className="dsv2-ew-card__body">
-            <div className="dsv2-cluster">
-              {canCreateEmergencyLeave ? (
-                <button
-                  type="button"
-                  className="dsv2-btn dsv2-btn--accent"
-                  disabled={loading || selectedHasApprovedLeave}
-                  onClick={() => onCreateEmergencyLeave?.(selectedDate)}
-                >
-                  تسجيل إجازة مفاجئة
-                </button>
-              ) : null}
-
-              {canCancelLeave ? (
-                <button
-                  type="button"
-                  className="dsv2-btn dsv2-btn--danger"
-                  disabled={loading || !selectedHasApprovedLeave}
-                  onClick={() => onCancelLeave?.(selectedDate)}
-                >
-                  إلغاء إجازة اليوم
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </article>
-      ) : null}
     </>
   );
 }

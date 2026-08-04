@@ -896,6 +896,23 @@
   text-align: center;
 }
 
+.dashboard-v2 .dsv2-ew-attendance-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: start;
+  gap: 16px;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-calendar-card .dsv2-ew-card__body {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-detail-card {
+  position: sticky;
+  top: 16px;
+}
+
 .dashboard-v2 .dsv2-ew-calendar__day {
   appearance: none;
   display: grid;
@@ -924,6 +941,33 @@
 .dashboard-v2 .dsv2-ew-day-detail { display: grid; gap: 14px; }
 .dashboard-v2 .dsv2-ew-day-detail__status { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 .dashboard-v2 .dsv2-ew-day-detail__status > span { color: var(--dsv2-ew-muted); font-size: 0.78rem; }
+.dashboard-v2 .dsv2-ew-day-fields {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 14px;
+}
+.dashboard-v2 .dsv2-ew-day-fields div {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 13px;
+  border-block-end: 1px solid var(--dsv2-ew-border);
+}
+.dashboard-v2 .dsv2-ew-day-fields div:last-child { border-block-end: 0; }
+.dashboard-v2 .dsv2-ew-day-fields dt {
+  color: var(--dsv2-ew-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+.dashboard-v2 .dsv2-ew-day-fields dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--dsv2-color-black, #05080d);
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .dashboard-v2 .dsv2-ew-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 
 .dashboard-v2 .dsv2-ew-balance-preview {
@@ -1129,7 +1173,9 @@
   .dashboard-v2 .dsv2-ew-grid--profile,
   .dashboard-v2 .dsv2-ew-grid--attendance,
   .dashboard-v2 .dsv2-ew-services-layout,
-  .dashboard-v2 .dsv2-ew-files-layout { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-v2 .dsv2-ew-files-layout,
+  .dashboard-v2 .dsv2-ew-attendance-board { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-v2 .dsv2-ew-attendance-detail-card { position: static; }
   .dashboard-v2 .dsv2-ew-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-v2 .dsv2-ew-metrics--attendance { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .dashboard-v2 .dsv2-ew-state-grid { grid-template-columns: 1fr; }
