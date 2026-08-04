@@ -35,11 +35,31 @@
   display: flex;
 }
 
-.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-input {
-  direction: ltr;
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+.dashboard-v2 .dsv2-employee-workspace :is(
+  .dsv2-input,
+  .dsv2-textarea,
+  .dsv2-select-v2,
+  .dsv2-date-v2,
+  .dsv2-ew-metric,
+  .dsv2-ew-table,
+  .dsv2-ew-calendar__day
+) {
+  font-family: inherit;
+}
+
+.dashboard-v2 .dsv2-employee-workspace :is(
+  .dsv2-input,
+  .dsv2-select-v2,
+  .dsv2-date-v2,
+  .dsv2-ew-metric > strong,
+  .dsv2-ew-calendar__day strong,
+  .dsv2-ew-calendar__day small,
+  .dsv2-ew-table th,
+  .dsv2-ew-table td
+) {
+  font-variant-numeric: proportional-nums;
+  font-feature-settings: normal;
+  letter-spacing: 0;
 }
 
 .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
