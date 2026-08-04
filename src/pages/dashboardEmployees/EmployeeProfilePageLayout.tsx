@@ -164,7 +164,6 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
           disabled={!props.canManage}
           onInputCapture={markDirty}
           onChangeCapture={markDirty}
-          onClickCapture={markDirty}
         >
           <div
             className="employees-v2-profile__body"
