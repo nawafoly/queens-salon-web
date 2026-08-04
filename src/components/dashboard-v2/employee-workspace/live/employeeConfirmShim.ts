@@ -3,6 +3,12 @@ type PendingConfirm = {
   trigger: HTMLElement | null;
 };
 
+type ConfirmCopy = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+};
+
 declare global {
   interface Window {
     __malikatEmployeeConfirmShimInstalled?: boolean;
@@ -25,9 +31,42 @@ function removeOverlay() {
   overlayEl = null;
 }
 
+function resolveConfirmCopy(message: string): ConfirmCopy {
+  if (message.includes("مسح") && message.includes("بصمة")) {
+    return {
+      title: "حذف بصمة الدخول؟",
+      description: "سيعاد احتساب اليوم بعد حذف البصمة، وقد يتغير الاستحقاق المالي.",
+      confirmLabel: "حذف البصمة",
+    };
+  }
+
+  if (message.includes("حذف") && message.includes("رصيد الإجازات")) {
+    return {
+      title: "حذف السجل؟",
+      description: message,
+      confirmLabel: "حذف السجل",
+    };
+  }
+
+  if (message.includes("إلغاء الإجازة")) {
+    return {
+      title: "إلغاء الإجازة؟",
+      description: message,
+      confirmLabel: "إلغاء الإجازة",
+    };
+  }
+
+  return {
+    title: "تأكيد الإجراء",
+    description: message,
+    confirmLabel: "تأكيد",
+  };
+}
+
 function buildOverlay(message: string) {
   removeOverlay();
 
+  const copy = resolveConfirmCopy(message);
   const overlay = document.createElement("div");
   overlay.className = "dsv2-native-confirm-replacement";
   overlay.setAttribute("role", "alertdialog");
@@ -37,20 +76,25 @@ function buildOverlay(message: string) {
   overlay.innerHTML = `
     <div class="dsv2-native-confirm-replacement__backdrop" data-action="cancel"></div>
     <section class="dsv2-native-confirm-replacement__dialog">
-      <div class="dsv2-native-confirm-replacement__icon" aria-hidden="true">!</div>
+      <button type="button" class="dsv2-native-confirm-replacement__close" data-action="cancel" aria-label="إغلاق">×</button>
       <div class="dsv2-native-confirm-replacement__copy">
-        <strong>تأكيد الإجراء</strong>
+        <strong></strong>
         <p></p>
       </div>
+      <div class="dsv2-native-confirm-replacement__icon" aria-hidden="true">!</div>
       <div class="dsv2-native-confirm-replacement__actions">
-        <button type="button" class="dsv2-btn dsv2-btn--danger" data-action="confirm">تأكيد</button>
-        <button type="button" class="dsv2-btn dsv2-btn--secondary" data-action="cancel">إلغاء</button>
+        <button type="button" class="dsv2-native-confirm-replacement__confirm" data-action="confirm"></button>
+        <button type="button" class="dsv2-native-confirm-replacement__cancel" data-action="cancel">تراجع</button>
       </div>
     </section>
   `;
 
+  const titleNode = overlay.querySelector("strong");
   const messageNode = overlay.querySelector("p");
-  if (messageNode) messageNode.textContent = message;
+  const confirmNode = overlay.querySelector("[data-action='confirm']");
+  if (titleNode) titleNode.textContent = copy.title;
+  if (messageNode) messageNode.textContent = copy.description;
+  if (confirmNode) confirmNode.textContent = copy.confirmLabel;
 
   overlay.addEventListener("click", (event) => {
     const actionTarget = (event.target as HTMLElement | null)?.closest?.("[data-action]") as HTMLElement | null;
