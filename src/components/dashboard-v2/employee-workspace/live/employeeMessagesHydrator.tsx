@@ -11,6 +11,23 @@ function employeeIdFromPath() {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+function cleanText(value: unknown) {
+  return String(value || "").trim();
+}
+
+function employeeNameFromPage() {
+  const selectors = [
+    ".dsv2-ew-profile-head__name-row h2",
+    ".employees-v2-breadcrumb b",
+    ".employees-v2-profile__body [data-employee-name]",
+  ];
+  for (const selector of selectors) {
+    const text = cleanText(document.querySelector<HTMLElement>(selector)?.textContent);
+    if (text && !text.includes("/") && text !== "موظفة") return text;
+  }
+  return "";
+}
+
 function findMessagesPlaceholder() {
   const sections = Array.from(document.querySelectorAll<HTMLElement>(".emp-linked-module-section"));
   return sections.find((section) => {
@@ -38,7 +55,8 @@ function hydrateMessagesTab() {
     return;
   }
 
-  const key = `${employeeId}:${placeholder.dataset.messagesHydrated || ""}`;
+  const employeeName = employeeNameFromPage();
+  const key = `${employeeId}:${employeeName}:${placeholder.dataset.messagesHydrated || ""}`;
   if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return;
 
   unmountMessages();
@@ -51,13 +69,13 @@ function hydrateMessagesTab() {
   const authUser = getAuthUser();
   mountedRoot = createRoot(host);
   mountedHost = host;
-  lastKey = `${employeeId}:true`;
+  lastKey = `${employeeId}:${employeeName}:true`;
   mountedRoot.render(
     <EmployeeMessagesSection
       isVisible
       employeeId={employeeId}
       employeeUid={employeeId}
-      employeeName=""
+      employeeName={employeeName}
       viewerUid={authUser?.uid || ""}
       viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
       canManage
