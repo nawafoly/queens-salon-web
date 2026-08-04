@@ -22,16 +22,50 @@ function formatNumber(value: unknown) {
   return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
 }
 
-function normalizeMonthInput(value: string) {
-  return value.replace(/[^0-9-]/g, "").slice(0, 7);
-}
-
 function safeMonthKey(value: string) {
   const clean = cleanText(value);
   return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
 }
 
 const AR_WEEKDAY_SHORT = ["ح", "ن", "ث", "ر", "خ", "ج", "س"];
+const AR_MONTH_NAMES = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
+
+function shiftMonthKey(monthKey: string, offset: number) {
+  const normalized = safeMonthKey(monthKey);
+  const year = Number(normalized.slice(0, 4));
+  const monthIndex = Number(normalized.slice(5, 7)) - 1;
+  const date = new Date(Date.UTC(year, monthIndex + offset, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(monthKey: string) {
+  const normalized = safeMonthKey(monthKey);
+  const year = normalized.slice(0, 4);
+  const monthIndex = Number(normalized.slice(5, 7)) - 1;
+  return `${AR_MONTH_NAMES[monthIndex] || normalized} ${year}`;
+}
+
+function buildMonthOptions(monthKey: string) {
+  const normalized = safeMonthKey(monthKey);
+  const values = Array.from({ length: 16 }, (_, index) => shiftMonthKey(normalized, 3 - index));
+  return values.map((value) => ({
+    value,
+    label: formatMonthLabel(value),
+  }));
+}
 
 type AttendanceCalendarDayLiveV2 = {
   date: string;
@@ -348,20 +382,16 @@ export function EmployeeAttendanceTabLiveV2({
 
       <WorkspaceCardV2
         title="فلاتر الحضور"
-        description="اكتب الشهر بصيغة 2026-08 وحدد اليوم المطلوب."
+        description="اختر الشهر وحدد اليوم المطلوب."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2 id="employee-live-v2-attendance-month" label="الشهر">
-            <input
+            <DashboardSelectV2
               id="employee-live-v2-attendance-month"
-              className="dsv2-input dsv2-ew-attendance-month-input"
-              type="text"
-              inputMode="numeric"
-              dir="ltr"
-              placeholder="2026-08"
-              value={monthKey}
+              value={normalizedMonth}
               disabled={readOnly || loading}
-              onChange={(event) => onMonthChange(normalizeMonthInput(event.target.value))}
+              options={buildMonthOptions(normalizedMonth)}
+              onChange={onMonthChange}
             />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-attendance-date" label="اليوم">
