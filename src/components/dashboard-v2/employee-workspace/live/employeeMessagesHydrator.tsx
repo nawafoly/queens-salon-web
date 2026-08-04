@@ -38,6 +38,7 @@ function findMessagesPlaceholder() {
 }
 
 function unmountMessages() {
+  mountedHost?.closest(".emp-linked-module-section")?.classList.remove("dsv2-live-mounted");
   mountedRoot?.unmount();
   mountedRoot = null;
   mountedHost = null;
@@ -60,14 +61,12 @@ function hydrateMessagesTab() {
   const placeholder = findMessagesPlaceholder();
   if (!placeholder) return false;
 
-  const employeeName = employeeNameFromPage();
-  if (!employeeName) return false;
-
   unmountMessages();
 
   const host = document.createElement("div");
   host.className = "dsv2-messages-hydrated-host";
   host.setAttribute("data-dsv2-ignore-dirty", "true");
+  placeholder.classList.add("dsv2-live-mounted");
   placeholder.replaceChildren(host);
 
   const authUser = getAuthUser();
@@ -79,7 +78,7 @@ function hydrateMessagesTab() {
       isVisible
       employeeId={employeeId}
       employeeUid={employeeId}
-      employeeName={employeeName}
+      employeeName={employeeNameFromPage()}
       viewerUid={authUser?.uid || ""}
       viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
       canManage
