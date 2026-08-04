@@ -159,6 +159,28 @@ function readNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function shiftPreviewDescription(preview: CoreShiftChangePreview) {
+  const affectedDays = readNumber(preview.affectedDays ?? preview.affected_days);
+  const overlaps = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
+  const lockedPeriods = readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count);
+
+  const affectedText = affectedDays === 1
+    ? "سيتم تعديل يوم واحد فقط."
+    : affectedDays > 1
+      ? `سيتم تعديل ${affectedDays} أيام.`
+      : "لن تتغير أيام حضور حالية حسب الفحص.";
+
+  const overlapText = overlaps
+    ? `يوجد ${overlaps} تعيين شفت متداخل وسيتم إغلاقه تلقائيًا لنفس الموظفة فقط.`
+    : "لا توجد تعيينات شفت متداخلة.";
+
+  const lockedText = lockedPeriods
+    ? `تنبيه: يوجد ${lockedPeriods} فترة مقفلة. راجع أثر التعديل على الرواتب أو الحضور قبل الحفظ.`
+    : "لا توجد فترات مقفلة تمنع الحفظ.";
+
+  return `${affectedText} ${overlapText} ${lockedText}`;
+}
+
 function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException | CoreResolvedShift> | null) {
   const record = row as Record<string, unknown> | null | undefined;
   const start = cleanText(record?.startTime || record?.start_time || record?.templateStartTime || record?.template_start_time);
@@ -749,8 +771,8 @@ export default function ShiftControlSection({
           </DashboardFieldV2>
           {preview ? (
             <WorkspaceNoticeV2
-              title="نتيجة الفحص"
-              description={`الأيام المتأثرة: ${readNumber(preview.affectedDays ?? preview.affected_days)} — التداخلات: ${readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count)} — فترات مقفلة: ${readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count)}`}
+              title="تأثير الحفظ المتوقع"
+              description={shiftPreviewDescription(preview)}
               tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
             />
           ) : null}
