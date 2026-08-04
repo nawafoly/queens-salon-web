@@ -123,7 +123,6 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
           value={props.activeTab || "basic"}
           options={tabs.map((tab) => ({ value: tab.key, label: tab.label }))}
           onChange={(value) => props.onDetailTabChange?.(value as EmployeeSplitTab)}
-          ariaLabel="اختيار قسم ملف الموظفة"
         />
       </div>
 
