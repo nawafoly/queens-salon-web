@@ -1,4 +1,5 @@
 import "../../../../styles/dashboard-v2/pages/employee-workspace-live-v2.css";
+import "../../../../styles/dashboard-v2/pages/employee-attendance-edit-live-v2.css";
 
 export {
   EmployeeBasicTabLiveV2,
