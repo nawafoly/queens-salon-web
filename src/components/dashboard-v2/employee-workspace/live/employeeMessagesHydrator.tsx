@@ -5,8 +5,7 @@ import { getAuthUser } from "../../../../pages/dashboardEmployees/shared";
 let mountedRoot: Root | null = null;
 let mountedHost: HTMLElement | null = null;
 let lastKey = "";
-let retryTimer: number | null = null;
-let routePatched = false;
+let pendingHydrate = false;
 
 function employeeIdFromPath() {
   const match = /^\/admin\/employees\/([^/]+)\/messages\/?$/.exec(window.location.pathname);
@@ -32,6 +31,7 @@ function employeeNameFromPage() {
 function findMessagesPlaceholder() {
   const sections = Array.from(document.querySelectorAll<HTMLElement>(".emp-linked-module-section"));
   return sections.find((section) => {
+    if (section.querySelector(".dsv2-messages-hydrated-host")) return true;
     const text = section.textContent || "";
     return text.includes("رسائل HR") || text.includes("الرسائل الداخلية") || text.includes("فتح الرسائل");
   }) || null;
@@ -48,19 +48,20 @@ function hydrateMessagesTab() {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
 
   const employeeId = employeeIdFromPath();
-  const placeholder = employeeId ? findMessagesPlaceholder() : null;
-  if (!employeeId || !placeholder) {
-    if (mountedRoot && (!employeeId || !document.body.contains(mountedHost))) {
-      unmountMessages();
-    }
+  if (!employeeId) {
+    if (mountedRoot) unmountMessages();
     return false;
   }
 
+  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === employeeId) {
+    return true;
+  }
+
+  const placeholder = findMessagesPlaceholder();
+  if (!placeholder) return false;
+
   const employeeName = employeeNameFromPage();
   if (!employeeName) return false;
-
-  const key = employeeId;
-  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return true;
 
   unmountMessages();
 
@@ -72,7 +73,7 @@ function hydrateMessagesTab() {
   const authUser = getAuthUser();
   mountedRoot = createRoot(host);
   mountedHost = host;
-  lastKey = key;
+  lastKey = employeeId;
   mountedRoot.render(
     <EmployeeMessagesSection
       isVisible
@@ -87,17 +88,19 @@ function hydrateMessagesTab() {
   return true;
 }
 
-function scheduleHydrate(retries = 12) {
+function queueHydrate() {
   if (typeof window === "undefined") return;
-  if (retryTimer !== null) window.clearTimeout(retryTimer);
-
-  const run = (remaining: number) => {
-    const done = hydrateMessagesTab();
-    if (done || remaining <= 0) return;
-    retryTimer = window.setTimeout(() => run(remaining - 1), 80);
+  if (pendingHydrate) return;
+  pendingHydrate = true;
+  const run = () => {
+    pendingHydrate = false;
+    hydrateMessagesTab();
   };
-
-  retryTimer = window.setTimeout(() => run(retries), 0);
+  if (typeof window.queueMicrotask === "function") {
+    window.queueMicrotask(run);
+  } else {
+    Promise.resolve().then(run);
+  }
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -105,27 +108,30 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
 
   if (!win.__dsv2EmployeeMessagesHydratorInstalled) {
     win.__dsv2EmployeeMessagesHydratorInstalled = true;
-    window.addEventListener("popstate", () => scheduleHydrate());
-    window.addEventListener("focus", () => scheduleHydrate(2));
+    window.addEventListener("popstate", queueHydrate);
+    window.addEventListener("focus", queueHydrate);
 
-    if (!routePatched) {
-      routePatched = true;
-      const originalPushState = window.history.pushState;
-      const originalReplaceState = window.history.replaceState;
-      window.history.pushState = function pushState(...args) {
-        const result = originalPushState.apply(this, args);
-        scheduleHydrate();
-        return result;
-      };
-      window.history.replaceState = function replaceState(...args) {
-        const result = originalReplaceState.apply(this, args);
-        scheduleHydrate();
-        return result;
-      };
-    }
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+    window.history.pushState = function pushState(...args) {
+      const result = originalPushState.apply(this, args);
+      queueHydrate();
+      return result;
+    };
+    window.history.replaceState = function replaceState(...args) {
+      const result = originalReplaceState.apply(this, args);
+      queueHydrate();
+      return result;
+    };
+
+    const observer = new MutationObserver(() => {
+      if (employeeIdFromPath()) queueHydrate();
+      else if (mountedRoot) unmountMessages();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  scheduleHydrate();
+  queueHydrate();
 }
 
 export {};
