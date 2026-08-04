@@ -1,0 +1,208 @@
+/* Live Dashboard V2 employee components only. No legacy emp-* overrides. */
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, 16px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-card[data-open="false"] {
+  background: var(--dsv2-ew-danger-soft);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-card > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-card > header strong {
+  color: var(--dsv2-color-black, #05080d);
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-controls,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-actions,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--dsv2-control-gap, 12px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-controls .dsv2-field {
+  min-width: 180px;
+  flex: 1 1 220px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: var(--dsv2-grid-gap, 16px);
+  min-width: 0;
+  align-items: start;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-setup,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-summary {
+  display: grid;
+  gap: var(--dsv2-field-gap, 16px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: var(--dsv2-grid-gap, 16px);
+  min-width: 0;
+  align-items: stretch;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__hero {
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  min-height: 260px;
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--dsv2-color-gold, #d9a50b) 22%, transparent), transparent 32%),
+    linear-gradient(145deg, #fff, var(--dsv2-ew-soft));
+  overflow: hidden;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__label {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--dsv2-ew-gold-soft);
+  color: var(--dsv2-color-gold, #d9a50b);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__hero h3 {
+  margin: 0;
+  color: var(--dsv2-color-black, #05080d);
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__hero p {
+  margin: 0;
+  color: var(--dsv2-ew-muted);
+  line-height: 1.8;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__notes {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__notes li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--dsv2-color-black, #05080d);
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module__notes li::before {
+  content: "";
+  inline-size: 9px;
+  block-size: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+  background: var(--dsv2-color-gold, #d9a50b);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item {
+  position: relative;
+  min-height: 170px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(5 8 13 / 0%) 30%, rgb(5 8 13 / 68%) 100%);
+  z-index: 1;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item strong,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item small {
+  position: relative;
+  z-index: 2;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-gallery__item[data-selected="true"] {
+  outline: 3px solid var(--dsv2-color-gold, #d9a50b);
+  outline-offset: -3px;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-panel,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-linked-module {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-controls,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-actions,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-payroll-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-controls .dsv2-field {
+    min-width: 0;
+  }
+}
