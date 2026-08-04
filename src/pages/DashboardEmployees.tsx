@@ -4756,7 +4756,23 @@ export default function DashboardEmployees() {
                 salonBusinessHours={((appSettings as any)?.booking || {})?.businessHours || null}
                 employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
                 employeeIds={selectedAttendanceIdentity.allIds}
-                approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
+                approvedLeaveDateKeys={Array.from(new Set([
+                  ...selectedEmployeeApprovedLeaveDateKeys,
+                  ...modalLeaveEntries.flatMap((entry: any) => {
+                    const status = String(entry?.status || entry?.state || "approved").trim().toLowerCase();
+                    if (status && !["approved", "معتمد"].includes(status)) return [];
+                    const from = normalizeLeaveUntil(entry?.fromDate || entry?.startDate || entry?.date || entry?.dateKey);
+                    const to = normalizeLeaveUntil(entry?.toDate || entry?.endDate || entry?.until || entry?.date || entry?.dateKey) || from;
+                    if (!from || !to) return [];
+                    const dates: string[] = [];
+                    let cursor = from;
+                    while (cursor && cursor <= to) {
+                      dates.push(cursor);
+                      cursor = addDaysIso(cursor, 1);
+                    }
+                    return dates;
+                  }),
+                ]))}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
                 canReview={canViewAttendance}
