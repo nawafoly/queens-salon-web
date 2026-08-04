@@ -7,6 +7,7 @@ import {
   WorkspaceStatusBadgeV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import "../../styles/dashboard-v2/pages/employee-workspace.css";
+import "../../styles/dashboard-v2/pages/employee-workspace-live.css";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 
@@ -126,32 +127,19 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         />
       </div>
 
-      <main className="dsv2-ew-content" aria-label={activeLabel}>
-        <article className="dsv2-card dsv2-card--padded dsv2-ew-card employees-v2-profile__content">
-          <header className="dsv2-section-head dsv2-ew-card__head">
-            <div>
-              <span className="dsv2-ew-tab-head__eyebrow">إدارة فعلية</span>
-              <h3 className="dsv2-section-title dsv2-ew-card__title">{activeLabel}</h3>
-              <p className="dsv2-section-caption">{activeHint}</p>
-            </div>
-            <WorkspaceStatusBadgeV2 tone={props.canManage ? "gold" : "default"}>
-              {props.canManage ? "قابل للتعديل" : "عرض فقط"}
-            </WorkspaceStatusBadgeV2>
-          </header>
-
-          <fieldset
-            className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
-            disabled={!props.canManage}
+      <main className="dsv2-ew-content employees-v2-live-content" aria-label={activeLabel}>
+        <fieldset
+          className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
+          disabled={!props.canManage}
+        >
+          <div
+            className="employees-v2-profile__body employees-v2-live-body"
+            data-section-label={activeLabel}
+            data-section-hint={activeHint}
           >
-            <div
-              className="dsv2-ew-card__body employees-v2-profile__body"
-              data-section-label={activeLabel}
-              data-section-hint={activeHint}
-            >
-              {props.children}
-            </div>
-          </fieldset>
-        </article>
+            {props.children}
+          </div>
+        </fieldset>
       </main>
 
       <footer className="dsv2-ew-savebar" data-dirty={props.saving ? "true" : "false"}>
