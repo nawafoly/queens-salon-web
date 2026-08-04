@@ -427,7 +427,7 @@ export default function ShiftControlSection({
       effectiveFrom: cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from) || todayKey(),
       effectiveTo: cleanText(assignment.effectiveTo || (assignment as Record<string, unknown>).effective_to),
       assignmentType: cleanText(assignment.assignmentType || (assignment as Record<string, unknown>).assignment_type) === "temporary" ? "temporary" : "permanent",
-      replaceOverlaps: false,
+      replaceOverlaps: true,
       reason: cleanText(assignment.reason) || "تعديل تعيين شفت من إدارة الموظفات",
     });
     setPreview(null);
@@ -453,7 +453,7 @@ export default function ShiftControlSection({
         effectiveTo: assignmentForm.effectiveTo || null,
         assignmentType: assignmentForm.assignmentType,
         status: "published",
-        replaceOverlaps: assignmentForm.replaceOverlaps,
+        replaceOverlaps: true,
         reason: assignmentForm.reason,
         snapshot: selectedTemplate || {},
         allowLockedPeriodAdjustment,
@@ -719,7 +719,6 @@ export default function ShiftControlSection({
           <DashboardFieldV2 id="shift-assignment-reason" label="سبب التغيير" required>
             <input id="shift-assignment-reason" className="dsv2-input" value={assignmentForm.reason} onChange={(event) => setAssignmentForm((current) => ({ ...current, reason: event.target.value }))} disabled={!canManage || saving} />
           </DashboardFieldV2>
-          <WorkspaceSwitchV2 checked={assignmentForm.replaceOverlaps} onChange={(value) => setAssignmentForm((current) => ({ ...current, replaceOverlaps: value }))} disabled={!canManage || saving} label="إغلاق التداخلات السابقة" description="يغلق الشفت المفتوح السابق قبل تاريخ السريان." />
           <div className="dsv2-cluster">
             {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setAssignmentForm(emptyAssignmentForm())} disabled={saving}>إلغاء التعديل</button> : null}
             <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? "حفظ التعديل" : "تعيين الشفت"}</button>
