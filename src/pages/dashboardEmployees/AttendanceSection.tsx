@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import AttendanceMonthView from "../../components/AttendanceMonthView";
 import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
-import { CoreHrService } from "../../services/CoreHrService";
-import type { CoreResolvedShift } from "../../types/hrCoreApi";
 import {
-  getPermissionPayrollSummary,
-  type EmployeePermissionRequest,
-} from "../../services/employeePermissionRequests";
+  EmployeeAttendanceTabLiveV2,
+  type EmployeeAttendanceRowLiveV2,
+} from "../../components/dashboard-v2/employee-workspace/live";
 
 type AttendanceSectionProps = {
   isVisible: boolean;
@@ -31,24 +27,21 @@ type AttendanceSectionProps = {
   onCancelLeave?: (dateKey: string) => void;
 };
 
-function pad2(value: number) {
-  return String(value).padStart(2, "0");
+function cleanText(value: unknown) {
+  return String(value || "").trim();
 }
 
-function normalizeMonthKey(value: string) {
-  const clean = String(value || "").trim();
-  return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
-}
-
-function monthDateKeys(monthKey: string) {
-  const safe = normalizeMonthKey(monthKey);
-  const [year, month] = safe.split("-").map(Number);
-  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return Array.from({ length: days }, (_, index) => `${safe}-${pad2(index + 1)}`);
-}
-
-function resolvedShiftCacheKey(employeeId: string, monthKey: string) {
-  return `${employeeId}:${normalizeMonthKey(monthKey)}`;
+function toLiveAttendanceRow(row: StaffAttendanceWithId): EmployeeAttendanceRowLiveV2 {
+  const record = row as StaffAttendanceWithId & Record<string, unknown>;
+  return {
+    date: cleanText(record.date || record.dateKey || record.dayKey),
+    status: cleanText(record.status || record.attendanceStatus || record.state),
+    checkInAtClient: cleanText(record.checkInAtClient || record.checkInAt || record.checkInTime),
+    checkOutAtClient: cleanText(record.checkOutAtClient || record.checkOutAt || record.checkOutTime),
+    lateMinutes: Number(record.lateMinutes || 0),
+    earlyLeaveMinutes: Number(record.earlyLeaveMinutes || 0),
+    notes: cleanText(record.notes || record.note),
+  };
 }
 
 export default function AttendanceSection({
@@ -57,12 +50,9 @@ export default function AttendanceSection({
   rows,
   monthKey,
   selectedDate,
-  schedule,
-  employeeId,
-  approvedLeaveDateKeys,
+  approvedLeaveDateKeys = [],
   canEdit = false,
   canDelete = false,
-  canReview = false,
   canCreateEmergencyLeave = false,
   canCancelLeave = false,
   onMonthChange,
@@ -73,89 +63,67 @@ export default function AttendanceSection({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
-  const [coreResolvedShifts, setCoreResolvedShifts] = useState<Record<string, CoreResolvedShift | null>>({});
-  const [permissionEntries, setPermissionEntries] = useState<EmployeePermissionRequest[]>([]);
-  const shiftLookupKey = useMemo(() => (employeeId ? resolvedShiftCacheKey(employeeId, monthKey) : ""), [employeeId, monthKey]);
-
-  useEffect(() => {
-    if (!isVisible || !employeeId || !shiftLookupKey) {
-      setCoreResolvedShifts({});
-      return;
-    }
-    let cancelled = false;
-    const dates = monthDateKeys(monthKey);
-    Promise.all(
-      dates.map(async (date) => {
-        try {
-          return [date, await CoreHrService.resolveEmployeeShift(employeeId, date)] as const;
-        } catch (error) {
-          console.warn("attendance resolved shift load failed", { employeeId, date, error });
-          return [date, null] as const;
-        }
-      })
-    ).then((pairs) => {
-      if (cancelled) return;
-      setCoreResolvedShifts(Object.fromEntries(pairs));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [employeeId, isVisible, monthKey, shiftLookupKey]);
-
-  useEffect(() => {
-    if (!isVisible || !employeeId) {
-      setPermissionEntries([]);
-      return;
-    }
-    let cancelled = false;
-    const dates = monthDateKeys(monthKey);
-    const fromDate = dates[0] || `${normalizeMonthKey(monthKey)}-01`;
-    const toDate = dates[dates.length - 1] || fromDate;
-    void getPermissionPayrollSummary({ employeeId, fromDate, toDate })
-      .then((summary) => {
-        if (!cancelled) setPermissionEntries(summary.entries || []);
-      })
-      .catch((error) => {
-        console.warn("attendance permission load failed", { employeeId, fromDate, toDate, error });
-        if (!cancelled) setPermissionEntries([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [employeeId, isVisible, monthKey]);
-
   if (!isVisible) return null;
 
+  const liveRows = rows.map(toLiveAttendanceRow);
+  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(selectedDate);
+  const canShowLeaveActions = Boolean(selectedDate && (canCreateEmergencyLeave || canCancelLeave));
+
   return (
-    <div className="emp-modal-section employee-attendance-admin">
-      <AttendanceMonthView
-        rows={rows}
+    <section className="dsv2-ew-tab-panel">
+      <EmployeeAttendanceTabLiveV2
+        readOnly={loading}
         loading={loading}
+        rows={liveRows}
         monthKey={monthKey}
         selectedDate={selectedDate}
-        className="attendance-month--employee-clean"
-        title="سجل حضور الموظفة"
-        subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
-        viewerMode="admin"
-        schedule={schedule}
-        coreResolvedShifts={coreResolvedShifts}
-        approvedLeaveDateKeys={approvedLeaveDateKeys}
-        permissionEntries={permissionEntries}
         canEdit={canEdit}
         canDelete={canDelete}
-        canReview={canReview}
-        canCreateEmergencyLeave={canCreateEmergencyLeave}
-        canCancelLeave={canCancelLeave}
-        showAdminActions={canEdit || canDelete || canReview || canCreateEmergencyLeave || canCancelLeave}
         onMonthChange={onMonthChange}
         onSelectedDateChange={onSelectedDateChange}
-        onGenerateSummary={onReload}
+        onReload={onReload}
         onEditPunch={onEditPunch}
         onDeletePunch={onDeletePunch}
-        onReviewDay={onEditPunch}
-        onCreateEmergencyLeave={onCreateEmergencyLeave}
-        onCancelLeave={onCancelLeave}
       />
-    </div>
+
+      {canShowLeaveActions ? (
+        <article className="dsv2-card dsv2-card--padded dsv2-ew-card">
+          <header className="dsv2-section-head dsv2-ew-card__head">
+            <div>
+              <h3 className="dsv2-section-title dsv2-ew-card__title">إجراءات اليوم المحدد</h3>
+              <p className="dsv2-section-caption">
+                إجراءات مرتبطة بيوم {selectedDate} بدون الرجوع لمكونات الحضور القديمة.
+              </p>
+            </div>
+          </header>
+
+          <div className="dsv2-ew-card__body">
+            <div className="dsv2-cluster">
+              {canCreateEmergencyLeave ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--accent"
+                  disabled={loading || selectedHasApprovedLeave}
+                  onClick={() => onCreateEmergencyLeave?.(selectedDate)}
+                >
+                  تسجيل إجازة مفاجئة
+                </button>
+              ) : null}
+
+              {canCancelLeave ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger"
+                  disabled={loading || !selectedHasApprovedLeave}
+                  onClick={() => onCancelLeave?.(selectedDate)}
+                >
+                  إلغاء إجازة اليوم
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </article>
+      ) : null}
+    </section>
   );
 }
