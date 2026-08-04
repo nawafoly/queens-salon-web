@@ -5,7 +5,7 @@ import { getAuthUser } from "../../../../pages/dashboardEmployees/shared";
 let mountedRoot: Root | null = null;
 let mountedHost: HTMLElement | null = null;
 let lastKey = "";
-let retryTimer: number | null = null;
+let pendingHydrate = false;
 
 function employeeIdFromPath() {
   const match = /^\/admin\/employees\/([^/]+)\/requests\/?$/.exec(window.location.pathname);
@@ -30,10 +30,14 @@ function employeeNameFromPage() {
 
 function findRequestsPlaceholder() {
   const sections = Array.from(document.querySelectorAll<HTMLElement>(".emp-linked-module-section"));
-  return sections.find((section) => section.textContent?.includes("طلبات الموظفة")) || null;
+  return sections.find((section) => {
+    if (section.querySelector(".dsv2-requests-hydrated-host")) return true;
+    return section.textContent?.includes("طلبات الموظفة");
+  }) || null;
 }
 
 function unmountRequests() {
+  mountedHost?.closest(".emp-linked-module-section")?.classList.remove("dsv2-live-mounted");
   mountedRoot?.unmount();
   mountedRoot = null;
   mountedHost = null;
@@ -44,35 +48,36 @@ function hydrateRequestsTab() {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
 
   const employeeId = employeeIdFromPath();
-  const placeholder = employeeId ? findRequestsPlaceholder() : null;
-  if (!employeeId || !placeholder) {
-    if (mountedRoot && (!employeeId || !document.body.contains(mountedHost))) {
-      unmountRequests();
-    }
+  if (!employeeId) {
+    if (mountedRoot) unmountRequests();
     return false;
   }
 
-  const employeeName = employeeNameFromPage();
-  const key = `${employeeId}:${employeeName || "-"}`;
-  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return true;
+  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === employeeId) {
+    return true;
+  }
+
+  const placeholder = findRequestsPlaceholder();
+  if (!placeholder) return false;
 
   unmountRequests();
 
   const host = document.createElement("div");
   host.className = "dsv2-requests-hydrated-host";
   host.setAttribute("data-dsv2-ignore-dirty", "true");
+  placeholder.classList.add("dsv2-live-mounted");
   placeholder.replaceChildren(host);
 
   const authUser = getAuthUser();
   mountedRoot = createRoot(host);
   mountedHost = host;
-  lastKey = key;
+  lastKey = employeeId;
   mountedRoot.render(
     <EmployeeRequestsSection
       isVisible
       employeeId={employeeId}
       employeeUid={employeeId}
-      employeeName={employeeName}
+      employeeName={employeeNameFromPage()}
       reviewerUid={authUser?.uid || ""}
       reviewerName={authUser?.displayName || authUser?.email || "الإدارة"}
       canManage
@@ -81,37 +86,50 @@ function hydrateRequestsTab() {
   return true;
 }
 
-function scheduleHydrate(retries = 8) {
+function queueHydrate() {
   if (typeof window === "undefined") return;
-  if (retryTimer !== null) window.clearTimeout(retryTimer);
-
-  const run = (remaining: number) => {
-    const done = hydrateRequestsTab();
-    if (done || remaining <= 0) return;
-    retryTimer = window.setTimeout(() => run(remaining - 1), 90);
+  if (pendingHydrate) return;
+  pendingHydrate = true;
+  const run = () => {
+    pendingHydrate = false;
+    hydrateRequestsTab();
   };
-
-  retryTimer = window.setTimeout(() => run(retries), 0);
+  if (typeof window.queueMicrotask === "function") {
+    window.queueMicrotask(run);
+  } else {
+    Promise.resolve().then(run);
+  }
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  window.addEventListener("popstate", () => scheduleHydrate());
-  window.addEventListener("focus", () => scheduleHydrate(2));
+  const win = window as typeof window & { __dsv2EmployeeRequestsHydratorInstalled?: boolean };
 
-  const originalPushState = window.history.pushState;
-  const originalReplaceState = window.history.replaceState;
-  window.history.pushState = function pushState(...args) {
-    const result = originalPushState.apply(this, args);
-    scheduleHydrate();
-    return result;
-  };
-  window.history.replaceState = function replaceState(...args) {
-    const result = originalReplaceState.apply(this, args);
-    scheduleHydrate();
-    return result;
-  };
+  if (!win.__dsv2EmployeeRequestsHydratorInstalled) {
+    win.__dsv2EmployeeRequestsHydratorInstalled = true;
+    window.addEventListener("popstate", queueHydrate);
+    window.addEventListener("focus", queueHydrate);
 
-  scheduleHydrate();
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+    window.history.pushState = function pushState(...args) {
+      const result = originalPushState.apply(this, args);
+      queueHydrate();
+      return result;
+    };
+    window.history.replaceState = function replaceState(...args) {
+      const result = originalReplaceState.apply(this, args);
+      queueHydrate();
+      return result;
+    };
+
+    const observer = new MutationObserver(() => {
+      if (employeeIdFromPath()) queueHydrate();
+      else if (mountedRoot) unmountRequests();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  queueHydrate();
 }
 
 export {};
