@@ -8,6 +8,7 @@ import {
 import {
   DashboardFieldV2,
   DashboardSelectV2,
+  DashboardSkeletonV2,
 } from "../../components/dashboard-v2";
 import {
   WorkspaceCardV2,
@@ -166,7 +167,6 @@ export default function EmployeeRequestsSection({
       setRows(all.filter((request) => requestMatchesEmployee(request, employeeId, employeeUid)));
     } catch (err) {
       console.warn("employee requests load failed", err);
-      setRows([]);
       setError("تعذر تحميل طلبات الموظفة.");
     } finally {
       setLoading(false);
@@ -225,18 +225,20 @@ export default function EmployeeRequestsSection({
 
   if (!isVisible) return null;
 
+  const state: "loading" | "error" | "ready" = loading && !rows.length ? "loading" : error && !rows.length ? "error" : "ready";
+
   return (
     <div className="dsv2-ew-tab-panel dsv2-ew-requests-live">
       <WorkspaceTabHeaderV2
         title="الطلبات"
         description="مراجعة الطلبات والمرفقات والملاحظات الإدارية وسجل الإجراءات."
-        badge={<WorkspaceStatusBadgeV2 tone={pendingCount ? "gold" : "success"}>{loading ? "جاري التحميل" : pendingCount ? `${pendingCount} طلبات معلقة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={state === "error" ? "danger" : pendingCount ? "gold" : "success"}>{state === "loading" ? "جاري التحميل" : state === "error" ? "تعذر التحميل" : pendingCount ? `${pendingCount} طلبات معلقة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
       />
 
-      {error ? <WorkspaceNoticeV2 title="تعذر تحميل الطلبات" description={error} tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
+      {error && rows.length ? <WorkspaceNoticeV2 title="تعذر تحديث الطلبات" description="احتفظنا بالطلبات الحالية. أعد المحاولة بعد التحقق من الاتصال." tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
       {message ? <WorkspaceNoticeV2 title="تم تحديث الطلب" description={message} tone="success" /> : null}
 
-      <WorkspaceCardV2 title="تصفية الطلبات" description="اختيار حالة الطلب للعرض.">
+      <WorkspaceCardV2 title="تصفية الطلبات" description="اختيار حالة الطلب للعرض فقط، أما حالة البيانات فتظهر تلقائيًا.">
         <div className="dsv2-ew-form-grid">
           <DashboardFieldV2 id="dsv2-ew-request-scope-live" label="حالة الطلب">
             <DashboardSelectV2
@@ -255,13 +257,21 @@ export default function EmployeeRequestsSection({
         </div>
       </WorkspaceCardV2>
 
-      {loading ? (
+      {state === "loading" ? (
         <WorkspaceCardV2 title="جاري تحميل الطلبات" description="يتم جلب طلبات الموظفة الفعلية.">
-          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
-            <strong>جاري التحميل...</strong>
-            <span>لن تظهر حالات Preview أو بيانات تجريبية داخل التبويب الحي.</span>
-          </div>
+          <article className="dsv2-ew-skeleton" aria-label="جاري تحميل طلبات الموظفة">
+            <DashboardSkeletonV2 variant="title" width="46%" />
+            <DashboardSkeletonV2 lines={3} />
+            <DashboardSkeletonV2 variant="block" height={84} />
+          </article>
         </WorkspaceCardV2>
+      ) : state === "error" ? (
+        <WorkspaceNoticeV2
+          title="تعذر تحميل الطلبات"
+          description="احتفظنا بالطلبات الحالية إن وجدت. أعد المحاولة بعد التحقق من الاتصال."
+          tone="danger"
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
+        />
       ) : (
         <WorkspaceCardV2 title={scopeTitle(scope)} description={`${filteredRows.length} طلبات في الحالة المحددة.`}>
           <WorkspaceTableV2
