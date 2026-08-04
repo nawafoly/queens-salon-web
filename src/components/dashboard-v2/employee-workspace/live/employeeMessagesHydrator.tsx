@@ -5,6 +5,7 @@ import { getAuthUser } from "../../../../pages/dashboardEmployees/shared";
 let mountedRoot: Root | null = null;
 let mountedHost: HTMLElement | null = null;
 let lastKey = "";
+let retryTimer: number | null = null;
 
 function employeeIdFromPath() {
   const match = /^\/admin\/employees\/([^/]+)\/messages\/?$/.exec(window.location.pathname);
@@ -19,7 +20,6 @@ function employeeNameFromPage() {
   const selectors = [
     ".dsv2-ew-profile-head__name-row h2",
     ".employees-v2-breadcrumb b",
-    ".employees-v2-profile__body [data-employee-name]",
   ];
   for (const selector of selectors) {
     const text = cleanText(document.querySelector<HTMLElement>(selector)?.textContent);
@@ -32,7 +32,7 @@ function findMessagesPlaceholder() {
   const sections = Array.from(document.querySelectorAll<HTMLElement>(".emp-linked-module-section"));
   return sections.find((section) => {
     const text = section.textContent || "";
-    return text.includes("الرسائل") || text.includes("رسائل") || text.includes("مراسلات");
+    return text.includes("رسائل HR") || text.includes("الرسائل الداخلية") || text.includes("فتح الرسائل");
   }) || null;
 }
 
@@ -44,7 +44,7 @@ function unmountMessages() {
 }
 
 function hydrateMessagesTab() {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
 
   const employeeId = employeeIdFromPath();
   const placeholder = employeeId ? findMessagesPlaceholder() : null;
@@ -52,24 +52,24 @@ function hydrateMessagesTab() {
     if (mountedRoot && (!employeeId || !document.body.contains(mountedHost))) {
       unmountMessages();
     }
-    return;
+    return false;
   }
 
   const employeeName = employeeNameFromPage();
-  const key = `${employeeId}:${employeeName}:${placeholder.dataset.messagesHydrated || ""}`;
-  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return;
+  const key = `${employeeId}:${employeeName || "-"}`;
+  if (mountedRoot && mountedHost && document.body.contains(mountedHost) && lastKey === key) return true;
 
   unmountMessages();
 
   const host = document.createElement("div");
   host.className = "dsv2-messages-hydrated-host";
+  host.setAttribute("data-dsv2-ignore-dirty", "true");
   placeholder.replaceChildren(host);
-  placeholder.dataset.messagesHydrated = "true";
 
   const authUser = getAuthUser();
   mountedRoot = createRoot(host);
   mountedHost = host;
-  lastKey = `${employeeId}:${employeeName}:true`;
+  lastKey = key;
   mountedRoot.render(
     <EmployeeMessagesSection
       isVisible
@@ -81,15 +81,25 @@ function hydrateMessagesTab() {
       canManage
     />,
   );
+  return true;
+}
+
+function scheduleHydrate(retries = 8) {
+  if (typeof window === "undefined") return;
+  if (retryTimer !== null) window.clearTimeout(retryTimer);
+
+  const run = (remaining: number) => {
+    const done = hydrateMessagesTab();
+    if (done || remaining <= 0) return;
+    retryTimer = window.setTimeout(() => run(remaining - 1), 90);
+  };
+
+  retryTimer = window.setTimeout(() => run(retries), 0);
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  const scheduleHydrate = () => window.setTimeout(hydrateMessagesTab, 0);
-  window.addEventListener("popstate", scheduleHydrate);
-  window.addEventListener("focus", scheduleHydrate);
-
-  const observer = new MutationObserver(scheduleHydrate);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener("popstate", () => scheduleHydrate());
+  window.addEventListener("focus", () => scheduleHydrate(2));
 
   const originalPushState = window.history.pushState;
   const originalReplaceState = window.history.replaceState;
