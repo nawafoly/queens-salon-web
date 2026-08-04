@@ -380,7 +380,15 @@ export async function updateShiftAssignment(db, salonId, idValue, data, actor = 
 }
 
 export async function cancelShiftAssignment(db, salonId, idValue, data = {}, actor = {}) {
-  return updateShiftAssignment(db, salonId, idValue, { status: 'cancelled', effectiveTo: data.effectiveTo ?? null, reason: data.reason || 'cancelled', allowLockedPeriodAdjustment: data.allowLockedPeriodAdjustment ?? data.allow_locked_period_adjustment }, actor);
+  const payload = {
+    status: 'cancelled',
+    reason: data.reason || 'cancelled',
+    allowLockedPeriodAdjustment: data.allowLockedPeriodAdjustment ?? data.allow_locked_period_adjustment,
+  };
+  if (data.effectiveTo !== undefined || data.effective_to !== undefined) {
+    payload.effectiveTo = data.effectiveTo ?? data.effective_to;
+  }
+  return updateShiftAssignment(db, salonId, idValue, payload, actor);
 }
 
 export async function createScheduleException(db, salonId, data, actor = {}) {
