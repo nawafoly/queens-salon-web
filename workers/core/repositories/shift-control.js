@@ -229,7 +229,9 @@ export async function saveShiftTemplate(db, salonId, data, actor = {}) {
 export async function listShiftAssignments(db, salonId, query = {}) {
   const employeeId = optionalText(query.employeeId || query.employee_id);
   return dbAll(db,
-    `SELECT a.*, t.name AS shift_name, t.code AS shift_code
+    `SELECT a.*, t.name AS shift_name, t.code AS shift_code,
+      t.start_time AS template_start_time, t.end_time AS template_end_time, t.crosses_midnight,
+      t.break_minutes, t.late_grace_minutes, t.early_leave_grace_minutes, t.overtime_after_minutes
        FROM hr_shift_assignments a LEFT JOIN hr_shift_templates t ON t.id = a.shift_template_id
       WHERE a.salon_id = ? ${employeeId ? 'AND a.employee_id = ?' : ''}
       ORDER BY a.employee_id, a.effective_from DESC`, employeeId ? [salonId, employeeId] : [salonId]);
@@ -244,7 +246,7 @@ export async function createShiftAssignment(db, salonId, data, actor = {}) {
   const effectiveTo = effectiveToRaw ? dateKey(effectiveToRaw, 'effectiveTo') : null;
   if (effectiveTo && effectiveTo < effectiveFrom) throw Object.assign(new Error('effective_range_invalid'), { code: 'core_hr:invalid_date_range' });
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, effectiveFrom, effectiveTo || effectiveFrom, data);
-  const shouldReplaceOverlaps = activeFlag(data.replaceOverlaps ?? data.closeExisting ?? data.closeOpenAssignments, 0) === 1;
+  const shouldReplaceOverlaps = activeFlag(data.replaceOverlaps ?? data.closeExisting ?? data.closeOpenAssignments, 1) === 1;
   if (shouldReplaceOverlaps) {
     const overlappingRows = await dbAll(db,
       `SELECT * FROM hr_shift_assignments WHERE salon_id=? AND employee_id=? AND status!='cancelled'
@@ -304,15 +306,69 @@ export async function updateShiftAssignment(db, salonId, idValue, data, actor = 
   const before = await dbFirst(db, 'SELECT * FROM hr_shift_assignments WHERE salon_id=? AND id=?', [salonId, id]);
   if (!before) rowNotFound('shift_assignment');
   const now = nowIso();
+  const effectiveFromRaw = data.effectiveFrom ?? data.effective_from;
   const effectiveToRaw = data.effectiveTo ?? data.effective_to;
-  const effectiveTo = effectiveToRaw === null || effectiveToRaw === '' ? null : dateKey(effectiveToRaw, 'effectiveTo');
-  const rangeFrom = before.effective_from;
-  const rangeTo = effectiveTo || before.effective_to || before.effective_from;
+  const effectiveFrom = effectiveFromRaw === undefined ? before.effective_from : dateKey(effectiveFromRaw, 'effectiveFrom');
+  const effectiveTo = effectiveToRaw === undefined
+    ? before.effective_to
+    : (effectiveToRaw === null || effectiveToRaw === '' ? null : dateKey(effectiveToRaw, 'effectiveTo'));
+  if (effectiveTo && effectiveTo < effectiveFrom) throw Object.assign(new Error('shift_assignment_range_invalid'), { code: 'core_hr:invalid_date_range' });
+
+  const rangeFrom = before.effective_from < effectiveFrom ? before.effective_from : effectiveFrom;
+  const previousEnd = before.effective_to || effectiveTo || effectiveFrom;
+  const nextEnd = effectiveTo || before.effective_to || effectiveFrom;
+  const rangeTo = previousEnd > nextEnd ? previousEnd : nextEnd;
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, rangeFrom, rangeTo, data);
+
   const status = optionalText(data.status) || before.status;
+  const assignmentType = optionalText(data.assignmentType || data.assignment_type) || before.assignment_type;
+  const templateIdRaw = data.shiftTemplateId ?? data.shift_template_id;
+  const shiftTemplateId = templateIdRaw === undefined ? before.shift_template_id : (optionalText(templateIdRaw) || null);
+  let template = null;
+  if (shiftTemplateId) {
+    template = await dbFirst(db, 'SELECT * FROM hr_shift_templates WHERE salon_id=? AND id=?', [salonId, shiftTemplateId]);
+    if (!template) rowNotFound('shift_template');
+  }
+  const snapshotJson = data.snapshot === undefined ? before.snapshot_json : jsonObject(data.snapshot || template || {});
+
+  const shouldReplaceOverlaps = activeFlag(data.replaceOverlaps ?? data.closeExisting ?? data.closeOpenAssignments, 1) === 1;
+  if (shouldReplaceOverlaps) {
+    const overlappingRows = await dbAll(db,
+      `SELECT * FROM hr_shift_assignments WHERE salon_id=? AND employee_id=? AND id!=? AND status!='cancelled'
+        AND effective_from <= COALESCE(?, '9999-12-31') AND COALESCE(effective_to, '9999-12-31') >= ?
+        ORDER BY effective_from`,
+      [salonId, before.employee_id, id, effectiveTo, effectiveFrom]);
+    for (const existing of overlappingRows) {
+      if (existing.effective_from < effectiveFrom) {
+        const closedTo = addDays(effectiveFrom, -1);
+        await dbBatch(db, [{
+          sql: `UPDATE hr_shift_assignments SET effective_to=?, updated_at=? WHERE salon_id=? AND id=?`,
+          params: [closedTo, now, salonId, existing.id],
+        }]);
+        const after = await dbFirst(db, 'SELECT * FROM hr_shift_assignments WHERE salon_id=? AND id=?', [salonId, existing.id]);
+        await audit(db, salonId, actor, 'close', 'shift_assignment', existing.id, existing, after, data.reason || 'replace_overlap');
+      } else {
+        await dbBatch(db, [{
+          sql: `UPDATE hr_shift_assignments SET status='cancelled', updated_at=? WHERE salon_id=? AND id=?`,
+          params: [now, salonId, existing.id],
+        }]);
+        const after = await dbFirst(db, 'SELECT * FROM hr_shift_assignments WHERE salon_id=? AND id=?', [salonId, existing.id]);
+        await audit(db, salonId, actor, 'cancel', 'shift_assignment', existing.id, existing, after, data.reason || 'replace_overlap');
+      }
+    }
+  }
+
+  const overlap = await dbFirst(db,
+    `SELECT id FROM hr_shift_assignments WHERE salon_id=? AND employee_id=? AND id!=? AND status!='cancelled'
+      AND effective_from <= COALESCE(?, '9999-12-31') AND COALESCE(effective_to, '9999-12-31') >= ? LIMIT 1`,
+    [salonId, before.employee_id, id, effectiveTo, effectiveFrom]);
+  if (overlap) throw Object.assign(new Error('shift_assignment_overlap'), { code: 'core_hr:shift_assignment_overlap' });
+
   await dbBatch(db, [{
-    sql: `UPDATE hr_shift_assignments SET effective_to=?, status=?, reason=COALESCE(?, reason), updated_at=? WHERE salon_id=? AND id=?`,
-    params: [effectiveTo, status, optionalText(data.reason) || null, now, salonId, id],
+    sql: `UPDATE hr_shift_assignments
+      SET shift_template_id=?, effective_from=?, effective_to=?, assignment_type=?, status=?, reason=COALESCE(?, reason), snapshot_json=?, updated_at=?
+      WHERE salon_id=? AND id=?`,
+    params: [shiftTemplateId, effectiveFrom, effectiveTo, assignmentType, status, optionalText(data.reason) || null, snapshotJson, now, salonId, id],
   }]);
   const saved = await dbFirst(db, 'SELECT * FROM hr_shift_assignments WHERE salon_id=? AND id=?', [salonId, id]);
   await recordShiftPayrollAdjustment(db, salonId, {
@@ -324,7 +380,15 @@ export async function updateShiftAssignment(db, salonId, idValue, data, actor = 
 }
 
 export async function cancelShiftAssignment(db, salonId, idValue, data = {}, actor = {}) {
-  return updateShiftAssignment(db, salonId, idValue, { status: 'cancelled', effectiveTo: data.effectiveTo ?? null, reason: data.reason || 'cancelled', allowLockedPeriodAdjustment: data.allowLockedPeriodAdjustment ?? data.allow_locked_period_adjustment }, actor);
+  const payload = {
+    status: 'cancelled',
+    reason: data.reason || 'cancelled',
+    allowLockedPeriodAdjustment: data.allowLockedPeriodAdjustment ?? data.allow_locked_period_adjustment,
+  };
+  if (data.effectiveTo !== undefined || data.effective_to !== undefined) {
+    payload.effectiveTo = data.effectiveTo ?? data.effective_to;
+  }
+  return updateShiftAssignment(db, salonId, idValue, payload, actor);
 }
 
 export async function createScheduleException(db, salonId, data, actor = {}) {

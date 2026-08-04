@@ -1,0 +1,199 @@
+/* Review fixes for live Employee Workspace V2. Scoped only to Dashboard V2 employee pages. */
+.dashboard-v2 .dsv2-employee-workspace {
+  background: transparent;
+  gap: 18px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-content {
+  background: transparent;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__fieldset {
+  display: grid;
+  gap: var(--dsv2-section-gap, 24px);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__body {
+  display: grid;
+  gap: var(--dsv2-section-gap, 24px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__body > .dsv2-ew-tab-panel {
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar {
+  display: none;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar[data-dirty="true"] {
+  display: flex;
+}
+
+.dashboard-v2 .dsv2-employee-workspace :is(
+  .dsv2-input,
+  .dsv2-textarea,
+  .dsv2-select-v2,
+  .dsv2-date-v2,
+  .dsv2-ew-metric,
+  .dsv2-ew-table,
+  .dsv2-ew-calendar__day
+) {
+  font-family: inherit;
+}
+
+.dashboard-v2 .dsv2-employee-workspace :is(
+  .dsv2-input,
+  .dsv2-select-v2,
+  .dsv2-date-v2,
+  .dsv2-ew-metric > strong,
+  .dsv2-ew-calendar__day strong,
+  .dsv2-ew-calendar__day small,
+  .dsv2-ew-table th,
+  .dsv2-ew-table td
+) {
+  font-variant-numeric: proportional-nums;
+  font-feature-settings: normal;
+  letter-spacing: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
+  min-height: 92px;
+  border-radius: 8px;
+  box-shadow: inset 0 -3px 0 transparent;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-selected="true"] {
+  border-color: var(--dsv2-color-black, #05080d);
+  box-shadow: inset 0 0 0 2px var(--dsv2-color-black, #05080d);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-today="true"] {
+  outline: 2px solid var(--dsv2-color-black, #05080d);
+  outline-offset: -4px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="حضور"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-green, #177348) 22%, #d7dce3);
+  background: var(--dsv2-ew-success-soft, #edf8f2);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-green, #177348);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="تأخير"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="خروج مبكر"],
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="إجازة"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-gold, #d9a50b) 30%, #d7dce3);
+  background: var(--dsv2-ew-gold-soft, #fff8df);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-gold, #d9a50b);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-status="غياب"] {
+  border-color: color-mix(in srgb, var(--dsv2-color-burgundy, #59041b) 28%, #d7dce3);
+  background: var(--dsv2-ew-danger-soft, #fff0f3);
+  box-shadow: inset 0 -3px 0 var(--dsv2-color-burgundy, #59041b);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day small {
+  color: var(--dsv2-ew-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head > div {
+  align-content: start;
+  justify-items: start;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head strong,
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head span {
+  display: block;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-clear {
+  appearance: none;
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts {
+  align-items: stretch;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, 16px);
+  align-items: start;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap, 16px);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-field-gap, 16px);
+  align-items: end;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-field,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-input,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-select-v2,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-date-v2 {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-card__body {
+  gap: var(--dsv2-field-gap, 16px);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-ew-table-wrap {
+  overflow-x: auto;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-cluster .dsv2-btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 767px) {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar[data-dirty="true"] {
+    display: grid;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
+    min-height: 70px;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--two,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-grid--metrics,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-form-grid,
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-live-shifts .dsv2-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+}

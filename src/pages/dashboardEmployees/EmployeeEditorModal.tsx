@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faTrash } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import EmployeeAvatar from "../../components/EmployeeAvatar";
-
+import { DashboardModalV2 } from "../../components/dashboard-v2";
 import {
-  getNameInitials,
   normalizeSpecialties,
   type EmployeeModalTab,
   type EmployeeSplitTab,
@@ -37,38 +34,6 @@ export type EmployeeEditorModalProps = {
   children: ReactNode;
 };
 
-let employeeModalOpenCount = 0;
-let previousBodyOverflow = "";
-let previousBodyPaddingRight = "";
-
-function lockBodyScroll() {
-  if (typeof document === "undefined") return;
-  employeeModalOpenCount += 1;
-  if (employeeModalOpenCount !== 1) return;
-
-  const body = document.body;
-  previousBodyOverflow = body.style.overflow;
-  previousBodyPaddingRight = body.style.paddingRight;
-
-  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-  if (scrollbarWidth > 0) {
-    body.style.paddingRight = `${scrollbarWidth}px`;
-  }
-  body.style.overflow = "hidden";
-  body.classList.add("emp-editor-open");
-}
-
-function unlockBodyScroll() {
-  if (typeof document === "undefined") return;
-  employeeModalOpenCount = Math.max(0, employeeModalOpenCount - 1);
-  if (employeeModalOpenCount !== 0) return;
-
-  const body = document.body;
-  body.style.overflow = previousBodyOverflow;
-  body.style.paddingRight = previousBodyPaddingRight;
-  body.classList.remove("emp-editor-open");
-}
-
 export default function EmployeeEditorModal({
   isOpen,
   canManage,
@@ -82,7 +47,6 @@ export default function EmployeeEditorModal({
   activeTab = "basic",
   detailTabs = [],
   selectedEmployeeStatusLabel = "",
-  selectedEmployeeStatusClass = "",
   canDelete = false,
   onClose,
   onSave,
@@ -92,48 +56,9 @@ export default function EmployeeEditorModal({
   onDetailTabChange,
   children,
 }: EmployeeEditorModalProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
   const isCreateMode = !editId;
   const employeeName = String(editingStaff?.name || name || "").trim();
   const specialtiesCount = normalizeSpecialties(editingStaff?.specialties).length;
-  const employeeInitials = getNameInitials(employeeName || "موظفة");
-  const isHrRoute =
-    typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/admin/");
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    lockBodyScroll();
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const raf = window.requestAnimationFrame(() => {
-      panelRef.current?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      if (!busy) onCloseRef.current();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      document.removeEventListener("keydown", handleKeyDown);
-      unlockBodyScroll();
-      previouslyFocused?.focus?.();
-    };
-  }, [busy, isOpen]);
-
-  const title = isCreateMode ? "إضافة موظفة" : employeeName || "ملف الموظفة";
-  const subtitle = isCreateMode
-    ? "أكملي البيانات الأساسية والدوام والخدمات والملف قبل إنشاء الموظفة."
-    : "تعديل بيانات الموظفة من نافذة مستقلة بدون التأثير على تمرير الصفحة.";
 
   const tabs = useMemo(
     () =>
@@ -143,7 +68,6 @@ export default function EmployeeEditorModal({
             label: tab.label,
             active: modalTab === tab.key,
             onClick: () => onModalTabChange(tab.key),
-            hint: "",
             icon: undefined as IconDefinition | undefined,
           }))
         : detailTabs.map((tab) => ({
@@ -151,132 +75,86 @@ export default function EmployeeEditorModal({
             label: tab.label,
             active: activeTab === tab.key,
             onClick: () => onDetailTabChange?.(tab.key),
-            hint: tab.hint,
             icon: tab.icon,
           })),
-    [
-      activeTab,
-      detailTabs,
-      isCreateMode,
-      modalTab,
-      modalTabs,
-      onDetailTabChange,
-      onModalTabChange,
-    ]
+    [activeTab, detailTabs, isCreateMode, modalTab, modalTabs, onDetailTabChange, onModalTabChange]
   );
 
-  if (!isOpen || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      className={`emp-editor-overlay ${isHrRoute ? "emp-editor-overlay--hr" : ""} ${isCreateMode ? "is-create" : "is-edit"}`}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
-    >
-      <div
-        ref={panelRef}
-        className={`emp-editor-panel ${isCreateMode ? "emp-editor-panel--create" : "emp-editor-panel--edit"}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label={isCreateMode ? "إضافة موظفة" : `تحرير ملف ${employeeName || "الموظفة"}`}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="emp-editor-header">
-          <div className="emp-editor-identity">
-            {!isCreateMode ? (
-              <EmployeeAvatar
-                className="emp-editor-avatar"
-                src={editingStaff?.avatarUrl}
-                name={employeeName || employeeInitials}
-                alt=""
-                loading="eager"
-              />
-            ) : null}
-            <div className="emp-editor-title">
-              <span>{isCreateMode ? "إدارة الموظفات" : "الملف الحالي"}</span>
-              <h3>{title}</h3>
-              <p>{subtitle}</p>
-              {!isCreateMode ? (
-                <div className="emp-editor-chips">
-                  {selectedEmployeeStatusLabel ? (
-                    <span className={`staff-pill ${selectedEmployeeStatusClass}`}>
-                      {selectedEmployeeStatusLabel}
-                    </span>
-                  ) : null}
-                  <span className="emp-meta-chip">
-                    {specialtiesCount > 0 ? `${specialtiesCount} خدمة` : "بدون خدمات"}
-                  </span>
-                  {editingStaff?.showOnBooking === false || specialtiesCount === 0 ? (
-                    <span className="emp-meta-chip emp-meta-chip--warning">مخفية من الحجز</span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <button className="exp-btn ghost sm" type="button" onClick={onClose} disabled={busy} aria-label="إغلاق">
-            <FontAwesomeIcon icon={faXmark} />
+  const footer = (
+    <div className="employees-v2-editor__footer">
+      <div>
+        {!isCreateMode && canManage && canDelete && onDelete ? (
+          <button className="dsv2-btn dsv2-btn--danger" type="button" onClick={onDelete} disabled={busy}>
+            <FontAwesomeIcon icon={faTrash} />
+            أرشفة
           </button>
-        </header>
-
-        <nav className="emp-editor-tabs" role="tablist" aria-label={isCreateMode ? "أقسام إنشاء الموظفة" : "أقسام ملف الموظفة"}>
-          {tabs.map((tab) => (
-            <button
-              key={String(tab.key)}
-              type="button"
-              role="tab"
-              className={`emp-editor-tab ${tab.active ? "active" : ""}`}
-              onClick={tab.onClick}
-              aria-selected={tab.active}
-            >
-              {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : null}
-              <span>{tab.label}</span>
-              {tab.hint ? <small>{tab.hint}</small> : null}
-            </button>
-          ))}
-        </nav>
-
-        <fieldset
-  className={`emp-editor-fieldset ${!canManage ? "is-readonly" : ""}`}
->
-  <main className="emp-editor-content">{children}</main>
-</fieldset>
-
-        <footer className="emp-editor-footer">
-          <span>
-            {isCreateMode
-              ? "يمكن حفظ الموظفة بدون خدمات، وستكون مخفية من الحجز حتى يتم إسناد خدمات لها."
-              : "راجعي التغييرات ثم احفظيها من هنا دون أن يغطي الشريط محتوى الخدمات."}
-          </span>
-          <div className="emp-editor-footer-actions">
-            {!isCreateMode && canManage && canDelete && onDelete ? (
-              <button className="exp-btn ghost sm text-danger" type="button" onClick={onDelete} disabled={busy}>
-                <FontAwesomeIcon icon={faTrash} />
-              </button>
-            ) : null}
-            {!isCreateMode && canManage && onCancelEdit ? (
-              <button className="exp-btn ghost" type="button" onClick={onCancelEdit} disabled={busy}>
-                إلغاء التعديلات
-              </button>
-            ) : (
-              <button className="exp-btn ghost" type="button" onClick={onClose} disabled={saving}>
-                إلغاء
-              </button>
-            )}
-            {canManage ? (
-              <button className="exp-btn primary" type="button" onClick={onSave} disabled={busy}>
-                {saving ? "جاري الحفظ..." : isCreateMode ? "إنشاء الموظفة" : "حفظ التغييرات"}
-              </button>
-            ) : (
-              <span className="emp-meta-chip">عرض فقط</span>
-            )}
-          </div>
-        </footer>
+        ) : null}
       </div>
-    </div>,
-    document.body
+      <div className="employees-v2-editor__footer-actions">
+        {!isCreateMode && canManage && onCancelEdit ? (
+          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={onCancelEdit} disabled={busy}>
+            إلغاء التعديلات
+          </button>
+        ) : (
+          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={onClose} disabled={saving}>
+            إلغاء
+          </button>
+        )}
+        {canManage ? (
+          <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={onSave} disabled={busy}>
+            {saving ? "جاري الحفظ..." : isCreateMode ? "إنشاء الموظفة" : "حفظ التغييرات"}
+          </button>
+        ) : (
+          <span className="dsv2-badge">عرض فقط</span>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <DashboardModalV2
+      open={isOpen}
+      onClose={onClose}
+      title={isCreateMode ? "إضافة موظفة" : employeeName || "ملف الموظفة"}
+      eyebrow={isCreateMode ? "إدارة الموظفات" : "الملف الحالي"}
+      description={
+        isCreateMode
+          ? "أكملي البيانات الأساسية والدوام والخدمات قبل إنشاء الملف."
+          : "تعديل بيانات الموظفة من نافذة موحدة."
+      }
+      size="xl"
+      tone="gold"
+      closeOnBackdrop={!busy}
+      closeOnEscape={!busy}
+      footer={footer}
+      className="employees-v2-editor"
+    >
+      {!isCreateMode ? (
+        <div className="employees-v2-editor__meta">
+          {selectedEmployeeStatusLabel ? <span className="dsv2-badge dsv2-badge--success">{selectedEmployeeStatusLabel}</span> : null}
+          <span className="dsv2-badge">{specialtiesCount > 0 ? `${specialtiesCount} خدمة` : "بدون خدمات"}</span>
+        </div>
+      ) : null}
+
+      <nav className="employees-v2-editor__tabs" role="tablist" aria-label="أقسام ملف الموظفة">
+        {tabs.map((tab) => (
+          <button
+            key={String(tab.key)}
+            type="button"
+            role="tab"
+            className={tab.active ? "is-active" : ""}
+            onClick={tab.onClick}
+            aria-selected={tab.active}
+          >
+            {tab.icon ? <FontAwesomeIcon icon={tab.icon} /> : null}
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <fieldset className={`employees-v2-editor__fieldset ${!canManage ? "is-readonly" : ""}`} disabled={!canManage}>
+        <div className="employees-v2-editor__content">{children}</div>
+      </fieldset>
+    </DashboardModalV2>
   );
 }

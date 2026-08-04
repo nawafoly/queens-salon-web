@@ -1,0 +1,145 @@
+/* =========================================================
+   Malikat Dashboard V2 — cards and financial metrics
+========================================================= */
+
+.dashboard-v2 .dsv2-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-card--padded {
+  padding: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .dsv2-card--elevated {
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .dsv2-card--soft {
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-metric-card {
+  --dsv2-metric-color: var(--dsv2-gold);
+  --dsv2-metric-rgb: var(--dsv2-gold-rgb);
+
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  min-height: 132px;
+  overflow: hidden;
+  padding: var(--dsv2-space-5) var(--dsv2-space-5) var(--dsv2-space-5) var(--dsv2-space-8);
+  border: 1px solid rgba(var(--dsv2-metric-rgb), 0.22);
+  border-radius: var(--dsv2-radius-lg);
+  color: var(--dsv2-text);
+  background:
+    linear-gradient(135deg, rgba(var(--dsv2-metric-rgb), 0.045), transparent 72%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-metric-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-start: -48px;
+  inset-block-end: -54px;
+  width: 154px;
+  height: 154px;
+  border-radius: 50%;
+  background: rgba(var(--dsv2-metric-rgb), 0.075);
+  box-shadow: 24px -14px 0 rgba(var(--dsv2-metric-rgb), 0.045);
+}
+
+.dashboard-v2 .dsv2-metric-card::after {
+  content: "";
+  position: absolute;
+  inset-block: 14px;
+  inset-inline-end: 0;
+  width: 4px;
+  border-radius: var(--dsv2-radius-pill) 0 0 var(--dsv2-radius-pill);
+  background: var(--dsv2-metric-color);
+}
+
+.dashboard-v2 .dsv2-metric-card--gold {
+  --dsv2-metric-color: var(--dsv2-gold);
+  --dsv2-metric-rgb: var(--dsv2-gold-rgb);
+}
+
+.dashboard-v2 .dsv2-metric-card--success {
+  --dsv2-metric-color: var(--dsv2-green);
+  --dsv2-metric-rgb: var(--dsv2-green-rgb);
+}
+
+.dashboard-v2 .dsv2-metric-card--danger {
+  --dsv2-metric-color: var(--dsv2-burgundy);
+  --dsv2-metric-rgb: var(--dsv2-burgundy-rgb);
+}
+
+.dashboard-v2 .dsv2-metric-card--dark {
+  --dsv2-metric-color: var(--dsv2-black);
+  --dsv2-metric-rgb: var(--dsv2-black-rgb);
+}
+
+.dashboard-v2 .dsv2-metric-card__label {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 var(--dsv2-space-2);
+  color: var(--dsv2-text-soft);
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .dsv2-metric-card__value {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: var(--dsv2-metric-color);
+  font-size: clamp(1.12rem, 1.65vw, 1.48rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+}
+
+.dashboard-v2 .dsv2-metric-card__meta {
+  position: relative;
+  z-index: 1;
+  margin: var(--dsv2-space-2) 0 0;
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.dashboard-v2 .dsv2-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+  min-height: 72px;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-stat-row strong {
+  color: var(--dsv2-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-stat-row span {
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}

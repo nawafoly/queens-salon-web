@@ -1,0 +1,29 @@
+/*
+ * Malikat Dashboard Design System V2
+ *
+ * This file is the only entry point that dashboard pages should import.
+ * Every rule is scoped under .dashboard-v2 and every component uses the
+ * dsv2- prefix so the legacy dashboard remains isolated during migration.
+ */
+
+@import "./tokens.css";
+@import "./foundation.css";
+@import "./layout.css";
+@import "./cards.css";
+@import "./buttons.css";
+@import "./forms.css";
+@import "./floating.css";
+@import "./select.css";
+@import "./date-picker.css";
+@import "./tables.css";
+@import "./modals.css";
+@import "./toasts.css";
+@import "./states.css";
+@import "./utilities.css";
+@import "./responsive.css";
+@import "./spacing.css";
+@import "./sidebar.css";
+@import "./portal-sidebar.css";
+@import "./portal-shell-compat.css";
+@import "./portal-sidebar-scroll-fix.css";
+@import "./pages/design-system-preview.css";

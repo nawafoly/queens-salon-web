@@ -1,0 +1,123 @@
+/* =========================================================
+   Malikat Portal Shell V2 — legacy shell compatibility
+
+   The shared sidebar component is 252px / 76px. Older HR and employee
+   styles still force a 286px desktop flex basis. These selectors are kept
+   separate from portal-sidebar.css so the migration layer can be removed
+   after the legacy shells are retired.
+========================================================= */
+
+@media (min-width: 821px) {
+  /* HR: keep the grid column and the actual sticky sidebar at one width. */
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2 {
+    --mpsv2-shell-sidebar-width: 252px;
+    grid-template-columns: var(--mpsv2-shell-sidebar-width) minmax(0, 1fr) !important;
+    align-items: start !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2.is-sidebar-collapsed {
+    grid-template-columns: 76px minmax(0, 1fr) !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2
+    > .malikat-portal-sidebar-v2--admin.hr-shell-sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1700 !important;
+    width: var(--mpsv2-shell-sidebar-width) !important;
+    min-width: var(--mpsv2-shell-sidebar-width) !important;
+    max-width: var(--mpsv2-shell-sidebar-width) !important;
+    align-self: start !important;
+    overflow: hidden !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2.is-sidebar-collapsed
+    > .malikat-portal-sidebar-v2--admin.hr-shell-sidebar {
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2
+    > .hr-shell-main {
+    position: relative !important;
+    z-index: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2
+    .dashboard-header.hr-shell-header {
+    z-index: 1400 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+  }
+
+  .hr-shell.madan-admin-shell.malikat-portal-shell-v2
+    .malikat-portal-sidebar-v2__collapse {
+    z-index: 2 !important;
+  }
+}
+
+@media (min-width: 981px) {
+  /* Employee: its legacy desktop shell is flex, not grid. Override the
+     old 286px flex-basis as well as width/max-width. */
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2
+    .employee-portal-layout--app {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2
+    .employee-portal-layout--app
+    > .malikat-portal-sidebar-v2--employee.employee-portal-sidebar--desktop {
+    position: sticky !important;
+    top: 8px !important;
+    z-index: 1600 !important;
+    flex: 0 0 252px !important;
+    width: 252px !important;
+    min-width: 252px !important;
+    max-width: 252px !important;
+    height: calc(100dvh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    overflow: hidden !important;
+  }
+
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2.is-sidebar-collapsed
+    .employee-portal-layout--app
+    > .malikat-portal-sidebar-v2--employee.employee-portal-sidebar--desktop {
+    flex: 0 0 76px !important;
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+  }
+
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2
+    .employee-portal-layout--app
+    > .employee-portal-main {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  /* A legacy parity rule hides the employee logo while collapsed. The
+     shared V2 header deliberately keeps the logo visible in every portal. */
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2.is-sidebar-collapsed
+    .malikat-portal-sidebar-v2--employee
+    .malikat-portal-sidebar-v2__logo.employee-sidebar-logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 0.98 !important;
+  }
+
+  .employee-portal.madan-employee-portal.malikat-portal-shell-v2
+    .malikat-portal-sidebar-v2--employee
+    .malikat-portal-sidebar-v2__collapse {
+    z-index: 2 !important;
+  }
+}

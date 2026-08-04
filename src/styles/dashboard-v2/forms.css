@@ -1,0 +1,89 @@
+/* =========================================================
+   Malikat Dashboard V2 — forms and filters
+========================================================= */
+
+.dashboard-v2 .dsv2-field {
+  display: grid;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-field__label {
+  color: var(--dsv2-text-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-field__hint {
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.dashboard-v2 .dsv2-input,
+.dashboard-v2 .dsv2-select,
+.dashboard-v2 .dsv2-textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-input,
+.dashboard-v2 .dsv2-select {
+  min-height: var(--dsv2-control-height);
+  padding: 0 var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-textarea {
+  min-height: 112px;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  resize: vertical;
+}
+
+.dashboard-v2 .dsv2-input::placeholder,
+.dashboard-v2 .dsv2-textarea::placeholder {
+  color: var(--dsv2-muted-soft);
+  opacity: 1;
+}
+
+.dashboard-v2 .dsv2-input:hover,
+.dashboard-v2 .dsv2-select:hover,
+.dashboard-v2 .dsv2-textarea:hover {
+  border-color: rgba(var(--dsv2-gold-rgb), 0.42);
+}
+
+.dashboard-v2 .dsv2-input:focus,
+.dashboard-v2 .dsv2-select:focus,
+.dashboard-v2 .dsv2-textarea:focus {
+  outline: none;
+  border-color: var(--dsv2-gold);
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-filter-bar .dsv2-field {
+  flex: 1 1 190px;
+}
+
+.dashboard-v2 .dsv2-field__required {
+  margin-inline-start: var(--dsv2-space-1);
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-field__hint {
+  margin: 0;
+}

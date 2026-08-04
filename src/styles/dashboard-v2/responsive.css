@@ -1,0 +1,66 @@
+/* =========================================================
+   Malikat Dashboard V2 — responsive behavior
+========================================================= */
+
+@media (max-width: 1199.98px) {
+  .dashboard-v2 .dsv2-grid--metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .dsv2-span-8,
+  .dashboard-v2 .dsv2-span-4 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-page-head,
+  .dashboard-v2 .dsv2-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .dsv2-grid,
+  .dashboard-v2 .dsv2-grid--metrics,
+  .dashboard-v2 .dsv2-grid--2,
+  .dashboard-v2 .dsv2-grid--3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-span-12,
+  .dashboard-v2 .dsv2-span-8,
+  .dashboard-v2 .dsv2-span-6,
+  .dashboard-v2 .dsv2-span-4 {
+    grid-column: auto;
+  }
+
+  .dashboard-v2 .dsv2-card--padded {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-metric-card {
+    min-height: 120px;
+    padding: var(--dsv2-space-4) var(--dsv2-space-4) var(--dsv2-space-4) var(--dsv2-space-7);
+  }
+
+  .dashboard-v2 .dsv2-filter-bar {
+    align-items: stretch;
+  }
+
+  .dashboard-v2 .dsv2-filter-bar .dsv2-field,
+  .dashboard-v2 .dsv2-filter-bar .dsv2-btn {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-v2 .dsv2-page *,
+  .dashboard-v2 .dsv2-page *::before,
+  .dashboard-v2 .dsv2-page *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -7,7 +7,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSearch,
   faFilter,
-  faFileCsv,
   faXmark,
   faRotate,
   faPlus,
@@ -167,29 +166,6 @@ function compactPaymentStatusLabel(payment: ReturnType<typeof resolveBookingPaym
 /* =========================
    Helpers
 ========================= */
-
-function downloadCSV(filename: string, rows: string[][]) {
-  const escapeCell = (cell: string) => {
-    const s = (cell ?? "").toString();
-    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-
-  const csv = rows.map((r) => r.map(escapeCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  URL.revokeObjectURL(url);
-}
 
 function loadNotesMap(): Record<string, string> {
   try {
@@ -3940,45 +3916,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     [selectedBooking, selectedBookingPayment]
   );
 
-  const handleExport = () => {
-    const rows = [
-      [
-        "ID",
-        "الزبون",
-        "الهاتف",
-        "الخدمة",
-        "الموظفة",
-        "التاريخ",
-        "الوقت",
-        "الحالة",
-        "الإجمالي",
-        "نوع الدفع",
-        "طريقة الدفع",
-        "المدفوع",
-        "المتبقي",
-      ],
-      ...filtered.map((b) => {
-        const payment = resolveBookingPaymentSummary(b);
-        return [
-        bookingRef(b),
-        b.customerName || "—",
-        b.phone || "—",
-        serviceSummaryForTable(b),
-        b.employeeName || "—",
-        b.date,
-        formatTime12(b.time),
-        statusLabel[b.status],
-        String(payment.totalAmount),
-        paymentStatusLabel(payment),
-        paymentMethodDisplayText(b),
-        String(payment.paidAmount),
-        String(payment.remainingAmount),
-      ];
-      })
-    ];
-    downloadCSV(`bookings_${new Date().toISOString().slice(0,10)}.csv`, rows);
-  };
-
   const updateNote = (id: string, note: string) => {
     setNoteDrafts((prev) => ({ ...prev, [id]: note }));
   };
@@ -4769,10 +4706,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <FontAwesomeIcon icon={faRotate} />
               تحديث
             </button>
-            <button type="button" className="bk-enterprise-btn" onClick={handleExport}>
-              <FontAwesomeIcon icon={faFileCsv} />
-              تصدير
-            </button>
+            
           </div>
         </header>
 

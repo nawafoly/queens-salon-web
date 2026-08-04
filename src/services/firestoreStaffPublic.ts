@@ -100,7 +100,7 @@ function normalizeArray(v: any): string[] {
   }
   if (typeof v === "string" && v.trim()) {
     const s = v.trim();
-    // Handle CSV-like payloads stored as a single string.
+    // Handle delimited payloads stored as a single string.
     if (/[,\u060C;|]/.test(s)) {
       return s
         .split(/[,\u060C;|]/g)

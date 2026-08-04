@@ -2,11 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import "../styles/AdminDashboardEmployees.css";
-import "../styles/AdminHrEmployees.css";
-import "../styles/AdminHrEmployeeDetail.css";
-import "../styles/AdminHrEmployeeDetailSidebarTheme.css";
-import "../styles/AdminHrEmployeeProfilePage.css";
+import "../styles/dashboard-v2/pages/employees.css";
 import {
   collection,
   getDocs,
@@ -29,7 +25,6 @@ import {
   faClock,
   faEnvelope,
   faFileLines,
-  faFolderOpen,
   faInbox,
   faMoneyBillWave,
   faPlus,
@@ -72,12 +67,16 @@ import EmployeeDetailShell from "./dashboardEmployees/EmployeeDetailShell";
 import EmployeeEditorModal from "./dashboardEmployees/EmployeeEditorModal";
 import EmployeeProfilePageLayout from "./dashboardEmployees/EmployeeProfilePageLayout";
 import EmployeeListPanel from "./dashboardEmployees/EmployeeListPanel";
+import EmployeeFilesSection from "./dashboardEmployees/EmployeeFilesSection";
+import EmployeeMessagesSection from "./dashboardEmployees/EmployeeMessagesSection";
+import EmployeeRequestsSection from "./dashboardEmployees/EmployeeRequestsSection";
 import EmployeeStatsSection from "./dashboardEmployees/EmployeeStatsSection";
 import ProfileSection from "./dashboardEmployees/ProfileSection";
 import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection";
 import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
+import { DashboardConfirmV2 } from "../components/dashboard-v2";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -317,84 +316,6 @@ let employeeBookingStatsCache:
     }
   | null = null;
 
-function EmployeeComingSoonSection({
-  isVisible,
-  title,
-  lead,
-  actionLabel,
-  actionHref,
-  moduleLabel,
-  notes,
-}: {
-  isVisible: boolean;
-  title: string;
-  lead: string;
-  actionLabel: string;
-  actionHref: string;
-  moduleLabel: string;
-  notes: string[];
-}) {
-  if (!isVisible) return null;
-
-  return (
-    <section className="emp-modal-section emp-linked-module-section">
-      <header className="emp-section-header emp-linked-module-header">
-        <div className="emp-section-header__main">
-          <span className="emp-linked-module-eyebrow">
-            EMPLOYEE WORKSPACE
-          </span>
-
-          <h3 className="emp-modal-section-title">
-            {title}
-          </h3>
-
-          <p className="emp-section-lead">
-            {lead}
-          </p>
-        </div>
-
-        <span className="emp-linked-module-status">
-          نظام مفعّل
-        </span>
-      </header>
-
-      <div className="emp-linked-module-card">
-        <div
-          className="emp-linked-module-icon"
-          aria-hidden="true"
-        >
-          <FontAwesomeIcon icon={faFolderOpen} />
-        </div>
-
-        <div className="emp-linked-module-content">
-          <span className="emp-linked-module-label">
-            {moduleLabel}
-          </span>
-
-          <strong>{title}</strong>
-
-          <p>
-            هذا التبويب مرتبط بالنظام الإداري الفعلي،
-            ويمكن فتحه لإدارة البيانات مباشرة.
-          </p>
-
-          <div className="emp-linked-module-points">
-            {notes.map((note) => (
-              <span key={note}>{note}</span>
-            ))}
-          </div>
-        </div>
-
-        <a
-          className="exp-btn primary emp-linked-module-action"
-          href={actionHref}
-        >
-          {actionLabel}
-        </a>
-      </div>
-    </section>
-  );
-}
 function resolveStaffNotificationTarget(staff?: StaffPublicUi | null) {
   const targetUid = cleanText((staff as any)?.linkedUid || (staff as any)?.uid || (staff as any)?.linkedUserId || "");
   return {
@@ -602,6 +523,8 @@ export default function DashboardEmployees() {
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [repairConfirmOpen, setRepairConfirmOpen] = useState(false);
+  const [repairMessage, setRepairMessage] = useState("");
   const busy = loading || saving;
 
   const [statsLoading, setStatsLoading] = useState(false);
@@ -650,9 +573,13 @@ export default function DashboardEmployees() {
   const [selectedAttendanceZoneId, setSelectedAttendanceZoneId] = useState("");
   const [employeeAttendanceRows, setEmployeeAttendanceRows] = useState<StaffAttendanceWithId[]>([]);
   const [employeeAttendanceLoading, setEmployeeAttendanceLoading] = useState(false);
+  const [employeeAttendanceError, setEmployeeAttendanceError] = useState("");
   const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [employeeAttendanceSelectedDate, setEmployeeAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const attendanceLoadRequestRef = useRef(0);
+  const attendanceInFlightKeyRef = useRef("");
+  const attendanceLoadedKeyRef = useRef("");
+  const staffListRef = useRef<StaffPublicUi[]>([]);
   const [selectedEmployeeLeaveRequests, setSelectedEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [attendanceEditOpen, setAttendanceEditOpen] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState("");
@@ -815,12 +742,18 @@ export default function DashboardEmployees() {
     }
   }, [canManageAttendanceZones]);
 
-  const loadSelectedEmployeeAttendance = useCallback(async () => {
-    const requestId = ++attendanceLoadRequestRef.current;
+  useEffect(() => {
+    staffListRef.current = list;
+  }, [list]);
+
+  const loadSelectedEmployeeAttendance = useCallback(async (options: { force?: boolean } = {}) => {
     if (!canViewAttendance) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
+      setEmployeeAttendanceError("");
       setEmployeeAttendanceLoading(false);
+      attendanceInFlightKeyRef.current = "";
+      attendanceLoadedKeyRef.current = "";
       return;
     }
 
@@ -828,6 +761,8 @@ export default function DashboardEmployees() {
     if (!employeeId) {
       setEmployeeAttendanceRows([]);
       setSelectedEmployeeLeaveRequests([]);
+      setEmployeeAttendanceError("");
+      setEmployeeAttendanceLoading(false);
       return;
     }
 
@@ -840,18 +775,35 @@ export default function DashboardEmployees() {
     )
       .toISOString()
       .slice(0, 10);
-    setEmployeeAttendanceLoading(true);
-    try {
-      const selectedIdentity = selectedEmployeeIdentityRef.current;
-      const employeeProfile =
-        list.find((item) => item.id === employeeId) ||
-        list.find((item) => employeeMatchesIdentity(item, selectedIdentity)) ||
-        { id: employeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
-        employeeProfile,
-        employeeId
-      );
+    const selectedIdentity = selectedEmployeeIdentityRef.current;
+    const currentList = staffListRef.current;
+    const employeeProfile =
+      currentList.find((item) => item.id === employeeId) ||
+      currentList.find((item) => employeeMatchesIdentity(item, selectedIdentity)) ||
+      { id: employeeId };
+
+    const attendanceIdentity = resolveEmployeeAttendanceIdentity(
+      employeeProfile,
+      employeeId
+    );
+    const attendanceKey = [
+      employeeId,
+      attendanceIdentity.employeeUid,
+      attendanceIdentity.employeeDocId,
+      monthKey,
+    ].join("|");
+
+    if (!options.force) {
+      if (attendanceInFlightKeyRef.current === attendanceKey) return;
+      if (attendanceLoadedKeyRef.current === attendanceKey) return;
+    }
+
+    const requestId = ++attendanceLoadRequestRef.current;
+    attendanceInFlightKeyRef.current = attendanceKey;
+    setEmployeeAttendanceLoading(true);
+    setEmployeeAttendanceError("");
+    try {
       attendanceDebug(
         `employeeUid=${attendanceIdentity.employeeUid}`,
         `employeeDocId=${attendanceIdentity.employeeDocId}`,
@@ -862,14 +814,37 @@ export default function DashboardEmployees() {
       const [rows, leaveRows] = await Promise.all([
         listAttendanceByDateRangeForEmployeeFromWorker({
           employeeUid: attendanceIdentity.employeeUid,
-          employeeId: attendanceIdentity.employeeDocId,
+          employeeId,
+          employeeDocId: attendanceIdentity.employeeDocId,
+          employeeIds: attendanceIdentity.allIds,
           fromDate: monthStart,
           toDate: monthEnd,
         }),
         listEmployeeLeaveRequests(500),
       ]);
       if (requestId !== attendanceLoadRequestRef.current) return;
-      setEmployeeAttendanceRows(rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
+      const shiftRows = await Promise.all(
+        rows.map(async (row) => {
+          const date = cleanText((row as any).date || (row as any).dateKey || (row as any).dayKey);
+          if (!date) return row;
+          try {
+            const resolvedShift = await CoreHrService.resolveEmployeeShift(employeeId, date);
+            return {
+              ...row,
+              resolvedShift,
+              shiftName: cleanText(resolvedShift.shiftName || resolvedShift.shift_name),
+              shiftStartTime: cleanText(resolvedShift.startTime || resolvedShift.start_time || resolvedShift.templateStartTime || resolvedShift.template_start_time),
+              shiftEndTime: cleanText(resolvedShift.endTime || resolvedShift.end_time || resolvedShift.templateEndTime || resolvedShift.template_end_time),
+              lateGraceMinutes: Number(resolvedShift.lateGraceMinutes ?? resolvedShift.late_grace_minutes ?? (row as any).lateGraceMinutes ?? 0),
+              earlyLeaveGraceMinutes: Number(resolvedShift.earlyLeaveGraceMinutes ?? resolvedShift.early_leave_grace_minutes ?? (row as any).earlyLeaveGraceMinutes ?? 0),
+            } as StaffAttendanceWithId;
+          } catch (shiftError) {
+            console.warn("employee attendance shift resolve failed", { employeeId, date, shiftError });
+            return row;
+          }
+        })
+      );
+      setEmployeeAttendanceRows(shiftRows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
       setSelectedEmployeeLeaveRequests(
         leaveRows.filter((request) =>
           leaveRequestMatchesProfile(
@@ -879,6 +854,7 @@ export default function DashboardEmployees() {
           )
         )
       );
+      attendanceLoadedKeyRef.current = attendanceKey;
     } catch (error) {
       if (requestId !== attendanceLoadRequestRef.current) return;
       setEmployeeAttendanceRows([]);
@@ -887,21 +863,33 @@ export default function DashboardEmployees() {
       if (status === 403) {
         const payload = (error as { payload?: { message?: unknown; detail?: unknown } })?.payload || {};
         const developerCode = cleanText(payload.message || payload.detail || (error as Error)?.message || "forbidden");
-        setErrorMsg(
-          `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`
-        );
+        const message = `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`;
+        setEmployeeAttendanceError(message);
+        setErrorMsg(message);
       } else {
-        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة."));
+        const message = toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة.");
+        setEmployeeAttendanceError(message);
+        setErrorMsg(message);
       }
     } finally {
       if (requestId === attendanceLoadRequestRef.current) {
         setEmployeeAttendanceLoading(false);
+        if (attendanceInFlightKeyRef.current === attendanceKey) {
+          attendanceInFlightKeyRef.current = "";
+        }
       }
     }
   }, [canViewAttendance, employeeAttendanceMonth, list, selectedEmployeeId]);
 
   useEffect(() => {
     if (!selectedEmployeeId) return;
+    attendanceLoadRequestRef.current += 1;
+    attendanceInFlightKeyRef.current = "";
+    attendanceLoadedKeyRef.current = "";
+    setEmployeeAttendanceRows([]);
+    setSelectedEmployeeLeaveRequests([]);
+    setEmployeeAttendanceError("");
+    setEmployeeAttendanceLoading(false);
     const todayKey = getTodayAttendanceDateKey();
     setEmployeeAttendanceMonth(todayKey.slice(0, 7));
     setEmployeeAttendanceSelectedDate(todayKey);
@@ -1015,7 +1003,7 @@ export default function DashboardEmployees() {
         },
       });
       closeAttendancePunchEditor();
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ تعديل البصمة."));
     } finally {
@@ -1094,7 +1082,7 @@ export default function DashboardEmployees() {
           clearedRecords,
         },
       });
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));
     } finally {
@@ -1217,7 +1205,7 @@ export default function DashboardEmployees() {
         },
       });
 
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة المفاجئة."));
     } finally {
@@ -1297,7 +1285,7 @@ export default function DashboardEmployees() {
         },
       });
 
-      await loadSelectedEmployeeAttendance();
+      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
     } finally {
@@ -1883,12 +1871,10 @@ export default function DashboardEmployees() {
       setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
       return;
     }
-    const ok = confirm(
-      "سيتم إصلاح الحجوزات القديمة بإضافة employeeUid/employeeKey. هل تريد المتابعة؟"
-    );
-    if (!ok) return;
+    setRepairConfirmOpen(false);
     setSaving(true);
     setErrorMsg("");
+    setRepairMessage("");
     try {
       const staffSnap = await getDocs(staffPublicCol());
       const uidByEmployeeId = new Map<string, string>();
@@ -1921,7 +1907,7 @@ export default function DashboardEmployees() {
         }
       }
       await batch.commit();
-      alert("✅ تم إصلاح الحجوزات");
+      setRepairMessage("تم إصلاح ربط الحجوزات القديمة بنجاح.");
     } catch (e) {
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
     } finally {
@@ -4350,26 +4336,22 @@ export default function DashboardEmployees() {
 
   if (!authUser) {
     return (
-      <div className="emp-page-wrapper">
-        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
-          <div className="dash-card">
-            <h3>غير مصرح</h3>
-            <p>سجّل دخول ثم جرّب.</p>
-          </div>
-        </div>
+      <div className="dsv2-page dsv2-employees-page">
+        <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
+          <h2 className="dsv2-section-title">غير مصرح</h2>
+          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
+        </section>
       </div>
     );
   }
 
   if (!canAccessEmployeesDashboard) {
     return (
-      <div className="emp-page-wrapper">
-        <div className={isEmployeeProfileRoute ? "employee-profile-route-container" : "container"}>
-          <div className="dash-card">
-            <h3>صلاحيات غير كافية</h3>
-            <p>هذه الصفحة للإدارة فقط.</p>
-          </div>
-        </div>
+      <div className="dsv2-page dsv2-employees-page">
+        <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
+          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
+          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
+        </section>
       </div>
     );
   }
@@ -4498,46 +4480,39 @@ export default function DashboardEmployees() {
 
   return (
     <div
-      className={`emp-page-wrapper employees-workspace ${
+      className={`dsv2-page dsv2-employees-page ${
         isEmployeeProfileRoute
-          ? "employees-workspace--profile is-profile-route"
-          : "employees-workspace--directory"
+          ? "dsv2-employees-page--profile"
+          : "dsv2-employees-page--directory"
       }`}
     >
-      <div
-        className={
-          isEmployeeProfileRoute
-            ? "employee-profile-route-container employees-workspace__profile-container"
-            : "employees-workspace__container"
-        }
-      >
+      <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="employees-hero" aria-label="إدارة الموظفات">
-              <div className="employees-hero__content">
-                <span className="employees-eyebrow">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
+              <div className="employees-v2-page-heading">
+                <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
                   الموارد البشرية
                 </span>
-                <h1>إدارة الموظفات</h1>
-                <p>
-                  لوحة تشغيلية لملفات الموظفات، حالة العمل، الخدمات، الحضور والرواتب مع
-                  إبقاء إدارة حسابات الدخول منفصلة في صفحة الحسابات.
+                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
+                <p className="dsv2-page-subtitle">
+                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
                 </p>
               </div>
 
-              <div className="employees-hero__actions">
+              <div className="employees-v2-page-actions">
                 {canCreateEmployees ? (
-                  <button className="employees-action employees-action--primary" type="button" onClick={openCreateEmployee}>
+                  <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
                     إضافة موظفة
                   </button>
                 ) : null}
                 {canFixBookings ? (
                   <button
-                    className="employees-action employees-action--soft"
+                    className="dsv2-btn dsv2-btn--secondary"
                     type="button"
-                    onClick={fixBookingsEmployeeUid}
+                    onClick={() => setRepairConfirmOpen(true)}
                     title="إصلاح ربط الحجوزات"
                   >
                     <FontAwesomeIcon icon={faScrewdriverWrench} />
@@ -4545,60 +4520,55 @@ export default function DashboardEmployees() {
                   </button>
                 ) : null}
                 <button
-                  className="employees-action employees-action--ghost"
+                  className="dsv2-btn dsv2-btn--secondary"
                   onClick={() => void reloadData(true)}
                   disabled={busy}
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  تحديث
+                  تحديث البيانات
                 </button>
               </div>
             </header>
 
-            <section className="employees-stat-grid" aria-label="إحصاءات الموظفات">
-              <article className="employees-stat-card">
-                <span>إجمالي الملفات</span>
-                <strong>{totalEmployeeCount}</strong>
-                <small>كل الملفات التي يمكن لهذه الصلاحية عرضها</small>
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
+              <article className="dsv2-metric-card dsv2-metric-card--dark">
+                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
+                <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--success">
-                <span>على رأس العمل</span>
-                <strong>{availableEmployeeCount}</strong>
-                <small>نشطات ولسن في إجازة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--success">
+                <p className="dsv2-metric-card__label">على رأس العمل</p>
+                <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--warning">
-                <span>في إجازة</span>
-                <strong>{leaveEmployeeCount}</strong>
-                <small>إجازة حالية من سجل الموظفة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--gold">
+                <p className="dsv2-metric-card__label">في إجازة</p>
+                <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
               </article>
-              <article className="employees-stat-card employees-stat-card--danger">
-                <span>غير نشطة</span>
-                <strong>{inactiveEmployeeCount}</strong>
-                <small>ملفات موظفات معطلة وظيفيًا</small>
-              </article>
-              <article className="employees-stat-card employees-stat-card--review">
-                <span>تحتاج متابعة</span>
-                <strong>{noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <small>بدون خدمات أو ملفات غير مكتملة</small>
+              <article className="dsv2-metric-card dsv2-metric-card--danger">
+                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
+                <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
+                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
               </article>
             </section>
           </>
         ) : null}
 
         {errorMsg ? (
-          <div className="employees-alert" role="alert">
+          <div className="employees-v2-alert" role="alert">
             {errorMsg}
           </div>
         ) : null}
 
-        <div
-          className={
-            isEmployeeProfileRoute
-              ? "employees-workspace__profile-host"
-              : "employees-workspace__directory-host"
-          }
-        >
+        {repairMessage ? (
+          <div className="employees-v2-alert employees-v2-alert--success" role="status">
+            {repairMessage}
+          </div>
+        ) : null}
+
+        <div className={isEmployeeProfileRoute ? "employees-v2-profile-host" : "employees-v2-directory-host"}>
           {!isEmployeeProfileRoute ? (
             <EmployeeListPanel
               qText={qText}
@@ -4619,8 +4589,8 @@ export default function DashboardEmployees() {
               onOpenEmployee={openEdit}
             />
           ) : !editingStaff ? (
-            <section className="employees-profile-loading" aria-live="polite">
-              <span className="employees-loading-ring" aria-hidden="true" />
+            <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
+              <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
                 <strong>جاري فتح ملف الموظفة...</strong>
                 <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
@@ -4740,11 +4710,14 @@ export default function DashboardEmployees() {
               <AttendanceSection
                 isVisible={!!editingStaff && activeTab === "attendance" && canViewAttendance}
                 loading={employeeAttendanceLoading}
+                error={employeeAttendanceError}
                 rows={employeeAttendanceRows}
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
                 schedule={editingStaff}
-                employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
+                salonBusinessHours={((appSettings as any)?.booking || {})?.businessHours || null}
+                employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
+                employeeIds={selectedAttendanceIdentity.allIds}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
@@ -4759,7 +4732,7 @@ export default function DashboardEmployees() {
                 }}
                 onSelectedDateChange={setEmployeeAttendanceSelectedDate}
                 onReload={() => {
-                  void loadSelectedEmployeeAttendance();
+                  void loadSelectedEmployeeAttendance({ force: true });
                 }}
                 onEditPunch={openAttendancePunchEditor}
                 onDeletePunch={(dateKey) => {
@@ -4930,6 +4903,8 @@ export default function DashboardEmployees() {
               <ShiftControlSection
                 isVisible={!!editingStaff && activeTab === "shifts" && canManageSchedule}
                 employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
+                employeeUid={selectedAttendanceIdentity.employeeUid || ""}
+                employeeIds={selectedAttendanceIdentity.allIds}
                 employeeName={name || (editingStaff as any)?.name || ""}
                 canManage={canManageSchedule}
               />
@@ -4961,49 +4936,57 @@ export default function DashboardEmployees() {
                 onToggleSpecialty={toggleSpecialty}
                 onSpecialtiesChange={setSpecialties}
               />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "requests" && canManageLeaveBalance}
-                title="طلبات الموظفة"
-                lead="راجعي طلبات الإجازة والطلبات الإدارية الواردة من الموظفات داخل لوحة الموارد البشرية."
-                actionLabel="فتح لوحة الطلبات"
-                actionHref="/admin/overview"
-                moduleLabel="HR REQUESTS"
-                notes={[
-                  "مراجعة أحدث طلبات الإجازة",
-                  "عرض الطلبات المعلقة",
-                  "الوصول إلى إجراءات القبول والرفض",
-                ]}
-              />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "messages" && canViewEmployeeMessages}
-                title="رسائل HR مع الموظفة"
-                lead="افتحي نظام الرسائل الداخلية لبدء محادثة أو متابعة الرسائل السابقة مع الموظفة."
-                actionLabel="فتح الرسائل"
-                actionHref="/admin/messages"
-                moduleLabel="INTERNAL MESSAGES"
-                notes={[
-                  "عرض المحادثات السابقة",
-                  "إرسال رسالة داخلية جديدة",
-                  "متابعة الرسائل غير المقروءة",
-                ]}
-              />
-                            <EmployeeComingSoonSection
-                isVisible={!!editingStaff && activeTab === "files" && canViewEmployeeFiles}
-                title="ملفات الموظفة"
-                lead="افتحي نظام الملفات الداخلية لرفع المستندات وعرض الملفات المرتبطة بالموظفات."
-                actionLabel="فتح إدارة الملفات"
-                actionHref="/admin/files"
-                moduleLabel="EMPLOYEE FILES"
-                notes={[
-                  "رفع مستند أو مرفق جديد",
-                  "عرض الملفات الواردة والمرسلة",
-                  "متابعة حالة القراءة والنسخة الحالية",
-                ]}
-              />
+              {editingStaff ? (
+                <EmployeeRequestsSection
+                  isVisible={activeTab === "requests" && canManageLeaveBalance}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  reviewerUid={authUser?.uid || ""}
+                  reviewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canManageLeaveBalance}
+                />
+              ) : null}
+              {editingStaff ? (
+                <EmployeeMessagesSection
+                  isVisible={activeTab === "messages" && canViewEmployeeMessages}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  viewerUid={authUser?.uid || ""}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canViewEmployeeMessages}
+                />
+              ) : null}
+              {editingStaff ? (
+                <EmployeeFilesSection
+                  isVisible={activeTab === "files" && canViewEmployeeFiles}
+                  employeeId={selectedEmployeeId || editingStaff.id}
+                  employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
+                  employeeName={name || editingStaff.name || ""}
+                  viewerUid={authUser?.uid || ""}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  canManage={canViewEmployeeFiles}
+                />
+              ) : null}
             </EmployeeEditorSurface>
           </EmployeeDetailShell>
         </div>
       </div>
+
+      <DashboardConfirmV2
+        open={repairConfirmOpen}
+        onClose={() => setRepairConfirmOpen(false)}
+        onConfirm={fixBookingsEmployeeUid}
+        title="إصلاح ربط الحجوزات القديمة"
+        description="سيتم استكمال معرف الموظفة في الحجوزات القديمة التي ينقصها الربط فقط، دون حذف أي حجز."
+        tone="gold"
+        confirmLabel="بدء الإصلاح"
+        cancelLabel="إلغاء"
+        pendingLabel="جاري الإصلاح..."
+      >
+        <p className="employees-v2-confirm-note">يُنفذ هذا الإجراء عند وجود حجوزات قديمة غير مرتبطة بحساب الموظفة.</p>
+      </DashboardConfirmV2>
     </div>
   );
 }

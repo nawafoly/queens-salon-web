@@ -170,6 +170,8 @@ export type CoreShiftTemplate = {
   earlyLeaveGraceMinutes: number;
   overtimeAfterMinutes: number;
   active: boolean | number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type CoreShiftAssignment = {
@@ -187,6 +189,11 @@ export type CoreShiftAssignment = {
   shiftCode?: string | null;
   startTime?: string | null;
   endTime?: string | null;
+  templateStartTime?: string | null;
+  templateEndTime?: string | null;
+  lateGraceMinutes?: number | null;
+  earlyLeaveGraceMinutes?: number | null;
+  overtimeAfterMinutes?: number | null;
   crossesMidnight?: boolean | number | null;
   createdAt?: string | null;
   updatedAt?: string | null;

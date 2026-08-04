@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import "../styles/AdminDashboardReports.css";
+import "../styles/dashboard-v2/pages/reports.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCalendarDays, faChartLine, faClockRotateLeft } from "@fortawesome/free-solid-svg-icons";
+import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
+import {
+  faCalendarDays,
+  faChartLine,
+  faClockRotateLeft,
+  faFileExcel,
+  faFilePdf,
+} from "@fortawesome/free-solid-svg-icons";
 import { CoreHrService } from "../services/CoreHrService";
 import { CoreSettingsService } from "../services/CoreSettingsService";
 import { listCoreBookings } from "../services/firestoreBookings";
@@ -762,6 +769,8 @@ export default function DashboardReports() {
   const [loading, setLoading] = useState(true);
   const [lastSyncMs, setLastSyncMs] = useState<number>(Date.now());
   const [loadErr, setLoadErr] = useState("");
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+  const [exportError, setExportError] = useState("");
 
   const range = useMemo(
     () => getRange(period, customFrom, customTo, selectedMonth),
@@ -1449,35 +1458,77 @@ export default function DashboardReports() {
     generatedBy: "لوحة التقارير العامة",
   });
 
-  const exportFinancialPdf = () => {
-    exportFinancialOverviewReportPdf(buildFinancialOverviewReportInput());
+  const exportFinancialPdf = async () => {
+    if (exporting) return;
+    setExportError("");
+    setExporting("pdf");
+    try {
+      await exportFinancialOverviewReportPdf(buildFinancialOverviewReportInput());
+    } catch (error) {
+      console.error("Financial PDF export failed", error);
+      setExportError("تعذر إنشاء ملف PDF. أعد المحاولة بعد اكتمال تحميل البيانات.");
+    } finally {
+      setExporting(null);
+    }
   };
 
   const exportFinancialExcel = () => {
-    exportFinancialOverviewReportExcel(buildFinancialOverviewReportInput());
+    if (exporting) return;
+    setExportError("");
+    setExporting("excel");
+    try {
+      exportFinancialOverviewReportExcel(buildFinancialOverviewReportInput());
+    } catch (error) {
+      console.error("Financial Excel export failed", error);
+      setExportError("تعذر إنشاء ملف Excel. أعد المحاولة بعد اكتمال تحميل البيانات.");
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
-    <div className="reports-v2">
+    <div className="dsv2-page dsv2-reports-page reports-v2">
       <div className="reports-v2__header">
         <div>
           <h1>اللوحة المالية</h1>
           <p>
-            المصدر الرسمي للإيرادات هنا هو قائمة الدخل `income` فقط (بنفس منطق صفحة الإيرادات:
-            المبلغ الفعلي للحجوزات = `paidAmount`، وغير المرتبط بالحجوزات = `amount`). المصروفات من
-            `expenses` مع إضافة الرواتب/الأوفر تايم المحسوبة تلقائيًا. العرض الشهري هنا تقويمي
-            (1-آخر الشهر)، بينما الرواتب تُغلق بدورة 28-27.
+            متابعة موحدة للإيرادات والمصروفات وصافي الربح، مع المقارنات الزمنية ودورة الرواتب
+            والتفاصيل المطابقة للفلاتر الحالية. العرض الشهري تقويمي، بينما تُعرض دورة الرواتب
+            المحاسبية للفترة من يوم 28 إلى يوم 27.
           </p>
           <small className="reports-v2__sync">
             <FontAwesomeIcon icon={faClockRotateLeft} /> آخر مزامنة: {lastSyncLabel}
           </small>
-          <div className="reports-v2__export-actions">
-            <button type="button" className="reports-btn" onClick={exportFinancialPdf} disabled={loading}>
-              تصدير PDF
-            </button>
-            <button type="button" className="reports-btn primary" onClick={exportFinancialExcel} disabled={loading}>
-              تصدير Excel
-            </button>
+          <div className="reports-v2__export-panel">
+            <div className="reports-v2__export-copy">
+              <strong>تصدير التقرير الكامل</strong>
+              <span>الملخص، الفلاتر، دورة الرواتب، الإيرادات والمصروفات</span>
+            </div>
+            <div className="reports-v2__export-actions">
+              <button
+                type="button"
+                className="reports-btn reports-btn--pdf"
+                onClick={exportFinancialPdf}
+                disabled={loading || exporting !== null}
+              >
+                <FontAwesomeIcon icon={faFilePdf} />
+                {exporting === "pdf" ? "جاري تجهيز PDF..." : "تصدير PDF"}
+              </button>
+              <button
+                type="button"
+                className="reports-btn reports-btn--excel"
+                onClick={exportFinancialExcel}
+                disabled={loading || exporting !== null}
+              >
+                <FontAwesomeIcon icon={faFileExcel} />
+                {exporting === "excel" ? "جاري تجهيز Excel..." : "تصدير Excel"}
+              </button>
+            </div>
+            {exportError ? (
+              <span className="reports-v2__export-error" role="alert">
+                {exportError}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1539,11 +1590,11 @@ export default function DashboardReports() {
           <div className="reports-v2__custom-range">
             <label>
               من
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <DashboardDatePickerV2 value={customFrom} onChange={setCustomFrom} />
             </label>
             <label>
               إلى
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              <DashboardDatePickerV2 value={customTo} onChange={setCustomTo} />
             </label>
           </div>
         )}
@@ -1694,37 +1745,75 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      <section className="reports-v2__charts-board">
-        <article className="chart-card chart-card--wide">
-          <div className="chart-card__head">
-            <div>
+      <section className="reports-v2__charts-board reports-charts-v2">
+        <article className="chart-card chart-card--wide chart-card--trend">
+          <div className="chart-card__head chart-card__head--modern">
+            <div className="chart-title-block">
+              <span className="chart-eyebrow">التحليل المالي</span>
               <h2>
                 اتجاه التدفقات {trendMode === "month" ? "الشهرية" : "اليومية"}
                 {trendMode === "month" ? ` (${chartsModel.selectedYear})` : ""}
               </h2>
-              <p>العوائد مقابل المصروفات</p>
+              <p>مقارنة الإيرادات والمصروفات خلال الفترة المحددة</p>
             </div>
-            <div className="chart-switch" dir="rtl">
-              <button
-                type="button"
-                className={`chart-switch__btn ${trendMode === "day" ? "is-active" : ""}`}
-                onClick={() => setTrendMode("day")}
-              >
-                يومي
-              </button>
-              <button
-                type="button"
-                className={`chart-switch__btn ${trendMode === "month" ? "is-active" : ""}`}
-                onClick={() => setTrendMode("month")}
-              >
-                شهري
-              </button>
+
+            <div className="chart-head-tools">
+              <div className="chart-summary-pills" aria-label="ملخص الرسم">
+                <span className="chart-summary-pill chart-summary-pill--returns">
+                  <small>الإيرادات</small>
+                  <b>
+                    {formatMoney(
+                      chartsModel.points.reduce(
+                        (sum, point) => sum + Number(point.returns || 0),
+                        0
+                      )
+                    )}
+                  </b>
+                </span>
+                <span className="chart-summary-pill chart-summary-pill--expenses">
+                  <small>المصروفات</small>
+                  <b>
+                    {formatMoney(
+                      chartsModel.points.reduce(
+                        (sum, point) => sum + Number(point.investments || 0),
+                        0
+                      )
+                    )}
+                  </b>
+                </span>
+              </div>
+
+              <div className="chart-switch" dir="rtl" aria-label="نطاق الرسم">
+                <button
+                  type="button"
+                  className={`chart-switch__btn ${trendMode === "day" ? "is-active" : ""}`}
+                  onClick={() => setTrendMode("day")}
+                >
+                  يومي
+                </button>
+                <button
+                  type="button"
+                  className={`chart-switch__btn ${trendMode === "month" ? "is-active" : ""}`}
+                  onClick={() => setTrendMode("month")}
+                >
+                  شهري
+                </button>
+              </div>
             </div>
           </div>
-          <div className="top-chart-wrap">
-            <svg viewBox={`0 0 ${chartsModel.topWidth} ${chartsModel.topHeight}`} className="top-chart" preserveAspectRatio="none">
+
+          <div className="top-chart-wrap top-chart-wrap--modern">
+            <svg
+              viewBox={`0 0 ${chartsModel.topWidth} ${chartsModel.topHeight}`}
+              className="top-chart top-chart--modern"
+              preserveAspectRatio="none"
+              role="img"
+              aria-label="رسم اتجاه الإيرادات والمصروفات"
+            >
               {chartsModel.yTicks.map((tickVal, i) => {
-                const y = chartsModel.padT + ((chartsModel.topHeight - chartsModel.padT - chartsModel.padB) * i) / 4;
+                const y =
+                  chartsModel.padT +
+                  ((chartsModel.topHeight - chartsModel.padT - chartsModel.padB) * i) / 4;
                 return (
                   <g key={`yg_${i}`}>
                     <line
@@ -1732,16 +1821,22 @@ export default function DashboardReports() {
                       y1={y}
                       x2={chartsModel.topWidth - chartsModel.padR}
                       y2={y}
-                      className="grid-line"
+                      className="grid-line grid-line--horizontal"
                     />
-                    <text x={chartsModel.padL - 8} y={y + 4} textAnchor="end" className="axis-y">
+                    <text
+                      x={chartsModel.padL - 8}
+                      y={y + 4}
+                      textAnchor="end"
+                      className="axis-y"
+                    >
                       {formatAxisNumber(tickVal)}
                     </text>
                   </g>
                 );
               })}
-              {chartsModel.points.map((p, i) => (
-                <g key={`x_${p.key}`}>
+
+              {chartsModel.points.map((point, i) => (
+                <g key={`x_${point.key}`}>
                   <line
                     x1={chartsModel.xOf(i)}
                     y1={chartsModel.padT}
@@ -1749,98 +1844,222 @@ export default function DashboardReports() {
                     y2={chartsModel.topHeight - chartsModel.padB}
                     className="grid-line grid-line--v"
                   />
-                  {i % chartsModel.xTickStride === 0 || i === chartsModel.points.length - 1 ? (
-                    <text x={chartsModel.xOf(i)} y={chartsModel.topHeight - 10} textAnchor="middle" className="axis-x">
-                      {p.label}
+                  {i % chartsModel.xTickStride === 0 ||
+                  i === chartsModel.points.length - 1 ? (
+                    <text
+                      x={chartsModel.xOf(i)}
+                      y={chartsModel.topHeight - 10}
+                      textAnchor="middle"
+                      className="axis-x"
+                    >
+                      {point.label}
                     </text>
                   ) : null}
                 </g>
               ))}
-              <path d={chartsModel.returnsPath} className="trend-line trend-line--returns" />
-              <path d={chartsModel.investmentsPath} className="trend-line trend-line--investments" />
-              {chartsModel.points.map((p, i) => (
-                <circle key={`ret_pt_${i}`} cx={chartsModel.xOf(i)} cy={chartsModel.yOf(p.returns)} r={3.2} className="trend-dot trend-dot--returns" />
+
+              <path
+                d={chartsModel.returnsPath}
+                className="trend-line trend-line--returns"
+              />
+              <path
+                d={chartsModel.investmentsPath}
+                className="trend-line trend-line--investments"
+              />
+
+              {chartsModel.points.map((point, i) => (
+                <circle
+                  key={`ret_pt_${i}`}
+                  cx={chartsModel.xOf(i)}
+                  cy={chartsModel.yOf(point.returns)}
+                  r={3.2}
+                  className="trend-dot trend-dot--returns"
+                />
               ))}
-              {chartsModel.points.map((p, i) => (
-                <circle key={`inv_pt_${i}`} cx={chartsModel.xOf(i)} cy={chartsModel.yOf(p.investments)} r={3.2} className="trend-dot trend-dot--investments" />
+              {chartsModel.points.map((point, i) => (
+                <circle
+                  key={`inv_pt_${i}`}
+                  cx={chartsModel.xOf(i)}
+                  cy={chartsModel.yOf(point.investments)}
+                  r={3.2}
+                  className="trend-dot trend-dot--investments"
+                />
               ))}
             </svg>
           </div>
-          <div className="trend-legend">
-            <span className="legend-item legend-item--returns">العوائد</span>
+
+          <div className="trend-legend trend-legend--modern">
+            <span className="legend-item legend-item--returns">الإيرادات</span>
             <span className="legend-item legend-item--investments">المصروفات</span>
           </div>
         </article>
 
-        <article className="chart-card">
-          <div className="chart-card__head">
-            <h3>حالة الحجوزات (حسب الفترة)</h3>
+        <article className="chart-card chart-card--compact chart-card--status">
+          <div className="chart-card__head chart-card__head--modern">
+            <div className="chart-title-block">
+              <span className="chart-eyebrow">تشغيل الحجوزات</span>
+              <h3>حالة الحجوزات</h3>
+              <p>توزيع الحالات خلال الفترة الحالية</p>
+            </div>
           </div>
-          <div className="mini-chart-wrap">
-            <svg viewBox="0 0 520 280" className="mini-chart">
-              {Array.from({ length: 5 }).map((_, i) => {
-                const y = 24 + (220 * i) / 4;
-                return (
-                  <line key={`sg_${i}`} x1={40} y1={y} x2={500} y2={y} className="grid-line" />
-                );
-              })}
-              {chartsModel.statusBars.map((b, i) => {
-                const x = 70 + i * 110;
-                const h = (Math.max(0, b.value) / chartsModel.statusMax) * 180;
-                const y = 240 - h;
-                return (
-                  <g key={`sb_${b.key}`}>
-                    <rect x={x} y={y} width={62} height={h} rx={8} className="status-bar" />
-                    <text x={x + 31} y={258} textAnchor="middle" className="axis-x">{b.label}</text>
-                    <text x={x + 31} y={Math.max(18, y - 6)} textAnchor="middle" className="axis-y">{b.value}</text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+
+          {chartsModel.statusBars.some((bar) => Number(bar.value || 0) > 0) ? (
+            <div className="mini-chart-wrap mini-chart-wrap--modern">
+              <svg
+                viewBox="0 0 520 280"
+                className="mini-chart mini-chart--status"
+                role="img"
+                aria-label="رسم حالات الحجوزات"
+              >
+                {Array.from({ length: 5 }).map((_, i) => {
+                  const y = 24 + (220 * i) / 4;
+                  return (
+                    <line
+                      key={`sg_${i}`}
+                      x1={40}
+                      y1={y}
+                      x2={500}
+                      y2={y}
+                      className="grid-line grid-line--horizontal"
+                    />
+                  );
+                })}
+
+                {chartsModel.statusBars.map((bar, i) => {
+                  const x = 70 + i * 110;
+                  const height =
+                    (Math.max(0, bar.value) / chartsModel.statusMax) * 180;
+                  const y = 240 - height;
+                  return (
+                    <g key={`sb_${bar.key}`}>
+                      <rect
+                        x={x}
+                        y={60}
+                        width={62}
+                        height={180}
+                        rx={12}
+                        className="status-track"
+                      />
+                      <rect
+                        x={x}
+                        y={y}
+                        width={62}
+                        height={height}
+                        rx={12}
+                        className={`status-bar status-bar--${bar.key}`}
+                      />
+                      <text
+                        x={x + 31}
+                        y={260}
+                        textAnchor="middle"
+                        className="axis-x"
+                      >
+                        {bar.label}
+                      </text>
+                      <text
+                        x={x + 31}
+                        y={Math.max(22, y - 10)}
+                        textAnchor="middle"
+                        className="status-value"
+                      >
+                        {bar.value}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          ) : (
+            <div className="chart-empty-v2" role="status">
+              <span className="chart-empty-v2__icon" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              <strong>لا توجد حجوزات في الفترة</strong>
+              <p>ستظهر حالات الحجوزات هنا فور تسجيل حركات جديدة.</p>
+            </div>
+          )}
         </article>
 
-        <article className="chart-card">
-          <div className="chart-card__head">
-            <h3>توزيع مصادر الإيرادات</h3>
+        <article className="chart-card chart-card--compact chart-card--sources">
+          <div className="chart-card__head chart-card__head--modern">
+            <div className="chart-title-block">
+              <span className="chart-eyebrow">مزيج الإيرادات</span>
+              <h3>مصادر الإيرادات</h3>
+              <p>نسبة مساهمة كل مصدر في إجمالي الدخل</p>
+            </div>
           </div>
-          <div className="mini-chart-wrap">
-            <svg viewBox="0 0 520 260" className="mini-chart mini-chart--pie">
-              <g transform="translate(260,130)">
-                {chartsModel.pieSlices.map((s) => (
-                  <path
-                    key={`pie_${s.key}`}
-                    d={arcPath(0, 0, 84, s.start, s.end)}
-                    fill={s.color}
-                    stroke="#ffffff"
-                    strokeWidth="2.5"
-                  />
-                ))}
-                {chartsModel.pieSlices.length === 0 ? (
-                  <>
-                    <circle r="78" fill="rgba(136, 140, 140, 0.18)" stroke="rgba(13, 13, 13, 0.16)" />
-                    <text textAnchor="middle" y="5" className="axis-x">No data</text>
-                  </>
-                ) : null}
-              </g>
-            </svg>
-          </div>
-          <div className="pie-legend" dir="rtl">
-            {chartsModel.pieSlices.map((s) => {
-              const ratio = chartsModel.sourceTotal > 0 ? Math.round((s.value / chartsModel.sourceTotal) * 100) : 0;
-              return (
-                <div key={`pie_legend_${s.key}`} className="pie-legend__item">
-                  <span className="pie-legend__dot" style={{ backgroundColor: s.color }} />
-                  <span className="pie-legend__label">{s.label}</span>
-                  <span className="pie-legend__value">{s.value}</span>
-                  <span className="pie-legend__ratio">({ratio}%)</span>
-                </div>
-              );
-            })}
-            {chartsModel.pieSlices.length === 0 ? (
-              <div className="pie-legend__empty">لا توجد بيانات في الفترة المحددة</div>
-            ) : null}
-          </div>
+
+          {chartsModel.pieSlices.length > 0 ? (
+            <div className="donut-layout-v2">
+              <div className="mini-chart-wrap mini-chart-wrap--modern donut-chart-wrap-v2">
+                <svg
+                  viewBox="0 0 360 300"
+                  className="mini-chart mini-chart--donut"
+                  role="img"
+                  aria-label="رسم توزيع مصادر الإيرادات"
+                >
+                  <g transform="translate(180,145)">
+                    {chartsModel.pieSlices.map((slice) => (
+                      <path
+                        key={`pie_${slice.key}`}
+                        d={arcPath(0, 0, 96, slice.start, slice.end)}
+                        fill={slice.color}
+                        className="donut-slice-v2"
+                      />
+                    ))}
+                    <circle r="59" className="donut-hole-v2" />
+                    <text
+                      textAnchor="middle"
+                      y="-3"
+                      className="donut-total-v2"
+                    >
+                      {formatAxisNumber(chartsModel.sourceTotal)}
+                    </text>
+                    <text
+                      textAnchor="middle"
+                      y="20"
+                      className="donut-caption-v2"
+                    >
+                      إجمالي الإيرادات
+                    </text>
+                  </g>
+                </svg>
+              </div>
+
+              <div className="pie-legend pie-legend--modern" dir="rtl">
+                {chartsModel.pieSlices.map((slice) => {
+                  const ratio =
+                    chartsModel.sourceTotal > 0
+                      ? Math.round((slice.value / chartsModel.sourceTotal) * 100)
+                      : 0;
+                  return (
+                    <div
+                      key={`pie_legend_${slice.key}`}
+                      className="pie-legend__item"
+                    >
+                      <span
+                        className="pie-legend__dot"
+                        style={{ backgroundColor: slice.color }}
+                      />
+                      <span className="pie-legend__label">{slice.label}</span>
+                      <span className="pie-legend__value">
+                        {formatMoney(slice.value)}
+                      </span>
+                      <span className="pie-legend__ratio">{ratio}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="chart-empty-v2" role="status">
+              <span className="chart-empty-v2__donut" aria-hidden="true" />
+              <strong>لا توجد إيرادات في الفترة</strong>
+              <p>غيّر الفترة أو الفلاتر لعرض توزيع مصادر الإيرادات.</p>
+            </div>
+          )}
         </article>
       </section>
 

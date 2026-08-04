@@ -1,7 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import "../../styles/DashboardShiftControl.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DashboardDatePickerV2,
+  DashboardFieldV2,
+  DashboardSelectV2,
+} from "../../components/dashboard-v2";
+import {
+  WorkspaceCardV2,
+  WorkspaceMetricV2,
+  WorkspaceNoticeV2,
+  WorkspaceStatusBadgeV2,
+  WorkspaceSwitchV2,
+  WorkspaceTableV2,
+  WorkspaceTabHeaderV2,
+} from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { CoreHrService } from "../../services/CoreHrService";
 import type {
+  CoreResolvedShift,
   CoreScheduleException,
   CoreShiftAssignment,
   CoreShiftChangePreview,
@@ -13,6 +27,8 @@ import type {
 type ShiftControlSectionProps = {
   isVisible: boolean;
   employeeId: string;
+  employeeUid?: string;
+  employeeIds?: string[];
   employeeName?: string;
   canManage: boolean;
 };
@@ -23,9 +39,7 @@ type TemplateForm = {
   code: string;
   startTime: string;
   endTime: string;
-  crossesMidnight: boolean;
   breakMinutes: string;
-  breakPaid: boolean;
   lateGraceMinutes: string;
   earlyLeaveGraceMinutes: string;
   overtimeAfterMinutes: string;
@@ -33,6 +47,7 @@ type TemplateForm = {
 };
 
 type AssignmentForm = {
+  id: string;
   shiftTemplateId: string;
   effectiveFrom: string;
   effectiveTo: string;
@@ -67,108 +82,145 @@ function cleanText(value: unknown) {
   return String(value || "").trim();
 }
 
-function numberInput(value: unknown, fallback = "0") {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? String(number) : fallback;
+function uniqueCleanTexts(values: unknown[]) {
+  return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
-function formatShiftWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException> | null) {
-  const start = cleanText((row as any)?.startTime || (row as any)?.start_time || (row as any)?.templateStartTime || (row as any)?.template_start_time);
-  const end = cleanText((row as any)?.endTime || (row as any)?.end_time || (row as any)?.templateEndTime || (row as any)?.template_end_time);
-  if (!start && !end) return "بدون وقت محدد";
-  return `${start || "--:--"} — ${end || "--:--"}`;
+function isFullShiftIdentifier(value: unknown) {
+  return /^[A-Za-z0-9_-]{20,}$/.test(cleanText(value));
 }
 
-function isAssignmentExpired(assignment: CoreShiftAssignment, date = todayKey()) {
-  return cleanText(assignment.status) !== "cancelled" && Boolean(assignment.effectiveTo) && cleanText(assignment.effectiveTo) < date;
+function readAliasValue(row: unknown, camelKey: string, snakeKey: string = camelKey) {
+  const record = (row || {}) as Record<string, unknown>;
+  return record[camelKey] ?? record[snakeKey];
 }
 
-function isAssignmentCurrent(assignment: CoreShiftAssignment, date = todayKey()) {
-  if (cleanText(assignment.status) !== "published") return false;
-  if (assignment.effectiveFrom > date) return false;
-  if (assignment.effectiveTo && assignment.effectiveTo < date) return false;
-  return true;
-}
-
-function assignmentStatusLabel(assignment: CoreShiftAssignment) {
-  const status = cleanText(assignment.status);
-  if (isAssignmentExpired(assignment)) return "منتهي";
-  if (status === "published" && assignment.effectiveFrom > todayKey()) return "مجدول";
-  if (isAssignmentCurrent(assignment)) return "نشط";
-  if (status === "published") return "منشور";
-  if (status === "draft") return "مسودة";
-  if (status === "cancelled") return "ملغي";
-  return status || "غير محدد";
-}
-
-function exceptionTypeLabel(type: string) {
-  if (type === "shift") return "شفت بديل";
-  if (type === "off") return "راحة / إغلاق يوم";
-  if (type === "custom") return "وقت مخصص";
-  return type || "استثناء";
-}
-
-function parseSnapshot(row: CoreShiftAssignment) {
+function parseSnapshot(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw) return {};
   try {
-    const parsed = JSON.parse(String(row.snapshotJson || "{}"));
+    const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
   } catch {
     return {};
   }
 }
 
-function activeAssignmentForDate(assignments: CoreShiftAssignment[], date: string) {
-  const cleanDate = cleanText(date) || todayKey();
-  return [...assignments]
-    .filter((assignment) => isAssignmentCurrent(assignment, cleanDate))
-    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0] || null;
+function templateForAssignment(assignment: CoreShiftAssignment | null | undefined, templates: CoreShiftTemplate[]) {
+  const templateId = cleanText(assignment?.shiftTemplateId || (assignment as Record<string, unknown> | null | undefined)?.shift_template_id);
+  return templates.find((template) => template.id === templateId) || null;
 }
 
-function shiftTemplateIdForDate(input: {
-  date: string;
-  assignments: CoreShiftAssignment[];
-  templates: CoreShiftTemplate[];
-  resolvedShift?: Record<string, unknown> | null;
-}) {
-  const date = cleanText(input.date) || todayKey();
-  const resolvedDate = cleanText((input.resolvedShift as any)?.date);
-  const resolvedTemplateId =
-    resolvedDate === date
-      ? cleanText(
-          (input.resolvedShift as any)?.shiftTemplateId ||
-            (input.resolvedShift as any)?.shift_template_id
-        )
-      : "";
-  if (resolvedTemplateId) return resolvedTemplateId;
-
-  const assignment = activeAssignmentForDate(input.assignments, date);
-  const assignmentSnapshot = assignment ? parseSnapshot(assignment) : {};
-  const assignmentTemplateId = cleanText(
-    (assignment as any)?.shiftTemplateId ||
-      (assignment as any)?.shift_template_id ||
-      assignmentSnapshot.id
-  );
-  if (assignmentTemplateId) return assignmentTemplateId;
-
-  const assignmentName = cleanText(assignment?.shiftName || assignmentSnapshot.name);
-  if (assignmentName) {
-    const matched = input.templates.find((template) => cleanText(template.name) === assignmentName);
-    if (matched) return matched.id;
-  }
-
-  return input.templates.find((item) => boolish(item.active))?.id || "";
+function assignmentShiftName(assignment: CoreShiftAssignment | null | undefined, templates: CoreShiftTemplate[]) {
+  const template = templateForAssignment(assignment, templates);
+  const snapshot = parseSnapshot(assignment?.snapshotJson || (assignment as Record<string, unknown> | null | undefined)?.snapshot_json);
+  return cleanText(assignment?.shiftName || (assignment as Record<string, unknown> | null | undefined)?.shift_name || template?.name || snapshot.name || snapshot.shiftName || snapshot.shift_name);
 }
 
-function previewCount(value: unknown) {
+function assignmentShiftRecord(assignment: CoreShiftAssignment | null | undefined, templates: CoreShiftTemplate[]) {
+  const template = templateForAssignment(assignment, templates);
+  const snapshot = parseSnapshot(assignment?.snapshotJson || (assignment as Record<string, unknown> | null | undefined)?.snapshot_json);
+  return { ...(snapshot || {}), ...(template || {}), ...(assignment || {}) } as Record<string, unknown>;
+}
+
+function isAssignmentActiveOnDate(assignment: CoreShiftAssignment, dateKey: string) {
+  const status = cleanText(assignment.status);
+  const fromDate = cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from);
+  const toDate = cleanText(assignment.effectiveTo || (assignment as Record<string, unknown>).effective_to);
+  if (status === "cancelled") return false;
+  if (!fromDate) return false;
+  return fromDate <= dateKey && (!toDate || toDate >= dateKey);
+}
+
+function resolvedShiftRank(row?: CoreResolvedShift | null) {
+  const source = cleanText(row?.source).toLowerCase();
+  const exceptionType = cleanText(row?.exceptionType || row?.exception_type).toLowerCase();
+  if (source === "exception" && exceptionType === "off") return 5;
+  if (source === "exception") return 4;
+  if (source === "assignment") return 3;
+  if (source && source !== "none") return 2;
+  return 0;
+}
+
+function pickBestResolvedShift(rows: Array<CoreResolvedShift | null | undefined>) {
+  return rows
+    .filter(Boolean)
+    .sort((left, right) => resolvedShiftRank(right) - resolvedShiftRank(left))[0] || null;
+}
+
+
+function numberInput(value: unknown, fallback = "0") {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? String(number) : fallback;
+}
+
+function readNumber(value: unknown) {
   const number = Number(value || 0);
   return Number.isFinite(number) ? number : 0;
 }
 
-function previewDateRange(preview?: CoreShiftChangePreview | null) {
-  if (!preview) return "لا توجد معاينة بعد";
-  const from = cleanText(preview.dateFrom || preview.date_from);
-  const to = cleanText(preview.dateTo || preview.date_to);
-  return `${from || "----"} ← ${to || from || "----"}`;
+function shiftPreviewDescription(preview: CoreShiftChangePreview) {
+  const affectedDays = readNumber(preview.affectedDays ?? preview.affected_days);
+  const overlaps = readNumber(preview.overlappingAssignmentsCount ?? preview.overlapping_assignments_count);
+  const lockedPeriods = readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count);
+
+  const affectedText = affectedDays === 1
+    ? "سيتم تعديل يوم واحد فقط."
+    : affectedDays > 1
+      ? `سيتم تعديل ${affectedDays} أيام.`
+      : "لن تتغير أيام حضور حالية حسب الفحص.";
+
+  const overlapText = overlaps
+    ? `يوجد ${overlaps} تعيين شفت متداخل وسيتم إغلاقه تلقائيًا لنفس الموظفة فقط.`
+    : "لا توجد تعيينات شفت متداخلة.";
+
+  const lockedText = lockedPeriods
+    ? `تنبيه: يوجد ${lockedPeriods} فترة مقفلة. راجع أثر التعديل على الرواتب أو الحضور قبل الحفظ.`
+    : "لا توجد فترات مقفلة تمنع الحفظ.";
+
+  return `${affectedText} ${overlapText} ${lockedText}`;
+}
+
+function formatWindow(row?: Partial<CoreShiftTemplate | CoreShiftAssignment | CoreScheduleException | CoreResolvedShift> | null) {
+  const record = row as Record<string, unknown> | null | undefined;
+  const start = cleanText(record?.startTime || record?.start_time || record?.templateStartTime || record?.template_start_time);
+  const end = cleanText(record?.endTime || record?.end_time || record?.templateEndTime || record?.template_end_time);
+  if (!start && !end) return "بدون وقت";
+  return `${start || "--:--"} - ${end || "--:--"}`;
+}
+
+function statusLabel(value: unknown) {
+  const status = cleanText(value);
+  if (status === "published") return "منشور";
+  if (status === "draft") return "مسودة";
+  if (status === "cancelled") return "ملغي";
+  if (status === "approved") return "معتمد";
+  return status || "غير محدد";
+}
+
+function assignmentStatus(assignment: CoreShiftAssignment) {
+  const today = todayKey();
+  const status = cleanText(assignment.status);
+  if (status === "cancelled") return "ملغي";
+  if (assignment.effectiveTo && assignment.effectiveTo < today) return "منتهي";
+  if (assignment.effectiveFrom > today) return "مجدول";
+  if (status === "published") return "نشط";
+  return statusLabel(status);
+}
+
+function assignmentTone(assignment: CoreShiftAssignment): "success" | "gold" | "danger" | "default" {
+  const label = assignmentStatus(assignment);
+  if (label === "نشط") return "success";
+  if (label === "مجدول") return "gold";
+  if (label === "ملغي") return "danger";
+  return "default";
+}
+
+function exceptionTypeLabel(type: string) {
+  if (type === "shift") return "شفت بديل";
+  if (type === "off") return "راحة";
+  if (type === "custom") return "وقت مخصص";
+  return type || "استثناء";
 }
 
 function emptyTemplateForm(): TemplateForm {
@@ -176,11 +228,9 @@ function emptyTemplateForm(): TemplateForm {
     id: "",
     name: "",
     code: "",
-    startTime: "13:00",
-    endTime: "21:00",
-    crossesMidnight: false,
+    startTime: "10:00",
+    endTime: "18:00",
     breakMinutes: "0",
-    breakPaid: false,
     lateGraceMinutes: "0",
     earlyLeaveGraceMinutes: "0",
     overtimeAfterMinutes: "0",
@@ -190,12 +240,13 @@ function emptyTemplateForm(): TemplateForm {
 
 function emptyAssignmentForm(): AssignmentForm {
   return {
+    id: "",
     shiftTemplateId: "",
     effectiveFrom: todayKey(),
     effectiveTo: "",
     assignmentType: "permanent",
     replaceOverlaps: true,
-    reason: "تعيين شفت من إدارة الدوام",
+    reason: "تعيين شفت من إدارة الموظفات",
   };
 }
 
@@ -206,115 +257,149 @@ function emptyExceptionForm(): ExceptionForm {
     dateTo: today,
     exceptionType: "shift",
     shiftTemplateId: "",
-    startTime: "",
-    endTime: "",
-    note: "استثناء مؤقت من إدارة الدوام",
+    startTime: "10:00",
+    endTime: "18:00",
+    note: "استثناء من إدارة الموظفات",
   };
 }
 
 export default function ShiftControlSection({
   isVisible,
   employeeId,
+  employeeUid = "",
+  employeeIds = [],
   employeeName,
   canManage,
 }: ShiftControlSectionProps) {
   const [templates, setTemplates] = useState<CoreShiftTemplate[]>([]);
   const [assignments, setAssignments] = useState<CoreShiftAssignment[]>([]);
   const [exceptions, setExceptions] = useState<CoreScheduleException[]>([]);
-  const [periodLocks, setPeriodLocks] = useState<CoreShiftPayrollPeriodLock[]>([]);
-  const [payrollAdjustments, setPayrollAdjustments] = useState<CoreShiftPayrollAdjustment[]>([]);
-  const [impactPreview, setImpactPreview] = useState<CoreShiftChangePreview | null>(null);
-  const [allowLockedPeriodAdjustment, setAllowLockedPeriodAdjustment] = useState(false);
+  const [locks, setLocks] = useState<CoreShiftPayrollPeriodLock[]>([]);
+  const [adjustments, setAdjustments] = useState<CoreShiftPayrollAdjustment[]>([]);
   const [resolvedDate, setResolvedDate] = useState(todayKey());
-  const [resolvedShift, setResolvedShift] = useState<Record<string, unknown> | null>(null);
+  const [resolvedShift, setResolvedShift] = useState<CoreResolvedShift | null>(null);
+  const [preview, setPreview] = useState<CoreShiftChangePreview | null>(null);
+  const [allowLockedPeriodAdjustment, setAllowLockedPeriodAdjustment] = useState(false);
+  const [templateForm, setTemplateForm] = useState<TemplateForm>(() => emptyTemplateForm());
+  const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>(() => emptyAssignmentForm());
+  const [exceptionForm, setExceptionForm] = useState<ExceptionForm>(() => emptyExceptionForm());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [templateForm, setTemplateForm] = useState<TemplateForm>(() => emptyTemplateForm());
-  const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>(() => emptyAssignmentForm());
-  const [exceptionForm, setExceptionForm] = useState<ExceptionForm>(() => emptyExceptionForm());
+  const assignmentEditorRef = useRef<HTMLDivElement | null>(null);
 
-  const activeTemplates = useMemo(
-    () => templates.filter((item) => boolish(item.active)),
-    [templates]
+  const focusAssignmentEditor = useCallback(() => {
+    window.setTimeout(() => {
+      assignmentEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
+  const shiftEmployeeIdsKey = uniqueCleanTexts([employeeUid, ...employeeIds, employeeId]).join("|");
+  const shiftEmployeeIds = useMemo(
+    () => shiftEmployeeIdsKey.split("|").filter(Boolean),
+    [shiftEmployeeIdsKey]
   );
 
+  const activeTemplates = useMemo(() => templates.filter((template) => boolish(template.active)), [templates]);
+  const templateOptions = useMemo(() => {
+    const source = activeTemplates.length ? activeTemplates : templates;
+    return source.map((template) => ({
+      value: template.id,
+      label: `${template.name || template.id} - ${formatWindow(template)}`,
+    }));
+  }, [activeTemplates, templates]);
+
   const selectedTemplate = useMemo(
-    () => templates.find((item) => item.id === assignmentForm.shiftTemplateId) || null,
-    [assignmentForm.shiftTemplateId, templates]
+    () => templates.find((template) => template.id === assignmentForm.shiftTemplateId) || null,
+    [assignmentForm.shiftTemplateId, templates],
   );
 
   const openAssignment = useMemo(
-    () => assignments.find((item) => isAssignmentCurrent(item) && !item.effectiveTo) || null,
-    [assignments]
+    () => assignments.find((assignment) => isAssignmentActiveOnDate(assignment, resolvedDate)) || null,
+    [assignments, resolvedDate],
   );
 
-  const defaultTemplateIdForExceptionDate = useCallback(
-    (date: string) =>
-      shiftTemplateIdForDate({
-        date,
-        assignments,
-        templates,
-        resolvedShift,
-      }),
-    [assignments, resolvedShift, templates]
-  );
-
-  const selectedExceptionTemplateName = useMemo(
-    () =>
-      activeTemplates.find((template) => template.id === exceptionForm.shiftTemplateId)?.name ||
-      templates.find((template) => template.id === exceptionForm.shiftTemplateId)?.name ||
-      "لا يوجد شفت محدد",
-    [activeTemplates, exceptionForm.shiftTemplateId, templates]
-  );
+  const targetShiftEmployeeId = useMemo(() => {
+    const currentAssignmentEmployeeId = cleanText(openAssignment?.employeeId || (openAssignment as Record<string, unknown> | null)?.employee_id);
+    return currentAssignmentEmployeeId || shiftEmployeeIds.find(isFullShiftIdentifier) || shiftEmployeeIds[0] || employeeId;
+  }, [employeeId, openAssignment, shiftEmployeeIds]);
 
   const load = useCallback(async () => {
-    if (!isVisible || !employeeId) return;
+    if (!isVisible || !shiftEmployeeIds.length) return;
     setLoading(true);
     setError("");
     try {
-      const [templateRows, assignmentRows, exceptionRows, locks, adjustments, resolved] = await Promise.all([
+      const [templateRows, assignmentGroups, exceptionGroups, lockRows, adjustmentGroups, resolvedRows] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
-        CoreHrService.listShiftAssignments({ employeeId }),
-        CoreHrService.listScheduleExceptions({ employeeId }),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }).catch(() => [] as CoreShiftAssignment[]))),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }).catch(() => [] as CoreScheduleException[]))),
         CoreHrService.listShiftPayrollPeriodLocks(),
-        CoreHrService.listShiftPayrollAdjustments({ employeeId }),
-        CoreHrService.resolveEmployeeShift(employeeId, resolvedDate),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftPayrollAdjustments({ employeeId: id }).catch(() => [] as CoreShiftPayrollAdjustment[]))),
+        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.resolveEmployeeShift(id, resolvedDate).catch(() => null))),
       ]);
+
+      const mergeById = <T extends { id: string }>(groups: T[][]) => Array.from(
+        new Map(groups.flat().filter((row) => cleanText(row.id)).map((row) => [row.id, row])).values()
+      );
+
       setTemplates(templateRows);
-      setAssignments(assignmentRows);
-      setExceptions(exceptionRows);
-      setPeriodLocks(locks);
-      setPayrollAdjustments(adjustments);
-      setResolvedShift(resolved);
-      setAssignmentForm((current) => ({
-        ...current,
-        shiftTemplateId: current.shiftTemplateId || templateRows.find((item) => boolish(item.active))?.id || "",
-      }));
-      setExceptionForm((current) => ({
-        ...current,
-        shiftTemplateId:
-          current.exceptionType === "shift" && current.shiftTemplateId
-            ? current.shiftTemplateId
-            : shiftTemplateIdForDate({
-                date: current.dateFrom,
-                assignments: assignmentRows,
-                templates: templateRows,
-                resolvedShift: resolved,
-              }),
-      }));
+      setAssignments(mergeById(assignmentGroups));
+      setExceptions(mergeById(exceptionGroups));
+      setLocks(lockRows);
+      setAdjustments(mergeById(adjustmentGroups));
+      setResolvedShift(pickBestResolvedShift(resolvedRows));
+
+      const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || templateRows[0]?.id || "";
+      setAssignmentForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
+      setExceptionForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
     } catch (err) {
       console.warn("shift control load failed", err);
-      setError("تعذر تحميل نظام الشفتات من Core. تأكد من تشغيل Core Worker وتطبيق migration.");
+      setError("تعذر تحميل الشفتات من Core.");
     } finally {
       setLoading(false);
     }
-  }, [employeeId, isVisible, resolvedDate]);
+  }, [isVisible, resolvedDate, shiftEmployeeIds]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const previewAssignment = async () => {
+    if (!targetShiftEmployeeId || !assignmentForm.effectiveFrom) return null;
+    const previewTo = assignmentForm.assignmentType === "permanent"
+      ? assignmentForm.effectiveFrom
+      : assignmentForm.effectiveTo || assignmentForm.effectiveFrom;
+    const result = await CoreHrService.previewShiftChange({
+      employeeId: targetShiftEmployeeId,
+      changeType: "assignment",
+      effectiveFrom: assignmentForm.effectiveFrom,
+      effectiveTo: previewTo,
+    });
+    setPreview(result);
+    return result;
+  };
+
+  const previewException = async () => {
+    if (!targetShiftEmployeeId || !exceptionForm.dateFrom) return null;
+    const result = await CoreHrService.previewShiftChange({
+      employeeId: targetShiftEmployeeId,
+      changeType: "exception",
+      dateFrom: exceptionForm.dateFrom,
+      dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
+    });
+    setPreview(result);
+    return result;
+  };
+
+  const previewAllowsSave = (result: CoreShiftChangePreview | null) => {
+    const lockedCount = readNumber(result?.lockedPeriodsCount ?? result?.locked_periods_count);
+    if (lockedCount > 0 && !allowLockedPeriodAdjustment) {
+      setError("يوجد فترة رواتب مقفلة. فعّل خيار تسجيل تسوية بعد الإقفال قبل الحفظ.");
+      return false;
+    }
+    return true;
+  };
 
   const saveTemplate = async () => {
     if (!canManage) return;
@@ -328,25 +413,25 @@ export default function ShiftControlSection({
     try {
       await CoreHrService.saveShiftTemplate({
         id: templateForm.id || undefined,
-        name: templateForm.name,
-        code: templateForm.code || null,
+        name: templateForm.name.trim(),
+        code: templateForm.code.trim() || null,
         startTime: templateForm.startTime,
         endTime: templateForm.endTime,
-        crossesMidnight: templateForm.crossesMidnight,
+        crossesMidnight: false,
         breakMinutes: Number(templateForm.breakMinutes || 0),
-        breakPaid: templateForm.breakPaid,
+        breakPaid: false,
         lateGraceMinutes: Number(templateForm.lateGraceMinutes || 0),
         earlyLeaveGraceMinutes: Number(templateForm.earlyLeaveGraceMinutes || 0),
         overtimeAfterMinutes: Number(templateForm.overtimeAfterMinutes || 0),
         active: templateForm.active,
-        reason: "تحديث قالب شفت من واجهة إدارة الموظفات",
+        reason: "تحديث قالب شفت من مساحة الموظفة V2",
       });
       setTemplateForm(emptyTemplateForm());
       setMessage("تم حفظ قالب الشفت.");
       await load();
     } catch (err) {
       console.warn("save shift template failed", err);
-      setError("تعذر حفظ قالب الشفت. راجع الوقت أو الصلاحيات.");
+      setError("تعذر حفظ قالب الشفت.");
     } finally {
       setSaving(false);
     }
@@ -357,11 +442,9 @@ export default function ShiftControlSection({
       id: template.id,
       name: template.name || "",
       code: template.code || "",
-      startTime: template.startTime || "13:00",
-      endTime: template.endTime || "21:00",
-      crossesMidnight: boolish(template.crossesMidnight),
+      startTime: template.startTime || "10:00",
+      endTime: template.endTime || "18:00",
       breakMinutes: numberInput(template.breakMinutes),
-      breakPaid: boolish(template.breakPaid),
       lateGraceMinutes: numberInput(template.lateGraceMinutes),
       earlyLeaveGraceMinutes: numberInput(template.earlyLeaveGraceMinutes),
       overtimeAfterMinutes: numberInput(template.overtimeAfterMinutes),
@@ -369,70 +452,77 @@ export default function ShiftControlSection({
     });
   };
 
-  const previewAssignmentChange = async () => {
-    if (!employeeId || !assignmentForm.effectiveFrom) return null;
-    const preview = await CoreHrService.previewShiftChange({
-      employeeId,
-      changeType: "assignment",
-      effectiveFrom: assignmentForm.effectiveFrom,
-      effectiveTo: assignmentForm.effectiveTo || assignmentForm.effectiveFrom,
-    });
-    setImpactPreview(preview);
-    return preview;
-  };
-
-  const previewExceptionChange = async () => {
-    if (!employeeId || !exceptionForm.dateFrom) return null;
-    const preview = await CoreHrService.previewShiftChange({
-      employeeId,
-      changeType: "exception",
-      dateFrom: exceptionForm.dateFrom,
-      dateTo: exceptionForm.dateTo || exceptionForm.dateFrom,
-    });
-    setImpactPreview(preview);
-    return preview;
-  };
-
-  const ensurePreviewAllowsSave = (preview: CoreShiftChangePreview | null) => {
-    const lockedCount = previewCount(preview?.lockedPeriodsCount ?? preview?.locked_periods_count);
-    if (lockedCount > 0 && !allowLockedPeriodAdjustment) {
-      setError("الفترة مقفلة للرواتب. راجع معاينة أثر التعديل ثم فعّل خيار تسجيل تسوية بعد الإقفال.");
-      return false;
+  const editAssignment = (assignment: CoreShiftAssignment) => {
+    if (assignmentStatus(assignment) === "ملغي") {
+      setError("لا يمكن تعديل تعيين ملغي. أنشئ تعيينًا جديدًا بدلًا من تعديل سجل ملغي.");
+      return;
     }
-    return true;
+    const assignmentEnd = cleanText(assignment.effectiveTo || (assignment as Record<string, unknown>).effective_to);
+    setAssignmentForm({
+      id: assignment.id,
+      shiftTemplateId: cleanText(assignment.shiftTemplateId || (assignment as Record<string, unknown>).shift_template_id),
+      effectiveFrom: cleanText(assignment.effectiveFrom || (assignment as Record<string, unknown>).effective_from) || todayKey(),
+      effectiveTo: assignmentEnd,
+      assignmentType: assignmentEnd ? "temporary" : cleanText(assignment.assignmentType || (assignment as Record<string, unknown>).assignment_type) === "temporary" ? "temporary" : "permanent",
+      replaceOverlaps: true,
+      reason: cleanText(assignment.reason) || "تعديل تعيين شفت من إدارة الموظفات",
+    });
+    setPreview(null);
+    setError("");
+    setMessage("وضع التعديل نشط: عدّل التعيين ثم اضغط حفظ التعديل.");
+    focusAssignmentEditor();
   };
 
-  const createAssignment = async () => {
+  const startNewAssignment = () => {
+    setAssignmentForm((current) => ({
+      ...emptyAssignmentForm(),
+      shiftTemplateId: current.shiftTemplateId || selectedTemplate?.id || activeTemplates[0]?.id || templates[0]?.id || "",
+    }));
+    setPreview(null);
+    setMessage("جاهز لتعيين شفت جديد. سيتم إغلاق أي تداخل سابق لنفس الموظفة تلقائيًا.");
+    focusAssignmentEditor();
+  };
+
+  const saveAssignment = async () => {
     if (!canManage) return;
     if (!assignmentForm.shiftTemplateId || !assignmentForm.effectiveFrom || !assignmentForm.reason.trim()) {
-      setError("اختيار الشفت وتاريخ السريان والسبب مطلوبة.");
+      setError("الشفت وتاريخ البداية وسبب التغيير مطلوبة.");
       return;
     }
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const preview = await previewAssignmentChange();
-      if (!ensurePreviewAllowsSave(preview)) return;
-      await CoreHrService.createShiftAssignment({
-        employeeId,
+      const result = await previewAssignment();
+      if (!previewAllowsSave(result)) return;
+      const normalizedEffectiveTo = assignmentForm.assignmentType === "permanent" ? null : assignmentForm.effectiveTo || null;
+      const payload = {
+        employeeId: targetShiftEmployeeId,
         shiftTemplateId: assignmentForm.shiftTemplateId,
         effectiveFrom: assignmentForm.effectiveFrom,
-        effectiveTo: assignmentForm.effectiveTo || null,
+        effectiveTo: normalizedEffectiveTo,
         assignmentType: assignmentForm.assignmentType,
         status: "published",
-        replaceOverlaps: assignmentForm.replaceOverlaps,
+        replaceOverlaps: true,
         reason: assignmentForm.reason,
         snapshot: selectedTemplate || {},
         allowLockedPeriodAdjustment,
-      });
+      };
+      if (assignmentForm.id) {
+        await CoreHrService.updateShiftAssignment(assignmentForm.id, payload);
+        setMessage("تم تعديل تعيين الشفت للموظفة.");
+      } else {
+        await CoreHrService.createShiftAssignment(payload);
+        setMessage("تم تعيين الشفت للموظفة.");
+      }
       setAssignmentForm(emptyAssignmentForm());
-      setMessage("تم تعيين الشفت للموظفة مع حفظ تاريخ السريان.");
       await load();
-    } catch (err: any) {
-      console.warn("create shift assignment failed", err);
-      const text = String(err?.payload?.message || err?.message || "");
-      setError(text.includes("overlap") ? "يوجد شفت منشور متداخل. فعّل خيار إغلاق التداخل أو استخدم استثناء يومي." : "تعذر تعيين الشفت.");
+    } catch (err) {
+      console.warn("save shift assignment failed", err);
+      const detail = cleanText((err as Error)?.message);
+      setError(detail.includes("securetoken") || detail.includes("auth/")
+        ? "تعذر حفظ تعيين الشفت لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
+        : "تعذر حفظ تعيين الشفت. راجع التداخلات أو الصلاحيات.");
     } finally {
       setSaving(false);
     }
@@ -440,18 +530,20 @@ export default function ShiftControlSection({
 
   const cancelAssignment = async (assignment: CoreShiftAssignment) => {
     if (!canManage) return;
-    const reason = window.prompt("سبب إلغاء تعيين الشفت؟", "تصحيح من إدارة الدوام");
-    if (!reason) return;
+    if (!window.confirm(`إلغاء تعيين الشفت ${assignment.shiftName || "الحالي"}؟`)) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await CoreHrService.cancelShiftAssignment(assignment.id, reason, { allowLockedPeriodAdjustment });
+      await CoreHrService.cancelShiftAssignment(assignment.id, "إلغاء من مساحة الموظفة V2", { allowLockedPeriodAdjustment });
       setMessage("تم إلغاء تعيين الشفت.");
       await load();
     } catch (err) {
-      console.warn("cancel shift assignment failed", err);
-      setError("تعذر إلغاء تعيين الشفت.");
+      console.warn("cancel assignment failed", err);
+      const detail = cleanText((err as Error)?.message);
+      setError(detail.includes("securetoken") || detail.includes("auth/")
+        ? "تعذر إلغاء التعيين لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
+        : "تعذر إلغاء تعيين الشفت.");
     } finally {
       setSaving(false);
     }
@@ -459,19 +551,21 @@ export default function ShiftControlSection({
 
   const closeAssignment = async (assignment: CoreShiftAssignment) => {
     if (!canManage) return;
-    const effectiveTo = window.prompt("أدخل تاريخ نهاية الشفت YYYY-MM-DD", todayKey());
-    if (!effectiveTo) return;
-    const reason = window.prompt("سبب إنهاء الشفت؟", "إنهاء شفت من إدارة الدوام") || "إنهاء شفت";
+    if (!window.confirm(`إنهاء تعيين الشفت بتاريخ ${todayKey()}؟`)) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await CoreHrService.updateShiftAssignment(assignment.id, { effectiveTo, reason, allowLockedPeriodAdjustment });
-      setMessage("تم إنهاء الشفت بتاريخ محدد.");
+      await CoreHrService.updateShiftAssignment(assignment.id, {
+        effectiveTo: todayKey(),
+        reason: "إنهاء شفت من مساحة الموظفة V2",
+        allowLockedPeriodAdjustment,
+      });
+      setMessage("تم إنهاء الشفت.");
       await load();
     } catch (err) {
-      console.warn("close shift assignment failed", err);
-      setError("تعذر إنهاء الشفت. تأكد من صيغة التاريخ.");
+      console.warn("close assignment failed", err);
+      setError("تعذر إنهاء الشفت.");
     } finally {
       setSaving(false);
     }
@@ -484,17 +578,17 @@ export default function ShiftControlSection({
       return;
     }
     if (exceptionForm.exceptionType === "shift" && !exceptionForm.shiftTemplateId) {
-      setError("اختر قالب الشفت للاستثناء.");
+      setError("اختر شفت بديل.");
       return;
     }
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const preview = await previewExceptionChange();
-      if (!ensurePreviewAllowsSave(preview)) return;
+      const result = await previewException();
+      if (!previewAllowsSave(result)) return;
       await CoreHrService.createScheduleException({
-        employeeId,
+        employeeId: targetShiftEmployeeId,
         dateFrom: exceptionForm.dateFrom,
         dateTo: exceptionForm.dateTo,
         exceptionType: exceptionForm.exceptionType,
@@ -507,11 +601,11 @@ export default function ShiftControlSection({
         allowLockedPeriodAdjustment,
       });
       setExceptionForm(emptyExceptionForm());
-      setMessage("تم حفظ الاستثناء. الاستثناء يتقدم على الشفت الأساسي في تاريخ تطبيقه.");
+      setMessage("تم حفظ الاستثناء.");
       await load();
     } catch (err) {
-      console.warn("create schedule exception failed", err);
-      setError("تعذر حفظ الاستثناء. راجع التاريخ والوقت.");
+      console.warn("create exception failed", err);
+      setError("تعذر حفظ الاستثناء.");
     } finally {
       setSaving(false);
     }
@@ -519,13 +613,17 @@ export default function ShiftControlSection({
 
   const cancelException = async (exception: CoreScheduleException) => {
     if (!canManage) return;
-    const note = window.prompt("سبب إلغاء الاستثناء؟", "تصحيح من إدارة الدوام");
-    if (!note) return;
+    if (!window.confirm(`إلغاء استثناء ${exception.dateFrom}؟`)) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      await CoreHrService.updateScheduleException(exception.id, { status: "cancelled", enabled: false, note, allowLockedPeriodAdjustment });
+      await CoreHrService.updateScheduleException(exception.id, {
+        status: "cancelled",
+        enabled: false,
+        note: "إلغاء من مساحة الموظفة V2",
+        allowLockedPeriodAdjustment,
+      });
       setMessage("تم إلغاء الاستثناء.");
       await load();
     } catch (err) {
@@ -538,232 +636,285 @@ export default function ShiftControlSection({
 
   if (!isVisible) return null;
 
-  const resolvedSource = cleanText(resolvedShift?.source);
+  const source = cleanText(resolvedShift?.source);
+  const resolvedExceptionType = cleanText(resolvedShift?.exceptionType || resolvedShift?.exception_type);
+  const resolvedShiftName = cleanText(resolvedShift?.shiftName || resolvedShift?.shift_name) || assignmentShiftName(openAssignment, templates);
+  const openAssignmentName = assignmentShiftName(openAssignment, templates);
+  const openAssignmentWindow = openAssignment ? formatWindow(assignmentShiftRecord(openAssignment, templates)) : "لا يوجد";
+  const selectedTemplateWindow = selectedTemplate ? formatWindow(selectedTemplate) : "اختر شفت";
+  const resolvedLabel = source === "exception" ? "استثناء يومي" : source === "assignment" ? "شفت محدد" : "جدول الدوام";
+  const resolvedStatus = source === "exception" && resolvedExceptionType === "off"
+    ? "مغلق اليوم"
+    : source === "none" || !source
+      ? "لا يوجد شفت Core"
+      : "مطبق";
+  const nextException = exceptions
+    .filter((exception) => cleanText(exception.status) !== "cancelled")
+    .filter((exception) => cleanText(exception.dateFrom || (exception as Record<string, unknown>).date_from) >= todayKey())
+    .sort((left, right) => cleanText(left.dateFrom || (left as Record<string, unknown>).date_from).localeCompare(cleanText(right.dateFrom || (right as Record<string, unknown>).date_from)))[0] || null;
+  const activeOrUpcomingAssignments = assignments.filter((assignment) => {
+    const label = assignmentStatus(assignment);
+    return label === "نشط" || label === "مجدول";
+  });
+  const cancelledAssignments = assignments.filter((assignment) => assignmentStatus(assignment) === "ملغي");
+  const archivedAssignments = assignments.filter((assignment) => !activeOrUpcomingAssignments.includes(assignment) && assignmentStatus(assignment) !== "ملغي");
+  const renderAssignmentRow = (assignment: CoreShiftAssignment) => {
+    const label = assignmentStatus(assignment);
+    const isCancelled = label === "ملغي";
+    return [
+      <strong key="name">{assignmentShiftName(assignment, templates) || assignment.shiftTemplateId || "شفت"}</strong>,
+      formatWindow(assignmentShiftRecord(assignment, templates)),
+      `${assignment.effectiveFrom} - ${assignment.effectiveTo || "مفتوح"}`,
+      <WorkspaceStatusBadgeV2 key="status" tone={assignmentTone(assignment)}>{label}</WorkspaceStatusBadgeV2>,
+      <div key="actions" className="dsv2-cluster">
+        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editAssignment(assignment)} disabled={!canManage || saving || isCancelled}>تعديل هذا التعيين</button>
+        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || label !== "نشط"}>إنهاء اليوم</button>
+        <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelAssignment(assignment)} disabled={!canManage || saving || isCancelled}>إلغاء</button>
+      </div>,
+    ];
+  };
 
   return (
-    <section className="emp-modal-section shift-control-section">
-      <header className="emp-section-header shift-control-header">
-        <div className="emp-section-header__main">
-          <span className="shift-control-eyebrow">SHIFT CONTROL</span>
-          <h3 className="emp-modal-section-title">إدارة الشفتات التاريخية</h3>
-          <p className="emp-section-lead">
-            قوالب شفتات مشتركة، تعيين بتاريخ سريان، استثناء يومي أو مؤقت، ومنع التداخل قبل تأثيره على الحضور والرواتب.
-          </p>
+    <div className="dsv2-ew-tab-panel dsv2-ew-live-shifts">
+      <WorkspaceTabHeaderV2
+        title="الشفتات"
+        description="قوالب الشفتات، تعيينات الموظفة، الاستثناءات، ومعاينة أثر التعديل مرتبطة فعليًا ببيانات Core."
+        badge={<WorkspaceStatusBadgeV2 tone={canManage ? "success" : "gold"}>{canManage ? "قابل للتعديل" : "عرض فقط"}</WorkspaceStatusBadgeV2>}
+      />
+
+      {error ? <WorkspaceNoticeV2 title="تعذر تنفيذ العملية" description={error} tone="danger" /> : null}
+      {message ? <WorkspaceNoticeV2 title="تم التحديث" description={message} tone="success" /> : null}
+
+      <WorkspaceCardV2
+        title="الشفت المطبق الآن"
+        description="هذه هي المعلومة الأساسية: الشفت الذي سيُستخدم في الحضور والراتب لهذا اليوم."
+        actions={
+          <div className="dsv2-cluster">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void load()} disabled={loading || saving}>تحديث</button>
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={startNewAssignment} disabled={!canManage || saving || !templateOptions.length}>تعيين شفت جديد</button>
+          </div>
+        }
+      >
+        <div className="dsv2-filter-bar">
+          <DashboardFieldV2 id="shift-resolved-date" label="تاريخ الفحص">
+            <DashboardDatePickerV2 id="shift-resolved-date" value={resolvedDate} onChange={setResolvedDate} disabled={loading || saving} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="shift-resolved-employee" label="الموظفة">
+            <input id="shift-resolved-employee" className="dsv2-input" value={employeeName || employeeId} readOnly />
+          </DashboardFieldV2>
         </div>
-        <button type="button" className="exp-btn ghost" onClick={() => void load()} disabled={loading || saving}>
-          تحديث
-        </button>
-      </header>
-
-      {error ? <div className="shift-control-alert error">{error}</div> : null}
-      {message ? <div className="shift-control-alert success">{message}</div> : null}
-
-      <article className="shift-control-card shift-control-card--wide shift-control-impact-card">
-        <div className="shift-control-card__head">
-          <div>
-            <strong>معاينة أثر التعديل قبل الحفظ</strong>
-            <span>يعرض الأيام المتأثرة، التداخلات، وفترات الرواتب المقفلة قبل تطبيق أي تغيير.</span>
-          </div>
+        <div className="dsv2-grid dsv2-grid--metrics">
+          <WorkspaceMetricV2 label="الشفت" value={resolvedShiftName || openAssignmentName || "لا يوجد"} note={openAssignment ? `${openAssignment.effectiveFrom} - ${openAssignment.effectiveTo || "مفتوح"}` : resolvedStatus} tone={openAssignment || source === "assignment" ? "success" : source === "exception" ? "gold" : "neutral"} />
+          <WorkspaceMetricV2 label="الوقت" value={source === "assignment" && openAssignment ? openAssignmentWindow : formatWindow(resolvedShift)} note="وقت الدوام الفعلي" tone="dark" />
+          <WorkspaceMetricV2 label="المصدر" value={resolvedLabel} note={source === "exception" ? exceptionTypeLabel(resolvedExceptionType) : "حسب الأولوية الفعلية"} tone={source === "exception" ? "gold" : source === "assignment" ? "success" : "neutral"} />
+          <WorkspaceMetricV2 label="السماح" value={`${readNumber(resolvedShift?.lateGraceMinutes ?? resolvedShift?.late_grace_minutes)} تأخير / ${readNumber(resolvedShift?.earlyLeaveGraceMinutes ?? resolvedShift?.early_leave_grace_minutes)} خروج`} note="لا يحسب خصم داخل السماحية" tone="gold" />
         </div>
-        <div className="shift-control-impact-grid">
-          <div><span>نطاق التعديل</span><strong>{previewDateRange(impactPreview)}</strong></div>
-          <div><span>الأيام المتأثرة</span><strong>{previewCount(impactPreview?.affectedDays ?? impactPreview?.affected_days)}</strong></div>
-          <div><span>تداخلات الشفت</span><strong>{previewCount(impactPreview?.overlappingAssignmentsCount ?? impactPreview?.overlapping_assignments_count)}</strong></div>
-          <div><span>فترات رواتب مقفلة</span><strong>{previewCount(impactPreview?.lockedPeriodsCount ?? impactPreview?.locked_periods_count)}</strong></div>
-        </div>
-        <div className="shift-control-actions">
-          <button type="button" className="exp-btn ghost" onClick={() => void previewAssignmentChange()} disabled={!canManage || saving || !assignmentForm.effectiveFrom}>معاينة تعيين الشفت</button>
-          <button type="button" className="exp-btn ghost" onClick={() => void previewExceptionChange()} disabled={!canManage || saving || !exceptionForm.dateFrom}>معاينة الاستثناء</button>
-        </div>
-        <label className="shift-control-lock-confirm">
-          <input type="checkbox" checked={allowLockedPeriodAdjustment} onChange={(event) => setAllowLockedPeriodAdjustment(event.target.checked)} disabled={!canManage || saving} />
-          السماح بتسجيل تسوية بعد إقفال الراتب عند تعديل فترة مقفلة
-        </label>
-        {periodLocks.length ? <p className="shift-control-note">فترات الرواتب المقفلة الحالية: {periodLocks.length}. أي تعديل داخلها لن يمر إلا كتسوية قابلة للمراجعة.</p> : null}
-      </article>
+        {openAssignment ? (
+          <div className="dsv2-cluster">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => editAssignment(openAssignment)} disabled={!canManage || saving}>تعديل الشفت الحالي</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void closeAssignment(openAssignment)} disabled={!canManage || saving}>إنهاء الشفت الحالي اليوم</button>
+          </div>
+        ) : null}
+      </WorkspaceCardV2>
 
-      <div className="shift-control-grid">
-        <article className="shift-control-card shift-control-card--wide">
-          <div className="shift-control-card__head">
-            <div>
-              <strong>الشفت الفعلي في تاريخ محدد</strong>
-              <span>اختبار سريع قبل تعديل أي جدول.</span>
-            </div>
+      <div ref={assignmentEditorRef}>
+        <WorkspaceCardV2
+          title={assignmentForm.id ? "تعديل شفت الموظفة" : "تعيين شفت للموظفة"}
+          description={assignmentForm.id ? "أنت تعدل تعيينًا موجودًا. بعد الحفظ سيتم تحديثه وإغلاق أي تداخل لنفس الموظفة تلقائيًا." : "استخدم هذا النموذج فقط عندما تريد تغيير شفت الموظفة من تاريخ محدد. التداخلات السابقة تغلق تلقائيًا."}
+        >
+          {assignmentForm.id ? (
+            <WorkspaceNoticeV2
+              title="وضع التعديل نشط"
+              description="التعديل الآن على التعيين الذي اخترته من جدول تعيينات الموظفة. اضغط حفظ التعديل أو إلغاء التعديل."
+              tone="gold"
+            />
+          ) : null}
+          <div className="dsv2-form-grid">
+            <DashboardFieldV2 id="shift-assignment-template" label="الشفت المطلوب" required>
+              <DashboardSelectV2 id="shift-assignment-template" options={templateOptions} value={assignmentForm.shiftTemplateId} onChange={(value) => setAssignmentForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || !templateOptions.length} placeholder="اختر الشفت" />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="shift-assignment-from" label="يبدأ من" required>
+              <DashboardDatePickerV2 id="shift-assignment-from" value={assignmentForm.effectiveFrom} onChange={(value) => setAssignmentForm((current) => ({ ...current, effectiveFrom: value }))} disabled={!canManage || saving} />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="shift-assignment-type" label="المدة">
+              <DashboardSelectV2
+                id="shift-assignment-type"
+                options={[{ value: "permanent", label: "دائم / مفتوح" }, { value: "temporary", label: "مؤقت / له نهاية" }]}
+                value={assignmentForm.assignmentType}
+                onChange={(value) => setAssignmentForm((current) => ({
+                  ...current,
+                  assignmentType: value === "temporary" ? "temporary" : "permanent",
+                  effectiveTo: value === "temporary" ? current.effectiveTo : "",
+                }))}
+                disabled={!canManage || saving}
+              />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="shift-assignment-to" label="ينتهي في">
+              <DashboardDatePickerV2
+                id="shift-assignment-to"
+                value={assignmentForm.assignmentType === "permanent" ? "" : assignmentForm.effectiveTo}
+                onChange={(value) => setAssignmentForm((current) => ({ ...current, effectiveTo: value, assignmentType: value ? "temporary" : current.assignmentType }))}
+                disabled={!canManage || saving || assignmentForm.assignmentType === "permanent"}
+                clearable
+              />
+            </DashboardFieldV2>
           </div>
-          <div className="shift-control-inline-form">
-            <label>
-              <span>التاريخ</span>
-              <input className="dash-input" type="date" value={resolvedDate} onChange={(event) => setResolvedDate(event.target.value)} />
-            </label>
-            <button type="button" className="exp-btn primary" onClick={() => void load()} disabled={loading || saving || !employeeId}>
-              عرض الشفت
-            </button>
+          {assignmentForm.assignmentType === "permanent" ? (
+            <WorkspaceNoticeV2
+              title="تعيين مفتوح"
+              description="عند اختيار دائم يتم تجاهل تاريخ النهاية وحفظ التعيين كمفتوح. إذا تحتاج نهاية محددة اختر مؤقت."
+              tone="gold"
+            />
+          ) : null}
+          <DashboardFieldV2 id="shift-assignment-reason" label="سبب التغيير" required>
+            <input id="shift-assignment-reason" className="dsv2-input" value={assignmentForm.reason} onChange={(event) => setAssignmentForm((current) => ({ ...current, reason: event.target.value }))} disabled={!canManage || saving} />
+          </DashboardFieldV2>
+          {preview ? (
+            <WorkspaceNoticeV2
+              title="تأثير الحفظ المتوقع"
+              description={shiftPreviewDescription(preview)}
+              tone={readNumber(preview.lockedPeriodsCount ?? preview.locked_periods_count) ? "danger" : "success"}
+            />
+          ) : null}
+          <div className="dsv2-cluster">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewAssignment()} disabled={!canManage || saving || !assignmentForm.shiftTemplateId}>فحص قبل الحفظ</button>
+            {assignmentForm.id ? <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={startNewAssignment} disabled={saving}>إلغاء التعديل</button> : null}
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveAssignment()} disabled={!canManage || saving || !templateOptions.length}>{assignmentForm.id ? "حفظ تعديل الشفت" : "تعيين الشفت"}</button>
           </div>
-          <div className={`shift-control-resolved shift-control-resolved--${resolvedSource || "none"}`}>
-            <span>الموظفة</span>
-            <strong>{employeeName || employeeId}</strong>
-            <span>المصدر</span>
-            <strong>{resolvedSource === "exception" ? "استثناء" : resolvedSource === "assignment" ? "تعيين شفت" : "لا يوجد شفت"}</strong>
-            <span>الوقت</span>
-            <strong>{formatShiftWindow(resolvedShift as any)}</strong>
-          </div>
-        </article>
-
-        <article className="shift-control-card">
-          <div className="shift-control-card__head">
-            <div>
-              <strong>{templateForm.id ? "تعديل قالب شفت" : "إنشاء قالب شفت"}</strong>
-              <span>القالب يستخدم لأكثر من موظفة.</span>
-            </div>
-          </div>
-          <div className="shift-control-form-grid">
-            <label><span>اسم الشفت</span><input className="dash-input" value={templateForm.name} onChange={(e) => setTemplateForm((x) => ({ ...x, name: e.target.value }))} placeholder="مثال: شفت الظهر" disabled={!canManage || saving} /></label>
-            <label><span>الكود</span><input className="dash-input" value={templateForm.code} onChange={(e) => setTemplateForm((x) => ({ ...x, code: e.target.value }))} placeholder="MID" disabled={!canManage || saving} /></label>
-            <label><span>البداية</span><input className="dash-input" type="time" value={templateForm.startTime} onChange={(e) => setTemplateForm((x) => ({ ...x, startTime: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>النهاية</span><input className="dash-input" type="time" value={templateForm.endTime} onChange={(e) => setTemplateForm((x) => ({ ...x, endTime: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>سماح التأخير بالدقائق</span><input className="dash-input" type="number" min="0" value={templateForm.lateGraceMinutes} onChange={(e) => setTemplateForm((x) => ({ ...x, lateGraceMinutes: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>سماح الخروج المبكر</span><input className="dash-input" type="number" min="0" value={templateForm.earlyLeaveGraceMinutes} onChange={(e) => setTemplateForm((x) => ({ ...x, earlyLeaveGraceMinutes: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>الاستراحة بالدقائق</span><input className="dash-input" type="number" min="0" value={templateForm.breakMinutes} onChange={(e) => setTemplateForm((x) => ({ ...x, breakMinutes: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>الإضافي بعد دقيقة</span><input className="dash-input" type="number" min="0" value={templateForm.overtimeAfterMinutes} onChange={(e) => setTemplateForm((x) => ({ ...x, overtimeAfterMinutes: e.target.value }))} disabled={!canManage || saving} /></label>
-          </div>
-          <div className="shift-control-checks">
-            <label><input type="checkbox" checked={templateForm.crossesMidnight} onChange={(e) => setTemplateForm((x) => ({ ...x, crossesMidnight: e.target.checked }))} disabled={!canManage || saving} /> يمتد بعد منتصف الليل</label>
-            <label><input type="checkbox" checked={templateForm.breakPaid} onChange={(e) => setTemplateForm((x) => ({ ...x, breakPaid: e.target.checked }))} disabled={!canManage || saving} /> الاستراحة مدفوعة</label>
-            <label><input type="checkbox" checked={templateForm.active} onChange={(e) => setTemplateForm((x) => ({ ...x, active: e.target.checked }))} disabled={!canManage || saving} /> نشط</label>
-          </div>
-          <div className="shift-control-actions">
-            <button type="button" className="exp-btn ghost" onClick={() => setTemplateForm(emptyTemplateForm())} disabled={saving}>تفريغ</button>
-            <button type="button" className="exp-btn primary" onClick={() => void saveTemplate()} disabled={!canManage || saving}>حفظ القالب</button>
-          </div>
-        </article>
-
-        <article className="shift-control-card">
-          <div className="shift-control-card__head">
-            <div>
-              <strong>تعيين شفت للموظفة</strong>
-              <span>يستخدم لتغيير دائم بتاريخ سريان.</span>
-            </div>
-          </div>
-          <div className="shift-control-form-grid">
-            <label><span>الشفت</span><select className="dash-input" value={assignmentForm.shiftTemplateId} onChange={(e) => setAssignmentForm((x) => ({ ...x, shiftTemplateId: e.target.value }))} disabled={!canManage || saving}>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} — {formatShiftWindow(template)}</option>)}</select></label>
-            <label><span>نوع التعيين</span><select className="dash-input" value={assignmentForm.assignmentType} onChange={(e) => setAssignmentForm((x) => ({ ...x, assignmentType: e.target.value as AssignmentForm["assignmentType"] }))} disabled={!canManage || saving}><option value="permanent">دائم</option><option value="temporary">مؤقت</option></select></label>
-            <label><span>يبدأ من</span><input className="dash-input" type="date" value={assignmentForm.effectiveFrom} onChange={(e) => setAssignmentForm((x) => ({ ...x, effectiveFrom: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>ينتهي في</span><input className="dash-input" type="date" value={assignmentForm.effectiveTo} onChange={(e) => setAssignmentForm((x) => ({ ...x, effectiveTo: e.target.value }))} disabled={!canManage || saving} /></label>
-          </div>
-          <label className="shift-control-full"><span>سبب التغيير</span><input className="dash-input" value={assignmentForm.reason} onChange={(e) => setAssignmentForm((x) => ({ ...x, reason: e.target.value }))} disabled={!canManage || saving} /></label>
-          <div className="shift-control-checks">
-            <label><input type="checkbox" checked={assignmentForm.replaceOverlaps} onChange={(e) => setAssignmentForm((x) => ({ ...x, replaceOverlaps: e.target.checked }))} disabled={!canManage || saving} /> إغلاق الشفت المفتوح السابق قبل تاريخ السريان</label>
-          </div>
-          <div className="shift-control-actions">
-            <button type="button" className="exp-btn primary" onClick={() => void createAssignment()} disabled={!canManage || saving || !activeTemplates.length}>تعيين الشفت</button>
-          </div>
-          {openAssignment ? <p className="shift-control-note">الشفت المفتوح الحالي: {openAssignment.shiftName || "قالب محفوظ"} من {openAssignment.effectiveFrom}</p> : null}
-        </article>
-
-        <article className="shift-control-card shift-control-card--wide">
-          <div className="shift-control-card__head">
-            <div>
-              <strong>استثناء يومي أو مؤقت</strong>
-              <span>الأولوية للاستثناء قبل الشفت الأساسي.</span>
-            </div>
-          </div>
-          <div className="shift-control-form-grid shift-control-form-grid--wide">
-            <label><span>من تاريخ</span><input className="dash-input" type="date" value={exceptionForm.dateFrom} onChange={(e) => {
-              const dateFrom = e.target.value;
-              setExceptionForm((x) => ({
-                ...x,
-                dateFrom,
-                dateTo: x.dateTo || dateFrom,
-                shiftTemplateId: defaultTemplateIdForExceptionDate(dateFrom),
-              }));
-            }} disabled={!canManage || saving} /></label>
-            <label><span>إلى تاريخ</span><input className="dash-input" type="date" value={exceptionForm.dateTo} onChange={(e) => setExceptionForm((x) => ({ ...x, dateTo: e.target.value }))} disabled={!canManage || saving} /></label>
-            <label><span>نوع الاستثناء</span><select className="dash-input" value={exceptionForm.exceptionType} onChange={(e) => {
-              const exceptionType = e.target.value as ExceptionForm["exceptionType"];
-              setExceptionForm((x) => ({
-                ...x,
-                exceptionType,
-                shiftTemplateId:
-                  exceptionType === "shift" && x.exceptionType === "shift" && x.shiftTemplateId
-                    ? x.shiftTemplateId
-                    : defaultTemplateIdForExceptionDate(x.dateFrom),
-              }));
-            }} disabled={!canManage || saving}><option value="shift">شفت بديل</option><option value="custom">وقت مخصص</option><option value="off">راحة / لا دوام</option></select></label>
-            <label><span>{exceptionForm.exceptionType === "shift" ? "قالب الشفت" : "الشفت الحالي"}</span>{exceptionForm.exceptionType === "shift" ? <select className="dash-input" value={exceptionForm.shiftTemplateId} onChange={(e) => setExceptionForm((x) => ({ ...x, shiftTemplateId: e.target.value }))} disabled={!canManage || saving}><option value="">{activeTemplates.length ? "اختر قالب الشفت" : "لا توجد قوالب نشطة"}</option>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select> : <input className="dash-input" value={selectedExceptionTemplateName} readOnly disabled />}</label>
-            <label><span>بداية مخصصة</span><input className="dash-input" type="time" value={exceptionForm.startTime} onChange={(e) => setExceptionForm((x) => ({ ...x, startTime: e.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} /></label>
-            <label><span>نهاية مخصصة</span><input className="dash-input" type="time" value={exceptionForm.endTime} onChange={(e) => setExceptionForm((x) => ({ ...x, endTime: e.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} /></label>
-          </div>
-          <label className="shift-control-full"><span>ملاحظة</span><input className="dash-input" value={exceptionForm.note} onChange={(e) => setExceptionForm((x) => ({ ...x, note: e.target.value }))} disabled={!canManage || saving} /></label>
-          <div className="shift-control-actions">
-            <button type="button" className="exp-btn primary" onClick={() => void createException()} disabled={!canManage || saving}>حفظ الاستثناء</button>
-          </div>
-        </article>
+        </WorkspaceCardV2>
       </div>
 
-      <div className="shift-control-lists">
-        <article className="shift-control-list-card">
-          <h4>قوالب الشفتات</h4>
-          <div className="shift-control-list">
-            {templates.map((template) => (
-              <div className="shift-control-row" key={template.id}>
-                <div><strong>{template.name}</strong><span>{formatShiftWindow(template)} · سماح {template.lateGraceMinutes || 0} د</span></div>
-                <span className={boolish(template.active) ? "shift-badge success" : "shift-badge muted"}>{boolish(template.active) ? "نشط" : "موقف"}</span>
-                <button type="button" className="exp-btn ghost" onClick={() => editTemplate(template)} disabled={!canManage || saving}>تعديل</button>
-              </div>
-            ))}
-            {!templates.length && <p className="shift-control-empty">لا توجد قوالب شفتات بعد.</p>}
-          </div>
-        </article>
+      <WorkspaceCardV2 title="تعيينات الموظفة" description="يعرض الحالي والقادم فقط. السجل القديم موجود أسفل الجدول لتقليل التشويش.">
+        <WorkspaceTableV2
+          headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
+          rows={activeOrUpcomingAssignments.map(renderAssignmentRow)}
+          emptyText="لا يوجد شفت نشط أو قادم لهذه الموظفة."
+        />
+        {archivedAssignments.length ? (
+          <details className="dsv2-details-block">
+            <summary>عرض السجل التاريخي والمنتهي ({archivedAssignments.length})</summary>
+            <WorkspaceTableV2
+              headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
+              rows={archivedAssignments.map(renderAssignmentRow)}
+              emptyText="لا يوجد سجل تاريخي."
+            />
+          </details>
+        ) : null}
+        {cancelledAssignments.length ? (
+          <details className="dsv2-details-block">
+            <summary>عرض التعيينات الملغية ({cancelledAssignments.length})</summary>
+            <WorkspaceTableV2
+              headers={["الشفت", "الوقت", "الفترة", "الحالة", "الإجراء"]}
+              rows={cancelledAssignments.map(renderAssignmentRow)}
+              emptyText="لا توجد تعيينات ملغية."
+            />
+          </details>
+        ) : null}
+      </WorkspaceCardV2>
 
-        <article className="shift-control-list-card">
-          <h4>تعيينات الموظفة</h4>
-          <div className="shift-control-list">
-            {assignments.map((assignment) => {
-              const snapshot = parseSnapshot(assignment);
-              const isExpired = isAssignmentExpired(assignment);
-              const isCurrent = isAssignmentCurrent(assignment);
-              return (
-                <div className="shift-control-row" key={assignment.id}>
-                  <div><strong>{assignment.shiftName || cleanText(snapshot.name) || "شفت محفوظ"}</strong><span>{assignment.effectiveFrom} ← {assignment.effectiveTo || "مستمر"} · {formatShiftWindow(snapshot as any)}</span></div>
-                  <span className={isCurrent ? "shift-badge success" : "shift-badge muted"}>{assignmentStatusLabel(assignment)}</span>
-                  <div className="shift-control-row-actions">
-                    <button type="button" className="exp-btn ghost" onClick={() => void closeAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled" || isExpired}>إنهاء</button>
-                    <button type="button" className="exp-btn danger" onClick={() => void cancelAssignment(assignment)} disabled={!canManage || saving || assignment.status === "cancelled"}>إلغاء</button>
-                  </div>
-                </div>
-              );
-            })}
-            {!assignments.length && <p className="shift-control-empty">لا توجد تعيينات شفتات لهذه الموظفة.</p>}
-          </div>
-        </article>
+      <details className="dsv2-details-block">
+        <summary>إعدادات متقدمة: قوالب الشفتات والاستثناءات</summary>
+        <div className="dsv2-grid dsv2-grid--two">
+          <WorkspaceCardV2 title={templateForm.id ? "تعديل قالب شفت" : "إنشاء قالب شفت"} description="القالب عام ويؤثر على أي موظفة تستخدمه. لا تعدله إلا إذا تريد تغيير القالب نفسه للجميع.">
+            <WorkspaceNoticeV2
+              title="تنبيه"
+              description="لتغيير شفت موظفة واحدة استخدم نموذج تعيين الشفت بالأعلى، وليس تعديل القالب."
+              tone="gold"
+            />
+            <div className="dsv2-form-grid">
+              <DashboardFieldV2 id="shift-template-name" label="اسم الشفت" required>
+                <input id="shift-template-name" className="dsv2-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} disabled={!canManage || saving} placeholder="الشفت الصباحي" />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-code" label="الكود">
+                <input id="shift-template-code" className="dsv2-input" value={templateForm.code} onChange={(event) => setTemplateForm((current) => ({ ...current, code: event.target.value }))} disabled={!canManage || saving} placeholder="AM" />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-start" label="البداية">
+                <input id="shift-template-start" className="dsv2-input" type="time" value={templateForm.startTime} onChange={(event) => setTemplateForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-end" label="النهاية">
+                <input id="shift-template-end" className="dsv2-input" type="time" value={templateForm.endTime} onChange={(event) => setTemplateForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-late" label="سماح التأخير">
+                <input id="shift-template-late" className="dsv2-input" type="number" min="0" value={templateForm.lateGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, lateGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-template-early" label="سماح الخروج المبكر">
+                <input id="shift-template-early" className="dsv2-input" type="number" min="0" value={templateForm.earlyLeaveGraceMinutes} onChange={(event) => setTemplateForm((current) => ({ ...current, earlyLeaveGraceMinutes: event.target.value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+            </div>
+            <WorkspaceSwitchV2 checked={templateForm.active} onChange={(value) => setTemplateForm((current) => ({ ...current, active: value }))} disabled={!canManage || saving} label="القالب نشط" />
+            <div className="dsv2-cluster">
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setTemplateForm(emptyTemplateForm())} disabled={saving}>تفريغ</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveTemplate()} disabled={!canManage || saving}>حفظ القالب</button>
+            </div>
+          </WorkspaceCardV2>
 
-        <article className="shift-control-list-card shift-control-list-card--wide">
-          <h4>استثناءات الجدول</h4>
-          <div className="shift-control-list">
-            {exceptions.map((exception) => (
-              <div className="shift-control-row" key={exception.id}>
-                <div><strong>{exceptionTypeLabel(exception.exceptionType)}</strong><span>{exception.dateFrom} ← {exception.dateTo} · {exception.shiftName || formatShiftWindow(exception)}</span></div>
-                <span className={exception.status === "approved" ? "shift-badge success" : "shift-badge muted"}>{exception.status === "approved" ? "معتمد" : exception.status}</span>
-                <button type="button" className="exp-btn danger" onClick={() => void cancelException(exception)} disabled={!canManage || saving || exception.status !== "approved"}>إلغاء</button>
-              </div>
-            ))}
-            {!exceptions.length && <p className="shift-control-empty">لا توجد استثناءات لهذا الموظفة.</p>}
-          </div>
-        </article>
-        <article className="shift-control-list-card shift-control-list-card--wide">
-          <h4>تسويات بعد إقفال الراتب</h4>
-          <div className="shift-control-list">
-            {payrollAdjustments.map((adjustment) => (
-              <div className="shift-control-row" key={adjustment.id}>
-                <div><strong>{adjustment.changeType}</strong><span>{adjustment.dateFrom} ← {adjustment.dateTo} · {adjustment.reason || "بدون سبب"}</span></div>
-                <span className="shift-badge muted">{adjustment.status}</span>
-              </div>
-            ))}
-            {!payrollAdjustments.length && <p className="shift-control-empty">لا توجد تسويات بعد إقفال الراتب لهذه الموظفة.</p>}
-          </div>
-        </article>
+          <WorkspaceCardV2 title="استثناء شفت" description="استخدمه لراحة يوم، شفت بديل، أو وقت مخصص لفترة محددة.">
+            <div className="dsv2-form-grid">
+              <DashboardFieldV2 id="shift-exception-type" label="نوع الاستثناء">
+                <DashboardSelectV2
+                  id="shift-exception-type"
+                  options={[{ value: "shift", label: "شفت بديل" }, { value: "custom", label: "وقت مخصص" }, { value: "off", label: "راحة" }]}
+                  value={exceptionForm.exceptionType}
+                  onChange={(value) => setExceptionForm((current) => ({ ...current, exceptionType: value === "custom" ? "custom" : value === "off" ? "off" : "shift" }))}
+                  disabled={!canManage || saving}
+                />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-exception-template" label="الشفت البديل">
+                <DashboardSelectV2 id="shift-exception-template" options={templateOptions} value={exceptionForm.shiftTemplateId} onChange={(value) => setExceptionForm((current) => ({ ...current, shiftTemplateId: value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "shift" || !templateOptions.length} placeholder="اختر الشفت" />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-exception-from" label="من تاريخ" required>
+                <DashboardDatePickerV2 id="shift-exception-from" value={exceptionForm.dateFrom} onChange={(value) => setExceptionForm((current) => ({ ...current, dateFrom: value, dateTo: current.dateTo || value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-exception-to" label="إلى تاريخ" required>
+                <DashboardDatePickerV2 id="shift-exception-to" value={exceptionForm.dateTo} onChange={(value) => setExceptionForm((current) => ({ ...current, dateTo: value }))} disabled={!canManage || saving} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-exception-start" label="بداية مخصصة">
+                <input id="shift-exception-start" className="dsv2-input" type="time" value={exceptionForm.startTime} onChange={(event) => setExceptionForm((current) => ({ ...current, startTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="shift-exception-end" label="نهاية مخصصة">
+                <input id="shift-exception-end" className="dsv2-input" type="time" value={exceptionForm.endTime} onChange={(event) => setExceptionForm((current) => ({ ...current, endTime: event.target.value }))} disabled={!canManage || saving || exceptionForm.exceptionType !== "custom"} />
+              </DashboardFieldV2>
+            </div>
+            <DashboardFieldV2 id="shift-exception-note" label="ملاحظة">
+              <input id="shift-exception-note" className="dsv2-input" value={exceptionForm.note} onChange={(event) => setExceptionForm((current) => ({ ...current, note: event.target.value }))} disabled={!canManage || saving} />
+            </DashboardFieldV2>
+            <div className="dsv2-cluster">
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => void previewException()} disabled={!canManage || saving}>فحص الاستثناء</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void createException()} disabled={!canManage || saving}>حفظ الاستثناء</button>
+            </div>
+          </WorkspaceCardV2>
+        </div>
 
-      </div>
-    </section>
+        <div className="dsv2-grid dsv2-grid--two">
+          <WorkspaceCardV2 title="قوالب الشفتات" description="القوالب الفعلية المحملة من Core.">
+            <WorkspaceTableV2
+              headers={["القالب", "الوقت", "السماح", "الحالة", "الإجراء"]}
+              rows={templates.map((template) => [
+                <strong key="name">{template.name}</strong>,
+                formatWindow(template),
+                `${readNumber(template.lateGraceMinutes)} تأخير / ${readNumber(template.earlyLeaveGraceMinutes)} خروج`,
+                <WorkspaceStatusBadgeV2 key="status" tone={boolish(template.active) ? "success" : "danger"}>{boolish(template.active) ? "نشط" : "متوقف"}</WorkspaceStatusBadgeV2>,
+                <button key="edit" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => editTemplate(template)} disabled={!canManage || saving}>تعديل القالب</button>,
+              ])}
+              emptyText="لا توجد قوالب شفتات."
+            />
+          </WorkspaceCardV2>
+
+          <WorkspaceCardV2 title="استثناءات الموظفة" description="الأولوية للاستثناء قبل الشفت الأساسي.">
+            <WorkspaceTableV2
+              headers={["النوع", "الفترة", "الوقت", "الحالة", "الإجراء"]}
+              rows={exceptions.map((exception) => [
+                <strong key="type">{exceptionTypeLabel(exception.exceptionType)}</strong>,
+                `${exception.dateFrom} - ${exception.dateTo}`,
+                exception.exceptionType === "off" ? "راحة" : formatWindow(exception),
+                <WorkspaceStatusBadgeV2 key="status" tone={exception.status === "cancelled" ? "danger" : "success"}>{statusLabel(exception.status)}</WorkspaceStatusBadgeV2>,
+                <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving || exception.status === "cancelled"}>إلغاء</button>,
+              ])}
+              emptyText="لا توجد استثناءات شفت لهذه الموظفة."
+            />
+          </WorkspaceCardV2>
+        </div>
+      </details>
+    </div>
   );
 }

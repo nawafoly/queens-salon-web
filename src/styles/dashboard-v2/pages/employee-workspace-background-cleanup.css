@@ -1,0 +1,18 @@
+/* Scoped cleanup requested after visual review: remove the grey workspace backdrop behind employee tab content. */
+.dashboard-v2 .dsv2-employees-page--profile,
+.dashboard-v2 .dsv2-employees-page--profile .dsv2-employees-page__container,
+.dashboard-v2 .dsv2-employees-page--profile .employees-v2-profile-host,
+.dashboard-v2 .dsv2-employees-page--profile .dsv2-employee-workspace,
+.dashboard-v2 .dsv2-employees-page--profile .dsv2-ew-content,
+.dashboard-v2 .dsv2-employees-page--profile .dsv2-ew-tab-panel,
+.dashboard-v2 .dsv2-employees-page--profile .employees-v2-profile__body {
+  background: #fff !important;
+}
+
+.dashboard-v2 .dsv2-employees-page--profile .dsv2-employee-workspace {
+  border-radius: 0;
+}
+
+.dashboard-v2 .dsv2-employees-page--profile .employees-v2-profile__body {
+  padding-block-start: 0;
+}

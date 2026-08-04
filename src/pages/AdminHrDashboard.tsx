@@ -1,4 +1,5 @@
-﻿import "../styles/AdminHrMobileShell.css";
+import "../styles/AdminHrMobileShell.css";
+import "../styles/dashboard-v2/dashboard-v2.css";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
@@ -24,6 +25,8 @@ import logo1 from "../assets/images/ssunnamed.png";
 
 import { useEmployeeSession, cleanText } from "./hr/shared";
 import DashboardHeader from "../components/DashboardHeader";
+import DashboardSidebarTooltipV2 from "../components/DashboardSidebarTooltipV2";
+import MalikatPortalSidebarV2 from "../components/MalikatPortalSidebarV2";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
 import { usePermissions } from "../security/PermissionContext";
@@ -1561,12 +1564,17 @@ export default function AdminHrDashboard() {
 
   if (session.loading) {
     return (
-      <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
-        <aside className="hr-shell-sidebar hr-shell-sidebar--loading">
-          <div className="hr-sidebar-header">
-            <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
-          </div>
-        </aside>
+      <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
+        <MalikatPortalSidebarV2
+          variant="admin"
+          logoSrc={logo1}
+          collapsed={false}
+          onToggleCollapsed={() => undefined}
+          loading
+          className="hr-shell-sidebar--loading"
+          ariaLabel="جاري تحميل تنقل الموارد البشرية"
+          navigation={<nav className="hr-shell-nav" aria-hidden="true" />}
+        />
 
         <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}`}>
           <DashboardHeader
@@ -1599,43 +1607,47 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell ${isEmployeesRoute ? "hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
-      <aside className="hr-shell-sidebar">
-        <div className="hr-sidebar-header">
-          <img src={logo1} alt="Malikat" className="hr-sidebar-logo" />
-          <button
-            type="button"
-            className="hr-sidebar-collapse"
-            onClick={() => setIsSidebarCollapsed((value) => !value)}
-            aria-label={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
-          >
-            <FontAwesomeIcon icon={isSidebarCollapsed ? faChevronLeft : faChevronRight} />
-          </button>
-        </div>
-
-        <nav className="hr-shell-nav" aria-label="HR navigation">
-          <span className="hr-sidebar-section-title">الموارد البشرية</span>
-          {adminNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}
-            >
-              <FontAwesomeIcon icon={item.icon} />
-              <span>{item.label}</span>
-              {"badge" in item && Number(item.badge || 0) > 0 ? (
-                <em className="hr-shell-link__badge">{item.badge}</em>
-              ) : null}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="hr-shell-note">
-          <span>{session.displayName || "مسجل الدخول"}</span>
-          <span>{session.email || ""}</span>
-          <small>{readableRole(session.role)}</small>
-        </div>
-      </aside>
+    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+      <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
+      <MalikatPortalSidebarV2
+        variant="admin"
+        logoSrc={logo1}
+        collapsed={isSidebarCollapsed}
+        onToggleCollapsed={() => setIsSidebarCollapsed((value) => !value)}
+        ariaLabel="التنقل داخل الموارد البشرية"
+        profileTooltip={`${session.displayName || "مسجل الدخول"} — ${readableRole(session.role)}`}
+        profile={
+          <div className="malikat-sidebar-identity">
+            <span className="malikat-sidebar-identity__avatar" aria-hidden="true">
+              <FontAwesomeIcon icon={faUserShield} />
+            </span>
+            <div className="malikat-sidebar-identity__copy">
+              <strong>{session.displayName || "مسجل الدخول"}</strong>
+              <span>{readableRole(session.role)}</span>
+              {session.email ? <small>{session.email}</small> : null}
+            </div>
+          </div>
+        }
+        navigation={
+          <nav className="hr-shell-nav" aria-label="HR navigation">
+            <span className="hr-sidebar-section-title">الموارد البشرية</span>
+            {adminNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `hr-shell-link ${isActive ? "is-active" : ""}`}
+                data-sidebar-tooltip={item.label}
+              >
+                <FontAwesomeIcon icon={item.icon} />
+                <span>{item.label}</span>
+                {"badge" in item && Number(item.badge || 0) > 0 ? (
+                  <em className="hr-shell-link__badge">{item.badge}</em>
+                ) : null}
+              </NavLink>
+            ))}
+          </nav>
+        }
+      />
 
       <DashboardHeader
         theme="admin"

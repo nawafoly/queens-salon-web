@@ -1,0 +1,74 @@
+/* Live employee messages tab fixes. Scoped only to Dashboard V2 employee workspace. */
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-chat-card .dsv2-ew-card__body {
+  gap: 16px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-chat-head {
+  padding: 14px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-chat-head > div:nth-child(2) span {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-messages {
+  min-height: auto;
+  max-height: 520px;
+  padding: 18px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 18px;
+  background: var(--dsv2-ew-soft);
+  scroll-padding-block: 18px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message {
+  width: fit-content;
+  min-width: min(190px, 100%);
+  max-width: min(78%, 620px);
+  box-shadow: 0 10px 24px rgb(5 8 13 / 8%);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message--admin {
+  align-self: flex-end;
+  border-end-end-radius: 4px;
+  border-end-start-radius: 16px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message--employee {
+  align-self: flex-start;
+  border-end-start-radius: 4px;
+  border-end-end-radius: 16px;
+  background: #eceef1;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message--employee p {
+  color: #1f252d;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message--employee .dsv2-ew-message__sender,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message--employee small {
+  color: #555d68;
+  opacity: 1;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-inline-empty--large {
+  min-height: 190px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-composer {
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+
+@media (max-width: 720px) {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-messages {
+    padding: 12px;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-message {
+    max-width: 92%;
+  }
+}

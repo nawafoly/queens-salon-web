@@ -1,0 +1,67 @@
+/* =========================================================
+   Malikat Dashboard V2 — tables
+========================================================= */
+
+.dashboard-v2 .dsv2-table-card {
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.dashboard-v2 .dsv2-table {
+  width: 100%;
+  min-width: 680px;
+  margin: 0;
+  border-collapse: collapse;
+  color: var(--dsv2-text);
+  background: transparent;
+}
+
+.dashboard-v2 .dsv2-table th,
+.dashboard-v2 .dsv2-table td {
+  padding: var(--dsv2-space-4);
+  border-bottom: 1px solid var(--dsv2-divider);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.dashboard-v2 .dsv2-table th {
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-table td {
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.dashboard-v2 .dsv2-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dashboard-v2 .dsv2-table tbody tr:hover td {
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-table__primary {
+  color: var(--dsv2-text);
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-table__secondary {
+  display: block;
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}

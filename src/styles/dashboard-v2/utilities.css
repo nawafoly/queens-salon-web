@@ -1,0 +1,59 @@
+/* =========================================================
+   Malikat Dashboard V2 — small reusable utilities
+========================================================= */
+
+.dashboard-v2 .dsv2-badge {
+  --dsv2-badge-color: var(--dsv2-text-soft);
+  --dsv2-badge-bg: var(--dsv2-black-soft);
+  --dsv2-badge-border: var(--dsv2-border);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsv2-space-1);
+  min-height: 28px;
+  padding: 0 var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-badge-border);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-badge-color);
+  background: var(--dsv2-badge-bg);
+  font-size: 0.68rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-badge--success {
+  --dsv2-badge-color: var(--dsv2-green);
+  --dsv2-badge-bg: var(--dsv2-green-soft);
+  --dsv2-badge-border: var(--dsv2-green-border);
+}
+
+.dashboard-v2 .dsv2-badge--danger {
+  --dsv2-badge-color: var(--dsv2-burgundy);
+  --dsv2-badge-bg: var(--dsv2-burgundy-soft);
+  --dsv2-badge-border: var(--dsv2-burgundy-border);
+}
+
+.dashboard-v2 .dsv2-badge--gold {
+  --dsv2-badge-color: #775900;
+  --dsv2-badge-bg: var(--dsv2-gold-soft);
+  --dsv2-badge-border: rgba(var(--dsv2-gold-rgb), 0.28);
+}
+
+.dashboard-v2 .dsv2-divider {
+  width: 100%;
+  height: 1px;
+  border: 0;
+  background: var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

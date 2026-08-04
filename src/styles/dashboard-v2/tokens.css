@@ -1,0 +1,119 @@
+/* =========================================================
+   Malikat Dashboard V2 — design tokens
+   Scope: .dashboard-v2 only
+========================================================= */
+
+.dashboard-v2 {
+  /* Brand palette approved for the dashboard. */
+  --dsv2-gold: #d9a50b;
+  --dsv2-gold-rgb: 217, 165, 11;
+  --dsv2-black: #05080d;
+  --dsv2-black-rgb: 5, 8, 13;
+  --dsv2-burgundy: #59041b;
+  --dsv2-burgundy-rgb: 89, 4, 27;
+  --dsv2-green: #177348;
+  --dsv2-green-rgb: 23, 115, 72;
+  --dsv2-gray: #f2f2f2;
+
+  /* Semantic aliases. */
+  --dsv2-primary: var(--dsv2-black);
+  --dsv2-accent: var(--dsv2-gold);
+  --dsv2-success: var(--dsv2-green);
+  --dsv2-danger: var(--dsv2-burgundy);
+  --dsv2-warning: #9b6a00;
+  --dsv2-info: #245d76;
+
+  /* Surfaces. */
+  --dsv2-page: var(--dsv2-gray);
+  --dsv2-surface: #ffffff;
+  --dsv2-surface-soft: #f8f8f8;
+  --dsv2-surface-muted: #f4f4f4;
+  --dsv2-overlay: rgba(var(--dsv2-black-rgb), 0.52);
+
+  /* Typography. */
+  --dsv2-text: var(--dsv2-black);
+  --dsv2-text-soft: #303641;
+  --dsv2-muted: #6f7784;
+  --dsv2-muted-soft: #9097a2;
+  --dsv2-on-dark: #ffffff;
+  --dsv2-font-family: "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Borders. */
+  --dsv2-border: rgba(var(--dsv2-black-rgb), 0.10);
+  --dsv2-border-strong: rgba(var(--dsv2-black-rgb), 0.17);
+  --dsv2-border-gold: rgba(var(--dsv2-gold-rgb), 0.48);
+  --dsv2-divider: rgba(var(--dsv2-black-rgb), 0.08);
+
+  /* Status tints. */
+  --dsv2-gold-soft: rgba(var(--dsv2-gold-rgb), 0.10);
+  --dsv2-gold-softer: rgba(var(--dsv2-gold-rgb), 0.055);
+  --dsv2-green-soft: rgba(var(--dsv2-green-rgb), 0.075);
+  --dsv2-green-border: rgba(var(--dsv2-green-rgb), 0.22);
+  --dsv2-burgundy-soft: rgba(var(--dsv2-burgundy-rgb), 0.065);
+  --dsv2-burgundy-border: rgba(var(--dsv2-burgundy-rgb), 0.20);
+  --dsv2-black-soft: rgba(var(--dsv2-black-rgb), 0.055);
+
+  /* Geometry. */
+  --dsv2-radius-xs: 8px;
+  --dsv2-radius-sm: 10px;
+  --dsv2-radius-md: 14px;
+  --dsv2-radius-lg: 18px;
+  --dsv2-radius-xl: 22px;
+  --dsv2-radius-2xl: 28px;
+  --dsv2-radius-pill: 999px;
+
+  /* Spacing: strict 4px scale. */
+  --dsv2-space-1: 4px;
+  --dsv2-space-2: 8px;
+  --dsv2-space-3: 12px;
+  --dsv2-space-4: 16px;
+  --dsv2-space-5: 20px;
+  --dsv2-space-6: 24px;
+  --dsv2-space-7: 28px;
+  --dsv2-space-8: 32px;
+  --dsv2-space-10: 40px;
+  --dsv2-space-12: 48px;
+
+  /* Dashboard V2 stage 4.2: canonical page shell gutters */
+  --dsv2-page-inline-gutter: clamp(20px, 1.65vw, 28px);
+
+  /* Dashboard V2 stage 4.3: semantic spacing tokens
+   * Base scale stays on a strict 4px rhythm. Pages consume semantic aliases,
+   * not raw pixel values or one-off margin/padding declarations.
+   */
+  --dsv2-page-padding-inline: var(--dsv2-space-7);
+  --dsv2-page-padding-block-start: var(--dsv2-space-6);
+  --dsv2-page-padding-block-end: var(--dsv2-space-10);
+  --dsv2-section-gap: var(--dsv2-space-6);
+  --dsv2-grid-gap: var(--dsv2-space-4);
+  --dsv2-card-padding: var(--dsv2-space-5);
+  --dsv2-panel-padding: var(--dsv2-space-6);
+  --dsv2-page-head-gap: var(--dsv2-space-5);
+  --dsv2-section-head-gap: var(--dsv2-space-4);
+  --dsv2-section-head-margin: var(--dsv2-space-4);
+  --dsv2-field-gap: var(--dsv2-space-4);
+  --dsv2-control-gap: var(--dsv2-space-3);
+  --dsv2-component-gap: var(--dsv2-space-4);
+  --dsv2-compact-gap: var(--dsv2-space-2);
+
+  /* Compatibility alias for stage 4.2 and older V2 pages. */
+  --dsv2-page-inline-gutter: var(--dsv2-page-padding-inline);
+
+  /* Elevation. */
+  --dsv2-shadow-xs: 0 2px 8px rgba(var(--dsv2-black-rgb), 0.035);
+  --dsv2-shadow-sm: 0 10px 28px rgba(var(--dsv2-black-rgb), 0.055);
+  --dsv2-shadow-md: 0 18px 46px rgba(var(--dsv2-black-rgb), 0.075);
+  --dsv2-shadow-lg: 0 28px 70px rgba(var(--dsv2-black-rgb), 0.11);
+  --dsv2-focus-ring: 0 0 0 4px rgba(var(--dsv2-gold-rgb), 0.18);
+
+  /* Controls. */
+  --dsv2-control-height-sm: 38px;
+  --dsv2-control-height: 44px;
+  --dsv2-control-height-lg: 50px;
+
+  /* Motion. */
+  --dsv2-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --dsv2-transition-fast: 140ms var(--dsv2-ease);
+  --dsv2-transition: 190ms var(--dsv2-ease);
+
+}

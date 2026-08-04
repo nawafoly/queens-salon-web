@@ -1,0 +1,433 @@
+/* =========================================================
+   Malikat Dashboard V2 — modal, confirm and drawer system
+   All overlays are portaled to document.body and remain scoped
+   through the dashboard-v2 wrapper.
+========================================================= */
+
+.dashboard-v2.dsv2-overlay-root {
+  position: fixed;
+  z-index: 2147481000;
+  inset: 0;
+  direction: rtl;
+  font-family: var(--dsv2-font-family);
+}
+
+.dashboard-v2 .dsv2-overlay-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: var(--dsv2-overlay);
+  backdrop-filter: blur(7px);
+  cursor: default;
+  animation: dsv2-overlay-fade-in 170ms var(--dsv2-ease) both;
+}
+
+.dashboard-v2 .dsv2-overlay-stage {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 3vw, 32px);
+  pointer-events: none;
+}
+
+.dashboard-v2 .dsv2-modal,
+.dashboard-v2 .dsv2-drawer {
+  --dsv2-dialog-accent: var(--dsv2-black);
+  display: grid;
+  min-width: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-lg);
+  outline: none;
+  pointer-events: auto;
+}
+
+.dashboard-v2[data-tone="gold"] :is(.dsv2-modal, .dsv2-drawer) {
+  --dsv2-dialog-accent: var(--dsv2-gold);
+}
+
+.dashboard-v2[data-tone="success"] :is(.dsv2-modal, .dsv2-drawer) {
+  --dsv2-dialog-accent: var(--dsv2-green);
+}
+
+.dashboard-v2[data-tone="danger"] :is(.dsv2-modal, .dsv2-drawer) {
+  --dsv2-dialog-accent: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-modal {
+  width: min(100%, 680px);
+  max-height: min(88dvh, 920px);
+  border-radius: var(--dsv2-radius-xl);
+  animation: dsv2-modal-enter 210ms var(--dsv2-ease) both;
+}
+
+.dashboard-v2 .dsv2-modal--sm {
+  width: min(100%, 460px);
+}
+
+.dashboard-v2 .dsv2-modal--md {
+  width: min(100%, 680px);
+}
+
+.dashboard-v2 .dsv2-modal--lg {
+  width: min(100%, 900px);
+}
+
+.dashboard-v2 .dsv2-modal--xl {
+  width: min(100%, 1160px);
+}
+
+.dashboard-v2 .dsv2-modal--fullscreen {
+  width: min(100%, 1440px);
+  height: min(94dvh, 1080px);
+  max-height: none;
+}
+
+.dashboard-v2 .dsv2-dialog__head,
+.dashboard-v2 .dsv2-dialog__foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-space-5) var(--dsv2-space-6);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.dashboard-v2 .dsv2-dialog__head {
+  min-height: 82px;
+  justify-content: space-between;
+  border-block-start: 3px solid var(--dsv2-dialog-accent);
+  border-block-end: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-dialog__foot {
+  min-height: 72px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  border-block-start: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-dialog__heading {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .dsv2-dialog__eyebrow {
+  color: var(--dsv2-dialog-accent);
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-dialog__title {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-dialog__description {
+  margin: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.dashboard-v2 .dsv2-dialog__close {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+  cursor: pointer;
+  transition:
+    color var(--dsv2-transition-fast),
+    border-color var(--dsv2-transition-fast),
+    background var(--dsv2-transition-fast),
+    transform var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .dsv2-dialog__close:hover {
+  border-color: var(--dsv2-burgundy-border);
+  color: var(--dsv2-burgundy);
+  background: var(--dsv2-burgundy-soft);
+  transform: rotate(4deg);
+}
+
+.dashboard-v2 .dsv2-dialog__close:focus-visible {
+  outline: none;
+  border-color: var(--dsv2-gold);
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-dialog__close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dashboard-v2 .dsv2-dialog__body {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--dsv2-space-6);
+  background: var(--dsv2-surface);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--dsv2-black-rgb), 0.18) transparent;
+}
+
+.dashboard-v2 .dsv2-dialog__body::-webkit-scrollbar {
+  width: 7px;
+}
+
+.dashboard-v2 .dsv2-dialog__body::-webkit-scrollbar-thumb {
+  border-radius: var(--dsv2-radius-pill);
+  background: rgba(var(--dsv2-black-rgb), 0.18);
+}
+
+/* Confirm dialog --------------------------------------------------------- */
+
+.dashboard-v2 .dsv2-confirm .dsv2-dialog__body {
+  padding-block: var(--dsv2-space-5) var(--dsv2-space-6);
+}
+
+.dashboard-v2 .dsv2-confirm__content {
+  display: grid;
+  justify-items: center;
+  gap: var(--dsv2-space-4);
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-confirm__icon {
+  display: inline-grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid var(--dsv2-border);
+  border-radius: 50%;
+  color: var(--dsv2-black);
+  background: var(--dsv2-black-soft);
+}
+
+.dashboard-v2 .dsv2-confirm__icon[data-tone="gold"] {
+  border-color: var(--dsv2-border-gold);
+  color: #755700;
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-confirm__icon[data-tone="success"] {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-confirm__icon[data-tone="danger"] {
+  border-color: var(--dsv2-burgundy-border);
+  color: var(--dsv2-burgundy);
+  background: var(--dsv2-burgundy-soft);
+}
+
+.dashboard-v2 .dsv2-confirm__icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.dashboard-v2 .dsv2-confirm__details {
+  width: 100%;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface-soft);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.dashboard-v2 .dsv2-confirm .dsv2-dialog__foot {
+  justify-content: center;
+}
+
+.dashboard-v2 .dsv2-confirm .dsv2-dialog__foot .dsv2-btn {
+  min-width: 126px;
+}
+
+/* Drawer ---------------------------------------------------------------- */
+
+.dashboard-v2 .dsv2-drawer {
+  position: absolute;
+  z-index: 1;
+  inset-block: 0;
+  width: min(92vw, 480px);
+  border-block: 0;
+  border-radius: 0;
+}
+
+.dashboard-v2 .dsv2-drawer[data-side="end"] {
+  inset-inline-end: 0;
+  border-inline-start: 1px solid var(--dsv2-border);
+  animation: dsv2-drawer-enter-end 240ms var(--dsv2-ease) both;
+}
+
+.dashboard-v2 .dsv2-drawer[data-side="start"] {
+  inset-inline-start: 0;
+  border-inline-end: 1px solid var(--dsv2-border);
+  animation: dsv2-drawer-enter-start 240ms var(--dsv2-ease) both;
+}
+
+.dashboard-v2 .dsv2-drawer--sm {
+  width: min(92vw, 380px);
+}
+
+.dashboard-v2 .dsv2-drawer--md {
+  width: min(92vw, 480px);
+}
+
+.dashboard-v2 .dsv2-drawer--lg {
+  width: min(94vw, 680px);
+}
+
+.dashboard-v2 .dsv2-drawer .dsv2-dialog__head,
+.dashboard-v2 .dsv2-drawer .dsv2-dialog__foot {
+  padding-inline: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .dsv2-drawer .dsv2-dialog__body {
+  padding: var(--dsv2-space-5);
+}
+
+/* Motion ---------------------------------------------------------------- */
+
+@keyframes dsv2-overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dsv2-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dsv2-drawer-enter-end {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dsv2-drawer-enter-start {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-overlay-stage {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dashboard-v2 .dsv2-modal:not(.dsv2-modal--fullscreen) {
+    width: 100%;
+    max-height: min(92dvh, 920px);
+    border-inline: 0;
+    border-block-end: 0;
+    border-radius: var(--dsv2-radius-xl) var(--dsv2-radius-xl) 0 0;
+    animation-name: dsv2-modal-enter-mobile;
+  }
+
+  .dashboard-v2 .dsv2-modal--fullscreen {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .dashboard-v2 .dsv2-dialog__head,
+  .dashboard-v2 .dsv2-dialog__foot,
+  .dashboard-v2 .dsv2-drawer .dsv2-dialog__head,
+  .dashboard-v2 .dsv2-drawer .dsv2-dialog__foot {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-dialog__head {
+    min-height: 74px;
+  }
+
+  .dashboard-v2 .dsv2-dialog__body,
+  .dashboard-v2 .dsv2-drawer .dsv2-dialog__body {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-dialog__foot {
+    align-items: stretch;
+  }
+
+  .dashboard-v2 .dsv2-dialog__foot .dsv2-btn {
+    flex: 1 1 140px;
+  }
+
+  .dashboard-v2 .dsv2-drawer,
+  .dashboard-v2 .dsv2-drawer--sm,
+  .dashboard-v2 .dsv2-drawer--md,
+  .dashboard-v2 .dsv2-drawer--lg {
+    width: 100%;
+  }
+}
+
+@keyframes dsv2-modal-enter-mobile {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-v2 .dsv2-overlay-backdrop,
+  .dashboard-v2 .dsv2-modal,
+  .dashboard-v2 .dsv2-drawer {
+    animation: none !important;
+  }
+}
