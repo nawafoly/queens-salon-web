@@ -47,7 +47,10 @@ function toMillis(value: unknown) {
   }
   if (typeof value === "object") {
     const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
-    if (typeof maybe.toMillis === "function") return maybe.toMillis();
+    if (typeof maybe.toMillis === "function") {
+      const ms = maybe.toMillis();
+      return Number.isFinite(ms) ? ms : 0;
+    }
     if (typeof maybe.seconds === "number") return maybe.seconds * 1000 + Math.floor((maybe.nanoseconds || 0) / 1_000_000);
   }
   return 0;
@@ -68,6 +71,10 @@ function initials(value: unknown) {
   if (!text) return "؟";
   const parts = text.split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")) || text[0] || "؟";
+}
+
+function readByList(value: unknown) {
+  return Array.isArray(value) ? value.map(cleanText).filter(Boolean) : [];
 }
 
 function messageMatchesEmployee(message: EmployeeMessage, employeeKeys: Set<string>) {
@@ -97,7 +104,7 @@ export default function EmployeeMessagesSection({
   const [failed, setFailed] = useState(false);
 
   const targetUid = cleanText(employeeUid || employeeId);
-  const targetName = cleanText(employeeName) || targetUid || "الموظفة";
+  const targetName = cleanText(employeeName) || "الموظفة";
   const conversationId = useMemo(() => makeConversationId(viewerUid || "", targetUid), [targetUid, viewerUid]);
 
   const employeeKeys = useMemo(() => {
@@ -126,7 +133,7 @@ export default function EmployeeMessagesSection({
       console.warn("employee messages load failed", err);
       setRows([]);
       setError("تعذر تحميل رسائل الموظفة.");
-      setViewState("ready");
+      setViewState("error");
     } finally {
       setLoading(false);
     }
@@ -139,8 +146,7 @@ export default function EmployeeMessagesSection({
   const unreadCount = useMemo(() => {
     const reader = cleanText(viewerUid);
     if (!reader) return 0;
-    return rows.filter((row) => row.senderUid !== reader && !Array.isArray(row.readBy) || false).length +
-      rows.filter((row) => row.senderUid !== reader && Array.isArray(row.readBy) && !row.readBy.map(cleanText).includes(reader)).length;
+    return rows.filter((row) => cleanText(row.senderUid) !== reader && !readByList(row.readBy).includes(reader)).length;
   }, [rows, viewerUid]);
 
   const lastMessage = rows[rows.length - 1] || null;
@@ -220,8 +226,10 @@ export default function EmployeeMessagesSection({
 
   if (!isVisible) return null;
 
+  const effectiveState = loading ? "loading" : error && viewState === "error" ? "error" : viewState;
+
   return (
-    <div className="dsv2-ew-tab-panel dsv2-ew-messages-live">
+    <div className="dsv2-ew-tab-panel dsv2-ew-messages-live" data-dsv2-ignore-dirty="true">
       <WorkspaceTabHeaderV2
         title="الرسائل"
         description="محادثة داخلية كاملة بحالة الموظفة والقراءة والمرفقات وإعادة محاولة الإرسال."
@@ -236,32 +244,48 @@ export default function EmployeeMessagesSection({
           <DashboardFieldV2 id="employee-message-state" label="حالة العرض">
             <DashboardSelectV2
               id="employee-message-state"
-              value={loading ? "loading" : viewState}
+              value={effectiveState === "error" ? "ready" : effectiveState}
               options={[
                 { value: "ready", label: "محادثة موجودة" },
                 { value: "empty", label: "لا توجد رسائل" },
                 { value: "loading", label: "تحميل" },
               ]}
-              onChange={setViewState}
+              onChange={(value) => setViewState(value)}
             />
           </DashboardFieldV2>
           <div className="dsv2-ew-conversation-status">
             <span className="dsv2-ew-presence" aria-hidden="true" />
             <div>
               <strong>{targetName}</strong>
-              <small>{lastMessage ? `آخر رسالة ${formatMessageTime(lastMessage.createdAt)}` : "لا توجد رسائل بعد"}</small>
+              <small>{lastMessage ? `آخر رسالة ${formatMessageTime(lastMessage.createdAt)}` : targetUid || "لا توجد رسائل بعد"}</small>
             </div>
           </div>
         </div>
       </WorkspaceCardV2>
 
-      {(loading || viewState === "loading") ? (
-        <WorkspaceStateShowcaseV2 compact />
-      ) : viewState === "empty" || !rows.length ? (
-        <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
-          <strong>لا توجد رسائل بعد</strong>
-          <span>ابدأ محادثة داخلية لتظهر هنا مع حالة القراءة والوقت.</span>
-        </div>
+      {effectiveState === "loading" ? (
+        <WorkspaceCardV2 title="المحادثة الداخلية" description="جاري تحميل رسائل الموظفة وسجل القراءة.">
+          <WorkspaceStateShowcaseV2 compact />
+        </WorkspaceCardV2>
+      ) : effectiveState === "error" ? (
+        <WorkspaceNoticeV2
+          title="تعذر تحميل المحادثة"
+          description="لم يتم تحميل الرسائل الحالية. أعد المحاولة بدون تغيير بيانات الموظفة."
+          tone="danger"
+          action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
+        />
+      ) : effectiveState === "empty" || !rows.length ? (
+        <WorkspaceCardV2 title="المحادثة الداخلية" description="الرسائل محفوظة ضمن ملف الموظفة وسجل الإدارة." className="dsv2-ew-chat-card">
+          <div className="dsv2-ew-chat-head">
+            <div className="dsv2-ew-chat-avatar">{initials(targetName)}</div>
+            <div><strong>{targetName}</strong><span>{targetUid || "لا يوجد معرف موظفة"}</span></div>
+            <WorkspaceStatusBadgeV2>لا توجد رسائل</WorkspaceStatusBadgeV2>
+          </div>
+          <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
+            <strong>لا توجد رسائل بعد</strong>
+            <span>ابدأ محادثة داخلية لتظهر هنا مع حالة القراءة والوقت.</span>
+          </div>
+        </WorkspaceCardV2>
       ) : (
         <WorkspaceCardV2 title="المحادثة الداخلية" description="الرسائل محفوظة ضمن ملف الموظفة وسجل الإدارة." className="dsv2-ew-chat-card">
           <div className="dsv2-ew-chat-head">
@@ -272,8 +296,7 @@ export default function EmployeeMessagesSection({
           <div className="dsv2-ew-messages" aria-live="polite">
             {rows.map((item) => {
               const mine = cleanText(item.senderUid) === cleanText(viewerUid);
-              const readBy = Array.isArray(item.readBy) ? item.readBy.map(cleanText) : [];
-              const isUnread = !!viewerUid && !mine && !readBy.includes(cleanText(viewerUid));
+              const isUnread = !!viewerUid && !mine && !readByList(item.readBy).includes(cleanText(viewerUid));
               return (
                 <div key={item.id} className={`dsv2-ew-message ${mine ? "dsv2-ew-message--admin" : "dsv2-ew-message--employee"}`} data-unread={isUnread ? "true" : undefined}>
                   <span className="dsv2-ew-message__sender">{mine ? "الإدارة" : item.senderName || targetName}</span>
