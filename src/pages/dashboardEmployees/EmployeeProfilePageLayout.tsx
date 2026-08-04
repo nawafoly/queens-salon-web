@@ -12,6 +12,14 @@ import "../../styles/dashboard-v2/pages/employee-workspace-review-fixes-v2.css";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 
+const SELF_SAVING_LIVE_TAB_SELECTOR = [
+  "[data-dsv2-ignore-dirty='true']",
+  ".dsv2-ew-shifts-live",
+  ".dsv2-ew-requests-live",
+  ".dsv2-ew-files-live",
+  ".dsv2-ew-messages-live",
+].join(", ");
+
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
   const [isDirty, setIsDirty] = useState(false);
 
@@ -27,7 +35,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
     (event: SyntheticEvent<HTMLElement>) => {
       if (!props.canManage || props.saving) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest?.("[data-dsv2-ignore-dirty='true']")) return;
+      if (target?.closest?.(SELF_SAVING_LIVE_TAB_SELECTOR)) return;
       setIsDirty(true);
     },
     [props.canManage, props.saving]
