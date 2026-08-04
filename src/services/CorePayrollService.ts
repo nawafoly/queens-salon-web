@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   CoreAbsence,
   CoreAttendanceRecord,
   CoreHrEmployee,
@@ -84,9 +84,9 @@ export function payrollMonthKey(year: number, month: number) {
   return `${year}-${pad(month)}`;
 }
 
-const PAYROLL_CYCLE_START_DAY = 21;
-const PAYROLL_CYCLE_END_DAY = 20;
+const PAYROLL_CYCLE_START_DAY = 1;
 const PAYROLL_PAY_DAY = 28;
+const AUTO_ATTENDANCE_PENALTY_PREFIX = "attendance_penalty_carryover";
 
 function dateKeyFromUtcDate(date: Date) {
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
@@ -117,8 +117,8 @@ function addUtcDays(date: Date, days: number) {
 }
 
 export function payrollMonthBounds(year: number, month: number) {
-  const cycleStartDate = new Date(Date.UTC(year, month - 2, PAYROLL_CYCLE_START_DAY));
-  const cycleEndDate = new Date(Date.UTC(year, month - 1, PAYROLL_CYCLE_END_DAY));
+  const cycleStartDate = new Date(Date.UTC(year, month - 1, PAYROLL_CYCLE_START_DAY));
+  const cycleEndDate = new Date(Date.UTC(year, month, 0));
   const safePayDay = Math.min(PAYROLL_PAY_DAY, daysInUtcMonth(year, month));
   const payDate = new Date(Date.UTC(year, month - 1, safePayDay));
   return {
@@ -127,6 +127,11 @@ export function payrollMonthBounds(year: number, month: number) {
     monthEnd: dateKeyFromUtcDate(cycleEndDate),
     payDate: dateKeyFromUtcDate(payDate),
   };
+}
+
+function previousPayrollMonth(year: number, month: number) {
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
 }
 
 function dateKeysInRange(startDateKey: string, endDateKey: string) {
@@ -207,6 +212,68 @@ function positiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
 }
+function roundHalalas(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
+function autoAttendancePenaltyId(sourcePayrollMonth: string) {
+  return `${AUTO_ATTENDANCE_PENALTY_PREFIX}_${sourcePayrollMonth}`;
+}
+
+function isAutoAttendancePenaltyItem(item: PayrollManualItem) {
+  return (
+    String(item.id || "").startsWith(AUTO_ATTENDANCE_PENALTY_PREFIX) ||
+    String(item.note || "").includes(AUTO_ATTENDANCE_PENALTY_PREFIX)
+  );
+}
+
+function attendancePenaltyAmountHalalas(input: {
+  summary?: PayrollAttendanceSummarySnapshot | null;
+  dailyRateHalalas: number;
+  hourlyRateHalalas: number;
+}) {
+  const summary = input.summary;
+  if (!summary || summary.attendanceDeductionEligible === false) return 0;
+  const missingHours = Math.max(0, Number(summary.totalMissingHours || 0));
+  const absenceDays = Math.max(0, Number(summary.approvedAbsenceDays || 0));
+  return roundHalalas(
+    missingHours * input.hourlyRateHalalas + absenceDays * input.dailyRateHalalas
+  );
+}
+
+function withAttendancePenaltyCarryover(input: {
+  deductions: PayrollManualItem[];
+  sourcePayrollMonth?: string | null;
+  targetPayrollMonth: string;
+  summary?: PayrollAttendanceSummarySnapshot | null;
+  dailyRateHalalas: number;
+  hourlyRateHalalas: number;
+}): PayrollManualItem[] {
+  if (!input.sourcePayrollMonth) return input.deductions;
+  const cleanSourceMonth = text(input.sourcePayrollMonth);
+  const cleaned = input.deductions.filter((item) => !isAutoAttendancePenaltyItem(item));
+  const amountHalalas = attendancePenaltyAmountHalalas({
+    summary: input.summary,
+    dailyRateHalalas: input.dailyRateHalalas,
+    hourlyRateHalalas: input.hourlyRateHalalas,
+  });
+  if (amountHalalas <= 0) return cleaned;
+  return [
+    ...cleaned,
+    {
+      id: autoAttendancePenaltyId(cleanSourceMonth),
+      direction: "deduction" as const,
+      kind: "penalty" as const,
+      amountHalalas,
+      reason: `خصم غياب وتأخير شهر ${cleanSourceMonth}`,
+      note: `${AUTO_ATTENDANCE_PENALTY_PREFIX}: يطبق في مسير ${input.targetPayrollMonth}`,
+      addedAt: new Date().toISOString(),
+      addedBy: "system",
+    },
+  ];
+}
+
 
 function policyMinutes(value: unknown) {
   const number = Number(value);
@@ -930,6 +997,8 @@ function snapshotFromEmployee(input: {
   month: number;
   existing?: PayrollEntryView;
   shiftTemplates?: CoreShiftTemplate[];
+  previousAttendanceSummary?: PayrollAttendanceSummarySnapshot | null;
+  previousPayrollMonth?: string | null;
 }) {
   const workDays = employeeWorkDays(input.employee);
   const monthlyHours = employeeMonthlyHours(input.employee);
@@ -945,19 +1014,42 @@ function snapshotFromEmployee(input: {
       : dailyScheduledHours > 0
         ? "configured_daily_hours"
         : "missing";
+  const baseSalaryHalalas = employeeBaseSalary(input.employee);
+  const calculatedMonthlyHours =
+    monthlyHours > 0
+      ? monthlyHours
+      : workDays > 0 && dailyScheduledHours > 0
+        ? Math.round(workDays * dailyScheduledHours * 100) / 100
+        : 0;
+  const dailyRateHalalas = workDays > 0 ? roundHalalas(baseSalaryHalalas / workDays) : 0;
+  const hourlyRateHalalas =
+    calculatedMonthlyHours > 0
+      ? roundHalalas(baseSalaryHalalas / calculatedMonthlyHours)
+      : dailyScheduledHours > 0
+        ? roundHalalas(dailyRateHalalas / dailyScheduledHours)
+        : 0;
+  const targetPayrollMonth = payrollMonthKey(input.year, input.month);
+  const deductions = withAttendancePenaltyCarryover({
+    deductions: input.existing?.deductions || [],
+    sourcePayrollMonth: input.previousPayrollMonth,
+    targetPayrollMonth,
+    summary: input.previousAttendanceSummary,
+    dailyRateHalalas,
+    hourlyRateHalalas,
+  });
   const next = calculatePayrollSnapshot({
     employeeId: input.employee.id,
     employeeName: input.employee.name,
     jobTitle: employeeJobTitle(input.employee),
-    payrollMonth: payrollMonthKey(input.year, input.month),
-    baseSalaryHalalas: employeeBaseSalary(input.employee),
+    payrollMonth: targetPayrollMonth,
+    baseSalaryHalalas,
     allowancesHalalas: employeeAllowances(input.employee),
     workDays,
     monthlyHours,
     dailyScheduledHours,
     attendanceSummary: input.attendanceSummary,
     additions: input.existing?.additions || [],
-    deductions: input.existing?.deductions || [],
+    deductions,
     overtimeEnabled: employeePayrollOvertimeEnabled(input.employee),
     overtimeMultiplier: employeeOvertimeMultiplier(input.employee),
     monthlyHoursSource,
@@ -1204,6 +1296,12 @@ export async function generatePayrollEntries(input: {
   const periodAttendanceRecords = attendance.filter((record) =>
     isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
   );
+  const previousMonth = previousPayrollMonth(input.year, input.month);
+  const previousBounds = payrollMonthBounds(previousMonth.year, previousMonth.month);
+  const previousPayrollMonthKey = previousBounds.payrollMonth;
+  const previousPeriodAttendanceRecords = attendance.filter((record) =>
+    isDateKeyInRange(record.dateKey, previousBounds.monthStart, previousBounds.monthEnd)
+  );
 
   const generated = employees
     .filter((employee) => !input.employeeId || employee.id === input.employeeId)
@@ -1225,6 +1323,18 @@ export async function generatePayrollEntries(input: {
         month: input.month,
         shiftTemplates,
       });
+      const previousEmployeeRecords = previousPeriodAttendanceRecords.filter((record) =>
+        attendanceRecordMatchesEmployee(record, employeeWithCoreShifts)
+      );
+      const previousAttendanceSnapshot = buildPayrollAttendanceSummaryForEmployee({
+        employee: employeeWithCoreShifts,
+        records: previousEmployeeRecords,
+        leaves,
+        absences,
+        year: previousMonth.year,
+        month: previousMonth.month,
+        shiftTemplates,
+      });
       return snapshotFromEmployee({
         employee: employeeWithCoreShifts,
         attendanceSummary: attendanceSnapshot.summary,
@@ -1232,6 +1342,8 @@ export async function generatePayrollEntries(input: {
         month: input.month,
         existing: existingMap.get(employee.id),
         shiftTemplates,
+        previousAttendanceSummary: previousAttendanceSnapshot.summary,
+        previousPayrollMonth: previousPayrollMonthKey,
       });
     })
     .filter((entry) => !input.status || entry.status === input.status);

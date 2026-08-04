@@ -1,17 +1,19 @@
-﻿
+
+function padPayrollDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
 export function payrollMonthBounds(year: number, month: number) {
   const normalizedMonth = Math.max(1, Math.min(12, Math.trunc(Number(month) || 1)));
   const payYear = Math.trunc(Number(year) || new Date().getFullYear());
+  const lastDay = new Date(Date.UTC(payYear, normalizedMonth, 0)).getUTCDate();
+  const safePayDay = Math.min(28, lastDay);
 
-  const currentMonth = String(normalizedMonth).padStart(2, "0");
-  const previousMonthDate = new Date(Date.UTC(payYear, normalizedMonth - 2, 1));
-  const previousYear = previousMonthDate.getUTCFullYear();
-  const previousMonth = String(previousMonthDate.getUTCMonth() + 1).padStart(2, "0");
-
-  const periodStart = `${previousYear}-${previousMonth}-21`;
-  const periodEnd = `${payYear}-${currentMonth}-20`;
+  const currentMonth = padPayrollDatePart(normalizedMonth);
+  const periodStart = `${payYear}-${currentMonth}-01`;
+  const periodEnd = `${payYear}-${currentMonth}-${padPayrollDatePart(lastDay)}`;
   const payrollMonth = `${payYear}-${currentMonth}`;
-  const payDate = `${payYear}-${currentMonth}-28`;
+  const payDate = `${payYear}-${currentMonth}-${padPayrollDatePart(safePayDay)}`;
 
   return {
     payrollMonth,
@@ -150,6 +152,9 @@ export const ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE =
 
 export const ATTENDANCE_UNCONFIRMED_REPORT_NOTE =
   "الحضور غير مربوط/غير مؤكد، لم يتم تطبيق خصم حضور تلقائي.";
+
+export const ATTENDANCE_DEDUCTION_DEFERRED_NOTE =
+  "تقرير الغياب والتأخير لهذا الشهر معلوماتي فقط، ويطبق خصمه في مسير الشهر التالي.";
 
 function money(value: unknown) {
   const number = Number(value ?? 0);
@@ -301,9 +306,16 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
       (attendanceDeductionEligible ? "confirmed" : "unlinked"),
     attendanceDeductionEligible,
     attendanceDeductionNote,
-    attendanceNotes: Array.isArray(input.attendanceSummary.attendanceNotes)
-      ? input.attendanceSummary.attendanceNotes.map((item) => String(item || "").trim()).filter(Boolean)
-      : [],
+    attendanceNotes: Array.from(
+      new Set([
+        ...(Array.isArray(input.attendanceSummary.attendanceNotes)
+          ? input.attendanceSummary.attendanceNotes
+              .map((item) => String(item || "").trim())
+              .filter(Boolean)
+          : []),
+        ATTENDANCE_DEDUCTION_DEFERRED_NOTE,
+      ])
+    ),
   };
 
   const additions = (input.additions || []).map((item) => ({
@@ -329,14 +341,10 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     .filter((item) => item.kind === "advance")
     .reduce((total, item) => total + money(item.amountHalalas), 0);
 
-  const missingHoursDeductionHalalas =
-    attendanceDeductionEligible
-      ? roundHalalas(attendanceSummary.totalMissingHours * hourlyRateHalalas)
-      : 0;
-  const absenceDeductionHalalas =
-    payrollSetup.complete && dailyRateHalalas > 0
-      ? roundHalalas((attendanceSummary.approvedAbsenceDays || 0) * dailyRateHalalas)
-      : 0;
+  // الحضور في شهر المسير الحالي لا يخصم مباشرة.
+  // الغياب والتأخير يخرجان كتقرير انضباط، ثم يرحّل خصمهما إلى مسير الشهر التالي.
+  const missingHoursDeductionHalalas = 0;
+  const absenceDeductionHalalas = 0;
   const detectedExtraHours = attendanceSummary.totalExtraHours;
   const overtimeEnabled =
     input.overtimeEnabled === true &&
