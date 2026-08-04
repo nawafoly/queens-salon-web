@@ -9,12 +9,11 @@ import {
 } from "../../services/employeeHub";
 import {
   DashboardFieldV2,
-  DashboardSelectV2,
+  DashboardSkeletonV2,
 } from "../../components/dashboard-v2";
 import {
   WorkspaceCardV2,
   WorkspaceNoticeV2,
-  WorkspaceStateShowcaseV2,
   WorkspaceStatusBadgeV2,
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
@@ -100,7 +99,6 @@ export default function EmployeeMessagesSection({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [draft, setDraft] = useState("");
-  const [viewState, setViewState] = useState("ready");
   const [failed, setFailed] = useState(false);
 
   const targetUid = cleanText(employeeUid || employeeId);
@@ -122,7 +120,6 @@ export default function EmployeeMessagesSection({
         .filter((item) => messageMatchesEmployee(item, employeeKeys))
         .sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt));
       setRows(visible);
-      setViewState(visible.length ? "ready" : "empty");
 
       const reader = cleanText(viewerUid);
       const conversationIds = Array.from(new Set(visible.map((item) => cleanText(item.conversationId)).filter(Boolean)));
@@ -131,9 +128,7 @@ export default function EmployeeMessagesSection({
       }
     } catch (err) {
       console.warn("employee messages load failed", err);
-      setRows([]);
       setError("تعذر تحميل رسائل الموظفة.");
-      setViewState("error");
     } finally {
       setLoading(false);
     }
@@ -226,55 +221,59 @@ export default function EmployeeMessagesSection({
 
   if (!isVisible) return null;
 
-  const effectiveState = loading ? "loading" : error && viewState === "error" ? "error" : viewState;
+  const state: "loading" | "error" | "empty" | "ready" = loading && !rows.length
+    ? "loading"
+    : error && !rows.length
+      ? "error"
+      : rows.length
+        ? "ready"
+        : "empty";
+  const stateLabel = state === "loading"
+    ? "جاري التحميل"
+    : state === "error"
+      ? "تعذر التحميل"
+      : state === "ready"
+        ? "محادثة موجودة"
+        : "لا توجد رسائل";
 
   return (
     <div className="dsv2-ew-tab-panel dsv2-ew-messages-live" data-dsv2-ignore-dirty="true">
       <WorkspaceTabHeaderV2
         title="الرسائل"
         description="محادثة داخلية كاملة بحالة الموظفة والقراءة والمرفقات وإعادة محاولة الإرسال."
-        badge={<WorkspaceStatusBadgeV2 tone={unreadCount ? "gold" : "success"}>{unreadCount ? `${unreadCount} غير مقروءة` : "جاهزة"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={unreadCount ? "gold" : state === "error" ? "danger" : "success"}>{unreadCount ? `${unreadCount} غير مقروءة` : stateLabel}</WorkspaceStatusBadgeV2>}
       />
 
-      {error ? <WorkspaceNoticeV2 title="تعذر تنفيذ العملية" description={error} tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
+      {error && rows.length ? <WorkspaceNoticeV2 title="تعذر تحديث المحادثة" description="احتفظنا بالرسائل الحالية. أعد المحاولة بعد التحقق من الاتصال." tone="danger" action={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>} /> : null}
       {message ? <WorkspaceNoticeV2 title="تم تحديث المحادثة" description={message} tone="success" /> : null}
 
-      <WorkspaceCardV2 title="حالة المحادثة" description="تبديل حالة العرض ومراجعة آخر قراءة دون مغادرة ملف الموظفة.">
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-          <DashboardFieldV2 id="employee-message-state" label="حالة العرض">
-            <DashboardSelectV2
-              id="employee-message-state"
-              value={effectiveState === "error" ? "ready" : effectiveState}
-              options={[
-                { value: "ready", label: "محادثة موجودة" },
-                { value: "empty", label: "لا توجد رسائل" },
-                { value: "loading", label: "تحميل" },
-              ]}
-              onChange={(value) => setViewState(value)}
-            />
-          </DashboardFieldV2>
-          <div className="dsv2-ew-conversation-status">
-            <span className="dsv2-ew-presence" aria-hidden="true" />
-            <div>
-              <strong>{targetName}</strong>
-              <small>{lastMessage ? `آخر رسالة ${formatMessageTime(lastMessage.createdAt)}` : targetUid || "لا توجد رسائل بعد"}</small>
-            </div>
+      <WorkspaceCardV2 title="حالة المحادثة" description="تظهر تلقائيًا حسب تحميل البيانات ووجود الرسائل.">
+        <div className="dsv2-ew-conversation-status dsv2-ew-conversation-status--single">
+          <span className="dsv2-ew-presence" aria-hidden="true" data-state={state} />
+          <div>
+            <strong>{targetName}</strong>
+            <small>{lastMessage ? `آخر رسالة ${formatMessageTime(lastMessage.createdAt)}` : targetUid || "لا توجد رسائل بعد"}</small>
           </div>
+          <WorkspaceStatusBadgeV2 tone={state === "error" ? "danger" : state === "loading" ? "gold" : rows.length ? "success" : "default"}>{stateLabel}</WorkspaceStatusBadgeV2>
         </div>
       </WorkspaceCardV2>
 
-      {effectiveState === "loading" ? (
+      {state === "loading" ? (
         <WorkspaceCardV2 title="المحادثة الداخلية" description="جاري تحميل رسائل الموظفة وسجل القراءة.">
-          <WorkspaceStateShowcaseV2 compact />
+          <article className="dsv2-ew-skeleton dsv2-ew-chat-loading" aria-label="جاري تحميل رسائل الموظفة">
+            <DashboardSkeletonV2 variant="title" width="44%" />
+            <DashboardSkeletonV2 lines={3} />
+            <DashboardSkeletonV2 variant="block" height={92} />
+          </article>
         </WorkspaceCardV2>
-      ) : effectiveState === "error" ? (
+      ) : state === "error" ? (
         <WorkspaceNoticeV2
           title="تعذر تحميل المحادثة"
-          description="لم يتم تحميل الرسائل الحالية. أعد المحاولة بدون تغيير بيانات الموظفة."
+          description="احتفظنا بالرسائل الحالية إن وجدت. أعد المحاولة بعد التحقق من الاتصال."
           tone="danger"
           action={<button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void load()}>إعادة المحاولة</button>}
         />
-      ) : effectiveState === "empty" || !rows.length ? (
+      ) : state === "empty" ? (
         <WorkspaceCardV2 title="المحادثة الداخلية" description="الرسائل محفوظة ضمن ملف الموظفة وسجل الإدارة." className="dsv2-ew-chat-card">
           <div className="dsv2-ew-chat-head">
             <div className="dsv2-ew-chat-avatar">{initials(targetName)}</div>
@@ -284,6 +283,7 @@ export default function EmployeeMessagesSection({
           <div className="dsv2-ew-inline-empty dsv2-ew-inline-empty--large">
             <strong>لا توجد رسائل بعد</strong>
             <span>ابدأ محادثة داخلية لتظهر هنا مع حالة القراءة والوقت.</span>
+            <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" onClick={() => document.getElementById("employee-message-input")?.focus()}>بدء محادثة</button>
           </div>
         </WorkspaceCardV2>
       ) : (
@@ -291,7 +291,7 @@ export default function EmployeeMessagesSection({
           <div className="dsv2-ew-chat-head">
             <div className="dsv2-ew-chat-avatar">{initials(targetName)}</div>
             <div><strong>{targetName}</strong><span>{targetUid}</span></div>
-            <WorkspaceStatusBadgeV2 tone="success">نشطة</WorkspaceStatusBadgeV2>
+            <WorkspaceStatusBadgeV2 tone="success">متصلة</WorkspaceStatusBadgeV2>
           </div>
           <div className="dsv2-ew-messages" aria-live="polite">
             {rows.map((item) => {
