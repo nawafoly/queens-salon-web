@@ -22,6 +22,52 @@ function formatNumber(value: unknown) {
   return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
 }
 
+function normalizeMonthInput(value: string) {
+  return value.replace(/[^0-9-]/g, "").slice(0, 7);
+}
+
+function safeMonthKey(value: string) {
+  const clean = cleanText(value);
+  return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
+}
+
+const AR_WEEKDAY_SHORT = ["ح", "ن", "ث", "ر", "خ", "ج", "س"];
+
+type AttendanceCalendarDayLiveV2 = {
+  date: string;
+  dayNumber: number;
+  status: string;
+  timeLabel: string;
+  row?: EmployeeAttendanceRowLiveV2;
+};
+
+function buildAttendanceCalendar(monthKey: string, rows: EmployeeAttendanceRowLiveV2[]): AttendanceCalendarDayLiveV2[] {
+  const normalized = safeMonthKey(monthKey);
+  const year = Number(normalized.slice(0, 4));
+  const month = Number(normalized.slice(5, 7));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const byDate = new Map<string, EmployeeAttendanceRowLiveV2>();
+  rows.forEach((row) => {
+    const date = cleanText(row.date);
+    if (date) byDate.set(date, row);
+  });
+
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const dayNumber = index + 1;
+    const date = `${normalized}-${String(dayNumber).padStart(2, "0")}`;
+    const row = byDate.get(date);
+    const checkIn = cleanText(row?.checkInAtClient);
+    const checkOut = cleanText(row?.checkOutAtClient);
+    return {
+      date,
+      dayNumber,
+      row,
+      status: cleanText(row?.status) || (row ? "حضور" : "—"),
+      timeLabel: [checkIn, checkOut].filter(Boolean).join(" → ") || "لا توجد بصمة",
+    };
+  });
+}
+
 type WorkingDayLiveV2 = {
   key: string;
   label: string;
@@ -254,6 +300,8 @@ export function EmployeeAttendanceTabLiveV2({
   onEditPunch,
   onDeletePunch,
 }: EmployeeAttendanceTabLiveV2Props) {
+  const normalizedMonth = safeMonthKey(monthKey);
+  const calendarDays = buildAttendanceCalendar(normalizedMonth, rows);
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
 
@@ -266,31 +314,61 @@ export function EmployeeAttendanceTabLiveV2({
       />
 
       <div className="dsv2-ew-metrics">
-        <WorkspaceMetricV2 label="أيام الشهر" value={rows.length} />
+        <WorkspaceMetricV2 label="أيام الشهر" value={calendarDays.length} />
         <WorkspaceMetricV2 label="أيام عليها بصمة" value={presentRows} tone="success" />
         <WorkspaceMetricV2 label="دقائق التأخير" value={lateTotal} tone={lateTotal ? "gold" : "neutral"} />
         <WorkspaceMetricV2 label="اليوم المحدد" value={selectedDate || "-"} />
       </div>
 
       <WorkspaceCardV2
-        title="فلاتر الحضور"
-        description="الشهر واليوم المحدد وإعادة التحميل."
+        title="جدول الحضور الشهري"
+        description="عرض سريع لكل أيام الشهر، مع تمييز اليوم المحدد وحالة البصمة."
         actions={<button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={loading} onClick={onReload}>تحديث</button>}
+      >
+        <div className="dsv2-ew-calendar-head" aria-hidden="true">
+          {AR_WEEKDAY_SHORT.map((day) => <span key={day}>{day}</span>)}
+        </div>
+        <div className="dsv2-ew-calendar dsv2-ew-attendance-month-grid">
+          {calendarDays.map((day) => (
+            <button
+              key={day.date}
+              type="button"
+              className="dsv2-ew-calendar__day"
+              data-status={day.status}
+              data-selected={selectedDate === day.date ? "true" : "false"}
+              onClick={() => onSelectedDateChange(day.date)}
+            >
+              <strong>{day.dayNumber}</strong>
+              <span>{day.status === "—" ? "لا يوجد" : day.status}</span>
+              <small>{day.timeLabel}</small>
+            </button>
+          ))}
+        </div>
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="فلاتر الحضور"
+        description="اكتب الشهر بصيغة 2026-08 وحدد اليوم المطلوب."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
           <DashboardFieldV2 id="employee-live-v2-attendance-month" label="الشهر">
             <input
               id="employee-live-v2-attendance-month"
-              className="dsv2-input"
-              type="month"
+              className="dsv2-input dsv2-ew-attendance-month-input"
+              type="text"
+              inputMode="numeric"
+              dir="ltr"
+              placeholder="2026-08"
               value={monthKey}
-              onChange={(event) => onMonthChange(event.target.value)}
+              disabled={readOnly || loading}
+              onChange={(event) => onMonthChange(normalizeMonthInput(event.target.value))}
             />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-attendance-date" label="اليوم">
             <DashboardDatePickerV2
               id="employee-live-v2-attendance-date"
               value={selectedDate}
+              disabled={readOnly || loading}
               clearable
               onChange={onSelectedDateChange}
             />
@@ -298,7 +376,7 @@ export function EmployeeAttendanceTabLiveV2({
         </div>
       </WorkspaceCardV2>
 
-      <WorkspaceCardV2 title="سجل الشهر" description="آخر السجلات المحملة للموظفة.">
+      <WorkspaceCardV2 title="سجل الشهر" description="السجلات المحملة للموظفة في الشهر الحالي.">
         <WorkspaceTableV2
           headers={["اليوم", "الحالة", "الحضور", "الانصراف", "التأخير", "إجراء"]}
           rows={rows.map((row) => {
