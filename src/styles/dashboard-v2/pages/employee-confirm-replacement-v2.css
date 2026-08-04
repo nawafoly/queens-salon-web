@@ -1,0 +1,82 @@
+.dsv2-native-confirm-replacement {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  direction: rtl;
+  font-family: inherit;
+}
+
+.dsv2-native-confirm-replacement__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(5 8 13 / 46%);
+  backdrop-filter: blur(8px);
+}
+
+.dsv2-native-confirm-replacement__dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px 16px;
+  inline-size: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--dsv2-color-burgundy, #59041b) 26%, transparent);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgb(5 8 13 / 26%);
+}
+
+.dsv2-native-confirm-replacement__icon {
+  display: grid;
+  place-items: center;
+  inline-size: 48px;
+  block-size: 48px;
+  border-radius: 16px;
+  background: var(--dsv2-ew-danger-soft, #fff0f3);
+  color: var(--dsv2-color-burgundy, #59041b);
+  font-weight: 950;
+  font-size: 1.35rem;
+}
+
+.dsv2-native-confirm-replacement__copy {
+  min-width: 0;
+}
+
+.dsv2-native-confirm-replacement__copy strong {
+  display: block;
+  margin: 0;
+  color: var(--dsv2-color-black, #05080d);
+  font-size: 1.08rem;
+  font-weight: 950;
+}
+
+.dsv2-native-confirm-replacement__copy p {
+  margin: 7px 0 0;
+  color: #555d68;
+  line-height: 1.8;
+  font-size: 0.92rem;
+}
+
+.dsv2-native-confirm-replacement__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-block-start: 8px;
+}
+
+@media (max-width: 620px) {
+  .dsv2-native-confirm-replacement__dialog {
+    grid-template-columns: 1fr;
+  }
+
+  .dsv2-native-confirm-replacement__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
