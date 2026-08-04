@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState, type SyntheticEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
@@ -7,10 +8,31 @@ import {
   WorkspaceStatusBadgeV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import "../../styles/dashboard-v2/pages/employee-workspace.css";
+import "../../styles/dashboard-v2/pages/employee-workspace-review-fixes-v2.css";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    setIsDirty(false);
+  }, [props.editId]);
+
+  useEffect(() => {
+    if (props.saving) setIsDirty(false);
+  }, [props.saving]);
+
+  const markDirty = useCallback(
+    (event: SyntheticEvent<HTMLElement>) => {
+      if (!props.canManage || props.saving) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("[data-dsv2-ignore-dirty='true']")) return;
+      setIsDirty(true);
+    },
+    [props.canManage, props.saving]
+  );
+
   if (!props.isOpen || !props.editId || !props.editingStaff) return null;
 
   const employeeName = String(props.editingStaff.name || props.name || "").trim();
@@ -19,6 +41,16 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
   const activeTab = tabs.find((tab) => tab.key === props.activeTab);
   const activeLabel = activeTab?.label || "البيانات الأساسية";
   const activeHint = activeTab?.hint || "إدارة بيانات الموظفة";
+  const showSavebar = props.saving || isDirty;
+
+  const handleCancel = () => {
+    setIsDirty(false);
+    (props.onCancelEdit || props.onClose)?.();
+  };
+
+  const handleSave = () => {
+    props.onSave?.();
+  };
 
   return (
     <section
@@ -127,39 +159,29 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
       </div>
 
       <main className="dsv2-ew-content" aria-label={activeLabel}>
-        <article className="dsv2-card dsv2-card--padded dsv2-ew-card employees-v2-profile__content">
-          <header className="dsv2-section-head dsv2-ew-card__head">
-            <div>
-              <span className="dsv2-ew-tab-head__eyebrow">إدارة فعلية</span>
-              <h3 className="dsv2-section-title dsv2-ew-card__title">{activeLabel}</h3>
-              <p className="dsv2-section-caption">{activeHint}</p>
-            </div>
-            <WorkspaceStatusBadgeV2 tone={props.canManage ? "gold" : "default"}>
-              {props.canManage ? "قابل للتعديل" : "عرض فقط"}
-            </WorkspaceStatusBadgeV2>
-          </header>
-
-          <fieldset
-            className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
-            disabled={!props.canManage}
+        <fieldset
+          className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
+          disabled={!props.canManage}
+          onInputCapture={markDirty}
+          onChangeCapture={markDirty}
+          onClickCapture={markDirty}
+        >
+          <div
+            className="employees-v2-profile__body"
+            data-section-label={activeLabel}
+            data-section-hint={activeHint}
           >
-            <div
-              className="dsv2-ew-card__body employees-v2-profile__body"
-              data-section-label={activeLabel}
-              data-section-hint={activeHint}
-            >
-              {props.children}
-            </div>
-          </fieldset>
-        </article>
+            {props.children}
+          </div>
+        </fieldset>
       </main>
 
-      <footer className="dsv2-ew-savebar" data-dirty={props.saving ? "true" : "false"}>
+      <footer className="dsv2-ew-savebar" data-dirty={showSavebar ? "true" : "false"}>
         <div className="dsv2-ew-savebar__status">
           <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
           <div>
-            <strong>{props.saving ? "جاري حفظ التغييرات" : props.canManage ? "ملف الموظفة جاهز للحفظ" : "وضع العرض فقط"}</strong>
-            <small>{props.saving ? "لا تغلق الصفحة حتى يكتمل الحفظ." : "جميع الوظائف والبيانات الحالية محفوظة داخل الصفحة الفعلية."}</small>
+            <strong>{props.saving ? "جاري حفظ التغييرات" : "توجد تغييرات غير محفوظة"}</strong>
+            <small>{props.saving ? "لا تغلق الصفحة حتى يكتمل الحفظ." : "احفظ التغييرات أو ألغها قبل الخروج من الملف."}</small>
           </div>
         </div>
 
@@ -170,6 +192,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
               type="button"
               onClick={props.onDelete}
               disabled={props.busy}
+              data-dsv2-ignore-dirty="true"
             >
               <FontAwesomeIcon icon={faTrash} />
               أرشفة الموظفة
@@ -179,8 +202,9 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
           <button
             className="dsv2-btn dsv2-btn--secondary"
             type="button"
-            onClick={props.onCancelEdit || props.onClose}
+            onClick={handleCancel}
             disabled={props.busy}
+            data-dsv2-ignore-dirty="true"
           >
             إلغاء التعديلات
           </button>
@@ -189,8 +213,9 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
             <button
               className="dsv2-btn dsv2-btn--primary"
               type="button"
-              onClick={props.onSave}
+              onClick={handleSave}
               disabled={props.busy}
+              data-dsv2-ignore-dirty="true"
             >
               {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
             </button>
