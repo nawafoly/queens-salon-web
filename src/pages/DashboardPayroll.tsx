@@ -224,14 +224,26 @@ function attendanceLinkLabel(entry: PayrollEntryView) {
   return "غير مربوط";
 }
 
-function attendanceDeductionAmount(entry: PayrollEntryView) {
-  return Number(entry.absenceDeductionHalalas || 0) + Number(entry.missingHoursDeductionHalalas || 0);
+function attendanceCarryoverDeductions(entry: PayrollEntryView) {
+  return entry.deductions.filter((item) =>
+    String(item.id || "").startsWith("attendance_penalty_carryover") ||
+    String(item.note || "").includes("attendance_penalty_carryover")
+  );
+}
+
+function attendanceCarryoverDeductionAmount(entry: PayrollEntryView) {
+  return attendanceCarryoverDeductions(entry).reduce((total, item) => total + Number(item.amountHalalas || 0), 0);
 }
 
 function formatAttendanceDeduction(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) return UNDEFINED_VALUE_LABEL;
   if (attendanceDeductionBlocked(entry)) return "لم يطبق";
-  return formatPayrollMoney(attendanceDeductionAmount(entry));
+  return "مؤجل للشهر القادم";
+}
+
+function formatPreviousAttendanceDeduction(entry: PayrollEntryView) {
+  const amount = attendanceCarryoverDeductionAmount(entry);
+  return amount > 0 ? formatPayrollMoney(amount) : "لا يوجد";
 }
 
 function hasManualAdjustments(entry: PayrollEntryView) {
@@ -929,7 +941,7 @@ export default function DashboardPayroll() {
                       <span>انصراف {formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</span>
                       <span>نقص {formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</span>
                     </div>
-                    <small className="payroll-attendance-note">خصم الحضور والتأخير يطبق داخل نفس مسير هذا الشهر.</small>
+                    <small className="payroll-attendance-note">تقرير هذا الشهر فقط؛ الخصم يرحل لمسير الشهر القادم.</small>
                   </td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
                   <td>
@@ -947,7 +959,10 @@ export default function DashboardPayroll() {
                   <td>{formatPayrollMoney(entry.totalAdditionsHalalas)}</td>
                   <td>
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
-                    <small className="payroll-attendance-note">خصم حضور هذا الشهر: {formatAttendanceDeduction(entry)}</small>
+                    <small className="payroll-attendance-note">خصم حضور هذا الشهر: مؤجل</small>
+                    {attendanceCarryoverDeductionAmount(entry) > 0 ? (
+                      <small className="payroll-attendance-note">خصم حضور مرحّل: {formatPayrollMoney(attendanceCarryoverDeductionAmount(entry))}</small>
+                    ) : null}
                   </td>
                   <td className="payroll-net-cell">
                     <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
@@ -1179,6 +1194,7 @@ function PayrollDetailsModal({
             <h3>الخصومات</h3>
             <dl>
               <div><dt>خصم حضور هذا الشهر</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>خصم حضور الشهر السابق</dt><dd>{formatPreviousAttendanceDeduction(entry)}</dd></div>
               <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
               <div><dt>خصومات يدوية وجزاءات</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
               <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>
