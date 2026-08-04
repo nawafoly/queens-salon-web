@@ -1,0 +1,87 @@
+/* Review fixes for live Employee Workspace V2. Scoped only to Dashboard V2 employee pages. */
+.dashboard-v2 .dsv2-employee-workspace {
+  background: transparent;
+  gap: 18px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-content {
+  background: transparent;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__fieldset {
+  display: grid;
+  gap: var(--dsv2-section-gap, 24px);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__body {
+  display: grid;
+  gap: var(--dsv2-section-gap, 24px);
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .employees-v2-profile__body > .dsv2-ew-tab-panel {
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar {
+  display: none;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar[data-dirty="true"] {
+  display: flex;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-input {
+  direction: ltr;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
+  min-height: 92px;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day[data-selected="true"] {
+  border-color: var(--dsv2-color-black, #05080d);
+  box-shadow: inset 0 0 0 2px var(--dsv2-color-black, #05080d);
+}
+
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day small {
+  color: var(--dsv2-ew-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head > div {
+  align-content: start;
+  justify-items: start;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head strong,
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head span {
+  display: block;
+}
+
+.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-clear {
+  appearance: none;
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+@media (max-width: 767px) {
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-savebar[data-dirty="true"] {
+    display: grid;
+  }
+
+  .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-attendance-month-grid .dsv2-ew-calendar__day {
+    min-height: 70px;
+  }
+}
