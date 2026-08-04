@@ -29,7 +29,7 @@ import {
   getLeaveEntryCreatedAt,
   isDeletedLeaveEntry,
 } from "../../services/firestoreLeaveBalance";
-import type { StaffOvertimeHoursBasis, StaffPayrollMethod } from "../../helpers/staffPayroll";
+import type { StaffOvertimeHoursBasis } from "../../helpers/staffPayroll";
 
 type PayrollSummary = {
   salaryAmount?: number;
@@ -71,6 +71,8 @@ type PayrollSetupPreview = {
   missing: string[];
 };
 
+type PayrollDeductionMethodLiveV2 = "hourly" | "daily";
+
 type EmployeeStatsSectionProps = {
   isVisible: boolean;
   busy: boolean;
@@ -89,7 +91,7 @@ type EmployeeStatsSectionProps = {
     monthlyHours: string;
     overtimeEnabled: boolean;
     overtimeMultiplier: string;
-    deductionMethod: StaffPayrollMethod;
+    deductionMethod: PayrollDeductionMethodLiveV2;
     summary: PayrollSummary;
     setupPreview: PayrollSetupPreview;
     savingSettings: boolean;
@@ -100,7 +102,7 @@ type EmployeeStatsSectionProps = {
     onMonthlyHoursChange: (value: string) => void;
     onOvertimeEnabledChange: (value: boolean) => void;
     onOvertimeMultiplierChange: (value: string) => void;
-    onDeductionMethodChange: (value: StaffPayrollMethod) => void;
+    onDeductionMethodChange: (value: PayrollDeductionMethodLiveV2) => void;
     onSaveSettings: () => void;
   };
   leave: {
