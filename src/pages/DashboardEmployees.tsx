@@ -86,7 +86,9 @@ import {
 } from "../services/firestoreBookings";
 import {
   buildApprovedLeaveDateKeys,
+  buildAttendanceSpecialDayMap,
   leaveRequestMatchesProfile,
+  type AttendanceSpecialDay,
 } from "../helpers/hr/attendanceCalendarData";
 import {
   appendDateEffectiveScheduleVersion,
@@ -4508,12 +4510,41 @@ export default function DashboardEmployees() {
     editingStaff || selectedEmployee,
     selectedEmployeeId || ""
   );
-  const selectedEmployeeApprovedLeaveDateKeys = buildApprovedLeaveDateKeys({
-    profile: editingStaff || selectedEmployee,
-    leaveRequests: selectedEmployeeLeaveRequests,
-    extraIds: selectedAttendanceIdentity.allIds,
-    todayDateKey: todayIso(),
-  });
+  const selectedAttendanceIdentityKey = selectedAttendanceIdentity.allIds.join("|");
+  const selectedEmployeeSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    const profile = editingStaff || selectedEmployee;
+    if (!profile) return [];
+    const cleanMonth = /^\d{4}-\d{2}$/.test(employeeAttendanceMonth)
+      ? employeeAttendanceMonth
+      : todayIso().slice(0, 7);
+    const fromDate = `${cleanMonth}-01`;
+    const toDate = new Date(
+      Date.UTC(Number(cleanMonth.slice(0, 4)), Number(cleanMonth.slice(5, 7)), 0)
+    ).toISOString().slice(0, 10);
+
+    return Array.from(buildAttendanceSpecialDayMap({
+      profile,
+      leaveRequests: selectedEmployeeLeaveRequests,
+      leaveEntries: modalLeaveEntries as any[],
+      extraIds: selectedAttendanceIdentity.allIds,
+      fromDate,
+      toDate,
+      todayDateKey: todayIso(),
+    }).values()).sort((left, right) => left.date.localeCompare(right.date));
+  }, [
+    editingStaff,
+    employeeAttendanceMonth,
+    modalLeaveEntries,
+    selectedAttendanceIdentityKey,
+    selectedEmployee,
+    selectedEmployeeLeaveRequests,
+  ]);
+  const selectedEmployeeApprovedLeaveDateKeys = useMemo(
+    () => selectedEmployeeSpecialDays
+      .filter((day) => day.kind === "leave" || day.kind === "rest")
+      .map((day) => day.date),
+    [selectedEmployeeSpecialDays]
+  );
   const EmployeeEditorSurface = editingStaff ? EmployeeProfilePageLayout : EmployeeEditorModal;
 
   return (
@@ -4756,23 +4787,8 @@ export default function DashboardEmployees() {
                 salonBusinessHours={((appSettings as any)?.booking || {})?.businessHours || null}
                 employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
                 employeeIds={selectedAttendanceIdentity.allIds}
-                approvedLeaveDateKeys={Array.from(new Set([
-                  ...selectedEmployeeApprovedLeaveDateKeys,
-                  ...modalLeaveEntries.flatMap((entry: any) => {
-                    const status = String(entry?.status || entry?.state || "approved").trim().toLowerCase();
-                    if (status && !["approved", "معتمد"].includes(status)) return [];
-                    const from = normalizeLeaveUntil(entry?.fromDate || entry?.startDate || entry?.date || entry?.dateKey);
-                    const to = normalizeLeaveUntil(entry?.toDate || entry?.endDate || entry?.until || entry?.date || entry?.dateKey) || from;
-                    if (!from || !to) return [];
-                    const dates: string[] = [];
-                    let cursor = from;
-                    while (cursor && cursor <= to) {
-                      dates.push(cursor);
-                      cursor = addDaysIso(cursor, 1);
-                    }
-                    return dates;
-                  }),
-                ]))}
+                approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
+                specialDays={selectedEmployeeSpecialDays}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
                 canReview={canViewAttendance}

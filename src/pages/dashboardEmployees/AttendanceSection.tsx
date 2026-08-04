@@ -9,6 +9,7 @@ import {
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
 import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
+import type { AttendanceSpecialDay } from "../../helpers/hr/attendanceCalendarData";
 import {
   EmployeeAttendanceTabLiveV2,
   type EmployeeAttendanceRowLiveV2,
@@ -17,6 +18,7 @@ import {
 
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
+const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
 
 type AttendanceSectionProps = {
   isVisible: boolean;
@@ -30,6 +32,7 @@ type AttendanceSectionProps = {
   employeeId?: string;
   employeeIds?: string[];
   approvedLeaveDateKeys?: string[];
+  specialDays?: AttendanceSpecialDay[];
   canEdit?: boolean;
   canDelete?: boolean;
   canReview?: boolean;
@@ -236,6 +239,19 @@ function resolvedShiftRecord(record: Record<string, unknown>) {
   return record.resolvedShift && typeof record.resolvedShift === "object"
     ? (record.resolvedShift as Record<string, unknown>)
     : {};
+}
+
+function isResolvedShiftOff(value?: Record<string, unknown> | CoreResolvedShift | null) {
+  const row = value || {};
+  return cleanText((row as Record<string, unknown>).exceptionType || (row as Record<string, unknown>).exception_type).toLowerCase() === "off";
+}
+
+function specialDayPriority(day?: AttendanceSpecialDay | null) {
+  if (!day) return 0;
+  if (day.kind === "leave" || day.kind === "rest") return 40;
+  if (day.kind === "exception_off") return 30;
+  if (day.kind === "weekly_off") return 20;
+  return 0;
 }
 
 function resolveRecordShiftSchedule(record: Record<string, unknown>): ShiftSchedule | null {
@@ -498,11 +514,21 @@ function resolveSelectedShiftInfo(input: {
   schedule?: Record<string, unknown> | null;
   salonBusinessHours?: Record<string, unknown> | null;
   approvedLeaveDateKeys: string[];
+  specialDay?: AttendanceSpecialDay | null;
   coreResolvedShift?: CoreResolvedShift | null;
   coreLoading: boolean;
   coreError: string;
 }): EmployeeAttendanceShiftInfoLiveV2 {
-  const { dateKey, row, schedule, salonBusinessHours, approvedLeaveDateKeys, coreResolvedShift, coreLoading, coreError } = input;
+  const { dateKey, row, schedule, salonBusinessHours, approvedLeaveDateKeys, specialDay, coreResolvedShift, coreLoading, coreError } = input;
+  if (specialDay) {
+    return {
+      sourceLabel: specialDay.label,
+      sourceDetail: specialDay.source,
+      timeLabel: "\u0645\u063a\u0644\u0642 \u0627\u0644\u064a\u0648\u0645",
+      statusLabel: specialDay.label,
+      tone: "gold",
+    };
+  }
   if (approvedLeaveDateKeys.includes(dateKey) || isProfileOnLeave(dateKey, schedule)) {
     return {
       sourceLabel: "إجازة معتمدة",
@@ -586,6 +612,7 @@ export default function AttendanceSection({
   employeeId = "",
   employeeIds = [],
   approvedLeaveDateKeys = [],
+  specialDays = [],
   canEdit = false,
   canDelete = false,
   canCreateEmergencyLeave = false,
@@ -652,6 +679,45 @@ export default function AttendanceSection({
   }, [employeeIdsKey, isVisible, selectedDate]);
 
   const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, schedule)), [rows, schedule]);
+  const rowSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    return rows.flatMap((row) => {
+      const record = row as StaffAttendanceWithId & Record<string, unknown>;
+      const date = cleanText(record.date || record.dateKey || record.dayKey);
+      if (!date || !isResolvedShiftOff(resolvedShiftRecord(record))) return [];
+      return [{
+        date,
+        kind: "exception_off" as const,
+        label: LABEL_EXCEPTION_OFF,
+        source: "attendance_row_core_exception_off",
+      }];
+    });
+  }, [rows]);
+  const selectedCoreSpecialDay = useMemo<AttendanceSpecialDay | null>(() => {
+    const date = cleanText(selectedDate);
+    if (!date || !isResolvedShiftOff(coreResolvedShift)) return null;
+    return {
+      date,
+      kind: "exception_off",
+      label: LABEL_EXCEPTION_OFF,
+      source: "core_exception_off",
+    };
+  }, [coreResolvedShift, selectedDate]);
+  const mergedSpecialDays = useMemo(() => {
+    const byDate = new Map<string, AttendanceSpecialDay>();
+    [...specialDays, ...rowSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
+      const date = cleanText(day.date);
+      if (!date) return;
+      const current = byDate.get(date);
+      if (!current || specialDayPriority(day) >= specialDayPriority(current)) {
+        byDate.set(date, day);
+      }
+    });
+    return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
+  }, [rowSpecialDays, selectedCoreSpecialDay, specialDays]);
+  const selectedSpecialDay = useMemo(
+    () => mergedSpecialDays.find((day) => day.date === cleanText(selectedDate)) || null,
+    [mergedSpecialDays, selectedDate]
+  );
   const selectedRawRow = useMemo(() => {
     const dateKey = cleanText(selectedDate);
     return rows.find((row) => {
@@ -666,11 +732,12 @@ export default function AttendanceSection({
       schedule,
       salonBusinessHours,
       approvedLeaveDateKeys,
+      specialDay: selectedSpecialDay,
       coreResolvedShift,
       coreLoading: coreShiftLoading,
       coreError: coreShiftError,
     }),
-    [approvedLeaveDateKeys, coreResolvedShift, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow]
+    [approvedLeaveDateKeys, coreResolvedShift, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
   if (!isVisible) return null;
@@ -685,6 +752,7 @@ export default function AttendanceSection({
         monthKey={monthKey}
         selectedDate={selectedDate}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
+        specialDays={mergedSpecialDays}
         effectiveShiftInfo={effectiveShiftInfo}
         canEdit={canEdit}
         canDelete={canDelete}
