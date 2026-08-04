@@ -289,6 +289,12 @@
   outline-offset: -3px;
 }
 
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-requests-live .dsv2-ew-state-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-files-live .dsv2-ew-state-grid,
+.dashboard-v2 .dsv2-employee-workspace .dsv2-ew-messages-live .dsv2-ew-state-grid {
+  display: none !important;
+}
+
 @media (max-width: 1180px) {
   .dashboard-v2 .dsv2-employee-workspace .dsv2-ew-week-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
