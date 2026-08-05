@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { AttendanceSpecialDay } from "../../../../helpers/hr/attendanceCalendarData";
 
 import {
   DashboardDrawerV2,
@@ -100,6 +101,7 @@ type AttendanceCalendarDayLiveV2 = {
   status: string;
   timeLabel: string;
   row?: EmployeeAttendanceRowLiveV2;
+  specialDay?: AttendanceSpecialDay;
 };
 
 function formatAttendanceTime(value: unknown) {
@@ -142,7 +144,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
-  if (status === "تأخير" || status === "خروج مبكر" || status === "إجازة") return "gold";
+  if (status === "تأخير" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
@@ -156,6 +158,9 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   if (status === "غياب") return "يحتاج مراجعة";
   if (status === "تأخير") return `تأخير ${formatNumber(row?.lateMinutes || 0)} دقيقة`;
   if (status === "خروج مبكر") return `خروج مبكر ${formatNumber(row?.earlyLeaveMinutes || 0)} دقيقة`;
+  if (status === "راحة") return "راحة معتمدة";
+  if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
+  if (status === "راحة / يوم استثنائي") return "راحة بسبب استثناء اليوم";
   if (status === "إجازة") return "إجازة معتمدة";
   if (status === "حضور") return "مكتمل ومطابق";
   return "لا توجد بيانات";
@@ -164,7 +169,8 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
 function buildAttendanceCalendar(
   monthKey: string,
   rows: EmployeeAttendanceRowLiveV2[],
-  approvedLeaveDateKeys: readonly string[]
+  approvedLeaveDateKeys: readonly string[],
+  specialDays: readonly AttendanceSpecialDay[] = []
 ): AttendanceCalendarDayLiveV2[] {
   const normalized = safeMonthKey(monthKey);
   const year = Number(normalized.slice(0, 4));
@@ -172,6 +178,11 @@ function buildAttendanceCalendar(
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayKey = getLocalDateKey();
   const leaveDates = new Set(approvedLeaveDateKeys.map(cleanText).filter(Boolean));
+  const specialByDate = new Map(
+    specialDays
+      .map((day) => [cleanText(day.date), day] as const)
+      .filter(([date]) => Boolean(date))
+  );
   const byDate = new Map<string, EmployeeAttendanceRowLiveV2>();
   rows.forEach((row) => {
     const date = cleanText(row.date);
@@ -185,13 +196,15 @@ function buildAttendanceCalendar(
     const checkIn = formatAttendanceTime(row?.checkInAtClient);
     const checkOut = formatAttendanceTime(row?.checkOutAtClient);
     const hasLeave = leaveDates.has(date);
-    const status = hasLeave
-      ? "إجازة"
-      : attendanceRowStatus(row) || (date < todayKey ? "غياب" : "—");
+    const specialDay = specialByDate.get(date);
+    const hasPunch = Boolean(checkIn || checkOut);
+    const rowStatus = attendanceRowStatus(row);
+    const status = specialDay?.label || (hasLeave ? "\u0625\u062c\u0627\u0632\u0629" : rowStatus || (date < todayKey ? "\u063a\u064a\u0627\u0628" : "\u2014"));
     return {
       date,
       dayNumber,
       row,
+      specialDay,
       status,
       timeLabel: [checkIn, checkOut].filter(Boolean).join(" → ") || "لا توجد بصمة",
     };
@@ -428,6 +441,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   monthKey: string;
   selectedDate: string;
   approvedLeaveDateKeys?: string[];
+  specialDays?: AttendanceSpecialDay[];
   effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
   canEdit: boolean;
   canDelete: boolean;
@@ -450,6 +464,7 @@ export function EmployeeAttendanceTabLiveV2({
   monthKey,
   selectedDate,
   approvedLeaveDateKeys = [],
+  specialDays = [],
   effectiveShiftInfo = null,
   canEdit,
   canDelete,
@@ -471,15 +486,17 @@ export function EmployeeAttendanceTabLiveV2({
     : coerceDateToMonth(selectedDate, normalizedMonth);
   const normalizedRows = rows.filter((row) => cleanText(row.date).startsWith(normalizedMonth));
   const monthLeaveDates = approvedLeaveDateKeys.filter((date) => cleanText(date).startsWith(normalizedMonth));
-  const calendarDays = buildAttendanceCalendar(normalizedMonth, normalizedRows, monthLeaveDates);
+  const monthSpecialDays = specialDays.filter((day) => cleanText(day.date).startsWith(normalizedMonth));
+  const calendarDays = buildAttendanceCalendar(normalizedMonth, normalizedRows, monthLeaveDates, monthSpecialDays);
   const selectedDay = calendarDays.find((day) => day.date === activeSelectedDate) || null;
   const selectedRow = selectedDay?.row || null;
+  const selectedSpecialDay = selectedDay?.specialDay || null;
   const selectedStatus = selectedDay?.status && selectedDay.status !== "—"
     ? selectedDay.status
     : selectedRow
       ? attendanceRowStatus(selectedRow)
       : "لا يوجد";
-  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate);
+  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate) || selectedSpecialDay?.kind === "leave" || selectedSpecialDay?.kind === "rest";
   const selectedHasPunch = Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient);
   const effectiveShiftTone: "neutral" | "gold" | "success" | "danger" | "dark" =
     !effectiveShiftInfo?.tone || effectiveShiftInfo.tone === "default" ? "neutral" : effectiveShiftInfo.tone;
@@ -490,8 +507,8 @@ export function EmployeeAttendanceTabLiveV2({
   const selectedShiftStatus = cleanText(selectedRow?.shiftStatusLabel || effectiveShiftInfo?.statusLabel);
   const presentRows = rows.filter((row) => cleanText(row.checkInAtClient || row.checkOutAtClient)).length;
   const lateTotal = rows.reduce((sum, row) => sum + Number(row.lateMinutes || 0), 0);
-  const leaveDays = calendarDays.filter((day) => day.status === "إجازة").length;
-  const loadedDataCount = normalizedRows.length + monthLeaveDates.length;
+  const leaveDays = calendarDays.filter((day) => day.status === "إجازة" || day.status === "راحة" || day.status === "إجازة أسبوعية" || day.status === "راحة / يوم استثنائي").length;
+  const loadedDataCount = normalizedRows.length + monthLeaveDates.length + monthSpecialDays.length;
   const viewState: "loading" | "error" | "empty" | "data" = loading && !loadedDataCount
     ? "loading"
     : cleanText(error) && !loadedDataCount
@@ -657,6 +674,7 @@ export function EmployeeAttendanceTabLiveV2({
                     type="button"
                     className="dsv2-ew-calendar__day"
                     data-status={day.status}
+                    data-special={day.specialDay?.kind || ""}
                     data-selected={activeSelectedDate === day.date ? "true" : "false"}
                     data-today={todayKey === day.date ? "true" : "false"}
                     onClick={() => handleSelectedDateChange(day.date)}
@@ -664,6 +682,9 @@ export function EmployeeAttendanceTabLiveV2({
                   >
                     <strong>{day.dayNumber}</strong>
                     <span>{day.status === "—" ? "-" : day.status}</span>
+                    {day.specialDay && day.specialDay.label !== day.status ? (
+                      <em className="dsv2-ew-calendar__special">{day.specialDay.label}</em>
+                    ) : null}
                     <small>{day.timeLabel}</small>
                   </button>
                 ))}
@@ -681,6 +702,11 @@ export function EmployeeAttendanceTabLiveV2({
                   <WorkspaceStatusBadgeV2 tone={attendanceStatusTone(selectedStatus)}>
                     {selectedStatus}
                   </WorkspaceStatusBadgeV2>
+                  {selectedSpecialDay && selectedSpecialDay.label !== selectedStatus ? (
+                    <WorkspaceStatusBadgeV2 tone="gold">
+                      {selectedSpecialDay.label}
+                    </WorkspaceStatusBadgeV2>
+                  ) : null}
                 </div>
 
                 <dl className="dsv2-ew-day-fields">
@@ -741,7 +767,7 @@ export function EmployeeAttendanceTabLiveV2({
                     </button>
                   ) : (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
-                      إجازة طارئة
+                      تسجيل إجازة
                     </button>
                   )}
                 </div>

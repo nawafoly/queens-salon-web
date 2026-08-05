@@ -840,7 +840,7 @@ export default function AttendanceMonthView({
               ) : null}
               {shouldShowEmergencyLeave && selectedDayRecords.length === 0 ? (
                 <button type="button" onClick={() => onCreateEmergencyLeave?.(safeSelectedDate)}>
-                  <FontAwesomeIcon icon={faCalendarDay} /> إجازة مفاجئة
+                  <FontAwesomeIcon icon={faCalendarDay} /> تسجيل إجازة
                 </button>
               ) : null}
               {shouldShowEdit ? (

@@ -2,6 +2,11 @@ import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 
 import { db } from "./firebase";
 import type { LeaveEntry, UiRole } from "../pages/dashboardEmployees/shared";
+import {
+  normalizeLeaveEntryType,
+  getLeaveEntryActionType,
+  getLeaveEntryChangeAmount,
+} from "./firestoreLeaveBalance.helpers";
 
 const SALON_ID = "main";
 
@@ -63,45 +68,7 @@ export function canManageLeaveBalanceRole(role: UiRole | string | null | undefin
   return normalized === "owner" || normalized === "admin" || normalized === "hr";
 }
 
-export function normalizeLeaveEntryType(value: unknown): LeaveActionType | "" {
-  const normalized = normalizeArabicText(value);
-  if (!normalized) return "";
-  if (
-    normalized === "add" ||
-    normalized === "addition" ||
-    normalized === "credit" ||
-    normalized === "increase" ||
-    normalized === "اضافه" ||
-    normalized === "اضافة"
-  ) {
-    return "add";
-  }
-  if (
-    normalized === "deduct" ||
-    normalized === "deduction" ||
-    normalized === "leave" ||
-    normalized === "خصم" ||
-    normalized === "اجازه" ||
-    normalized === "اجازة"
-  ) {
-    return "deduct";
-  }
-  return "";
-}
-
-export function getLeaveEntryActionType(entry: LeaveEntry | null | undefined): LeaveActionType | "" {
-  return normalizeLeaveEntryType(entry?.actionType || entry?.type);
-}
-
-export function getLeaveEntryChangeAmount(entry: LeaveEntry | null | undefined): number {
-  const snapshotValue = normalizeInteger(entry?.changeAmount, 0);
-  if (snapshotValue !== 0) return snapshotValue;
-
-  const actionType = getLeaveEntryActionType(entry);
-  const days = normalizePositiveInteger(entry?.days);
-  if (!actionType || days <= 0) return 0;
-  return actionType === "add" ? days : -days;
-}
+export { normalizeLeaveEntryType, getLeaveEntryActionType, getLeaveEntryChangeAmount };
 
 export function getLeaveEntryBalanceBefore(entry: LeaveEntry | null | undefined): number | null {
   const value = entry?.balanceBefore;
@@ -180,7 +147,7 @@ export async function applyStaffLeaveEntryWithBalanceAdjustment(args: {
   if (!staffId) throw new Error("تعذر تحديد الموظفة المطلوبة.");
   assertActorCanManage(args.actor);
 
-  const actionType = normalizeLeaveEntryType(args.actionType);
+  const actionType = normalizeLeaveEntryType(args.actionType) as LeaveActionType;
   if (!actionType) throw new Error("نوع حركة الإجازة غير صحيح.");
 
   const days = normalizePositiveInteger(args.days);

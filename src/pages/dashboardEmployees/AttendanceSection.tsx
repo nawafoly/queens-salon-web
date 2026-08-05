@@ -134,7 +134,21 @@ function normalizeDateKey(value: unknown) {
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
 }
+function normalizeMonthKey(value: unknown) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
+function monthDateKeys(monthKey: string) {
+  const normalized = normalizeMonthKey(monthKey);
+  if (!normalized) return [];
+  const [year, month] = normalized.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Array.from({ length: lastDay }, (_, index) => `${normalized}-${String(index + 1).padStart(2, "0")}`);
+}
 function isDateInsideRange(dateKey: string, fromValue: unknown, toValue: unknown) {
   const fromDate = normalizeDateKey(fromValue);
   const toDate = normalizeDateKey(toValue) || fromDate;
@@ -625,23 +639,16 @@ export default function AttendanceSection({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
-  const [coreResolvedShift, setCoreResolvedShift] = useState<CoreResolvedShift | null>(null);
+  const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
   const [coreShiftError, setCoreShiftError] = useState("");
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
 
   useEffect(() => {
     const identityIds = employeeIdsKey.split("|").filter(Boolean);
-    if (!isVisible || !identityIds.length || !isDateKey(selectedDate)) {
-      setCoreResolvedShift(null);
-      setCoreShiftLoading(false);
-      setCoreShiftError("");
-      return;
-    }
-
-    const cacheKey = `${identityIds.join("|")}::${selectedDate}`;
-    if (Object.prototype.hasOwnProperty.call(RESOLVED_SHIFT_CACHE, cacheKey)) {
-      setCoreResolvedShift(RESOLVED_SHIFT_CACHE[cacheKey]);
+    const dateKeys = monthDateKeys(monthKey);
+    if (!isVisible || !identityIds.length || !dateKeys.length) {
+      setCoreResolvedShiftsByDate({});
       setCoreShiftLoading(false);
       setCoreShiftError("");
       return;
@@ -651,32 +658,34 @@ export default function AttendanceSection({
     setCoreShiftLoading(true);
     setCoreShiftError("");
 
-    const request = RESOLVED_SHIFT_PENDING[cacheKey] || Promise
-      .all(identityIds.map((id) => CoreHrService.resolveEmployeeShift(id, selectedDate).catch(() => null)))
-      .then((results) => pickBestResolvedShift(results));
-    RESOLVED_SHIFT_PENDING[cacheKey] = request;
+    const request = Promise.all(
+      dateKeys.map(async (date) => {
+        const resolved = await Promise.all(
+          identityIds.map((id) => CoreHrService.resolveEmployeeShift(id, date).catch(() => null))
+        );
+        return [date, pickBestResolvedShift(resolved)] as const;
+      })
+    );
 
     request
-      .then((result) => {
-        RESOLVED_SHIFT_CACHE[cacheKey] = result;
+      .then((pairs) => {
         if (cancelled) return;
-        setCoreResolvedShift(result);
+        setCoreResolvedShiftsByDate(Object.fromEntries(pairs));
       })
       .catch((err) => {
         if (cancelled) return;
-        console.warn("attendance resolved shift load failed", err);
-        setCoreResolvedShift(null);
-        setCoreShiftError("تعذر تحميل الشفت الفعلي من Core.");
+        console.warn("attendance resolved shifts load failed", err);
+        setCoreResolvedShiftsByDate({});
+        setCoreShiftError("تعذر تحميل شفتات الحضور من Core.");
       })
       .finally(() => {
-        if (RESOLVED_SHIFT_PENDING[cacheKey] === request) delete RESOLVED_SHIFT_PENDING[cacheKey];
         if (!cancelled) setCoreShiftLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [employeeIdsKey, isVisible, selectedDate]);
+  }, [employeeIdsKey, isVisible, monthKey]);
 
   const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, schedule)), [rows, schedule]);
   const rowSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
@@ -692,19 +701,33 @@ export default function AttendanceSection({
       }];
     });
   }, [rows]);
+  const resolvedCoreSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    return Object.entries(coreResolvedShiftsByDate).flatMap(([date, shift]) => {
+      if (!date || !isResolvedShiftOff(shift)) return [];
+      return [{
+        date,
+        kind: "exception_off" as const,
+        label: LABEL_EXCEPTION_OFF,
+        source: "core_exception_off",
+      }];
+    });
+  }, [coreResolvedShiftsByDate]);
+
   const selectedCoreSpecialDay = useMemo<AttendanceSpecialDay | null>(() => {
     const date = cleanText(selectedDate);
-    if (!date || !isResolvedShiftOff(coreResolvedShift)) return null;
+    const shift = date ? coreResolvedShiftsByDate[date] : null;
+    if (!date || !isResolvedShiftOff(shift)) return null;
     return {
       date,
       kind: "exception_off",
       label: LABEL_EXCEPTION_OFF,
       source: "core_exception_off",
     };
-  }, [coreResolvedShift, selectedDate]);
+  }, [coreResolvedShiftsByDate, selectedDate]);
+
   const mergedSpecialDays = useMemo(() => {
     const byDate = new Map<string, AttendanceSpecialDay>();
-    [...specialDays, ...rowSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
+    [...specialDays, ...rowSpecialDays, ...resolvedCoreSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
       const date = cleanText(day.date);
       if (!date) return;
       const current = byDate.get(date);
@@ -713,7 +736,7 @@ export default function AttendanceSection({
       }
     });
     return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
-  }, [rowSpecialDays, selectedCoreSpecialDay, specialDays]);
+  }, [rowSpecialDays, resolvedCoreSpecialDays, selectedCoreSpecialDay, specialDays]);
   const selectedSpecialDay = useMemo(
     () => mergedSpecialDays.find((day) => day.date === cleanText(selectedDate)) || null,
     [mergedSpecialDays, selectedDate]
@@ -733,11 +756,11 @@ export default function AttendanceSection({
       salonBusinessHours,
       approvedLeaveDateKeys,
       specialDay: selectedSpecialDay,
-      coreResolvedShift,
+      coreResolvedShift: cleanText(selectedDate) ? coreResolvedShiftsByDate[cleanText(selectedDate)] || null : null,
       coreLoading: coreShiftLoading,
       coreError: coreShiftError,
     }),
-    [approvedLeaveDateKeys, coreResolvedShift, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
+    [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
   if (!isVisible) return null;
