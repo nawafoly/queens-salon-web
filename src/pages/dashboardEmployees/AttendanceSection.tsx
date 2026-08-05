@@ -210,7 +210,7 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
       startTime: "",
       endTime: "",
       lateGraceMinutes: readPolicyMinutes(effectiveSource.lateGraceMinutes, effectiveSource.late_grace_minutes),
-      earlyLeaveGraceMinutes: readPolicyMinutes(effectiveSource.earlyLeaveGraceMinutes, effectiveSource.early_leave_grace_minutes),
+      earlyLeaveGraceMinutes: 0,
       weeklyOffDays: [...explicitOffDays, ...customOffDays],
     };
   }
@@ -233,7 +233,7 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
       cleanTime(effectiveSource.shiftEndTime) ||
       "17:00",
     lateGraceMinutes: readPolicyMinutes(effectiveSource.lateGraceMinutes, effectiveSource.late_grace_minutes),
-    earlyLeaveGraceMinutes: readPolicyMinutes(effectiveSource.earlyLeaveGraceMinutes, effectiveSource.early_leave_grace_minutes),
+    earlyLeaveGraceMinutes: 0,
     weeklyOffDays: [...explicitOffDays, ...customOffDays],
   };
 }
@@ -302,14 +302,7 @@ function resolveRecordShiftSchedule(record: Record<string, unknown>): ShiftSched
       snapshot.lateGraceMinutes,
       snapshot.late_grace_minutes
     ),
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      record.earlyLeaveMinutes,
-      record.earlyLeaveGraceMinutes,
-      resolvedShift.earlyLeaveGraceMinutes,
-      resolvedShift.early_leave_grace_minutes,
-      snapshot.earlyLeaveGraceMinutes,
-      snapshot.early_leave_grace_minutes
-    ),
+    earlyLeaveGraceMinutes: 0,
     weeklyOffDays: [],
   };
 }
@@ -377,8 +370,7 @@ function computeEarlyLeaveMinutes(row: Record<string, unknown>, date: string, sc
   const checkOutMs = Date.parse(checkOutAt);
   if (!Number.isFinite(checkOutMs)) return 0;
 
-  const graceMinutes = readPolicyMinutes(resolvedSchedule.earlyLeaveGraceMinutes) || 0;
-  const earlyLeaveMinutes = Math.round((scheduleEndMs - checkOutMs) / 60000) - graceMinutes;
+  const earlyLeaveMinutes = Math.round((scheduleEndMs - checkOutMs) / 60000);
   return Math.max(0, earlyLeaveMinutes);
 }
 
@@ -478,13 +470,31 @@ function coreShiftInfo(dateKey: string, resolvedShift?: CoreResolvedShift | null
       tone: "gold",
     };
   }
-  if (source === "assignment") {
+  if (source === "weekly_schedule") {
+    if (exceptionType === "off" || Number((resolvedShift as any).active) !== 1) {
+      return {
+        sourceLabel: "جدول الدوام الأسبوعي",
+        sourceDetail: "راحة أسبوعية",
+        timeLabel: "مغلق اليوم",
+        statusLabel: "راحة أسبوعية",
+        tone: "gold",
+      };
+    }
     return {
-      sourceLabel: "شفت محدد",
-      sourceDetail: shiftName || "تعيين شفت منشور",
+      sourceLabel: "جدول الدوام الأسبوعي",
+      sourceDetail: shiftName || "شفت اليوم من جدول الموظفة",
       timeLabel: windowLabel(startTime, endTime),
       statusLabel: activeStatusForWindow(dateKey, startTime, endTime),
       tone: "success",
+    };
+  }
+  if (source === "assignment") {
+    return {
+      sourceLabel: "شفت افتراضي قديم",
+      sourceDetail: shiftName || "تعيين احتياطي للموظفات القديمة",
+      timeLabel: windowLabel(startTime, endTime),
+      statusLabel: activeStatusForWindow(dateKey, startTime, endTime),
+      tone: "neutral",
     };
   }
   return null;
@@ -601,7 +611,7 @@ function toLiveAttendanceRow(
     scheduledStartTime: cleanText(resolvedSchedule?.startTime),
     scheduledEndTime: cleanText(resolvedSchedule?.endTime),
     lateGraceMinutes: Number(resolvedSchedule?.lateGraceMinutes || 0),
-    earlyLeaveGraceMinutes: Number(resolvedSchedule?.earlyLeaveGraceMinutes || 0),
+    earlyLeaveGraceMinutes: 0,
     notes: cleanText(record.notes || record.note),
     type: cleanText(record.type),
     absentFullDay: record.absentFullDay === true,

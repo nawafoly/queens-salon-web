@@ -856,13 +856,17 @@ function mapEmployeeAbsenceDoc(d: any): EmployeeAbsence {
 }
 
 function mapCoreAbsence(row: Awaited<ReturnType<typeof CoreHrService.listAbsences>>[number]): EmployeeAbsence {
+  const rawType = cleanText(row.absenceType || "full_day").toLowerCase();
+  const automaticLockAbsence = rawType === "automatic_check_in_lock";
   return {
     id: cleanText(row.id),
     employeeUid: cleanText(row.employeeUid || ""),
     employeeId: cleanText(row.employeeId || ""),
     date: cleanText(row.dateKey || ""),
-    type: cleanText(row.absenceType || "full_day") as EmployeeAbsence["type"],
-    note: cleanText(row.note || "") || null,
+    type: (automaticLockAbsence ? "full_day" : rawType) as EmployeeAbsence["type"],
+    note:
+      cleanText(row.note || "") ||
+      (automaticLockAbsence ? "غياب تلقائي بعد انتهاء مهلة بصمة الحضور" : null),
     createdByUid: cleanText(row.createdByUid || ""),
     createdAt: row.createdAt,
     updatedAt: (row as any).updatedAt,

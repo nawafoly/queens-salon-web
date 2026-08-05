@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 
 import {
   DashboardDatePickerV2,
@@ -7,11 +7,14 @@ import {
 } from "../../components/dashboard-v2";
 import {
   WorkspaceCardV2,
+  WorkspaceHelpButtonV2,
+  WorkspaceHelpDrawerV2,
   WorkspaceMetricV2,
   WorkspaceNoticeV2,
   WorkspaceSwitchV2,
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
+  type WorkspaceHelpTopicV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import {
   HIJRI_WEEKDAY_SHORT,
@@ -24,6 +27,110 @@ import {
   normalizeLeaveUntil,
   normalizeTimeHHMM,
 } from "./shared";
+
+const WORK_HOUR_OVERRIDE_HELP_TOPICS = {
+  overview: {
+    title: "استثناءات الدوام",
+    description: "تعديل مؤقت لساعات الموظفة أو إغلاق أيام محددة مع إبقاء جدولها الأسبوعي الأساسي كما هو.",
+    purpose: "هذا القسم مخصص للتغييرات المؤقتة التي لها بداية ونهاية واضحة. الاستثناء لا يمحو جدول الموظفة ولا يغير قالب الشفت العام؛ بل يعلو عليه داخل الفترة المحددة فقط. يمكنه تحديد ساعات بديلة، إغلاق أيام معتمدًا، أو تطبيق التغيير على أيام معينة داخل نطاق طويل.",
+    useWhen: "دوام رمضان، تدريب، مناسبة خاصة، صيانة أو إغلاق فرع، تعديل ساعات مؤقت، أو تغيير يخص موظفة واحدة خلال فترة محددة.",
+    notFor: "إنشاء جدول أسبوعي دائم، تغيير يوم الراحة المتكرر، أو تسجيل إجازة سنوية/مرضية من رصيد الموظفة.",
+    example: {
+      title: "دوام رمضان لمدة شهر",
+      situation: "جدول الموظفة الأساسي 3:00 م إلى 11:00 م، لكن من 1 إلى 30 رمضان تعمل 2:00 م إلى 10:00 م.",
+      action: "حدد فترة رمضان، فعّل «الموظفة تعمل في هذه الفترة»، أدخل 2:00 م و10:00 م، طبّق على أيام العمل المطلوبة، أضف ملاحظة «دوام رمضان»، ثم راجع المعاينة وأضف الاستثناء.",
+      result: "يستخدم الحضور والراتب ساعات 2:00 م إلى 10:00 م داخل الفترة فقط، وبعد انتهائها يعود النظام تلقائيًا إلى جدول 3:00 م إلى 11:00 م.",
+    },
+    steps: [
+      { title: "حدد الفترة", description: "اختر تاريخ البداية والنهاية بالتقويم الميلادي أو الهجري." },
+      { title: "حدد نوع الاستثناء", description: "اختر دوامًا بساعات بديلة أو إغلاقًا كاملًا، ثم حدد طريقة التطبيق." },
+      { title: "راجع المعاينة", description: "تأكد من عدد الأيام المتأثرة وإجمالي الساعات والفرق قبل الإضافة." },
+      { title: "أضف الاستثناء", description: "أضفه إلى القائمة ثم احفظ ملف الموظفة حتى يصبح معتمدًا." },
+    ],
+    important: "الاستثناء يتقدم على الجدول الأسبوعي خلال مدته فقط. استخدم ملاحظة واضحة لأن أثره قد يصل إلى الحضور والراتب والحجوزات.",
+  },
+  period: {
+    title: "الفترة والتقويم",
+    description: "تحديد الأيام التي يغطيها الاستثناء وطريقة إدخال التاريخ.",
+    purpose: "تاريخ البداية والنهاية يحددان حدود الاستثناء بدقة. يمكن إنشاء استثناء ليوم واحد، عدة أيام متصلة، أو نطاق طويل مع تطبيقه على أيام أسبوع مختارة فقط. اختيار الميلادي أو الهجري يغير طريقة الإدخال، لكن النظام يحفظ التاريخ النهائي بصورة موحدة للمقارنة مع الحضور والجدول.",
+    useWhen: "تعرف متى يبدأ التغيير ومتى ينتهي، أو تريد تطبيقه على يوم محدد أو فترة موسمية.",
+    notFor: "تغيير دائم بلا تاريخ نهاية؛ التغيير الدائم يجب أن يكون في الأسبوع التشغيلي أو قالب الشفت.",
+    example: {
+      title: "استثناء ليوم واحد",
+      situation: "لدى الموظفة تدريب يوم 12 أغسطس فقط.",
+      action: "اجعل «من تاريخ» و«إلى تاريخ» كلاهما 12/08/2026. استخدم «تطبيق ساعات يوم البداية» لنسخ وقت اليوم الحالي ثم عدله إلى وقت التدريب.",
+      result: "يتغير يوم 12 أغسطس فقط، بينما 11 و13 أغسطس يبقيان على جدول الموظفة الأساسي.",
+    },
+    steps: [
+      { title: "اختر نوع التاريخ", description: "استخدم الميلادي أو الهجري حسب طريقة العمل المناسبة لك." },
+      { title: "حدد البداية والنهاية", description: "ليوم واحد اجعل التاريخين متطابقين، وللفترة اختر آخر يوم فعلي للتغيير." },
+      { title: "راجع عدد الأيام", description: "تأكد من مؤشر نطاق الفترة والأيام المتأثرة قبل المتابعة." },
+      { title: "انسخ ساعات البداية عند الحاجة", description: "استخدم ساعات يوم البداية كنقطة انطلاق، ثم عدلها إذا كان الاستثناء مختلفًا." },
+    ],
+    important: "التاريخ وحده لا يحدد الأيام التي ستتأثر عند استخدام تطبيق أيام أسبوع محددة؛ راجع «الأيام المتأثرة» في المعاينة.",
+  },
+  type: {
+    title: "نوع الاستثناء",
+    description: "تحديد هل الفترة دوام بديل أم إغلاق معتمد، وكيف يطبّق داخل النطاق.",
+    purpose: "عندما تكون «الموظفة تعمل في هذه الفترة» مفعلة، تصبح ساعات البداية والنهاية المدخلة هي ساعات الدوام المطلوبة للأيام المتأثرة. وعند تعطيلها تصبح الأيام إغلاقًا/راحة استثنائية معتمدة فلا يُطلب حضور أو بصمة ولا تُحسب غيابًا. طريقة التطبيق تحدد هل يشمل كل أيام الفترة أم أيام أسبوع مختارة.",
+    useWhen: "تحتاج ساعات مختلفة مؤقتًا أو تريد إغلاق أيام محددة دون تسجيل الموظفة غائبة.",
+    notFor: "إجازة تُخصم من رصيد الموظفة أو راحة أسبوعية ثابتة؛ هذه لها أقسام مستقلة.",
+    example: {
+      title: "إغلاق يوم صيانة",
+      situation: "الصالون مغلق يوم 20 أغسطس للصيانة والموظفة لا يُطلب منها الحضور.",
+      action: "حدد اليوم، عطّل «الموظفة تعمل في هذه الفترة» ليصبح إغلاقًا كاملًا، واكتب ملاحظة «إغلاق صيانة» ثم أضف الاستثناء.",
+      result: "يظهر اليوم كإغلاق/راحة استثنائية معتمدة، لا تُطلب بصمة ولا يُسجل غياب، وفي اليوم التالي يعود الشفت المعتاد.",
+    },
+    steps: [
+      { title: "حدد حالة العمل", description: "فعّل الخيار للدوام البديل أو عطّله للإغلاق الكامل." },
+      { title: "أدخل الساعات", description: "عند الدوام البديل أدخل وقت البداية والنهاية الحقيقيين." },
+      { title: "اختر طريقة التطبيق", description: "اختر كل أيام النطاق أو أيام أسبوع محددة مثل الأحد والثلاثاء فقط." },
+      { title: "راجع الناتج", description: "اقرأ معاينة الاستثناء وتأكد أن وصف العمل أو الإغلاق مطابق لقرارك." },
+    ],
+    important: "الإغلاق الكامل ليس غيابًا. الدوام البديل يستخدم ساعاته لحساب التأخير والانصراف لذلك يجب إدخال الوقت بدقة.",
+  },
+  saveOptions: {
+    title: "خيارات الحفظ",
+    description: "تحديد طريقة التعامل مع سجلات موجودة داخل نفس التواريخ.",
+    purpose: "قد تحتوي الفترة المختارة على استثناءات محفوظة مسبقًا. خيار «استبدال الاستثناءات المتداخلة» يزيل التعارض ويجعل السجل الجديد هو المعتمد. خيار «تحديث الاستثناءات الموجودة فقط» يعدّل الأيام الموجودة ولا ينشئ أيامًا جديدة. ترك الخيارين حسب الحالة يسمح بإنشاء استثناء جديد مع الحفاظ على السجلات غير المتداخلة.",
+    useWhen: "تعيد تصحيح استثناء سابق، تمدد فترة، تغيّر ساعات محفوظة، أو تريد منع وجود أكثر من قرار على التاريخ نفسه.",
+    notFor: "اختيار عشوائي قبل فهم السجلات الحالية؛ الخيارات قد تستبدل أو تتجاهل أيامًا داخل النطاق.",
+    example: {
+      title: "تصحيح استثناء متداخل",
+      situation: "يوجد استثناء محفوظ من 5 إلى 7 أغسطس، وتريد استبداله بساعات جديدة من 6 إلى 8 أغسطس.",
+      action: "فعّل «استبدال الاستثناءات المتداخلة» حتى لا يبقى يوم 6 أو 7 بسجلين. لا تفعل «تحديث الموجود فقط» إذا كنت تريد إنشاء يوم 8 أيضًا.",
+      result: "تُزال التداخلات ويصبح النطاق الجديد هو المعتمد من 6 إلى 8 أغسطس، بينما تبقى السجلات خارج التداخل دون تغيير.",
+    },
+    steps: [
+      { title: "راجع القائمة الحالية", description: "ابحث أولًا عن سجلات تغطي نفس الفترة." },
+      { title: "استبدال المتداخل", description: "فعّله عندما تريد أن يلغي السجل الجديد أي قرار سابق على نفس الأيام." },
+      { title: "تحديث الموجود فقط", description: "فعّله عندما تريد تعديل سجلات موجودة دون إنشاء تواريخ جديدة." },
+      { title: "أضف ملاحظة", description: "اكتب سببًا واضحًا يشرح القرار للمراجعة المستقبلية." },
+      { title: "راجع المعاينة ثم أضف", description: "لا تعتمد الحفظ قبل مطابقة عدد الأيام والوقت والفرق مع المطلوب." },
+    ],
+    important: "إذا فعّلت «تحديث الموجود فقط» ولم توجد سجلات داخل بعض الأيام، فلن ينشئ النظام استثناءات جديدة لتلك الأيام.",
+  },
+  current: {
+    title: "الاستثناءات الحالية",
+    description: "مراجعة السجلات المضافة للموظفة قبل وبعد الحفظ.",
+    purpose: "تعرض القائمة الفترة، الوقت، عدد الأيام، وحالة كل استثناء. منها تتأكد أن النطاق لم يتوسع بالخطأ، تفتح السجل للتعديل، أو تحذفه. حذف الاستثناء لا يحذف جدول الموظفة؛ بل يزيل القاعدة المؤقتة ويكشف المصدر الأساسي الذي تحته.",
+    useWhen: "تريد مراجعة ما سيؤثر على الموظفة، تصحيح تاريخ أو وقت، إزالة استثناء انتهت الحاجة إليه، أو تفسير يوم مختلف عن الجدول.",
+    notFor: "إدارة قوالب الشفتات أو أيام الراحة الأسبوعية الثابتة؛ هذه القائمة تعرض الاستثناءات فقط.",
+    example: {
+      title: "حذف استثناء أضيف بالخطأ",
+      situation: "أضيف إغلاق ليومي 5 و6 أغسطس، لكن المطلوب كان يوم 5 فقط.",
+      action: "افتح السجل وعدّل النهاية إلى يوم 5، أو احذفه وأنشئ استثناءً صحيحًا. بعد ذلك احفظ ملف الموظفة.",
+      result: "يبقى يوم 5 إغلاقًا معتمدًا، ويعود يوم 6 إلى الشفت الموجود في الأسبوع التشغيلي بدل بقائه مغلقًا.",
+    },
+    steps: [
+      { title: "راجع الفترة", description: "قارن البداية والنهاية مع القرار الإداري الحقيقي." },
+      { title: "راجع الوقت والحالة", description: "تأكد هل السجل دوام بديل أم إغلاق كامل." },
+      { title: "عدّل عند الحاجة", description: "افتح السجل داخل النموذج وغير المدة أو الوقت أو الملاحظة." },
+      { title: "احذف السجل الخاطئ", description: "إزالة الاستثناء تعيد الأيام إلى الجدول الأسبوعي الأساسي بعد الحفظ." },
+    ],
+    important: "لا يكفي تعديل القائمة دون حفظ ملف الموظفة؛ تأكد من إتمام الحفظ النهائي حتى تصل التغييرات إلى الحضور والراتب.",
+  },
+} satisfies Record<string, WorkspaceHelpTopicV2>;
 
 export type WorkHourOverridesEditorProps = {
   loading: boolean;
@@ -174,6 +281,7 @@ export default function WorkHourOverridesEditor({
   editor,
   modalHourOverrideHijriPickerRef,
 }: WorkHourOverridesEditorProps) {
+  const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const isEditing = !!editor.modalHourOverrideEditingDate || !!editor.modalHourOverrideEditingGroupId;
   const previewText = buildPreviewText(editor, isEditing);
   const selectedWeekdays = new Set(editor.modalHourOverrideApplyWeekdays || []);
@@ -188,7 +296,15 @@ export default function WorkHourOverridesEditor({
       <WorkspaceTabHeaderV2
         title="استثناءات الدوام"
         description="تعديل ساعات أو إغلاق أيام محددة بدون كسر الجدول الأسبوعي الأساسي."
-        badge={isEditing ? "وضع التعديل" : "استثناء جديد"}
+        badge={
+          <div className="dsv2-cluster">
+            <span>{isEditing ? "وضع التعديل" : "استثناء جديد"}</span>
+            <WorkspaceHelpButtonV2
+              label="شرح استثناءات الدوام"
+              onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.overview)}
+            />
+          </div>
+        }
       />
 
       <div className="dsv2-ew-metrics">
@@ -209,17 +325,23 @@ export default function WorkHourOverridesEditor({
           title="الفترة والتقويم"
           description="اختاري نطاق الاستثناء بالتاريخ الميلادي أو الهجري."
           actions={
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
-              disabled={busy}
-              onClick={() => {
-                editor.setModalHourOverrideQuickMode("manual");
-                editor.fillModalHourOverrideFromBaseDay();
-              }}
-            >
-              تطبيق ساعات يوم البداية
-            </button>
+            <div className="dsv2-cluster">
+              <WorkspaceHelpButtonV2
+                label="شرح الفترة والتقويم"
+                onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.period)}
+              />
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                disabled={busy}
+                onClick={() => {
+                  editor.setModalHourOverrideQuickMode("manual");
+                  editor.fillModalHourOverrideFromBaseDay();
+                }}
+              >
+                تطبيق ساعات يوم البداية
+              </button>
+            </div>
           }
         >
           <DashboardFieldV2 id="employee-live-v2-override-calendar" label="نوع التاريخ">
@@ -360,7 +482,16 @@ export default function WorkHourOverridesEditor({
           ) : null}
         </WorkspaceCardV2>
 
-        <WorkspaceCardV2 title="نوع الاستثناء" description="حددي هل هو دوام بديل أو إغلاق كامل.">
+        <WorkspaceCardV2
+          title="نوع الاستثناء"
+          description="حددي هل هو دوام بديل أو إغلاق كامل."
+          actions={
+            <WorkspaceHelpButtonV2
+              label="شرح نوع الاستثناء"
+              onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.type)}
+            />
+          }
+        >
           <WorkspaceSwitchV2
             checked={editor.modalHourOverrideEnabled}
             disabled={busy}
@@ -426,7 +557,16 @@ export default function WorkHourOverridesEditor({
         </WorkspaceCardV2>
       </div>
 
-      <WorkspaceCardV2 title="خيارات الحفظ" description="تحكم في التحديث أو الاستبدال عند وجود استثناءات محفوظة.">
+      <WorkspaceCardV2
+        title="خيارات الحفظ"
+        description="تحكم في التحديث أو الاستبدال عند وجود استثناءات محفوظة."
+        actions={
+          <WorkspaceHelpButtonV2
+            label="شرح خيارات حفظ الاستثناء"
+            onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.saveOptions)}
+          />
+        }
+      >
         <div className="dsv2-ew-grid dsv2-ew-grid--2">
           <WorkspaceSwitchV2
             checked={editor.modalHourOverrideOverwriteExisting}
@@ -494,7 +634,16 @@ export default function WorkHourOverridesEditor({
         </div>
       </WorkspaceCardV2>
 
-      <WorkspaceCardV2 title="الاستثناءات الحالية" description="الاستثناءات التي ستُحفظ مع ملف الموظفة.">
+      <WorkspaceCardV2
+        title="الاستثناءات الحالية"
+        description="الاستثناءات التي ستُحفظ مع ملف الموظفة."
+        actions={
+          <WorkspaceHelpButtonV2
+            label="شرح الاستثناءات الحالية"
+            onClick={() => setHelpTopic(WORK_HOUR_OVERRIDE_HELP_TOPICS.current)}
+          />
+        }
+      >
         <WorkspaceTableV2
           headers={["الفترة", "الوقت", "الأيام", "الحالة", "إجراء"]}
           rows={(editor.modalHourOverrideGroups || []).map((group) => [
@@ -524,6 +673,12 @@ export default function WorkHourOverridesEditor({
           emptyText="لا توجد استثناءات مضافة حتى الآن."
         />
       </WorkspaceCardV2>
+
+      <WorkspaceHelpDrawerV2
+        open={Boolean(helpTopic)}
+        topic={helpTopic}
+        onClose={() => setHelpTopic(null)}
+      />
     </div>
   );
 }

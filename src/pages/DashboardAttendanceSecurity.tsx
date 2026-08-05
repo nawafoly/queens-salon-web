@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FiActivity,
   FiAlertTriangle,
@@ -500,7 +500,7 @@ function resolveCoreAttendanceSchedule(
   const exceptionType = String(
     (row as any)?.exceptionType || (row as any)?.exception_type || ""
   ).trim();
-  if (source === "exception" && exceptionType === "off") {
+  if (exceptionType === "off" || (source === "weekly_schedule" && Number((row as any)?.active) !== 1)) {
     return {
       enabled: false,
       start: undefined,
@@ -527,12 +527,7 @@ function resolveCoreAttendanceSchedule(
       snapshot.lateGraceMinutes,
       snapshot.late_grace_minutes
     ) ?? 0,
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      (row as any)?.earlyLeaveGraceMinutes,
-      (row as any)?.early_leave_grace_minutes,
-      snapshot.earlyLeaveGraceMinutes,
-      snapshot.early_leave_grace_minutes
-    ) ?? 0,
+    earlyLeaveGraceMinutes: 0,
     label: `${start} - ${end}`,
     note: source === "exception" ? "استثناء منشور في Core" : "شفت منشور في Core",
   };

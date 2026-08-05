@@ -137,6 +137,7 @@ import {
   listShiftPayrollAdjustments,
   listShiftPayrollPeriodLocks,
   listShiftTemplates,
+  markClosedCheckInWindowsAbsent,
   previewShiftChange,
   resolveEmployeeShift,
   saveShiftPayrollPeriodLock,
@@ -1374,10 +1375,17 @@ export default {
       });
     }
   },
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    const salonId = cleanText(env.SALON_ID) || "main";
+    if (event?.cron === "*/5 * * * *") {
+      ctx.waitUntil(
+        markClosedCheckInWindowsAbsent(env.CORE_DB, env.ATTENDANCE_DB, salonId)
+      );
+      return;
+    }
     ctx.waitUntil(Promise.all([
       expireClientPackagesD1({ ...env, PACKAGES_DB: env.CORE_DB }),
-      notifyOverdueEmployeeRequests(env.CORE_DB, cleanText(env.SALON_ID) || "main"),
+      notifyOverdueEmployeeRequests(env.CORE_DB, salonId),
     ]));
   },
 };

@@ -10,9 +10,12 @@ import {
 } from "../../index";
 import {
   WorkspaceCardV2,
+  WorkspaceHelpButtonV2,
+  WorkspaceHelpDrawerV2,
   WorkspaceMetricV2,
   WorkspaceNoticeV2,
   WorkspaceStatusBadgeV2,
+  type WorkspaceHelpTopicV2,
   WorkspaceSwitchV2,
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
@@ -215,9 +218,102 @@ type WorkingDayLiveV2 = {
   key: string;
   label: string;
   enabled: boolean;
+  shiftTemplateId: string;
+  shiftName?: string;
   start: string;
   end: string;
 };
+
+type ScheduleShiftTemplateLiveV2 = {
+  id: string;
+  name: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  lateGraceMinutes?: number | null;
+  attendanceLockEnabled?: boolean | number | null;
+  attendanceLockAfterMinutes?: number | null;
+};
+
+const EMPLOYEE_SCHEDULE_HELP_TOPICS = {
+  overview: {
+    title: "الدوام والشفتات",
+    description: "شرح العلاقة بين قالب الشفت، أيام العمل، الراحة الأسبوعية، ونطاق الحضور.",
+    purpose: "هذا التبويب يحدد الخطة الأسبوعية الفعلية للموظفة. أنت لا تكتب وقت الحضور والانصراف لكل يوم يدويًا؛ بل تختار قالب شفت جاهزًا يحتوي الوقت وسياسات التأخير وإغلاق البصمة، ثم توزعه على أيام العمل. كما تحدد من هنا أيام الراحة الأسبوعية والموقع الذي يسمح للموظفة بالبصمة منه.",
+    useWhen: "تريد إنشاء جدول أسبوعي ثابت لموظفة جديدة، تغيير يوم راحتها، نقلها من شفت إلى شفت آخر، أو ربطها بفرع حضور محدد.",
+    notFor: "إجازة سنوية أو مرضية، تغيير يوم واحد فقط، دوام رمضان المؤقت، أو إغلاق استثنائي؛ هذه الحالات تُدار من الإجازات أو الاستثناءات.",
+    example: {
+      title: "موظفة تعمل ستة أيام",
+      situation: "الموظفة تعمل من السبت إلى الخميس على الشفت المسائي 3:00 م إلى 11:00 م، ويوم الجمعة راحة أسبوعية.",
+      action: "فعّل أيام السبت إلى الخميس، اختر قالب «الشفت المسائي» لكل يوم، عطّل يوم الجمعة ليصبح راحة، ثم حدد تاريخ بدء التطبيق واحفظ.",
+      result: "يعرف الحضور والراتب أن السبت إلى الخميس أيام عمل حسب سياسة الشفت المسائي، وأن الجمعة راحة أسبوعية لا تُحسب غيابًا ولا تحتاج بصمة.",
+    },
+    steps: [
+      { title: "جهّز قالب الشفت", description: "أنشئ وقت البداية والنهاية وسياسة التأخير وإغلاق بصمة الحضور من قسم قوالب الشفتات." },
+      { title: "وزّع الشفت", description: "اختر لكل يوم شفتًا جاهزًا أو حوّله إلى راحة أسبوعية." },
+      { title: "حدد بداية التطبيق", description: "اختر التاريخ الذي يبدأ منه الجدول الجديد حتى لا يُطبق بأثر رجعي دون قصد." },
+      { title: "احفظ ملف الموظفة", description: "راجع أيام العمل والراحة والنطاق ثم احفظ التغييرات." },
+    ],
+    important: "وقت الدوام وسياسات التأخير لا تُعدل من بطاقات الأيام؛ تُسحب دائمًا من قالب الشفت المختار.",
+  },
+  scheduleSettings: {
+    title: "إعدادات الجدول",
+    description: "تحديد تاريخ بدء الجدول وتوثيق سبب تغييره.",
+    purpose: "يستخدم النظام تاريخ بدء التطبيق لمعرفة أي نسخة من جدول الموظفة كانت فعالة في كل يوم. هذا يمنع خلط الجدول الجديد بسجلات حضور قديمة، ويساعد عند مراجعة الرواتب أو معرفة سبب انتقال الموظفة من أيام أو شفتات سابقة إلى جدول جديد.",
+    useWhen: "تنشئ أول جدول للموظفة، تغيّر يوم الراحة، تبدّل الشفت، أو تسجل تاريخًا رسميًا لانتهاء التوظيف.",
+    notFor: "تعديل ساعات يوم واحد أو فترة مؤقتة؛ استخدم استثناءات الدوام بدل تغيير تاريخ الجدول الأساسي.",
+    example: {
+      title: "تغيير الجدول بداية الأسبوع القادم",
+      situation: "الجدول الحالي مستمر حتى 9 أغسطس، ومن 10 أغسطس ستصبح الجمعة راحة ويُستخدم شفت جديد.",
+      action: "اختر «تطبيق الجدول من: 10/08/2026» واكتب السبب «تغيير يوم الراحة والشفت». لا تستخدم تاريخًا أقدم من يوم التغيير الحقيقي.",
+      result: "تبقى سجلات الأيام السابقة مرتبطة بالجدول القديم، ويبدأ الجدول الجديد فقط من 10 أغسطس، فتكون مراجعة الحضور والراتب واضحة.",
+    },
+    steps: [
+      { title: "تطبيق الجدول من", description: "اختر أول يوم فعلي يبدأ فيه الجدول الجديد." },
+      { title: "نهاية التوظيف", description: "استخدمها فقط عند وجود تاريخ رسمي لانتهاء عمل الموظفة؛ بعده لا يُتوقع دوام جديد." },
+      { title: "سبب التغيير", description: "اكتب سببًا واضحًا مثل أول نسخة، تغيير شفت، نقل فرع، أو تعديل يوم الراحة." },
+    ],
+    important: "لا ترجع بتاريخ التطبيق إلى فترة رواتب مقفلة إلا بعد مراجعة الأثر؛ ذلك قد يغير تفسير الحضور القديم.",
+  },
+  attendanceZone: {
+    title: "نطاق الحضور",
+    description: "اختيار الموقع الجغرافي الذي يسمح للموظفة بتسجيل البصمة داخله.",
+    purpose: "يربط هذا القسم الموظفة بفرع أو نطاق جغرافي معتمد. عند تسجيل الحضور يتحقق النظام من موقع الجهاز ودقة الموقع، ثم يقارنها بالنطاق المحدد. الغرض هو منع البصمة من المنزل أو من فرع غير مصرح به مع إبقاء سياسة الموقع واضحة لكل موظفة.",
+    useWhen: "تعمل الموظفة في فرع محدد، انتقلت إلى فرع آخر، أو تريد تقييد بصمتها بموقع العمل المعتمد.",
+    notFor: "تحديد أوقات الدوام أو أيام الراحة؛ النطاق يحدد مكان البصمة فقط ولا يحدد متى تعمل الموظفة.",
+    example: {
+      title: "موظفة في الفرع الرئيسي",
+      situation: "الموظفة يجب أن تبصم فقط داخل نطاق الفرع الرئيسي المحدد في النظام.",
+      action: "اضغط «تحديث النطاقات»، ثم اختر «الفرع الرئيسي» من قائمة نطاق الحضور واحفظ ملف الموظفة.",
+      result: "تُقبل بصمتها داخل النطاق المعتمد حسب سياسة الدقة، وتُرفض محاولة البصمة من موقع خارج النطاق برسالة توضح السبب.",
+    },
+    steps: [
+      { title: "حدّث النطاقات", description: "اجلب أحدث الفروع والمواقع المحفوظة قبل الاختيار." },
+      { title: "اختر النطاق", description: "حدد الفرع أو الموقع الذي تعمل فيه الموظفة فعليًا." },
+      { title: "احفظ واختبر", description: "احفظ الملف ثم اختبر البصمة من الموقع الصحيح للتأكد من ربط الموظفة بالنطاق." },
+    ],
+    important: "ترك النطاق بدون تحديد قد يجعل سياسة الموقع غير مخصصة لهذه الموظفة؛ لا تعتمد عليه إلا إذا كانت هذه هي السياسة المقصودة.",
+  },
+  operationalWeek: {
+    title: "الأسبوع التشغيلي",
+    description: "توزيع قوالب الشفتات والراحة الأسبوعية على أيام الأسبوع.",
+    purpose: "هذا القسم يجيب عن سؤالين لكل يوم: هل هذا اليوم يوم عمل أم راحة أسبوعية؟ وإذا كان يوم عمل، فما قالب الشفت الذي يحكم وقته وسياساته؟ عند اختيار القالب يسحب النظام وقت البداية والنهاية وفترة سماح التأخير وإغلاق بصمة الحضور تلقائيًا.",
+    useWhen: "تريد تحديد جدول ثابت يتكرر أسبوعيًا، مثل ستة أيام عمل ويوم راحة، أو شفت صباحي في بعض الأيام ومسائي في أيام أخرى.",
+    notFor: "إجازة فعلية، تدريب ليوم واحد، مناسبة خاصة، أو تعديل ساعات فترة محددة؛ هذه استثناءات وليست جزءًا من الأسبوع الثابت.",
+    example: {
+      title: "شفتان خلال الأسبوع",
+      situation: "السبت إلى الثلاثاء شفت مسائي، الأربعاء والخميس شفت صباحي، والجمعة راحة أسبوعية.",
+      action: "فعّل أيام السبت إلى الخميس، اختر الشفت المناسب لكل مجموعة أيام، وعطّل الجمعة. استخدم «نسخ الشفت لكل أيام العمل» فقط عندما تريد نفس الشفت لبقية الأيام المفتوحة.",
+      result: "يطبق النظام الشفت الصحيح لكل يوم، ويحسب الجمعة راحة أسبوعية، بينما أي إجازة أو استثناء لاحق يتقدم على هذا الجدول خلال مدته فقط.",
+    },
+    steps: [
+      { title: "حدد يوم العمل", description: "فعّل اليوم إذا كانت الموظفة مطالبة بالدوام، أو عطّله ليصبح راحة أسبوعية." },
+      { title: "اختر الشفت", description: "في يوم العمل اختر قالب الشفت؛ ستظهر أسفله معاينة الوقت وسياسة الحضور." },
+      { title: "انسخ عند الحاجة", description: "استخدم النسخ عندما تكون جميع أيام العمل على الشفت نفسه لتقليل التكرار." },
+      { title: "راجع قبل الحفظ", description: "تأكد من عدد أيام العمل والراحة وعدم وجود يوم عمل بدون شفت." },
+    ],
+    important: "الإجازة السنوية أو المرضية لا تُسجل هنا. تعطيل اليوم هنا يعني راحة أسبوعية ثابتة تتكرر كل أسبوع.",
+  },
+} satisfies Record<string, WorkspaceHelpTopicV2>;
 
 export type EmployeeScheduleTabLiveV2Props = {
   readOnly: boolean;
@@ -225,6 +321,8 @@ export type EmployeeScheduleTabLiveV2Props = {
   employmentEndDate: string;
   useCustomWorkingHours: boolean;
   workingDays: WorkingDayLiveV2[];
+  shiftTemplates: ScheduleShiftTemplateLiveV2[];
+  shiftTemplatesLoading?: boolean;
   attendanceZones: Array<{ id: string; name?: string; label?: string }>;
   attendanceZonesLoading: boolean;
   selectedAttendanceZoneId: string;
@@ -244,8 +342,9 @@ export function EmployeeScheduleTabLiveV2({
   readOnly,
   loading,
   employmentEndDate,
-  useCustomWorkingHours,
   workingDays,
+  shiftTemplates,
+  shiftTemplatesLoading = false,
   attendanceZones,
   attendanceZonesLoading,
   selectedAttendanceZoneId,
@@ -260,32 +359,44 @@ export function EmployeeScheduleTabLiveV2({
   onScheduleChangeReasonChange,
   onReloadAttendanceZones,
 }: EmployeeScheduleTabLiveV2Props) {
+  const [helpTopic, setHelpTopic] = useState<WorkspaceHelpTopicV2 | null>(null);
   const openDays = workingDays.filter((day) => day.enabled).length;
   const closedDays = workingDays.length - openDays;
+  const templateOptions = shiftTemplates.map((template) => ({
+    value: template.id,
+    label: `${template.name} — ${cleanText(template.startTime) || "--:--"} إلى ${cleanText(template.endTime) || "--:--"}`,
+  }));
 
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
-        title="جدول الدوام"
-        description="إدارة جدول الموظفة ونطاق الحضور من واجهة V2 مستقلة."
-        badge={<WorkspaceStatusBadgeV2 tone={useCustomWorkingHours ? "success" : "gold"}>{useCustomWorkingHours ? "جدول مخصص" : "دوام الصالون"}</WorkspaceStatusBadgeV2>}
+        title="جدول الدوام الأسبوعي"
+        description="اختر لكل يوم قالب شفت أو راحة أسبوعية. أوقات وسياسات الدوام تُسحب تلقائيًا من القالب الموجود في نفس الصفحة."
+        badge={
+          <div className="dsv2-cluster">
+            <WorkspaceStatusBadgeV2 tone="success">مرتبط بالشفتات</WorkspaceStatusBadgeV2>
+            <WorkspaceHelpButtonV2 label="شرح الدوام والشفتات" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.overview)} />
+          </div>
+        }
       />
 
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="أيام العمل" value={openDays} tone="success" />
         <WorkspaceMetricV2 label="أيام الراحة الأسبوعية" value={closedDays} tone={closedDays ? "gold" : "neutral"} />
+        <WorkspaceMetricV2 label="قوالب الشفتات" value={shiftTemplates.length} tone={shiftTemplates.length ? "success" : "danger"} />
         <WorkspaceMetricV2 label="نطاق الحضور" value={selectedAttendanceZoneId ? "محدد" : "غير محدد"} tone={selectedAttendanceZoneId ? "success" : "danger"} />
-        <WorkspaceMetricV2 label="حالة التحميل" value={loading ? "جاري" : "جاهز"} />
       </div>
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
-        <WorkspaceCardV2 title="إعدادات الجدول" description="تاريخ بدء التطبيق وحالة استخدام جدول مخصص.">
-          <WorkspaceSwitchV2
-            checked={useCustomWorkingHours}
-            disabled={readOnly}
-            label="استخدام جدول دوام مخصص"
-            description="عند التعطيل يتم الاعتماد على ساعات الصالون العامة."
-            onChange={onUseCustomWorkingHoursChange}
+        <WorkspaceCardV2
+          title="إعدادات الجدول"
+          description="تاريخ بدء التطبيق وسبب تغيير جدول الموظفة."
+          actions={<WorkspaceHelpButtonV2 label="شرح إعدادات الجدول" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.scheduleSettings)} />}
+        >
+          <WorkspaceNoticeV2
+            title="الشفت هو مصدر الوقت والسياسة"
+            description="لا يمكن تعديل بداية أو نهاية الدوام من جدول الأسبوع. عدّل قالب الشفت من قسم قوالب الشفتات في نفس الصفحة، أو استخدم استثناءً ليوم محدد."
+            tone="neutral"
           />
 
           <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
@@ -325,9 +436,12 @@ export function EmployeeScheduleTabLiveV2({
           title="نطاق الحضور"
           description="اختيار موقع أو نطاق يسمح بالبصمة."
           actions={
-            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={attendanceZonesLoading} onClick={onReloadAttendanceZones}>
-              تحديث النطاقات
-            </button>
+            <>
+              <WorkspaceHelpButtonV2 label="شرح نطاق الحضور" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.attendanceZone)} />
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={attendanceZonesLoading} onClick={onReloadAttendanceZones}>
+                تحديث النطاقات
+              </button>
+            </>
           }
         >
           <DashboardFieldV2 id="employee-live-v2-attendance-zone" label="نطاق الحضور">
@@ -357,58 +471,78 @@ export function EmployeeScheduleTabLiveV2({
         </WorkspaceCardV2>
       </div>
 
-      <WorkspaceCardV2 title="الأسبوع التشغيلي" description="تحديد أيام العمل والراحة الأسبوعية، مع تعديل الساعات عند استخدام جدول مخصص.">
-        {!useCustomWorkingHours ? (
+      <WorkspaceCardV2
+        title="الأسبوع التشغيلي"
+        description="لكل يوم: شفت من القوالب أو راحة أسبوعية."
+        actions={<WorkspaceHelpButtonV2 label="شرح الأسبوع التشغيلي" onClick={() => setHelpTopic(EMPLOYEE_SCHEDULE_HELP_TOPICS.operationalWeek)} />}
+      >
+        {!shiftTemplatesLoading && !shiftTemplates.length ? (
           <WorkspaceNoticeV2
-            title="الساعات موروثة من إعدادات الصالون"
-            description="يمكنك هنا تحديد أيام العمل والراحة الأسبوعية فقط. فعّلي الجدول المخصص لتعديل أوقات البداية والنهاية."
-            tone="neutral"
+            title="لا توجد قوالب شفتات"
+            description="أنشئ قالب شفت واحدًا على الأقل من قسم قوالب الشفتات والاستثناءات الموجود أسفل هذه الصفحة، ثم ارجع لتوزيعه على أيام العمل."
+            tone="danger"
           />
         ) : null}
         <div className="dsv2-ew-week-grid">
-          {workingDays.map((day) => (
-            <article key={day.key} className="dsv2-ew-week-card" data-open={day.enabled ? "true" : "false"}>
-              <header>
-                <strong>{day.label}</strong>
-                <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? "يوم عمل" : "راحة أسبوعية"}</WorkspaceStatusBadgeV2>
-              </header>
-              <WorkspaceSwitchV2
-                checked={day.enabled}
-                disabled={readOnly}
-                label="يوم عمل"
-                onChange={(checked) => onWorkingDayChange(day.key, { enabled: checked })}
-              />
-              <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-                <DashboardFieldV2 id={`employee-live-v2-${day.key}-start`} label="البداية">
-                  <input
-                    id={`employee-live-v2-${day.key}-start`}
-                    className="dsv2-input"
-                    type="time"
-                    value={day.start}
-                    disabled={readOnly || !useCustomWorkingHours || !day.enabled}
-                    onChange={(event) => onWorkingDayChange(day.key, { start: event.target.value })}
+          {workingDays.map((day) => {
+            const selectedTemplate = shiftTemplates.find((template) => template.id === day.shiftTemplateId) || null;
+            return (
+              <article key={day.key} className="dsv2-ew-week-card" data-open={day.enabled ? "true" : "false"}>
+                <header>
+                  <strong>{day.label}</strong>
+                  <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? "يوم عمل" : "راحة أسبوعية"}</WorkspaceStatusBadgeV2>
+                </header>
+                <WorkspaceSwitchV2
+                  checked={day.enabled}
+                  disabled={readOnly}
+                  label="يوم عمل"
+                  onChange={(checked) => {
+                    onUseCustomWorkingHoursChange(true);
+                    onWorkingDayChange(day.key, { enabled: checked });
+                  }}
+                />
+                <DashboardFieldV2 id={`employee-live-v2-${day.key}-shift`} label="الشفت">
+                  <DashboardSelectV2
+                    id={`employee-live-v2-${day.key}-shift`}
+                    value={day.shiftTemplateId}
+                    options={templateOptions}
+                    placeholder={shiftTemplatesLoading ? "جاري تحميل الشفتات" : "اختر الشفت"}
+                    disabled={readOnly || !day.enabled || shiftTemplatesLoading || !shiftTemplates.length}
+                    onChange={(shiftTemplateId) => {
+                      const template = shiftTemplates.find((item) => item.id === shiftTemplateId);
+                      onUseCustomWorkingHoursChange(true);
+                      onWorkingDayChange(day.key, {
+                        shiftTemplateId,
+                        shiftName: template?.name || "",
+                        start: cleanText(template?.startTime),
+                        end: cleanText(template?.endTime),
+                      });
+                    }}
                   />
                 </DashboardFieldV2>
-                <DashboardFieldV2 id={`employee-live-v2-${day.key}-end`} label="النهاية">
-                  <input
-                    id={`employee-live-v2-${day.key}-end`}
-                    className="dsv2-input"
-                    type="time"
-                    value={day.end}
-                    disabled={readOnly || !useCustomWorkingHours || !day.enabled}
-                    onChange={(event) => onWorkingDayChange(day.key, { end: event.target.value })}
+                {day.enabled && selectedTemplate ? (
+                  <WorkspaceNoticeV2
+                    title={`${cleanText(selectedTemplate.startTime) || "--:--"} إلى ${cleanText(selectedTemplate.endTime) || "--:--"}`}
+                    description={`مرونة الحضور ${Number(selectedTemplate.lateGraceMinutes || 0)} دقيقة. ${selectedTemplate.attendanceLockEnabled ? `تُغلق بصمة الحضور بعد ${Number(selectedTemplate.attendanceLockAfterMinutes || 0)} دقيقة.` : "إغلاق البصمة غير مفعّل."}`}
+                    tone="neutral"
                   />
-                </DashboardFieldV2>
-              </div>
-              {useCustomWorkingHours ? (
-                <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly} onClick={() => onCopyWorkingDayToAll(day.key)}>
-                  نسخ الساعات لكل الأسبوع
-                </button>
-              ) : null}
-            </article>
-          ))}
+                ) : null}
+                {day.enabled ? (
+                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly || !day.shiftTemplateId} onClick={() => onCopyWorkingDayToAll(day.key)}>
+                    نسخ الشفت لكل أيام العمل
+                  </button>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </WorkspaceCardV2>
+
+      <WorkspaceHelpDrawerV2
+        open={Boolean(helpTopic)}
+        topic={helpTopic}
+        onClose={() => setHelpTopic(null)}
+      />
     </div>
   );
 }
@@ -831,8 +965,8 @@ export function EmployeeAttendanceTabLiveV2({
                   <dd>{Number(drawerRow?.lateGraceMinutes || 0) ? `${formatNumber(drawerRow?.lateGraceMinutes)} د` : "0 د"}</dd>
                 </div>
                 <div>
-                  <dt>سماحية الخروج المبكر</dt>
-                  <dd>{Number(drawerRow?.earlyLeaveGraceMinutes || 0) ? `${formatNumber(drawerRow?.earlyLeaveGraceMinutes)} د` : "0 د"}</dd>
+                  <dt>الخروج المبكر</dt>
+                  <dd>يُحسب من أول دقيقة</dd>
                 </div>
                 <div>
                   <dt>الموقع</dt>

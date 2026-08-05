@@ -877,10 +877,10 @@ export default function DashboardEmployees() {
               ...row,
               resolvedShift,
               shiftName: cleanText(resolvedShift.shiftName || resolvedShift.shift_name),
-              shiftStartTime: cleanText(resolvedShift.startTime || resolvedShift.start_time || resolvedShift.templateStartTime || resolvedShift.template_start_time),
-              shiftEndTime: cleanText(resolvedShift.endTime || resolvedShift.end_time || resolvedShift.templateEndTime || resolvedShift.template_end_time),
+              shiftStartTime: cleanText(resolvedShift.templateStartTime || resolvedShift.template_start_time || resolvedShift.startTime || resolvedShift.start_time),
+              shiftEndTime: cleanText(resolvedShift.templateEndTime || resolvedShift.template_end_time || resolvedShift.endTime || resolvedShift.end_time),
               lateGraceMinutes: Number(resolvedShift.lateGraceMinutes ?? resolvedShift.late_grace_minutes ?? (row as any).lateGraceMinutes ?? 0),
-              earlyLeaveGraceMinutes: Number(resolvedShift.earlyLeaveGraceMinutes ?? resolvedShift.early_leave_grace_minutes ?? (row as any).earlyLeaveGraceMinutes ?? 0),
+              earlyLeaveGraceMinutes: 0,
             } as StaffAttendanceWithId;
           } catch (shiftError) {
             console.warn("employee attendance shift resolve failed", { employeeId, date, shiftError });
@@ -2022,8 +2022,14 @@ export default function DashboardEmployees() {
       return;
     }
     if (editId !== matched.id) openEdit(matched, false);
-    setActiveTab(routeSection);
-    if (["basic", "profile", "services", "booking"].includes(routeSection)) setModalTab(routeSection as EmployeeModalTab);
+    const resolvedRouteSection: EmployeeSplitTab = routeSection === "shifts" ? "booking" : routeSection;
+    if (routeSection === "shifts") {
+      navigate(`/dashboard/employees/${encodeURIComponent(matched.id)}/booking`, { replace: true });
+    }
+    setActiveTab(resolvedRouteSection);
+    if (["basic", "profile", "services", "booking"].includes(resolvedRouteSection)) {
+      setModalTab(resolvedRouteSection as EmployeeModalTab);
+    }
   }, [editId, list, loading, navigate, routeEmployeeId, routeSection]);
 
   useEffect(() => {
@@ -2862,6 +2868,14 @@ export default function DashboardEmployees() {
       : null;
 
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
+    const missingShiftDays = WEEKDAY_OPTIONS.filter((day) => {
+      const scheduleDay = normalizedCustomWorkingHours[day.key];
+      return scheduleDay?.enabled !== false && !cleanText(scheduleDay?.shiftTemplateId);
+    });
+    if (missingShiftDays.length) {
+      setErrorMsg(`اختاري شفتًا لأيام العمل التالية: ${missingShiftDays.map((day) => day.label).join("، ")}`);
+      return;
+    }
     const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
     const previousEffectiveSchedule = resolveDateEffectiveScheduleSnapshot(
       editingStaff as any,
@@ -3053,6 +3067,49 @@ export default function DashboardEmployees() {
           updatedAt: serverTimestamp(),
         }, { merge: true });
       }
+
+      const weekdayNumbers: Record<WeekdayKey, number> = {
+        sun: 0,
+        mon: 1,
+        tue: 2,
+        wed: 3,
+        thu: 4,
+        fri: 5,
+        sat: 6,
+      };
+      await CoreHrService.getEmployee(targetEmployeeId).catch(async () => {
+        await CoreHrService.saveEmployee({
+          id: targetEmployeeId,
+          name: cleanName,
+          firebaseUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
+          email: cleanText(payload.email),
+          phone: cleanText(payload.phone),
+          status: active ? "active" : "inactive",
+          employment: {
+            employmentStatus: active ? "active" : "inactive",
+            weeklyOffDays: normalizedExceptionalWeekdays,
+            allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
+          },
+        });
+      });
+      await CoreHrService.replaceSchedules(
+        targetEmployeeId,
+        WEEKDAY_OPTIONS.map((day) => {
+          const scheduleDay = normalizedCustomWorkingHours[day.key] || { enabled: false };
+          const enabled = scheduleDay.enabled !== false;
+          return {
+            id: `${targetEmployeeId}-${day.key}`,
+            salonId: SALON_ID,
+            employeeId: targetEmployeeId,
+            weekday: weekdayNumbers[day.key],
+            shiftTemplateId: enabled ? cleanText(scheduleDay.shiftTemplateId) : null,
+            active: enabled,
+            scheduleSource: enabled ? "shift_template" : "weekly_off",
+            effectiveFrom: scheduleEffectiveFrom || todayIso(),
+            effectiveTo: null,
+          };
+        })
+      );
 
       selectedEmployeeIdentityRef.current = {
         id: targetEmployeeId,
@@ -4187,10 +4244,7 @@ export default function DashboardEmployees() {
     { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
     { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
     { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
-    { key: "booking", label: "جدول الدوام", hint: "الدوام والنطاق", icon: faClock },
-    ...(canManageSchedule
-      ? [{ key: "shifts" as EmployeeSplitTab, label: "الشفتات", hint: "القوالب والاستثناءات", icon: faClock }]
-      : []),
+    { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
     ...(canViewAttendance
       ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
       : []),
@@ -4941,31 +4995,34 @@ export default function DashboardEmployees() {
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
-    if (selectedEmployeeId) navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${tab}`);
-    setActiveTab(tab);
-    if (tab === "payroll") {
+    const resolvedTab: EmployeeSplitTab = tab === "shifts" ? "booking" : tab;
+    if (selectedEmployeeId) {
+      navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${resolvedTab}`);
+    }
+    setActiveTab(resolvedTab);
+    if (resolvedTab === "payroll") {
       setActiveStatsSubTab("payroll");
       setModalTab("stats");
       return;
     }
-    if (tab === "leave") {
+    if (resolvedTab === "leave") {
       setActiveStatsSubTab("stats");
       setModalTab("stats");
       return;
     }
-    if (tab === "basic") {
+    if (resolvedTab === "basic") {
       setModalTab("basic");
       return;
     }
-    if (tab === "booking" || tab === "shifts") {
+    if (resolvedTab === "booking") {
       setModalTab("booking");
       return;
     }
-    if (tab === "profile") {
+    if (resolvedTab === "profile") {
       setModalTab("profile");
       return;
     }
-    if (tab === "services") {
+    if (resolvedTab === "services") {
       setModalTab("services");
       return;
     }
@@ -5517,7 +5574,7 @@ export default function DashboardEmployees() {
                 onCopyModalWorkingDayToAll={copyModalWorkingDayToAll}
               />
               <ShiftControlSection
-                isVisible={!!editingStaff && activeTab === "shifts" && canManageSchedule}
+                isVisible={!!editingStaff && activeTab === "booking" && canManageSchedule}
                 employeeId={selectedEmployeeId || (editingStaff as any)?.id || ""}
                 employeeUid={selectedAttendanceIdentity.employeeUid || ""}
                 employeeIds={selectedAttendanceIdentity.allIds}

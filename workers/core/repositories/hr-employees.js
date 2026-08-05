@@ -15,6 +15,7 @@ import {
   requiredId,
   requiredText,
   rowNotFound,
+  validDate,
 } from '../d1.js';
 
 function moneyHalalas(value, field) {
@@ -77,7 +78,14 @@ async function employmentFor(db, salonId, employeeId) {
 async function schedulesFor(db, salonId, employeeId) {
   return dbAll(
     db,
-    'SELECT * FROM hr_work_schedules WHERE salon_id = ? AND employee_id = ? ORDER BY weekday, start_time',
+    `SELECT s.*, t.name AS shift_name, t.code AS shift_code,
+      t.start_time AS template_start_time, t.end_time AS template_end_time,
+      t.late_grace_minutes, 0 AS early_leave_grace_minutes,
+      t.attendance_lock_enabled, t.attendance_lock_after_minutes
+     FROM hr_work_schedules s
+     LEFT JOIN hr_shift_templates t ON t.id = s.shift_template_id AND t.salon_id = s.salon_id
+     WHERE s.salon_id = ? AND s.employee_id = ?
+     ORDER BY s.weekday, COALESCE(s.effective_from, '0000-01-01') DESC`,
     [salonId, employeeId]
   );
 }
@@ -235,29 +243,110 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   return getHrEmployee(db, salonId, id);
 }
 
+function previousDateKey(value) {
+  const [year, month, day] = validDate(value, 'effectiveFrom').split('-').map(Number);
+  const previous = new Date(Date.UTC(year, month - 1, day) - 86400000);
+  return previous.toISOString().slice(0, 10);
+}
+
 export async function replaceHrSchedules(db, salonId, employeeIdValue, schedules = []) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const now = nowIso();
-  const statements = [
-    { sql: 'DELETE FROM hr_work_schedules WHERE salon_id = ? AND employee_id = ?', params: [salonId, employeeId] },
-  ];
+  const normalizedSchedules = [];
+  const weekdays = new Set();
+
   for (const schedule of Array.isArray(schedules) ? schedules : []) {
+    const active = activeFlag(schedule.active, 1);
+    const requestedTemplateId = optionalText(schedule.shiftTemplateId || schedule.shift_template_id) || null;
+    const shiftTemplateId = active === 1 ? requestedTemplateId : null;
+    let template = null;
+    if (active === 1) {
+      if (!shiftTemplateId) {
+        const error = new Error('shift_template_required_for_workday');
+        error.code = 'core_hr:shift_template_required_for_workday';
+        throw error;
+      }
+      template = await dbFirst(
+        db,
+        'SELECT * FROM hr_shift_templates WHERE salon_id = ? AND id = ? LIMIT 1',
+        [salonId, shiftTemplateId]
+      );
+      if (!template) rowNotFound('shift_template');
+    }
+
+    const weekday = integer(schedule.weekday, 'weekday', { min: 0, max: 6 });
+    if (weekdays.has(weekday)) {
+      const error = new Error('duplicate_schedule_weekday');
+      error.code = 'core_hr:duplicate_schedule_weekday';
+      throw error;
+    }
+    weekdays.add(weekday);
+
+    const effectiveFromRaw = optionalText(schedule.effectiveFrom || schedule.effective_from);
+    const effectiveToRaw = optionalText(schedule.effectiveTo || schedule.effective_to);
+    const effectiveFrom = effectiveFromRaw ? validDate(effectiveFromRaw, 'effectiveFrom') : null;
+    const effectiveTo = effectiveToRaw ? validDate(effectiveToRaw, 'effectiveTo') : null;
+    if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom) {
+      const error = new Error('schedule_effective_range_invalid');
+      error.code = 'core_hr:invalid_date_range';
+      throw error;
+    }
+
+    normalizedSchedules.push({
+      id: requiredId(schedule.id || generatedId('schedule')),
+      salonId,
+      employeeId,
+      weekday,
+      shiftTemplateId,
+      startTime: active === 1 ? optionalText(template?.start_time) || null : null,
+      endTime: active === 1 ? optionalText(template?.end_time) || null : null,
+      active,
+      scheduleSource: active === 1 ? 'shift_template' : 'weekly_off',
+      effectiveFrom,
+      effectiveTo,
+    });
+  }
+
+  const effectiveFromValues = Array.from(new Set(normalizedSchedules.map((row) => row.effectiveFrom || '')));
+  if (effectiveFromValues.length > 1) {
+    const error = new Error('schedule_effective_from_must_match');
+    error.code = 'core_hr:schedule_effective_from_must_match';
+    throw error;
+  }
+  const replacementDate = effectiveFromValues[0] || null;
+  const statements = [];
+  if (replacementDate) {
+    statements.push(
+      {
+        sql: `DELETE FROM hr_work_schedules
+          WHERE salon_id = ? AND employee_id = ? AND effective_from IS NOT NULL AND effective_from >= ?`,
+        params: [salonId, employeeId, replacementDate],
+      },
+      {
+        sql: `UPDATE hr_work_schedules SET effective_to = ?, updated_at = ?
+          WHERE salon_id = ? AND employee_id = ?
+            AND (effective_from IS NULL OR effective_from < ?)
+            AND (effective_to IS NULL OR effective_to >= ?)`,
+        params: [previousDateKey(replacementDate), now, salonId, employeeId, replacementDate, replacementDate],
+      }
+    );
+  } else {
+    statements.push({
+      sql: 'DELETE FROM hr_work_schedules WHERE salon_id = ? AND employee_id = ?',
+      params: [salonId, employeeId],
+    });
+  }
+
+  for (const schedule of normalizedSchedules) {
     statements.push({
       sql: `INSERT INTO hr_work_schedules
-        (id, salon_id, employee_id, weekday, start_time, end_time, active, effective_from, effective_to, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, salon_id, employee_id, weekday, shift_template_id, start_time, end_time, active,
+         schedule_source, effective_from, effective_to, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
-        requiredId(schedule.id || generatedId('schedule')),
-        salonId,
-        employeeId,
-        integer(schedule.weekday, 'weekday', { min: 0, max: 6 }),
-        optionalText(schedule.startTime || schedule.start_time) || null,
-        optionalText(schedule.endTime || schedule.end_time) || null,
-        activeFlag(schedule.active, 1),
-        optionalText(schedule.effectiveFrom || schedule.effective_from) || null,
-        optionalText(schedule.effectiveTo || schedule.effective_to) || null,
-        now,
-        now,
+        schedule.id, schedule.salonId, schedule.employeeId, schedule.weekday,
+        schedule.shiftTemplateId, schedule.startTime, schedule.endTime, schedule.active,
+        schedule.scheduleSource, schedule.effectiveFrom, schedule.effectiveTo, now, now,
       ],
     });
   }

@@ -1,9 +1,11 @@
-import type { RefObject } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 
 import { EmployeeScheduleTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
 import WorkHourOverridesEditor, { type WorkHourOverridesEditorProps } from "./WorkHourOverridesEditor";
 import { WEEKDAY_OPTIONS, normalizeTimeHHMM, type StaffWorkingDay, type WeekdayKey } from "./shared";
 import type { WorkZone } from "../../services/attendanceSettingsService";
+import { CoreHrService } from "../../services/CoreHrService";
+import type { CoreShiftTemplate } from "../../types/hrCoreApi";
 
 type BookingSettingsSectionProps = {
   isVisible: boolean;
@@ -33,6 +35,8 @@ type BookingSettingsSectionProps = {
 
 type ResolvedWorkingDay = {
   enabled: boolean;
+  shiftTemplateId: string;
+  shiftName: string;
   start: string;
   end: string;
 };
@@ -41,6 +45,8 @@ function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkin
   const current = rows[day] || { enabled: true, start: "10:00", end: "22:00" };
   return {
     enabled: current.enabled !== false,
+    shiftTemplateId: String(current.shiftTemplateId || "").trim(),
+    shiftName: String(current.shiftName || "").trim(),
     start: normalizeTimeHHMM(current.start) || "10:00",
     end: normalizeTimeHHMM(current.end) || "22:00",
   };
@@ -71,17 +77,54 @@ export default function BookingSettingsSection({
   onUpdateModalWorkingDay,
   onCopyModalWorkingDayToAll,
 }: BookingSettingsSectionProps) {
+  const [shiftTemplates, setShiftTemplates] = useState<CoreShiftTemplate[]>([]);
+  const [shiftTemplatesLoading, setShiftTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    let alive = true;
+    setShiftTemplatesLoading(true);
+    CoreHrService.listShiftTemplates({ active: "all" })
+      .then((rows) => {
+        if (alive) setShiftTemplates(rows.filter((row) => row.active === true || row.active === 1));
+      })
+      .catch((error) => {
+        console.warn("load shift templates for weekly schedule failed", error);
+        if (alive) setShiftTemplates([]);
+      })
+      .finally(() => {
+        if (alive) setShiftTemplatesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isVisible]);
+
+  const templateByWindow = useMemo(() => {
+    const rows = new Map<string, CoreShiftTemplate>();
+    for (const template of shiftTemplates) {
+      const key = `${normalizeTimeHHMM(template.startTime) || ""}|${normalizeTimeHHMM(template.endTime) || ""}`;
+      if (key !== "|" && !rows.has(key)) rows.set(key, template);
+    }
+    return rows;
+  }, [shiftTemplates]);
+
   if (!isVisible) return null;
 
   const weeklyOffDays = new Set(modalExceptionalLeaveWeekdays);
   const workingDays = WEEKDAY_OPTIONS.map((day) => {
     const row = resolveWorkingDay(day.key, modalCustomWorkingHours);
+    const matchedTemplate = row.shiftTemplateId
+      ? shiftTemplates.find((template) => template.id === row.shiftTemplateId) || null
+      : templateByWindow.get(`${row.start}|${row.end}`) || null;
     return {
       key: day.key,
       label: day.label,
       enabled: modalUseCustomWorkingHours ? row.enabled : !weeklyOffDays.has(day.key),
-      start: row.start,
-      end: row.end,
+      shiftTemplateId: matchedTemplate?.id || row.shiftTemplateId,
+      shiftName: matchedTemplate?.name || row.shiftName,
+      start: normalizeTimeHHMM(matchedTemplate?.startTime) || row.start,
+      end: normalizeTimeHHMM(matchedTemplate?.endTime) || row.end,
     };
   });
 
@@ -93,6 +136,8 @@ export default function BookingSettingsSection({
         employmentEndDate={employmentEndDate}
         useCustomWorkingHours={modalUseCustomWorkingHours}
         workingDays={workingDays}
+        shiftTemplates={shiftTemplates}
+        shiftTemplatesLoading={shiftTemplatesLoading}
         attendanceZones={attendanceZones.map((zone) => ({
           id: zone.id,
           name: `${zone.name || zone.id}${zone.active ? "" : " - غير نشط"}${zone.radiusMeters ? ` - ${zone.radiusMeters} م` : ""}`,
@@ -114,8 +159,10 @@ export default function BookingSettingsSection({
           onUpdateModalWorkingDay(typedDay, {
             ...current,
             ...(typeof patch.enabled === "boolean" ? { enabled: patch.enabled } : {}),
-            ...(patch.start ? { start: patch.start } : {}),
-            ...(patch.end ? { end: patch.end } : {}),
+            ...(patch.shiftTemplateId !== undefined ? { shiftTemplateId: patch.shiftTemplateId } : {}),
+            ...(patch.shiftName !== undefined ? { shiftName: patch.shiftName } : {}),
+            ...(patch.start !== undefined ? { start: patch.start } : {}),
+            ...(patch.end !== undefined ? { end: patch.end } : {}),
           });
         }}
       />

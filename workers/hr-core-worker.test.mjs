@@ -4,6 +4,7 @@ import test from 'node:test';
 import { Miniflare } from 'miniflare';
 
 import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-employees.js';
+import { saveShiftTemplate, resolveEmployeeShift } from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
 import { createAbsence } from './core/repositories/absences.js';
@@ -38,7 +39,9 @@ async function setup() {
     '0014_app_users_permissions.sql',
     '0015_employee_type.sql',
     '0016_payroll_snapshots.sql',
+    '0017_shift_control.sql',
     '0018_employee_payroll_settings.sql',
+    '0022_shift_attendance_policy.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -68,10 +71,23 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(employee.employment.title, 'Stylist');
   assert.equal(employee.employment.base_salary_halalas, 450000);
 
+  const shiftTemplate = await saveShiftTemplate(db, 'main', {
+    id: 'shift-day',
+    name: 'Day shift',
+    startTime: '09:00',
+    endTime: '17:00',
+    lateGraceMinutes: 15,
+    attendanceLockEnabled: true,
+    attendanceLockAfterMinutes: 30,
+  }, actor);
   const withSchedule = await replaceHrSchedules(db, 'main', 'emp-1', [
-    { id: 'sched-1', weekday: 0, startTime: '09:00', endTime: '17:00', active: true },
+    { id: 'sched-1', weekday: 0, shiftTemplateId: shiftTemplate.id, active: true, effectiveFrom: '2026-07-01' },
   ]);
   assert.equal(withSchedule.schedules.length, 1);
+  const resolved = await resolveEmployeeShift(db, 'main', 'emp-1', '2026-07-19');
+  assert.equal(resolved.source, 'weekly_schedule');
+  assert.equal(resolved.shift_template_id, 'shift-day');
+  assert.equal(resolved.attendance_lock_enabled, 1);
 
   const checkIn = await recordAttendance(db, 'main', {
     employeeId: 'emp-1', employeeUid: 'uid-1', type: 'check_in', date: '2026-07-16',

@@ -1,5 +1,7 @@
 export type ScheduleWorkingDay = {
   enabled?: boolean;
+  shiftTemplateId?: string;
+  shiftName?: string;
   start?: string;
   end?: string;
 };
@@ -46,6 +48,8 @@ function normalizeWorkingHours(value: unknown) {
     const row = rowValue && typeof rowValue === "object" ? (rowValue as Record<string, unknown>) : {};
     result[key] = {
       enabled: row.enabled !== false,
+      shiftTemplateId: cleanText(row.shiftTemplateId || row.shift_template_id),
+      shiftName: cleanText(row.shiftName || row.shift_name),
       start: normalizeTime(row.start),
       end: normalizeTime(row.end),
     };

@@ -41,6 +41,9 @@ export type LeaveEntry = {
 
 export type StaffWorkingDay = {
   enabled?: boolean;
+  /** Shift template is the editable source of truth. Times are compatibility snapshots only. */
+  shiftTemplateId?: string;
+  shiftName?: string;
   start?: string;
   end?: string;
 };
@@ -785,6 +788,8 @@ export function normalizeWorkingHours(v: any): Record<WeekdayKey, StaffWorkingDa
     if (!row || typeof row !== "object") return;
     out[d.key] = {
       enabled: row.enabled !== false,
+      shiftTemplateId: String(row.shiftTemplateId || row.shift_template_id || "").trim(),
+      shiftName: String(row.shiftName || row.shift_name || "").trim(),
       start: normalizeTimeHHMM(row.start) || defaults[d.key].start,
       end: normalizeTimeHHMM(row.end) || defaults[d.key].end,
     };

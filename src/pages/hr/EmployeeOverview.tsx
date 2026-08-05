@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
@@ -154,6 +154,32 @@ function readPolicyMinutes(...values: unknown[]) {
   return undefined;
 }
 
+function readPolicyFlag(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    return value === true || value === 1 || value === "1" || value === "true";
+  }
+  return false;
+}
+
+function isCheckInWindowClosed(dateKey: string, schedule: ShiftSchedule) {
+  if (!readPolicyFlag(schedule.attendanceLockEnabled)) return false;
+  if (dateKey !== getTodayAttendanceDateKey()) return false;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(cleanText(schedule.startTime));
+  if (!match) return false;
+  const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+  const lockAfterMinutes = Number(schedule.attendanceLockAfterMinutes || 0);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute > startMinutes + Math.max(0, lockAfterMinutes);
+}
+
 function resolvedShiftWindow(row?: CoreResolvedShift | null) {
   if (!row || cleanText((row as any).source) === "none") return null;
   const exceptionType = cleanText((row as any)?.exceptionType || (row as any)?.exception_type);
@@ -169,17 +195,17 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
     }
   }
   const startTime =
-    cleanTime((row as any)?.startTime) ||
-    cleanTime((row as any)?.start_time) ||
     cleanTime((row as any)?.templateStartTime) ||
     cleanTime((row as any)?.template_start_time) ||
+    cleanTime((row as any)?.startTime) ||
+    cleanTime((row as any)?.start_time) ||
     cleanTime(snapshot.startTime) ||
     cleanTime(snapshot.start_time);
   const endTime =
-    cleanTime((row as any)?.endTime) ||
-    cleanTime((row as any)?.end_time) ||
     cleanTime((row as any)?.templateEndTime) ||
     cleanTime((row as any)?.template_end_time) ||
+    cleanTime((row as any)?.endTime) ||
+    cleanTime((row as any)?.end_time) ||
     cleanTime(snapshot.endTime) ||
     cleanTime(snapshot.end_time);
   if (!startTime && !endTime) return null;
@@ -192,11 +218,18 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
       snapshot.lateGraceMinutes,
       snapshot.late_grace_minutes
     ),
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      (row as any)?.earlyLeaveGraceMinutes,
-      (row as any)?.early_leave_grace_minutes,
-      snapshot.earlyLeaveGraceMinutes,
-      snapshot.early_leave_grace_minutes
+    earlyLeaveGraceMinutes: 0,
+    attendanceLockEnabled: readPolicyFlag(
+      (row as any)?.attendanceLockEnabled,
+      (row as any)?.attendance_lock_enabled,
+      snapshot.attendanceLockEnabled,
+      snapshot.attendance_lock_enabled
+    ),
+    attendanceLockAfterMinutes: readPolicyMinutes(
+      (row as any)?.attendanceLockAfterMinutes,
+      (row as any)?.attendance_lock_after_minutes,
+      snapshot.attendanceLockAfterMinutes,
+      snapshot.attendance_lock_after_minutes
     ),
   };
 }
@@ -212,7 +245,9 @@ function scheduleForEmployeeDate(
       startTime: coreWindow.startTime,
       endTime: coreWindow.endTime,
       lateGraceMinutes: coreWindow.lateGraceMinutes,
-      earlyLeaveGraceMinutes: coreWindow.earlyLeaveGraceMinutes,
+      earlyLeaveGraceMinutes: 0,
+      attendanceLockEnabled: coreWindow.attendanceLockEnabled,
+      attendanceLockAfterMinutes: coreWindow.attendanceLockAfterMinutes,
       weeklyOffDays: [],
     };
   }
@@ -274,10 +309,7 @@ function scheduleForEmployeeDate(
       effectiveSource.lateGraceMinutes,
       effectiveSource.late_grace_minutes
     ),
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      effectiveSource.earlyLeaveGraceMinutes,
-      effectiveSource.early_leave_grace_minutes
-    ),
+    earlyLeaveGraceMinutes: 0,
     weeklyOffDays: [...explicitOffDays, ...customOffDays],
   };
 }
@@ -721,6 +753,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     if (!attendanceEmployeeId || !session.uid || attendanceBusy) {
       return;
     }
+    if (type === "check_in" && isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule)) {
+      setAttendanceMessage("انتهت مهلة تسجيل الحضور. تم إغلاق بصمة الحضور، ويرجى مراجعة الإدارة.");
+      return;
+    }
 
     setAttendanceBusy(true);
     setAttendanceMessage("");
@@ -835,11 +871,18 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       : "غير نشط";
   const attendanceStatus = attendance?.status || "not_started";
   const attendanceDayStatusLabel = getAttendanceDayStatusLabel(attendanceDayStatus);
-  const canCheckIn = !attendanceBusy && !attendanceLoading && attendanceStatus === "not_started";
+  const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
+  const canCheckIn = !attendanceBusy && !attendanceLoading && attendanceStatus === "not_started" && !checkInWindowClosed;
   const canCheckOut = !attendanceBusy && !attendanceLoading && attendanceStatus === "checked_in";
   const punchAction = canCheckOut ? "check_out" : "check_in";
   const punchDisabled = !canCheckIn && !canCheckOut;
-  const punchLabel = attendanceStatus === "checked_out" ? "تم اكتمال الدوام" : canCheckOut ? "تسجيل انصراف" : "تسجيل حضور";
+  const punchLabel = attendanceStatus === "checked_out"
+    ? "تم اكتمال الدوام"
+    : canCheckOut
+      ? "تسجيل انصراف"
+      : checkInWindowClosed
+        ? "انتهت مهلة الحضور"
+        : "تسجيل حضور";
   const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
   const checkInTime = formatAttendanceTime(attendance?.checkInAtClient);
   const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient);
@@ -873,9 +916,11 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
   const punchHint = attendanceStatus === "checked_out"
     ? "تم حفظ الحضور والانصراف لهذا اليوم"
-    : attendanceBusy
-      ? "لا تغلق الصفحة أثناء التحقق"
-      : "";
+    : checkInWindowClosed && attendanceStatus === "not_started"
+      ? "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر."
+      : attendanceBusy
+        ? "لا تغلق الصفحة أثناء التحقق"
+        : "";
   const targetSummary = employeeTarget?.summary;
   const targetAmount = Number(targetSummary?.currentTargetAmount || employeeTarget?.targetCalculation?.targetAmount || 0);
   const targetSales = Number(targetSummary?.netTargetAmount || 0);

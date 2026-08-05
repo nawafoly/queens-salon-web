@@ -1106,6 +1106,12 @@ export function getAttendanceWorkerMessage(
     case "not_checked_in":
       return "يجب تسجيل الحضور قبل تسجيل الانصراف.";
 
+    case "check_in_window_closed":
+      return "انتهت مهلة تسجيل الحضور. تم إغلاق بصمة الحضور، ويرجى مراجعة الإدارة.";
+
+    case "not_scheduled_workday":
+      return "اليوم راحة أسبوعية أو غير مجدول للعمل، لذلك لا تتوفر بصمة الحضور.";
+
     case "zone_not_found":
       return "لم يتم العثور على نطاق حضور مرتبط بالموظفة.";
 

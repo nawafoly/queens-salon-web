@@ -1,4 +1,5 @@
-﻿import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule";
+import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule";
+import { calculateAttendanceMinutePolicy } from "./attendancePolicyMath.js";
 import {
   calculatePermissionCoverage,
   permissionIntervalsFromAttendanceRecords,
@@ -20,7 +21,10 @@ export type ShiftSchedule = {
   startTime?: string | null;
   endTime?: string | null;
   lateGraceMinutes?: number | string | null;
+  /** @deprecated No early-departure grace is applied. */
   earlyLeaveGraceMinutes?: number | string | null;
+  attendanceLockEnabled?: boolean | number | string | null;
+  attendanceLockAfterMinutes?: number | string | null;
   weeklyOffDays?: WorkScheduleWeekday[] | string[] | null;
 };
 
@@ -221,26 +225,25 @@ export function computeAttendanceDay(
   const actualHours = isComplete
     ? roundHours((checkOutMs - checkInMs) / 3600000)
     : 0;
-  const lateGraceMs = policyMinutes(schedule.lateGraceMinutes) * 60 * 1000;
-  const earlyLeaveGraceMs = policyMinutes(schedule.earlyLeaveGraceMinutes) * 60 * 1000;
-  const actualLateMs =
+  const actualLateMinutes =
     Number.isFinite(checkInMs) && scheduleStartMs !== null
-      ? Math.max(0, checkInMs - scheduleStartMs)
+      ? Math.max(0, Math.round((checkInMs - scheduleStartMs) / 60000))
       : 0;
-  const actualEarlyLeaveMs =
+  const afterScheduleMinutes =
     Number.isFinite(checkOutMs) && scheduleEndMs !== null
-      ? Math.max(0, scheduleEndMs - checkOutMs)
+      ? Math.max(0, Math.round((checkOutMs - scheduleEndMs) / 60000))
       : 0;
-  const lateHours =
-    actualLateMs > lateGraceMs
-      ? roundHours((actualLateMs - lateGraceMs) / 3600000)
+  const actualEarlyLeaveMinutes =
+    Number.isFinite(checkOutMs) && scheduleEndMs !== null
+      ? Math.max(0, Math.round((scheduleEndMs - checkOutMs) / 60000))
       : 0;
-  const overtimeHours =
-    Number.isFinite(checkOutMs) &&
-    scheduleEndMs !== null &&
-    checkOutMs > scheduleEndMs
-      ? roundHours((checkOutMs - scheduleEndMs) / 3600000)
-      : 0;
+  const minutePolicy = calculateAttendanceMinutePolicy({
+    actualLateMinutes,
+    earlyLeaveMinutes: actualEarlyLeaveMinutes,
+    afterScheduleMinutes,
+  });
+  const lateHours = roundHours(minutePolicy.uncompensatedLateMinutes / 60);
+  const overtimeHours = isComplete ? roundHours(minutePolicy.extraMinutes / 60) : 0;
   const isBeforeScheduledEnd =
     !isComplete &&
     Number.isFinite(checkInMs) &&
@@ -248,24 +251,11 @@ export function computeAttendanceDay(
     scheduleEndMs !== null &&
     date === riyadhDateKey(new Date().toISOString()) &&
     Date.now() <= scheduleEndMs;
-  const expectedMs =
-    scheduleStartMs !== null && scheduleEndMs !== null
-      ? Math.max(0, scheduleEndMs - scheduleStartMs)
-      : expectedHours * 3600000;
-  const rawMissingBeforeGraceMs = isComplete
-    ? Math.max(0, expectedMs - (checkOutMs - checkInMs))
-    : Math.max(0, expectedHours * 3600000 - actualHours * 3600000);
-  const graceCoveredMissingMs = isComplete
-    ? Math.min(
-        rawMissingBeforeGraceMs,
-        Math.min(actualLateMs, lateGraceMs) +
-          Math.min(actualEarlyLeaveMs, earlyLeaveGraceMs)
-      )
-    : 0;
-  const rawMissingMinutes = Math.max(
-    0,
-    Math.round((rawMissingBeforeGraceMs - graceCoveredMissingMs) / 60000)
-  );
+  const rawMissingMinutes = isComplete
+    ? minutePolicy.missingMinutes
+    : Math.max(0, Math.round(expectedHours * 60 - actualHours * 60));
+  // There is no free late time and no early-departure grace. Arriving early cannot
+  // offset leaving early; approved permission is the only adjustment.
   const rawMissingHours = roundHours(rawMissingMinutes / 60);
   const permissionCoverage = calculatePermissionCoverage({
     date,

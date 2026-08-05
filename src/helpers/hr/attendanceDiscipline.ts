@@ -1,8 +1,9 @@
-﻿import {
+import {
   calculatePermissionCoverage,
   roundPermissionHours,
   type PermissionIntervalInput,
 } from "./permissionAttendance";
+import { calculateAttendanceMinutePolicy } from "./attendancePolicyMath.js";
 
 const RIYADH_TIME_ZONE = "Asia/Riyadh";
 const MINUTES_PER_DAY = 24 * 60;
@@ -85,11 +86,6 @@ function roundHours(minutes: number) {
   return Math.round((minutes / 60) * 100) / 100;
 }
 
-function policyMinutes(value: unknown, max = MINUTES_PER_DAY) {
-  const number = Number(value ?? 0);
-  if (!Number.isFinite(number) || number <= 0) return 0;
-  return Math.min(max, Math.round(number));
-}
 
 function normalizeDateKey(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
@@ -169,7 +165,8 @@ function makeDaySummary(
 }
 
 function statusForCompleteDay(params: {
-  lateMinutes: number;
+  actualLateMinutes: number;
+  uncompensatedLateMinutes: number;
   compensatedLateMinutes: number;
   missingMinutes: number;
   extraMinutes: number;
@@ -182,7 +179,7 @@ function statusForCompleteDay(params: {
   }
 
   const hasFullyCompensatedLate =
-    params.lateMinutes > 0 && params.compensatedLateMinutes >= params.lateMinutes;
+    params.actualLateMinutes > 0 && params.uncompensatedLateMinutes === 0;
 
   if (hasFullyCompensatedLate && params.extraMinutes > 0) {
     return {
@@ -385,21 +382,23 @@ export function calculateAttendanceDisciplineDay(
     });
   }
 
-  const lateGraceMinutes = policyMinutes(input.lateGraceMinutes);
-  const earlyLeaveGraceMinutes = policyMinutes(input.earlyLeaveGraceMinutes);
-  const actualLateMinutes = Math.max(0, actualCheckInMinutes - scheduledStartMinutes!);
-  const actualEarlyLeaveMinutes = Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes);
-  const lateMinutes = Math.max(0, actualLateMinutes - lateGraceMinutes);
-  const earlyLeaveMinutes = Math.max(0, actualEarlyLeaveMinutes - earlyLeaveGraceMinutes);
-  const afterScheduleMinutes = Math.max(0, actualCheckOutMinutes - scheduledEndMinutes!);
-  const compensatedLateMinutes = Math.min(lateMinutes, afterScheduleMinutes);
-  const rawMissingBeforeGraceMinutes = Math.max(0, scheduledMinutes - actualMinutes);
-  const graceCoveredMissingMinutes = Math.min(
-    rawMissingBeforeGraceMinutes,
-    Math.min(actualLateMinutes, lateGraceMinutes) +
-      Math.min(actualEarlyLeaveMinutes, earlyLeaveGraceMinutes)
-  );
-  const rawMissingMinutes = Math.max(0, rawMissingBeforeGraceMinutes - graceCoveredMissingMinutes);
+  const minutePolicy = calculateAttendanceMinutePolicy({
+    actualLateMinutes: Math.max(0, actualCheckInMinutes - scheduledStartMinutes!),
+    earlyLeaveMinutes: Math.max(0, scheduledEndMinutes! - actualCheckOutMinutes),
+    afterScheduleMinutes: Math.max(0, actualCheckOutMinutes - scheduledEndMinutes!),
+  });
+  const {
+    actualLateMinutes,
+    earlyLeaveMinutes,
+    afterScheduleMinutes,
+    compensatedLateMinutes,
+    uncompensatedLateMinutes: lateMinutes,
+    missingMinutes: rawMissingMinutes,
+    extraMinutes,
+  } = minutePolicy;
+  // Grace controls whether check-in is accepted/classified. It does not create
+  // paid minutes. Only post-shift work compensates lateness, and early arrival
+  // never offsets an early departure.
   const permissionCoverage = calculatePermissionCoverage({
     date,
     scheduledStart: input.scheduledStart,
@@ -410,12 +409,12 @@ export function calculateAttendanceDisciplineDay(
     intervals: input.permissionIntervals,
   });
   const missingMinutes = permissionCoverage.adjustedMissingMinutes;
-  const extraMinutes = Math.max(0, actualMinutes - scheduledMinutes);
   const status =
     permissionCoverage.coveredMissingMinutes > 0 && missingMinutes === 0
       ? { status: "complete_with_permission" as const, statusLabel: "مكتمل باستئذان معتمد" }
       : statusForCompleteDay({
-          lateMinutes,
+          actualLateMinutes,
+          uncompensatedLateMinutes: lateMinutes,
           compensatedLateMinutes,
           missingMinutes,
           extraMinutes,
@@ -434,10 +433,7 @@ export function calculateAttendanceDisciplineDay(
     extraHours: roundHours(extraMinutes),
     afterScheduleHours: roundHours(afterScheduleMinutes),
     netHourDifference: roundHours(
-      actualMinutes +
-        graceCoveredMissingMinutes +
-        permissionCoverage.coveredMissingMinutes -
-        scheduledMinutes
+      extraMinutes + permissionCoverage.coveredMissingMinutes - rawMissingMinutes
     ),
     status: status.status,
     statusLabel: status.statusLabel,

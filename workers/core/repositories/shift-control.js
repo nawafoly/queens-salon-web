@@ -48,6 +48,34 @@ function addDays(dateKeyValue, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function weekdayNumber(dateKeyValue) {
+  const [year, month, day] = String(dateKeyValue).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
+}
+
+function shiftLockPolicy(data = {}, fallback = {}) {
+  const lateGraceMinutes = integer(
+    data.lateGraceMinutes ?? data.late_grace_minutes ?? fallback.late_grace_minutes ?? 0,
+    'lateGraceMinutes',
+    { min: 0, max: 240 }
+  );
+  const attendanceLockEnabled = activeFlag(
+    data.attendanceLockEnabled ?? data.attendance_lock_enabled ?? fallback.attendance_lock_enabled,
+    0
+  );
+  const attendanceLockAfterMinutes = integer(
+    data.attendanceLockAfterMinutes ?? data.attendance_lock_after_minutes ?? fallback.attendance_lock_after_minutes ?? 30,
+    'attendanceLockAfterMinutes',
+    { min: 0, max: 1440 }
+  );
+  if (attendanceLockEnabled && attendanceLockAfterMinutes < lateGraceMinutes) {
+    throw Object.assign(new Error('attendance_lock_before_late_grace'), {
+      code: 'core_hr:attendance_lock_before_late_grace',
+    });
+  }
+  return { lateGraceMinutes, attendanceLockEnabled, attendanceLockAfterMinutes };
+}
+
 
 function daysBetweenInclusive(fromValue, toValue) {
   const from = dateKey(fromValue, 'dateFrom');
@@ -197,27 +225,39 @@ export async function saveShiftTemplate(db, salonId, data, actor = {}) {
   const now = nowIso();
   const id = requiredId(data.id || generatedId('shift'));
   const before = await dbFirst(db, 'SELECT * FROM hr_shift_templates WHERE salon_id = ? AND id = ?', [salonId, id]);
+  const lockPolicy = shiftLockPolicy(data, before || {});
   const row = {
-    id, salon_id: salonId, name: requiredText(data.name, 'name'), code: optionalText(data.code) || null,
+    id,
+    salon_id: salonId,
+    name: requiredText(data.name, 'name'),
+    code: optionalText(data.code) || null,
     start_time: timeValue(data.startTime ?? data.start_time, 'startTime'),
     end_time: timeValue(data.endTime ?? data.end_time, 'endTime'),
     crosses_midnight: activeFlag(data.crossesMidnight ?? data.crosses_midnight, 0),
     break_minutes: integer(data.breakMinutes ?? data.break_minutes ?? 0, 'breakMinutes', { min: 0, max: 720 }),
     break_paid: activeFlag(data.breakPaid ?? data.break_paid, 0),
-    late_grace_minutes: integer(data.lateGraceMinutes ?? data.late_grace_minutes ?? 0, 'lateGraceMinutes', { min: 0, max: 240 }),
-    early_leave_grace_minutes: integer(data.earlyLeaveGraceMinutes ?? data.early_leave_grace_minutes ?? 0, 'earlyLeaveGraceMinutes', { min: 0, max: 240 }),
+    late_grace_minutes: lockPolicy.lateGraceMinutes,
+    // Legacy column intentionally forced to zero. Early departure is counted from the first minute.
+    early_leave_grace_minutes: 0,
+    attendance_lock_enabled: lockPolicy.attendanceLockEnabled,
+    attendance_lock_after_minutes: lockPolicy.attendanceLockAfterMinutes,
     overtime_after_minutes: integer(data.overtimeAfterMinutes ?? data.overtime_after_minutes ?? 0, 'overtimeAfterMinutes', { min: 0, max: 1440 }),
-    active: activeFlag(data.active, 1), created_at: before?.created_at || now, updated_at: now,
+    active: activeFlag(data.active, 1),
+    created_at: before?.created_at || now,
+    updated_at: now,
   };
   await dbBatch(db, [{
     sql: `INSERT INTO hr_shift_templates
       (id, salon_id, name, code, start_time, end_time, crosses_midnight, break_minutes, break_paid,
-       late_grace_minutes, early_leave_grace_minutes, overtime_after_minutes, active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       late_grace_minutes, early_leave_grace_minutes, attendance_lock_enabled, attendance_lock_after_minutes,
+       overtime_after_minutes, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, code=excluded.code, start_time=excluded.start_time,
        end_time=excluded.end_time, crosses_midnight=excluded.crosses_midnight, break_minutes=excluded.break_minutes,
        break_paid=excluded.break_paid, late_grace_minutes=excluded.late_grace_minutes,
-       early_leave_grace_minutes=excluded.early_leave_grace_minutes,
+       early_leave_grace_minutes=0,
+       attendance_lock_enabled=excluded.attendance_lock_enabled,
+       attendance_lock_after_minutes=excluded.attendance_lock_after_minutes,
        overtime_after_minutes=excluded.overtime_after_minutes, active=excluded.active, updated_at=excluded.updated_at`,
     params: Object.values(row),
   }]);
@@ -231,7 +271,8 @@ export async function listShiftAssignments(db, salonId, query = {}) {
   return dbAll(db,
     `SELECT a.*, t.name AS shift_name, t.code AS shift_code,
       t.start_time AS template_start_time, t.end_time AS template_end_time, t.crosses_midnight,
-      t.break_minutes, t.late_grace_minutes, t.early_leave_grace_minutes, t.overtime_after_minutes
+      t.break_minutes, t.late_grace_minutes, 0 AS early_leave_grace_minutes,
+      t.attendance_lock_enabled, t.attendance_lock_after_minutes, t.overtime_after_minutes
        FROM hr_shift_assignments a LEFT JOIN hr_shift_templates t ON t.id = a.shift_template_id
       WHERE a.salon_id = ? ${employeeId ? 'AND a.employee_id = ?' : ''}
       ORDER BY a.employee_id, a.effective_from DESC`, employeeId ? [salonId, employeeId] : [salonId]);
@@ -449,23 +490,152 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
   const date = dateKey(dateValue, 'date');
   const exception = await dbFirst(db, `SELECT e.*, t.name AS shift_name, t.start_time AS template_start_time,
     t.end_time AS template_end_time, t.crosses_midnight, t.break_minutes, t.late_grace_minutes,
-    t.early_leave_grace_minutes, t.overtime_after_minutes
+    0 AS early_leave_grace_minutes, t.attendance_lock_enabled, t.attendance_lock_after_minutes,
+    t.overtime_after_minutes
     FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t ON t.id=e.shift_template_id
-    WHERE e.salon_id=? AND e.employee_id=? AND e.status='approved' AND e.date_from<=? AND e.date_to>=?
+    WHERE e.salon_id=? AND e.employee_id=? AND e.status='approved' AND e.enabled=1 AND e.date_from<=? AND e.date_to>=?
     ORDER BY e.created_at DESC LIMIT 1`, [salonId, employeeId, date, date]);
-  if (exception) return { source: 'exception', date, ...exception };
+
+  const weeklySchedule = await dbFirst(db, `SELECT s.*, t.name AS shift_name, t.code AS shift_code,
+    t.start_time AS template_start_time, t.end_time AS template_end_time, t.crosses_midnight,
+    t.break_minutes, t.late_grace_minutes, 0 AS early_leave_grace_minutes,
+    t.attendance_lock_enabled, t.attendance_lock_after_minutes, t.overtime_after_minutes
+    FROM hr_work_schedules s
+    LEFT JOIN hr_shift_templates t ON t.id=s.shift_template_id AND t.salon_id=s.salon_id
+    WHERE s.salon_id=? AND s.employee_id=? AND s.weekday=?
+      AND (s.effective_from IS NULL OR s.effective_from<=?)
+      AND (s.effective_to IS NULL OR s.effective_to>=?)
+    ORDER BY COALESCE(s.effective_from,'0000-01-01') DESC, s.updated_at DESC LIMIT 1`,
+    [salonId, employeeId, weekdayNumber(date), date, date]);
+
   const assignment = await dbFirst(db, `SELECT a.*, t.name AS shift_name,
     t.start_time AS template_start_time,
     t.end_time AS template_end_time,
     t.crosses_midnight,
     t.break_minutes,
     t.late_grace_minutes,
-    t.early_leave_grace_minutes,
+    0 AS early_leave_grace_minutes,
+    t.attendance_lock_enabled,
+    t.attendance_lock_after_minutes,
     t.overtime_after_minutes
     FROM hr_shift_assignments a
     LEFT JOIN hr_shift_templates t ON t.id=a.shift_template_id
     WHERE a.salon_id=? AND a.employee_id=? AND a.status='published' AND a.effective_from<=?
       AND (a.effective_to IS NULL OR a.effective_to>=?) ORDER BY a.effective_from DESC LIMIT 1`,
     [salonId, employeeId, date, date]);
-  return assignment ? { source: 'assignment', date, ...assignment } : { source: 'none', date, employee_id: employeeId };
+
+  if (exception) {
+    const exceptionType = cleanText(exception.exception_type);
+    if (exceptionType === 'custom' && !exception.shift_template_id) {
+      const base = weeklySchedule && Number(weeklySchedule.active) === 1 ? weeklySchedule : assignment;
+      return {
+        source: 'exception',
+        date,
+        ...exception,
+        late_grace_minutes: base?.late_grace_minutes ?? 0,
+        early_leave_grace_minutes: 0,
+        attendance_lock_enabled: base?.attendance_lock_enabled ?? 0,
+        attendance_lock_after_minutes: base?.attendance_lock_after_minutes ?? 30,
+        break_minutes: base?.break_minutes ?? 0,
+        overtime_after_minutes: base?.overtime_after_minutes ?? 0,
+      };
+    }
+    return { source: 'exception', date, ...exception };
+  }
+
+  if (weeklySchedule) {
+    if (Number(weeklySchedule.active) !== 1) {
+      return { source: 'weekly_schedule', date, exception_type: 'off', ...weeklySchedule };
+    }
+    return { source: 'weekly_schedule', date, ...weeklySchedule };
+  }
+
+  return assignment
+    ? { source: 'assignment', date, ...assignment }
+    : { source: 'none', date, employee_id: employeeId };
+}
+
+
+function riyadhCronParts(value = new Date().toISOString()) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value || '';
+  const dateKeyValue = `${get('year')}-${get('month')}-${get('day')}`;
+  const hour = Number(get('hour'));
+  const minute = Number(get('minute'));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKeyValue) || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return { dateKey: dateKeyValue, minutes: hour * 60 + minute };
+}
+
+function timeMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(cleanText(value));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function riyadhUtcBounds(dateKeyValue) {
+  const [year, month, day] = String(dateKeyValue).split('-').map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day, -3, 0, 0, 0));
+  const end = new Date(start.getTime() + 86400000);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+export async function markClosedCheckInWindowsAbsent(coreDb, attendanceDb, salonId, nowValue = new Date().toISOString()) {
+  if (!coreDb || !attendanceDb) return { checked: 0, created: 0, cleared: 0 };
+  const clock = riyadhCronParts(nowValue);
+  if (!clock) return { checked: 0, created: 0, cleared: 0 };
+  const employees = await dbAll(coreDb, `SELECT p.id, p.firebase_uid
+    FROM employee_profiles p
+    LEFT JOIN employee_employment e ON e.salon_id=p.salon_id AND e.employee_id=p.id
+    WHERE p.salon_id=? AND p.status='active' AND COALESCE(e.employment_status,'active')='active'`, [salonId]);
+  const bounds = riyadhUtcBounds(clock.dateKey);
+  let created = 0;
+  let cleared = 0;
+
+  for (const employee of employees) {
+    const shift = await resolveEmployeeShift(coreDb, salonId, employee.id, clock.dateKey).catch(() => null);
+    if (!shift || cleanText(shift.source) === 'none') continue;
+    const exceptionType = cleanText(shift.exception_type || shift.exceptionType);
+    if (exceptionType === 'off' || Number(shift.active) === 0) continue;
+    if (activeFlag(shift.attendance_lock_enabled ?? shift.attendanceLockEnabled, 0) !== 1) continue;
+    const start = timeMinutes(shift.template_start_time || shift.templateStartTime || shift.start_time || shift.startTime);
+    const lockAfter = Number(shift.attendance_lock_after_minutes ?? shift.attendanceLockAfterMinutes ?? 0) || 0;
+    if (start == null || clock.minutes <= start + lockAfter) continue;
+
+    const approvedLeave = await dbFirst(coreDb, `SELECT id FROM employee_leaves
+      WHERE salon_id=? AND employee_id=? AND status='approved' AND start_date<=? AND end_date>=? LIMIT 1`,
+      [salonId, employee.id, clock.dateKey, clock.dateKey]);
+    if (approvedLeave) continue;
+
+    const attendance = await attendanceDb.prepare(`SELECT id FROM attendance_records
+      WHERE result='allowed' AND type='check_in' AND server_time>=? AND server_time<?
+        AND (employee_doc_id=? OR employee_uid=?) LIMIT 1`)
+      .bind(bounds.start, bounds.end, employee.id, employee.firebase_uid || '').first();
+
+    if (attendance) {
+      const result = await coreDb.prepare(`DELETE FROM employee_absences
+        WHERE salon_id=? AND employee_id=? AND date_key=? AND absence_type='automatic_check_in_lock'`)
+        .bind(salonId, employee.id, clock.dateKey).run();
+      cleared += Number(result?.meta?.changes || 0);
+      continue;
+    }
+
+    const id = `auto-check-in-lock-${salonId}-${employee.id}-${clock.dateKey}`;
+    const result = await coreDb.prepare(`INSERT OR IGNORE INTO employee_absences
+      (id,salon_id,employee_id,employee_uid,date_key,absence_type,note,created_by_uid,created_at,updated_at)
+      VALUES (?,?,?,?,?,'automatic_check_in_lock',?,'system',?,?)`)
+      .bind(id, salonId, employee.id, employee.firebase_uid || null, clock.dateKey,
+        'غياب تلقائي بعد انتهاء مهلة بصمة الحضور', nowValue, nowValue).run();
+    created += Number(result?.meta?.changes || 0);
+  }
+
+  return { checked: employees.length, created, cleared };
 }

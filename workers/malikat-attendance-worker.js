@@ -139,6 +139,7 @@ export default {
           firebaseProjectId: getExpectedProjectId(env),
           salonId: getSalonId(env),
           databaseReady: Boolean(env?.ATTENDANCE_DB),
+          coreDatabaseReady: Boolean(env?.CORE_DB),
         }),
         request,
         env
@@ -172,7 +173,7 @@ export default {
         request,
         url,
         db: env.ATTENDANCE_DB,
-        directoryDb: null,
+        directoryDb: env.CORE_DB || null,
         salonId: getSalonId(env),
         resolveRequesterContext: currentRequest =>
           resolveRequesterContext(currentRequest, env, env.ATTENDANCE_DB),

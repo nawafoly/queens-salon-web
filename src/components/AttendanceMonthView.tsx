@@ -204,17 +204,17 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
   }
   const snapshot = parseShiftSnapshot(row);
   const startTime =
-    cleanTime((row as any)?.startTime) ||
-    cleanTime((row as any)?.start_time) ||
     cleanTime((row as any)?.templateStartTime) ||
     cleanTime((row as any)?.template_start_time) ||
+    cleanTime((row as any)?.startTime) ||
+    cleanTime((row as any)?.start_time) ||
     cleanTime(snapshot.start_time) ||
     cleanTime(snapshot.startTime);
   const endTime =
-    cleanTime((row as any)?.endTime) ||
-    cleanTime((row as any)?.end_time) ||
     cleanTime((row as any)?.templateEndTime) ||
     cleanTime((row as any)?.template_end_time) ||
+    cleanTime((row as any)?.endTime) ||
+    cleanTime((row as any)?.end_time) ||
     cleanTime(snapshot.end_time) ||
     cleanTime(snapshot.endTime);
   if (!startTime && !endTime) return null;
@@ -227,19 +227,15 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
       snapshot.lateGraceMinutes,
       snapshot.late_grace_minutes
     ),
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      (row as any)?.earlyLeaveGraceMinutes,
-      (row as any)?.early_leave_grace_minutes,
-      snapshot.earlyLeaveGraceMinutes,
-      snapshot.early_leave_grace_minutes
-    ),
+    earlyLeaveGraceMinutes: 0,
     isOff: false,
   };
 }
 
 function isCoreResolvedOff(row?: CoreResolvedShift | null) {
-  return cleanShiftText((row as any)?.source) === "exception" &&
-    cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type) === "off";
+  const source = cleanShiftText((row as any)?.source);
+  const exceptionType = cleanShiftText((row as any)?.exceptionType || (row as any)?.exception_type);
+  return exceptionType === "off" || (source === "weekly_schedule" && Number((row as any)?.active) !== 1);
 }
 
 function getDayOverride(dateKey: string, input?: AttendanceScheduleInput | null) {
@@ -326,10 +322,7 @@ function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null
       effectiveSource.lateGraceMinutes,
       (effectiveSource as any).late_grace_minutes
     ),
-    earlyLeaveGraceMinutes: readPolicyMinutes(
-      effectiveSource.earlyLeaveGraceMinutes,
-      (effectiveSource as any).early_leave_grace_minutes
-    ),
+    earlyLeaveGraceMinutes: 0,
     weeklyOffDays: [...explicitOffDays, ...customOffDays],
   };
 }

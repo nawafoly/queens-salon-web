@@ -1,3 +1,5 @@
+import { resolveEmployeeShift } from "./core/repositories/shift-control.js";
+
 const ATTENDANCE_ALLOWED_ROLES = new Set([
   "owner",
   "admin",
@@ -14,6 +16,122 @@ const ATTENDANCE_MAX_ACCURACY_METERS = 200;
 const ATTENDANCE_RECORDS_DEFAULT_LIMIT = 50;
 const ATTENDANCE_RECORDS_MAX_LIMIT = 200;
 const EARTH_RADIUS_METERS = 6371008.8;
+
+
+function attendanceBool(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function attendanceTimeMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(normalizeText(value));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function riyadhClockParts(value = new Date().toISOString()) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = type => parts.find(part => part.type === type)?.value || "";
+  const dateKey = `${get("year")}-${get("month")}-${get("day")}`;
+  const hour = Number(get("hour"));
+  const minute = Number(get("minute"));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return { dateKey, minutes: hour * 60 + minute };
+}
+
+export function evaluateCheckInWindow({ type, now, shift }) {
+  if (type !== "check_in" || !shift) return { result: "allowed", rejectionReason: null };
+  const source = normalizeText(shift.source);
+  const exceptionType = normalizeText(shift.exception_type || shift.exceptionType);
+  if (source === "weekly_schedule" && (Number(shift.active) !== 1 || exceptionType === "off")) {
+    return { result: "rejected", rejectionReason: "not_scheduled_workday" };
+  }
+  if (source === "exception" && exceptionType === "off") {
+    return { result: "rejected", rejectionReason: "not_scheduled_workday" };
+  }
+  if (!attendanceBool(shift.attendance_lock_enabled ?? shift.attendanceLockEnabled)) {
+    return { result: "allowed", rejectionReason: null };
+  }
+  const lockAfterMinutes = Math.max(0, Number(shift.attendance_lock_after_minutes ?? shift.attendanceLockAfterMinutes ?? 0) || 0);
+  const startMinutes = attendanceTimeMinutes(
+    shift.template_start_time || shift.templateStartTime || shift.start_time || shift.startTime
+  );
+  const clock = riyadhClockParts(now);
+  if (startMinutes == null || !clock) return { result: "allowed", rejectionReason: null };
+  const closesAtMinutes = startMinutes + lockAfterMinutes;
+  if (clock.minutes > closesAtMinutes) {
+    return {
+      result: "rejected",
+      rejectionReason: "check_in_window_closed",
+      dateKey: clock.dateKey,
+      closesAtMinutes,
+      lockAfterMinutes,
+    };
+  }
+  return { result: "allowed", rejectionReason: null, dateKey: clock.dateKey, closesAtMinutes, lockAfterMinutes };
+}
+
+async function resolveCoreEmployeeId(directoryDb, salonId, requester, employeeResolution) {
+  if (!directoryDb) return "";
+  const candidates = Array.from(new Set([
+    employeeResolution?.employeeDocId,
+    employeeResolution?.linkedEmployeeId,
+    ...(Array.isArray(employeeResolution?.identityIds) ? employeeResolution.identityIds : []),
+    requester?.uid,
+  ].map(normalizeText).filter(Boolean))).slice(0, 20);
+  if (!candidates.length) return "";
+  const placeholders = candidates.map(() => "?").join(",");
+  const row = await directoryDb.prepare(
+    `SELECT id FROM employee_profiles
+     WHERE salon_id=? AND (id IN (${placeholders}) OR firebase_uid IN (${placeholders}))
+     ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END, updated_at DESC LIMIT 1`
+  ).bind(salonId, ...candidates, ...candidates, normalizeText(employeeResolution?.employeeDocId)).first();
+  return normalizeText(row?.id);
+}
+
+async function resolveAttendanceCheckInPolicy({ directoryDb, salonId, requester, employeeResolution, type, now }) {
+  if (!directoryDb || type !== "check_in") {
+    return { result: "allowed", rejectionReason: null, coreEmployeeId: "" };
+  }
+  const coreEmployeeId = await resolveCoreEmployeeId(directoryDb, salonId, requester, employeeResolution);
+  if (!coreEmployeeId) return { result: "allowed", rejectionReason: null, coreEmployeeId: "" };
+  const clock = riyadhClockParts(now);
+  if (!clock) return { result: "allowed", rejectionReason: null, coreEmployeeId };
+  const shift = await resolveEmployeeShift(directoryDb, salonId, coreEmployeeId, clock.dateKey).catch(() => null);
+  return { ...evaluateCheckInWindow({ type, now, shift }), coreEmployeeId, shift, dateKey: clock.dateKey };
+}
+
+async function markAutomaticLockAbsence(directoryDb, salonId, employeeId, employeeUid, dateKey) {
+  if (!directoryDb || !employeeId || !dateKey) return;
+  const now = new Date().toISOString();
+  const id = `auto-check-in-lock-${salonId}-${employeeId}-${dateKey}`;
+  await directoryDb.prepare(
+    `INSERT OR IGNORE INTO employee_absences
+      (id,salon_id,employee_id,employee_uid,date_key,absence_type,note,created_by_uid,created_at,updated_at)
+     VALUES (?,?,?,?,?,'automatic_check_in_lock',?,'system',?,?)`
+  ).bind(id, salonId, employeeId, normalizeText(employeeUid) || null, dateKey,
+    "غياب تلقائي بعد انتهاء مهلة بصمة الحضور", now, now).run();
+}
+
+async function clearAutomaticLockAbsence(directoryDb, salonId, employeeId, dateKey) {
+  if (!directoryDb || !employeeId || !dateKey) return;
+  await directoryDb.prepare(
+    `DELETE FROM employee_absences
+     WHERE salon_id=? AND employee_id=? AND date_key=? AND absence_type='automatic_check_in_lock'`
+  ).bind(salonId, employeeId, dateKey).run();
+}
 
 export async function handleAttendanceRequest({
   request,
@@ -204,7 +322,7 @@ export async function handleAttendanceRequest({
     ) {
       return forbidden("attendance.records.create|update|delete");
     }
-    return adjustAttendanceRecords(request, db, requester);
+    return adjustAttendanceRecords(request, db, directoryDb, salonId, requester);
   }
 
   if (
@@ -243,6 +361,7 @@ export async function handleAttendanceRequest({
     return recordAttendance({
       request,
       db,
+      directoryDb,
       requester,
       salonId,
       fetchFirestoreDocument,
@@ -1361,7 +1480,7 @@ function parseRiyadhDateTime(value, time) {
   ).toISOString();
 }
 
-async function adjustAttendanceRecords(request, db, requester) {
+async function adjustAttendanceRecords(request, db, directoryDb, salonId, requester) {
   const input = await readJsonBody(request);
   if (!input.ok) return input.response;
 
@@ -1537,6 +1656,14 @@ async function adjustAttendanceRecords(request, db, requester) {
     }
 
     await rebuildAttendanceState(db, employeeUid);
+    if (operations.some((operation) => operation.type === "check_in")) {
+      const coreEmployeeId = await resolveCoreEmployeeId(directoryDb, salonId, requester, {
+        employeeDocId,
+        linkedEmployeeId: employeeDocId,
+        identityIds: [employeeDocId, employeeUid],
+      }).catch(() => "");
+      await clearAutomaticLockAbsence(directoryDb, salonId, coreEmployeeId, date).catch(() => {});
+    }
     return json(200, { ok: true, records: changed });
   } catch (error) {
     return serverError("attendance_admin_adjustment_failed", error);
@@ -2162,6 +2289,7 @@ function requestedEmployeeMatchesResolution(requestedEmployeeId, resolution) {
 async function recordAttendance({
   request,
   db,
+  directoryDb,
   requester,
   salonId,
   fetchFirestoreDocument,
@@ -2270,6 +2398,14 @@ async function recordAttendance({
   const recordId = crypto.randomUUID();
   const now = new Date().toISOString();
   const clientTime = clampText(input.data?.clientTime, 80) || null;
+  const policyDecision = await resolveAttendanceCheckInPolicy({
+    directoryDb,
+    salonId,
+    requester,
+    employeeResolution,
+    type,
+    now,
+  });
   const deviceInfo = normalizeDeviceInfo(input.data?.deviceInfo);
   const previousDeviceId = await readLastSuccessfulDeviceId(db, requester.uid);
   const deviceContext = await readAttendanceDeviceSecurityContext(
@@ -2282,10 +2418,16 @@ async function recordAttendance({
     previousDeviceId
   );
   const blockedDevice = deviceContext.trustStatus === "blocked";
-  const initialResult = blockedDevice ? "rejected" : locationDecision.result;
-  const initialReason = blockedDevice
-    ? "blocked_device"
-    : locationDecision.rejectionReason;
+  const initialResult = policyDecision.result === "rejected"
+    ? "rejected"
+    : blockedDevice
+      ? "rejected"
+      : locationDecision.result;
+  const initialReason = policyDecision.result === "rejected"
+    ? policyDecision.rejectionReason
+    : blockedDevice
+      ? "blocked_device"
+      : locationDecision.rejectionReason;
   const zone = zoneCheck.zone;
   const role = normalizeText(requester.runtime?.role) || "guest";
   const source = buildAttendanceSource({ clientIp, zone });
@@ -2321,6 +2463,15 @@ async function recordAttendance({
         previousDeviceId,
         deviceContext,
       });
+      if (initialReason === "check_in_window_closed") {
+        await markAutomaticLockAbsence(
+          directoryDb,
+          salonId,
+          policyDecision.coreEmployeeId,
+          requester.uid,
+          policyDecision.dateKey
+        ).catch((error) => console.warn("mark automatic lock absence failed", error));
+      }
       const currentState = await readAttendanceState(db, requester.uid);
       return attendanceResponse({
         recordId,
@@ -2454,6 +2605,14 @@ async function recordAttendance({
       savedResult === "allowed" ? stateRequirement : targetStatus;
     const currentStatus =
       savedResult === "allowed" ? targetStatus : previousStatus;
+    if (savedResult === "allowed" && type === "check_in") {
+      await clearAutomaticLockAbsence(
+        directoryDb,
+        salonId,
+        policyDecision.coreEmployeeId,
+        policyDecision.dateKey
+      ).catch(() => {});
+    }
     await syncAttendanceDeviceSecurity({
       db,
       requester,

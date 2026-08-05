@@ -20,9 +20,20 @@ export type CoreHrSchedule = {
   salonId: string;
   employeeId: string;
   weekday: number;
+  shiftTemplateId?: string | null;
+  shiftName?: string | null;
+  shiftCode?: string | null;
   startTime?: string | null;
   endTime?: string | null;
-  active: boolean;
+  templateStartTime?: string | null;
+  templateEndTime?: string | null;
+  lateGraceMinutes?: number | null;
+  /** @deprecated Kept only for old schedule payloads. */
+  earlyLeaveGraceMinutes?: number | null;
+  attendanceLockEnabled?: boolean | number | null;
+  attendanceLockAfterMinutes?: number | null;
+  active: boolean | number;
+  scheduleSource?: "shift_template" | "weekly_off" | "legacy" | string;
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
 };
@@ -167,7 +178,10 @@ export type CoreShiftTemplate = {
   breakMinutes: number;
   breakPaid: boolean | number;
   lateGraceMinutes: number;
+  /** @deprecated Kept only for old snapshots. The active policy is always zero. */
   earlyLeaveGraceMinutes: number;
+  attendanceLockEnabled: boolean | number;
+  attendanceLockAfterMinutes: number;
   overtimeAfterMinutes: number;
   active: boolean | number;
   createdAt?: string | null;
@@ -192,7 +206,10 @@ export type CoreShiftAssignment = {
   templateStartTime?: string | null;
   templateEndTime?: string | null;
   lateGraceMinutes?: number | null;
+  /** @deprecated Kept only for old snapshots. */
   earlyLeaveGraceMinutes?: number | null;
+  attendanceLockEnabled?: boolean | number | null;
+  attendanceLockAfterMinutes?: number | null;
   overtimeAfterMinutes?: number | null;
   crossesMidnight?: boolean | number | null;
   createdAt?: string | null;
@@ -245,8 +262,13 @@ export type CoreResolvedShift = Record<string, unknown> & {
   break_minutes?: number | null;
   lateGraceMinutes?: number | null;
   late_grace_minutes?: number | null;
+  /** @deprecated Kept only for old snapshots. */
   earlyLeaveGraceMinutes?: number | null;
   early_leave_grace_minutes?: number | null;
+  attendanceLockEnabled?: boolean | number | null;
+  attendance_lock_enabled?: boolean | number | null;
+  attendanceLockAfterMinutes?: number | null;
+  attendance_lock_after_minutes?: number | null;
 };
 
 
