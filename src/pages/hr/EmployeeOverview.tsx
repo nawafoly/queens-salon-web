@@ -363,8 +363,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const department = cleanText(profile.department || "");
   const title = cleanText(profile.title || "");
   const avatarUrl = cleanText(profile.avatarUrl || profile.photoURL || profile.photoUrl || "");
+  const today = new Date().toISOString().slice(0, 10);
+  const leaveFrom = cleanText(profile.leaveStartDate || profile.leaveFrom || profile.leaveFromDate || "");
   const leaveUntil = cleanText(profile.leaveUntil || "");
-  const onLeave = !!profile.onLeave && (!leaveUntil || leaveUntil >= new Date().toISOString().slice(0, 10));
+  const onLeave =
+    !!profile.onLeave &&
+    (!leaveFrom || leaveFrom <= today) &&
+    (!leaveUntil || leaveUntil >= today);
   const active = profile.active !== false;
   const [attendance, setAttendance] = useState<StaffAttendanceToday | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);

@@ -438,11 +438,21 @@ function absenceMatchesEmployee(absence: CoreAbsence, employee: CoreHrEmployee) 
   );
 }
 
-function dateSetForApprovedLeaves(leaves: CoreLeave[], employee: CoreHrEmployee, startDate: string, endDate: string) {
+function dateSetForApprovedLeaves(
+  leaves: CoreLeave[],
+  employee: CoreHrEmployee,
+  startDate: string,
+  endDate: string,
+  kind: "paid" | "unpaid" | "all" = "all"
+) {
   const dates = new Set<string>();
   for (const leave of leaves) {
     if (text(leave.status).toLowerCase() !== "approved") continue;
     if (!leaveMatchesEmployee(leave, employee)) continue;
+    const leaveType = text(leave.leaveType).toLowerCase();
+    const isUnpaid = leaveType === "unpaid";
+    if (kind === "paid" && isUnpaid) continue;
+    if (kind === "unpaid" && !isUnpaid) continue;
     const from = leave.startDate > startDate ? leave.startDate : startDate;
     const to = leave.endDate < endDate ? leave.endDate : endDate;
     if (!from || !to || from > to) continue;
@@ -831,7 +841,15 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     input.leaves || [],
     input.employee,
     bounds.monthStart,
-    bounds.monthEnd
+    bounds.monthEnd,
+    "paid"
+  );
+  const unpaidLeaveDates = dateSetForApprovedLeaves(
+    input.leaves || [],
+    input.employee,
+    bounds.monthStart,
+    bounds.monthEnd,
+    "unpaid"
   );
   const approvedAbsenceDates = dateSetForAbsences(
     input.absences || [],
@@ -839,6 +857,8 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     bounds.monthStart,
     bounds.monthEnd
   );
+  unpaidLeaveDates.forEach((date) => approvedAbsenceDates.add(date));
+  const allApprovedLeaveDates = new Set([...approvedLeaveDates, ...unpaidLeaveDates]);
   const identity = resolvePayrollAttendanceIdentity(input.employee);
   const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
     input.employee,
@@ -897,14 +917,14 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
         lateGraceMinutes: schedule.lateGraceMinutes,
         earlyLeaveGraceMinutes: schedule.earlyLeaveGraceMinutes,
         isScheduledWorkDay: schedule.enabled,
-        isApprovedLeave: approvedLeaveDates.has(date) || approvedAbsenceDates.has(date),
+        isApprovedLeave: allApprovedLeaveDates.has(date) || approvedAbsenceDates.has(date),
         checkInAt: firstCheckIn?.recordedAt,
         checkOutAt: lastCheckOut?.recordedAt,
         permissionIntervals,
         isAbsent:
           schedule.enabled &&
           !punchRecords.length &&
-          !approvedLeaveDates.has(date) &&
+          !allApprovedLeaveDates.has(date) &&
           !approvedAbsenceDates.has(date),
       })
     );
@@ -924,8 +944,9 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
       approvedLeaveDays: approvedLeaveDates.size,
       approvedAbsenceDays: approvedAbsenceDates.size,
       attendanceNotes: [
-        ...(approvedLeaveDates.size ? [`${approvedLeaveDates.size} أيام إجازة معتمدة لم تدخل في خصم الحضور.`] : []),
-        ...(approvedAbsenceDates.size ? [`${approvedAbsenceDates.size} أيام غياب/استثناء معتمد لم تدخل في خصم الحضور.`] : []),
+        ...(approvedLeaveDates.size ? [`${approvedLeaveDates.size} أيام إجازة مدفوعة معتمدة لم تدخل في خصم الحضور.`] : []),
+        ...(unpaidLeaveDates.size ? [`${unpaidLeaveDates.size} أيام إجازة بدون راتب تم احتسابها ضمن الخصم اليومي.`] : []),
+        ...(approvedAbsenceDates.size > unpaidLeaveDates.size ? [`${approvedAbsenceDates.size - unpaidLeaveDates.size} أيام غياب/استثناء معتمد دخلت ضمن الخصم اليومي.`] : []),
         ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
         ...(permissionRequestedHours > 0
           ? [`الاستئذانات المعتمدة: ${permissionRequestedHours} ساعة، والمحتسب لتغطية نقص الدوام: ${permissionCoveredHours} ساعة.`]

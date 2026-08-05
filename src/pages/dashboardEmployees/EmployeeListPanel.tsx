@@ -79,9 +79,12 @@ function resolveDepartment(
 }
 
 function statusOf(staff: StaffPublicUi) {
+  const today = todayIso();
+  const leaveFrom = normalizeLeaveUntil((staff as any).leaveStartDate || (staff as any).leaveFrom || (staff as any).leaveFromDate);
   const leaveUntil = normalizeLeaveUntil(staff.leaveUntil);
-  const leaveExpired = !!leaveUntil && leaveUntil < todayIso();
-  const onLeave = !!staff.onLeave && !leaveExpired;
+  const leaveExpired = !!leaveUntil && leaveUntil < today;
+  const leaveStarted = !leaveFrom || leaveFrom <= today;
+  const onLeave = !!staff.onLeave && leaveStarted && !leaveExpired;
 
   if (onLeave) return { label: "في إجازة", tone: "gold" } as const;
   if (staff.active) return { label: "نشطة", tone: "success" } as const;

@@ -213,8 +213,9 @@ function isLeaveActiveForDate(staff: StaffAvailabilityLike, dateISO?: string) {
 
   // A current leave period is also authoritative.
   if (staff?.onLeave) {
+    const from = normalizeISODate((staff as any).leaveStartDate || (staff as any).leaveFrom || (staff as any).leaveFromDate);
     const until = normalizeISODate(staff.leaveUntil);
-    if (!until || target <= until) return true;
+    if ((!from || from <= target) && (!until || target <= until)) return true;
   }
 
   const targetWeekday = weekdayFromISO(target);

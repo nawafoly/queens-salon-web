@@ -151,7 +151,7 @@ export type EmployeeLeaveRequest = {
   employeeUid: string;
   employeeId?: string;
   employeeName?: string;
-  type?: "annual" | "sick" | "emergency" | "unpaid" | "other";
+  type?: "annual" | "sick" | "emergency" | "unpaid" | "rest" | "other";
   fromDate: string;
   toDate: string;
   days?: number;

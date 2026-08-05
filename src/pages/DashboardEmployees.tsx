@@ -76,7 +76,11 @@ import ScheduleSummarySection from "./dashboardEmployees/ScheduleSummarySection"
 import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
-import { DashboardConfirmV2 } from "../components/dashboard-v2";
+import {
+  DashboardConfirmV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+} from "../components/dashboard-v2";
 import LeaveRequestModal from "../components/LeaveRequestModal";
 
 // ✅ Bookings stats (Owner only)
@@ -196,6 +200,37 @@ import {
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
+}
+
+type ManagedLeaveType = "annual" | "sick" | "emergency" | "unpaid" | "rest" | "other";
+
+const MANAGED_LEAVE_TYPES = new Set<ManagedLeaveType>([
+  "annual",
+  "sick",
+  "emergency",
+  "unpaid",
+  "rest",
+  "other",
+]);
+
+function normalizeManagedLeaveType(value: unknown): ManagedLeaveType {
+  const type = cleanText(value).toLowerCase() as ManagedLeaveType;
+  return MANAGED_LEAVE_TYPES.has(type) ? type : "annual";
+}
+
+function inclusiveLeaveDays(fromDate: string, toDate: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) return 0;
+  const from = new Date(`${fromDate}T12:00:00.000Z`).getTime();
+  const to = new Date(`${toDate}T12:00:00.000Z`).getTime();
+  const days = Math.floor((to - from) / 86400000) + 1;
+  return Number.isFinite(days) && days > 0 ? days : 0;
+}
+
+function managedLeavePolicy(type: ManagedLeaveType) {
+  return {
+    deductFromBalance: type === "annual" || type === "sick" || type === "emergency",
+    affectsPayroll: type === "unpaid",
+  };
 }
 
 function positiveNumberOrZero(value: unknown) {
@@ -569,7 +604,9 @@ export default function DashboardEmployees() {
   const [showOnAbout, setShowOnAbout] = useState(true);
   const [showOnBooking, setShowOnBooking] = useState(true);
   const [modalOnLeave, setModalOnLeave] = useState(false);
+  const [modalLeaveFrom, setModalLeaveFrom] = useState("");
   const [modalLeaveUntil, setModalLeaveUntil] = useState("");
+  const [modalLeaveType, setModalLeaveType] = useState<ManagedLeaveType>("annual");
   const [modalLeaveNote, setModalLeaveNote] = useState("");
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [leaveModalDate, setLeaveModalDate] = useState("");
@@ -595,7 +632,6 @@ export default function DashboardEmployees() {
   const [attendanceEditCheckOut, setAttendanceEditCheckOut] = useState("");
   const [attendanceEditNote, setAttendanceEditNote] = useState("");
   const [modalExceptionalLeaveWeekdays, setModalExceptionalLeaveWeekdays] = useState<WeekdayKey[]>([]);
-  const [modalLeaveWeekdayDraft, setModalLeaveWeekdayDraft] = useState<WeekdayKey | "">("");
   const [modalUseCustomWorkingHours, setModalUseCustomWorkingHours] = useState(false);
   const [modalCustomWorkingHours, setModalCustomWorkingHours] =
     useState<Record<WeekdayKey, StaffWorkingDay>>(createDefaultWorkingHours());
@@ -1217,7 +1253,113 @@ export default function DashboardEmployees() {
         status: "cancelled",
         reviewerUid: authUser.uid,
         reviewerName: authUser.displayName || authUser.email,
+        adjustActor: {
+          uid: authUser.uid,
+          role: "hr",
+          displayName: authUser.displayName || authUser.email,
+          email: authUser.email,
+        },
       });
+
+      const employee =
+        list.find((item) => item.id === selectedEmployeeId) ||
+        list.find((item) => employeeMatchesIdentity(item, selectedEmployeeIdentityRef.current)) ||
+        { id: selectedEmployeeId, name: selectedEmployeeId };
+      const requestFrom = normalizeLeaveUntil(leaveRequest.fromDate);
+      const requestTo = normalizeLeaveUntil(leaveRequest.toDate) || requestFrom;
+      const currentFrom = normalizeLeaveUntil(
+        (employee as any).leaveStartDate ||
+          (employee as any).leaveFrom ||
+          (employee as any).leaveFromDate
+      );
+      const currentTo = normalizeLeaveUntil((employee as any).leaveUntil) || currentFrom;
+      const isCurrentProfileLeave =
+        cleanText((employee as any).leaveRequestId) === cleanText(leaveRequest.id) ||
+        (!!(employee as any).onLeave &&
+          !!requestFrom &&
+          requestFrom <= (currentTo || requestTo) &&
+          requestTo >= (currentFrom || requestFrom));
+
+      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
+      const matchingCoreLeaveIds = Array.from(new Set([
+        cleanText((employee as any).coreLeaveId),
+        cleanText((leaveRequest as any).coreLeaveId),
+        ...coreLeaves
+          .filter((leave) => {
+            if (cleanText(leave.status).toLowerCase() !== "approved") return false;
+            const leaveFrom = normalizeLeaveUntil(leave.startDate);
+            const leaveTo = normalizeLeaveUntil(leave.endDate) || leaveFrom;
+            return !!leaveFrom && !!requestFrom && leaveFrom <= requestTo && leaveTo >= requestFrom;
+          })
+          .map((leave) => cleanText(leave.id)),
+      ].filter(Boolean)));
+
+      await Promise.all(
+        matchingCoreLeaveIds.map((coreLeaveId) =>
+          CoreHrService.decideLeave(coreLeaveId, "rejected", "تم إلغاء الإجازة من سجل الحضور")
+            .catch((error) => console.warn("reject Core leave failed", { coreLeaveId, error }))
+        )
+      );
+
+      if (isCurrentProfileLeave) {
+        await CoreHrService.saveEmployee({
+          id: selectedEmployeeId,
+          leaveStartDate: null,
+          leaveEndDate: null,
+          leaveNote: null,
+        });
+        const profilePatch = {
+          onLeave: false,
+          leaveStartDate: "",
+          leaveUntil: "",
+          leaveType: "",
+          leaveNote: "",
+          leaveRequestId: "",
+          coreLeaveId: "",
+          employeeProfile: {
+            onLeave: false,
+            leaveStartDate: "",
+            leaveUntil: "",
+            leaveType: "",
+            leaveNote: "",
+            leaveRequestId: "",
+            coreLeaveId: "",
+          },
+          updatedAt: serverTimestamp(),
+        };
+        await Promise.all([
+          setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
+          setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
+        ]);
+        setList((current) =>
+          current.map((item) =>
+            item.id === selectedEmployeeId || employeeMatchesIdentity(item, employeeIdentityOf(employee))
+              ? {
+                  ...item,
+                  onLeave: false,
+                  leaveStartDate: "",
+                  leaveUntil: "",
+                  leaveType: "",
+                  leaveNote: "",
+                  leaveRequestId: "",
+                  coreLeaveId: "",
+                }
+              : item
+          )
+        );
+        setModalOnLeave(false);
+        setModalLeaveFrom("");
+        setModalLeaveUntil("");
+        setModalLeaveType("annual");
+        setModalLeaveNote("");
+      }
+      setSelectedEmployeeLeaveRequests((current) =>
+        current.map((request) =>
+          cleanText(request.id) === cleanText(leaveRequest.id)
+            ? { ...request, status: "cancelled" }
+            : request
+        )
+      );
 
       void writeAuditLog({
         action: "leave_cancelled",
@@ -1239,7 +1381,7 @@ export default function DashboardEmployees() {
         },
       });
 
-      await loadSelectedEmployeeAttendance({ force: true });
+      await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
     } catch (error) {
       setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
     } finally {
@@ -1250,6 +1392,7 @@ export default function DashboardEmployees() {
     authUser?.email,
     authUser?.uid,
     ensureCanManageLeaveBalance,
+    list,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
     selectedEmployeeLeaveRequests,
@@ -1266,56 +1409,208 @@ export default function DashboardEmployees() {
     }
     if (!ensureCanManageLeaveBalance()) return;
 
+    const employeeProfile =
+      list.find((item) => item.id === selectedEmployeeId) ||
+      list.find((item) => employeeMatchesIdentity(item, selectedEmployeeIdentityRef.current)) ||
+      { id: selectedEmployeeId, name: leaveModalEmployeeName };
+    const attendanceIdentity = resolveEmployeeAttendanceIdentity(employeeProfile, selectedEmployeeId);
+    const employeeUidLocal = attendanceIdentity.employeeUid;
+    const employeeIdLocal = attendanceIdentity.employeeDocId || selectedEmployeeId;
+    const leaveType = normalizeManagedLeaveType(payload.type);
+    const policy = managedLeavePolicy(leaveType);
+    const fromDate = normalizeLeaveUntil(payload.fromDate);
+    const toDate = normalizeLeaveUntil(payload.toDate);
+    const days = inclusiveLeaveDays(fromDate, toDate);
+    const employeeName = cleanText(
+      leaveModalEmployeeName ||
+        (employeeProfile as any)?.name ||
+        (employeeProfile as any)?.displayName ||
+        employeeIdLocal
+    );
+
+    if (!fromDate || !toDate || days <= 0 || fromDate > toDate) {
+      throw new Error("مدى الإجازة غير صحيح.");
+    }
+
     setSaving(true);
     setErrorMsg("");
+    let requestId = "";
+    let coreLeaveId = "";
+    let createdRequestId = "";
+    let createdCoreLeaveId = "";
     try {
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
-      const employeeUidLocal = attendanceIdentity.employeeUid;
-      const employeeIdLocal = attendanceIdentity.employeeDocId || selectedEmployeeId;
+      const existingRequests = selectedEmployeeLeaveRequests.length
+        ? selectedEmployeeLeaveRequests
+        : (await listEmployeeLeaveRequests(500)).filter((request) =>
+            leaveRequestMatchesProfile(request, employeeProfile, attendanceIdentity.allIds)
+          );
+      const matchingRequest = existingRequests.find((request) =>
+        cleanText(request.status).toLowerCase() === "approved" &&
+        normalizeLeaveUntil(request.fromDate) === fromDate &&
+        normalizeLeaveUntil(request.toDate) === toDate &&
+        normalizeManagedLeaveType(request.type) === leaveType
+      );
 
-      const requestRef = await createLeaveRequest({
-        employeeUid: employeeUidLocal,
-        employeeId: employeeIdLocal,
-        employeeName: leaveModalEmployeeName || employeeUidLocal,
-        type: payload.type as any,
-        fromDate: payload.fromDate,
-        toDate: payload.toDate,
-        days: payload.days,
-        note: payload.note || "تسجيل إجازة من واجهة الحضور",
-        createdByUid: authUser.uid,
-        createdByName: authUser.displayName || authUser.email,
-      });
+      if (matchingRequest) {
+        requestId = matchingRequest.id;
+      } else {
+        const requestRef = await createLeaveRequest({
+          employeeUid: employeeUidLocal,
+          employeeId: employeeIdLocal,
+          employeeName,
+          type: leaveType,
+          fromDate,
+          toDate,
+          days,
+          note: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
+          createdByUid: authUser.uid,
+          createdByName: authUser.displayName || authUser.email,
+        });
+        requestId = requestRef.id;
+        createdRequestId = requestRef.id;
+        await updateDoc(requestRef, {
+          source: "employee_profile_leave",
+          deductFromBalance: policy.deductFromBalance,
+          affectsPayroll: policy.affectsPayroll,
+          approvalMode: "admin_direct",
+          updatedAt: serverTimestamp(),
+        } as any);
+        await approveEmployeeLeaveRequest({
+          requestId,
+          reviewerUid: authUser.uid,
+          reviewerName: authUser.displayName || authUser.email,
+          adjustLeaveBalance: policy.deductFromBalance,
+          adjustActor: policy.deductFromBalance
+            ? {
+                uid: authUser.uid,
+                role: "hr",
+                displayName: authUser.displayName || authUser.email,
+                email: authUser.email,
+              }
+            : undefined,
+        });
+      }
 
-      await approveEmployeeLeaveRequest({
-        requestId: requestRef.id,
-        reviewerUid: authUser.uid,
-        reviewerName: authUser.displayName || authUser.email,
-        adjustLeaveBalance: payload.deductFromBalance,
-        adjustActor: payload.deductFromBalance ? { uid: authUser.uid, role: "hr", displayName: authUser.displayName || authUser.email, email: authUser.email } : undefined,
-      });
+      const existingCoreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
+      const matchingCoreLeave = existingCoreLeaves.find((leave) =>
+        cleanText(leave.status).toLowerCase() === "approved" &&
+        normalizeLeaveUntil(leave.startDate) === fromDate &&
+        normalizeLeaveUntil(leave.endDate) === toDate &&
+        normalizeManagedLeaveType(leave.leaveType) === leaveType
+      );
+
+      if (matchingCoreLeave) {
+        coreLeaveId = matchingCoreLeave.id;
+      } else {
+        await CoreHrService.getEmployee(selectedEmployeeId).catch(async () => {
+          await CoreHrService.saveEmployee({
+            id: selectedEmployeeId,
+            name: employeeName,
+            firebaseUid: cleanText((employeeProfile as any)?.linkedUid || (employeeProfile as any)?.uid || employeeUidLocal),
+            email: cleanText((employeeProfile as any)?.email),
+            phone: cleanText((employeeProfile as any)?.phone),
+            status: (employeeProfile as any)?.active === false ? "inactive" : "active",
+            employment: {},
+          });
+        });
+        const coreLeave = await CoreHrService.createLeave({
+          employeeId: selectedEmployeeId,
+          employeeUid: employeeUidLocal,
+          employeeName,
+          employeeEmail: cleanText((employeeProfile as any)?.email),
+          status: "pending",
+          leaveType,
+          startDate: fromDate,
+          endDate: toDate,
+          daysCount: days,
+          employeeNote: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
+          hrNote: policy.affectsPayroll ? "إجازة بدون راتب — تؤثر على الراتب" : "إجازة مدفوعة — لا تخصم من الراتب",
+        });
+        coreLeaveId = coreLeave.id;
+        createdCoreLeaveId = coreLeave.id;
+        await CoreHrService.decideLeave(
+          coreLeaveId,
+          "approved",
+          policy.affectsPayroll ? "إجازة بدون راتب — تخصم حسب معدل اليوم" : "إجازة مدفوعة معتمدة"
+        );
+      }
+
+      const profilePatch = {
+        onLeave: true,
+        leaveStartDate: fromDate,
+        leaveUntil: toDate,
+        leaveType,
+        leaveNote: cleanText(payload.note),
+        leaveRequestId: requestId,
+        coreLeaveId,
+        updatedAt: serverTimestamp(),
+      };
+      await Promise.all([
+        setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
+        setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
+      ]);
+      if (requestId && coreLeaveId) {
+        await updateDoc(doc(db, "salons", SALON_ID, "employee_leave_requests", requestId), {
+          coreLeaveId,
+          updatedAt: serverTimestamp(),
+        } as any).catch(() => {});
+      }
+
+      setModalOnLeave(true);
+      setModalLeaveFrom(fromDate);
+      setModalLeaveUntil(toDate);
+      setModalLeaveType(leaveType);
+      setModalLeaveNote(cleanText(payload.note));
+      await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
+      window.dispatchEvent(new Event("queens:staff-updated"));
 
       void writeAuditLog({
         action: "leave_approved",
         entityType: "employee_leave",
-        entityId: requestRef.id,
+        entityId: requestId || coreLeaveId,
         source: "dashboard",
-        description: "تسجيل إجازة معتمدة من واجهة الحضور",
+        description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب",
         after: {
-          date: payload.fromDate,
           employeeUid: employeeUidLocal,
-          employeeId: employeeIdLocal,
-          leaveType: payload.type,
-          status: "approved",
+          employeeId: selectedEmployeeId,
+          leaveType,
+          fromDate,
+          toDate,
+          days,
+          affectsPayroll: policy.affectsPayroll,
+          deductFromBalance: policy.deductFromBalance,
+          requestId,
+          coreLeaveId,
         },
         meta: {
           staffId: selectedEmployeeId,
-          staffName: leaveModalEmployeeName,
+          staffName: employeeName,
         },
       });
-
-      await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة."));
+      if (createdCoreLeaveId) {
+        await CoreHrService.decideLeave(
+          createdCoreLeaveId,
+          "rejected",
+          "تم التراجع تلقائيًا بسبب تعذر إكمال ربط الإجازة"
+        ).catch((rollbackError) => console.warn("rollback Core leave failed", rollbackError));
+      }
+      if (createdRequestId) {
+        await reviewLeaveRequest({
+          requestId: createdRequestId,
+          status: "cancelled",
+          reviewerUid: authUser.uid,
+          reviewerName: authUser.displayName || authUser.email,
+          adjustActor: {
+            uid: authUser.uid,
+            role: "hr",
+            displayName: authUser.displayName || authUser.email,
+            email: authUser.email,
+          },
+        }).catch((rollbackError) => console.warn("rollback Firestore leave failed", rollbackError));
+      }
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة وربطها بالحضور والراتب."));
+      throw error;
     } finally {
       setSaving(false);
     }
@@ -1324,9 +1619,186 @@ export default function DashboardEmployees() {
     authUser?.email,
     authUser?.uid,
     ensureCanManageLeaveBalance,
+    leaveModalEmployeeName,
+    list,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
-    leaveModalEmployeeName,
+    selectedEmployeeLeaveRequests,
+  ]);
+
+  const openApprovedLeaveFromEmployeeProfile = useCallback(() => {
+    if (!selectedEmployeeId) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
+      return;
+    }
+    const employee =
+      list.find((item) => item.id === selectedEmployeeId) ||
+      { id: selectedEmployeeId, name };
+    setLeaveModalEmployeeName(cleanText((employee as any)?.name || selectedEmployeeId));
+    setLeaveModalDate(todayIso());
+    setLeaveModalDefaultType("annual");
+    setLeaveModalOpen(true);
+  }, [list, name, selectedEmployeeId]);
+
+  const endCurrentApprovedLeave = useCallback(async () => {
+    if (!selectedEmployeeId || !authUser?.uid) {
+      setErrorMsg("تعذر تحديد الموظفة أو المستخدم المنفذ.");
+      return;
+    }
+    if (!ensureCanManageLeaveBalance()) return;
+    const employee =
+      list.find((item) => item.id === selectedEmployeeId) ||
+      { id: selectedEmployeeId, name };
+    if (!employee) {
+      setErrorMsg("تعذر العثور على ملف الموظفة.");
+      return;
+    }
+    const ok = confirm("سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي. هل تريد المتابعة؟");
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(employee, selectedEmployeeId);
+      const currentFrom = normalizeLeaveUntil(
+        (employee as any).leaveStartDate ||
+          (employee as any).leaveFrom ||
+          (employee as any).leaveFromDate
+      );
+      const currentTo = normalizeLeaveUntil((employee as any).leaveUntil) || currentFrom;
+      const targetFrom = currentFrom || todayIso();
+      const targetTo = currentTo || targetFrom;
+
+      const allLeaveRequests = await listEmployeeLeaveRequests(500).catch(() => selectedEmployeeLeaveRequests);
+      const matchingApprovedRequests = allLeaveRequests.filter((request) => {
+        if (cleanText(request.status).toLowerCase() !== "approved") return false;
+        if (!leaveRequestMatchesProfile(request, employee, attendanceIdentity.allIds)) return false;
+        const requestFrom = normalizeLeaveUntil(request.fromDate);
+        const requestTo = normalizeLeaveUntil(request.toDate) || requestFrom;
+        if (!requestFrom) return false;
+        return requestFrom <= targetTo && requestTo >= targetFrom;
+      });
+
+      const requestIds = Array.from(new Set([
+        cleanText((employee as any).leaveRequestId),
+        ...matchingApprovedRequests.map((request) => cleanText(request.id)),
+      ].filter(Boolean)));
+
+      await Promise.all(
+        requestIds.map((requestId) =>
+          reviewLeaveRequest({
+            requestId,
+            status: "cancelled",
+            reviewerUid: authUser.uid,
+            reviewerName: authUser.displayName || authUser.email,
+            adjustActor: {
+              uid: authUser.uid,
+              role: "hr",
+              displayName: authUser.displayName || authUser.email,
+              email: authUser.email,
+            },
+          }).catch((error) => console.warn("cancel Firestore leave failed", { requestId, error }))
+        )
+      );
+
+      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
+      const matchingApprovedCoreLeaves = coreLeaves.filter((leave) => {
+        if (cleanText(leave.status).toLowerCase() !== "approved") return false;
+        const leaveFrom = normalizeLeaveUntil(leave.startDate);
+        const leaveTo = normalizeLeaveUntil(leave.endDate) || leaveFrom;
+        if (!leaveFrom) return false;
+        return leaveFrom <= targetTo && leaveTo >= targetFrom;
+      });
+      const coreLeaveIds = Array.from(new Set([
+        cleanText((employee as any).coreLeaveId),
+        ...matchingApprovedCoreLeaves.map((leave) => cleanText(leave.id)),
+      ].filter(Boolean)));
+
+      await Promise.all(
+        coreLeaveIds.map((coreLeaveId) =>
+          CoreHrService.decideLeave(coreLeaveId, "rejected", "تم إنهاء الإجازة من إدارة الموظفات")
+            .catch((error) => console.warn("reject Core leave failed", { coreLeaveId, error }))
+        )
+      );
+
+      // Core availability keeps its own leave window on the staff row.
+      // Clear it explicitly after rejecting the leave so booking/schedule availability returns immediately.
+      await CoreHrService.saveEmployee({
+        id: selectedEmployeeId,
+        leaveStartDate: null,
+        leaveEndDate: null,
+        leaveNote: null,
+      });
+
+      const profilePatch = {
+        onLeave: false,
+        leaveStartDate: "",
+        leaveUntil: "",
+        leaveType: "",
+        leaveNote: "",
+        leaveRequestId: "",
+        coreLeaveId: "",
+        employeeProfile: {
+          onLeave: false,
+          leaveStartDate: "",
+          leaveUntil: "",
+          leaveType: "",
+          leaveNote: "",
+          leaveRequestId: "",
+          coreLeaveId: "",
+        },
+        updatedAt: serverTimestamp(),
+      };
+      await Promise.all([
+        setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
+        setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
+      ]);
+
+      setList((current) =>
+        current.map((item) =>
+          item.id === selectedEmployeeId || employeeMatchesIdentity(item, employeeIdentityOf(employee))
+            ? {
+                ...item,
+                onLeave: false,
+                leaveStartDate: "",
+                leaveUntil: "",
+                leaveType: "",
+                leaveNote: "",
+                leaveRequestId: "",
+                coreLeaveId: "",
+              }
+            : item
+        )
+      );
+      setSelectedEmployeeLeaveRequests((current) =>
+        current.map((request) =>
+          requestIds.includes(cleanText(request.id))
+            ? { ...request, status: "cancelled" }
+            : request
+        )
+      );
+      setModalOnLeave(false);
+      setModalLeaveFrom("");
+      setModalLeaveUntil("");
+      setModalLeaveType("annual");
+      setModalLeaveNote("");
+      await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
+      window.dispatchEvent(new Event("queens:staff-updated"));
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إنهاء الإجازة الحالية."));
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    authUser?.displayName,
+    authUser?.email,
+    authUser?.uid,
+    ensureCanManageLeaveBalance,
+    list,
+    loadSelectedEmployeeAttendance,
+    name,
+    selectedEmployeeId,
+    selectedEmployeeLeaveRequests,
   ]);
 
   const resetForm = () => {
@@ -1344,12 +1816,13 @@ export default function DashboardEmployees() {
     setShowOnAbout(true);
     setShowOnBooking(true);
     setModalOnLeave(false);
+    setModalLeaveFrom("");
     setModalLeaveUntil("");
+    setModalLeaveType("annual");
     setModalLeaveNote("");
     setEmploymentEndDate("");
     setSelectedAttendanceZoneId("");
     setModalExceptionalLeaveWeekdays([]);
-    setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(false);
     setModalCustomWorkingHours(createDefaultWorkingHours());
     setModalCustomHourOverrides([]);
@@ -1416,9 +1889,14 @@ export default function DashboardEmployees() {
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
     const initialLeaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
+    const initialLeaveFrom =
+      normalizeLeaveUntil((x as any).leaveStartDate || (x as any).leaveFrom || (x as any).leaveFromDate) ||
+      (initialLeaveUntil ? todayIso() : "");
     const initialLeaveExpired = !!initialLeaveUntil && initialLeaveUntil < todayIso();
     setModalOnLeave(!!(x as any).onLeave && !initialLeaveExpired);
+    setModalLeaveFrom(initialLeaveFrom);
     setModalLeaveUntil(initialLeaveUntil);
+    setModalLeaveType(normalizeManagedLeaveType((x as any).leaveType));
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
@@ -1436,10 +1914,18 @@ export default function DashboardEmployees() {
       : currentScheduleSnapshot.hasHistoricalVersion
         ? normalizeExceptionalLeaveWeekdays(currentScheduleSnapshot.weeklyOffDays)
         : resolveStaffWeeklyOffDays(x);
+    const alignedInitialWorkingHours = initialUseCustomWorkingHours
+      ? initialCustomWorkingHours
+      : WEEKDAY_OPTIONS.reduce((next, day) => {
+          next[day.key] = {
+            ...initialCustomWorkingHours[day.key],
+            enabled: !initialWeeklyOffDays.includes(day.key),
+          };
+          return next;
+        }, { ...initialCustomWorkingHours });
     setModalExceptionalLeaveWeekdays(initialWeeklyOffDays);
-    setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(initialUseCustomWorkingHours);
-    setModalCustomWorkingHours(initialCustomWorkingHours);
+    setModalCustomWorkingHours(alignedInitialWorkingHours);
     setModalCustomHourOverrides(
       normalizeWorkingHourOverrides((x as any).customWorkingHourOverrides)
     );
@@ -1803,8 +2289,14 @@ export default function DashboardEmployees() {
                 : false,
             employmentEndDate: normalizeLeaveUntil(combined?.employmentEndDate),
             onLeave: !!combined?.onLeave,
+            leaveStartDate: normalizeLeaveUntil(
+              combined?.leaveStartDate || combined?.leaveFrom || combined?.leaveFromDate
+            ),
             leaveUntil: normalizeLeaveUntil(combined?.leaveUntil),
+            leaveType: normalizeManagedLeaveType(combined?.leaveType),
             leaveNote: cleanText(combined?.leaveNote),
+            leaveRequestId: cleanText(combined?.leaveRequestId),
+            coreLeaveId: cleanText(combined?.coreLeaveId),
             exceptionalLeaveDates: normalizeExceptionalLeaveDates(combined?.exceptionalLeaveDates),
             exceptionalLeaveWeekdays: resolveStaffWeeklyOffDays(combined),
             useCustomWorkingHours: !!combined?.useCustomWorkingHours,
@@ -2355,8 +2847,16 @@ export default function DashboardEmployees() {
       ? {
           active: !!editingStaff?.active,
           onLeave: !!(editingStaff as any)?.onLeave,
+          leaveStartDate: normalizeLeaveUntil(
+            (editingStaff as any)?.leaveStartDate ||
+              (editingStaff as any)?.leaveFrom ||
+              (editingStaff as any)?.leaveFromDate
+          ),
           leaveUntil: normalizeLeaveUntil((editingStaff as any)?.leaveUntil),
+          leaveType: normalizeManagedLeaveType((editingStaff as any)?.leaveType),
           leaveNote: String((editingStaff as any)?.leaveNote || "").trim(),
+          leaveRequestId: cleanText((editingStaff as any)?.leaveRequestId),
+          coreLeaveId: cleanText((editingStaff as any)?.coreLeaveId),
           employmentEndDate: normalizeLeaveUntil((editingStaff as any)?.employmentEndDate),
         }
       : null;
@@ -2408,7 +2908,9 @@ export default function DashboardEmployees() {
 
     setSaving(true);
     setErrorMsg("");
+    const normalizedModalLeaveFrom = normalizeLeaveUntil(modalLeaveFrom);
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
+    const normalizedModalLeaveType = normalizeManagedLeaveType(modalLeaveType);
     const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
@@ -2447,8 +2949,12 @@ export default function DashboardEmployees() {
       showOnBooking: effectiveShowOnBooking,
       employmentEndDate: normalizedEmploymentEndDate,
       onLeave: effectiveModalOnLeave,
-      leaveUntil: normalizedModalLeaveUntil,
-      leaveNote: String(modalLeaveNote || "").trim(),
+      leaveStartDate: effectiveModalOnLeave ? normalizedModalLeaveFrom : "",
+      leaveUntil: effectiveModalOnLeave ? normalizedModalLeaveUntil : "",
+      leaveType: effectiveModalOnLeave ? normalizedModalLeaveType : "",
+      leaveNote: effectiveModalOnLeave ? String(modalLeaveNote || "").trim() : "",
+      leaveRequestId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.leaveRequestId) : "",
+      coreLeaveId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.coreLeaveId) : "",
       exceptionalLeaveDates: normalizedExceptionalDates,
       exceptionalLeaveWeekdays: normalizedExceptionalWeekdays,
       useCustomWorkingHours: !!modalUseCustomWorkingHours,
@@ -2568,7 +3074,9 @@ export default function DashboardEmployees() {
       if (previousEditSnapshot && editingStaff) {
         const leaveChanged =
           previousEditSnapshot.onLeave !== effectiveModalOnLeave ||
+          previousEditSnapshot.leaveStartDate !== normalizedModalLeaveFrom ||
           previousEditSnapshot.leaveUntil !== normalizedModalLeaveUntil ||
+          previousEditSnapshot.leaveType !== normalizedModalLeaveType ||
           previousEditSnapshot.leaveNote !== String(modalLeaveNote || "").trim();
         const employmentChanged =
           previousEditSnapshot.active !== !!active ||
@@ -2582,7 +3090,7 @@ export default function DashboardEmployees() {
             type: leaveChanged ? "leave" : "system",
             title: leaveChanged ? "تم تحديث حالة الإجازة" : "تم تحديث حالة الموظفة",
             body: leaveChanged
-              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
+              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveFrom ? ` من ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
               : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
             route: leaveChanged ? "/employee/leave" : "/employee/profile",
           }).catch((notificationError) => {
@@ -3692,7 +4200,7 @@ export default function DashboardEmployees() {
     ...(canManageLeaveBalance
       ? [
           { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
-          { key: "leave" as EmployeeSplitTab, label: "الإجازات", hint: "الرصيد والسجل", icon: faCalendarCheck },
+          { key: "leave" as EmployeeSplitTab, label: "رصيد الإجازات", hint: "الحالة والرصيد والسجل", icon: faCalendarCheck },
         ]
       : []),
     ...(canViewEmployeeMessages
@@ -4773,20 +5281,20 @@ export default function DashboardEmployees() {
                 }}
                 leave={{
                   modalOnLeave,
+                  modalLeaveFrom,
                   modalLeaveUntil,
+                  modalLeaveType,
                   modalLeaveNote,
-                  modalLeaveWeekdayDraft,
                   modalExceptionalLeaveWeekdays,
                   modalLeaveExpired,
                   leaveEntitlementDate,
                   leaveAdjustDays,
                   leaveAdjustDate,
                   leaveAdjustNote,
-                  onModalOnLeaveChange: setModalOnLeave,
-                  onModalLeaveUntilChange: setModalLeaveUntil,
-                  onModalLeaveNoteChange: setModalLeaveNote,
-                  onModalLeaveWeekdayDraftChange: setModalLeaveWeekdayDraft,
-                  onModalExceptionalLeaveWeekdaysChange: setModalExceptionalLeaveWeekdays,
+                  onCreateApprovedLeave: openApprovedLeaveFromEmployeeProfile,
+                  onEndCurrentLeave: () => {
+                    void endCurrentApprovedLeave();
+                  },
                   onLeaveEntitlementDateChange: setLeaveEntitlementDate,
                   onLeaveAdjustDaysChange: setLeaveAdjustDays,
                   onLeaveAdjustDateChange: setLeaveAdjustDate,
@@ -4841,55 +5349,81 @@ export default function DashboardEmployees() {
                   void cancelLeaveForAttendanceDay(dateKey);
                 }}
               />
-              {attendanceEditOpen && activeTab === "attendance" && (canCreateAttendance || canUpdateAttendance) ? (
-                <div className="emp-attendance-edit-panel">
-                  <div className="emp-attendance-edit-head">
-                    <div>
-                      <strong>تعديل البصمة</strong>
-                      <span>{attendanceEditDate}</span>
-                    </div>
-                    <button type="button" className="exp-btn ghost sm" onClick={closeAttendancePunchEditor}>
-                      إغلاق
+              <DashboardModalV2
+                open={
+                  attendanceEditOpen &&
+                  activeTab === "attendance" &&
+                  (canCreateAttendance || canUpdateAttendance)
+                }
+                onClose={closeAttendancePunchEditor}
+                title="تعديل البصمة"
+                description={
+                  attendanceEditDate
+                    ? `تعديل سجل الحضور ليوم ${attendanceEditDate}`
+                    : "تعديل سجل الحضور والانصراف"
+                }
+                eyebrow="الحضور والانصراف"
+                size="md"
+                closeOnBackdrop={!saving}
+                closeOnEscape={!saving}
+                footer={
+                  <>
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--secondary"
+                      onClick={closeAttendancePunchEditor}
+                      disabled={saving}
+                    >
+                      إلغاء
                     </button>
-                  </div>
-                  <div className="emp-attendance-edit-grid">
-                    <label className="emp-attendance-time-card">
-                      <span className="emp-attendance-time-card__title">
-                        وقت الحضور
-                      </span>
-
-                      <input
-                        className="emp-attendance-time-input"
-                        type="time"
-                        dir="ltr"
-                        step={300}
-                        value={
-                          attendanceEditCheckIn
-                            ? attendanceEditCheckIn.slice(11, 16)
+                    <button
+                      type="button"
+                      className="dsv2-btn dsv2-btn--primary"
+                      onClick={() => void saveAttendancePunchEditor()}
+                      disabled={saving}
+                    >
+                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                    </button>
+                  </>
+                }
+              >
+                <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
+                  <DashboardFieldV2
+                    id="employee-attendance-edit-check-in"
+                    label="وقت الحضور"
+                    hint="اختاري ساعة ودقيقة الحضور فقط."
+                  >
+                    <input
+                      id="employee-attendance-edit-check-in"
+                      className="dsv2-input"
+                      type="time"
+                      dir="ltr"
+                      step={300}
+                      value={
+                        attendanceEditCheckIn
+                          ? attendanceEditCheckIn.slice(11, 16)
+                          : ""
+                      }
+                      onChange={(event) =>
+                        setAttendanceEditCheckIn(
+                          event.target.value
+                            ? `${attendanceEditDate}T${event.target.value}`
                             : ""
-                        }
-                        onChange={(event) =>
-                          setAttendanceEditCheckIn(
-                            event.target.value
-                              ? `${attendanceEditDate}T${event.target.value}`
-                              : ""
-                          )
-                        }
-                        disabled={saving}
-                      />
+                        )
+                      }
+                      disabled={saving}
+                    />
+                  </DashboardFieldV2>
 
-                      <small>
-                        اختاري ساعة ودقيقة الحضور فقط
-                      </small>
-                    </label>
-
-                    <label className="emp-attendance-time-card">
-                      <span className="emp-attendance-time-card__title">
-                        وقت الانصراف
-                      </span>
-
+                  <DashboardFieldV2
+                    id="employee-attendance-edit-check-out"
+                    label="وقت الانصراف"
+                    hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                  >
+                    <div className="emp-attendance-edit-time-control-v2">
                       <input
-                        className="emp-attendance-time-input"
+                        id="employee-attendance-edit-check-out"
+                        className="dsv2-input"
                         type="time"
                         dir="ltr"
                         step={300}
@@ -4908,54 +5442,39 @@ export default function DashboardEmployees() {
                         disabled={saving}
                       />
 
-                      <div className="emp-attendance-time-card__bottom">
-                        <small>
-                          يمكن تركه فارغًا إذا لم تسجل انصرافًا
-                        </small>
+                      {attendanceEditCheckOut ? (
+                        <button
+                          type="button"
+                          className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                          onClick={() => setAttendanceEditCheckOut("")}
+                          disabled={saving}
+                        >
+                          مسح الوقت
+                        </button>
+                      ) : null}
+                    </div>
+                  </DashboardFieldV2>
 
-                        {attendanceEditCheckOut ? (
-                          <button
-                            type="button"
-                            className="emp-attendance-time-clear"
-                            onClick={() =>
-                              setAttendanceEditCheckOut("")
-                            }
-                            disabled={saving}
-                          >
-                            مسح الوقت
-                          </button>
-                        ) : null}
-                      </div>
-                    </label>
-
-                    <label className="dash-field emp-attendance-edit-note">
-                      <span className="emp-label">
-                        ملاحظة الإدارة
-                      </span>
-
-                      <input
-                        className="dash-input"
-                        value={attendanceEditNote}
-                        onChange={(event) =>
-                          setAttendanceEditNote(
-                            event.target.value
-                          )
-                        }
-                        disabled={saving}
-                        placeholder="مثال: تصحيح بصمة من الإدارة"
-                      />
-                    </label>
-                  </div>
-                  <div className="emp-attendance-edit-actions">
-                    <button type="button" className="exp-btn ghost" onClick={closeAttendancePunchEditor} disabled={saving}>
-                      إلغاء
-                    </button>
-                    <button type="button" className="exp-btn primary" onClick={() => void saveAttendancePunchEditor()} disabled={saving}>
-                      حفظ تعديل البصمة
-                    </button>
-                  </div>
+                  <DashboardFieldV2
+                    id="employee-attendance-edit-note"
+                    label="ملاحظة الإدارة"
+                    hint="يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة."
+                    className="dsv2-ew-form-wide"
+                  >
+                    <textarea
+                      id="employee-attendance-edit-note"
+                      className="dsv2-textarea"
+                      value={attendanceEditNote}
+                      onChange={(event) =>
+                        setAttendanceEditNote(event.target.value)
+                      }
+                      disabled={saving}
+                      placeholder="مثال: تصحيح بصمة من الإدارة"
+                      rows={4}
+                    />
+                  </DashboardFieldV2>
                 </div>
-              ) : null}
+              </DashboardModalV2>
               <BasicInfoSection
                 isVisible={(!editingStaff && modalTab === "basic") || (!!editingStaff && activeTab === "basic")}
                 name={name}
@@ -4979,6 +5498,7 @@ export default function DashboardEmployees() {
                 employmentEndDate={employmentEndDate}
                 modalUseCustomWorkingHours={modalUseCustomWorkingHours}
                 modalCustomWorkingHours={modalCustomWorkingHours}
+                modalExceptionalLeaveWeekdays={modalExceptionalLeaveWeekdays}
                 scheduleEffectiveFrom={modalScheduleEffectiveFrom}
                 scheduleChangeReason={modalScheduleChangeReason}
                 scheduleVersionCount={normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions).length}

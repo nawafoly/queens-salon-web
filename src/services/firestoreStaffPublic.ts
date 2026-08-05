@@ -26,8 +26,12 @@ export type StaffPublicDoc = {
   linkedUid?: string;
   showOnBooking?: boolean;
   onLeave?: boolean;
+  leaveStartDate?: string;
   leaveUntil?: string;
+  leaveType?: string;
   leaveNote?: string;
+  leaveRequestId?: string;
+  coreLeaveId?: string;
   exceptionalLeaveDates?: string[];
   exceptionalLeaveWeekdays?: string[];
   useCustomWorkingHours?: boolean;
@@ -337,8 +341,19 @@ function normalizeStaffRow(
     linkedUid: linkedUid || undefined,
     showOnBooking: data?.showOnBooking !== false && (employeeProfile as any)?.showOnBooking !== false,
     onLeave: !!data?.onLeave || (employeeProfile as any)?.onLeave === true,
+    leaveStartDate: String(
+      data?.leaveStartDate ??
+        data?.leaveFrom ??
+        data?.leaveFromDate ??
+        (employeeProfile as any)?.leaveStartDate ??
+        (employeeProfile as any)?.leaveFrom ??
+        ""
+    ).trim(),
     leaveUntil: String(data?.leaveUntil ?? (employeeProfile as any)?.leaveUntil ?? "").trim(),
+    leaveType: String(data?.leaveType ?? (employeeProfile as any)?.leaveType ?? "").trim(),
     leaveNote: String(data?.leaveNote ?? (employeeProfile as any)?.leaveNote ?? "").trim(),
+    leaveRequestId: String(data?.leaveRequestId ?? (employeeProfile as any)?.leaveRequestId ?? "").trim(),
+    coreLeaveId: String(data?.coreLeaveId ?? (employeeProfile as any)?.coreLeaveId ?? "").trim(),
     exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates || (employeeProfile as any)?.exceptionalLeaveDates),
     exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays || data?.weeklyOffDays || data?.offWeekdays || (employeeProfile as any)?.exceptionalLeaveWeekdays),
     useCustomWorkingHours: !!data?.useCustomWorkingHours || (employeeProfile as any)?.useCustomWorkingHours === true,
@@ -393,8 +408,12 @@ function mergeStaffRow(current: StaffPublicWithId | undefined, next: StaffPublic
     email: current.email || next.email,
     showOnBooking: current.showOnBooking !== false && next.showOnBooking !== false,
     onLeave: current.onLeave === true || next.onLeave === true,
+    leaveStartDate: current.leaveStartDate || next.leaveStartDate,
     leaveUntil: current.leaveUntil || next.leaveUntil,
+    leaveType: current.leaveType || next.leaveType,
     leaveNote: current.leaveNote || next.leaveNote,
+    leaveRequestId: current.leaveRequestId || next.leaveRequestId,
+    coreLeaveId: current.coreLeaveId || next.coreLeaveId,
     employmentEndDate: current.employmentEndDate || next.employmentEndDate,
     exceptionalLeaveDates: current.exceptionalLeaveDates?.length ? current.exceptionalLeaveDates : next.exceptionalLeaveDates,
     exceptionalLeaveWeekdays: current.exceptionalLeaveWeekdays?.length ? current.exceptionalLeaveWeekdays : next.exceptionalLeaveWeekdays,

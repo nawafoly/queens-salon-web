@@ -113,8 +113,12 @@ export type StaffPublicDoc = {
   showOnAbout: boolean;
   showOnBooking: boolean;
   onLeave?: boolean;
+  leaveStartDate?: string;
   leaveUntil?: string;
+  leaveType?: string;
   leaveNote?: string;
+  leaveRequestId?: string;
+  coreLeaveId?: string;
   exceptionalLeaveDates?: string[];
   exceptionalLeaveWeekdays?: string[];
   useCustomWorkingHours?: boolean;

@@ -88,6 +88,15 @@ export async function decideLeave(db, salonId, idValue, decision, actor = {}) {
              WHERE salon_id = ? AND id = ?`,
       params: [leave.start_date, leave.end_date, optionalText(decision.hrNote || decision.hr_note || leave.employee_note) || null, now, salonId, leave.employee_id],
     });
+  } else if (leave.status === 'approved') {
+    // Rejecting/cancelling an already-approved leave must release the employee
+    // from the Core availability window. Restrict the clear to the same range
+    // so a newer approved leave is not removed accidentally.
+    statements.push({
+      sql: `UPDATE staff SET leave_start_date = NULL, leave_end_date = NULL, leave_note = NULL, updated_at = ?
+             WHERE salon_id = ? AND id = ? AND leave_start_date = ? AND leave_end_date = ?`,
+      params: [now, salonId, leave.employee_id, leave.start_date, leave.end_date],
+    });
   }
   await dbBatch(db, statements);
   return dbFirst(db, 'SELECT * FROM employee_leaves WHERE salon_id = ? AND id = ? LIMIT 1', [salonId, id]);

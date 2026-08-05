@@ -1,5 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
-import Modal from "./Modal";
+import { useEffect, useMemo, useState } from "react";
+import {
+  DashboardDatePickerV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+} from "./dashboard-v2";
+import { WorkspaceSwitchV2 } from "./dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import "../styles/LeaveRequestModal.css";
 
 type Props = {
@@ -30,6 +36,10 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   other: "أخرى",
 };
 
+const LEAVE_TYPE_OPTIONS = Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
 
 const LEAVE_TYPE_POLICY: Record<string, { deductFromBalance: boolean; affectsPayroll: boolean }> = {
   annual: { deductFromBalance: true, affectsPayroll: false },
@@ -60,15 +70,19 @@ export default function LeaveRequestModal({
   const [submitting, setSubmitting] = useState(false);
 
   const isOtherLeaveType = type === "other";
+  const selectedTypeLabel = LEAVE_TYPE_LABELS[type] || "غير محدد";
 
   useEffect(() => {
     setType(defaultType);
   }, [defaultType]);
 
   useEffect(() => {
+    if (!open) return;
     setFromDate(initialDate || "");
     setToDate(initialDate || "");
     setNote("");
+    setErrors([]);
+    setSubmitting(false);
   }, [initialDate, open]);
 
   useEffect(() => {
@@ -85,31 +99,45 @@ export default function LeaveRequestModal({
   const days = useMemo(() => {
     if (!fromDate || !toDate) return 0;
     try {
-      const f = new Date(fromDate);
-      const t = new Date(toDate);
+      const f = new Date(`${fromDate}T00:00:00`);
+      const t = new Date(`${toDate}T00:00:00`);
       const diff = Math.floor((t.getTime() - f.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       return diff > 0 ? diff : 0;
-    } catch (e) {
+    } catch {
       return 0;
     }
   }, [fromDate, toDate]);
 
   const validate = (): string[] => {
-    const res: string[] = [];
-    if (!type) res.push("اختر نوع الإجازة.");
-    if (!fromDate) res.push("اختر تاريخ البداية.");
-    if (!toDate) res.push("اختر تاريخ النهاية.");
-    if (days <= 0) res.push("المدى الزمني غير صحيح.");
-    if (deductFromBalance && availableBalance != null && availableBalance < days) res.push("الرصيد غير كافٍ لهذه الإجازة.");
-    if (hasAttendanceInRange && hasAttendanceInRange(fromDate, toDate)) res.push("يوجد بصمة داخل النطاق المحدد.");
-    if (hasOverlappingLeave && hasOverlappingLeave(fromDate, toDate)) res.push("توجد إجازة معتمدة تتداخل مع النطاق المحدد.");
-    return res;
+    const result: string[] = [];
+    if (!type) result.push("اختر نوع الإجازة.");
+    if (!fromDate) result.push("اختر تاريخ البداية.");
+    if (!toDate) result.push("اختر تاريخ النهاية.");
+    if (days <= 0) result.push("المدى الزمني غير صحيح.");
+    if (deductFromBalance && availableBalance != null && availableBalance < days) {
+      result.push("الرصيد غير كافٍ لهذه الإجازة.");
+    }
+    if (hasAttendanceInRange && hasAttendanceInRange(fromDate, toDate)) {
+      result.push("يوجد بصمة داخل النطاق المحدد.");
+    }
+    if (hasOverlappingLeave && hasOverlappingLeave(fromDate, toDate)) {
+      result.push("توجد إجازة معتمدة تتداخل مع النطاق المحدد.");
+    }
+    return result;
+  };
+
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value);
+    if (value && (!toDate || toDate < value)) {
+      setToDate(value);
+    }
   };
 
   const handleSubmit = async () => {
-    const v = validate();
-    setErrors(v);
-    if (v.length) return;
+    const validationErrors = validate();
+    setErrors(validationErrors);
+    if (validationErrors.length) return;
+
     setSubmitting(true);
     try {
       await onSubmit({
@@ -122,187 +150,162 @@ export default function LeaveRequestModal({
         note,
       });
       onClose();
-    } catch (e: any) {
-      setErrors([String(e?.message || e || "تعذر حفظ الطلب.")]);
+    } catch (error: any) {
+      setErrors([String(error?.message || error || "تعذر حفظ الطلب.")]);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!open) return null;
-
   return (
-    <Modal
+    <DashboardModalV2
       open={open}
       onClose={onClose}
-      ariaLabel="تسجيل إجازة"
-      panelClassName="leave-request-modal__panel"
-      overlayClassName="leave-request-modal__overlay"
+      title="تسجيل إجازة"
+      description="حدّد نوع الإجازة وفترتها، ثم راجع أثرها على الرصيد والراتب قبل الاعتماد."
+      eyebrow="طلبات الإجازات"
       size="md"
-    >
-      <div className="leave-request-modal">
-        <div className="leave-request-modal__head">
-          <div className="leave-request-modal__titles">
-            <span className="leave-request-modal__eyebrow">طلب جديد</span>
-            <h3 className="leave-request-modal__title">تسجيل إجازة</h3>
-            <p className="leave-request-modal__subtitle">حدد نوع الإجازة والمدى ثم اعتمد الطلب.</p>
-          </div>
+      tone="gold"
+      className="leave-request-v2__modal"
+      closeOnBackdrop={!submitting}
+      closeOnEscape={!submitting}
+      footer={
+        <>
           <button
             type="button"
-            className="leave-request-modal__close"
-            onClick={onClose}
-            aria-label="إغلاق"
+            className="dsv2-btn dsv2-btn--primary"
+            data-dsv2-autofocus="true"
+            onClick={handleSubmit}
+            disabled={submitting}
           >
-            ×
+            {submitting ? "جاري الاعتماد..." : "اعتماد الإجازة"}
           </button>
-        </div>
-
-        <div className="leave-request-modal__body">
-          <div className="leave-request-modal__field">
-            <label className="leave-request-modal__label" htmlFor="leave-type">
-              نوع الإجازة
-            </label>
-            <select
-              id="leave-type"
-              className="leave-request-modal__select"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
-              <option value="annual">{LEAVE_TYPE_LABELS.annual}</option>
-              <option value="sick">{LEAVE_TYPE_LABELS.sick}</option>
-              <option value="emergency">{LEAVE_TYPE_LABELS.emergency}</option>
-              <option value="unpaid">{LEAVE_TYPE_LABELS.unpaid}</option>
-              <option value="rest">{LEAVE_TYPE_LABELS.rest}</option>
-              <option value="other">{LEAVE_TYPE_LABELS.other}</option>
-            </select>
-          </div>
-
-          <div className="leave-request-modal__grid">
-            <div className="leave-request-modal__field">
-              <label className="leave-request-modal__label" htmlFor="from-date">
-                من تاريخ
-              </label>
-              <input
-                id="from-date"
-                type="date"
-                className="leave-request-modal__input"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-            </div>
-            <div className="leave-request-modal__field">
-              <label className="leave-request-modal__label" htmlFor="to-date">
-                إلى تاريخ
-              </label>
-              <input
-                id="to-date"
-                type="date"
-                className="leave-request-modal__input"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="leave-request-modal__field">
-            <label className="leave-request-modal__label" htmlFor="leave-days">
-              عدد الأيام
-            </label>
-            <input
-              id="leave-days"
-              type="text"
-              className="leave-request-modal__input leave-request-modal__input--readonly"
-              readOnly
-              value={String(days)}
-            />
-            <p className="leave-request-modal__field-hint">يتم الحساب تلقائيًا حسب نطاق التواريخ.</p>
-          </div>
-
-          <div className="leave-request-modal__toggles">
-            <div className={`leave-request-modal__toggle-card ${isOtherLeaveType ? "" : "leave-request-modal__toggle-card--locked"}`}>
-              <div className="leave-request-modal__toggle-info">
-                <div>
-                  <span className="leave-request-modal__toggle-title">خصم من الرصيد</span>
-                  <span className="leave-request-modal__toggle-meta">
-                    {isOtherLeaveType ? "يمكن تعديل الخيار يدويًا." : "محدد تلقائيًا حسب نوع الإجازة."}
-                  </span>
-                </div>
-                <label className="leave-request-modal__switch">
-                  <input
-                    type="checkbox"
-                    checked={deductFromBalance}
-                    disabled={!isOtherLeaveType}
-                    onChange={(e) => setDeductFromBalance(e.target.checked)}
-                  />
-                  <span className="leave-request-modal__slider" />
-                </label>
-              </div>
-            </div>
-
-            <div className={`leave-request-modal__toggle-card ${isOtherLeaveType ? "" : "leave-request-modal__toggle-card--locked"}`}>
-              <div className="leave-request-modal__toggle-info">
-                <div>
-                  <span className="leave-request-modal__toggle-title">تؤثر على الراتب</span>
-                  <span className="leave-request-modal__toggle-meta">
-                    {isOtherLeaveType ? "يمكن تعديل الخيار يدويًا." : "محدد تلقائيًا حسب نوع الإجازة."}
-                  </span>
-                </div>
-                <label className="leave-request-modal__switch">
-                  <input
-                    type="checkbox"
-                    checked={affectsPayroll}
-                    disabled={!isOtherLeaveType}
-                    onChange={(e) => setAffectsPayroll(e.target.checked)}
-                  />
-                  <span className="leave-request-modal__slider" />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div className="leave-request-modal__field">
-            <label className="leave-request-modal__label" htmlFor="leave-note">
-              ملاحظة
-            </label>
-            <textarea
-              id="leave-note"
-              className="leave-request-modal__textarea"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={4}
-            />
-          </div>
-
-          {errors.length > 0 && (
-            <div className="leave-request-modal__errors" role="alert">
-              {errors.map((err, i) => (
-                <div key={i} className="leave-request-modal__error">
-                  {err}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="leave-request-modal__actions">
           <button
             type="button"
-            className="leave-request-modal__button leave-request-modal__button--secondary"
+            className="dsv2-btn dsv2-btn--secondary"
             onClick={onClose}
             disabled={submitting}
           >
             إلغاء
           </button>
-          <button
-            type="button"
-            className="leave-request-modal__button leave-request-modal__button--primary"
-            onClick={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting ? "جاري الحفظ..." : "اعتماد الإجازة"}
-          </button>
+        </>
+      }
+    >
+      <div className="leave-request-v2__form">
+        <DashboardFieldV2 id="leave-type-v2" label="نوع الإجازة" required>
+          <DashboardSelectV2
+            id="leave-type-v2"
+            value={type}
+            options={LEAVE_TYPE_OPTIONS}
+            onChange={(value) => {
+              setType(value);
+              setErrors([]);
+            }}
+          />
+        </DashboardFieldV2>
+
+        <div className="leave-request-v2__date-grid">
+          <DashboardFieldV2 id="leave-from-date-v2" label="من تاريخ" required>
+            <DashboardDatePickerV2
+              id="leave-from-date-v2"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={handleFromDateChange}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="leave-to-date-v2" label="إلى تاريخ" required>
+            <DashboardDatePickerV2
+              id="leave-to-date-v2"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={setToDate}
+            />
+          </DashboardFieldV2>
         </div>
+
+        <section className="leave-request-v2__summary" aria-label="ملخص الإجازة">
+          <div className="leave-request-v2__summary-item">
+            <span>النوع</span>
+            <strong>{selectedTypeLabel}</strong>
+          </div>
+          <div className="leave-request-v2__summary-item">
+            <span>عدد الأيام</span>
+            <strong>{days > 0 ? `${days} يوم` : "—"}</strong>
+          </div>
+          <div className="leave-request-v2__summary-item">
+            <span>الرصيد المتاح</span>
+            <strong>{availableBalance == null ? "غير محدد" : `${availableBalance} يوم`}</strong>
+          </div>
+        </section>
+
+        <section className="leave-request-v2__policy" aria-labelledby="leave-policy-title-v2">
+          <header className="leave-request-v2__section-head">
+            <div>
+              <h3 id="leave-policy-title-v2">سياسة الاحتساب</h3>
+              <p>
+                {isOtherLeaveType
+                  ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
+                  : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
+              </p>
+            </div>
+            <span className={`dsv2-badge ${affectsPayroll ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
+              {affectsPayroll ? "تؤثر على الراتب" : "لا تؤثر على الراتب"}
+            </span>
+          </header>
+
+          <div className="dsv2-ew-switch-list leave-request-v2__switch-list">
+            <WorkspaceSwitchV2
+              checked={deductFromBalance}
+              onChange={setDeductFromBalance}
+              disabled={!isOtherLeaveType}
+              label="خصم من رصيد الإجازات"
+              description={
+                deductFromBalance
+                  ? "سيتم خصم عدد الأيام من رصيد الموظفة عند الاعتماد."
+                  : "لن يتم خصم هذه المدة من رصيد الإجازات."
+              }
+            />
+            <WorkspaceSwitchV2
+              checked={affectsPayroll}
+              onChange={setAffectsPayroll}
+              disabled={!isOtherLeaveType}
+              label="تؤثر على الراتب"
+              description={
+                affectsPayroll
+                  ? "ستدخل هذه الأيام ضمن الخصم في دورة الرواتب."
+                  : "ستُستبعد هذه الأيام من الغياب والخصم في الراتب."
+              }
+            />
+          </div>
+        </section>
+
+        <DashboardFieldV2
+          id="leave-note-v2"
+          label="ملاحظة"
+          hint="اختياري — تظهر الملاحظة في سجل الإجازة والمراجعة."
+        >
+          <textarea
+            id="leave-note-v2"
+            className="dsv2-textarea"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="اكتب سبب الإجازة أو أي تفاصيل يحتاجها المسؤول..."
+            rows={4}
+          />
+        </DashboardFieldV2>
+
+        {errors.length > 0 ? (
+          <div className="leave-request-v2__errors" role="alert" aria-live="assertive">
+            <strong>تعذر اعتماد الإجازة</strong>
+            <ul>
+              {errors.map((error, index) => (
+                <li key={`${error}-${index}`}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
-    </Modal>
+    </DashboardModalV2>
   );
 }

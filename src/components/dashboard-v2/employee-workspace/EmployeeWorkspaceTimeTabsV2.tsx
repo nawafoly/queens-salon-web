@@ -314,7 +314,6 @@ export function AttendanceTabV2({ readOnly, markDirty, openDialog, openDrawer, r
                 </dl>
                 <div className="dsv2-ew-action-grid">
                   <button type="button" className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" disabled={readOnly} onClick={() => openDialog("attendance")}>تعديل البصمة</button>
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly}>مراجعة اليوم</button>
                   <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly}>إجازة طارئة</button>
                   <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={readOnly} onClick={() => requestConfirm({ title: "حذف بصمة الدخول؟", description: "سيعاد احتساب اليوم بعد حذف البصمة، وقد يتغير الاستحقاق المالي.", confirmLabel: "حذف البصمة", tone: "danger", onConfirm: markDirty })}>حذف البصمة</button>
                 </div>

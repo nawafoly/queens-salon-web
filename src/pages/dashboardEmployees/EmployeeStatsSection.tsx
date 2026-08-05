@@ -1,7 +1,6 @@
 import {
   DashboardDatePickerV2,
   DashboardFieldV2,
-  DashboardSelectV2,
 } from "../../components/dashboard-v2";
 import {
   EmployeePayrollTabLiveV2,
@@ -11,7 +10,6 @@ import {
   WorkspaceMetricV2,
   WorkspaceNoticeV2,
   WorkspaceStatusBadgeV2,
-  WorkspaceSwitchV2,
   WorkspaceTableV2,
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
@@ -107,20 +105,18 @@ type EmployeeStatsSectionProps = {
   };
   leave: {
     modalOnLeave: boolean;
+    modalLeaveFrom: string;
     modalLeaveUntil: string;
+    modalLeaveType: string;
     modalLeaveNote: string;
-    modalLeaveWeekdayDraft: WeekdayKey | "";
     modalExceptionalLeaveWeekdays: WeekdayKey[];
     modalLeaveExpired: boolean;
     leaveEntitlementDate: string;
     leaveAdjustDays: string;
     leaveAdjustDate: string;
     leaveAdjustNote: string;
-    onModalOnLeaveChange: (value: boolean) => void;
-    onModalLeaveUntilChange: (value: string) => void;
-    onModalLeaveNoteChange: (value: string) => void;
-    onModalLeaveWeekdayDraftChange: (value: WeekdayKey | "") => void;
-    onModalExceptionalLeaveWeekdaysChange: (updater: (prev: WeekdayKey[]) => WeekdayKey[]) => void;
+    onCreateApprovedLeave: () => void;
+    onEndCurrentLeave: () => void;
     onLeaveEntitlementDateChange: (value: string) => void;
     onLeaveAdjustDaysChange: (value: string) => void;
     onLeaveAdjustDateChange: (value: string) => void;
@@ -156,6 +152,25 @@ function leaveActionLabel(entry: LeaveEntry) {
   return getLeaveEntryActionType(entry) === "deduct" ? "إجازة / خصم" : "إضافة";
 }
 
+function leaveTypeLabel(value: string) {
+  const type = String(value || "").trim().toLowerCase();
+  if (type === "annual") return "سنوية مدفوعة";
+  if (type === "sick") return "مرضية مدفوعة";
+  if (type === "emergency") return "طارئة مدفوعة";
+  if (type === "unpaid") return "إجازة بدون راتب";
+  if (type === "rest") return "راحة معتمدة";
+  if (type === "other") return "إجازة أخرى";
+  return "غير محدد";
+}
+
+function isLeaveActiveNow(fromDate: string, toDate: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const from = String(fromDate || "").trim();
+  const to = String(toDate || "").trim();
+  if (!from && !to) return false;
+  return (!from || from <= today) && (!to || today <= to);
+}
+
 export default function EmployeeStatsSection({
   isVisible,
   busy,
@@ -184,6 +199,12 @@ export default function EmployeeStatsSection({
   const leaveBalanceLabel = loading ? "جاري التحميل..." : `${formatNumber(leaveBalanceDays)} يوم`;
   const readOnlyPayroll = busy || !canManagePayroll;
   const readOnlyLeave = busy || !canManageLeaveBalance;
+  const activeLeaveNow = leave.modalOnLeave && isLeaveActiveNow(leave.modalLeaveFrom, leave.modalLeaveUntil);
+  const upcomingLeave =
+    leave.modalOnLeave &&
+    !!leave.modalLeaveFrom &&
+    leave.modalLeaveFrom > new Date().toISOString().slice(0, 10);
+  const leaveStatusLabel = activeLeaveNow ? "على إجازة" : upcomingLeave ? "إجازة قادمة" : "على رأس العمل";
 
   if (showPayrollSubTab) {
     return (
@@ -236,66 +257,61 @@ export default function EmployeeStatsSection({
       <WorkspaceTabHeaderV2
         title="الإجازات"
         description="إدارة رصيد الإجازات والحالة الحالية وسجل الحركات من واجهة V2."
-        badge={<WorkspaceStatusBadgeV2 tone={leave.modalOnLeave ? "gold" : "success"}>{leave.modalOnLeave ? "على إجازة" : "على رأس العمل"}</WorkspaceStatusBadgeV2>}
+        badge={<WorkspaceStatusBadgeV2 tone={leave.modalOnLeave ? "gold" : "success"}>{leaveStatusLabel}</WorkspaceStatusBadgeV2>}
       />
 
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="الرصيد الحالي" value={leaveBalanceLabel} tone="success" />
-        <WorkspaceMetricV2 label="الحالة" value={leave.modalOnLeave ? "إجازة" : "عمل"} tone={leave.modalOnLeave ? "gold" : "success"} />
+        <WorkspaceMetricV2 label="الحالة" value={leaveStatusLabel} tone={leave.modalOnLeave ? "gold" : "success"} />
+        <WorkspaceMetricV2 label="بداية الإجازة" value={leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "غير محددة"} />
         <WorkspaceMetricV2 label="نهاية الإجازة" value={leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "غير محددة"} />
+        <WorkspaceMetricV2 label="نوع الإجازة" value={leaveTypeLabel(leave.modalLeaveType)} />
         <WorkspaceMetricV2 label="سجل الحركات" value={sortedLeaveEntries.length} />
       </div>
 
       <div className="dsv2-ew-grid dsv2-ew-grid--2">
-        <WorkspaceCardV2 title="حالة الإجازة الحالية" description="تحديث حالة الموظفة وملاحظات الإجازة.">
-          <WorkspaceSwitchV2
-            checked={leave.modalOnLeave}
-            disabled={readOnlyLeave}
-            label="الموظفة على إجازة"
-            description="عند التفعيل يتم إيقاف توفرها حسب إعدادات الحجز."
-            onChange={leave.onModalOnLeaveChange}
+        <WorkspaceCardV2 title="حالة الإجازة الحالية" description="الإجازات هنا معتمدة ومرتبطة بالحضور والراتب.">
+          <WorkspaceNoticeV2
+            title={leave.modalOnLeave ? leaveStatusLabel : "لا توجد إجازة فعالة"}
+            description={
+              leave.modalOnLeave
+                ? `${leaveTypeLabel(leave.modalLeaveType)} من ${leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "تاريخ غير محدد"} إلى ${leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "تاريخ غير محدد"}.${leave.modalLeaveNote ? ` ${leave.modalLeaveNote}` : ""}`
+                : "سجّل إجازة جديدة ليتم اعتمادها وإظهارها في الحضور وربط أثرها بالراتب."
+            }
+            tone={leave.modalOnLeave ? "gold" : "neutral"}
           />
 
-          <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
-            <DashboardFieldV2 id="employee-live-v2-leave-until" label="الإجازة حتى">
-              <DashboardDatePickerV2
-                id="employee-live-v2-leave-until"
-                value={leave.modalLeaveUntil}
+          <div className="dsv2-cluster">
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--success"
+              disabled={readOnlyLeave}
+              onClick={leave.onCreateApprovedLeave}
+            >
+              تسجيل إجازة معتمدة
+            </button>
+            {leave.modalOnLeave ? (
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--danger"
                 disabled={readOnlyLeave}
-                clearable
-                onChange={leave.onModalLeaveUntilChange}
-              />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="employee-live-v2-leave-weekday" label="يوم إجازة أسبوعي سريع">
-              <DashboardSelectV2
-                id="employee-live-v2-leave-weekday"
-                value={leave.modalLeaveWeekdayDraft}
-                disabled={readOnlyLeave}
-                placeholder="اختر اليوم"
-                options={[
-                  { value: "", label: "بدون اختيار" },
-                  ...WEEKDAY_OPTIONS.map((day) => ({ value: day.key, label: day.label })),
-                ]}
-                onChange={(value) => leave.onModalLeaveWeekdayDraftChange(value as WeekdayKey | "")}
-              />
-            </DashboardFieldV2>
+                onClick={leave.onEndCurrentLeave}
+              >
+                إنهاء الإجازة الحالية
+              </button>
+            ) : null}
           </div>
 
-          <DashboardFieldV2 id="employee-live-v2-leave-note" label="ملاحظة الإجازة">
-            <textarea
-              id="employee-live-v2-leave-note"
-              className="dsv2-textarea"
-              rows={4}
-              value={leave.modalLeaveNote}
-              disabled={readOnlyLeave}
-              onChange={(event) => leave.onModalLeaveNoteChange(event.target.value)}
-            />
-          </DashboardFieldV2>
+          <WorkspaceNoticeV2
+            title="الأثر المالي يُحدد حسب النوع"
+            description="الإجازات السنوية والمرضية والطارئة تظهر في الحضور ولا تخصم من الراتب، بينما الإجازة بدون راتب تظهر كإجازة معتمدة ويُخصم مقابل أيامها من الراتب."
+            tone="neutral"
+          />
 
           {leave.modalLeaveExpired ? (
             <WorkspaceNoticeV2
               title="انتهى تاريخ الإجازة"
-              description="راجع حالة الموظفة أو حدّث تاريخ العودة."
+              description="يمكن إنهاء الحالة الحالية أو تسجيل إجازة جديدة بمدى زمني صحيح."
               tone="danger"
             />
           ) : null}
@@ -352,29 +368,17 @@ export default function EmployeeStatsSection({
         </WorkspaceCardV2>
       </div>
 
-      <WorkspaceCardV2 title="أيام الإجازة الأسبوعية" description="اختيار أكثر من يوم ثابت للموظفة.">
-        <div className="dsv2-ew-pills" role="group" aria-label="أيام الإجازة الأسبوعية">
-          {WEEKDAY_OPTIONS.map((day) => {
-            const active = leave.modalExceptionalLeaveWeekdays.includes(day.key);
-            return (
-              <button
-                key={day.key}
-                type="button"
-                className="dsv2-ew-pill"
-                data-active={active ? "true" : "false"}
-                disabled={readOnlyLeave}
-                onClick={() => {
-                  leave.onModalExceptionalLeaveWeekdaysChange((prev) =>
-                    prev.includes(day.key) ? prev.filter((item) => item !== day.key) : [...prev, day.key]
-                  );
-                }}
-              >
-                {day.label}
-              </button>
-            );
-          })}
-        </div>
-      </WorkspaceCardV2>
+      <WorkspaceNoticeV2
+        title="الراحة الأسبوعية لا تُخصم من رصيد الإجازات"
+        description={
+          leave.modalExceptionalLeaveWeekdays.length
+            ? `الأيام الحالية: ${leave.modalExceptionalLeaveWeekdays
+                .map((key) => WEEKDAY_OPTIONS.find((day) => day.key === key)?.label || key)
+                .join("، ")}. يتم تعديلها من تبويب جدول الدوام.`
+            : "لا توجد أيام راحة أسبوعية محددة. يتم ضبطها من تبويب جدول الدوام."
+        }
+        tone="neutral"
+      />
 
       <WorkspaceCardV2 title="سجل حركات الإجازات" description="آخر 12 حركة محفوظة.">
         <WorkspaceTableV2

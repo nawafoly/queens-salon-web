@@ -273,7 +273,7 @@ export function EmployeeScheduleTabLiveV2({
 
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="أيام العمل" value={openDays} tone="success" />
-        <WorkspaceMetricV2 label="أيام الإغلاق" value={closedDays} tone={closedDays ? "gold" : "neutral"} />
+        <WorkspaceMetricV2 label="أيام الراحة الأسبوعية" value={closedDays} tone={closedDays ? "gold" : "neutral"} />
         <WorkspaceMetricV2 label="نطاق الحضور" value={selectedAttendanceZoneId ? "محدد" : "غير محدد"} tone={selectedAttendanceZoneId ? "success" : "danger"} />
         <WorkspaceMetricV2 label="حالة التحميل" value={loading ? "جاري" : "جاهز"} />
       </div>
@@ -357,18 +357,25 @@ export function EmployeeScheduleTabLiveV2({
         </WorkspaceCardV2>
       </div>
 
-      <WorkspaceCardV2 title="الأسبوع التشغيلي" description="تعديل أيام وساعات عمل الموظفة.">
+      <WorkspaceCardV2 title="الأسبوع التشغيلي" description="تحديد أيام العمل والراحة الأسبوعية، مع تعديل الساعات عند استخدام جدول مخصص.">
+        {!useCustomWorkingHours ? (
+          <WorkspaceNoticeV2
+            title="الساعات موروثة من إعدادات الصالون"
+            description="يمكنك هنا تحديد أيام العمل والراحة الأسبوعية فقط. فعّلي الجدول المخصص لتعديل أوقات البداية والنهاية."
+            tone="neutral"
+          />
+        ) : null}
         <div className="dsv2-ew-week-grid">
           {workingDays.map((day) => (
             <article key={day.key} className="dsv2-ew-week-card" data-open={day.enabled ? "true" : "false"}>
               <header>
                 <strong>{day.label}</strong>
-                <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "danger"}>{day.enabled ? "يعمل" : "مغلق"}</WorkspaceStatusBadgeV2>
+                <WorkspaceStatusBadgeV2 tone={day.enabled ? "success" : "gold"}>{day.enabled ? "يوم عمل" : "راحة أسبوعية"}</WorkspaceStatusBadgeV2>
               </header>
               <WorkspaceSwitchV2
                 checked={day.enabled}
                 disabled={readOnly}
-                label="اليوم مفتوح"
+                label="يوم عمل"
                 onChange={(checked) => onWorkingDayChange(day.key, { enabled: checked })}
               />
               <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
@@ -378,7 +385,7 @@ export function EmployeeScheduleTabLiveV2({
                     className="dsv2-input"
                     type="time"
                     value={day.start}
-                    disabled={readOnly || !day.enabled}
+                    disabled={readOnly || !useCustomWorkingHours || !day.enabled}
                     onChange={(event) => onWorkingDayChange(day.key, { start: event.target.value })}
                   />
                 </DashboardFieldV2>
@@ -388,14 +395,16 @@ export function EmployeeScheduleTabLiveV2({
                     className="dsv2-input"
                     type="time"
                     value={day.end}
-                    disabled={readOnly || !day.enabled}
+                    disabled={readOnly || !useCustomWorkingHours || !day.enabled}
                     onChange={(event) => onWorkingDayChange(day.key, { end: event.target.value })}
                   />
                 </DashboardFieldV2>
               </div>
-              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly} onClick={() => onCopyWorkingDayToAll(day.key)}>
-                نسخ لكل الأسبوع
-              </button>
+              {useCustomWorkingHours ? (
+                <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={readOnly} onClick={() => onCopyWorkingDayToAll(day.key)}>
+                  نسخ الساعات لكل الأسبوع
+                </button>
+              ) : null}
             </article>
           ))}
         </div>
@@ -545,8 +554,12 @@ export function EmployeeAttendanceTabLiveV2({
   const drawerShiftStatus = cleanText(drawerRow?.shiftStatusLabel || (drawerDate === activeSelectedDate ? effectiveShiftInfo?.statusLabel : ""));
   const handleMonthChange = (nextMonthKey: string) => {
     const normalizedNextMonth = safeMonthKey(nextMonthKey);
+    const nextSelectedDate = normalizedNextMonth === todayKey.slice(0, 7)
+      ? todayKey
+      : `${normalizedNextMonth}-01`;
     onMonthChange(normalizedNextMonth);
-    onSelectedDateChange(coerceDateToMonth(activeSelectedDate, normalizedNextMonth));
+    onSelectedDateChange(nextSelectedDate);
+    setDetailDrawerDate("");
   };
   const handleSelectedDateChange = (nextDate: string) => {
     const cleanDate = cleanText(nextDate);
@@ -590,10 +603,10 @@ export function EmployeeAttendanceTabLiveV2({
       ) : null}
 
       <WorkspaceCardV2
-        title="فلاتر الحضور"
-        description="اختر الشهر وحدد اليوم المطلوب."
+        title="فلتر الحضور"
+        description="اختر الشهر، ثم اضغط على أي يوم من التقويم لعرض تفاصيله."
       >
-        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--2">
+        <div className="dsv2-ew-form-grid">
           <DashboardFieldV2 id="employee-live-v2-attendance-month" label="الشهر">
             <DashboardSelectV2
               id="employee-live-v2-attendance-month"
@@ -601,15 +614,6 @@ export function EmployeeAttendanceTabLiveV2({
               disabled={readOnly || loading}
               options={buildMonthOptions(normalizedMonth)}
               onChange={handleMonthChange}
-            />
-          </DashboardFieldV2>
-          <DashboardFieldV2 id="employee-live-v2-attendance-date" label="اليوم">
-            <DashboardDatePickerV2
-              id="employee-live-v2-attendance-date"
-              value={activeSelectedDate}
-              disabled={readOnly || loading}
-              clearable
-              onChange={handleSelectedDateChange}
             />
           </DashboardFieldV2>
         </div>
@@ -752,9 +756,6 @@ export function EmployeeAttendanceTabLiveV2({
                 </dl>
 
                 <div className="dsv2-ew-action-grid">
-                  <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={loading || !activeSelectedDate} onClick={onReload}>
-                    مراجعة اليوم
-                  </button>
                   <button type="button" className="dsv2-btn dsv2-btn--primary" disabled={readOnly || !canEdit || !activeSelectedDate} onClick={() => activeSelectedDate && onEditPunch(activeSelectedDate)}>
                     تعديل البصمة
                   </button>

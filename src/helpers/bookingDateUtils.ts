@@ -384,12 +384,13 @@ export function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
   }
 
   const onLeave = !!staff?.onLeave;
+  const leaveFrom = normalizeIsoDate(staff?.leaveStartDate || staff?.leaveFrom || staff?.leaveFromDate);
   const leaveUntil = normalizeIsoDate(staff?.leaveUntil);
   if (!onLeave) {
     return { isOnLeave: false, leaveUntil: "", label: "" };
   }
 
-  const isOnLeave = !leaveUntil || target <= leaveUntil;
+  const isOnLeave = (!leaveFrom || leaveFrom <= target) && (!leaveUntil || target <= leaveUntil);
   if (!isOnLeave) {
     return { isOnLeave: false, leaveUntil, label: "" };
   }

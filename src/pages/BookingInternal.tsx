@@ -8172,9 +8172,14 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
                                         !dayAvailable || !hasWorkingHours || !selectedTimeFitsSchedule;
                                       const disabled = !canEditThis || blockedBySchedule;
                                       const staffName = String((st as any)?.name || st.id || "").trim() || "بدون اسم";
+                                      const leaveFromISO = normalizeIsoDate(
+                                        (st as any)?.leaveStartDate || (st as any)?.leaveFrom || (st as any)?.leaveFromDate
+                                      );
                                       const leaveUntilISO = normalizeIsoDate((st as any)?.leaveUntil);
                                       const isLeaveActive =
-                                        !!(st as any)?.onLeave && (!leaveUntilISO || dateISO <= leaveUntilISO);
+                                        !!(st as any)?.onLeave &&
+                                        (!leaveFromISO || leaveFromISO <= dateISO) &&
+                                        (!leaveUntilISO || dateISO <= leaveUntilISO);
                                       const staffState = blockedBySchedule
                                         ? isLeaveActive
                                           ? leaveUntilISO

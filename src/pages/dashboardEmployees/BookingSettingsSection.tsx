@@ -12,6 +12,7 @@ type BookingSettingsSectionProps = {
   employmentEndDate: string;
   modalUseCustomWorkingHours: boolean;
   modalCustomWorkingHours: Record<WeekdayKey, StaffWorkingDay>;
+  modalExceptionalLeaveWeekdays: WeekdayKey[];
   scheduleEffectiveFrom: string;
   scheduleChangeReason: string;
   scheduleVersionCount: number;
@@ -52,6 +53,7 @@ export default function BookingSettingsSection({
   employmentEndDate,
   modalUseCustomWorkingHours,
   modalCustomWorkingHours,
+  modalExceptionalLeaveWeekdays,
   scheduleEffectiveFrom,
   scheduleChangeReason,
   scheduleVersionCount,
@@ -71,12 +73,13 @@ export default function BookingSettingsSection({
 }: BookingSettingsSectionProps) {
   if (!isVisible) return null;
 
+  const weeklyOffDays = new Set(modalExceptionalLeaveWeekdays);
   const workingDays = WEEKDAY_OPTIONS.map((day) => {
     const row = resolveWorkingDay(day.key, modalCustomWorkingHours);
     return {
       key: day.key,
       label: day.label,
-      enabled: row.enabled,
+      enabled: modalUseCustomWorkingHours ? row.enabled : !weeklyOffDays.has(day.key),
       start: row.start,
       end: row.end,
     };

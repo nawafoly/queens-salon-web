@@ -1,255 +1,27 @@
-/* Scoped live V2 styling for the attendance punch editor inside employee workspace.
-   It intentionally mirrors src/styles/dashboard-v2/modals.css instead of inventing a separate modal system. */
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-panel {
-  --dsv2-dialog-accent: var(--dsv2-burgundy, #59041b);
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  z-index: 2147482500;
-  transform: translate(-50%, -50%);
+/* Attendance punch editor — Dashboard Design System V2 extension only.
+   The modal shell, portal, backdrop, positioning, header, footer, buttons,
+   fields and responsive behavior come from DashboardModalV2. */
+
+.dashboard-v2 .emp-attendance-edit-form-v2 {
+  align-items: start;
+}
+
+.dashboard-v2 .emp-attendance-edit-time-control-v2 {
   display: grid;
-  grid-template-rows: auto auto auto;
-  inline-size: min(100%, 680px);
-  max-block-size: min(82dvh, 680px);
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: var(--dsv2-radius-xl, 28px);
-  background: var(--dsv2-surface, #fff);
-  color: var(--dsv2-text, #111827);
-  box-shadow:
-    var(--dsv2-shadow-lg, 0 30px 86px rgb(5 8 13 / 28%)),
-    0 0 0 100vmax var(--dsv2-overlay, rgb(5 8 13 / 48%));
-  outline: none;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: var(--dsv2-space-4, 16px);
-  padding: var(--dsv2-space-5, 20px) var(--dsv2-space-6, 24px);
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head {
-  min-block-size: 82px;
-  justify-content: space-between;
-  border-block-start: 3px solid var(--dsv2-dialog-accent);
-  border-block-end: 1px solid var(--dsv2-divider, #edf0f4);
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head > div {
-  display: grid;
-  gap: var(--dsv2-space-1, 4px);
+  gap: var(--dsv2-space-2);
   min-width: 0;
-  justify-items: start;
-  text-align: right;
-  order: 1;
 }
 
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head strong {
-  margin: 0;
-  color: var(--dsv2-text, #111827);
-  font-size: clamp(1rem, 1.8vw, 1.25rem);
-  font-weight: 950;
-  line-height: 1.35;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head span {
-  display: block;
-  width: fit-content;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--dsv2-dialog-accent);
-  font-size: 0.72rem;
-  font-weight: 900;
-  line-height: 1.65;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head .exp-btn.ghost.sm {
-  order: 2;
-  inline-size: 40px;
-  block-size: 40px;
-  min-inline-size: 40px;
-  flex: 0 0 auto;
-  padding: 0;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--dsv2-border, #d7dce3);
-  border-radius: var(--dsv2-radius-md, 14px);
-  background: var(--dsv2-surface-soft, #f7f8fa);
-  color: var(--dsv2-muted, #667085);
-  cursor: pointer;
-  font-size: 0;
-  box-shadow: none;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head .exp-btn.ghost.sm::before {
-  content: "×";
-  font-size: 1.35rem;
-  font-weight: 650;
-  line-height: 1;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head .exp-btn.ghost.sm:hover {
-  border-color: var(--dsv2-burgundy-border, #d9a8b8);
-  color: var(--dsv2-burgundy, #59041b);
-  background: var(--dsv2-burgundy-soft, #fff0f3);
-  transform: rotate(4deg);
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-grid {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--dsv2-space-5, 20px);
-  min-block-size: 0;
-  max-block-size: min(52dvh, 430px);
-  overflow: auto;
-  padding: var(--dsv2-space-6, 24px);
-  background: var(--dsv2-surface, #fff);
-  overscroll-behavior: contain;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-card,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note {
-  grid-column: 1 / -1;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-card__title,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note .emp-label {
-  color: var(--dsv2-text, #111827);
-  font-size: 0.86rem;
-  font-weight: 950;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-input,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note .dash-input {
-  inline-size: 100%;
-  min-block-size: var(--dsv2-control-height, 48px);
-  padding: 0 16px;
-  border: 1px solid var(--dsv2-border, #d7dce3);
-  border-radius: var(--dsv2-radius-md, 14px);
-  background: var(--dsv2-control-bg, #fff);
-  color: var(--dsv2-text, #111827);
-  font: inherit;
-  font-weight: 850;
-  outline: none;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note .dash-input {
-  min-block-size: 84px;
-  padding-block: 14px;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-input:focus,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-note .dash-input:focus {
-  border-color: var(--dsv2-gold, #d9a50b);
-  box-shadow: var(--dsv2-focus-ring, 0 0 0 4px rgb(217 165 11 / 18%));
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-card small,
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-card__bottom small {
-  color: var(--dsv2-muted, #667085);
-  line-height: 1.6;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-card__bottom {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: center;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-time-clear {
-  padding: 7px 11px;
-  border: 1px solid var(--dsv2-burgundy-border, #d9a8b8);
-  border-radius: var(--dsv2-radius-pill, 999px);
-  background: var(--dsv2-burgundy-soft, #fff0f3);
-  color: var(--dsv2-burgundy, #59041b);
-  font-size: 0.78rem;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions {
-  min-block-size: 72px;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  border-block-start: 1px solid var(--dsv2-divider, #edf0f4);
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions .exp-btn {
-  min-inline-size: 126px;
-  min-block-size: 44px;
-  padding: 0 20px;
-  border-radius: var(--dsv2-radius-md, 14px);
-  font: inherit;
-  font-size: 0.92rem;
-  font-weight: 950;
-  box-shadow: none;
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions .exp-btn.primary {
-  border: 1px solid var(--dsv2-burgundy-border, #d9a8b8);
-  background: var(--dsv2-burgundy-soft, #fff0f3);
-  color: var(--dsv2-burgundy, #59041b);
-}
-
-.dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions .exp-btn.ghost {
-  border: 1px solid var(--dsv2-border, #d7dce3);
-  background: var(--dsv2-surface, #fff);
-  color: var(--dsv2-text, #111827);
+.dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-btn {
+  justify-self: start;
 }
 
 @media (max-width: 767.98px) {
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-panel {
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    transform: none;
-    inline-size: 100%;
-    max-block-size: min(92dvh, 920px);
-    border-inline: 0;
-    border-block-end: 0;
-    border-radius: var(--dsv2-radius-xl, 28px) var(--dsv2-radius-xl, 28px) 0 0;
+  .dashboard-v2 .emp-attendance-edit-form-v2 {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-head,
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions,
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-grid {
-    padding: var(--dsv2-space-4, 16px);
-  }
-
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .dashboard-v2 .dsv2-employee-workspace .emp-attendance-edit-actions .exp-btn {
-    inline-size: 100%;
+  .dashboard-v2 .emp-attendance-edit-time-control-v2 .dsv2-btn {
+    width: 100%;
   }
 }
