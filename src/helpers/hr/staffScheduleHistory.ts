@@ -116,6 +116,44 @@ export function resolveStaffScheduleVersionForDate(
   return matches[matches.length - 1] || null;
 }
 
+export function weeklyOffDaysFromScheduleSnapshot(snapshot: StaffScheduleSnapshot | null | undefined): string[] {
+  if (!snapshot || snapshot.useCustomWorkingHours === false) return [];
+  return Object.entries(normalizeWorkingHours(snapshot.customWorkingHours))
+    .filter(([, day]) => day.enabled === false)
+    .map(([key]) => key)
+    .filter(Boolean);
+}
+
+export function resolveDateEffectiveScheduleSnapshot(
+  source: { workingScheduleVersions?: unknown; useCustomWorkingHours?: unknown; customWorkingHours?: unknown } | null | undefined,
+  dateKeyValue: unknown
+): { version: StaffScheduleVersion | null; snapshot: StaffScheduleSnapshot | null; weeklyOffDays: string[]; hasHistoricalVersion: boolean } {
+  const version = resolveStaffScheduleVersionForDate(source?.workingScheduleVersions, dateKeyValue);
+  if (version) {
+    const snapshot: StaffScheduleSnapshot = {
+      useCustomWorkingHours: version.useCustomWorkingHours !== false,
+      customWorkingHours: normalizeWorkingHours(version.customWorkingHours),
+    };
+    return {
+      version,
+      snapshot,
+      weeklyOffDays: weeklyOffDaysFromScheduleSnapshot(snapshot),
+      hasHistoricalVersion: true,
+    };
+  }
+
+  const snapshot: StaffScheduleSnapshot = {
+    useCustomWorkingHours: source?.useCustomWorkingHours !== false && source?.useCustomWorkingHours === true,
+    customWorkingHours: normalizeWorkingHours(source?.customWorkingHours),
+  };
+  return {
+    version: null,
+    snapshot,
+    weeklyOffDays: weeklyOffDaysFromScheduleSnapshot(snapshot),
+    hasHistoricalVersion: false,
+  };
+}
+
 export function appendDateEffectiveScheduleVersion(input: {
   versions?: unknown;
   effectiveFrom: string;

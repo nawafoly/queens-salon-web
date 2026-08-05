@@ -224,11 +224,26 @@ function attendanceLinkLabel(entry: PayrollEntryView) {
   return "غير مربوط";
 }
 
+function attendanceCarryoverDeductions(entry: PayrollEntryView) {
+  return entry.deductions.filter((item) =>
+    String(item.id || "").startsWith("attendance_penalty_carryover") ||
+    String(item.note || "").includes("attendance_penalty_carryover")
+  );
+}
+
+function attendanceCarryoverDeductionAmount(entry: PayrollEntryView) {
+  return attendanceCarryoverDeductions(entry).reduce((total, item) => total + Number(item.amountHalalas || 0), 0);
+}
+
 function formatAttendanceDeduction(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) return UNDEFINED_VALUE_LABEL;
-  return attendanceDeductionBlocked(entry)
-    ? "لم يطبق"
-    : formatPayrollMoney(entry.missingHoursDeductionHalalas);
+  if (attendanceDeductionBlocked(entry)) return "لم يطبق";
+  return "مؤجل للشهر القادم";
+}
+
+function formatPreviousAttendanceDeduction(entry: PayrollEntryView) {
+  const amount = attendanceCarryoverDeductionAmount(entry);
+  return amount > 0 ? formatPayrollMoney(amount) : "لا يوجد";
 }
 
 function hasManualAdjustments(entry: PayrollEntryView) {
@@ -888,6 +903,9 @@ export default function DashboardPayroll() {
                       {attendanceBlocked ? (
                         <span className="payroll-mini-badge is-attendance-warning">الحضور غير مربوط</span>
                       ) : null}
+                      {attendanceCarryoverDeductionAmount(entry) > 0 ? (
+                        <span className="payroll-mini-badge is-attendance-warning">خصم حضور مرحّل</span>
+                      ) : null}
                       {manualAdjustments ? (
                         <span className="payroll-mini-badge is-manual">بنود يدوية</span>
                       ) : null}
@@ -923,7 +941,7 @@ export default function DashboardPayroll() {
                       <span>انصراف {formatAttendanceHours(entry.attendanceSummary.totalEarlyLeaveHours || 0)}</span>
                       <span>نقص {formatAttendanceHours(entry.attendanceSummary.totalMissingHours)}</span>
                     </div>
-                    {attendanceBlocked ? <small className="payroll-attendance-note">معلومة فقط، بدون خصم تلقائي</small> : null}
+                    <small className="payroll-attendance-note">تقرير هذا الشهر فقط؛ الخصم يرحل لمسير الشهر القادم.</small>
                   </td>
                   <td>{formatAttendanceHours(entry.detectedExtraHours)}</td>
                   <td>
@@ -941,7 +959,10 @@ export default function DashboardPayroll() {
                   <td>{formatPayrollMoney(entry.totalAdditionsHalalas)}</td>
                   <td>
                     <strong>{formatPayrollMoney(entry.totalDeductionsHalalas)}</strong>
-                    {attendanceBlocked ? <small className="payroll-attendance-note">خصم الحضور: لم يطبق</small> : null}
+                    <small className="payroll-attendance-note">خصم حضور هذا الشهر: مؤجل</small>
+                    {attendanceCarryoverDeductionAmount(entry) > 0 ? (
+                      <small className="payroll-attendance-note">خصم حضور مرحّل: {formatPayrollMoney(attendanceCarryoverDeductionAmount(entry))}</small>
+                    ) : null}
                   </td>
                   <td className="payroll-net-cell">
                     <strong>{formatSetupMoney(entry, payrollMoney.earnedToDateHalalas)}</strong>
@@ -1172,7 +1193,8 @@ function PayrollDetailsModal({
           <section>
             <h3>الخصومات</h3>
             <dl>
-              <div><dt>خصم الحضور</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>خصم حضور هذا الشهر</dt><dd>{formatAttendanceDeduction(entry)}</dd></div>
+              <div><dt>خصم حضور الشهر السابق</dt><dd>{formatPreviousAttendanceDeduction(entry)}</dd></div>
               <div><dt>السلف</dt><dd>{formatPayrollMoney(entry.advancesHalalas)}</dd></div>
               <div><dt>خصومات يدوية وجزاءات</dt><dd>{formatPayrollMoney(entry.manualDeductionsHalalas)}</dd></div>
               <div><dt>إجمالي الخصومات</dt><dd>{formatSetupMoney(entry, entry.totalDeductionsHalalas)}</dd></div>

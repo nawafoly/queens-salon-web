@@ -4,14 +4,11 @@ export function payrollMonthBounds(year: number, month: number) {
   const payYear = Math.trunc(Number(year) || new Date().getFullYear());
 
   const currentMonth = String(normalizedMonth).padStart(2, "0");
-  const previousMonthDate = new Date(Date.UTC(payYear, normalizedMonth - 2, 1));
-  const previousYear = previousMonthDate.getUTCFullYear();
-  const previousMonth = String(previousMonthDate.getUTCMonth() + 1).padStart(2, "0");
-
-  const periodStart = `${previousYear}-${previousMonth}-21`;
-  const periodEnd = `${payYear}-${currentMonth}-20`;
+  const lastDay = new Date(Date.UTC(payYear, normalizedMonth, 0)).getUTCDate();
+  const periodStart = `${payYear}-${currentMonth}-01`;
+  const periodEnd = `${payYear}-${currentMonth}-${String(lastDay).padStart(2, "0")}`;
   const payrollMonth = `${payYear}-${currentMonth}`;
-  const payDate = `${payYear}-${currentMonth}-28`;
+  const payDate = `${payYear}-${currentMonth}-${String(Math.min(28, lastDay)).padStart(2, "0")}`;
 
   return {
     payrollMonth,

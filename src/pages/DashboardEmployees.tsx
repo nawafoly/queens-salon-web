@@ -77,6 +77,7 @@ import ServicesSection from "./dashboardEmployees/ServicesSection";
 import ShiftControlSection from "./dashboardEmployees/ShiftControlSection";
 import { usePermissions } from "../security/PermissionContext";
 import { DashboardConfirmV2 } from "../components/dashboard-v2";
+import LeaveRequestModal from "../components/LeaveRequestModal";
 
 // ✅ Bookings stats (Owner only)
 import {
@@ -86,12 +87,15 @@ import {
 } from "../services/firestoreBookings";
 import {
   buildApprovedLeaveDateKeys,
+  buildAttendanceSpecialDayMap,
   leaveRequestMatchesProfile,
+  type AttendanceSpecialDay,
 } from "../helpers/hr/attendanceCalendarData";
 import {
   appendDateEffectiveScheduleVersion,
   normalizeScheduleDateKey,
   normalizeStaffScheduleVersions,
+  resolveDateEffectiveScheduleSnapshot,
   scheduleSnapshotsEqual,
 } from "../helpers/hr/staffScheduleHistory";
 import {
@@ -567,6 +571,10 @@ export default function DashboardEmployees() {
   const [modalOnLeave, setModalOnLeave] = useState(false);
   const [modalLeaveUntil, setModalLeaveUntil] = useState("");
   const [modalLeaveNote, setModalLeaveNote] = useState("");
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveModalDate, setLeaveModalDate] = useState("");
+  const [leaveModalDefaultType, setLeaveModalDefaultType] = useState("emergency");
+  const [leaveModalEmployeeName, setLeaveModalEmployeeName] = useState("");
   const [employmentEndDate, setEmploymentEndDate] = useState("");
   const [attendanceZones, setAttendanceZones] = useState<WorkZone[]>([]);
   const [attendanceZonesLoading, setAttendanceZonesLoading] = useState(false);
@@ -973,10 +981,7 @@ export default function DashboardEmployees() {
         ) ||
         { id: selectedEmployeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
-        employeeProfile,
-        selectedEmployeeId
-      );
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
 
       await adjustAttendanceDayFromWorker({
         employeeUid: attendanceIdentity.employeeUid,
@@ -1049,10 +1054,7 @@ export default function DashboardEmployees() {
         ) ||
         { id: selectedEmployeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(
-        employeeProfile,
-        selectedEmployeeId
-      );
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
 
       const clearResult = await clearAttendanceDayFromWorker({
         employeeUid: attendanceIdentity.employeeUid,
@@ -1159,58 +1161,10 @@ export default function DashboardEmployees() {
         (employeeProfile as any)?.displayName ||
         selectedEmployeeId
     );
-    const ok = confirm(
-      `سيتم تسجيل يوم ${date} كإجازة اضطرارية معتمدة للموظفة ${employeeName || selectedEmployeeId}. هل تريد المتابعة؟`
-    );
-    if (!ok) return;
-
-    setSaving(true);
-    setErrorMsg("");
-    try {
-      const requestRef = await createLeaveRequest({
-        employeeUid,
-        employeeId,
-        employeeName,
-        type: "emergency",
-        fromDate: date,
-        toDate: date,
-        days: 1,
-        note: "إجازة مفاجئة من سجل الحضور",
-        createdByUid: authUser.uid,
-        createdByName: authUser.displayName || authUser.email,
-      });
-
-      await approveEmployeeLeaveRequest({
-        requestId: requestRef.id,
-        reviewerUid: authUser.uid,
-        reviewerName: authUser.displayName || authUser.email,
-      });
-
-      void writeAuditLog({
-        action: "leave_approved",
-        entityType: "employee_leave",
-        entityId: requestRef.id,
-        source: "dashboard",
-        description: "تسجيل إجازة مفاجئة معتمدة من سجل الحضور",
-        after: {
-          date,
-          employeeUid,
-          employeeId,
-          leaveType: "emergency",
-          status: "approved",
-        },
-        meta: {
-          staffId: selectedEmployeeId,
-          staffName: employeeName,
-        },
-      });
-
-      await loadSelectedEmployeeAttendance({ force: true });
-    } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة المفاجئة."));
-    } finally {
-      setSaving(false);
-    }
+    setLeaveModalEmployeeName(employeeName);
+    setLeaveModalDate(date);
+    setLeaveModalDefaultType("emergency");
+    setLeaveModalOpen(true);
   }, [
     authUser?.displayName,
     authUser?.email,
@@ -1299,6 +1253,80 @@ export default function DashboardEmployees() {
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
     selectedEmployeeLeaveRequests,
+  ]);
+
+  const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
+    if (!selectedEmployeeId) {
+      setErrorMsg("لم يتم تحديد الموظفة.");
+      return;
+    }
+    if (!authUser?.uid) {
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      return;
+    }
+    if (!ensureCanManageLeaveBalance()) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    try {
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
+      const employeeUidLocal = attendanceIdentity.employeeUid;
+      const employeeIdLocal = attendanceIdentity.employeeDocId || selectedEmployeeId;
+
+      const requestRef = await createLeaveRequest({
+        employeeUid: employeeUidLocal,
+        employeeId: employeeIdLocal,
+        employeeName: leaveModalEmployeeName || employeeUidLocal,
+        type: payload.type as any,
+        fromDate: payload.fromDate,
+        toDate: payload.toDate,
+        days: payload.days,
+        note: payload.note || "تسجيل إجازة من واجهة الحضور",
+        createdByUid: authUser.uid,
+        createdByName: authUser.displayName || authUser.email,
+      });
+
+      await approveEmployeeLeaveRequest({
+        requestId: requestRef.id,
+        reviewerUid: authUser.uid,
+        reviewerName: authUser.displayName || authUser.email,
+        adjustLeaveBalance: payload.deductFromBalance,
+        adjustActor: payload.deductFromBalance ? { uid: authUser.uid, role: "hr", displayName: authUser.displayName || authUser.email, email: authUser.email } : undefined,
+      });
+
+      void writeAuditLog({
+        action: "leave_approved",
+        entityType: "employee_leave",
+        entityId: requestRef.id,
+        source: "dashboard",
+        description: "تسجيل إجازة معتمدة من واجهة الحضور",
+        after: {
+          date: payload.fromDate,
+          employeeUid: employeeUidLocal,
+          employeeId: employeeIdLocal,
+          leaveType: payload.type,
+          status: "approved",
+        },
+        meta: {
+          staffId: selectedEmployeeId,
+          staffName: leaveModalEmployeeName,
+        },
+      });
+
+      await loadSelectedEmployeeAttendance({ force: true });
+    } catch (error) {
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة."));
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    authUser?.displayName,
+    authUser?.email,
+    authUser?.uid,
+    ensureCanManageLeaveBalance,
+    loadSelectedEmployeeAttendance,
+    selectedEmployeeId,
+    leaveModalEmployeeName,
   ]);
 
   const resetForm = () => {
@@ -1394,13 +1422,20 @@ export default function DashboardEmployees() {
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
-    const initialUseCustomWorkingHours = !!(x as any).useCustomWorkingHours;
-    const initialCustomWorkingHours = normalizeWorkingHours((x as any).customWorkingHours);
+    const currentScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(x as any, todayIso());
+    const initialUseCustomWorkingHours = currentScheduleSnapshot.snapshot
+      ? currentScheduleSnapshot.snapshot.useCustomWorkingHours
+      : !!(x as any).useCustomWorkingHours;
+    const initialCustomWorkingHours = normalizeWorkingHours(
+      currentScheduleSnapshot.snapshot?.customWorkingHours || (x as any).customWorkingHours
+    );
     const initialWeeklyOffDays = initialUseCustomWorkingHours
       ? WEEKDAY_OPTIONS.filter(
           (day) => initialCustomWorkingHours[day.key]?.enabled === false
         ).map((day) => day.key)
-      : resolveStaffWeeklyOffDays(x);
+      : currentScheduleSnapshot.hasHistoricalVersion
+        ? normalizeExceptionalLeaveWeekdays(currentScheduleSnapshot.weeklyOffDays)
+        : resolveStaffWeeklyOffDays(x);
     setModalExceptionalLeaveWeekdays(initialWeeklyOffDays);
     setModalLeaveWeekdayDraft("");
     setModalUseCustomWorkingHours(initialUseCustomWorkingHours);
@@ -2327,7 +2362,12 @@ export default function DashboardEmployees() {
       : null;
 
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
-    const previousScheduleSnapshot = {
+    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
+    const previousEffectiveSchedule = resolveDateEffectiveScheduleSnapshot(
+      editingStaff as any,
+      scheduleEffectiveFrom || todayIso()
+    );
+    const previousScheduleSnapshot = previousEffectiveSchedule.snapshot || {
       useCustomWorkingHours: !!(editingStaff as any)?.useCustomWorkingHours,
       customWorkingHours: normalizeWorkingHours((editingStaff as any)?.customWorkingHours),
     };
@@ -2336,15 +2376,23 @@ export default function DashboardEmployees() {
       customWorkingHours: normalizedCustomWorkingHours,
     };
     const scheduleChanged = !editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot);
-    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
-    const scheduleChangeReason = cleanText(modalScheduleChangeReason);
+    let scheduleChangeReason = cleanText(modalScheduleChangeReason);
     if (scheduleChanged && !scheduleEffectiveFrom) {
       setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
       return;
     }
     if (editId && scheduleChanged && !scheduleChangeReason) {
-      setErrorMsg("اكتبي سبب تغيير جدول الدوام لحفظ سجل تدقيق واضح.");
-      return;
+      const changedClosedDays = WEEKDAY_OPTIONS.filter((day) => {
+        const previousEnabled = previousScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
+        const nextEnabled = nextScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
+        return previousEnabled !== nextEnabled;
+      }).map((day) => day.label);
+
+      scheduleChangeReason = changedClosedDays.length
+        ? `تعديل الإجازة الأسبوعية: ${changedClosedDays.join("، ")}`
+        : "تحديث جدول دوام الموظفة";
+
+      setModalScheduleChangeReason(scheduleChangeReason);
     }
     let workingScheduleVersions = normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions);
     if (scheduleChanged) {
@@ -2887,11 +2935,18 @@ export default function DashboardEmployees() {
         const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
         const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
         const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
-        const exceptionalWeekdays = resolveStaffWeeklyOffDays(staff);
+        const todayScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(staff as any, today);
         const overrides = normalizeWorkingHourOverrides((staff as any).customWorkingHourOverrides);
         const overrideGroups = buildWorkingHourOverrideGroups(overrides);
-        const customWorkingHours = normalizeWorkingHours((staff as any).customWorkingHours);
-        const useCustom = !!(staff as any).useCustomWorkingHours;
+        const customWorkingHours = normalizeWorkingHours(
+          todayScheduleSnapshot.snapshot?.customWorkingHours || (staff as any).customWorkingHours
+        );
+        const useCustom = todayScheduleSnapshot.snapshot
+          ? todayScheduleSnapshot.snapshot.useCustomWorkingHours
+          : !!(staff as any).useCustomWorkingHours;
+        const exceptionalWeekdays = todayScheduleSnapshot.hasHistoricalVersion
+          ? normalizeExceptionalLeaveWeekdays(todayScheduleSnapshot.weeklyOffDays)
+          : resolveStaffWeeklyOffDays(staff);
         const overrideToday = overrides.find((x) => x.date === today);
         const nextSavedOverrideGroup = overrideGroups.find((group) => group.fromDate > today) || null;
         const lastSavedOverrideGroup =
@@ -2960,10 +3015,20 @@ export default function DashboardEmployees() {
             break;
           }
 
+          const targetScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(staff as any, targetDate);
+          const targetCustomWorkingHours = normalizeWorkingHours(
+            targetScheduleSnapshot.snapshot?.customWorkingHours || (staff as any).customWorkingHours
+          );
+          const targetUseCustom = targetScheduleSnapshot.snapshot
+            ? targetScheduleSnapshot.snapshot.useCustomWorkingHours
+            : !!(staff as any).useCustomWorkingHours;
+          const targetExceptionalWeekdays = targetScheduleSnapshot.hasHistoricalVersion
+            ? normalizeExceptionalLeaveWeekdays(targetScheduleSnapshot.weeklyOffDays)
+            : exceptionalWeekdays;
           const targetOverride = overrides.find((x) => x.date === targetDate) || null;
-          const targetBaseDay = targetDayKey ? customWorkingHours[targetDayKey] : undefined;
+          const targetBaseDay = targetDayKey ? targetCustomWorkingHours[targetDayKey] : undefined;
           const targetLeaveByDate = exceptionalDates.includes(targetDate);
-          const targetLeaveByWeekday = targetDayKey ? exceptionalWeekdays.includes(targetDayKey) : false;
+          const targetLeaveByWeekday = targetDayKey ? targetExceptionalWeekdays.includes(targetDayKey) : false;
           const targetLeaveByToggle =
             !!(staff as any).onLeave && (!leaveUntil || leaveUntil >= targetDate);
           const targetLeaveActive = targetLeaveByDate || targetLeaveByWeekday || targetLeaveByToggle;
@@ -2977,7 +3042,7 @@ export default function DashboardEmployees() {
             targetEffectiveEnabled = targetOverride.enabled !== false;
             targetEffectiveStart = normalizeTimeHHMM(targetOverride.start) || targetSalonOpen;
             targetEffectiveEnd = normalizeTimeHHMM(targetOverride.end) || targetSalonClose;
-          } else if (useCustom) {
+          } else if (targetUseCustom) {
             if (!targetBaseDay || targetBaseDay.enabled === false) {
               targetEffectiveEnabled = false;
             } else {
@@ -3000,7 +3065,7 @@ export default function DashboardEmployees() {
             ? "استثناء الموظفة"
             : targetSalonOverride
               ? "ساعات الصالون الخاصة"
-              : useCustom
+              : targetUseCustom
                 ? "الجدول الأسبوعي للموظفة"
                 : "ساعات تشغيل الصالون";
           const targetSourceNote = targetOverride ? String(targetOverride.note || "").trim() : "";
@@ -4342,6 +4407,7 @@ export default function DashboardEmployees() {
           <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
         </section>
       </div>
+
     );
   }
 
@@ -4470,12 +4536,41 @@ export default function DashboardEmployees() {
     editingStaff || selectedEmployee,
     selectedEmployeeId || ""
   );
-  const selectedEmployeeApprovedLeaveDateKeys = buildApprovedLeaveDateKeys({
-    profile: editingStaff || selectedEmployee,
-    leaveRequests: selectedEmployeeLeaveRequests,
-    extraIds: selectedAttendanceIdentity.allIds,
-    todayDateKey: todayIso(),
-  });
+  const selectedAttendanceIdentityKey = selectedAttendanceIdentity.allIds.join("|");
+  const selectedEmployeeSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    const profile = editingStaff || selectedEmployee;
+    if (!profile) return [];
+    const cleanMonth = /^\d{4}-\d{2}$/.test(employeeAttendanceMonth)
+      ? employeeAttendanceMonth
+      : todayIso().slice(0, 7);
+    const fromDate = `${cleanMonth}-01`;
+    const toDate = new Date(
+      Date.UTC(Number(cleanMonth.slice(0, 4)), Number(cleanMonth.slice(5, 7)), 0)
+    ).toISOString().slice(0, 10);
+
+    return Array.from(buildAttendanceSpecialDayMap({
+      profile,
+      leaveRequests: selectedEmployeeLeaveRequests,
+      leaveEntries: modalLeaveEntries as any[],
+      extraIds: selectedAttendanceIdentity.allIds,
+      fromDate,
+      toDate,
+      todayDateKey: todayIso(),
+    }).values()).sort((left, right) => left.date.localeCompare(right.date));
+  }, [
+    editingStaff,
+    employeeAttendanceMonth,
+    modalLeaveEntries,
+    selectedAttendanceIdentityKey,
+    selectedEmployee,
+    selectedEmployeeLeaveRequests,
+  ]);
+  const selectedEmployeeApprovedLeaveDateKeys = useMemo(
+    () => selectedEmployeeSpecialDays
+      .filter((day) => day.kind === "leave" || day.kind === "rest")
+      .map((day) => day.date),
+    [selectedEmployeeSpecialDays]
+  );
   const EmployeeEditorSurface = editingStaff ? EmployeeProfilePageLayout : EmployeeEditorModal;
 
   return (
@@ -4719,6 +4814,7 @@ export default function DashboardEmployees() {
                 employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
                 employeeIds={selectedAttendanceIdentity.allIds}
                 approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
+                specialDays={selectedEmployeeSpecialDays}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
                 canReview={canViewAttendance}
@@ -4974,6 +5070,40 @@ export default function DashboardEmployees() {
         </div>
       </div>
 
+      <LeaveRequestModal
+        open={leaveModalOpen}
+        onClose={() => setLeaveModalOpen(false)}
+        initialDate={leaveModalDate}
+        defaultType={leaveModalDefaultType}
+        availableBalance={parsePositiveInt(String((selectedEmployee as any)?.leaveBalanceDays || 0), 0)}
+        hasAttendanceInRange={(fromDate: string, toDate: string) => {
+          const from = normalizeLeaveUntil(fromDate);
+          const to = normalizeLeaveUntil(toDate) || from;
+          if (!from || !to) return false;
+          return employeeAttendanceRows.some((row) => {
+            const d = normalizeLeaveUntil((row as any).date || (row as any).dateKey || (row as any).dayKey);
+            if (!d) return false;
+            if (d < from || d > to) return false;
+            return Boolean((row as any).checkInAtClient || (row as any).checkOutAtClient);
+          });
+        }}
+        hasOverlappingLeave={(fromDate: string, toDate: string) => {
+          const from = normalizeLeaveUntil(fromDate);
+          const to = normalizeLeaveUntil(toDate) || from;
+          if (!from || !to) return false;
+          return selectedEmployeeLeaveRequests.some((request) => {
+            if (cleanText(request.status).toLowerCase() !== "approved") return false;
+            const rf = normalizeLeaveUntil(request.fromDate);
+            const rt = normalizeLeaveUntil(request.toDate) || rf;
+            if (!rf || !rt) return false;
+            return !(rt < from || rf > to);
+          });
+        }}
+        onSubmit={async (payload) => {
+          await handleLeaveModalSubmit(payload);
+        }}
+      />
+
       <DashboardConfirmV2
         open={repairConfirmOpen}
         onClose={() => setRepairConfirmOpen(false)}
@@ -4990,3 +5120,4 @@ export default function DashboardEmployees() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
 export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 export type DateCalendar = "gregory" | "hijri";
 type BookingHourOverrideMode = "hours" | "closed";
@@ -354,12 +355,26 @@ export function getStaffLeaveMetaForDate(staff: any, dateISO: string) {
     return { isOnLeave: true, leaveUntil: "", label: "إجازة في هذا اليوم" };
   }
 
-  const exceptionalWeekdays = Array.isArray(staff?.exceptionalLeaveWeekdays)
+  const dayKey = resolveWeekdayFromISO(target);
+  const historicalVersion = resolveStaffScheduleVersionForDate(staff?.workingScheduleVersions, target);
+  if (dayKey && historicalVersion) {
+    const historicalDay = historicalVersion.useCustomWorkingHours
+      ? (historicalVersion.customWorkingHours || {})[dayKey]
+      : undefined;
+    if (historicalDay?.enabled === false) {
+      return {
+        isOnLeave: true,
+        leaveUntil: "",
+        label: `إجازة أسبوعية من جدول فعلي: ${WEEKDAY_LABEL_AR[dayKey]}`,
+      };
+    }
+  }
+
+  const exceptionalWeekdays = !historicalVersion && Array.isArray(staff?.exceptionalLeaveWeekdays)
     ? staff.exceptionalLeaveWeekdays
         .map((d: any) => String(d || "").trim().toLowerCase())
         .filter(Boolean)
     : [];
-  const dayKey = resolveWeekdayFromISO(target);
   if (dayKey && exceptionalWeekdays.includes(dayKey)) {
     return {
       isOnLeave: true,

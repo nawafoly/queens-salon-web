@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   CoreAbsence,
   CoreAttendanceRecord,
   CoreHrEmployee,
@@ -84,8 +84,7 @@ export function payrollMonthKey(year: number, month: number) {
   return `${year}-${pad(month)}`;
 }
 
-const PAYROLL_CYCLE_START_DAY = 21;
-const PAYROLL_CYCLE_END_DAY = 20;
+const PAYROLL_CYCLE_START_DAY = 1;
 const PAYROLL_PAY_DAY = 28;
 
 function dateKeyFromUtcDate(date: Date) {
@@ -117,8 +116,8 @@ function addUtcDays(date: Date, days: number) {
 }
 
 export function payrollMonthBounds(year: number, month: number) {
-  const cycleStartDate = new Date(Date.UTC(year, month - 2, PAYROLL_CYCLE_START_DAY));
-  const cycleEndDate = new Date(Date.UTC(year, month - 1, PAYROLL_CYCLE_END_DAY));
+  const cycleStartDate = new Date(Date.UTC(year, month - 1, PAYROLL_CYCLE_START_DAY));
+  const cycleEndDate = new Date(Date.UTC(year, month, 0));
   const safePayDay = Math.min(PAYROLL_PAY_DAY, daysInUtcMonth(year, month));
   const payDate = new Date(Date.UTC(year, month - 1, safePayDay));
   return {
@@ -206,6 +205,24 @@ function dayValue(value: unknown) {
 function positiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function isLegacyAttendancePenaltyCarryover(item: PayrollManualItem | Record<string, unknown>) {
+  return (
+    String((item as any).id || "").startsWith("attendance_penalty_carryover") ||
+    String((item as any).note || "").includes("attendance_penalty_carryover") ||
+    String((item as any).reason || "").includes("attendance_penalty_carryover")
+  );
+}
+
+function legacyAttendancePenaltyCarryoverAmount(items: Array<PayrollManualItem | Record<string, unknown>>) {
+  return items
+    .filter(isLegacyAttendancePenaltyCarryover)
+    .reduce((total, item) => total + numberValue((item as any).amountHalalas), 0);
+}
+
+function withoutLegacyAttendancePenaltyCarryovers<T extends PayrollManualItem | Record<string, unknown>>(items: T[]) {
+  return items.filter((item) => !isLegacyAttendancePenaltyCarryover(item));
 }
 
 function policyMinutes(value: unknown) {
@@ -1026,7 +1043,9 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
   ));
   const status = (text(row.status) || "draft") as PayrollStatus;
   const additions = readJson<PayrollManualItem[]>(row.additionsJson, []);
-  const deductions = readJson<PayrollManualItem[]>(row.deductionsJson, []);
+  const rawDeductions = readJson<PayrollManualItem[]>(row.deductionsJson, []);
+  const legacyCarryoverHalalas = legacyAttendancePenaltyCarryoverAmount(rawDeductions);
+  const deductions = withoutLegacyAttendancePenaltyCarryovers(rawDeductions);
   const baseSalaryHalalas = numberValue(row.baseSalaryHalalas);
   const workDays = numberValue(row.workDays, 0);
   const monthlyHours = numberValue(row.monthlyHours, 0);
@@ -1076,7 +1095,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     additions,
     deductions,
     manualAdditionsHalalas: numberValue(row.manualAdditionsHalalas),
-    manualDeductionsHalalas: numberValue(row.manualDeductionsHalalas),
+    manualDeductionsHalalas: Math.max(0, numberValue(row.manualDeductionsHalalas) - legacyCarryoverHalalas),
     advancesHalalas: numberValue(row.advancesHalalas),
     absenceDeductionHalalas: numberValue(row.absenceDeductionHalalas),
     missingHoursDeductionHalalas: numberValue(row.missingHoursDeductionHalalas),
@@ -1085,9 +1104,9 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
       numberValue(row.allowancesHalalas) +
       numberValue(row.manualAdditionsHalalas) +
       overtimeValueHalalas,
-    totalDeductionsHalalas: numberValue(row.totalDeductionsHalalas),
-    netSalaryHalalas: numberValue(row.netSalaryHalalas ?? row.finalSalaryHalalas),
-    finalSalaryHalalas: numberValue(row.finalSalaryHalalas),
+    totalDeductionsHalalas: Math.max(0, numberValue(row.totalDeductionsHalalas) - legacyCarryoverHalalas),
+    netSalaryHalalas: numberValue(row.netSalaryHalalas ?? row.finalSalaryHalalas) + legacyCarryoverHalalas,
+    finalSalaryHalalas: numberValue(row.finalSalaryHalalas) + legacyCarryoverHalalas,
     payrollSetupComplete,
     payrollSetupMissing,
     monthlyHoursSource: setup.monthlyHoursSource,
@@ -1133,7 +1152,7 @@ export function payrollEntryPayload(entry: PayrollEntryView) {
     otherDeductionsHalalas: entry.manualDeductionsHalalas,
     missingHoursDeductionHalalas: entry.missingHoursDeductionHalalas,
     additions: entry.additions,
-    deductions: entry.deductions,
+    deductions: withoutLegacyAttendancePenaltyCarryovers(entry.deductions),
     manualAdditionsHalalas: entry.manualAdditionsHalalas,
     manualDeductionsHalalas: entry.manualDeductionsHalalas,
     advancesHalalas: entry.advancesHalalas,

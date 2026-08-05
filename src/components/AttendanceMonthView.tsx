@@ -22,7 +22,7 @@ import {
   type AttendanceStatus,
   type ShiftSchedule,
 } from "../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate } from "../helpers/hr/staffScheduleHistory";
+import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../helpers/hr/staffScheduleHistory";
 import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
 import type { EmployeePermissionRequest } from "../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../types/hrCoreApi";
@@ -290,12 +290,17 @@ function scheduleForDate(dateKey: string, input?: AttendanceScheduleInput | null
         .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
         .filter(Boolean)
     : [];
-  const explicitOffDays = [
-    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-  ];
+  const explicitOffDays = historicalVersion
+    ? weeklyOffDaysFromScheduleSnapshot({
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      })
+    : [
+        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
+      ];
 
   const startTime =
     cleanTime(override?.start) ||
@@ -835,7 +840,7 @@ export default function AttendanceMonthView({
               ) : null}
               {shouldShowEmergencyLeave && selectedDayRecords.length === 0 ? (
                 <button type="button" onClick={() => onCreateEmergencyLeave?.(safeSelectedDate)}>
-                  <FontAwesomeIcon icon={faCalendarDay} /> إجازة مفاجئة
+                  <FontAwesomeIcon icon={faCalendarDay} /> تسجيل إجازة
                 </button>
               ) : null}
               {shouldShowEdit ? (

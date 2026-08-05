@@ -8,7 +8,8 @@ import {
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate } from "../../helpers/hr/staffScheduleHistory";
+import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
+import type { AttendanceSpecialDay } from "../../helpers/hr/attendanceCalendarData";
 import {
   EmployeeAttendanceTabLiveV2,
   type EmployeeAttendanceRowLiveV2,
@@ -17,6 +18,7 @@ import {
 
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
+const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
 
 type AttendanceSectionProps = {
   isVisible: boolean;
@@ -30,6 +32,7 @@ type AttendanceSectionProps = {
   employeeId?: string;
   employeeIds?: string[];
   approvedLeaveDateKeys?: string[];
+  specialDays?: AttendanceSpecialDay[];
   canEdit?: boolean;
   canDelete?: boolean;
   canReview?: boolean;
@@ -131,7 +134,21 @@ function normalizeDateKey(value: unknown) {
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
 }
+function normalizeMonthKey(value: unknown) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
+function monthDateKeys(monthKey: string) {
+  const normalized = normalizeMonthKey(monthKey);
+  if (!normalized) return [];
+  const [year, month] = normalized.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Array.from({ length: lastDay }, (_, index) => `${normalized}-${String(index + 1).padStart(2, "0")}`);
+}
 function isDateInsideRange(dateKey: string, fromValue: unknown, toValue: unknown) {
   const fromDate = normalizeDateKey(fromValue);
   const toDate = normalizeDateKey(toValue) || fromDate;
@@ -176,12 +193,17 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
         .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
         .filter(Boolean)
     : [];
-  const explicitOffDays = [
-    ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-    ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-    ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-    ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-  ];
+  const explicitOffDays = historicalVersion
+    ? weeklyOffDaysFromScheduleSnapshot({
+        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
+        customWorkingHours: historicalVersion.customWorkingHours,
+      })
+    : [
+        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
+        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
+        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
+        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
+      ];
 
   if (override?.enabled === false || customDay?.enabled === false) {
     return {
@@ -231,6 +253,19 @@ function resolvedShiftRecord(record: Record<string, unknown>) {
   return record.resolvedShift && typeof record.resolvedShift === "object"
     ? (record.resolvedShift as Record<string, unknown>)
     : {};
+}
+
+function isResolvedShiftOff(value?: Record<string, unknown> | CoreResolvedShift | null) {
+  const row = value || {};
+  return cleanText((row as Record<string, unknown>).exceptionType || (row as Record<string, unknown>).exception_type).toLowerCase() === "off";
+}
+
+function specialDayPriority(day?: AttendanceSpecialDay | null) {
+  if (!day) return 0;
+  if (day.kind === "leave" || day.kind === "rest") return 40;
+  if (day.kind === "exception_off") return 30;
+  if (day.kind === "weekly_off") return 20;
+  return 0;
 }
 
 function resolveRecordShiftSchedule(record: Record<string, unknown>): ShiftSchedule | null {
@@ -493,11 +528,21 @@ function resolveSelectedShiftInfo(input: {
   schedule?: Record<string, unknown> | null;
   salonBusinessHours?: Record<string, unknown> | null;
   approvedLeaveDateKeys: string[];
+  specialDay?: AttendanceSpecialDay | null;
   coreResolvedShift?: CoreResolvedShift | null;
   coreLoading: boolean;
   coreError: string;
 }): EmployeeAttendanceShiftInfoLiveV2 {
-  const { dateKey, row, schedule, salonBusinessHours, approvedLeaveDateKeys, coreResolvedShift, coreLoading, coreError } = input;
+  const { dateKey, row, schedule, salonBusinessHours, approvedLeaveDateKeys, specialDay, coreResolvedShift, coreLoading, coreError } = input;
+  if (specialDay) {
+    return {
+      sourceLabel: specialDay.label,
+      sourceDetail: specialDay.source,
+      timeLabel: "\u0645\u063a\u0644\u0642 \u0627\u0644\u064a\u0648\u0645",
+      statusLabel: specialDay.label,
+      tone: "gold",
+    };
+  }
   if (approvedLeaveDateKeys.includes(dateKey) || isProfileOnLeave(dateKey, schedule)) {
     return {
       sourceLabel: "إجازة معتمدة",
@@ -581,6 +626,7 @@ export default function AttendanceSection({
   employeeId = "",
   employeeIds = [],
   approvedLeaveDateKeys = [],
+  specialDays = [],
   canEdit = false,
   canDelete = false,
   canCreateEmergencyLeave = false,
@@ -593,23 +639,16 @@ export default function AttendanceSection({
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
-  const [coreResolvedShift, setCoreResolvedShift] = useState<CoreResolvedShift | null>(null);
+  const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
   const [coreShiftError, setCoreShiftError] = useState("");
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
 
   useEffect(() => {
     const identityIds = employeeIdsKey.split("|").filter(Boolean);
-    if (!isVisible || !identityIds.length || !isDateKey(selectedDate)) {
-      setCoreResolvedShift(null);
-      setCoreShiftLoading(false);
-      setCoreShiftError("");
-      return;
-    }
-
-    const cacheKey = `${identityIds.join("|")}::${selectedDate}`;
-    if (Object.prototype.hasOwnProperty.call(RESOLVED_SHIFT_CACHE, cacheKey)) {
-      setCoreResolvedShift(RESOLVED_SHIFT_CACHE[cacheKey]);
+    const dateKeys = monthDateKeys(monthKey);
+    if (!isVisible || !identityIds.length || !dateKeys.length) {
+      setCoreResolvedShiftsByDate({});
       setCoreShiftLoading(false);
       setCoreShiftError("");
       return;
@@ -619,34 +658,89 @@ export default function AttendanceSection({
     setCoreShiftLoading(true);
     setCoreShiftError("");
 
-    const request = RESOLVED_SHIFT_PENDING[cacheKey] || Promise
-      .all(identityIds.map((id) => CoreHrService.resolveEmployeeShift(id, selectedDate).catch(() => null)))
-      .then((results) => pickBestResolvedShift(results));
-    RESOLVED_SHIFT_PENDING[cacheKey] = request;
+    const request = Promise.all(
+      dateKeys.map(async (date) => {
+        const resolved = await Promise.all(
+          identityIds.map((id) => CoreHrService.resolveEmployeeShift(id, date).catch(() => null))
+        );
+        return [date, pickBestResolvedShift(resolved)] as const;
+      })
+    );
 
     request
-      .then((result) => {
-        RESOLVED_SHIFT_CACHE[cacheKey] = result;
+      .then((pairs) => {
         if (cancelled) return;
-        setCoreResolvedShift(result);
+        setCoreResolvedShiftsByDate(Object.fromEntries(pairs));
       })
       .catch((err) => {
         if (cancelled) return;
-        console.warn("attendance resolved shift load failed", err);
-        setCoreResolvedShift(null);
-        setCoreShiftError("تعذر تحميل الشفت الفعلي من Core.");
+        console.warn("attendance resolved shifts load failed", err);
+        setCoreResolvedShiftsByDate({});
+        setCoreShiftError("تعذر تحميل شفتات الحضور من Core.");
       })
       .finally(() => {
-        if (RESOLVED_SHIFT_PENDING[cacheKey] === request) delete RESOLVED_SHIFT_PENDING[cacheKey];
         if (!cancelled) setCoreShiftLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [employeeIdsKey, isVisible, selectedDate]);
+  }, [employeeIdsKey, isVisible, monthKey]);
 
   const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, schedule)), [rows, schedule]);
+  const rowSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    return rows.flatMap((row) => {
+      const record = row as StaffAttendanceWithId & Record<string, unknown>;
+      const date = cleanText(record.date || record.dateKey || record.dayKey);
+      if (!date || !isResolvedShiftOff(resolvedShiftRecord(record))) return [];
+      return [{
+        date,
+        kind: "exception_off" as const,
+        label: LABEL_EXCEPTION_OFF,
+        source: "attendance_row_core_exception_off",
+      }];
+    });
+  }, [rows]);
+  const resolvedCoreSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
+    return Object.entries(coreResolvedShiftsByDate).flatMap(([date, shift]) => {
+      if (!date || !isResolvedShiftOff(shift)) return [];
+      return [{
+        date,
+        kind: "exception_off" as const,
+        label: LABEL_EXCEPTION_OFF,
+        source: "core_exception_off",
+      }];
+    });
+  }, [coreResolvedShiftsByDate]);
+
+  const selectedCoreSpecialDay = useMemo<AttendanceSpecialDay | null>(() => {
+    const date = cleanText(selectedDate);
+    const shift = date ? coreResolvedShiftsByDate[date] : null;
+    if (!date || !isResolvedShiftOff(shift)) return null;
+    return {
+      date,
+      kind: "exception_off",
+      label: LABEL_EXCEPTION_OFF,
+      source: "core_exception_off",
+    };
+  }, [coreResolvedShiftsByDate, selectedDate]);
+
+  const mergedSpecialDays = useMemo(() => {
+    const byDate = new Map<string, AttendanceSpecialDay>();
+    [...specialDays, ...rowSpecialDays, ...resolvedCoreSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
+      const date = cleanText(day.date);
+      if (!date) return;
+      const current = byDate.get(date);
+      if (!current || specialDayPriority(day) >= specialDayPriority(current)) {
+        byDate.set(date, day);
+      }
+    });
+    return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
+  }, [rowSpecialDays, resolvedCoreSpecialDays, selectedCoreSpecialDay, specialDays]);
+  const selectedSpecialDay = useMemo(
+    () => mergedSpecialDays.find((day) => day.date === cleanText(selectedDate)) || null,
+    [mergedSpecialDays, selectedDate]
+  );
   const selectedRawRow = useMemo(() => {
     const dateKey = cleanText(selectedDate);
     return rows.find((row) => {
@@ -661,11 +755,12 @@ export default function AttendanceSection({
       schedule,
       salonBusinessHours,
       approvedLeaveDateKeys,
-      coreResolvedShift,
+      specialDay: selectedSpecialDay,
+      coreResolvedShift: cleanText(selectedDate) ? coreResolvedShiftsByDate[cleanText(selectedDate)] || null : null,
       coreLoading: coreShiftLoading,
       coreError: coreShiftError,
     }),
-    [approvedLeaveDateKeys, coreResolvedShift, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow]
+    [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
   if (!isVisible) return null;
@@ -680,6 +775,7 @@ export default function AttendanceSection({
         monthKey={monthKey}
         selectedDate={selectedDate}
         approvedLeaveDateKeys={approvedLeaveDateKeys}
+        specialDays={mergedSpecialDays}
         effectiveShiftInfo={effectiveShiftInfo}
         canEdit={canEdit}
         canDelete={canDelete}
