@@ -805,3 +805,73 @@
 }
 
 /* HR FILES + PERMISSIONS ACTUAL CONTENT LAYOUT V2.3.7 END */
+
+/* HR pages inside the unified Dashboard shell */
+.hr-embedded-hidden {
+  display: none !important;
+}
+
+.hr-shell.hr-shell--embedded {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  background: transparent !important;
+}
+
+.hr-shell--embedded .hr-shell-main--embedded {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.hr-shell--embedded .hr-stage {
+  width: 100%;
+  min-width: 0;
+}
+
+.hr-embedded-loading {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  direction: rtl;
+  font-weight: 800;
+}
+
+/* Final embedded HR shell fix */
+.hr-shell.hr-shell--embedded {
+  display: block !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.hr-shell.hr-shell--embedded > aside[data-portal-sidebar="admin"],
+.hr-shell.hr-shell--embedded > .malikat-portal-sidebar-v2--admin,
+.hr-shell.hr-shell--embedded > .hr-mobile-appbar,
+.hr-shell.hr-shell--embedded > .hr-mobile-bottom-nav {
+  display: none !important;
+}
+
+.hr-shell.hr-shell--embedded > .hr-shell-main,
+.hr-shell.hr-shell--embedded > .hr-shell-main--embedded {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  grid-column: 1 / -1 !important;
+}
+
+.hr-shell.hr-shell--embedded .hr-stage {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}

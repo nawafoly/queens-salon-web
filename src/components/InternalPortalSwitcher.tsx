@@ -25,6 +25,7 @@ type InternalPortalSwitcherProps = {
   loggingOut?: boolean;
   onLogout: () => void | Promise<void>;
   className?: string;
+  showPortalLinks?: boolean;
 };
 
 function joinClassNames(...parts: Array<string | false | null | undefined>) {
@@ -37,6 +38,7 @@ export default function InternalPortalSwitcher({
   loggingOut = false,
   onLogout,
   className,
+  showPortalLinks = true,
 }: InternalPortalSwitcherProps) {
   const location = useLocation();
   const pathname = location.pathname;
@@ -51,7 +53,7 @@ export default function InternalPortalSwitcher({
       className={joinClassNames("internal-portal-switcher", className)}
       aria-label="التنقل بين الأنظمة الداخلية"
     >
-      {canOpenDashboard && !isDashboardArea ? (
+      {showPortalLinks && canOpenDashboard && !isDashboardArea ? (
         <NavLink
           to="/dashboard/overview"
           className={({ isActive }) =>
@@ -69,7 +71,7 @@ export default function InternalPortalSwitcher({
         </NavLink>
       ) : null}
 
-      {canOpenHr && !isHrArea ? (
+      {showPortalLinks && canOpenHr && !isHrArea ? (
         <NavLink
           to="/dashboard/hr"
           className={() =>

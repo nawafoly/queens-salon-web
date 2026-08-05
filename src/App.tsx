@@ -28,7 +28,6 @@ import Contact from "./pages/Contact";
 import Login from "./pages/Login";
 import Pricing from "./pages/Pricing";
 import Dashboard from "./pages/Dashboard";
-import AdminHrDashboard from "./pages/AdminHrDashboard";
 import HrEntry from "./pages/HrEntry";
 import EmployeePortal from "./pages/EmployeePortal";
 import Profile from "./pages/Profile";
@@ -831,7 +830,14 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : isDashboardHrPath(location.pathname) ? (
-              renderAdminRoute(<AdminHrDashboard />)
+              renderAdminRoute(
+                <Dashboard
+                  initialRole={userRole}
+                  initialName={userName}
+                  initialEmail={String(effectiveSessionUser?.email || "")}
+                  authReady={authReady}
+                />
+              )
             ) : (
               renderDashboardRoute(
                 <Dashboard

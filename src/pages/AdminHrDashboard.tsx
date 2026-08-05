@@ -1177,7 +1177,13 @@ function HrOverview({
   );
 }
 
-export default function AdminHrDashboard() {
+type AdminHrDashboardProps = {
+  embedded?: boolean;
+};
+
+export default function AdminHrDashboard({
+  embedded = false,
+}: AdminHrDashboardProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const session = useEmployeeSession();
   const navigate = useNavigate();
@@ -1564,6 +1570,15 @@ export default function AdminHrDashboard() {
     }
   };
 
+  if (session.loading && embedded) {
+    return (
+      <div className="hr-embedded-loading" dir="rtl">
+        <span className="hr-workspace-loading__spinner" />
+        <strong>جاري تحميل الموارد البشرية...</strong>
+      </div>
+    );
+  }
+
   if (session.loading) {
     return (
       <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}`} dir="rtl">
@@ -1609,13 +1624,14 @@ export default function AdminHrDashboard() {
   }
 
   return (
-    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
-      <DashboardSidebarTooltipV2 enabled={isSidebarCollapsed} />
+    <div className={`hr-shell madan-admin-shell malikat-portal-shell-v2 ${isEmployeesRoute ? "dashboard-v2 hr-shell--employees " : ""}${isCompactWorkspaceRoute ? "hr-shell--compact-workspace" : ""}${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}${embedded ? " hr-shell--embedded" : ""}`} dir="rtl">
+      <DashboardSidebarTooltipV2 enabled={!embedded && isSidebarCollapsed} />
       <MalikatPortalSidebarV2
         variant="admin"
         logoSrc={logo1}
         collapsed={isSidebarCollapsed}
         onToggleCollapsed={() => setIsSidebarCollapsed((value) => !value)}
+        className={embedded ? "hr-embedded-hidden" : undefined}
         ariaLabel="التنقل داخل الموارد البشرية"
         profileTooltip={`${session.displayName || "مسجل الدخول"} — ${readableRole(session.role)}`}
         profile={
@@ -1655,7 +1671,7 @@ export default function AdminHrDashboard() {
         theme="admin"
         title={isCompactWorkspaceRoute ? compactWorkspaceTitle : routeMeta.title}
         subtitle="Queens Salon"
-        className="hr-mobile-appbar dashboard-header--mobile-shell"
+        className={`hr-mobile-appbar dashboard-header--mobile-shell${embedded ? " hr-embedded-hidden" : ""}`}
         actions={
           <>
             {renderRequestNotificationButton()}
@@ -1669,8 +1685,8 @@ export default function AdminHrDashboard() {
           </>
         }
       />
-      <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}`}>
-        {!isEmployeeProfileRoute ? <DashboardHeader
+      <main className={`hr-shell-main ${isCompactWorkspaceRoute ? "hr-shell-main--workspace" : ""}${embedded ? " hr-shell-main--embedded" : ""}`}>
+        {!embedded && !isEmployeeProfileRoute ? <DashboardHeader
           theme="admin"
           title={routeMeta.title}
           subtitle="Queens Salon"
@@ -1776,7 +1792,7 @@ export default function AdminHrDashboard() {
           </Routes>
         </section>
       </main>
-      <nav className="hr-mobile-bottom-nav" aria-label="تنقل الموارد البشرية">
+      <nav className={`hr-mobile-bottom-nav${embedded ? " hr-embedded-hidden" : ""}`} aria-label="تنقل الموارد البشرية">
         {adminNavItems.slice(0, 5).map((item) => (
           <NavLink
             key={item.to}

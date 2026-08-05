@@ -56,7 +56,30 @@ import DashboardPayroll from "../pages/DashboardPayroll";
 import DashboardEmployeeTargets from "../pages/DashboardEmployeeTargets";
 import DashboardStaffPerformance from "../pages/DashboardStaffPerformance";
 import DashboardDesignSystemV2 from "../pages/DashboardDesignSystemV2";
+import AdminHrDashboard from "./AdminHrDashboard";
 import "../styles/DashboardEnterpriseWorkspacesV2.css";
+
+const DASHBOARD_HR_SECTIONS = new Set([
+  "hr",
+  "requests",
+  "employees",
+  "permissions",
+  "recruitment-applications",
+  "messages",
+  "files",
+  "create-staff",
+]);
+
+const DASHBOARD_HR_TITLES: Record<string, string> = {
+  hr: "الموارد البشرية",
+  requests: "طلبات الموظفات",
+  employees: "إدارة الموظفات",
+  permissions: "الاستئذانات والإجازات",
+  "recruitment-applications": "طلبات التوظيف",
+  messages: "الرسائل الداخلية",
+  files: "ملفات الموظفات",
+  "create-staff": "إنشاء حساب موظفة",
+};
 
 
 // ✅ NEW: الحجز الداخلي داخل الداشبورد
@@ -1299,7 +1322,7 @@ const DashboardOverview: React.FC<OverviewProps> = ({
 };
 
 // ✅ Roles
-type UiRole = "owner" | "admin" | "accountant" | "reception" | "staff";
+type UiRole = "owner" | "admin" | "hr" | "accountant" | "reception" | "staff";
 
 interface UserInfo {
   name: string;
@@ -1318,7 +1341,7 @@ type DashboardProps = {
 function mapProfileRoleToDashboardRole(role: ProfileRole): UiRole | null {
   const r = String(role || "").toLowerCase().trim() as ProfileRole;
 
-  if (r === "owner" || r === "admin" || r === "accountant" || r === "reception" || r === "staff") {
+  if (r === "owner" || r === "admin" || r === "hr" || r === "accountant" || r === "reception" || r === "staff") {
     return r;
   }
   return null;
@@ -1347,7 +1370,7 @@ function isProgrammerProfile(userInfo: UserInfo | null) {
 
 function isDashboardUiRole(role: unknown): role is UiRole {
   const r = String(role || "").toLowerCase().trim();
-  return r === "owner" || r === "admin" || r === "accountant" || r === "reception" || r === "staff";
+  return r === "owner" || r === "admin" || r === "hr" || r === "accountant" || r === "reception" || r === "staff";
 }
 
 function getDashboardStoredName() {
@@ -1480,6 +1503,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [topbarNowMs, setTopbarNowMs] = useState<number>(() => Date.now());
 
   const location = useLocation();
+  const dashboardSection = location.pathname
+    .replace(/^\/dashboard\/?/, "")
+    .split("/")[0];
+  const isHrWorkspacePage = DASHBOARD_HR_SECTIONS.has(dashboardSection);
   const navigate = useNavigate();
   const { hasPermission, hasAnyPermission } = usePermissions();
   const refreshRequestIdRef = useRef(0);
@@ -2104,6 +2131,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (!hasExternalAuthBootstrap) return;
     if (!userInfo?.role) return;
 
+    if (isHrWorkspacePage) {
+      markDashboardBootstrapped();
+      return;
+    }
+
     let cancelled = false;
 
     const run = async () => {
@@ -2123,7 +2155,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       cancelled = true;
       refreshRequestIdRef.current += 1;
     };
-  }, [hasExternalAuthBootstrap, userInfo?.role]);
+  }, [hasExternalAuthBootstrap, userInfo?.role, isHrWorkspacePage]);
 
   const handleLogout = async () => {
     try {
@@ -2204,6 +2236,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         return faUserShield;
       case "admin":
         return faUserShield;
+      case "hr":
+        return faUserShield;
       case "staff":
         return faUserTie;
       default:
@@ -2217,6 +2251,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         return "المالكة";
       case "admin":
         return "خدمة عملاء ملكات";
+      case "hr":
+        return "الموارد البشرية";
       case "accountant":
         return "المحاسبة";
       case "reception":
@@ -2321,7 +2357,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     "/dashboard/settings",
   ].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
   const isSingleScrollWorkspacePage =
-    isBookingInternalPage || isBookingsWorkspacePage || isAttendanceSecurityPage || isEnterpriseOperationsPage;
+    isHrWorkspacePage ||
+    isBookingInternalPage ||
+    isBookingsWorkspacePage ||
+    isAttendanceSecurityPage ||
+    isEnterpriseOperationsPage;
   useEffect(() => {
     if (!isTvQueuePage) return;
     setTopbarNowMs(Date.now());
@@ -2372,7 +2412,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   }).format(new Date(topbarNowMs))}`;
   const dashboardHeaderTitle = isTvQueuePage
     ? "شاشة نداء الحجوزات"
-    : getDashboardHeaderTitle(location.pathname);
+    : isHrWorkspacePage
+      ? DASHBOARD_HR_TITLES[dashboardSection] || "الموارد البشرية"
+      : getDashboardHeaderTitle(location.pathname);
 
 
   return (
@@ -2899,6 +2941,90 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
+                {canOpenHrPortal ? (
+                  <li className="sidebar-nav-section">الموظفات والموارد البشرية</li>
+                ) : null}
+
+                {hasPermission("employees.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/hr" end className="nav-link" data-sidebar-tooltip="ملخص الموارد البشرية" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUserShield} />
+                      ملخص الموارد البشرية
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("employees.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/employees" className="nav-link" data-sidebar-tooltip="إدارة الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUsers} />
+                      إدارة الموظفات
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("employee_requests.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/requests" className="nav-link" data-sidebar-tooltip="طلبات الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faClockRotateLeft} />
+                      طلبات الموظفات
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("attendance.leaves.manage") ? (
+                  <li>
+                    <NavLink to="/dashboard/permissions" className="nav-link" data-sidebar-tooltip="الاستئذانات والإجازات" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faFingerprint} />
+                      الاستئذانات والإجازات
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("attendance.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/attendance" className="nav-link" data-sidebar-tooltip="الحضور والبصمة" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faFingerprint} />
+                      الحضور والبصمة
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("recruitment.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/recruitment-applications" className="nav-link" data-sidebar-tooltip="طلبات التوظيف" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUserTie} />
+                      طلبات التوظيف
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("messages.manage") ? (
+                  <li>
+                    <NavLink to="/dashboard/messages" className="nav-link" data-sidebar-tooltip="الرسائل الداخلية" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUser} />
+                      الرسائل الداخلية
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("employees.files.view") ? (
+                  <li>
+                    <NavLink to="/dashboard/files" className="nav-link" data-sidebar-tooltip="ملفات الموظفات" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faClockRotateLeft} />
+                      ملفات الموظفات
+                    </NavLink>
+                  </li>
+                ) : null}
+
+                {hasPermission("admin_accounts.manage") && hasPermission("employees.create") ? (
+                  <li>
+                    <NavLink to="/dashboard/create-staff" className="nav-link" data-sidebar-tooltip="إنشاء حساب موظفة" onClick={() => setIsSidebarOpen(false)}>
+                      <FontAwesomeIcon icon={faUserShield} />
+                      إنشاء حساب موظفة
+                    </NavLink>
+                  </li>
+                ) : null}
                 {hasPermission("payroll.view") ? (
                   <li>
                     <NavLink to="/dashboard/payroll" className="nav-link" data-sidebar-tooltip="إدارة الرواتب" onClick={() => setIsSidebarOpen(false)}>
@@ -3033,15 +3159,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </li>
                 ) : null}
 
-                {hasPermission("attendance.view") ? (
-                  <li>
-                    <NavLink to="/dashboard/attendance" className="nav-link" data-sidebar-tooltip="سجل البصمة والأجهزة" onClick={() => setIsSidebarOpen(false)}>
-                      <FontAwesomeIcon icon={faFingerprint} />
-                      سجل البصمة والأجهزة
-                    </NavLink>
-                  </li>
-                ) : null}
-
                 {hasPermission("attendance.settings.manage") ? (
                   <li>
                     <NavLink to="/dashboard/settings/attendance" className="nav-link" data-sidebar-tooltip="إعدادات البصمة والنطاقات" onClick={() => setIsSidebarOpen(false)}>
@@ -3081,6 +3198,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                 ) : (
                   <InternalPortalSwitcher
+                    showPortalLinks={false}
                     canOpenDashboard={hasPermission("workspace.dashboard.view")}
                     canOpenHr={canOpenHrPortal}
                     onLogout={handleLogout}
@@ -3091,6 +3209,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             />
 
             <div className="dashboard-inner">
+              {isHrWorkspacePage ? (
+                <AdminHrDashboard embedded />
+              ) : (
               <Routes>
                 <Route index element={<Navigate to="/dashboard/overview" replace />} />
 
@@ -3223,6 +3344,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   element={<Navigate to="/dashboard/overview" replace />}
                 />
               </Routes>
+              )}
             </div>
           </div>
         </div>
