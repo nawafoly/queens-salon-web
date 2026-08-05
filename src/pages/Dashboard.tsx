@@ -1869,7 +1869,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const dashRole = mapProfileRoleToDashboardRole(profile.role);
         if (!dashRole) {
           const normalizedRole = String(profile.role || "").toLowerCase().trim();
-          navigate(normalizedRole === "hr" ? "/admin" : isMalikatAuth ? "/dashboard-pending" : "/profile");
+          navigate(normalizedRole === "hr" ? "/dashboard/hr" : isMalikatAuth ? "/dashboard-pending" : "/profile");
           return;
         }
 

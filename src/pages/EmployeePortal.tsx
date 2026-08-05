@@ -538,7 +538,7 @@ export default function EmployeePortal() {
               <span>{notificationsLoading ? "جاري تحديث التنبيهات..." : portalSubtitle}</span>
               <div className="employee-portal-sidebar__switches">
                 {canOpenHr ? (
-                  <Link to="/admin"><FontAwesomeIcon icon={faUserShield} /> لوحة HR</Link>
+                  <Link to="/dashboard/hr"><FontAwesomeIcon icon={faUserShield} /> لوحة HR</Link>
                 ) : null}
                 {canOpenDashboard ? (
                   <Link to="/dashboard/overview"><FontAwesomeIcon icon={faTableColumns} /> الداشبورد</Link>

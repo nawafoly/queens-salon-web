@@ -495,7 +495,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
 export default function DashboardEmployees() {
   const location = useLocation();
   const navigate = useNavigate();
-  const employeeRouteMatch = /^\/admin\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
+  const employeeRouteMatch = /^\/dashboard\/employees\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
   const routeEmployeeId = employeeRouteMatch ? decodeURIComponent(employeeRouteMatch[1]) : "";
   const routeSection = (employeeRouteMatch?.[2] || "basic") as EmployeeSplitTab;
   const isEmployeeProfileRoute = Boolean(routeEmployeeId);
@@ -1522,7 +1522,7 @@ export default function DashboardEmployees() {
     setLeaveAdjustNote("");
     setLeaveEntitlementDate(String((x as any).leaveEntitlementDate || ""));
     setIsOpen(true);
-    if (updateRoute) navigate(`/admin/employees/${encodeURIComponent(x.id)}/basic`);
+    if (updateRoute) navigate(`/dashboard/employees/${encodeURIComponent(x.id)}/basic`);
   };
 
   useEffect(() => {
@@ -1531,7 +1531,7 @@ export default function DashboardEmployees() {
     if (!matched) {
       if (!loading) {
         setErrorMsg("تعذر العثور على ملف الموظفة المطلوب. تم الرجوع إلى قائمة الموظفين.");
-        navigate("/admin/employees", { replace: true });
+        navigate("/dashboard/employees", { replace: true });
       }
       return;
     }
@@ -1603,7 +1603,7 @@ export default function DashboardEmployees() {
     setIsOpen(false);
     setMode("edit");
     resetForm();
-    navigate("/admin/employees", { replace: true });
+    navigate("/dashboard/employees", { replace: true });
   };
 
   useEffect(() => {
@@ -2562,7 +2562,7 @@ export default function DashboardEmployees() {
       if (!editId) {
         setActiveTab("basic");
         setModalTab("basic");
-        navigate(`/admin/employees/${encodeURIComponent(targetEmployeeId)}/basic`);
+        navigate(`/dashboard/employees/${encodeURIComponent(targetEmployeeId)}/basic`);
       }
 
       if (previousEditSnapshot && editingStaff) {
@@ -4433,7 +4433,7 @@ export default function DashboardEmployees() {
     setIsOpen(true);
   };
   const handleSplitTabChange = (tab: EmployeeSplitTab) => {
-    if (selectedEmployeeId) navigate(`/admin/employees/${encodeURIComponent(selectedEmployeeId)}/${tab}`);
+    if (selectedEmployeeId) navigate(`/dashboard/employees/${encodeURIComponent(selectedEmployeeId)}/${tab}`);
     setActiveTab(tab);
     if (tab === "payroll") {
       setActiveStatsSubTab("payroll");

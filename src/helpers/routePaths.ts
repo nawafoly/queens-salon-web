@@ -6,7 +6,7 @@ export function resolveInternalPostLoginRoute(
   const normalized = normalizeAuthRole(role);
 
   if (normalized === "staff") return "/employee/overview";
-  if (normalized === "hr") return "/admin";
+  if (normalized === "hr") return "/dashboard/hr";
   if (normalized === "owner" || normalized === "admin" || normalized === "accountant" || normalized === "reception") {
     return "/dashboard";
   }

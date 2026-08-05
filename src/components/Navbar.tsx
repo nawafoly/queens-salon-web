@@ -282,7 +282,7 @@ const Navbar: React.FC<NavbarProps> = ({ authUser, currentRole, currentUserName 
           </Link>
 
           {(isOwner || isAdmin) && (
-            <Link to="/admin" onClick={() => setIsDropdownOpen(false)}>
+            <Link to="/dashboard/hr" onClick={() => setIsDropdownOpen(false)}>
               لوحة HR
             </Link>
           )}

@@ -200,7 +200,7 @@ function formatMonthlyHours(entry: PayrollEntryView) {
 }
 
 function employeePayrollPath(entry: PayrollEntryView) {
-  return `/admin/employees/${encodeURIComponent(entry.employeeId)}/payroll#payroll-settings`;
+  return `/dashboard/employees/${encodeURIComponent(entry.employeeId)}/payroll#payroll-settings`;
 }
 
 function employeeTargetPath(entry: PayrollEntryView) {

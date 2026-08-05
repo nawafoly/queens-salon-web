@@ -231,7 +231,7 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
     } catch {
       // Navigation still works; the query id is retained as a fallback.
     }
-    navigate(`/admin/create-staff?applicationId=${encodeURIComponent(selected.id)}`);
+    navigate(`/dashboard/create-staff?applicationId=${encodeURIComponent(selected.id)}`);
   };
 
   return (

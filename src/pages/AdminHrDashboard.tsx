@@ -827,11 +827,11 @@ function HrOverview({
           </p>
 
           <div className="hr-hero__actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/admin/employees")}>
+            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/dashboard/employees")}>
               <FontAwesomeIcon icon={faUsers} />
               فتح إدارة الموظفات
             </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/admin/recruitment-applications")}>
+            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
               <FontAwesomeIcon icon={faUserTie} />
               طلبات التوظيف
             </button>
@@ -923,22 +923,22 @@ function HrOverview({
             </div>
           </div>
           <div className="hr-quick-actions">
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/employees")}>
+            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/employees")}>
               <FontAwesomeIcon icon={faUsers} />
               <strong>إدارة الموظفات</strong>
               <span>الملف الوظيفي والحضور والرواتب والإجازات والخدمات.</span>
             </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/create-staff")}>
+            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>
               <FontAwesomeIcon icon={faPlus} />
               <strong>إنشاء حساب</strong>
               <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>
             </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/messages")}>
+            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/messages")}>
               <FontAwesomeIcon icon={faEnvelope} />
               <strong>الرسائل الداخلية</strong>
               <span>مراجعة الرسائل والتنبيهات الواردة من الموظفات.</span>
             </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/admin/files")}>
+            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/files")}>
               <FontAwesomeIcon icon={faFileLines} />
               <strong>الملفات الداخلية</strong>
               <span>متابعة المرفقات والمستندات الإدارية.</span>
@@ -993,7 +993,7 @@ function HrOverview({
             <p>افتح صفحة التوظيف لمراجعة الطلبات وتحويل المقبول منها إلى حساب موظفة.</p>
           </div>
           <div className="hr-actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/admin/recruitment-applications")}>
+            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
               <FontAwesomeIcon icon={faChartLine} /> فتح الطلبات
             </button>
           </div>
@@ -1077,7 +1077,7 @@ function HrOverview({
             <button className="hr-button hr-button--primary" type="button" onClick={() => void handleCreateAbsence()} disabled={absenceSaving || loading || !rosterSorted.length}>
               {absenceSaving ? "جارٍ الحفظ..." : "حفظ الغياب"}
             </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/admin/employees")}>فتح سجل الموظفة</button>
+            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/employees")}>فتح سجل الموظفة</button>
           </div>
 
           <div className="hr-leave-list hr-list-compact">
@@ -1144,7 +1144,7 @@ function HrOverview({
             <button className="hr-button hr-button--primary" type="button" onClick={() => void handleCalculatePayrollPreview()} disabled={payrollLoading || !rosterSorted.length}>
               {payrollLoading ? "جارٍ الحساب..." : "حساب المعاينة"}
             </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/admin/employees")}>إدارة الرواتب التفصيلية</button>
+            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/employees")}>إدارة الرواتب التفصيلية</button>
           </div>
 
           {payrollPreview ? (
@@ -1274,9 +1274,9 @@ export default function AdminHrDashboard() {
     }
     setRequestNotificationsOpen(false);
     if (notification.related_id) {
-      navigate(`/admin/requests?request=${encodeURIComponent(notification.related_id)}`);
+      navigate(`/dashboard/requests?request=${encodeURIComponent(notification.related_id)}`);
     } else {
-      navigate("/admin/requests");
+      navigate("/dashboard/requests");
     }
   }, [navigate]);
 
@@ -1295,15 +1295,15 @@ export default function AdminHrDashboard() {
   const adminNavItems = useMemo(
     () =>
       [
-        { to: "/admin/overview", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
-        { to: "/admin/requests", label: "طلبات الموظفات", icon: faClipboardList, badge: requestNotificationCount, permission: "employee_requests.view" as AppPermission },
-        { to: "/admin/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
-        { to: "/admin/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "attendance.leaves.manage" as AppPermission },
-        { to: "/admin/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
-        { to: "/admin/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
-        { to: "/admin/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
+        { to: "/dashboard/hr", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
+        { to: "/dashboard/requests", label: "طلبات الموظفات", icon: faClipboardList, badge: requestNotificationCount, permission: "employee_requests.view" as AppPermission },
+        { to: "/dashboard/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
+        { to: "/dashboard/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "attendance.leaves.manage" as AppPermission },
+        { to: "/dashboard/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
+        { to: "/dashboard/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
+        { to: "/dashboard/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
         {
-          to: "/admin/create-staff",
+          to: "/dashboard/create-staff",
           label: "إنشاء حساب موظف",
           icon: faUserShield,
           permission: "admin_accounts.manage" as AppPermission,
@@ -1319,17 +1319,19 @@ export default function AdminHrDashboard() {
   const canOpenHr = hasAnyPermission([
     "employees.view",
     "attendance.view",
+    "attendance.leaves.manage",
     "recruitment.view",
     "messages.manage",
     "employees.files.view",
     "admin_accounts.view",
+    "admin_accounts.manage",
     "employee_requests.view",
   ]);
   const adminSection = useMemo(() => {
-    const section = location.pathname.replace(/^\/admin\/?/, "").split("/")[0];
+    const section = location.pathname.replace(/^\/dashboard\/?/, "").split("/")[0];
     return section || "overview";
   }, [location.pathname]);
-  const isOverviewRoute = adminSection === "overview";
+  const isOverviewRoute = adminSection === "hr";
   const isEmployeesRoute = adminSection === "employees";
   const isFilesRoute = adminSection === "files";
   const isRequestsRoute = adminSection === "requests";
@@ -1357,10 +1359,10 @@ export default function AdminHrDashboard() {
       : isRequestsRoute
         ? "يتم تجهيز دورة الاستلام والمراجعة والتنفيذ من Core D1."
         : "يتم تجهيز طلبات الاستئذان المعتمدة دون توسيع مساحة الصفحة.";
-  const isEmployeeProfileRoute = /^\/admin\/employees\/[^/]+/.test(location.pathname);
+  const isEmployeeProfileRoute = /^\/dashboard\/employees\/[^/]+/.test(location.pathname);
   const routeMeta = useMemo(() => {
     const meta: Record<string, { kicker: string; title: string; subtitle: string }> = {
-      overview: {
+      hr: {
         kicker: "الموارد البشرية",
         title: "نظرة عامة على الموارد البشرية",
         subtitle: "ملخص تشغيلي سريع للحضور والطلبات والملفات، بينما تتم إدارة الموظفات من الصفحة المخصصة.",
@@ -1542,7 +1544,7 @@ export default function AdminHrDashboard() {
           )}
         </div>
         <footer>
-          <button type="button" onClick={() => { setRequestNotificationsOpen(false); navigate("/admin/requests"); }}>
+          <button type="button" onClick={() => { setRequestNotificationsOpen(false); navigate("/dashboard/requests"); }}>
             فتح مركز الطلبات
           </button>
         </footer>
@@ -1703,7 +1705,7 @@ export default function AdminHrDashboard() {
           <Routes>
             <Route index element={<Navigate to={adminLandingPath} replace />} />
             <Route
-              path="overview"
+              path="hr"
               element={
                 <PermissionRoute permission="employees.view">
                   <HrOverview

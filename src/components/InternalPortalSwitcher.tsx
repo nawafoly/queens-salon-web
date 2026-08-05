@@ -8,6 +8,17 @@ import {
 
 import "../styles/InternalPortalSwitcher.css";
 
+const DASHBOARD_HR_SECTIONS = [
+  "hr",
+  "requests",
+  "employees",
+  "permissions",
+  "recruitment-applications",
+  "messages",
+  "files",
+  "create-staff",
+];
+
 type InternalPortalSwitcherProps = {
   canOpenDashboard: boolean;
   canOpenHr: boolean;
@@ -29,8 +40,11 @@ export default function InternalPortalSwitcher({
 }: InternalPortalSwitcherProps) {
   const location = useLocation();
   const pathname = location.pathname;
-  const isDashboardArea = pathname.startsWith("/dashboard");
-  const isHrArea = pathname.startsWith("/admin");
+  const dashboardSection = pathname.replace(/^\/dashboard\/?/, "").split("/")[0];
+  const isHrArea =
+    pathname.startsWith("/dashboard") &&
+    DASHBOARD_HR_SECTIONS.includes(dashboardSection);
+  const isDashboardArea = pathname.startsWith("/dashboard") && !isHrArea;
 
   return (
     <nav
@@ -57,7 +71,7 @@ export default function InternalPortalSwitcher({
 
       {canOpenHr && !isHrArea ? (
         <NavLink
-          to="/admin/overview"
+          to="/dashboard/hr"
           className={() =>
             joinClassNames(
               "internal-portal-switcher__item",

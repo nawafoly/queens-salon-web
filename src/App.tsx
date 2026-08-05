@@ -59,6 +59,39 @@ import { CoreApiError } from "./services/coreApiClient";
 // Pending Dashboard
 import DashboardPending from "./pages/DashboardPending";
 
+const DASHBOARD_HR_SECTIONS = new Set([
+  "hr",
+  "requests",
+  "employees",
+  "permissions",
+  "recruitment-applications",
+  "messages",
+  "files",
+  "create-staff",
+]);
+
+function isDashboardHrPath(pathname: string) {
+  const section = pathname.replace(/^\/dashboard\/?/, "").split("/")[0];
+  return DASHBOARD_HR_SECTIONS.has(section);
+}
+
+function LegacyAdminRedirect() {
+  const { pathname, search, hash } = useLocation();
+  const suffix = pathname
+    .replace(/^\/admin\/?/, "")
+    .replace(/^\/+|\/+$/g, "");
+
+  let targetPath = "/dashboard/hr";
+
+  if (suffix === "users" || suffix.startsWith("users/")) {
+    targetPath = `/dashboard/settings/${suffix}`;
+  } else if (suffix && suffix !== "overview" && !suffix.startsWith("overview/")) {
+    targetPath = `/dashboard/${suffix}`;
+  }
+
+  return <Navigate to={{ pathname: targetPath, search, hash }} replace />;
+}
+
 /* ================================
    Types & Helpers
 ================================ */
@@ -564,10 +597,13 @@ const App: React.FC = () => {
       hasAnyPermission([
         "employees.view",
         "attendance.view",
+        "attendance.leaves.manage",
+        "employee_requests.view",
         "recruitment.view",
         "messages.manage",
         "employees.files.view",
         "admin_accounts.view",
+        "admin_accounts.manage",
       ])
     ) {
       return children;
@@ -794,6 +830,8 @@ const App: React.FC = () => {
           element={
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
+            ) : isDashboardHrPath(location.pathname) ? (
+              renderAdminRoute(<AdminHrDashboard />)
             ) : (
               renderDashboardRoute(
                 <Dashboard
@@ -814,7 +852,7 @@ const App: React.FC = () => {
             IS_CUSTOMER_APP ? (
               <Navigate to="/login" replace />
             ) : (
-              renderAdminRoute(<AdminHrDashboard />)
+              <LegacyAdminRedirect />
             )
           }
         />

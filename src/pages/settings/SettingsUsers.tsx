@@ -173,7 +173,7 @@ export default function SettingsUsers({
 }: SettingsUsersProps = {}) {
   const location = useLocation();
   const { permissions: actorPermissions, role: permissionRole, hasPermission, hasAnyPermission } = usePermissions();
-  const isAdminShell = location.pathname.startsWith("/admin");
+  const isAdminShell = location.pathname.startsWith("/dashboard") || location.pathname.startsWith("/admin");
   const pageTitle = isAdminShell ? "إدارة الحسابات الإدارية" : "إدارة الحسابات";
   const pageHint = "مصدر الحسابات والأدوار والصلاحيات والربط الوظيفي هو Cloudflare D1.";
 
