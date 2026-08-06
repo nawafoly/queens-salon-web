@@ -23,6 +23,7 @@ import {
 } from "../../helpers/dashboardDateUtils";
 import { formatTime12 } from "../../helpers/pageSharedUtils";
 import { timeToMinutes } from "../../helpers/timeContract";
+import { formatFinanceTransactionTitle } from "../../helpers/financeDisplay";
 
 type BusinessHoursDay = {
   enabled?: boolean;
@@ -493,7 +494,11 @@ export default function DashboardOverviewV2({
                   {recentFinanceTransactions.map((transaction) => (
                     <article className="overview-v2-recent-item" key={transaction.id}>
                       <div>
-                        <strong title={transaction.title}>{transaction.title}</strong>
+                        <strong title={formatFinanceTransactionTitle(transaction.title)}>
+                          <bdi dir="auto">
+                            {formatFinanceTransactionTitle(transaction.title)}
+                          </bdi>
+                        </strong>
                         <span>{formatFinanceDate(transaction.date)}</span>
                       </div>
                       <b data-tone={transaction.type === "income" ? "success" : "danger"}>

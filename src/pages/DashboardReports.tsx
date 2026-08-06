@@ -16,6 +16,7 @@ import { listAllIncomeCore } from "../services/firestoreIncome";
 import { listAllExpensesCore } from "../services/firestoreExpenses";
 import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";
 import type { PaymentMethod } from "../types/finance";
+import { financePaymentMethodLabel, formatFinanceNote } from "../helpers/financeDisplay";
 import {
   buildPayrollExpenseRowsForMonths,
   PAYROLL_CLOSE_DAY,
@@ -210,56 +211,6 @@ function normalizePaymentMethod(raw: any): PaymentMethod {
   if (s.includes("تحويل")) return "transfer";
   if (s.includes("مختلط") || s.includes("mixed")) return "mixed";
   return "other";
-}
-
-function methodLabelFromRaw(raw?: string): string {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "\u063a\u064a\u0631 \u0645\u062d\u062f\u062f";
-  if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
-  if (s === "mixed" || s.includes("مختلط")) return "مختلط";
-  if (
-    s === "card" ||
-    s === "mada" ||
-    s.includes("\u0634\u0628\u0643") ||
-    s.includes("\u0628\u0637\u0627\u0642")
-  )
-    return "\u0634\u0628\u0643\u0629";
-  if (s === "transfer" || s.includes("\u062a\u062d\u0648\u064a\u0644")) return "\u062a\u062d\u0648\u064a\u0644";
-  return String(raw || "").trim();
-}
-
-function formatIncomeNotePart(part: string): string {
-  const p = String(part || "").trim();
-  if (!p) return "";
-  const lower = p.toLowerCase();
-
-  if (lower.startsWith("invoice_from_reception:")) {
-    const method = p.split(":")[1] || "";
-    return `\u0641\u0627\u062a\u0648\u0631\u0629 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u0642\u0628\u0627\u0644 (${methodLabelFromRaw(method)})`;
-  }
-  if (lower.startsWith("internal_payment:")) {
-    const method = p.split(":")[1] || "";
-    return `\u062f\u0641\u0639 \u062f\u0627\u062e\u0644\u064a (${methodLabelFromRaw(method)})`;
-  }
-  if (lower.startsWith("payment_method:")) {
-    const method = p.split(":")[1] || "";
-    return `\u0637\u0631\u064a\u0642\u0629 \u0627\u0644\u062f\u0641\u0639 (${methodLabelFromRaw(method)})`;
-  }
-
-  return p;
-}
-
-function formatIncomeNote(raw?: string): string {
-  const note = String(raw || "").trim();
-  if (!note) return "";
-
-  const parts = note
-    .split("|")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  if (!parts.length) return note;
-  return parts.map((p) => formatIncomeNotePart(p)).filter(Boolean).join(" - ");
 }
 
 function resolveIncomeReportNote(sourceRaw: string, noteText: string): string {
@@ -1127,7 +1078,7 @@ export default function DashboardReports() {
         const linkedBookingId = resolveLinkedBookingId(x);
         const linkedBooking = linkedBookingId ? bookingById[linkedBookingId] : undefined;
         const linkedMeta = linkedBookingId ? bookingMetaById[linkedBookingId] : undefined;
-        const noteText = formatIncomeNote(x.note);
+        const noteText = formatFinanceNote(x.note);
         const displayNote = resolveIncomeReportNote(x.source, noteText);
         return {
           id: `income_${x.id}`,
@@ -1442,7 +1393,7 @@ export default function DashboardReports() {
       fromDate: range.from,
       toDate: range.to,
       periodLabel: period,
-      incomeMethod: incomeMethodFilter === "all" ? "الكل" : methodLabelFromRaw(incomeMethodFilter),
+      incomeMethod: incomeMethodFilter === "all" ? "الكل" : financePaymentMethodLabel(incomeMethodFilter),
       incomeSource: incomeSourceFilter === "all" ? "الكل" : sourceLabel(incomeSourceFilter),
       incomeStatus: incomeStatusFilter,
     },

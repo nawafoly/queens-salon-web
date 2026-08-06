@@ -133,6 +133,7 @@ import {
   round2,
   toMillisSafeDashboard as toMillisSafe,
 } from "../helpers/pageSharedUtils";
+import { formatFinanceTransactionTitle } from "../helpers/financeDisplay";
 
 /** ===== Settings (LocalStorage fallback) ===== */
 type SectionKey =
@@ -194,7 +195,7 @@ type DashboardSnapshot = {
   savedAt: number;
 };
 
-const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v1";
+const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v2";
 const emptyDashboardStats: DashboardStats = {
   todayBookings: 0,
   totalRevenue: 0,
@@ -424,16 +425,6 @@ function bookingNoOf(b: Partial<Booking> | null | undefined) {
   if (/^MK-\d+$/.test(up)) return up;
   if (/^\d+$/.test(up)) return `MK-${up}`;
   return up;
-}
-
-function financeSourceLabelAr(raw: unknown): string {
-  const s = String(raw || "").toLowerCase().trim();
-  if (s === "booking") return "حجز";
-  if (s === "invoice") return "فاتورة";
-  if (s === "manual") return "يدوي";
-  if (s === "other" || s === "دخل آخر") return "دخل آخر";
-  if (s === "income" || s === "revenue") return "إيراد";
-  return String(raw || "").trim() || "إيراد";
 }
 
 function normalizePaymentType(raw: unknown): "full" | "partial" | null {
@@ -1222,7 +1213,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         ? incomes.map((x: any) => ({
             id: `inc_${String(x?.id || "")}`,
             type: "income" as const,
-            title: String(x?.note || "").trim() || financeSourceLabelAr(x?.source),
+            title: formatFinanceTransactionTitle(x?.note, x?.source),
             amount: effectiveIncomeAmount(x),
             date: effectiveIncomeDate(x),
             createdAt: Number(x?.createdAt || 0) || Date.now(),

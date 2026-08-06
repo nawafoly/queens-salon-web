@@ -29,6 +29,7 @@ import { CoreBookingService } from "../services/CoreBookingService";
 import { CoreStaffService } from "../services/CoreStaffService";
 
 import type { IncomeItem, PaymentMethod } from "../types/finance";
+import { formatFinanceNote, isSystemFinanceNote } from "../helpers/financeDisplay";
 import {
   exportIncomeReportExcel,
   exportIncomeReportPdf,
@@ -176,73 +177,6 @@ function sourceKind(source: string): "booking" | "invoice" | "internal" | "manua
   if (s === "manual" || s === "\u064a\u062f\u0648\u064a") return "other";
   if (s === "refund" || s === "\u0627\u0633\u062a\u0631\u062c\u0627\u0639") return "refund";
   return "other";
-}
-
-function methodLabelFromRaw(raw?: string): string {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "غير محدد";
-  if (s === "cash" || s === "\u0643\u0627\u0634") return "\u0643\u0627\u0634";
-  if (s === "mixed" || s.includes("مختلط")) return "مختلط";
-  if (
-    s === "card" ||
-    s === "mada" ||
-    s.includes("\u0634\u0628\u0643") ||
-    s.includes("\u0628\u0637\u0627\u0642")
-  )
-    return "\u0634\u0628\u0643\u0629";
-  if (s === "transfer" || s.includes("\u062a\u062d\u0648\u064a\u0644")) return "\u062a\u062d\u0648\u064a\u0644";
-  return String(raw || "").trim();
-}
-
-function formatIncomeNotePart(part: string): string {
-  const p = String(part || "").trim();
-  if (!p) return "";
-  const lower = p.toLowerCase();
-
-  if (lower.startsWith("invoice_from_reception:")) {
-    const method = p.split(":")[1] || "";
-    return `فاتورة من الاستقبال (${methodLabelFromRaw(method)})`;
-  }
-  if (lower.startsWith("internal_payment:")) {
-    const method = p.split(":")[1] || "";
-    return `دفع داخلي (${methodLabelFromRaw(method)})`;
-  }
-  if (lower.startsWith("payment_method:")) {
-    const method = p.split(":")[1] || "";
-    return `طريقة الدفع (${methodLabelFromRaw(method)})`;
-  }
-  if (lower.startsWith("booking_edit_payment:")) {
-    const method = p.split(":")[1] || "";
-    return `تعديل دفعة الحجز (${methodLabelFromRaw(method)})`;
-  }
-  if (lower === "package_purchase" || lower.startsWith("package_purchase:")) {
-    return "شراء باقة";
-  }
-
-  return p;
-}
-
-function formatIncomeNote(raw?: string): string {
-  const note = String(raw || "").trim();
-  if (!note) return "";
-
-  const parts = note
-    .split("|")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  if (!parts.length) return note;
-  return parts.map((p) => formatIncomeNotePart(p)).filter(Boolean).join(" - ");
-}
-
-function isSystemIncomeNote(raw?: string): boolean {
-  const note = String(raw || "").trim().toLowerCase();
-  if (!note) return false;
-  return (
-    note.includes("invoice_from_reception:") ||
-    note.includes("internal_payment:") ||
-    note.includes("payment_method:")
-  );
 }
 
 function toBookingRef(v?: string) {
@@ -776,7 +710,7 @@ function DashboardIncomeContent() {
       const bm = bookingMetaById[linkedBookingId];
       const effectiveDate = effectiveDateOf(x);
       const paymentSummary = buildPaymentSummary(bm);
-      const noteText = formatIncomeNote(x.note);
+      const noteText = formatFinanceNote(x.note);
       const effectiveAmount = Number(x.amount || 0);
       const a =
         `${effectiveDate} ${effectiveAmount} ${sourceLabel(x.source || "")} ${x.note || ""} ${noteText} ${
@@ -1052,7 +986,7 @@ function DashboardIncomeContent() {
       const remainingAmount = isRefund
         ? 0
         : round2(Math.max(0, totalAmount - paidAmount));
-      const noteText = formatIncomeNote(x.note);
+      const noteText = formatFinanceNote(x.note);
 
       return {
         date: rowEffectiveDate(x),
@@ -1123,7 +1057,7 @@ function DashboardIncomeContent() {
   const hasActiveFilters = Boolean(q.trim() || fMethod !== "all" || from || to);
   const detailsBookingMeta = detailsTarget ? rowBookingMeta(detailsTarget) : undefined;
   const detailsAmount = detailsTarget ? rowEffectiveAmount(detailsTarget) : 0;
-  const detailsNote = detailsTarget ? formatIncomeNote(detailsTarget.note) : "";
+  const detailsNote = detailsTarget ? formatFinanceNote(detailsTarget.note) : "";
 
   const clearFilters = () => {
     setQ("");
@@ -1370,7 +1304,7 @@ function DashboardIncomeContent() {
                       const bookingMeta = rowBookingMeta(item);
                       const paymentRows = buildPaymentSummaryRows(bookingMeta);
                       const amountToShow = rowEffectiveAmount(item);
-                      const noteText = formatIncomeNote(item.note);
+                      const noteText = formatFinanceNote(item.note);
                       const srcKind = sourceKind(item.source || "");
                       const displayClientName = resolveDisplayClientName(item, bookingMeta);
                       const displayBookingRef = resolveDisplayBookingRef(item, bookingMeta);
@@ -1445,7 +1379,7 @@ function DashboardIncomeContent() {
                 {filtered.map((item) => {
                   const bookingMeta = rowBookingMeta(item);
                   const amountToShow = rowEffectiveAmount(item);
-                  const noteText = formatIncomeNote(item.note);
+                  const noteText = formatFinanceNote(item.note);
                   return (
                     <article className="income-v2-mobile-card" key={`mobile-${item.id}`}>
                       <header>
