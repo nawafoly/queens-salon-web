@@ -1537,9 +1537,7 @@ textarea.bk-input {
   min-width: 0 !important;
   vertical-align: middle !important;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row {
   width: 100% !important;
   max-width: 250px !important;
   display: grid !important;
@@ -1547,13 +1545,8 @@ textarea.bk-input {
   gap: 6px !important;
   align-items: stretch !important;
 }
-
 .dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .exp-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .dsv2-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .exp-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .bk-owner-status-select {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select {
   width: 100% !important;
   min-width: 0 !important;
   min-height: 30px !important;
@@ -1565,14 +1558,10 @@ textarea.bk-input {
   line-height: 1 !important;
   white-space: nowrap !important;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .bk-owner-status-select {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select {
   grid-column: span 2;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn--danger,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .dsv2-btn--danger {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn--danger {
   background: #fff4f2 !important;
   color: #b42318 !important;
 }
@@ -1682,9 +1671,7 @@ textarea.bk-input {
   overflow: visible !important;
   vertical-align: middle !important;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row {
   width: 100% !important;
   max-width: none !important;
   display: grid !important;
@@ -1693,11 +1680,7 @@ textarea.bk-input {
   align-items: stretch !important;
   justify-content: stretch !important;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .exp-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .dsv2-btn,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .exp-btn {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn {
   width: 100% !important;
   min-width: 0 !important;
   height: 32px !important;
@@ -1706,9 +1689,7 @@ textarea.bk-input {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
-
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select,
-.dashboard-skin.is-bookings-workspace-route .bk-actions-row--enterprise .bk-owner-status-select {
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select {
   grid-column: span 2 !important;
   width: 100% !important;
   min-width: 0 !important;
@@ -1733,4 +1714,212 @@ textarea.bk-input {
 .dashboard-skin.is-bookings-workspace-route .bookings-v2-table td:nth-child(6),
 .dashboard-skin.is-bookings-workspace-route .bookings-v2-table td:nth-child(7) {
   box-sizing: border-box !important;
+}
+
+
+/* Dashboard bookings V2 final polish - queue filters actions */
+
+/* 1) Tighten page rhythm to match the V2 reference more closely */
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-layout {
+  gap: 16px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-page .dsv2-card--padded {
+  padding: clamp(18px, 1.7vw, 24px) !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-hero {
+  min-height: 178px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-hero__actions {
+  align-self: center !important;
+}
+
+/* 2) Fix queue rows: no glued name/date, no half-old layout feeling */
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-list,
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-attention-list {
+  gap: 9px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-list button,
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-attention-list button {
+  min-height: 48px !important;
+  display: grid !important;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 10px 12px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-time {
+  width: auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  color: rgba(5, 8, 13, 0.72) !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-time strong,
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-time small {
+  display: inline-flex !important;
+  margin: 0 !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-copy {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-copy strong {
+  max-width: 170px !important;
+  color: #05080D !important;
+  font-size: 0.88rem !important;
+  font-weight: 950 !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-copy small {
+  max-width: 150px !important;
+  color: rgba(5, 8, 13, 0.56) !important;
+  font-size: 0.72rem !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-copy strong,
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-copy small,
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-ref {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-ref {
+  justify-self: end !important;
+  max-width: 150px !important;
+  color: #05080D !important;
+  opacity: 0.72 !important;
+  font-size: 0.78rem !important;
+}
+
+/* 3) Command center polish: reduce dead space and make controls read like V2 */
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-command {
+  gap: 14px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-command__head {
+  margin-bottom: 2px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-command-primary-row {
+  grid-template-columns: minmax(280px, 1fr) minmax(170px, 220px) auto auto !important;
+  gap: 10px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-search,
+.dashboard-skin.is-bookings-workspace-route .bk-command-select select,
+.dashboard-skin.is-bookings-workspace-route .bk-input,
+.dashboard-skin.is-bookings-workspace-route .bk-select {
+  min-height: 44px !important;
+  border-radius: 18px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-status-tabs {
+  min-height: 48px !important;
+  border: 1px solid rgba(5, 8, 13, 0.08) !important;
+  border-radius: 18px !important;
+  padding: 6px !important;
+  background: #fff !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-status-tab {
+  min-height: 34px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-command-footer {
+  padding-top: 12px !important;
+}
+
+/* 4) Table actions: make them complete, clean, and inside the cell */
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-table th:nth-child(7),
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-table td:nth-child(7),
+.dashboard-skin.is-bookings-workspace-route .bk-actions-cell {
+  width: 310px !important;
+  max-width: 310px !important;
+  min-width: 310px !important;
+}
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+}
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn,
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select {
+  min-height: 32px !important;
+  height: 32px !important;
+  border-radius: 999px !important;
+  font-size: 0.7rem !important;
+  font-weight: 950 !important;
+}
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .bk-owner-status-select {
+  grid-column: 1 / span 2 !important;
+  padding-inline: 10px !important;
+  text-align: center !important;
+}
+.dashboard-skin.is-bookings-workspace-route .bk-actions-row .dsv2-btn--danger {
+  grid-column: 1 / -1 !important;
+  max-width: 170px !important;
+  justify-self: center !important;
+}
+
+/* 5) Payment cell: more compact and readable */
+.dashboard-skin.is-bookings-workspace-route .bk-payment-total {
+  max-width: 150px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-payment-inline-metrics {
+  max-width: 190px !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bk-payment-status {
+  width: fit-content !important;
+}
+
+/* 6) Keep desktop data table enterprise-clean while preserving V2 shell */
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-table td {
+  height: 92px !important;
+  vertical-align: middle !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-table tbody tr {
+  background-clip: padding-box !important;
+}
+
+.dashboard-skin.is-bookings-workspace-route .bookings-v2-table tbody tr:hover {
+  background: rgba(217, 165, 11, 0.05) !important;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-skin.is-bookings-workspace-route .bk-command-primary-row {
+    grid-template-columns: 1fr 180px !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-list button,
+  .dashboard-skin.is-bookings-workspace-route .bookings-v2-attention-list button {
+    grid-template-columns: 1fr auto !important;
+  }
+
+  .dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-time {
+    grid-column: 1 / -1 !important;
+  }
+
+  .dashboard-skin.is-bookings-workspace-route .bookings-v2-queue-ref {
+    justify-self: start !important;
+  }
 }
