@@ -4386,7 +4386,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           </div>
                         </td>
                         <td className="bk-actions-cell">
-                          <div className="bk-actions-row bk-actions-row--enterprise">
+                          <div className="bk-actions-row">
                             <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm bookings-v2-row-primary" onClick={() => setSelectedBooking(b)}>
                               فتح
                             </button>
