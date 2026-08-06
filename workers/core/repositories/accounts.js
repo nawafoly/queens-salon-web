@@ -424,6 +424,7 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
   const firebaseUid = optionalText(data.firebaseUid || data.firebase_uid || data.uid) || null;
   const email = normalizeEmail(data.email);
   if (!firebaseUid && !email) throw new AppError(400, 'ACCOUNT_IDENTIFIER_REQUIRED');
+  if (status === 'active' && !firebaseUid) throw new AppError(400, 'ACCOUNT_FIREBASE_UID_REQUIRED');
 
   const existing = firebaseUid
     ? await getAccountByFirebaseUid(db, salonId, firebaseUid)
@@ -495,6 +496,11 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}) {
   if (nextRole !== target.primary_role) assertActorCanAssignRole(actor, target, nextRole);
 
   const nextStatus = data.status !== undefined ? normalizeStatus(data.status, target.status) : target.status;
+  const nextFirebaseUid =
+    data.firebaseUid !== undefined || data.firebase_uid !== undefined || data.uid !== undefined
+      ? optionalText(data.firebaseUid || data.firebase_uid || data.uid) || null
+      : target.firebase_uid;
+  if (nextStatus === 'active' && !nextFirebaseUid) throw new AppError(400, 'ACCOUNT_FIREBASE_UID_REQUIRED');
   await assertNotLastOwner(db, salonId, target, nextStatus, nextRole);
 
   const fields = [];

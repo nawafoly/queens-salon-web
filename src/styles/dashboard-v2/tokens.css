@@ -3,7 +3,7 @@
    Scope: .dashboard-v2 only
 ========================================================= */
 
-.dashboard-v2 {
+:where(.dashboard-v2, .bookings-v2-modal-overlay) {
   /* Brand palette approved for the dashboard. */
   --dsv2-gold: #d9a50b;
   --dsv2-gold-rgb: 217, 165, 11;
@@ -14,6 +14,13 @@
   --dsv2-green: #177348;
   --dsv2-green-rgb: 23, 115, 72;
   --dsv2-gray: #f2f2f2;
+
+  /* Canonical compatibility aliases used by migrated V2 workspaces. */
+  --dsv2-color-black: var(--dsv2-black);
+  --dsv2-color-gold: var(--dsv2-gold);
+  --dsv2-color-burgundy: var(--dsv2-burgundy);
+  --dsv2-color-green: var(--dsv2-green);
+  --dsv2-color-page: var(--dsv2-gray);
 
   /* Semantic aliases. */
   --dsv2-primary: var(--dsv2-black);
@@ -47,6 +54,7 @@
   /* Status tints. */
   --dsv2-gold-soft: rgba(var(--dsv2-gold-rgb), 0.10);
   --dsv2-gold-softer: rgba(var(--dsv2-gold-rgb), 0.055);
+  --dsv2-gold-faint: var(--dsv2-gold-softer);
   --dsv2-green-soft: rgba(var(--dsv2-green-rgb), 0.075);
   --dsv2-green-border: rgba(var(--dsv2-green-rgb), 0.22);
   --dsv2-burgundy-soft: rgba(var(--dsv2-burgundy-rgb), 0.065);

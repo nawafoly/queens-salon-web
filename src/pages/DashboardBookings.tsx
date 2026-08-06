@@ -101,7 +101,6 @@ import {
 } from "./DashboardBookings.helpers";
 
 // ✅ Styles
-import "../styles/dashboard-v2/pages/bookings.css";
 
 /* =========================
    Constants / Types
@@ -1016,8 +1015,8 @@ const ActionPinModal = memo(function ActionPinModal({
       open={open}
       onClose={handleClose}
       ariaLabel="التحقق بكلمة مرور الحساب"
-      overlayClassName="bk-action-pin-overlay"
-      panelClassName="bk-cancel-modal bk-action-pin-modal"
+      overlayClassName="bookings-v2-modal-overlay bk-action-pin-overlay"
+      panelClassName="bookings-v2-modal-panel bk-cancel-modal bk-action-pin-modal"
       size="sm"
     >
       <div className="bk-cancel-head">تأكيد كلمة مرور الحساب</div>
@@ -1097,7 +1096,7 @@ const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
   return (
     <>
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>اسم العميلة</div>
+        <div className="bk-field-label">اسم العميلة</div>
         <input
           type="text"
           className="bk-input"
@@ -1109,7 +1108,7 @@ const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
       </label>
 
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>رقم الجوال</div>
+        <div className="bk-field-label">رقم الجوال</div>
         <input
           type="text"
           className="bk-input"
@@ -1154,7 +1153,7 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
     <>
       <div className="bk-edit-grid bk-edit-grid--catalog">
         <label>
-          <div style={{ fontSize: 13, marginBottom: 4 }}>القسم</div>
+          <div className="bk-field-label">القسم</div>
           <select
             className="bk-select"
             value={sectionId}
@@ -1171,7 +1170,7 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
         </label>
 
         <label>
-          <div style={{ fontSize: 13, marginBottom: 4 }}>التصنيف</div>
+          <div className="bk-field-label">التصنيف</div>
           <select
             className="bk-select"
             value={categoryId}
@@ -1191,7 +1190,7 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
       </div>
 
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>الخدمة</div>
+        <div className="bk-field-label">الخدمة</div>
         <select
           className="bk-select"
           value={serviceId}
@@ -1240,7 +1239,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   return (
     <div className="bk-edit-grid">
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>الموظفة</div>
+        <div className="bk-field-label">الموظفة</div>
         <select
           className="bk-select"
           value={employeeId}
@@ -1264,7 +1263,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       </label>
 
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>التاريخ</div>
+        <div className="bk-field-label">التاريخ</div>
         <input
           type="date"
           className="bk-input"
@@ -1275,7 +1274,7 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
       </label>
 
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>الوقت</div>
+        <div className="bk-field-label">الوقت</div>
         <input
           type="time"
           className="bk-input"
@@ -1339,7 +1338,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   return (
     <>
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>السعر النهائي</div>
+        <div className="bk-field-label">السعر النهائي</div>
         <input
           type="number"
           min={0}
@@ -1353,7 +1352,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       </label>
 
       <label>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع</div>
+        <div className="bk-field-label">نوع الدفع</div>
         <select
           className="bk-select"
           value={paymentMethod === "none" ? "none" : paymentType}
@@ -1368,7 +1367,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
 
       {paymentMethod !== "none" ? (
         <label>
-          <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+          <div className="bk-field-label">طريقة الدفع</div>
           <select
             className="bk-select"
             value={paymentMethod}
@@ -1387,7 +1386,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       {paymentMethod === "mixed" ? (
         <div className="bk-mixed-payment-box">
           <label>
-            <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الكاش</div>
+            <div className="bk-field-label">مبلغ الكاش</div>
             <input
               type="number"
               min={0}
@@ -1400,7 +1399,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
             />
           </label>
           <label>
-            <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الشبكة</div>
+            <div className="bk-field-label">مبلغ الشبكة</div>
             <input
               type="number"
               min={0}
@@ -1420,7 +1419,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
 
       {paymentMethod !== "none" && paymentMethod !== "mixed" && paymentType === "partial" ? (
         <label>
-          <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+          <div className="bk-field-label">مبلغ العربون</div>
           <input
             type="number"
             min={0}
@@ -1434,7 +1433,7 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
         </label>
       ) : null}
 
-      <div style={{ fontSize: 12, color: "#667085" }}>
+      <div className="bk-helper-text">
         المتبقي بعد التعديل: {remainingAfterEditText}
       </div>
     </>
@@ -1454,7 +1453,7 @@ const EditBookingNoteSection = memo(function EditBookingNoteSection({
 }: EditBookingNoteSectionProps) {
   return (
     <label>
-      <div style={{ fontSize: 13, marginBottom: 4 }}>ملاحظة الحجز</div>
+      <div className="bk-field-label">ملاحظة الحجز</div>
       <textarea
         className="bk-input"
         rows={3}
@@ -2094,8 +2093,9 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       open={open}
       onClose={handleClose}
       ariaLabel="تعديل الحجز"
-      panelClassName="bk-edit-modal"
-      size="sm"
+      overlayClassName="bookings-v2-modal-overlay"
+      panelClassName="bookings-v2-modal-panel bk-edit-modal"
+      size="lg"
     >
       <div className="bk-cancel-head">تعديل الحجز</div>
       <div className="bk-cancel-body">
@@ -2158,7 +2158,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
           <EditBookingNoteSection note={draft.note} disabled={saving} onNoteChange={onNoteChange} />
         </div>
 
-        {error ? <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{error}</div> : null}
+        {error ? <div className="bk-inline-error">{error}</div> : null}
       </div>
       <div className="bk-cancel-foot">
         <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={saving}>
@@ -4414,18 +4414,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               {refundMapByBookingId[String(b.id || "").trim()] ? "الاسترجاع" : "استرجاع"}
                             </button>
                             {(uiRole === "owner" || uiRole === "admin") ? (
-                              <select
-                                className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                                value={b.status}
-                                onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                                aria-label={`تغيير حالة الحجز ${bookingRef(b)}`}
-                              >
+                              <details className={`bk-status-menu bk-owner-status-${b.status}`}>
+                              <summary aria-label={`تغيير حالة الحجز ${bookingRef(b)}`}>
+                                {statusLabel[b.status]}
+                              </summary>
+                              <div className="bk-status-menu__panel" role="menu">
                                 {allStatusOptions.map((s) => (
-                                  <option key={`desk_${b.id}_${s}`} value={s}>
+                                  <button
+                                    key={`desk_${b.id}_${s}`}
+                                    type="button"
+                                    className={s === b.status ? "is-active" : ""}
+                                    onClick={(event) => {
+                                      const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
+                                      details?.removeAttribute("open");
+                                      handleUpdateStatus(b.id, s);
+                                    }}
+                                  >
                                     {statusLabel[s]}
-                                  </option>
+                                  </button>
                                 ))}
-                              </select>
+                              </div>
+                            </details>
                             ) : null}
                             {uiRole === "owner" ? (
                               <button
@@ -4492,7 +4501,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                       <div className="bk-mobile-row">
                         <span className="bk-mobile-label">رقم الحجز:</span>
                         <span className="bk-mobile-val bk-mobile-ref-value">
-                          <bdi className="bk-numeric" dir="ltr" style={{ fontWeight: 900 }}>{bookingRef(b)}</bdi>
+                          <bdi className="bk-numeric bk-font-strong" dir="ltr">{bookingRef(b)}</bdi>
                           {isNewBooking ? <span className="bk-mobile-new-badge">جديد</span> : null}
                         </span>
                       </div>
@@ -4508,7 +4517,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         <span className="bk-mobile-label">الخدمة:</span>
                         <span className="bk-mobile-val">
                           {serviceSummaryForTable(b)}
-                          <div style={{ fontSize: 11, opacity: 0.75 }}>{serviceMetaSummaryForTable(b)}</div>
+                          <div className="bk-cell-meta">{serviceMetaSummaryForTable(b)}</div>
                         </span>
                       </div>
                       <div className="bk-mobile-row">
@@ -4583,18 +4592,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                                 حذف الحجز
                               </button>
                             )}
-                            <select
-                              className={`bk-select sm bk-owner-status-select bk-owner-status-compact bk-owner-status-${b.status}`}
-                              style={{ height: 40, padding: "0 12px", fontSize: 12 }}
-                              value={b.status}
-                              onChange={(e) => handleUpdateStatus(b.id, e.target.value as BookingStatus)}
-                            >
-                              {allStatusOptions.map((s) => (
-                                <option key={`mob_${b.id}_${s}`} value={s}>
-                                  {statusLabel[s]}
-                                </option>
-                              ))}
-                            </select>
+                            <details className={`bk-status-menu bk-status-menu--mobile bk-owner-status-${b.status}`}>
+                              <summary>
+                                {statusLabel[b.status]}
+                              </summary>
+                              <div className="bk-status-menu__panel" role="menu">
+                                {allStatusOptions.map((s) => (
+                                  <button
+                                    key={`mob_${b.id}_${s}`}
+                                    type="button"
+                                    className={s === b.status ? "is-active" : ""}
+                                    onClick={(event) => {
+                                      const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
+                                      details?.removeAttribute("open");
+                                      handleUpdateStatus(b.id, s);
+                                    }}
+                                  >
+                                    {statusLabel[s]}
+                                  </button>
+                                ))}
+                              </div>
+                            </details>
                           </>
                         )}
                         {uiRole === "reception" && b.status === "pending" && (
@@ -4686,14 +4704,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     setBookingsRefreshKey((current) => current + 1);
   }, []);
 
-  if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
+  if (loading) {
+    return (
+      <main className="dsv2-page bookings-v2-page" dir="rtl">
+        <section className="dsv2-card dsv2-card--padded bookings-v2-loading" role="status">
+          <strong>جاري تحميل الحجوزات...</strong>
+          <span>يتم تجهيز قائمة الحجوزات والحالات المالية.</span>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="dsv2-page bookings-v2-page" dir="rtl" aria-labelledby="bookings-v2-title">
       <div className="bookings-v2-layout">
         <header className="dsv2-card dsv2-card--padded dsv2-card--elevated bookings-v2-hero">
           <div className="bookings-v2-hero__content">
-            <span className="dsv2-badge dsv2-badge--gold">Queens Salon • Booking Operations</span>
+            <span className="dsv2-badge dsv2-badge--gold">تشغيل الحجوزات</span>
             <h1 id="bookings-v2-title" className="dsv2-page-title">مركز إدارة الحجوزات</h1>
             <p className="dsv2-page-subtitle">واجهة تشغيل موحدة لمتابعة الحجوزات الجديدة، المواعيد، التحصيل، والإجراءات اليومية.</p>
           </div>
@@ -4713,25 +4740,25 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         {error ? <div className="bookings-v2-error" role="alert">{error}</div> : null}
 
         <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label="ملخص عمليات الحجوزات">
-          <article className="dsv2-metric-card bookings-v2-metric">
+          <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
             <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
-            <div><small>حجوزات اليوم</small><strong>{bookingOperationsOverview.todayCount}</strong><em>{bookingOperationsOverview.today}</em></div>
+            <div><small className="dsv2-metric-card__label">حجوزات اليوم</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayCount}</strong><em className="dsv2-metric-card__meta">{bookingOperationsOverview.today}</em></div>
           </article>
-          <article className="dsv2-metric-card bookings-v2-metric">
+          <article className="dsv2-metric-card dsv2-metric-card--success bookings-v2-metric">
             <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
-            <div><small>المؤكد والمكتمل اليوم</small><strong>{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em>مؤكد {bookingOperationsOverview.todayConfirmed} • مكتمل {bookingOperationsOverview.todayCompleted}</em></div>
+            <div><small className="dsv2-metric-card__label">المؤكد والمكتمل اليوم</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em className="dsv2-metric-card__meta">مؤكد {bookingOperationsOverview.todayConfirmed} • مكتمل {bookingOperationsOverview.todayCompleted}</em></div>
           </article>
-          <article className="dsv2-metric-card bookings-v2-metric">
+          <article className="dsv2-metric-card dsv2-metric-card--dark bookings-v2-metric">
             <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
-            <div><small>المحصّل اليوم</small><strong><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} /></strong><em>حسب الحجوزات المحمّلة</em></div>
+            <div><small className="dsv2-metric-card__label">المحصّل اليوم</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} /></strong><em className="dsv2-metric-card__meta">حسب الحجوزات المحمّلة</em></div>
           </article>
-          <article className="dsv2-metric-card bookings-v2-metric bookings-v2-metric--alert">
+          <article className="dsv2-metric-card dsv2-metric-card--danger bookings-v2-metric bookings-v2-metric--alert">
             <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
-            <div><small>تحتاج متابعة</small><strong>{attentionBookingCount}</strong><em>حجوزات قديمة أو غير مغلقة</em></div>
+            <div><small className="dsv2-metric-card__label">تحتاج متابعة</small><strong className="dsv2-metric-card__value">{attentionBookingCount}</strong><em className="dsv2-metric-card__meta">حجوزات قديمة أو غير مغلقة</em></div>
           </article>
-          <article className="dsv2-metric-card bookings-v2-metric">
+          <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
             <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
-            <div><small>إجمالي المتبقي</small><strong><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em>على كل الحجوزات غير الملغاة</em></div>
+            <div><small className="dsv2-metric-card__label">إجمالي المتبقي</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em className="dsv2-metric-card__meta">على كل الحجوزات غير الملغاة</em></div>
           </article>
         </section>
 
@@ -4740,8 +4767,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
                 <span className="bk-panel-kicker">الوارد الجديد</span>
-                <h2>الحجوزات الجديدة</h2>
-                <p>أحدث الحجوزات التي لم يتم الاطلاع عليها بعد.</p>
+                <h2 className="dsv2-section-title">الحجوزات الجديدة</h2>
+                <p className="dsv2-section-caption">أحدث الحجوزات التي لم يتم الاطلاع عليها بعد.</p>
               </div>
               <span className="bk-panel-count">{unseenNewBookings.length}</span>
             </div>
@@ -4749,7 +4776,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             {unseenNewPreviewBookings.length ? (
               <div className="bookings-v2-queue-list">
                 {unseenNewPreviewBookings.map((booking) => (
-                  <button key={`enterprise_new_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
+                  <button key={`booking_new_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
                     <span className="bookings-v2-queue-time">
                       <strong>{formatTime12(booking.time)}</strong>
                       <small>{booking.date}</small>
@@ -4780,8 +4807,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
                 <span className="bk-panel-kicker">مركز المتابعة</span>
-                <h2>حجوزات تحتاج إجراء</h2>
-                <p>الحجوزات المتأخرة أو التي بقيت بحالة مفتوحة.</p>
+                <h2 className="dsv2-section-title">حجوزات تحتاج إجراء</h2>
+                <p className="dsv2-section-caption">الحجوزات المتأخرة أو التي بقيت بحالة مفتوحة.</p>
               </div>
               <span className="bk-panel-count is-warning">{attentionBookingCount}</span>
             </div>
@@ -4878,7 +4905,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
           </div>
 
-          <div className="bk-status-tabs bk-status-tabs--enterprise" role="tablist" aria-label="فلترة حالة الحجز">
+          <div className="bk-status-tabs" role="tablist" aria-label="فلترة حالة الحجز">
             {([
               ["all", "الكل", statusTabCounts.all],
               ["pending", "بالانتظار", statusTabCounts.pending],
@@ -4996,7 +5023,28 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} من {filteredSorted.length}
           </div>
           <div className="bk-pagination-controls">
-            <label>لكل صفحة<select className="bk-select" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) || DEFAULT_PAGE_SIZE)}>{pageSizeOptions.map((size) => <option key={`page_size_${size}`} value={size}>{size}</option>)}</select></label>
+            <div className="bk-page-size-control">
+              <span>لكل صفحة</span>
+              <details className="bk-page-size-menu">
+                <summary aria-label={`عدد الحجوزات في الصفحة: ${pageSize}`}>{pageSize}</summary>
+                <div className="bk-page-size-menu__panel" role="menu">
+                  {pageSizeOptions.map((size) => (
+                    <button
+                      key={`page_size_${size}`}
+                      type="button"
+                      className={size === pageSize ? "is-active" : ""}
+                      onClick={(event) => {
+                        const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
+                        details?.removeAttribute("open");
+                        setPageSize(size);
+                      }}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            </div>
             <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>الأولى</button>
             <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>السابق</button>
             <span className="bk-page-number">{currentPage} / {totalPages}</span>
@@ -5010,7 +5058,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             open={!!selectedBooking}
             onClose={closeBookingModal}
             ariaLabel="تفاصيل الحجز"
-            panelClassName="bk-modal"
+            overlayClassName="bookings-v2-modal-overlay"
+            panelClassName="bookings-v2-modal-panel bk-modal"
             size="lg"
           >
             <div className="modal-head">
@@ -5361,7 +5410,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <div key={`${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
                       <span>
                         {toArabicOnlyLabel(String(s.serviceName || s.serviceId || ""), "خدمة")}
-                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                        <div className="bk-cell-meta">
                           {toArabicOnlyLabel(String(s.sectionLabel || ""), "—")} • {toArabicOnlyLabel(String(s.categoryLabel || ""), "—")}
                         </div>
                       </span>
@@ -5515,7 +5564,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!bulkTargetStatus}
           onClose={closeBulkStatusModal}
           ariaLabel="تأكيد الإجراء الجماعي للحجوزات"
-          panelClassName="bk-cancel-modal bk-bulk-modal"
+          overlayClassName="bookings-v2-modal-overlay"
+          panelClassName="bookings-v2-modal-panel bk-cancel-modal bk-bulk-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد الإجراء الجماعي</div>
@@ -5562,7 +5612,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!refundTarget}
           onClose={closeRefundModal}
           ariaLabel="الاسترجاع"
-          panelClassName="bk-refund-modal"
+          overlayClassName="bookings-v2-modal-overlay"
+          panelClassName="bookings-v2-modal-panel bk-refund-modal"
           size="sm"
         >
           <div className="bk-cancel-head">إدارة الاسترجاع</div>
@@ -5593,9 +5644,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               )}
             </div>
 
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            <div className="bk-refund-form">
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الاسترجاع</div>
+                <div className="bk-field-label">مبلغ الاسترجاع</div>
                 <input
                   type="number"
                   className="bk-input"
@@ -5607,7 +5658,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الاسترجاع</div>
+                <div className="bk-field-label">طريقة الاسترجاع</div>
                 <select
                   className="bk-select"
                   value={refundDraft.method}
@@ -5625,7 +5676,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>تاريخ الاسترجاع</div>
+                <div className="bk-field-label">تاريخ الاسترجاع</div>
                 <input
                   type="date"
                   className="bk-input"
@@ -5636,7 +5687,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>سبب الاسترجاع</div>
+                <div className="bk-field-label">سبب الاسترجاع</div>
                 <input
                   type="text"
                   className="bk-input"
@@ -5648,7 +5699,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>تفاصيل إضافية</div>
+                <div className="bk-field-label">تفاصيل إضافية</div>
                 <textarea
                   className="bk-input"
                   rows={3}
@@ -5661,7 +5712,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             {refundError ? (
-              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{refundError}</div>
+              <div className="bk-inline-error">{refundError}</div>
             ) : null}
           </div>
           <div className="bk-cancel-foot">
@@ -5699,7 +5750,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!confirmTarget}
           onClose={closeConfirmModal}
           ariaLabel="تأكيد الحجز مع الدفع"
-          panelClassName="bk-edit-modal"
+          overlayClassName="bookings-v2-modal-overlay"
+          panelClassName="bookings-v2-modal-panel bk-edit-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد الحجز</div>
@@ -5712,7 +5764,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
             <div className="bk-edit-form">
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع وقت التأكيد</div>
+                <div className="bk-field-label">نوع الدفع وقت التأكيد</div>
                 <select
                   className="bk-select"
                   value={confirmDraft.paymentMode}
@@ -5746,7 +5798,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               {confirmDraft.paymentMode !== "none" ? (
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+                  <div className="bk-field-label">طريقة الدفع</div>
                   <select
                     className="bk-select"
                     value={confirmDraft.paymentMethod}
@@ -5775,7 +5827,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               {confirmDraft.paymentMethod === "mixed" ? (
                 <div className="bk-mixed-payment-box">
                   <label>
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الكاش</div>
+                    <div className="bk-field-label">مبلغ الكاش</div>
                     <input
                       type="number"
                       min={0}
@@ -5789,7 +5841,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     />
                   </label>
                   <label>
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ الشبكة</div>
+                    <div className="bk-field-label">مبلغ الشبكة</div>
                     <input
                       type="number"
                       min={0}
@@ -5821,7 +5873,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               {confirmDraft.paymentMode === "partial" && confirmDraft.paymentMethod !== "mixed" ? (
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+                  <div className="bk-field-label">مبلغ العربون</div>
                   <input
                     type="number"
                     min={0}
@@ -5837,7 +5889,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </label>
               ) : null}
 
-              <div style={{ fontSize: 12, color: "#667085" }}>
+              <div className="bk-helper-text">
                 {(() => {
                   const total = readBookingTotalAmount(confirmTarget);
                   const paid =
@@ -5863,7 +5915,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             {confirmError ? (
-              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{confirmError}</div>
+              <div className="bk-inline-error">{confirmError}</div>
             ) : null}
           </div>
           <div className="bk-cancel-foot">
@@ -5907,7 +5959,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
             <div className="bk-edit-form">
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>اسم العميلة</div>
+                <div className="bk-field-label">اسم العميلة</div>
                 <input
                   type="text"
                   className="bk-input"
@@ -5919,7 +5971,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>رقم الجوال</div>
+                <div className="bk-field-label">رقم الجوال</div>
                 <input
                   type="text"
                   className="bk-input"
@@ -5932,7 +5984,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               <div className="bk-edit-grid bk-edit-grid--catalog">
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>القسم</div>
+                  <div className="bk-field-label">القسم</div>
                   <select
                     className="bk-select"
                     value={editDraft.sectionId}
@@ -5957,7 +6009,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </label>
 
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>التصنيف</div>
+                  <div className="bk-field-label">التصنيف</div>
                   <select
                     className="bk-select"
                     value={editDraft.categoryId}
@@ -5984,7 +6036,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </div>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>الخدمة</div>
+                <div className="bk-field-label">الخدمة</div>
                 <select
                   className="bk-select"
                   value={editDraft.serviceId}
@@ -6018,7 +6070,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               <div className="bk-edit-grid">
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>التاريخ</div>
+                  <div className="bk-field-label">التاريخ</div>
                   <input
                     type="date"
                     className="bk-input"
@@ -6029,7 +6081,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </label>
 
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>الوقت</div>
+                  <div className="bk-field-label">الوقت</div>
                   <input
                     type="time"
                     className="bk-input"
@@ -6041,7 +6093,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </div>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>السعر النهائي</div>
+                <div className="bk-field-label">السعر النهائي</div>
                 <input
                   type="number"
                   min={0}
@@ -6055,7 +6107,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </label>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>نوع الدفع</div>
+                <div className="bk-field-label">نوع الدفع</div>
                 <select
                   className="bk-select"
                   value={editDraft.paymentMethod === "none" ? "none" : editDraft.paymentType}
@@ -6087,7 +6139,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               {editDraft.paymentMethod !== "none" ? (
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>طريقة الدفع</div>
+                  <div className="bk-field-label">طريقة الدفع</div>
                   <select
                     className="bk-select"
                     value={editDraft.paymentMethod}
@@ -6109,7 +6161,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
               {editDraft.paymentMethod !== "none" && editDraft.paymentType === "partial" ? (
                 <label>
-                  <div style={{ fontSize: 13, marginBottom: 4 }}>مبلغ العربون</div>
+                  <div className="bk-field-label">مبلغ العربون</div>
                   <input
                     type="number"
                     min={0}
@@ -6123,7 +6175,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 </label>
               ) : null}
 
-              <div style={{ fontSize: 12, color: "#667085" }}>
+              <div className="bk-helper-text">
                 المتبقي بعد التعديل:{" "}
                 {(() => {
                   const total = Math.max(0, Number(editDraft.price || 0));
@@ -6138,7 +6190,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </div>
 
               <label>
-                <div style={{ fontSize: 13, marginBottom: 4 }}>ملاحظة الحجز</div>
+                <div className="bk-field-label">ملاحظة الحجز</div>
                 <textarea
                   className="bk-input"
                   rows={3}
@@ -6151,7 +6203,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             {editError ? (
-              <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{editError}</div>
+              <div className="bk-inline-error">{editError}</div>
             ) : null}
           </div>
           <div className="bk-cancel-foot">
@@ -6179,7 +6231,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!cancelTarget}
           onClose={() => (cancelBusy ? null : closeCancelModal())}
           ariaLabel="تأكيد إلغاء الحجز"
-          panelClassName="bk-cancel-modal"
+          overlayClassName="bookings-v2-modal-overlay"
+          panelClassName="bookings-v2-modal-panel bk-cancel-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد إلغاء الحجز</div>

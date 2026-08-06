@@ -12,7 +12,6 @@ import {
   DashboardToastProviderV2,
   useDashboardToastV2,
 } from "../index";
-import "../../../styles/dashboard-v2/pages/employee-workspace.css";
 import { BasicTabV2, ProfileTabV2, ServicesTabV2 } from "./EmployeeWorkspaceProfileTabsV2";
 import { AttendanceTabV2, ScheduleTabV2, ShiftsTabV2 } from "./EmployeeWorkspaceTimeTabsV2";
 import { LeavesTabV2, PayrollTabV2, RequestsTabV2 } from "./EmployeeWorkspacePeopleTabsV2";

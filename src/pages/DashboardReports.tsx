@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import "../styles/dashboard-v2/pages/reports.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
 import {
@@ -10,6 +9,10 @@ import {
   faFilePdf,
 } from "@fortawesome/free-solid-svg-icons";
 import { CoreHrService } from "../services/CoreHrService";
+import {
+  generatePayrollEntriesForMonths,
+  type PayrollEntryView,
+} from "../services/CorePayrollService";
 import { CoreSettingsService } from "../services/CoreSettingsService";
 import { listCoreBookings } from "../services/firestoreBookings";
 import { listAllIncomeCore } from "../services/firestoreIncome";
@@ -72,6 +75,9 @@ type ExpenseRow = {
   note: string;
   addedBy: string;
   createdAtMs: number;
+  employeeId?: string;
+  payrollMonth?: string;
+  payrollKind?: "salary" | "overtime";
 };
 
 type RevenueDetailsRow = {
@@ -716,6 +722,11 @@ export default function DashboardReports() {
   const [incomeRows, setIncomeRows] = useState<IncomeRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [staffRows, setStaffRows] = useState<StaffPayrollSource[]>([]);
+  const [payrollEntries, setPayrollEntries] = useState<any[]>([]);
+  const [calculatedPayrollEntries, setCalculatedPayrollEntries] = useState<PayrollEntryView[]>([]);
+  const [calculatedPayrollMonthKeys, setCalculatedPayrollMonthKeys] = useState<string[]>([]);
+  const [payrollCalculationLoading, setPayrollCalculationLoading] = useState(false);
+  const [payrollCalculationError, setPayrollCalculationError] = useState("");
   const [appSettings, setAppSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastSyncMs, setLastSyncMs] = useState<number>(Date.now());
@@ -730,11 +741,12 @@ export default function DashboardReports() {
 
   useEffect(() => {
     let active = true;
-    let pending = 5;
+    let pending = 6;
     let bookingsReady = false;
     let incomeReady = false;
     let expensesReady = false;
     let staffReady = false;
+    let payrollReady = false;
     let settingsReady = false;
     setLoading(true);
     setLoadErr("");
@@ -743,11 +755,12 @@ export default function DashboardReports() {
       pending -= 1;
       if (active && pending <= 0) setLoading(false);
     };
-    const readyOnce = (key: "bookings" | "income" | "expenses" | "staff" | "settings") => {
+    const readyOnce = (key: "bookings" | "income" | "expenses" | "staff" | "payroll" | "settings") => {
       if (key === "bookings" && !bookingsReady) { bookingsReady = true; done(); }
       if (key === "income" && !incomeReady) { incomeReady = true; done(); }
       if (key === "expenses" && !expensesReady) { expensesReady = true; done(); }
       if (key === "staff" && !staffReady) { staffReady = true; done(); }
+      if (key === "payroll" && !payrollReady) { payrollReady = true; done(); }
       if (key === "settings" && !settingsReady) { settingsReady = true; done(); }
     };
     const appendLoadError = (label: string, error: unknown) => {
@@ -873,6 +886,19 @@ export default function DashboardReports() {
       }
     };
 
+    const loadPayrollEntriesData = async () => {
+      try {
+        const rows = await CoreHrService.listPayrollEntries();
+        if (!active) return;
+        setPayrollEntries(Array.isArray(rows) ? rows : []);
+        setLastSyncMs(Date.now());
+      } catch (error) {
+        if (active) appendLoadError("تعذر تحميل كشوف الرواتب", error);
+      } finally {
+        if (active) readyOnce("payroll");
+      }
+    };
+
     const loadSettingsData = async () => {
       try {
         const setting = await CoreSettingsService.get<any>("app");
@@ -890,6 +916,7 @@ export default function DashboardReports() {
     };
 
     void loadStaffData();
+    void loadPayrollEntriesData();
     void loadSettingsData();
 
     return () => {
@@ -897,6 +924,57 @@ export default function DashboardReports() {
       globalThis.clearInterval(refreshTimer);
     };
   }, []);
+
+  const requestedPayrollMonthKeys = useMemo(() => {
+    const keys = new Set(monthKeysBetween(range.from, range.to));
+    const fromCycleKey = payrollCycleKeyFromDate(range.from, PAYROLL_CLOSE_DAY);
+    const toCycleKey = payrollCycleKeyFromDate(range.to, PAYROLL_CLOSE_DAY);
+    if (fromCycleKey) keys.add(fromCycleKey);
+    if (toCycleKey) keys.add(toCycleKey);
+    if (period === "month" && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      keys.add(selectedMonth);
+    }
+    return Array.from(keys).sort((left, right) => left.localeCompare(right));
+  }, [period, range.from, range.to, selectedMonth]);
+
+  const requestedPayrollMonthKeysSignature = requestedPayrollMonthKeys.join(",");
+
+  useEffect(() => {
+    let active = true;
+    if (!requestedPayrollMonthKeys.length) {
+      setCalculatedPayrollEntries([]);
+      setCalculatedPayrollMonthKeys([]);
+      setPayrollCalculationError("");
+      return () => {
+        active = false;
+      };
+    }
+
+    setPayrollCalculationLoading(true);
+    setPayrollCalculationError("");
+    void generatePayrollEntriesForMonths({ monthKeys: requestedPayrollMonthKeys })
+      .then((entries) => {
+        if (!active) return;
+        setCalculatedPayrollEntries(entries);
+        setCalculatedPayrollMonthKeys(requestedPayrollMonthKeys);
+        setLastSyncMs(Date.now());
+      })
+      .catch((error) => {
+        if (!active) return;
+        setCalculatedPayrollEntries([]);
+        setCalculatedPayrollMonthKeys([]);
+        setPayrollCalculationError(
+          `تعذر احتساب مسير جميع الموظفات: ${String((error as any)?.message || error || "خطأ غير معروف")}`
+        );
+      })
+      .finally(() => {
+        if (active) setPayrollCalculationLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [requestedPayrollMonthKeysSignature]);
 
   const bookingById = useMemo(() => {
     const map: Record<string, BookingRow> = {};
@@ -1002,18 +1080,185 @@ export default function DashboardReports() {
       note: String(x.note || "").trim(),
       addedBy: "النظام (رواتب)",
       createdAtMs: Number(x.createdAt || 0),
+      employeeId: String(x.staffId || "").trim() || undefined,
+      payrollMonth: String(x.monthKey || "").trim() || undefined,
+      payrollKind: x.kind,
     }));
   }, [staffRows, bookings, appSettings, payrollMonthKeys]);
 
+  const recordedPayrollEmployeeMonthKeys = useMemo(() => {
+    const keys = new Set<string>();
+    payrollEntries.forEach((entry) => {
+      const monthKey = String(entry?.payrollMonth || entry?.payroll_month || "").trim();
+      const employeeId = String(entry?.employeeId || entry?.employee_id || "").trim();
+      if (/^\d{4}-\d{2}$/.test(monthKey) && employeeId) {
+        keys.add(`${employeeId}|${monthKey}`);
+      }
+    });
+    return keys;
+  }, [payrollEntries]);
+
+  const recordedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
+    const rows: ExpenseRow[] = [];
+    payrollEntries.forEach((entry) => {
+      const id = String(entry?.id || "").trim();
+      const monthKey = String(entry?.payrollMonth || entry?.payroll_month || "").trim();
+      if (!id || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+
+      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
+      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
+      const employeeName = String(entry?.employeeName || entry?.employee_name || entry?.employeeId || entry?.employee_id || "موظفة").trim();
+      const finalHalalas = Number(
+        entry?.finalSalaryHalalas ??
+          entry?.final_salary_halalas ??
+          entry?.netSalaryHalalas ??
+          entry?.net_salary_halalas ??
+          0
+      );
+      const overtimeHalalas = Math.max(
+        0,
+        Number(entry?.overtimeValueHalalas ?? entry?.overtime_value_halalas ?? 0) +
+          Number(entry?.overtimeBonusHalalas ?? entry?.overtime_bonus_halalas ?? 0)
+      );
+      const salaryHalalas = Math.max(0, finalHalalas - overtimeHalalas);
+      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
+
+      if (salaryHalalas > 0) {
+        rows.push({
+          id: `auto_payroll_salary_core_${id}`,
+          date,
+          amount: salaryHalalas / 100,
+          category: "رواتب الموظفات",
+          title: `راتب ${employeeName} (${monthKey})`,
+          note: "كشف راتب محفوظ في Core D1",
+          addedBy: "النظام (كشف راتب)",
+          createdAtMs,
+          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
+          payrollMonth: monthKey,
+          payrollKind: "salary",
+        });
+      }
+
+      if (overtimeHalalas > 0) {
+        rows.push({
+          id: `auto_payroll_overtime_core_${id}`,
+          date,
+          amount: overtimeHalalas / 100,
+          category: "أوفر تايم",
+          title: `أوفر تايم ${employeeName} (${monthKey})`,
+          note: "قيمة أوفر تايم محفوظة في كشف الراتب",
+          addedBy: "النظام (كشف راتب)",
+          createdAtMs,
+          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
+          payrollMonth: monthKey,
+          payrollKind: "overtime",
+        });
+      }
+    });
+    return rows;
+  }, [payrollEntries]);
+
+  const calculatedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
+    const rows: ExpenseRow[] = [];
+    calculatedPayrollEntries.forEach((entry) => {
+      const employeeId = String(entry.employeeId || "").trim();
+      const employeeName = String(entry.employeeName || employeeId || "موظفة").trim();
+      const monthKey = String(entry.payrollMonth || "").trim();
+      if (!employeeId || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+
+      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
+      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
+      const netHalalas = Math.max(0, Number(entry.netSalaryHalalas || entry.finalSalaryHalalas || 0));
+      const overtimeHalalas = Math.min(
+        netHalalas,
+        Math.max(0, Number(entry.overtimeValueHalalas || 0))
+      );
+      const salaryHalalas = Math.max(0, netHalalas - overtimeHalalas);
+      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
+
+      if (salaryHalalas > 0) {
+        rows.push({
+          id: `auto_payroll_salary_live_${employeeId}_${monthKey}`,
+          date,
+          amount: salaryHalalas / 100,
+          category: "رواتب الموظفات",
+          title: `صافي راتب ${employeeName} (${monthKey})`,
+          note: entry.saved
+            ? "صافي مسير محفوظ بعد الإضافات والخصومات"
+            : "صافي مسير محسوب تلقائيًا لجميع الموظفات",
+          addedBy: "النظام (احتساب المسير)",
+          createdAtMs,
+          employeeId,
+          payrollMonth: monthKey,
+          payrollKind: "salary",
+        });
+      }
+
+      if (overtimeHalalas > 0) {
+        rows.push({
+          id: `auto_payroll_overtime_live_${employeeId}_${monthKey}`,
+          date,
+          amount: overtimeHalalas / 100,
+          category: "أوفر تايم",
+          title: `أوفر تايم ${employeeName} (${monthKey})`,
+          note: "قيمة الأوفر تايم ضمن صافي المسير المحسوب",
+          addedBy: "النظام (احتساب المسير)",
+          createdAtMs,
+          employeeId,
+          payrollMonth: monthKey,
+          payrollKind: "overtime",
+        });
+      }
+    });
+    return rows;
+  }, [calculatedPayrollEntries]);
+
+  const calculatedPayrollMonthKeySet = useMemo(
+    () => new Set(calculatedPayrollMonthKeys),
+    [calculatedPayrollMonthKeys]
+  );
+
+  const effectiveAutoPayrollExpenses = useMemo(
+    () =>
+      autoPayrollExpenses.filter((row) => {
+        const monthKey = String(
+          row.payrollMonth || payrollCycleKeyFromDate(String(row.date || ""), PAYROLL_CLOSE_DAY)
+        ).trim();
+        if (monthKey && calculatedPayrollMonthKeySet.has(monthKey)) return false;
+        const employeeId = String(row.employeeId || "").trim();
+        return !employeeId || !monthKey || !recordedPayrollEmployeeMonthKeys.has(`${employeeId}|${monthKey}`);
+      }),
+    [autoPayrollExpenses, calculatedPayrollMonthKeySet, recordedPayrollEmployeeMonthKeys]
+  );
+
+  const effectiveRecordedPayrollExpenses = useMemo(
+    () =>
+      recordedPayrollExpenses.filter((row) => {
+        const monthKey = String(row.payrollMonth || "").trim();
+        return !monthKey || !calculatedPayrollMonthKeySet.has(monthKey);
+      }),
+    [recordedPayrollExpenses, calculatedPayrollMonthKeySet]
+  );
+
   const expensesWithPayroll = useMemo(() => {
     const map = new Map<string, ExpenseRow>();
-    [...expenses, ...autoPayrollExpenses].forEach((x) => {
+    [
+      ...expenses,
+      ...effectiveAutoPayrollExpenses,
+      ...effectiveRecordedPayrollExpenses,
+      ...calculatedPayrollExpenses,
+    ].forEach((x) => {
       const id = String(x?.id || "").trim();
       if (!id) return;
       map.set(id, x);
     });
     return Array.from(map.values());
-  }, [expenses, autoPayrollExpenses]);
+  }, [
+    expenses,
+    effectiveAutoPayrollExpenses,
+    effectiveRecordedPayrollExpenses,
+    calculatedPayrollExpenses,
+  ]);
 
   const expensesInRange = useMemo(
     () => expensesWithPayroll.filter((x) => inDateRange(x.date, range.from, range.to)),
@@ -1305,12 +1550,12 @@ export default function DashboardReports() {
       value: statusCount[k],
     }));
 
-    const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number; color: string }> = [
-      { label: sourceLabel("booking"), key: "booking", value: 0, color: "#40010D" },
-      { label: sourceLabel("invoice"), key: "invoice", value: 0, color: "#7A1F3D" },
-      { label: sourceLabel("internal"), key: "internal", value: 0, color: "#5C0A9D" },
-      { label: sourceLabel("refund"), key: "refund", value: 0, color: "#888C8C" },
-      { label: sourceLabel("other"), key: "other", value: 0, color: "#2F6C74" },
+    const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number }> = [
+      { label: sourceLabel("booking"), key: "booking", value: 0 },
+      { label: sourceLabel("invoice"), key: "invoice", value: 0 },
+      { label: sourceLabel("internal"), key: "internal", value: 0 },
+      { label: sourceLabel("refund"), key: "refund", value: 0 },
+      { label: sourceLabel("other"), key: "other", value: 0 },
     ];
     revenueRowsDetailed.forEach((x) => {
       const row = sourceRaw.find((it) => it.key === x.source);
@@ -1439,10 +1684,11 @@ export default function DashboardReports() {
 
   return (
     <div className="dsv2-page dsv2-reports-page reports-v2">
-      <div className="reports-v2__header">
+      <header className="dsv2-card dsv2-card--padded dsv2-card--elevated reports-v2__header">
         <div>
-          <h1>اللوحة المالية</h1>
-          <p>
+          <span className="dsv2-badge dsv2-badge--gold">التحليل المالي</span>
+          <h1 className="dsv2-page-title">اللوحة المالية</h1>
+          <p className="dsv2-page-subtitle">
             متابعة موحدة للإيرادات والمصروفات وصافي الربح، مع المقارنات الزمنية ودورة الرواتب
             والتفاصيل المطابقة للفلاتر الحالية. العرض الشهري تقويمي، بينما تُعرض دورة الرواتب
             المحاسبية للفترة من يوم 28 إلى يوم 27.
@@ -1458,18 +1704,18 @@ export default function DashboardReports() {
             <div className="reports-v2__export-actions">
               <button
                 type="button"
-                className="reports-btn reports-btn--pdf"
+                className="dsv2-btn dsv2-btn--danger reports-btn reports-btn--pdf"
                 onClick={exportFinancialPdf}
-                disabled={loading || exporting !== null}
+                disabled={loading || payrollCalculationLoading || exporting !== null}
               >
                 <FontAwesomeIcon icon={faFilePdf} />
                 {exporting === "pdf" ? "جاري تجهيز PDF..." : "تصدير PDF"}
               </button>
               <button
                 type="button"
-                className="reports-btn reports-btn--excel"
+                className="dsv2-btn dsv2-btn--success reports-btn reports-btn--excel"
                 onClick={exportFinancialExcel}
-                disabled={loading || exporting !== null}
+                disabled={loading || payrollCalculationLoading || exporting !== null}
               >
                 <FontAwesomeIcon icon={faFileExcel} />
                 {exporting === "excel" ? "جاري تجهيز Excel..." : "تصدير Excel"}
@@ -1482,9 +1728,9 @@ export default function DashboardReports() {
             ) : null}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="reports-v2__filters">
+      <section className="dsv2-card dsv2-card--padded reports-v2__filters">
         <button
           className={`f-btn ${period === "day" ? "is-active" : ""}`}
           onClick={() => setPeriod("day")}
@@ -1596,9 +1842,9 @@ export default function DashboardReports() {
         <div className="reports-v2__range-caption">
           <FontAwesomeIcon icon={faCalendarDays} /> الفترة: {range.from} إلى {range.to}
         </div>
-      </div>
+      </section>
 
-      <section className="reports-v2__payroll-cycle">
+      <section className="dsv2-card dsv2-card--padded reports-v2__payroll-cycle">
         <div className="section-head">
           <h2>دورة الرواتب (28-27)</h2>
           <span>الإغلاق المحاسبي ثابت يوم {PAYROLL_CLOSE_DAY}</span>
@@ -1614,7 +1860,7 @@ export default function DashboardReports() {
           <article className="payroll-chip">
             <h4>رواتب</h4>
             <strong>{formatMoney(payrollCycleTotals.salary)}</strong>
-            <p>مصروفات الرواتب التلقائية داخل الدورة</p>
+            <p>صافي مسير جميع الموظفات بعد الإضافات والخصومات</p>
           </article>
           <article className="payroll-chip">
             <h4>أوفر تايم</h4>
@@ -1629,22 +1875,25 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      <div className="reports-v2__kpis">
-        <article className="kpi kpi-revenue">
-          <h3>إجمالي الإيرادات</h3>
-          <strong>{formatMoney(totals.revenue)}</strong>
+      <div className="dsv2-grid--metrics reports-v2__kpis">
+        <article className="dsv2-metric-card dsv2-metric-card--success kpi kpi-revenue">
+          <h3 className="dsv2-metric-card__label">إجمالي الإيرادات</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.revenue)}</strong>
+          <span className="dsv2-metric-card__meta">حسب الفترة والفلاتر الحالية</span>
         </article>
-        <article className="kpi kpi-expense">
-          <h3>إجمالي المصروفات</h3>
-          <strong>{formatMoney(totals.expenses)}</strong>
+        <article className="dsv2-metric-card dsv2-metric-card--danger kpi kpi-expense">
+          <h3 className="dsv2-metric-card__label">إجمالي المصروفات</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.expenses)}</strong>
+          <span className="dsv2-metric-card__meta">المصروفات المسجلة داخل الفترة</span>
         </article>
-        <article className={`kpi kpi-net ${totals.net >= 0 ? "is-positive" : "is-negative"}`}>
-          <h3>صافي الربح / الخسارة</h3>
-          <strong>{formatMoney(totals.net)}</strong>
+        <article className={`dsv2-metric-card ${totals.net >= 0 ? "dsv2-metric-card--gold is-positive" : "dsv2-metric-card--danger is-negative"} kpi kpi-net`}>
+          <h3 className="dsv2-metric-card__label">صافي الربح / الخسارة</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.net)}</strong>
+          <span className="dsv2-metric-card__meta">الإيرادات بعد خصم المصروفات</span>
         </article>
       </div>
 
-      <section className="reports-v2__month-compare">
+      <section className="dsv2-card dsv2-card--padded reports-v2__month-compare">
         <div className="section-head">
           <h2>مقارنة الأشهر (تقويميًا) - {monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</h2>
         </div>
@@ -1697,7 +1946,7 @@ export default function DashboardReports() {
       </section>
 
       <section className="reports-v2__charts-board reports-charts-v2">
-        <article className="chart-card chart-card--wide chart-card--trend">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--wide chart-card--trend">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">التحليل المالي</span>
@@ -1845,7 +2094,7 @@ export default function DashboardReports() {
           </div>
         </article>
 
-        <article className="chart-card chart-card--compact chart-card--status">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--status">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">تشغيل الحجوزات</span>
@@ -1933,7 +2182,7 @@ export default function DashboardReports() {
           )}
         </article>
 
-        <article className="chart-card chart-card--compact chart-card--sources">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--sources">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">مزيج الإيرادات</span>
@@ -1956,8 +2205,7 @@ export default function DashboardReports() {
                       <path
                         key={`pie_${slice.key}`}
                         d={arcPath(0, 0, 96, slice.start, slice.end)}
-                        fill={slice.color}
-                        className="donut-slice-v2"
+                        className={`donut-slice-v2 donut-slice-v2--${slice.key}`}
                       />
                     ))}
                     <circle r="59" className="donut-hole-v2" />
@@ -1991,8 +2239,7 @@ export default function DashboardReports() {
                       className="pie-legend__item"
                     >
                       <span
-                        className="pie-legend__dot"
-                        style={{ backgroundColor: slice.color }}
+                        className={`pie-legend__dot pie-legend__dot--${slice.key}`}
                       />
                       <span className="pie-legend__label">{slice.label}</span>
                       <span className="pie-legend__value">
@@ -2014,17 +2261,17 @@ export default function DashboardReports() {
         </article>
       </section>
 
-      {loadErr ? <div className="reports-v2__error">{loadErr}</div> : null}
+      {loadErr || payrollCalculationError ? <div className="reports-v2__error">{[loadErr, payrollCalculationError].filter(Boolean).join(" | ")}</div> : null}
 
-      <section className="reports-v2__section">
+      <section className="dsv2-card reports-v2__section">
         <div className="section-head">
           <h2>
             <FontAwesomeIcon icon={faChartLine} /> تفاصيل الإيرادات
           </h2>
           <span>عدد الحركات: {revenueRowsDetailed.length}</span>
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="dsv2-table-scroll table-wrap">
+          <table className="dsv2-table">
             <thead>
               <tr>
                 <th>التاريخ/الوقت</th>
@@ -2063,13 +2310,13 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      <section className="reports-v2__section">
+      <section className="dsv2-card reports-v2__section">
         <div className="section-head">
           <h2>تفاصيل المصروفات</h2>
           <span>عدد السجلات: {expensesInRange.length}</span>
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="dsv2-table-scroll table-wrap">
+          <table className="dsv2-table">
             <thead>
               <tr>
                 <th>التاريخ</th>
@@ -2103,7 +2350,7 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      {loading ? <div className="reports-v2__loading">جاري مزامنة البيانات...</div> : null}
+      {loading || payrollCalculationLoading ? <div className="reports-v2__loading">{payrollCalculationLoading ? "جاري احتساب مسير جميع الموظفات..." : "جاري مزامنة البيانات..."}</div> : null}
     </div>
   );
 }

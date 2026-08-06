@@ -42,6 +42,7 @@ type CreateDraft = {
 
 type EditDraft = {
   id: string;
+  firebaseUid: string;
   displayName: string;
   email: string;
   phone: string;
@@ -161,6 +162,8 @@ function errorMessage(error: unknown) {
     if (error.code === "ACCOUNT_LAST_OWNER_PROTECTED") return "لا يمكن تعطيل أو حذف آخر مالك نشط.";
     if (error.code === "ACCOUNT_PERMISSION_GRANT_FORBIDDEN") return "لا يمكنك منح صلاحية لا تملكها.";
     if (error.code === "ACCOUNT_SELF_PERMISSION_CHANGE_FORBIDDEN") return "لا يمكن تعديل صلاحيات حسابك نفسه.";
+    if (error.code === "ACCOUNT_FIREBASE_UID_REQUIRED") return "الحساب النشط يحتاج Firebase UID صحيح.";
+    if (error.code === "ACCOUNT_UID_CONFLICT") return "Firebase UID مرتبط بحساب آخر.";
     return error.message;
   }
   return error instanceof Error ? error.message : "تعذر تنفيذ العملية.";
@@ -350,6 +353,7 @@ export default function SettingsUsers({
     setMessage("");
     setEditDraft({
       id: account.id,
+      firebaseUid: account.firebaseUid || account.uid || "",
       displayName: account.displayName || "",
       email: account.email || "",
       phone: account.phone || "",
@@ -372,6 +376,9 @@ export default function SettingsUsers({
     setError("");
     setMessage("");
     try {
+      if (createDraft.status === "active" && !createDraft.firebaseUid.trim()) {
+        throw new Error("الحساب النشط يحتاج Firebase UID صحيح.");
+      }
       const created = await CoreAccountService.create({
         firebaseUid: createDraft.firebaseUid,
         displayName: createDraft.displayName,
@@ -399,6 +406,7 @@ export default function SettingsUsers({
     setMessage("");
     try {
       await CoreAccountService.update(editDraft.id, {
+        firebaseUid: editDraft.firebaseUid,
         displayName: editDraft.displayName,
         email: editDraft.email,
         phone: editDraft.phone,
@@ -974,6 +982,10 @@ export default function SettingsUsers({
             </div>
             <div className="accounts-modal__body">
               <div className="accounts-modal__sidebar">
+                <label className="accounts-field">
+                  <span>Firebase UID</span>
+                  <input value={editDraft.firebaseUid} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, firebaseUid: event.target.value } : draft)} />
+                </label>
                 <label className="accounts-field">
                   <span>الاسم</span>
                   <input value={editDraft.displayName} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, displayName: event.target.value } : draft)} />

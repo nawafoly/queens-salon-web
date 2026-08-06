@@ -1354,17 +1354,33 @@ export async function loadPayrollMonth(input: {
   };
 }
 
-export async function generatePayrollEntries(input: {
-  year: number;
-  month: number;
+export async function generatePayrollEntriesForMonths(input: {
+  monthKeys: string[];
   employeeId?: string;
   status?: string;
   currentEntries?: PayrollEntryView[];
 }) {
-  const bounds = payrollMonthBounds(input.year, input.month);
-  const { payrollMonth } = bounds;
+  const monthKeys = Array.from(
+    new Set(
+      (Array.isArray(input.monthKeys) ? input.monthKeys : [])
+        .map((value) => text(value))
+        .filter((value) => /^\d{4}-\d{2}$/.test(value))
+    )
+  ).sort((left, right) => left.localeCompare(right));
+  if (!monthKeys.length) return [];
+
+  const monthKeySet = new Set(monthKeys);
   const CoreHrService = await coreHrService();
-  const [employees, attendance, leaves, absences, shiftTemplates, shiftAssignments, scheduleExceptions] = await Promise.all([
+  const [
+    employees,
+    attendance,
+    leaves,
+    absences,
+    shiftTemplates,
+    shiftAssignments,
+    scheduleExceptions,
+    savedEntries,
+  ] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
     CoreHrService.listAttendance(),
     CoreHrService.listLeaves({ status: "approved" }),
@@ -1372,48 +1388,73 @@ export async function generatePayrollEntries(input: {
     CoreHrService.listShiftTemplates({ active: "all" }),
     CoreHrService.listShiftAssignments(),
     CoreHrService.listScheduleExceptions(),
+    input.currentEntries ? Promise.resolve(null) : CoreHrService.listPayrollEntries(),
   ]);
+
+  const currentEntries = input.currentEntries
+    ? input.currentEntries
+    : (Array.isArray(savedEntries) ? savedEntries : []).map(normalizePayrollEntry);
   const existingMap = new Map(
-    (input.currentEntries || [])
-      .filter((entry) => entry.payrollMonth === payrollMonth)
-      .map((entry) => [entry.employeeId, entry])
-  );
-  const periodAttendanceRecords = attendance.filter((record) =>
-    isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
+    currentEntries
+      .filter((entry) => monthKeySet.has(entry.payrollMonth))
+      .map((entry) => [`${entry.payrollMonth}|${entry.employeeId}`, entry])
   );
 
-  const generated = employees
-    .filter((employee) => !input.employeeId || employee.id === input.employeeId)
-    .map((employee) => {
-      const employeeWithCoreShifts: CoreHrEmployee = {
-        ...employee,
-        shiftAssignments: shiftAssignments.filter((row) => row.employeeId === employee.id),
-        scheduleExceptions: scheduleExceptions.filter((row) => row.employeeId === employee.id),
-      } as CoreHrEmployee;
-      const employeeRecords = periodAttendanceRecords.filter((record) =>
-        attendanceRecordMatchesEmployee(record, employeeWithCoreShifts)
-      );
-      const attendanceSnapshot = buildPayrollAttendanceSummaryForEmployee({
-        employee: employeeWithCoreShifts,
-        records: employeeRecords,
-        leaves,
-        absences,
-        year: input.year,
-        month: input.month,
-        shiftTemplates,
-      });
-      return snapshotFromEmployee({
-        employee: employeeWithCoreShifts,
-        attendanceSummary: attendanceSnapshot.summary,
-        year: input.year,
-        month: input.month,
-        existing: existingMap.get(employee.id),
-        shiftTemplates,
-      });
-    })
-    .filter((entry) => !input.status || entry.status === input.status);
+  return monthKeys.flatMap((payrollMonth) => {
+    const year = Number(payrollMonth.slice(0, 4));
+    const month = Number(payrollMonth.slice(5, 7));
+    const bounds = payrollMonthBounds(year, month);
+    const periodAttendanceRecords = attendance.filter((record) =>
+      isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd)
+    );
 
-  return generated;
+    return employees
+      .filter((employee) => !input.employeeId || employee.id === input.employeeId)
+      .map((employee) => {
+        const employeeWithCoreShifts: CoreHrEmployee = {
+          ...employee,
+          shiftAssignments: shiftAssignments.filter((row) => row.employeeId === employee.id),
+          scheduleExceptions: scheduleExceptions.filter((row) => row.employeeId === employee.id),
+        } as CoreHrEmployee;
+        const employeeRecords = periodAttendanceRecords.filter((record) =>
+          attendanceRecordMatchesEmployee(record, employeeWithCoreShifts)
+        );
+        const attendanceSnapshot = buildPayrollAttendanceSummaryForEmployee({
+          employee: employeeWithCoreShifts,
+          records: employeeRecords,
+          leaves,
+          absences,
+          year,
+          month,
+          shiftTemplates,
+        });
+        return snapshotFromEmployee({
+          employee: employeeWithCoreShifts,
+          attendanceSummary: attendanceSnapshot.summary,
+          year,
+          month,
+          existing: existingMap.get(`${payrollMonth}|${employee.id}`),
+          shiftTemplates,
+        });
+      })
+      .filter((entry) => !input.status || entry.status === input.status);
+  });
+}
+
+export async function generatePayrollEntries(input: {
+  year: number;
+  month: number;
+  employeeId?: string;
+  status?: string;
+  currentEntries?: PayrollEntryView[];
+}) {
+  const { payrollMonth } = payrollMonthBounds(input.year, input.month);
+  return generatePayrollEntriesForMonths({
+    monthKeys: [payrollMonth],
+    employeeId: input.employeeId,
+    status: input.status,
+    currentEntries: input.currentEntries,
+  });
 }
 
 export async function ensurePayrollPeriod(year: number, month: number) {

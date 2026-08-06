@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,6 +9,7 @@ import HairLengthGuideDrawer from "../components/bookingInternal/HairLengthGuide
 import PriceListPanel from "../components/bookingInternal/PriceListPanel";
 import AdminPackageFlow from "../components/packages/AdminPackageFlow";
 import "../styles/BookingInternalPriceList.css";
+import "../styles/BookingInternalLegacy.css";
 
 import {
   faCalendarAlt,

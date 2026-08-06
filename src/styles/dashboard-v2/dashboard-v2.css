@@ -28,3 +28,10 @@
 @import "./portal-sidebar-scroll-fix.css";
 @import "./pages/design-system-preview.css";
 @import "./pages/overview.css";
+@import "./pages/employees.css";
+@import "./pages/employee-workspace.css";
+@import "./pages/payroll.css";
+@import "./pages/reports.css";
+@import "./pages/expenses.css";
+@import "./pages/income.css";
+@import "./pages/bookings.css";

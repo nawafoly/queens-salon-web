@@ -616,8 +616,6 @@ export function getEffectiveAppPermissions(args: {
   // مستندات v3 تحفظ الصلاحيات الفعلية صراحةً. الإصدارات القديمة تُعامل كدور + استثناءات
   // حتى لا تفقد الحسابات صلاحيات جديدة عند توسيع السجل المركزي.
   if (
-    role !== "admin" &&
-    role !== "hr" &&
     version >= PERMISSION_SCHEMA_VERSION &&
     Array.isArray(args.permissions) &&
     !overrides.enabled.length &&

@@ -2397,288 +2397,37 @@
    loyalty, settings, audit and logs.
 ========================================================= */
 
-.dashboard-skin.madan-admin-shell .dashboard-inner > :where(
-  .bk-page-wrapper,
-  .clients-page,
-  .emp-page-wrapper,
-  .reports-v2,
-  .income-page,
-  .exp-page,
-  .offers-page,
-  .loyalty-page,
-  .logs-page,
-  .day-audit-page,
-  .dashstaff-page,
-  .settings-page
-) {
-  width: 100%;
-  max-width: 1540px;
-  margin-inline: auto;
-  padding: 4px 0 28px;
-  color: var(--madan-text);
-  animation: madanModuleEnter 380ms cubic-bezier(.2,.8,.2,1) both;
-}
+
 
 @keyframes madanModuleEnter {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-header,
-  .bookings-header,
-  .income-header,
-  .exp-header,
-  .offers-header,
-  .reports-v2__header,
-  .dashstaff-header,
-  .day-audit-head,
-  .logs-head,
-  .emp-page-wrapper .dash-topbar
-) {
-  position: relative;
-  overflow: hidden;
-  min-height: 116px;
-  margin: 0 0 18px !important;
-  padding: 22px 24px !important;
-  border: 1px solid rgba(255,255,255,.1) !important;
-  border-radius: 26px !important;
-  color: #fff !important;
-  background:
-    radial-gradient(circle at 88% 8%, rgba(242,183,5,.22), transparent 32%),
-    linear-gradient(135deg, #030640 0%, #0b1220 68%, #101a2d 100%) !important;
-  box-shadow: 0 24px 58px -36px rgba(3,6,64,.72) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-header,
-  .bookings-header,
-  .income-header,
-  .exp-header,
-  .offers-header,
-  .reports-v2__header,
-  .dashstaff-header,
-  .day-audit-head,
-  .logs-head,
-  .emp-page-wrapper .dash-topbar
-)::after {
-  content: "";
-  position: absolute;
-  inset-inline-end: -80px;
-  bottom: -115px;
-  width: 270px;
-  height: 270px;
-  border: 1px solid rgba(242,183,5,.2);
-  border-radius: 50%;
-  box-shadow: 0 0 0 34px rgba(242,183,5,.045), 0 0 0 70px rgba(242,183,5,.025);
-  pointer-events: none;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-header h1,
-  .bookings-header h1,
-  .income-title,
-  .exp-header h1,
-  .offers-header h1,
-  .reports-v2__header h2,
-  .dashstaff-title,
-  .day-audit-head h1,
-  .logs-head h1,
-  .emp-page-wrapper .dash-topbar-title h1,
-  .emp-page-wrapper .dash-topbar-title h2
-) {
-  position: relative;
-  z-index: 1;
-  margin: 0 !important;
-  color: #fff !important;
-  font-size: clamp(22px, 2.3vw, 32px) !important;
-  font-weight: 900 !important;
-  letter-spacing: -.025em;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-header p,
-  .clients-header > div > div,
-  .bookings-header p,
-  .income-subtitle,
-  .offers-sub,
-  .reports-v2__header p,
-  .dashstaff-sub,
-  .emp-page-wrapper .dash-sub
-) {
-  position: relative;
-  z-index: 1;
-  color: rgba(226,232,240,.72) !important;
-}
+
+
+
+
 
 /* Unified white panels */
-.dashboard-skin.madan-admin-shell :where(
-  .cl-mini,
-  .clients-table-card,
-  .cl-sum-card,
-  .bookings-table-card,
-  .bk-filters,
-  .bk-new-alert,
-  .bk-stale-alert,
-  .emp-page-wrapper .dash-card,
-  .emp-page-wrapper .emp-split-head-card,
-  .emp-page-wrapper .emp-attendance-edit-panel,
-  .reports-v2__filters,
-  .reports-v2__section,
-  .reports-v2__payroll-cycle,
-  .reports-v2__month-compare,
-  .reports-v2__charts-board .chart-card,
-  .income-filters,
-  .income-table-wrap,
-  .exp-card,
-  .offers-card,
-  .offers-section,
-  .loyalty-page .dashboard-card,
-  .logs-card,
-  .day-audit-card,
-  .dashstaff-filters,
-  .dashstaff-actions,
-  .settings-card,
-  .settings-basic-panel,
-  .settings-shell__content
-) {
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 24px !important;
-  background: rgba(255,255,255,.97) !important;
-  box-shadow: var(--madan-shadow-card) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .cl-mini,
-  .clients-table-card,
-  .bk-filters,
-  .bookings-table-card,
-  .reports-v2__filters,
-  .reports-v2__section,
-  .reports-v2__payroll-cycle,
-  .reports-v2__month-compare,
-  .income-filters,
-  .income-table-wrap,
-  .exp-card,
-  .offers-section,
-  .loyalty-page .dashboard-card,
-  .logs-card,
-  .day-audit-card,
-  .settings-basic-panel
-) {
-  padding: 20px !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .cl-mini,
-  .clients-table-card,
-  .bookings-table-card,
-  .reports-v2__section,
-  .reports-v2__payroll-cycle,
-  .reports-v2__month-compare,
-  .income-table-wrap,
-  .exp-card,
-  .offers-section,
-  .loyalty-page .dashboard-card,
-  .logs-card,
-  .day-audit-card,
-  .settings-basic-panel
-):hover {
-  border-color: rgba(242,183,5,.25) !important;
-  box-shadow: 0 20px 48px -34px rgba(3,6,64,.42) !important;
-}
+
+
+
 
 /* Section headings */
-.dashboard-skin.madan-admin-shell :where(
-  .mini-title,
-  .exp-card-title,
-  .offers-card-title,
-  .section-head h3,
-  .income-filter-title,
-  .income-table-head h3,
-  .bk-bookings-section-copy h3,
-  .settings-title,
-  .settings-basic-panel h2,
-  .loyalty-page .dashboard-card h3
-) {
-  color: var(--madan-navy-950) !important;
-  font-weight: 900 !important;
-  letter-spacing: -.015em;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .mini-hint,
-  .offers-hint,
-  .offers-section-note,
-  .bk-bookings-section-note,
-  .settings-note,
-  .settings-footnote,
-  .exp-mini,
-  .income-table-count
-) {
-  color: var(--madan-muted) !important;
-}
+
+
 
 /* Controls */
-.dashboard-skin.madan-admin-shell :where(
-  .cl-input,
-  .bk-input,
-  .bk-select,
-  .bk-search-input,
-  .bk-date-input,
-  .dash-input,
-  .dash-select,
-  .income-input,
-  .form-control,
-  .exp-form input,
-  .exp-form select,
-  .exp-filters input,
-  .exp-filters select,
-  .exp-page textarea,
-  .offers-page input,
-  .offers-page select,
-  .offers-page textarea,
-  .settings-input,
-  .dashstaff-input,
-  .day-audit-page input,
-  .logs-search,
-  .logs-select
-) {
-  min-height: 44px !important;
-  border: 1px solid rgba(15,23,42,.14) !important;
-  border-radius: 14px !important;
-  color: var(--madan-text) !important;
-  background: #fff !important;
-  box-shadow: 0 1px 0 rgba(255,255,255,.9), 0 8px 18px -18px rgba(15,23,42,.45) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .cl-input,
-  .bk-input,
-  .bk-select,
-  .bk-search-input,
-  .bk-date-input,
-  .dash-input,
-  .dash-select,
-  .income-input,
-  .form-control,
-  .exp-form input,
-  .exp-form select,
-  .exp-filters input,
-  .exp-filters select,
-  .exp-page textarea,
-  .offers-page input,
-  .offers-page select,
-  .offers-page textarea,
-  .settings-input,
-  .dashstaff-input,
-  .day-audit-page input,
-  .logs-search,
-  .logs-select
-):focus {
-  border-color: rgba(242,183,5,.72) !important;
-  box-shadow: 0 0 0 4px rgba(242,183,5,.14) !important;
-}
+
+
 
 .dashboard-skin.madan-admin-shell .dash-dd-menu {
   overflow: hidden;
@@ -2703,62 +2452,11 @@
 }
 
 /* Buttons */
-.dashboard-skin.madan-admin-shell :where(
-  .reports-btn,
-  .exp-btn,
-  .dash-pill,
-  .dash-btn,
-  .dash-btn-primary,
-  .dash-btn-danger,
-  .cl-btn,
-  .bk-new-alert-btn,
-  .day-audit-btn,
-  .log-action-btn,
-  .log-secondary-btn,
-  .btn-bulk,
-  .btn-receipt,
-  .btn-confirm,
-  .btn-complete,
-  .btn-cancel,
-  .offers-quick-btn
-) {
-  min-height: 42px;
-  border-radius: 13px !important;
-  font-weight: 800 !important;
-  box-shadow: none !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .reports-btn.primary,
-  .exp-btn.primary,
-  .dash-pill-primary,
-  .dash-btn-primary,
-  .day-audit-btn--primary,
-  .bk-new-alert-btn.is-primary,
-  .btn-confirm,
-  .btn-complete
-) {
-  border-color: var(--madan-navy-950) !important;
-  color: #fff !important;
-  background: linear-gradient(135deg, var(--madan-navy-950), #111c30) !important;
-  box-shadow: 0 14px 26px -18px rgba(3,6,64,.85) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .reports-btn.primary,
-  .exp-btn.primary,
-  .dash-pill-primary,
-  .dash-btn-primary,
-  .day-audit-btn--primary,
-  .bk-new-alert-btn.is-primary,
-  .btn-confirm,
-  .btn-complete
-):hover {
-  transform: translateY(-1px);
-  border-color: var(--madan-gold) !important;
-  color: var(--madan-navy-950) !important;
-  background: linear-gradient(135deg, #ffe584, var(--madan-gold)) !important;
-}
+
+
+
 
 .dashboard-skin.madan-admin-shell :where(
   .reports-btn:not(.primary),
@@ -2803,204 +2501,33 @@
 }
 
 /* KPI grids */
-.dashboard-skin.madan-admin-shell :where(
-  .clients-stats,
-  .income-quick,
-  .reports-v2__kpis,
-  .reports-v2__payroll-cycle-grid,
-  .day-audit-kpis,
-  .emp-summary-strip,
-  .dashstaff-kpis,
-  .offers-stats-section
-) {
-  gap: 14px !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-stats .stat-card,
-  .income-quick .stat-card,
-  .reports-v2__kpis .kpi,
-  .payroll-chip,
-  .day-audit-kpi,
-  .emp-topbar-metric,
-  .offers-kpi
-) {
-  position: relative;
-  overflow: hidden;
-  min-height: 118px;
-  padding: 18px !important;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 21px !important;
-  color: var(--madan-text) !important;
-  background: linear-gradient(145deg, #fff 0%, #f8fafc 100%) !important;
-  box-shadow: 0 15px 34px -28px rgba(3,6,64,.62) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-stats .stat-card,
-  .income-quick .stat-card,
-  .reports-v2__kpis .kpi,
-  .payroll-chip,
-  .day-audit-kpi,
-  .emp-topbar-metric,
-  .offers-kpi
-)::before {
-  content: "";
-  position: absolute;
-  inset-block: 14px;
-  inset-inline-start: 0;
-  width: 4px;
-  border-radius: 999px;
-  background: linear-gradient(var(--madan-gold), #ffd95a);
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-stats .value,
-  .income-quick .stat-info strong,
-  .reports-v2__kpis .kpi strong,
-  .payroll-chip strong,
-  .day-audit-kpi-value,
-  .emp-topbar-metric strong,
-  .offers-kpi strong
-) {
-  color: var(--madan-navy-950) !important;
-  font-weight: 950 !important;
-}
+
+
+
+
 
 /* Tables */
-.dashboard-skin.madan-admin-shell :where(
-  .cl-table-wrap,
-  .bk-table-wrap,
-  .income-table-responsive,
-  .exp-table-wrap,
-  .reports-v2 .table-wrap,
-  .loyalty-page .table-wrapper,
-  .staff-summary-table-wrap,
-  .of-services-box,
-  .offers-table-card
-) {
-  overflow: auto;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(3,6,64,.28) transparent;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-table,
-  .bookings-table,
-  .income-table,
-  .exp-table,
-  .reports-v2 table,
-  .loyalty-page .dash-table,
-  .staff-summary-table,
-  .of-services-table
-) {
-  width: 100%;
-  margin: 0 !important;
-  border-collapse: separate !important;
-  border-spacing: 0 !important;
-  color: #334155 !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-table,
-  .bookings-table,
-  .income-table,
-  .exp-table,
-  .reports-v2 table,
-  .loyalty-page .dash-table,
-  .staff-summary-table,
-  .of-services-table
-) thead th {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  padding: 13px 14px !important;
-  border: 0 !important;
-  border-bottom: 1px solid rgba(255,255,255,.08) !important;
-  color: #f8fafc !important;
-  background: linear-gradient(180deg, #071127, #030640) !important;
-  font-size: 12px !important;
-  font-weight: 900 !important;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-table,
-  .bookings-table,
-  .income-table,
-  .exp-table,
-  .reports-v2 table,
-  .loyalty-page .dash-table,
-  .staff-summary-table,
-  .of-services-table
-) tbody td {
-  padding: 13px 14px !important;
-  border: 0 !important;
-  border-bottom: 1px solid rgba(15,23,42,.07) !important;
-  vertical-align: middle;
-  background: #fff !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .clients-table,
-  .bookings-table,
-  .income-table,
-  .exp-table,
-  .reports-v2 table,
-  .loyalty-page .dash-table,
-  .staff-summary-table,
-  .of-services-table
-) tbody tr:hover td {
-  background: rgba(242,183,5,.055) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .bk-price-pill,
-  .bk-employee-pill,
-  .points-badge,
-  .score-badge,
-  .exp-auto-pill,
-  .settings-shell__pill,
-  .pill.soft,
-  .dashstaff-status
-) {
-  border: 1px solid rgba(242,183,5,.25) !important;
-  border-radius: 999px !important;
-  color: var(--madan-navy-950) !important;
-  background: rgba(242,183,5,.1) !important;
-  font-weight: 800 !important;
-}
+
+
+
+
+
+
 
 /* Booking tabs and groups */
-.dashboard-skin.madan-admin-shell .bk-status-tabs {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 6px !important;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 16px !important;
-  background: #fff !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tabs button {
-  min-height: 40px;
-  border: 0 !important;
-  border-radius: 11px !important;
-  color: #64748b !important;
-  background: transparent !important;
-  font-weight: 800;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tabs button:hover,
-.dashboard-skin.madan-admin-shell .bk-status-tabs button.active,
-.dashboard-skin.madan-admin-shell .bk-status-tabs button.is-active {
-  color: var(--madan-navy-950) !important;
-  background: linear-gradient(135deg, #ffe995, var(--madan-gold)) !important;
-}
+
+
+
 
 .dashboard-skin.madan-admin-shell .bookings-group-row td {
   color: var(--madan-navy-950) !important;
@@ -3009,25 +2536,15 @@
 }
 
 /* Reports charts */
-.dashboard-skin.madan-admin-shell .reports-v2__charts-board {
-  gap: 16px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card {
-  min-height: 280px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.grid-line, .grid-line--v) {
-  stroke: rgba(15,23,42,.09) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.trend-line, .trend-dot) {
-  stroke: var(--madan-navy-950) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.trend-line--returns, .trend-dot--returns) {
-  stroke: var(--madan-gold) !important;
-}
+
+
+
+
+
 
 /* Settings */
 .dashboard-skin.madan-admin-shell .settings-wrap {
@@ -3147,16 +2664,7 @@
 }
 
 /* Mobile cards */
-.dashboard-skin.madan-admin-shell :where(
-  .cl-mobile-card,
-  .bk-mobile-row,
-  .income-mobile-card
-) {
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  box-shadow: 0 12px 26px -28px rgba(15,23,42,.8) !important;
-}
+
 
 /* Modal surfaces */
 .dashboard-skin.madan-admin-shell :where(
@@ -3197,185 +2705,13 @@
 }
 
 /* Empty, loading and error states */
-.dashboard-skin.madan-admin-shell :where(
-  .income-empty-cell,
-  .bk-bookings-section-empty,
-  .cl-mobile-empty,
-  .logs-empty,
-  .logs-loading,
-  .reports-v2__loading,
-  .empty-cell,
-  .loader,
-  .dashstaff-box.empty
-) {
-  padding: 28px !important;
-  border: 1px dashed rgba(15,23,42,.16) !important;
-  border-radius: 18px !important;
-  color: var(--madan-muted) !important;
-  background: #f8fafc !important;
-  text-align: center;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .bookings-error,
-  .reports-v2__error,
-  .dash-alert,
-  .day-audit-alert.is-error,
-  .logs-restore-status--error,
-  .cl-errorCard
-) {
-  border: 1px solid rgba(180,35,24,.18) !important;
-  border-radius: 16px !important;
-  color: #991b1b !important;
-  background: #fff5f5 !important;
-}
 
-@media (max-width: 1100px) {
-  .dashboard-skin.madan-admin-shell :where(
-    .clients-stats,
-    .income-quick,
-    .reports-v2__kpis,
-    .day-audit-kpis,
-    .offers-stats-section
-  ) {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
 
-  .dashboard-skin.madan-admin-shell :where(
-    .reports-v2__charts-board,
-    .month-compare-grid,
-    .emp-split-shell
-  ) {
-    grid-template-columns: 1fr !important;
-  }
-}
 
-@media (max-width: 760px) {
-  .dashboard-skin.madan-admin-shell .dashboard-inner > :where(
-    .bk-page-wrapper,
-    .clients-page,
-    .emp-page-wrapper,
-    .reports-v2,
-    .income-page,
-    .exp-page,
-    .offers-page,
-    .loyalty-page,
-    .logs-page,
-    .day-audit-page,
-    .dashstaff-page,
-    .settings-page
-  ) {
-    padding-bottom: 18px;
-  }
 
-  .dashboard-skin.madan-admin-shell :where(
-    .clients-header,
-    .bookings-header,
-    .income-header,
-    .exp-header,
-    .offers-header,
-    .reports-v2__header,
-    .dashstaff-header,
-    .day-audit-head,
-    .logs-head,
-    .emp-page-wrapper .dash-topbar
-  ) {
-    min-height: 0;
-    padding: 19px !important;
-    border-radius: 21px !important;
-  }
 
-  .dashboard-skin.madan-admin-shell :where(
-    .clients-header,
-    .bookings-header,
-    .income-header,
-    .exp-header,
-    .offers-header,
-    .reports-v2__header,
-    .dashstaff-header,
-    .day-audit-head,
-    .logs-head,
-    .emp-page-wrapper .dash-topbar
-  )::after {
-    display: none;
-  }
 
-  .dashboard-skin.madan-admin-shell :where(
-    .cl-mini,
-    .clients-table-card,
-    .bk-filters,
-    .bookings-table-card,
-    .reports-v2__filters,
-    .reports-v2__section,
-    .reports-v2__payroll-cycle,
-    .reports-v2__month-compare,
-    .income-filters,
-    .income-table-wrap,
-    .exp-card,
-    .offers-section,
-    .loyalty-page .dashboard-card,
-    .logs-card,
-    .day-audit-card,
-    .settings-basic-panel
-  ) {
-    padding: 15px !important;
-    border-radius: 19px !important;
-  }
-
-  .dashboard-skin.madan-admin-shell :where(
-    .clients-stats,
-    .income-quick,
-    .reports-v2__kpis,
-    .reports-v2__payroll-cycle-grid,
-    .day-audit-kpis,
-    .offers-stats-section,
-    .settings-toggle-grid,
-    .settings-basic-form,
-    .income-filter-grid,
-    .exp-grid,
-    .of-grid-2,
-    .of-grid-2a,
-    .of-grid-3
-  ) {
-    grid-template-columns: 1fr !important;
-  }
-
-  .dashboard-skin.madan-admin-shell :where(
-    .clients-stats .stat-card,
-    .income-quick .stat-card,
-    .reports-v2__kpis .kpi,
-    .payroll-chip,
-    .day-audit-kpi,
-    .emp-topbar-metric,
-    .offers-kpi
-  ) {
-    min-height: 104px;
-  }
-
-  .dashboard-skin.madan-admin-shell :where(
-    .cl-form,
-    .bk-actions,
-    .income-actions,
-    .exp-header-actions,
-    .offers-row,
-    .settings-page-actions,
-    .dashstaff-actions
-  ) {
-    align-items: stretch !important;
-    flex-direction: column !important;
-  }
-
-  .dashboard-skin.madan-admin-shell :where(
-    .cl-form > *,
-    .bk-actions > *,
-    .income-actions > *,
-    .exp-header-actions > *,
-    .offers-row > *,
-    .dashstaff-actions > *
-  ) {
-    width: 100% !important;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .dashboard-skin.madan-admin-shell .dashboard-inner > * {
@@ -5848,8 +5184,8 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(3, 6, 64, 0.58) !important;
-  backdrop-filter: blur(6px);
+  background: var(--qs-modal-overlay-background, rgba(3, 6, 64, 0.58)) !important;
+  backdrop-filter: var(--qs-modal-overlay-filter, blur(6px));
   animation: madanModalFade 170ms ease both;
 }
 
@@ -5862,10 +5198,10 @@
   width: min(680px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.11) !important;
-  border-radius: 25px !important;
-  background: #fff !important;
-  box-shadow: 0 38px 100px rgba(3, 6, 64, 0.32) !important;
+  border: 1px solid var(--qs-modal-panel-border, rgba(255, 255, 255, 0.11)) !important;
+  border-radius: var(--qs-modal-panel-radius, 25px) !important;
+  background: var(--qs-modal-panel-background, #fff) !important;
+  box-shadow: var(--qs-modal-panel-shadow, 0 38px 100px rgba(3, 6, 64, 0.32)) !important;
   animation: madanModalRise 210ms cubic-bezier(.2,.8,.2,1) both;
 }
 
@@ -7376,645 +6712,167 @@
 ========================================================= */
 
 /* ---------- Internal booking page shell ---------- */
-.bk-page-wrapper.bk-internal {
-  min-height: 100vh;
-  direction: rtl;
-  color: var(--madan-text) !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(242, 183, 5, 0.1), transparent 28%),
-    radial-gradient(circle at 0% 100%, rgba(3, 6, 64, 0.07), transparent 35%),
-    var(--madan-page) !important;
-}
 
-.bk-page-wrapper.bk-internal,
-.bk-page-wrapper.bk-internal * {
-  box-sizing: border-box;
-}
 
-.bk-page-wrapper.bk-internal .bk-internal-page {
-  min-height: 100vh;
-  padding-block: clamp(22px, 3vw, 42px) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-internal-container {
-  width: min(1480px, calc(100% - 28px));
-  max-width: 1480px !important;
-  margin-inline: auto;
-  padding-inline: 0 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-page-header {
-  position: relative;
-  min-height: 104px;
-  display: grid !important;
-  grid-template-columns: 52px minmax(0, 1fr) 52px;
-  align-items: center;
-  gap: 16px;
-  overflow: hidden;
-  padding: 20px 22px !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 28px !important;
-  color: #fff !important;
-  background:
-    radial-gradient(circle at 88% 0%, rgba(242, 183, 5, 0.24), transparent 34%),
-    linear-gradient(135deg, var(--madan-navy-950), #101a2d) !important;
-  box-shadow: 0 28px 70px -36px rgba(3, 6, 64, 0.72) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-page-header::after {
-  content: "";
-  position: absolute;
-  inset-inline: 22px;
-  bottom: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--madan-gold), transparent);
-  opacity: 0.68;
-}
 
-.bk-page-wrapper.bk-internal .bk-page-header-center {
-  min-width: 0;
-  text-align: center;
-}
 
-.bk-page-wrapper.bk-internal .bk-logo {
-  width: 48px !important;
-  height: 48px !important;
-  display: grid;
-  place-items: center;
-  object-fit: contain;
-  padding: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
 
-.bk-page-wrapper.bk-internal .bk-title {
-  margin: 0 !important;
-  color: #fff !important;
-  font-size: clamp(22px, 2.4vw, 34px) !important;
-  font-weight: 900 !important;
-  letter-spacing: -0.025em;
-}
 
-.bk-page-wrapper.bk-internal .bk-page-header-center :where(p, small, span) {
-  color: rgba(255, 255, 255, 0.66) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-close-btn {
-  width: 46px !important;
-  height: 46px !important;
-  display: grid !important;
-  place-items: center;
-  padding: 0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.13) !important;
-  border-radius: 15px !important;
-  color: #fff !important;
-  background: rgba(255, 255, 255, 0.075) !important;
-  box-shadow: none !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-close-btn:hover {
-  transform: translateY(-2px);
-  border-color: rgba(242, 183, 5, 0.48) !important;
-  color: var(--madan-gold) !important;
-  background: rgba(242, 183, 5, 0.1) !important;
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Main panels ---------- */
-.bk-page-wrapper.bk-internal :where(
-  .bk-panel,
-  .bk-client-section,
-  .bk-service-section,
-  .bk-cart-panel,
-  .bk-summary-panel,
-  .bk-future-panel,
-  .bk-existing-booking-block,
-  .bk-existing-search-panel,
-  .bk-existing-hint-panel,
-  .bk-price-list-section,
-  .bk-pay-modal,
-  .bk-booking-details
-) {
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 24px !important;
-  color: var(--madan-text) !important;
-  background: rgba(255, 255, 255, 0.97) !important;
-  box-shadow: var(--madan-shadow-card) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(
-  .bk-panel,
-  .bk-client-section,
-  .bk-service-section,
-  .bk-cart-panel,
-  .bk-summary-panel,
-  .bk-future-panel,
-  .bk-existing-booking-block,
-  .bk-price-list-section
-) {
-  padding: clamp(17px, 2vw, 25px) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(
-  .bk-panel,
-  .bk-client-section,
-  .bk-service-section,
-  .bk-cart-panel,
-  .bk-summary-panel,
-  .bk-existing-booking-block
-) > :where(h1, h2, h3, h4):first-child,
-.bk-page-wrapper.bk-internal :where(
-  .bk-cart-title,
-  .bk-existing-search-title,
-  .bk-future-title-head,
-  .bk-pay-modal-title,
-  .bk-booking-details-title,
-  .bk-soft-title
-) {
-  color: var(--madan-navy-950) !important;
-  font-weight: 900 !important;
-  letter-spacing: -0.02em;
-}
 
-.bk-page-wrapper.bk-internal :where(
-  .text-muted,
-  .bk-existing-search-kicker,
-  .bk-existing-hint-body,
-  .bk-cart-service-meta,
-  .bk-cart-summary-line-meta,
-  .bk-future-subhint,
-  .bk-availability-hint,
-  .bk-guide-note
-) {
-  color: var(--madan-muted) !important;
-  line-height: 1.7;
-}
 
-.bk-page-wrapper.bk-internal .bk-sections-grid {
-  gap: 18px !important;
-}
+
+
+
+
+
 
 /* ---------- Inputs, pickers and form controls ---------- */
-.bk-page-wrapper.bk-internal :where(
-  input,
-  select,
-  textarea,
-  .form-control,
-  .form-select,
-  .bk-date-display-input,
-  .bk-existing-search-input,
-  .bk-discount-value-input
-) {
-  min-height: 46px;
-  border: 1px solid rgba(15, 23, 42, 0.14) !important;
-  border-radius: 14px !important;
-  color: var(--madan-text) !important;
-  background: #fff !important;
-  box-shadow: none !important;
-}
 
-.bk-page-wrapper.bk-internal :where(input, select, textarea, .form-control, .form-select):focus {
-  border-color: rgba(242, 183, 5, 0.74) !important;
-  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.13) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.form-label, .bk-booking-label) {
-  margin-bottom: 7px !important;
-  color: #334155 !important;
-  font-size: 12px;
-  font-weight: 850 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-search-row {
-  gap: 10px;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-search-input {
-  min-width: 0;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-date-picker-native, .bk-hijri-picker) {
-  overflow: hidden;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  box-shadow: var(--madan-shadow-control) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-hijri-picker-head {
-  padding: 13px 15px;
-  color: #fff !important;
-  background: var(--madan-navy-950) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-hijri-picker-weekdays {
-  color: #64748b !important;
-  background: #f8fafc !important;
-}
+
+
+
+
+
+
+
+
 
 /* ---------- Buttons ---------- */
-.bk-page-wrapper.bk-internal :where(
-  .btn,
-  .bk-existing-search-btn,
-  .bk-add-cart-btn,
-  .bk-submit-btn,
-  .bk-cart-confirm-btn,
-  .bk-pay-btn,
-  .bk-pay-confirm-btn,
-  .bk-pay-cancel-btn,
-  .bk-future-booking-btn,
-  .bk-preview-toggle-btn,
-  .bk-guide-upload-btn,
-  .bk-cart-suggest-btn,
-  .bk-date-calendar-toggle
-) {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding-inline: 16px;
-  border-radius: 13px !important;
-  font-weight: 850 !important;
-  box-shadow: var(--madan-shadow-control) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(
-  .btn-primary,
-  .bk-existing-search-btn,
-  .bk-add-cart-btn,
-  .bk-submit-btn,
-  .bk-cart-confirm-btn,
-  .bk-pay-btn,
-  .bk-pay-confirm-btn,
-  .bk-future-booking-btn
-) {
-  border-color: rgba(242, 183, 5, 0.52) !important;
-  color: #071127 !important;
-  background: linear-gradient(135deg, #ffdf62, var(--madan-gold)) !important;
-  box-shadow: 0 17px 32px -20px rgba(217, 159, 0, 0.95) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(
-  .btn-outline-secondary,
-  .bk-pay-cancel-btn,
-  .bk-preview-toggle-btn,
-  .bk-guide-upload-btn,
-  .bk-cart-suggest-btn,
-  .bk-date-calendar-toggle
-) {
-  border: 1px solid rgba(3, 6, 64, 0.13) !important;
-  color: var(--madan-navy-950) !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal :where(button, .btn):hover:not(:disabled) {
-  transform: translateY(-2px);
-}
 
-.bk-page-wrapper.bk-internal :where(button, .btn):disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-  transform: none !important;
-}
+
+
+
+
+
 
 /* ---------- Client search and existing bookings ---------- */
-.bk-page-wrapper.bk-internal .bk-existing-layout {
-  gap: 16px !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-search-panel,
-.bk-page-wrapper.bk-internal .bk-existing-hint-panel {
-  padding: 17px !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-hint-panel {
-  border-style: dashed !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(242, 183, 5, 0.09), transparent 44%),
-    #f8fafc !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-name-choices-wrap > * {
-  border: 1px solid rgba(3, 6, 64, 0.12) !important;
-  border-radius: 999px !important;
-  color: var(--madan-navy-950) !important;
-  background: #fff !important;
-  font-weight: 800;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-existing-table, .bk-future-table) {
-  overflow: hidden;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-existing-table, .bk-future-table) thead th {
-  padding: 13px 14px !important;
-  border: 0 !important;
-  color: rgba(255, 255, 255, 0.76) !important;
-  background: var(--madan-navy-950) !important;
-  font-size: 11px;
-  font-weight: 850;
-  white-space: nowrap;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-existing-table, .bk-future-table) tbody td {
-  padding: 13px 14px !important;
-  border-color: rgba(15, 23, 42, 0.075) !important;
-  color: #334155 !important;
-  vertical-align: middle;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-existing-table, .bk-future-table) tbody tr:hover td {
-  background: rgba(242, 183, 5, 0.045) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-existing-group-row-inner {
-  border-inline-start: 3px solid var(--madan-gold);
-  border-radius: 12px;
-  background: #f8fafc !important;
-}
+
+
+
+
+
+
+
+
+
 
 /* ---------- Services, employees and times ---------- */
-.bk-page-wrapper.bk-internal .bk-staff-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 11px !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-staff-card-grid > * {
-  min-height: 108px;
-  padding: 14px !important;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 17px !important;
-  color: var(--madan-text) !important;
-  background: linear-gradient(145deg, #fff, #f8fafc) !important;
-  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.045) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-staff-card-grid > *:hover {
-  transform: translateY(-2px);
-  border-color: rgba(242, 183, 5, 0.42) !important;
-  box-shadow: 0 17px 34px rgba(3, 6, 64, 0.075) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-staff-card-icon {
-  color: var(--madan-gold-deep) !important;
-  background: rgba(242, 183, 5, 0.12) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-staff-card-name {
-  color: var(--madan-navy-950) !important;
-  font-weight: 900 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-time-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
-  gap: 9px !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-time-pill {
-  min-height: 42px;
-  border: 1px solid rgba(3, 6, 64, 0.12) !important;
-  border-radius: 12px !important;
-  color: var(--madan-navy-950) !important;
-  background: #fff !important;
-  font-weight: 850 !important;
-  font-variant-numeric: tabular-nums;
-}
 
-.bk-page-wrapper.bk-internal .bk-time-pill:hover,
-.bk-page-wrapper.bk-internal .bk-time-pill.active,
-.bk-page-wrapper.bk-internal .bk-time-pill.is-active,
-.bk-page-wrapper.bk-internal .bk-time-pill[aria-pressed="true"] {
-  border-color: rgba(242, 183, 5, 0.48) !important;
-  color: #071127 !important;
-  background: rgba(242, 183, 5, 0.16) !important;
-  box-shadow: inset 0 0 0 1px rgba(242, 183, 5, 0.22) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-time-grid-empty, .bk-availability-loading, .bk-day-closed-banner) {
-  padding: 17px !important;
-  border: 1px dashed rgba(15, 23, 42, 0.18) !important;
-  border-radius: 15px !important;
-  color: var(--madan-muted) !important;
-  background: #f8fafc !important;
-  text-align: center;
-}
 
-.bk-page-wrapper.bk-internal .bk-day-closed-banner {
-  border-color: rgba(180, 35, 24, 0.2) !important;
-  color: #991b1b !important;
-  background: #fff5f5 !important;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Price guide ---------- */
-.bk-page-wrapper.bk-internal .bk-service-hair-guide,
-.bk-page-wrapper.bk-internal .bk-price-guide-row {
-  border: 1px solid rgba(15, 23, 42, 0.09) !important;
-  border-radius: 17px !important;
-  background: #f8fafc !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-guide-image-wrap,
-.bk-page-wrapper.bk-internal .bk-price-list-thumb {
-  overflow: hidden;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 15px !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-guide-image,
-.bk-page-wrapper.bk-internal .bk-price-preview-image {
-  display: block;
-  max-width: 100%;
-  border-radius: 14px !important;
-  object-fit: cover;
-}
 
-.bk-page-wrapper.bk-internal .bk-guide-badge,
-.bk-page-wrapper.bk-internal .bk-discount-badge,
-.bk-page-wrapper.bk-internal .bk-cart-count-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 10px;
-  border: 1px solid rgba(242, 183, 5, 0.3) !important;
-  border-radius: 999px !important;
-  color: #7a5600 !important;
-  background: rgba(242, 183, 5, 0.12) !important;
-  font-size: 10px;
-  font-weight: 900;
-}
 
-.bk-page-wrapper.bk-internal .bk-price-list-grid {
-  gap: 10px !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-price-list-item {
-  padding: 12px !important;
-  border: 1px solid rgba(15, 23, 42, 0.08) !important;
-  border-radius: 15px !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-price-list-name {
-  color: var(--madan-navy-950) !important;
-  font-weight: 850 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-price-list-price {
-  color: #8a6200 !important;
-  font-weight: 900 !important;
-}
+
+
+
+
+
+
+
+
 
 /* ---------- Cart and summary ---------- */
-.bk-page-wrapper.bk-internal .bk-cart-list {
-  display: grid;
-  gap: 12px;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-list > * {
-  overflow: hidden;
-  padding: 15px !important;
-  border: 1px solid rgba(15, 23, 42, 0.09) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  box-shadow: 0 11px 26px rgba(15, 23, 42, 0.045) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-item-head {
-  padding-bottom: 11px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-index,
-.bk-page-wrapper.bk-internal .bk-cart-summary-index {
-  width: 30px;
-  height: 30px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 10px;
-  color: var(--madan-gold) !important;
-  background: var(--madan-navy-950) !important;
-  font-size: 11px;
-  font-weight: 900;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-service-title,
-.bk-page-wrapper.bk-internal .bk-cart-summary-service {
-  color: var(--madan-navy-950) !important;
-  font-weight: 900 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-price,
-.bk-page-wrapper.bk-internal .bk-total-visual {
-  color: #8a6200 !important;
-  font-weight: 900 !important;
-  font-variant-numeric: tabular-nums;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-delete-btn,
-.bk-page-wrapper.bk-internal .bk-cart-head-delete-btn {
-  border-color: rgba(180, 35, 24, 0.16) !important;
-  color: #b42318 !important;
-  background: #fff5f5 !important;
-  box-shadow: none !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-empty-soft,
-.bk-page-wrapper.bk-internal .bk-cart-preview-pending,
-.bk-page-wrapper.bk-internal .bk-cart-collapsed-note {
-  padding: 22px !important;
-  border: 1px dashed rgba(15, 23, 42, 0.17) !important;
-  border-radius: 17px !important;
-  color: var(--madan-muted) !important;
-  background: #f8fafc !important;
-  text-align: center;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-summary-unified {
-  overflow: hidden;
-  border: 1px solid var(--madan-border) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-summary-line {
-  padding: 13px 15px !important;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.07) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-cart-summary-line:last-child {
-  border-bottom: 0 !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-discount-editor {
-  padding: 15px !important;
-  border: 1px dashed rgba(242, 183, 5, 0.38) !important;
-  border-radius: 17px !important;
-  background: rgba(242, 183, 5, 0.055) !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-discount-type-cards > * {
-  border: 1px solid rgba(3, 6, 64, 0.12) !important;
-  border-radius: 13px !important;
-  color: var(--madan-navy-950) !important;
-  background: #fff !important;
-}
 
-.bk-page-wrapper.bk-internal .bk-discount-line {
-  color: #8a6200 !important;
-  font-weight: 850;
-}
 
-.bk-page-wrapper.bk-internal .bk-required-missing,
-.bk-page-wrapper.bk-internal .bk-soft-alert {
-  padding: 13px 15px !important;
-  border: 1px solid rgba(180, 35, 24, 0.17) !important;
-  border-radius: 14px !important;
-  color: #991b1b !important;
-  background: #fff5f5 !important;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Payment modal ---------- */
-.bk-page-wrapper.bk-internal .bk-pay-modal {
-  width: min(680px, calc(100vw - 26px));
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
-  padding: 23px !important;
-  box-shadow: 0 34px 90px rgba(3, 6, 64, 0.24) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-pay-methods, .bk-payment-method-grid) {
-  gap: 10px !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-pay-methods, .bk-payment-method-grid) > * {
-  min-height: 52px;
-  border: 1px solid rgba(3, 6, 64, 0.12) !important;
-  border-radius: 14px !important;
-  color: var(--madan-navy-950) !important;
-  background: #fff !important;
-  font-weight: 850;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-pay-methods, .bk-payment-method-grid) > *:hover {
-  border-color: rgba(242, 183, 5, 0.48) !important;
-  background: rgba(242, 183, 5, 0.07) !important;
-}
 
-.bk-page-wrapper.bk-internal :where(.bk-pay-methods, .bk-payment-method-grid) > *.is-active,
-.bk-page-wrapper.bk-internal :where(.bk-pay-methods, .bk-payment-method-grid) > *.is-active:hover {
-  border-color: var(--bk-primary, #40010d) !important;
-  background: var(--bk-primary, #40010d) !important;
-  color: #fff !important;
-}
+
+
+
+
+
 
 /* ---------- Internal receipt on screen ---------- */
 @media screen {
@@ -8114,84 +6972,30 @@
 }
 
 /* ---------- Responsive internal booking ---------- */
-@media (max-width: 980px) {
-  .bk-page-wrapper.bk-internal .bk-internal-container {
-    width: min(100% - 20px, 1480px);
-  }
 
-  .bk-page-wrapper.bk-internal .bk-staff-card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 
 @media (max-width: 680px) {
-  .bk-page-wrapper.bk-internal .bk-internal-page {
-    padding-block: 12px !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-internal-container {
-    width: calc(100% - 16px);
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-page-header {
-    min-height: 86px;
-    grid-template-columns: 42px minmax(0, 1fr) 42px;
-    gap: 10px;
-    padding: 14px !important;
-    border-radius: 21px !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-logo,
-  .bk-page-wrapper.bk-internal .bk-close-btn {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 13px !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-title {
-    font-size: 20px !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal :where(
-    .bk-panel,
-    .bk-client-section,
-    .bk-service-section,
-    .bk-cart-panel,
-    .bk-summary-panel,
-    .bk-future-panel,
-    .bk-existing-booking-block,
-    .bk-price-list-section
-  ) {
-    padding: 14px !important;
-    border-radius: 19px !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-existing-layout,
-  .bk-page-wrapper.bk-internal .bk-cart-fields,
-  .bk-page-wrapper.bk-internal .bk-booking-details-grid {
-    grid-template-columns: 1fr !important;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-staff-card-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-time-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-existing-search-row,
-  .bk-page-wrapper.bk-internal .bk-pay-modal-actions,
-  .bk-page-wrapper.bk-internal .bk-cart-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
+  
 
-  .bk-page-wrapper.bk-internal .bk-existing-search-row > *,
-  .bk-page-wrapper.bk-internal .bk-pay-modal-actions > *,
-  .bk-page-wrapper.bk-internal .bk-cart-actions > * {
-    width: 100%;
-  }
+  
 
   #print-area {
     padding: 12px 8px;
@@ -8207,25 +7011,9 @@
   }
 }
 
-@media (max-width: 430px) {
-  .bk-page-wrapper.bk-internal .bk-staff-card-grid {
-    grid-template-columns: 1fr;
-  }
 
-  .bk-page-wrapper.bk-internal .bk-time-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .bk-page-wrapper.bk-internal *,
-  #print-area * {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-  }
-}
+
 
 /* ============================================================================
    Queens Salon × Madan — Phase 10
@@ -9814,14 +8602,9 @@
    Visual-only enhancement. No Firebase or booking logic changes.
 ========================================================= */
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper {
-  position: relative;
-  isolation: isolate;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper > .container-fluid {
-  padding-inline: 0 !important;
-}
+
+
 
 .dashboard-skin.madan-admin-shell .bookings-header {
   min-height: 138px !important;
@@ -9856,354 +8639,113 @@
   backdrop-filter: blur(10px);
 }
 
-.dashboard-skin.madan-admin-shell .bk-mini {
-  display: grid;
-  gap: 16px;
-  margin-bottom: 18px;
-}
+
 
 /* ---------- Booking alerts ---------- */
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert, .bk-stale-alert) {
-  position: relative;
-  overflow: hidden;
-  padding: 18px !important;
-  border-radius: 22px !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert, .bk-stale-alert)::before {
-  content: "";
-  position: absolute;
-  inset-block: 14px;
-  inset-inline-start: 0;
-  width: 4px;
-  border-radius: 999px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-new-alert {
-  border-color: rgba(21, 128, 61, 0.18) !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.08), transparent 34%),
-    #fff !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-new-alert::before {
-  background: linear-gradient(#22c55e, #15803d);
-}
 
-.dashboard-skin.madan-admin-shell .bk-stale-alert {
-  border-color: rgba(180, 35, 24, 0.16) !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(244, 63, 94, 0.07), transparent 36%),
-    #fff !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-stale-alert::before {
-  background: linear-gradient(#fb7185, #b42318);
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-head, .bk-stale-alert-head) {
-  display: grid;
-  gap: 5px;
-  padding-inline-start: 2px;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-head, .bk-stale-alert-head) strong {
-  color: var(--madan-navy-950) !important;
-  font-size: 15px;
-  font-weight: 900;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-head, .bk-stale-alert-head) > span {
-  color: var(--madan-muted) !important;
-  font-size: 12px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-new-alert-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin-top: 13px;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-list, .bk-stale-alert-list) {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-  margin-top: 14px;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-item, .bk-stale-alert-item) {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  padding: 12px 13px;
-  border: 1px solid rgba(15, 23, 42, 0.09) !important;
-  border-radius: 15px !important;
-  color: #334155 !important;
-  text-align: start;
-  background: rgba(248, 250, 252, 0.84) !important;
-  box-shadow: none !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-item, .bk-stale-alert-item):hover {
-  border-color: rgba(242, 183, 5, 0.38) !important;
-  transform: translateY(-1px);
-  background: rgba(242, 183, 5, 0.07) !important;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-ref, .bk-stale-alert-ref) {
-  overflow: hidden;
-  color: var(--madan-navy-950) !important;
-  font-size: 12px;
-  font-weight: 900;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-meta, .bk-stale-alert-meta) {
-  color: #64748b !important;
-  font-size: 11px;
-  line-height: 1.65;
-}
 
-.dashboard-skin.madan-admin-shell :where(.bk-new-alert-more, .bk-stale-alert-more) {
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
-}
 
-.dashboard-skin.madan-admin-shell .bk-stale-alert-keyword {
-  color: #b42318;
-  font-weight: 950;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Tabs, totals and filters ---------- */
-.dashboard-skin.madan-admin-shell .bk-headline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tabs {
-  flex: 1 1 auto;
-  min-width: 0;
-  box-shadow: 0 14px 30px -28px rgba(3, 6, 64, 0.62);
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding-inline: 14px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tab > span {
-  min-width: 25px;
-  height: 25px;
-  display: inline-grid;
-  place-items: center;
-  padding-inline: 7px;
-  border-radius: 999px;
-  color: #475569;
-  background: #f1f5f9;
-  font-size: 10px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .bk-status-tab.is-active > span {
-  color: #fff;
-  background: var(--madan-navy-950);
-}
 
-.dashboard-skin.madan-admin-shell .bk-total-remaining {
-  flex: 0 0 auto;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 16px;
-  border: 1px solid rgba(242, 183, 5, 0.28);
-  border-radius: 16px;
-  color: #64748b;
-  background:
-    linear-gradient(145deg, rgba(242, 183, 5, 0.13), rgba(255, 255, 255, 0.96));
-  font-size: 12px;
-  font-weight: 800;
-  box-shadow: 0 14px 30px -28px rgba(3, 6, 64, 0.65);
-}
 
-.dashboard-skin.madan-admin-shell .bk-total-remaining strong {
-  color: var(--madan-navy-950);
-  font-size: 17px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .bk-filters {
-  display: grid !important;
-  grid-template-columns: minmax(240px, 1.7fr) repeat(4, minmax(150px, 1fr));
-  gap: 12px !important;
-  align-items: end;
-}
 
-.dashboard-skin.madan-admin-shell .bk-field {
-  min-width: 0;
-  display: grid;
-  gap: 7px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-field label {
-  color: #475569 !important;
-  font-size: 11px;
-  font-weight: 900;
-}
 
-.dashboard-skin.madan-admin-shell .bk-search-input {
-  padding-inline-start: 15px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 9px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-actions .exp-btn:first-child {
-  border-color: var(--madan-navy-950) !important;
-  color: #fff !important;
-  background: linear-gradient(135deg, var(--madan-navy-950), #111c30) !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-actions .exp-btn:first-child:hover {
-  border-color: var(--madan-gold) !important;
-  color: var(--madan-navy-950) !important;
-  background: linear-gradient(135deg, #ffe584, var(--madan-gold)) !important;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Booking sections and table rows ---------- */
-.dashboard-skin.madan-admin-shell .bk-bookings-sections {
-  display: grid;
-  gap: 18px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section {
-  min-width: 0;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-head {
-  min-height: 74px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 10px;
-  padding: 14px 17px;
-  border: 1px solid rgba(15, 23, 42, 0.09);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(242, 183, 5, 0.09), transparent 34%),
-    linear-gradient(145deg, #fff, #f8fafc);
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-copy {
-  min-width: 0;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-copy h3 {
-  margin: 0 !important;
-  font-size: 16px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-copy p {
-  margin: 4px 0 0 !important;
-  color: #64748b !important;
-  font-size: 11px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-count {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  padding-inline: 12px;
-  border: 1px solid rgba(242, 183, 5, 0.25);
-  border-radius: 999px;
-  color: var(--madan-navy-950);
-  background: rgba(242, 183, 5, 0.1);
-  font-size: 11px;
-  font-weight: 950;
-}
+
+
+
+
+
+
+
+
 
 .dashboard-skin.madan-admin-shell .bookings-table-card {
   padding: 0 !important;
   overflow: hidden;
 }
 
-.dashboard-skin.madan-admin-shell .bk-table-wrap {
-  border: 0 !important;
-  border-radius: 0 !important;
-}
 
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row td:first-child {
-  box-shadow: inset -3px 0 0 transparent;
-}
 
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row-pending td:first-child,
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row-pending-deposit td:first-child {
-  box-shadow: inset -3px 0 0 #d99f00;
-}
 
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row-confirmed td:first-child {
-  box-shadow: inset -3px 0 0 #2563eb;
-}
 
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row-completed td:first-child {
-  box-shadow: inset -3px 0 0 #15803d;
-}
 
-.dashboard-skin.madan-admin-shell .bookings-table tbody tr.bk-row-cancelled td:first-child {
-  box-shadow: inset -3px 0 0 #b42318;
-}
 
-.dashboard-skin.madan-admin-shell .bk-ref-cell {
-  display: grid;
-  gap: 7px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-ref-code {
-  color: var(--madan-navy-950) !important;
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: 0.025em;
-}
 
-.dashboard-skin.madan-admin-shell .bk-ref-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
 
-.dashboard-skin.madan-admin-shell :where(.status-badge, .bk-channel-badge, .bk-payment-status) {
-  min-height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 9px;
-  border: 1px solid rgba(15, 23, 42, 0.09);
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
-}
+
+
+
+
+
+
+
+
+
+
 
 .dashboard-skin.madan-admin-shell .status-badge.pending,
 .dashboard-skin.madan-admin-shell .status-badge.pending-deposit {
@@ -10230,648 +8772,176 @@
   background: #fff5f4 !important;
 }
 
-.dashboard-skin.madan-admin-shell .bk-customer-name,
-.dashboard-skin.madan-admin-shell .bk-service-main,
-.dashboard-skin.madan-admin-shell .bk-datetime-date,
-.dashboard-skin.madan-admin-shell .bk-update-by {
-  color: #1e293b !important;
-  font-size: 11px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell :where(
-  .bk-customer-phone,
-  .bk-service-meta,
-  .bk-datetime-time,
-  .bk-update-at
-) {
-  margin-top: 3px;
-  color: #64748b !important;
-  font-size: 10px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-payment-cell {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-price-pill {
-  min-height: 29px;
-  display: inline-flex;
-  align-items: center;
-  padding-inline: 10px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-payment-breakdown {
-  display: grid;
-  gap: 5px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-payment-metric-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 9px;
-  min-width: 150px;
-  padding: 5px 8px;
-  border-radius: 9px;
-  color: #475569;
-  background: #f8fafc;
-  font-size: 9px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-payment-metric-value {
-  color: var(--madan-navy-950);
-  font-weight: 900;
-}
 
-.dashboard-skin.madan-admin-shell .bk-actions-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-actions-row .exp-btn.sm {
-  min-height: 34px;
-  padding: 6px 10px !important;
-  border-radius: 10px !important;
-  font-size: 9px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-owner-status-select {
-  min-width: 124px;
-  min-height: 34px !important;
-  font-size: 9px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-section-empty {
-  min-height: 130px;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  border: 1px dashed rgba(15, 23, 42, 0.14);
-  border-radius: 20px;
-  color: #64748b;
-  text-align: center;
-  background: #f8fafc;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-empty-card {
-  width: min(100%, 420px);
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-empty-icon {
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  color: var(--madan-navy-950);
-  background: rgba(242, 183, 5, 0.12);
-  border: 1px solid rgba(242, 183, 5, 0.24);
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-empty-card strong {
-  color: var(--madan-navy-950);
-  font-size: 14px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-empty-card p {
-  max-width: 34rem;
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.7;
-}
 
-.dashboard-skin.madan-admin-shell .bk-bookings-empty-card .exp-btn {
-  min-height: 38px !important;
-  margin-top: 2px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Booking mobile cards ---------- */
-.dashboard-skin.madan-admin-shell .bk-mobile-grid {
-  display: none;
-  gap: 12px;
-  padding: 12px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-group {
-  display: grid;
-  gap: 10px;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-group-head {
-  padding: 9px 11px;
-  border-radius: 12px;
-  color: var(--madan-navy-950);
-  background: #f1f5f9;
-  font-size: 10px;
-  font-weight: 900;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-card {
-  position: relative;
-  overflow: hidden;
-  padding: 14px !important;
-  border: 1px solid rgba(15, 23, 42, 0.1) !important;
-  border-radius: 18px !important;
-  background: #fff !important;
-  box-shadow: 0 14px 30px -28px rgba(3, 6, 64, 0.65) !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-card::before {
-  content: "";
-  position: absolute;
-  inset-block: 12px;
-  inset-inline-start: 0;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--madan-gold);
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-card-confirmed::before {
-  background: #2563eb;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-card-completed::before {
-  background: #15803d;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-card-cancelled::before {
-  background: #b42318;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-row {
-  min-height: 31px;
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-row:last-of-type {
-  border-bottom: 0;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-label {
-  color: #64748b;
-  font-size: 9px;
-  font-weight: 800;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-val {
-  min-width: 0;
-  color: #1e293b;
-  font-size: 10px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
 
-.dashboard-skin.madan-admin-shell .bk-mobile-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  margin-top: 12px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Booking details modal ---------- */
-.qs-modal-overlay:has(.bk-modal),
-.qs-modal-overlay:has(.bk-cancel-modal) {
-  padding: 18px;
-  background: rgba(3, 6, 64, 0.68) !important;
-  backdrop-filter: blur(10px);
-}
 
-.bk-modal,
-.bk-cancel-modal {
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 26px !important;
-  background: #f6f8fc !important;
-  box-shadow: 0 36px 100px rgba(3, 6, 64, 0.34) !important;
-}
 
-.bk-modal {
-  width: min(1120px, calc(100vw - 36px)) !important;
-  max-height: calc(100vh - 36px) !important;
-}
 
-.bk-modal .modal-head,
-.bk-cancel-modal .bk-cancel-head {
-  min-height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #fff !important;
-  background:
-    radial-gradient(circle at 88% 0%, rgba(242, 183, 5, 0.22), transparent 36%),
-    linear-gradient(135deg, #030640, #111c30) !important;
-}
 
-.bk-modal .modal-head b,
-.bk-cancel-modal .bk-cancel-head {
-  color: #fff !important;
-  font-size: 16px;
-  font-weight: 950;
-}
 
-.bk-modal .modal-head .exp-btn {
-  min-width: 40px;
-  min-height: 40px;
-  padding: 0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  color: #fff !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
 
-.bk-modal .modal-head .exp-btn:hover {
-  border-color: rgba(242, 183, 5, 0.5) !important;
-  color: var(--madan-navy-950) !important;
-  background: var(--madan-gold) !important;
-}
 
-.bk-modal .modal-body,
-.bk-cancel-modal .bk-cancel-body {
-  overflow: auto;
-  max-height: calc(100vh - 150px);
-  padding: 18px !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(242, 183, 5, 0.06), transparent 30%),
-    #f6f8fc !important;
-}
 
-.bk-booking-sheet {
-  display: grid;
-  gap: 14px;
-}
 
-.bk-booking-section {
-  padding: 17px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 16px 34px -30px rgba(3, 6, 64, 0.7);
-}
 
-.bk-booking-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 13px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.075);
-}
 
-.bk-booking-section-head h4 {
-  margin: 0 !important;
-  color: var(--madan-navy-950) !important;
-  font-size: 14px;
-  font-weight: 950;
-}
 
-.bk-booking-section-head span {
-  display: block;
-  margin-top: 4px;
-  color: #64748b !important;
-  font-size: 10px;
-}
 
-.bk-details-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
 
-.bk-item {
-  min-width: 0;
-  min-height: 86px;
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 13px;
-  border: 1px solid rgba(15, 23, 42, 0.085);
-  border-radius: 15px;
-  background: linear-gradient(145deg, #fff, #f8fafc);
-}
 
-.bk-item--hero {
-  grid-column: span 2;
-  border-color: rgba(242, 183, 5, 0.24);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(242, 183, 5, 0.13), transparent 40%),
-    linear-gradient(145deg, #fff, #fffdf5);
-}
 
-.bk-item--wide {
-  grid-column: span 2;
-}
 
-.bk-item-label {
-  color: #64748b !important;
-  font-size: 9px;
-  font-weight: 900;
-}
 
-.bk-item-val {
-  min-width: 0;
-  color: var(--madan-navy-950) !important;
-  font-size: 12px;
-  font-weight: 950;
-  overflow-wrap: anywhere;
-}
 
-.bk-item-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 
-.bk-created-badge {
-  padding: 5px 8px;
-  border-radius: 999px;
-  color: #7c5c00;
-  background: rgba(242, 183, 5, 0.12);
-  font-size: 8px;
-  font-weight: 800;
-}
 
-.bk-created-badge.is-muted {
-  color: #64748b;
-  background: #f1f5f9;
-}
 
-.bk-activity-timeline {
-  display: grid;
-  gap: 2px;
-}
 
-.bk-activity-item {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 10px;
-}
 
-.bk-activity-rail {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
 
-.bk-activity-dot {
-  z-index: 1;
-  width: 11px;
-  height: 11px;
-  margin-top: 18px;
-  border: 3px solid #fff;
-  border-radius: 50%;
-  background: var(--madan-gold);
-  box-shadow: 0 0 0 2px rgba(242, 183, 5, 0.25);
-}
 
-.bk-activity-line {
-  width: 2px;
-  flex: 1;
-  min-height: 22px;
-  background: rgba(15, 23, 42, 0.1);
-}
 
-.bk-activity-card {
-  margin-bottom: 10px;
-  padding: 13px;
-  border: 1px solid rgba(15, 23, 42, 0.085);
-  border-radius: 15px;
-  background: #f8fafc;
-}
 
-.bk-activity-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
 
-.bk-activity-copy strong {
-  color: var(--madan-navy-950) !important;
-  font-size: 11px;
-  font-weight: 950;
-}
 
-.bk-activity-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  margin-top: 6px;
-  color: #64748b;
-  font-size: 9px;
-}
 
-.bk-activity-kind {
-  padding: 3px 7px;
-  border-radius: 999px;
-  color: var(--madan-navy-950);
-  background: rgba(242, 183, 5, 0.1);
-  font-weight: 900;
-}
 
-.bk-activity-time {
-  flex: 0 0 auto;
-  color: #64748b;
-  font-size: 9px;
-  font-weight: 800;
-}
 
-.bk-activity-changes,
-.bk-activity-note {
-  margin-top: 9px;
-  padding: 9px 10px;
-  border-radius: 11px;
-  color: #475569;
-  background: #fff;
-  font-size: 9px;
-  line-height: 1.75;
-}
 
-.bk-activity-empty,
-.bk-events-empty {
-  min-height: 96px;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  border: 1px dashed rgba(15, 23, 42, 0.14);
-  border-radius: 14px;
-  color: #64748b;
-  text-align: center;
-  background: #f8fafc;
-}
 
-.bk-services-list,
-.bk-events-list {
-  display: grid;
-  gap: 8px;
-}
 
-.bk-service-row,
-.bk-event-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 13px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 13px;
-  color: #334155;
-  background: #f8fafc;
-  font-size: 10px;
-}
 
-.bk-service-row > span:first-child {
-  color: var(--madan-navy-950);
-  font-weight: 900;
-}
 
-.bk-service-row-sub {
-  margin-top: 4px;
-  color: #64748b;
-  font-size: 8px;
-  font-weight: 600;
-}
 
-.bk-event-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
 
-.bk-event-note {
-  margin-top: 7px;
-  color: #475569;
-  line-height: 1.75;
-}
 
-.bk-booking-note-input {
-  width: 100%;
-  min-height: 100px !important;
-  resize: vertical;
-}
 
-.bk-note-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
 
-.bk-note-saved {
-  color: #15803d;
-  font-size: 10px;
-  font-weight: 900;
-}
 
-.bk-booking-legacy-hide {
-  display: none !important;
-}
 
-.bk-cancel-modal {
-  width: min(720px, calc(100vw - 36px)) !important;
-}
 
-.bk-cancel-modal .bk-cancel-meta {
-  padding: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 14px;
-  color: #475569;
-  background: #fff;
-}
 
-.bk-cancel-modal .bk-edit-form,
-.bk-cancel-modal .bk-edit-grid {
-  display: grid;
-  gap: 11px;
-}
 
-.bk-cancel-modal .bk-edit-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 
-.bk-cancel-modal .bk-edit-grid--catalog {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
 
-.bk-cancel-modal :where(.bk-input, .bk-select) {
-  min-height: 44px;
-  border: 1px solid rgba(15, 23, 42, 0.14) !important;
-  border-radius: 13px !important;
-  color: #0f172a !important;
-  background: #fff !important;
-}
 
-.bk-cancel-modal :where(.bk-input, .bk-select):focus {
-  border-color: rgba(242, 183, 5, 0.72) !important;
-  box-shadow: 0 0 0 4px rgba(242, 183, 5, 0.14) !important;
-}
 
-.bk-cancel-modal .bk-cancel-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 9px;
-  padding: 14px 18px !important;
-  border-top: 1px solid rgba(15, 23, 42, 0.09);
-  background: #fff;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- Responsive phase 12 ---------- */
-@media (max-width: 1180px) {
-  .dashboard-skin.madan-admin-shell .bk-filters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 
-  .bk-details-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
 
-@media (max-width: 900px) {
-  .dashboard-skin.madan-admin-shell .bk-headline {
-    align-items: stretch;
-    flex-direction: column;
-  }
 
-  .dashboard-skin.madan-admin-shell .bk-total-remaining {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .dashboard-skin.madan-admin-shell .bk-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-skin.madan-admin-shell :where(.bk-new-alert-list, .bk-stale-alert-list) {
-    grid-template-columns: 1fr;
-  }
-
-  .bk-details-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .bk-cancel-modal .bk-edit-grid--catalog {
-    grid-template-columns: 1fr 1fr;
-  }
-}
 
 @media (max-width: 760px) {
   .dashboard-skin.madan-admin-shell .bookings-header {
@@ -10879,105 +8949,40 @@
     border-radius: 22px !important;
   }
 
-  .dashboard-skin.madan-admin-shell .bk-filters {
-    grid-template-columns: 1fr;
-    padding: 15px !important;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-actions > * {
-    width: 100%;
-    justify-content: center;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-bookings-section-head {
-    align-items: stretch;
-    flex-direction: column;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-bookings-section-meta {
-    justify-content: space-between;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-table-wrap {
-    display: none;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-mobile-grid {
-    display: grid;
-  }
+  
 
-  .dashboard-skin.madan-admin-shell .bk-mobile-actions {
-    grid-template-columns: 1fr;
-  }
+  
 
-  .qs-modal-overlay:has(.bk-modal),
-  .qs-modal-overlay:has(.bk-cancel-modal) {
-    padding: 0;
-  }
+  
 
-  .bk-modal,
-  .bk-cancel-modal {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    max-height: 100vh !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-  }
+  
 
-  .bk-modal .modal-body,
-  .bk-cancel-modal .bk-cancel-body {
-    max-height: calc(100vh - 138px);
-    padding: 13px !important;
-  }
+  
 
-  .bk-details-grid,
-  .bk-cancel-modal .bk-edit-grid,
-  .bk-cancel-modal .bk-edit-grid--catalog {
-    grid-template-columns: 1fr;
-  }
+  
 
-  .bk-item--hero,
-  .bk-item--wide {
-    grid-column: auto;
-  }
+  
 
-  .bk-activity-top,
-  .bk-service-row,
-  .bk-event-top {
-    align-items: stretch;
-    flex-direction: column;
-  }
+  
 
-  .bk-cancel-modal .bk-cancel-foot {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+  
 
-  .bk-cancel-modal .bk-cancel-foot > * {
-    width: 100%;
-    justify-content: center;
-  }
+  
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .dashboard-skin.madan-admin-shell :where(
-    .bk-new-alert-item,
-    .bk-stale-alert-item,
-    .bk-status-tab,
-    .bk-mobile-card,
-    .bookings-table tbody tr
-  ),
-  .bk-modal *,
-  .bk-cancel-modal * {
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-  }
-}
+
 
 /* =========================================================
    Phase 13 — Clients management deep polish
@@ -11885,845 +9890,196 @@
    charts, legends, financial tables and responsive states.
 ========================================================= */
 
-.dashboard-skin.madan-admin-shell .reports-v2 {
-  --reports-positive: #15803d;
-  --reports-negative: #b42318;
-  --reports-warning: #b7791f;
-  --reports-blue: #2563eb;
-  display: grid;
-  gap: 18px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__header {
-  display: flex;
-  align-items: center;
-  min-height: 164px;
-  padding: 28px 30px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__header > div {
-  position: relative;
-  z-index: 2;
-  max-width: 980px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__header h1 {
-  margin: 0 0 10px !important;
-  color: #fff !important;
-  font-size: clamp(25px, 2.6vw, 36px) !important;
-  font-weight: 950 !important;
-  letter-spacing: -.035em;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__header p {
-  max-width: 920px;
-  margin: 0 !important;
-  color: rgba(226, 232, 240, .78) !important;
-  font-size: 13px;
-  line-height: 1.85;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__sync {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 15px;
-  padding: 8px 12px;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 999px;
-  color: rgba(255,255,255,.82) !important;
-  background: rgba(255,255,255,.07);
-  backdrop-filter: blur(10px);
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__sync svg {
-  color: var(--madan-gold);
-}
+
+
+
+
+
+
+
 
 /* Filters */
-.dashboard-skin.madan-admin-shell .reports-v2__filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 16px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__filters .f-btn {
-  min-height: 42px;
-  padding: 0 16px;
-  border: 1px solid rgba(15,23,42,.1) !important;
-  border-radius: 13px !important;
-  color: #475569 !important;
-  background: #fff !important;
-  box-shadow: 0 8px 18px -18px rgba(15,23,42,.55);
-  font-size: 13px;
-  font-weight: 850;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__filters .f-btn:hover {
-  border-color: rgba(242,183,5,.42) !important;
-  color: var(--madan-navy-950) !important;
-  background: rgba(242,183,5,.07) !important;
-  transform: translateY(-1px);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__filters .f-btn.is-active {
-  border-color: transparent !important;
-  color: var(--madan-navy-950) !important;
-  background: linear-gradient(135deg, #ffe995 0%, var(--madan-gold) 100%) !important;
-  box-shadow: 0 14px 26px -18px rgba(242,183,5,.72) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__custom-range {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  min-width: 0;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__custom-range label {
-  display: grid;
-  gap: 6px;
-  min-width: 150px;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__custom-range :where(input, select) {
-  width: 100%;
-  min-height: 42px !important;
-  padding-inline: 12px !important;
-  border-radius: 12px !important;
-  font-size: 13px;
-  font-weight: 700;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__range-caption {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  margin-inline-start: auto;
-  padding: 0 14px;
-  border: 1px solid rgba(3,6,64,.09);
-  border-radius: 13px;
-  color: var(--madan-navy-950);
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__range-caption svg {
-  color: var(--madan-gold-deep);
-}
+
+
+
+
+
+
+
+
+
 
 /* Shared section heads */
-.dashboard-skin.madan-admin-shell .reports-v2 .section-head,
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .section-head h2,
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head h2,
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head h3 {
-  margin: 0;
-  color: var(--madan-navy-950) !important;
-  font-size: 17px;
-  font-weight: 950;
-  letter-spacing: -.02em;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .section-head h2 svg {
-  margin-inline-end: 8px;
-  color: var(--madan-gold-deep);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .section-head > span,
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head p {
-  margin: 0;
-  color: var(--madan-muted) !important;
-  font-size: 12px;
-  font-weight: 750;
-}
+
+
+
+
 
 /* Payroll cycle */
-.dashboard-skin.madan-admin-shell .reports-v2__payroll-cycle {
-  position: relative;
-  overflow: hidden;
-  padding: 22px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__payroll-cycle::before {
-  content: "";
-  position: absolute;
-  inset-inline-start: 0;
-  top: 0;
-  width: 5px;
-  height: 100%;
-  background: linear-gradient(180deg, var(--madan-gold), var(--madan-navy-950));
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__payroll-cycle-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip {
-  position: relative;
-  overflow: hidden;
-  min-height: 126px;
-  padding: 17px;
-  border: 1px solid rgba(15,23,42,.085);
-  border-radius: 18px;
-  background: linear-gradient(145deg, #fff, #f8fafc);
-  box-shadow: 0 14px 30px -28px rgba(15,23,42,.68);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip::after {
-  content: "";
-  position: absolute;
-  inset-inline-end: -34px;
-  bottom: -42px;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  background: rgba(242,183,5,.075);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip:hover {
-  border-color: rgba(242,183,5,.34);
-  transform: translateY(-2px);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip h4 {
-  margin: 0 0 10px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip strong {
-  position: relative;
-  z-index: 1;
-  display: block;
-  color: var(--madan-navy-950);
-  font-size: clamp(18px, 1.8vw, 25px);
-  font-weight: 950;
-  line-height: 1.2;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .payroll-chip p {
-  position: relative;
-  z-index: 1;
-  margin: 9px 0 0;
-  color: var(--madan-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
+
+
+
+
+
+
+
+
+
 
 /* KPIs */
-.dashboard-skin.madan-admin-shell .reports-v2__kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi {
-  position: relative;
-  overflow: hidden;
-  min-height: 142px;
-  padding: 22px;
-  border: 0 !important;
-  border-radius: 23px !important;
-  box-shadow: 0 24px 48px -34px rgba(3,6,64,.62) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi::after {
-  content: "";
-  position: absolute;
-  inset-inline-end: -55px;
-  bottom: -62px;
-  width: 160px;
-  height: 160px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  opacity: .11;
-  box-shadow: 0 0 0 28px currentColor;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi h3 {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi strong {
-  position: relative;
-  z-index: 1;
-  display: block;
-  font-size: clamp(24px, 2.4vw, 34px) !important;
-  font-weight: 950 !important;
-  letter-spacing: -.035em;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi-revenue {
-  color: #fff !important;
-  background: linear-gradient(135deg, #0f766e 0%, #15803d 100%) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi-expense {
-  color: #fff !important;
-  background: linear-gradient(135deg, #9f1239 0%, #b42318 100%) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi-net {
-  color: #fff !important;
-  background: linear-gradient(135deg, var(--madan-navy-950) 0%, #111c30 100%) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi-net.is-negative {
-  background: linear-gradient(135deg, #7f1d1d 0%, #b42318 100%) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__kpis .kpi :where(h3, strong) {
-  color: inherit !important;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* Month comparison */
-.dashboard-skin.madan-admin-shell .reports-v2__month-compare {
-  padding: 22px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-card {
-  position: relative;
-  padding: 17px;
-  border: 1px solid rgba(15,23,42,.085);
-  border-radius: 18px;
-  background: #fbfdff;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-card h4 {
-  margin: 0 0 12px;
-  color: var(--madan-navy-950);
-  font-size: 13px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 38px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(15,23,42,.065);
-  color: #64748b;
-  font-size: 12px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-row b {
-  color: var(--madan-text);
-  font-size: 13px;
-  font-weight: 900;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-delta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 74px;
-  min-height: 31px;
-  margin-top: 12px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-delta.is-up {
-  color: #166534;
-  background: #dcfce7;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-delta.is-down {
-  color: #991b1b;
-  background: #fee2e2;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .month-compare-delta.is-flat {
-  color: #475569;
-  background: #e2e8f0;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* Charts */
-.dashboard-skin.madan-admin-shell .reports-v2__charts-board {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card {
-  overflow: hidden;
-  min-width: 0;
-  min-height: 340px;
-  padding: 20px !important;
-  border-radius: 23px !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card--wide {
-  grid-column: 1 / -1;
-  min-height: 420px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head {
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(15,23,42,.07);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-switch {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid rgba(15,23,42,.1);
-  border-radius: 13px;
-  background: #f8fafc;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-switch__btn {
-  min-height: 34px;
-  padding: 0 13px;
-  border: 0 !important;
-  border-radius: 9px !important;
-  color: #64748b !important;
-  background: transparent !important;
-  font-size: 12px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .chart-switch__btn.is-active {
-  color: var(--madan-navy-950) !important;
-  background: linear-gradient(135deg, #ffe995, var(--madan-gold)) !important;
-  box-shadow: 0 8px 18px -14px rgba(242,183,5,.75);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.top-chart-wrap, .mini-chart-wrap) {
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 2px 2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(3,6,64,.18) transparent;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .top-chart {
-  width: 100%;
-  min-width: 720px;
-  min-height: 300px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .mini-chart {
-  width: 100%;
-  min-width: 420px;
-  min-height: 240px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.axis-x, .axis-y) {
-  fill: #64748b !important;
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 700;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-line {
-  fill: none !important;
-  stroke-width: 3.2 !important;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-line--returns,
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-dot--returns {
-  stroke: var(--madan-gold-deep) !important;
-  fill: var(--madan-gold) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-line--investments,
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-dot--investments {
-  stroke: var(--madan-navy-950) !important;
-  fill: var(--madan-navy-950) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .status-bar {
-  fill: url(#madanReportsBarGradient);
-  fill: var(--madan-gold) !important;
-  filter: drop-shadow(0 8px 10px rgba(242,183,5,.18));
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .trend-legend,
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 9px 14px;
-  margin-top: 14px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .legend-item {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .legend-item::before {
-  content: "";
-  width: 20px;
-  height: 4px;
-  border-radius: 999px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .legend-item--returns::before {
-  background: var(--madan-gold);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .legend-item--investments::before {
-  background: var(--madan-navy-950);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend {
-  display: grid;
-  gap: 8px;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__item {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 8px 10px;
-  border: 1px solid rgba(15,23,42,.07);
-  border-radius: 12px;
-  background: #f8fafc;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(15,23,42,.04);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__label {
-  min-width: 0;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 800;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__value {
-  color: var(--madan-navy-950);
-  font-size: 12px;
-  font-weight: 950;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__ratio {
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 750;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .pie-legend__empty {
-  padding: 16px;
-  border: 1px dashed rgba(15,23,42,.15);
-  border-radius: 14px;
-  color: var(--madan-muted);
-  background: #f8fafc;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 750;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* Financial tables */
-.dashboard-skin.madan-admin-shell .reports-v2__section {
-  overflow: hidden;
-  padding: 0 !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section > .section-head {
-  margin: 0 !important;
-  padding: 19px 20px;
-  border-bottom: 1px solid rgba(15,23,42,.075);
-  background: linear-gradient(180deg, #fff, #fbfdff);
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section .table-wrap {
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section thead th {
-  padding: 13px 14px !important;
-  border-bottom: 1px solid rgba(15,23,42,.09) !important;
-  color: #475569 !important;
-  background: #f8fafc !important;
-  font-size: 11px !important;
-  font-weight: 900 !important;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section tbody td {
-  padding: 14px !important;
-  border-bottom: 1px solid rgba(15,23,42,.065) !important;
-  color: #334155 !important;
-  background: #fff !important;
-  font-size: 12px;
-  vertical-align: middle;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section tbody tr:last-child td {
-  border-bottom: 0 !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__section tbody tr:hover td {
-  background: rgba(242,183,5,.045) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.amount-pos, .amount-neg, .amount-exp) {
-  font-weight: 950 !important;
-  direction: ltr;
-  text-align: right;
-  white-space: nowrap;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 .amount-pos {
-  color: var(--reports-positive) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2 :where(.amount-neg, .amount-exp) {
-  color: var(--reports-negative) !important;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__loading {
-  position: fixed;
-  inset-inline-end: 24px;
-  bottom: 24px;
-  z-index: 1050;
-  width: auto;
-  padding: 12px 15px !important;
-  border: 1px solid rgba(242,183,5,.35) !important;
-  border-radius: 14px !important;
-  color: var(--madan-navy-950) !important;
-  background: rgba(255,255,255,.96) !important;
-  box-shadow: 0 22px 55px rgba(3,6,64,.18) !important;
-  backdrop-filter: blur(12px);
-  font-size: 12px;
-  font-weight: 850;
-}
 
-.dashboard-skin.madan-admin-shell .reports-v2__error {
-  padding: 14px 16px !important;
-  font-size: 12px;
-  font-weight: 850;
-}
 
-@media (max-width: 1100px) {
-  .dashboard-skin.madan-admin-shell .reports-v2__payroll-cycle-grid,
-  .dashboard-skin.madan-admin-shell .reports-v2__kpis,
-  .dashboard-skin.madan-admin-shell .reports-v2 .month-compare-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__charts-board {
-    grid-template-columns: 1fr !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card--wide {
-    grid-column: auto;
-  }
-}
 
-@media (max-width: 760px) {
-  .dashboard-skin.madan-admin-shell .reports-v2 {
-    gap: 14px;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__header {
-    min-height: 0;
-    padding: 21px !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__header p {
-    font-size: 12px;
-    line-height: 1.7;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__filters {
-    align-items: stretch;
-    padding: 13px !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__filters .f-btn {
-    flex: 1 1 calc(50% - 6px);
-    padding-inline: 10px;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__custom-range,
-  .dashboard-skin.madan-admin-shell .reports-v2__custom-range label,
-  .dashboard-skin.madan-admin-shell .reports-v2__range-caption {
-    width: 100%;
-    min-width: 0;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__range-caption {
-    justify-content: center;
-    margin-inline-start: 0;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__payroll-cycle-grid,
-  .dashboard-skin.madan-admin-shell .reports-v2__kpis,
-  .dashboard-skin.madan-admin-shell .reports-v2 .month-compare-grid {
-    grid-template-columns: 1fr !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .section-head,
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card__head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-switch {
-    width: 100%;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-switch__btn {
-    flex: 1;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card {
-    min-height: 300px;
-    padding: 15px !important;
-    border-radius: 19px !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2 .chart-card--wide {
-    min-height: 360px;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__section > .section-head {
-    padding: 16px;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__section .table-wrap {
-    overflow: visible !important;
-  }
 
-  .dashboard-skin.madan-admin-shell .reports-v2__section table,
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody,
-  .dashboard-skin.madan-admin-shell .reports-v2__section tr,
-  .dashboard-skin.madan-admin-shell .reports-v2__section td {
-    display: block;
-    width: 100%;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section thead {
-    display: none;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody {
-    display: grid;
-    gap: 11px;
-    padding: 12px;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody tr {
-    overflow: hidden;
-    padding: 8px 13px;
-    border: 1px solid rgba(15,23,42,.09);
-    border-radius: 16px;
-    background: #fff;
-    box-shadow: 0 12px 26px -28px rgba(15,23,42,.72);
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody td {
-    display: grid;
-    grid-template-columns: minmax(105px, .8fr) minmax(0, 1.2fr);
-    gap: 10px;
-    padding: 9px 0 !important;
-    border-bottom: 1px solid rgba(15,23,42,.065) !important;
-    background: transparent !important;
-    text-align: start !important;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody td::before {
-    content: attr(data-label);
-    color: #64748b;
-    font-size: 10px;
-    font-weight: 900;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section tbody td:last-child {
-    border-bottom: 0 !important;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section .empty-cell {
-    display: block;
-    padding: 22px !important;
-    text-align: center !important;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__section .empty-cell::before {
-    content: none;
-  }
-
-  .dashboard-skin.madan-admin-shell .reports-v2__loading {
-    inset-inline: 12px;
-    bottom: 12px;
-    text-align: center;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dashboard-skin.madan-admin-shell .reports-v2 *,
-  .dashboard-skin.madan-admin-shell .reports-v2 *::before,
-  .dashboard-skin.madan-admin-shell .reports-v2 *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: .01ms !important;
-  }
-}
 
 /* =========================================================
    Phase 15 — Income & Expenses management
@@ -20348,56 +17704,17 @@ color: inherit !important;
 }
 
 /* ---------- Internal booking: center logo/title and stop title wrapping ---------- */
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-page-header,
-.bk-page-wrapper.bk-internal .bk-page-header {
-display: grid !important;
-grid-template-columns: 52px minmax(0, 1fr) 52px !important;
-align-items: center !important;
-gap: 16px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-page-header-center,
-.bk-page-wrapper.bk-internal .bk-page-header-center {
-grid-column: 2 !important;
-grid-row: 1 !important;
-width: 100% !important;
-min-width: 0 !important;
-display: flex !important;
-flex-direction: row !important;
-align-items: center !important;
-justify-content: center !important;
-gap: 14px !important;
-text-align: center !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-title,
-.bk-page-wrapper.bk-internal .bk-title {
-min-width: 0 !important;
-color: #fff !important;
-white-space: nowrap !important;
-word-break: keep-all !important;
-overflow-wrap: normal !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-logo,
-.bk-page-wrapper.bk-internal .bk-logo {
-flex: 0 0 48px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-close-btn,
-.bk-page-wrapper.bk-internal .bk-close-btn {
-position: static !important;
-inset: auto !important;
-grid-column: 3 !important;
-grid-row: 1 !important;
-justify-self: end !important;
-transform: none !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-close-btn:hover,
-.bk-page-wrapper.bk-internal .bk-close-btn:hover {
-transform: translateY(-2px) !important;
-}
+
+
+
+
+
+
 
 /* ---------- Responsive repairs ---------- */
 @media (max-width: 1100px) {
@@ -20524,22 +17841,11 @@ transform: translateY(-2px) !important;
   min-height: 48px !important;
 }
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-page-header,
-.bk-page-wrapper.bk-internal .bk-page-header {
-  grid-template-columns: 42px minmax(0, 1fr) 42px !important;
-  gap: 8px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-page-header-center,
-.bk-page-wrapper.bk-internal .bk-page-header-center {
-  flex-direction: column !important;
-  gap: 5px !important;
-}
 
-.dashboard-skin.madan-admin-shell .bk-page-wrapper.bk-internal .bk-title,
-.bk-page-wrapper.bk-internal .bk-title {
-  font-size: 19px !important;
-}
+
+
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -26328,660 +23634,158 @@ body.emp-detail-open {
     overflow: visible !important;
   }
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal {
-    width: 100% !important;
-    min-height: 100dvh !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: #f4f6f9 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-internal-page {
-    width: 100% !important;
-    min-height: 100dvh !important;
-    margin: 0 !important;
-    padding: 0 0 18px !important;
-    overflow: visible !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-internal-container {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 10px 18px !important;
-    overflow: visible !important;
-  }
+  
 
   /* ========================================================
      Compact application header
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-page-header {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 1100 !important;
-    width: calc(100% + 20px) !important;
-    min-height: 66px !important;
-    display: grid !important;
-    grid-template-columns: 40px minmax(0, 1fr) 40px !important;
-    align-items: center !important;
-    gap: 8px !important;
-    margin: 0 -10px 10px !important;
-    padding:
-      calc(9px + env(safe-area-inset-top))
-      12px
-      9px !important;
-    overflow: hidden !important;
-    border: 0 !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.09) !important;
-    border-radius: 0 !important;
-    color: #fff !important;
-    background:
-      radial-gradient(
-        circle at 88% 0%,
-        rgba(242, 183, 5, 0.21),
-        transparent 40%
-      ),
-      linear-gradient(135deg, #030640, #101a2d) !important;
-    box-shadow: 0 8px 25px rgba(3, 6, 64, 0.18) !important;
-    backdrop-filter: blur(14px) !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-page-header::after {
-    inset-inline: 52px !important;
-    height: 2px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-page-header-center {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    min-width: 0 !important;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 8px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-logo {
-    flex: 0 0 34px !important;
-    width: 34px !important;
-    height: 34px !important;
-    padding: 5px !important;
-    border-radius: 11px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-title {
-    min-width: 0 !important;
-    overflow: hidden !important;
-    color: #fff !important;
-    font-size: 17px !important;
-    font-weight: 950 !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-close-btn {
-    grid-column: 3 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-    width: 38px !important;
-    min-width: 38px !important;
-    height: 38px !important;
-    min-height: 38px !important;
-    padding: 0 !important;
-    border-radius: 12px !important;
-  }
+  
 
   /* ========================================================
      Sections layout
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-sections-grid {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    width: 100% !important;
-    margin: 0 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-sections-grid > [class*="col-"] {
-    width: 100% !important;
-    max-width: none !important;
-    flex: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-price-guide-row {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    width: 100% !important;
-    margin: 0 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-price-guide-row > [class*="col-"] {
-    width: 100% !important;
-    max-width: none !important;
-    padding: 0 !important;
-  }
+  
 
   /* ========================================================
      App cards
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-panel,
-    .bk-client-section,
-    .bk-service-section,
-    .bk-cart-panel,
-    .bk-summary-panel,
-    .bk-future-panel,
-    .bk-existing-booking-block,
-    .bk-existing-search-panel,
-    .bk-existing-hint-panel,
-    .bk-price-list-section,
-    .bk-booking-details,
-    .bk-service-hair-guide,
-    .bk-client-cart-block
-  ) {
-    width: 100% !important;
-    max-width: none !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    padding: 13px !important;
-    overflow: hidden !important;
-    border: 1px solid rgba(15, 23, 42, 0.085) !important;
-    border-radius: 18px !important;
-    color: #111a38 !important;
-    background: #fff !important;
-    box-shadow: 0 7px 22px rgba(15, 23, 42, 0.045) !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-panel,
-    .bk-client-section,
-    .bk-service-section,
-    .bk-cart-panel,
-    .bk-summary-panel,
-    .bk-existing-booking-block
-  ) > :where(h1, h2, h3, h4):first-child,
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-cart-title,
-    .bk-existing-search-title,
-    .bk-future-title-head,
-    .bk-soft-title
-  ) {
-    margin: 0 0 10px !important;
-    color: #101a39 !important;
-    font-size: 15px !important;
-    font-weight: 950 !important;
-    line-height: 1.45 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .text-muted,
-    .bk-existing-search-kicker,
-    .bk-existing-hint-body,
-    .bk-cart-service-meta,
-    .bk-cart-summary-line-meta,
-    .bk-future-subhint,
-    .bk-availability-hint,
-    .bk-guide-note
-  ) {
-    color: #748095 !important;
-    font-size: 8px !important;
-    line-height: 1.65 !important;
-  }
+  
 
   /* ========================================================
      Existing client booking block
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-existing-layout {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 9px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-existing-search-row {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    align-items: stretch !important;
-    gap: 7px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-existing-search-row > * {
-    width: auto !important;
-    min-width: 0 !important;
-  }
+  
 
   /* ========================================================
      Form fields
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    input,
-    select,
-    textarea,
-    .form-control,
-    .form-select,
-    .bk-date-display-input,
-    .bk-existing-search-input,
-    .bk-discount-value-input
-  ) {
-    width: 100% !important;
-    min-width: 0 !important;
-    min-height: 47px !important;
-    padding: 9px 11px !important;
-    border: 1px solid rgba(15, 23, 42, 0.12) !important;
-    border-radius: 13px !important;
-    color: #18213c !important;
-    background: #fafbfc !important;
-    box-shadow: none !important;
-    font-size: 16px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .form-label,
-    .bk-booking-label
-  ) {
-    margin-bottom: 5px !important;
-    color: #667287 !important;
-    font-size: 8px !important;
-    font-weight: 900 !important;
-  }
+  
 
   /* ========================================================
      Buttons
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .btn,
-    .bk-existing-search-btn,
-    .bk-add-cart-btn,
-    .bk-submit-btn,
-    .bk-cart-confirm-btn,
-    .bk-pay-btn,
-    .bk-pay-confirm-btn,
-    .bk-pay-cancel-btn,
-    .bk-future-booking-btn,
-    .bk-preview-toggle-btn,
-    .bk-guide-upload-btn,
-    .bk-cart-suggest-btn,
-    .bk-date-calendar-toggle
-  ) {
-    min-width: 0 !important;
-    min-height: 43px !important;
-    padding: 8px 11px !important;
-    border-radius: 12px !important;
-    justify-content: center !important;
-    font-size: 9px !important;
-    font-weight: 900 !important;
-  }
+  
 
   /* ========================================================
      Staff cards
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-staff-card-grid {
-    display: flex !important;
-    gap: 8px !important;
-    width: 100% !important;
-    padding: 0 0 4px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    scroll-snap-type: x proximity !important;
-    scrollbar-width: none !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-staff-card-grid::-webkit-scrollbar {
-    display: none !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-staff-card-grid > * {
-    flex: 0 0 132px !important;
-    min-width: 132px !important;
-    min-height: 98px !important;
-    padding: 11px !important;
-    border-radius: 15px !important;
-    scroll-snap-align: start !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-staff-card-name {
-    font-size: 10px !important;
-  }
+  
 
   /* ========================================================
      Time selection
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-time-grid {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-time-pill {
-    width: 100% !important;
-    min-width: 0 !important;
-    min-height: 42px !important;
-    padding: 7px 5px !important;
-    border-radius: 11px !important;
-    font-size: 9px !important;
-    font-variant-numeric: tabular-nums !important;
-  }
+  
 
   /* ========================================================
      Cart
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-list {
-    display: grid !important;
-    gap: 8px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-list > * {
-    min-width: 0 !important;
-    padding: 11px !important;
-    border-radius: 15px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-item-head {
-    display: grid !important;
-    grid-template-columns: auto minmax(0, 1fr) auto !important;
-    gap: 8px !important;
-    padding-bottom: 8px !important;
-    margin-bottom: 8px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-fields {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    gap: 8px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-actions {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-    width: 100% !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-actions > * {
-    width: 100% !important;
-  }
+  
 
   /* ========================================================
      Summary
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-summary-unified {
-    overflow: hidden !important;
-    border-radius: 15px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-cart-summary-line {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 8px !important;
-    padding: 10px 11px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-total-visual {
-    font-size: 16px !important;
-  }
+  
 
   /* ========================================================
      Future booking result
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-future-inline {
-    width: 100% !important;
-    min-width: 0 !important;
-    margin-top: 8px !important;
-    padding: 11px !important;
-    overflow: hidden !important;
-    border-radius: 15px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-future-inline > .d-flex {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    align-items: center !important;
-    gap: 7px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-future-inline .table-responsive {
-    width: 100% !important;
-    margin-top: 8px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    border-radius: 12px !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-future-table {
-    min-width: 560px !important;
-    margin: 0 !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-future-table :where(th, td) {
-    padding: 9px 10px !important;
-    font-size: 8px !important;
-    white-space: nowrap !important;
-  }
+  
 
   /* ========================================================
      Payment modal — full application sheet
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-pay-modal {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100dvh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding:
-      calc(14px + env(safe-area-inset-top))
-      12px
-      calc(14px + env(safe-area-inset-bottom)) !important;
-    overflow-y: auto !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: #f7f8fb !important;
-    box-shadow: none !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-pay-methods,
-    .bk-payment-method-grid
-  ) {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-pay-methods,
-    .bk-payment-method-grid
-  ) > * {
-    min-width: 0 !important;
-    min-height: 54px !important;
-    padding: 8px !important;
-    border-radius: 13px !important;
-    font-size: 9px !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-pay-modal-actions {
-    position: sticky !important;
-    bottom: 0 !important;
-    z-index: 5 !important;
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-    width: 100% !important;
-    margin-top: 12px !important;
-    padding:
-      10px
-      0
-      calc(4px + env(safe-area-inset-bottom)) !important;
-    background: rgba(247, 248, 251, 0.97) !important;
-    backdrop-filter: blur(12px) !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-pay-modal-actions > * {
-    width: 100% !important;
-    min-width: 0 !important;
-    min-height: 47px !important;
-    margin: 0 !important;
-  }
+  
 
   /* ========================================================
      Remove nested vertical scrolling
   ======================================================== */
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-client-section,
-    .bk-service-section,
-    .bk-cart-panel,
-    .bk-summary-panel,
-    .bk-client-cart-block,
-    .bk-existing-booking-block,
-    .bk-price-list-section
-  ) {
-    height: auto !important;
-    max-height: none !important;
-    overflow-y: visible !important;
-  }
+  
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal :where(
-    .bk-cart-list,
-    .bk-price-list-grid,
-    .bk-existing-layout
-  ) {
-    max-height: none !important;
-    overflow-y: visible !important;
-  }
+  
 }
 
-@media (max-width: 390px) {
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-time-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
 
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-existing-search-row {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-existing-search-row > * {
-    width: 100% !important;
-  }
-
-  .dashboard-skin.is-booking-internal-route
-  .bk-page-wrapper.bk-internal
-  .bk-pay-modal-actions {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-}
 
 /* BOOKING INTERNAL MOBILE APP END */
 
