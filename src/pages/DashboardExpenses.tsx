@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import "../styles/dashboard-v2/pages/expenses.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEye,

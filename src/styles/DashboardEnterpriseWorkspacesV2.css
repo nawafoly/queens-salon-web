@@ -697,135 +697,28 @@
 /* =====================================================================================
    EXPENSES V2
 ===================================================================================== */
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 {
-  grid-template-columns: minmax(0, 1fr) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-header {
-  order: 0;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .enterprise-metrics {
-  order: 1;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--controls {
-  order: 2;
-  padding: 20px !important;
-  border-top: 1px solid var(--ev2-line) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-grid--main {
-  order: 3;
-  display: grid !important;
-  grid-template-columns: minmax(330px, 420px) minmax(0, 1fr) !important;
-  align-items: start !important;
-  gap: 18px !important;
-  margin: 0 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--form {
-  position: sticky !important;
-  top: 18px !important;
-  border-top: 1px solid var(--ev2-line) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--table {
-  border-top: 1px solid var(--ev2-line) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points {
-  display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 9px !important;
-  margin: 0 0 16px !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points > div {
-  min-height: 72px !important;
-  padding: 11px 12px !important;
-  border: 1px solid #e7eaf0 !important;
-  border-radius: 12px !important;
-  background: var(--ev2-soft) !important;
-  color: var(--ev2-muted) !important;
-  font-size: 0.68rem !important;
-  font-weight: 650 !important;
-  line-height: 1.65 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points b {
-  color: var(--ev2-ink-soft) !important;
-  font-weight: 950 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls {
-  display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  align-items: end !important;
-  gap: 11px !important;
-  margin: 0 !important;
-  padding: 16px !important;
-  border: 1px solid var(--ev2-line) !important;
-  border-radius: 15px !important;
-  background: #fafbfc !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls .span-2 {
-  grid-column: span 2 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-actions {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  flex-wrap: wrap !important;
-  gap: 8px !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-form {
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 12px !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-form .span-2 {
-  grid-column: 1 / -1 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-divider {
-  height: 1px !important;
-  margin: 18px 0 !important;
-  background: #edf0f4 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-mini {
-  padding: 14px !important;
-  border: 1px solid var(--ev2-line) !important;
-  border-radius: 13px !important;
-  background: var(--ev2-soft) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-table-wrap--main {
-  max-height: min(68vh, 820px) !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-results-count {
-  display: inline-flex !important;
-  align-items: center !important;
-  min-height: 34px !important;
-  padding: 0 10px !important;
-  border-radius: 10px !important;
-  background: var(--ev2-maroon-soft) !important;
-  color: var(--ev2-maroon) !important;
-  font-size: 0.7rem !important;
-  font-weight: 900 !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-row-actions {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 6px !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-row-actions .exp-btn {
-  min-height: 34px !important;
-  padding-inline: 10px !important;
-  font-size: 0.68rem !important;
-}
-.dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-auto-pill {
-  display: inline-flex !important;
-  min-height: 28px !important;
-  align-items: center !important;
-  padding: 0 9px !important;
-  border-radius: 999px !important;
-  background: var(--ev2-info-soft) !important;
-  color: var(--ev2-info) !important;
-  font-size: 0.66rem !important;
-  font-weight: 900 !important;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* =====================================================================================
    PARTNERS V2
@@ -1605,12 +1498,8 @@
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 :is(.enterprise-metrics, .partner-admin-stats, .settings-shell__metrics) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-control-points {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
+  
+  
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-admin-grid, .partner-contract-grid, .partner-team-grid),
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.pkg-offers-grid, .offers-as-packages-grid) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -1631,14 +1520,8 @@
     width: 100% !important;
     justify-content: flex-start !important;
   }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .day-audit-v2-layout,
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-grid--main,
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-split, .settings-master-detail) {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-card--form {
-    position: static !important;
-  }
+  
+  
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-toolbar,
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--quick-actions,
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 .offers-section--filters .offers-row--filters {
@@ -1692,16 +1575,8 @@
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2 .exp-header-actions > * {
     flex: 1 1 auto !important;
   }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 :is(.exp-control-points, .exp-filters--controls, .exp-form),
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 :is(.partner-admin-grid, .partner-contract-grid, .partner-team-grid, .partner-admin-form-grid),
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-offers-v2 :is(.offers-stats-group, .pkg-offers-grid, .offers-as-packages-grid, .of-grid-2, .of-grid-2a, .of-grid-3),
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-logs-v2 :is(.logs-filters, .log-diff),
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-basic-tabs, .settings-tabs--cards, .settings-basic-form, .settings-form-grid, .settings-toggle-grid) {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-expenses-v2 .exp-filters--controls .span-2 {
-    grid-column: auto !important;
-  }
+  
+  
   .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-partners-v2 .partner-admin-toolbar {
     padding: 10px !important;
   }

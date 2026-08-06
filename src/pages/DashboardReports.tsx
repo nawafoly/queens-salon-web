@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import "../styles/dashboard-v2/pages/reports.css";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
 import {
@@ -1305,12 +1304,12 @@ export default function DashboardReports() {
       value: statusCount[k],
     }));
 
-    const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number; color: string }> = [
-      { label: sourceLabel("booking"), key: "booking", value: 0, color: "#40010D" },
-      { label: sourceLabel("invoice"), key: "invoice", value: 0, color: "#7A1F3D" },
-      { label: sourceLabel("internal"), key: "internal", value: 0, color: "#5C0A9D" },
-      { label: sourceLabel("refund"), key: "refund", value: 0, color: "#888C8C" },
-      { label: sourceLabel("other"), key: "other", value: 0, color: "#2F6C74" },
+    const sourceRaw: Array<{ label: string; key: IncomeSourceKind; value: number }> = [
+      { label: sourceLabel("booking"), key: "booking", value: 0 },
+      { label: sourceLabel("invoice"), key: "invoice", value: 0 },
+      { label: sourceLabel("internal"), key: "internal", value: 0 },
+      { label: sourceLabel("refund"), key: "refund", value: 0 },
+      { label: sourceLabel("other"), key: "other", value: 0 },
     ];
     revenueRowsDetailed.forEach((x) => {
       const row = sourceRaw.find((it) => it.key === x.source);
@@ -1439,10 +1438,11 @@ export default function DashboardReports() {
 
   return (
     <div className="dsv2-page dsv2-reports-page reports-v2">
-      <div className="reports-v2__header">
+      <header className="dsv2-card dsv2-card--padded dsv2-card--elevated reports-v2__header">
         <div>
-          <h1>اللوحة المالية</h1>
-          <p>
+          <span className="dsv2-badge dsv2-badge--gold">التحليل المالي</span>
+          <h1 className="dsv2-page-title">اللوحة المالية</h1>
+          <p className="dsv2-page-subtitle">
             متابعة موحدة للإيرادات والمصروفات وصافي الربح، مع المقارنات الزمنية ودورة الرواتب
             والتفاصيل المطابقة للفلاتر الحالية. العرض الشهري تقويمي، بينما تُعرض دورة الرواتب
             المحاسبية للفترة من يوم 28 إلى يوم 27.
@@ -1458,7 +1458,7 @@ export default function DashboardReports() {
             <div className="reports-v2__export-actions">
               <button
                 type="button"
-                className="reports-btn reports-btn--pdf"
+                className="dsv2-btn dsv2-btn--danger reports-btn reports-btn--pdf"
                 onClick={exportFinancialPdf}
                 disabled={loading || exporting !== null}
               >
@@ -1467,7 +1467,7 @@ export default function DashboardReports() {
               </button>
               <button
                 type="button"
-                className="reports-btn reports-btn--excel"
+                className="dsv2-btn dsv2-btn--success reports-btn reports-btn--excel"
                 onClick={exportFinancialExcel}
                 disabled={loading || exporting !== null}
               >
@@ -1482,9 +1482,9 @@ export default function DashboardReports() {
             ) : null}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="reports-v2__filters">
+      <section className="dsv2-card dsv2-card--padded reports-v2__filters">
         <button
           className={`f-btn ${period === "day" ? "is-active" : ""}`}
           onClick={() => setPeriod("day")}
@@ -1596,9 +1596,9 @@ export default function DashboardReports() {
         <div className="reports-v2__range-caption">
           <FontAwesomeIcon icon={faCalendarDays} /> الفترة: {range.from} إلى {range.to}
         </div>
-      </div>
+      </section>
 
-      <section className="reports-v2__payroll-cycle">
+      <section className="dsv2-card dsv2-card--padded reports-v2__payroll-cycle">
         <div className="section-head">
           <h2>دورة الرواتب (28-27)</h2>
           <span>الإغلاق المحاسبي ثابت يوم {PAYROLL_CLOSE_DAY}</span>
@@ -1629,22 +1629,25 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      <div className="reports-v2__kpis">
-        <article className="kpi kpi-revenue">
-          <h3>إجمالي الإيرادات</h3>
-          <strong>{formatMoney(totals.revenue)}</strong>
+      <div className="dsv2-grid--metrics reports-v2__kpis">
+        <article className="dsv2-metric-card dsv2-metric-card--success kpi kpi-revenue">
+          <h3 className="dsv2-metric-card__label">إجمالي الإيرادات</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.revenue)}</strong>
+          <span className="dsv2-metric-card__meta">حسب الفترة والفلاتر الحالية</span>
         </article>
-        <article className="kpi kpi-expense">
-          <h3>إجمالي المصروفات</h3>
-          <strong>{formatMoney(totals.expenses)}</strong>
+        <article className="dsv2-metric-card dsv2-metric-card--danger kpi kpi-expense">
+          <h3 className="dsv2-metric-card__label">إجمالي المصروفات</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.expenses)}</strong>
+          <span className="dsv2-metric-card__meta">المصروفات المسجلة داخل الفترة</span>
         </article>
-        <article className={`kpi kpi-net ${totals.net >= 0 ? "is-positive" : "is-negative"}`}>
-          <h3>صافي الربح / الخسارة</h3>
-          <strong>{formatMoney(totals.net)}</strong>
+        <article className={`dsv2-metric-card ${totals.net >= 0 ? "dsv2-metric-card--gold is-positive" : "dsv2-metric-card--danger is-negative"} kpi kpi-net`}>
+          <h3 className="dsv2-metric-card__label">صافي الربح / الخسارة</h3>
+          <strong className="dsv2-metric-card__value">{formatMoney(totals.net)}</strong>
+          <span className="dsv2-metric-card__meta">الإيرادات بعد خصم المصروفات</span>
         </article>
       </div>
 
-      <section className="reports-v2__month-compare">
+      <section className="dsv2-card dsv2-card--padded reports-v2__month-compare">
         <div className="section-head">
           <h2>مقارنة الأشهر (تقويميًا) - {monthCompare.currentLabel} مقابل {monthCompare.previousLabel}</h2>
         </div>
@@ -1697,7 +1700,7 @@ export default function DashboardReports() {
       </section>
 
       <section className="reports-v2__charts-board reports-charts-v2">
-        <article className="chart-card chart-card--wide chart-card--trend">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--wide chart-card--trend">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">التحليل المالي</span>
@@ -1845,7 +1848,7 @@ export default function DashboardReports() {
           </div>
         </article>
 
-        <article className="chart-card chart-card--compact chart-card--status">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--status">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">تشغيل الحجوزات</span>
@@ -1933,7 +1936,7 @@ export default function DashboardReports() {
           )}
         </article>
 
-        <article className="chart-card chart-card--compact chart-card--sources">
+        <article className="dsv2-card dsv2-card--padded chart-card chart-card--compact chart-card--sources">
           <div className="chart-card__head chart-card__head--modern">
             <div className="chart-title-block">
               <span className="chart-eyebrow">مزيج الإيرادات</span>
@@ -1956,8 +1959,7 @@ export default function DashboardReports() {
                       <path
                         key={`pie_${slice.key}`}
                         d={arcPath(0, 0, 96, slice.start, slice.end)}
-                        fill={slice.color}
-                        className="donut-slice-v2"
+                        className={`donut-slice-v2 donut-slice-v2--${slice.key}`}
                       />
                     ))}
                     <circle r="59" className="donut-hole-v2" />
@@ -1991,8 +1993,7 @@ export default function DashboardReports() {
                       className="pie-legend__item"
                     >
                       <span
-                        className="pie-legend__dot"
-                        style={{ backgroundColor: slice.color }}
+                        className={`pie-legend__dot pie-legend__dot--${slice.key}`}
                       />
                       <span className="pie-legend__label">{slice.label}</span>
                       <span className="pie-legend__value">
@@ -2016,15 +2017,15 @@ export default function DashboardReports() {
 
       {loadErr ? <div className="reports-v2__error">{loadErr}</div> : null}
 
-      <section className="reports-v2__section">
+      <section className="dsv2-card reports-v2__section">
         <div className="section-head">
           <h2>
             <FontAwesomeIcon icon={faChartLine} /> تفاصيل الإيرادات
           </h2>
           <span>عدد الحركات: {revenueRowsDetailed.length}</span>
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="dsv2-table-scroll table-wrap">
+          <table className="dsv2-table">
             <thead>
               <tr>
                 <th>التاريخ/الوقت</th>
@@ -2063,13 +2064,13 @@ export default function DashboardReports() {
         </div>
       </section>
 
-      <section className="reports-v2__section">
+      <section className="dsv2-card reports-v2__section">
         <div className="section-head">
           <h2>تفاصيل المصروفات</h2>
           <span>عدد السجلات: {expensesInRange.length}</span>
         </div>
-        <div className="table-wrap">
-          <table>
+        <div className="dsv2-table-scroll table-wrap">
+          <table className="dsv2-table">
             <thead>
               <tr>
                 <th>التاريخ</th>

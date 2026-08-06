@@ -5184,8 +5184,8 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: var(--qs-modal-overlay-background, rgba(3, 6, 64, 0.58)) !important;
-  backdrop-filter: var(--qs-modal-overlay-filter, blur(6px));
+  background: rgba(3, 6, 64, 0.58) !important;
+  backdrop-filter: blur(6px);
   animation: madanModalFade 170ms ease both;
 }
 
@@ -5198,10 +5198,10 @@
   width: min(680px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
-  border: 1px solid var(--qs-modal-panel-border, rgba(255, 255, 255, 0.11)) !important;
-  border-radius: var(--qs-modal-panel-radius, 25px) !important;
-  background: var(--qs-modal-panel-background, #fff) !important;
-  box-shadow: var(--qs-modal-panel-shadow, 0 38px 100px rgba(3, 6, 64, 0.32)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
+  border-radius: 25px !important;
+  background: #fff !important;
+  box-shadow: 0 38px 100px rgba(3, 6, 64, 0.32) !important;
   animation: madanModalRise 210ms cubic-bezier(.2,.8,.2,1) both;
 }
 

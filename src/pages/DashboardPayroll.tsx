@@ -59,7 +59,6 @@ import {
   exportPayrollReportExcelV2,
   exportPayrollReportPdfV2,
 } from "../helpers/reports/exportPayrollReportV2";
-import "../styles/dashboard-v2/pages/payroll.css";
 
 type AdjustmentMode = "addition" | "deduction";
 

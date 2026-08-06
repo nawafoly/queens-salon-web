@@ -1015,8 +1015,8 @@ const ActionPinModal = memo(function ActionPinModal({
       open={open}
       onClose={handleClose}
       ariaLabel="التحقق بكلمة مرور الحساب"
-      overlayClassName="bookings-v2-modal-overlay bk-action-pin-overlay"
-      panelClassName="bookings-v2-modal-panel bk-cancel-modal bk-action-pin-modal"
+      overlayClassName="bk-action-pin-overlay"
+      panelClassName="bk-cancel-modal bk-action-pin-modal"
       size="sm"
     >
       <div className="bk-cancel-head">تأكيد كلمة مرور الحساب</div>
@@ -2093,9 +2093,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
       open={open}
       onClose={handleClose}
       ariaLabel="تعديل الحجز"
-      overlayClassName="bookings-v2-modal-overlay"
-      panelClassName="bookings-v2-modal-panel bk-edit-modal"
-      size="lg"
+      panelClassName="bk-edit-modal"
+      size="sm"
     >
       <div className="bk-cancel-head">تعديل الحجز</div>
       <div className="bk-cancel-body">
@@ -5023,28 +5022,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} من {filteredSorted.length}
           </div>
           <div className="bk-pagination-controls">
-            <div className="bk-page-size-control">
-              <span>لكل صفحة</span>
-              <details className="bk-page-size-menu">
-                <summary aria-label={`عدد الحجوزات في الصفحة: ${pageSize}`}>{pageSize}</summary>
-                <div className="bk-page-size-menu__panel" role="menu">
-                  {pageSizeOptions.map((size) => (
-                    <button
-                      key={`page_size_${size}`}
-                      type="button"
-                      className={size === pageSize ? "is-active" : ""}
-                      onClick={(event) => {
-                        const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
-                        details?.removeAttribute("open");
-                        setPageSize(size);
-                      }}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            </div>
+            <label>لكل صفحة<select className="bk-select" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) || DEFAULT_PAGE_SIZE)}>{pageSizeOptions.map((size) => <option key={`page_size_${size}`} value={size}>{size}</option>)}</select></label>
             <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>الأولى</button>
             <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>السابق</button>
             <span className="bk-page-number">{currentPage} / {totalPages}</span>
@@ -5058,8 +5036,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             open={!!selectedBooking}
             onClose={closeBookingModal}
             ariaLabel="تفاصيل الحجز"
-            overlayClassName="bookings-v2-modal-overlay"
-            panelClassName="bookings-v2-modal-panel bk-modal"
+            panelClassName="bk-modal"
             size="lg"
           >
             <div className="modal-head">
@@ -5564,8 +5541,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!bulkTargetStatus}
           onClose={closeBulkStatusModal}
           ariaLabel="تأكيد الإجراء الجماعي للحجوزات"
-          overlayClassName="bookings-v2-modal-overlay"
-          panelClassName="bookings-v2-modal-panel bk-cancel-modal bk-bulk-modal"
+          panelClassName="bk-cancel-modal bk-bulk-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد الإجراء الجماعي</div>
@@ -5612,8 +5588,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!refundTarget}
           onClose={closeRefundModal}
           ariaLabel="الاسترجاع"
-          overlayClassName="bookings-v2-modal-overlay"
-          panelClassName="bookings-v2-modal-panel bk-refund-modal"
+          panelClassName="bk-refund-modal"
           size="sm"
         >
           <div className="bk-cancel-head">إدارة الاسترجاع</div>
@@ -5750,8 +5725,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!confirmTarget}
           onClose={closeConfirmModal}
           ariaLabel="تأكيد الحجز مع الدفع"
-          overlayClassName="bookings-v2-modal-overlay"
-          panelClassName="bookings-v2-modal-panel bk-edit-modal"
+          panelClassName="bk-edit-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد الحجز</div>
@@ -6231,8 +6205,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           open={!!cancelTarget}
           onClose={() => (cancelBusy ? null : closeCancelModal())}
           ariaLabel="تأكيد إلغاء الحجز"
-          overlayClassName="bookings-v2-modal-overlay"
-          panelClassName="bookings-v2-modal-panel bk-cancel-modal"
+          panelClassName="bk-cancel-modal"
           size="sm"
         >
           <div className="bk-cancel-head">تأكيد إلغاء الحجز</div>

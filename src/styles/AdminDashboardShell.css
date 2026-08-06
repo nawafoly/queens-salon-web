@@ -1993,31 +1993,7 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 }
 
 /* Dashboard page roots must use the full content lane reserved by the shell. */
-.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner > :where(
-  .overview-page,
-  .bk-page-wrapper,
-  .clients-page,
-  .emp-page-wrapper,
-  .reports-v2,
-  .income-page,
-  .exp-page,
-  .offers-page,
-  .loyalty-page,
-  .logs-page,
-  .day-audit-page,
-  .dashstaff-page,
-  .settings-page,
-  .settings-page-frame,
-  .settings-shell--embedded,
-  .accounts-page,
-  .accounts-page--settings
-) {
-  width: 100% !important;
-  max-width: none !important;
-  min-width: 0 !important;
-  margin-inline: 0 !important;
-  box-sizing: border-box;
-}
+
 
 .dashboard-skin.madan-admin-shell.dashboard-page :where(
   .settings-shell,
@@ -2055,75 +2031,24 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
 }
 
 /* Keep all functional content light, but give it a subtle shell identity. */
-.dashboard-skin.madan-admin-shell.dashboard-page .dashboard-inner :where(
-  .card,
-  .dashboard-card,
-  .dash-card,
-  .bookings-table-card,
-  .settings-card,
-  .reports-v2__header,
-  .reports-v2__filters,
-  .reports-v2__section,
-  .income-filters,
-  .income-table-wrap,
-  .exp-card,
-  .log-card
-) {
-  border-color: rgba(14, 22, 39, 0.12) !important;
-  box-shadow:
-    0 20px 48px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(242, 183, 5, 0.13) !important;
-}
+
 
 /* Internal booking is the page with the most exposed background area. */
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal {
-  --bk-bg: #ffffff;
-  min-height: calc(100dvh - 70px);
-  background: #ffffff !important;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal-page {
-  background: #ffffff !important;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-page-header {
-  min-height: 78px;
-  margin-bottom: 18px !important;
-  padding: 12px 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: 0 7px 22px rgba(15, 23, 42, 0.05);
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-title {
-  color: #0f172a !important;
-  letter-spacing: 0.01em;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-subtitle {
-  color: #64748b !important;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-close-btn {
-  border: 1px solid rgba(15, 23, 42, 0.1) !important;
-  color: #0f172a !important;
-  background: #ffffff !important;
-  box-shadow: none !important;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-close-btn:hover {
-  border-color: rgba(242, 183, 5, 0.28) !important;
-  color: #0f172a !important;
-  background: rgba(242, 183, 5, 0.09) !important;
-}
 
-.dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-panel {
-  border-color: rgba(14, 22, 39, 0.13) !important;
-  box-shadow:
-    0 22px 52px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(242, 183, 5, 0.15) !important;
-}
+
+
+
+
+
+
+
+
 
 /* Mobile keeps the dashboard shell white and lets the bottom nav overlay only itself. */
 @media (max-width: 767px) {
@@ -2171,15 +2096,9 @@ body:has(.dashboard-skin.madan-admin-shell.dashboard-page) {
     border-color: #ffffff !important;
   }
 
-  .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-internal {
-    min-height: calc(100dvh - 66px);
-  }
+  
 
-  .dashboard-skin.madan-admin-shell.dashboard-page.is-booking-internal-route .bk-page-header {
-    min-height: 68px;
-    padding: 9px 11px;
-    border-radius: 16px;
-  }
+  
 
   .dashboard-skin.madan-admin-shell.dashboard-page .employee-accounts-v2 {
     margin-inline: 0 !important;

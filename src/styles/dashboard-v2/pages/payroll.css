@@ -121,7 +121,7 @@
   padding: var(--dsv2-space-4);
   border: 1px solid var(--dsv2-border-gold);
   border-radius: var(--dsv2-radius-lg);
-  color: #735600;
+  color: var(--dsv2-warning);
   background: var(--dsv2-gold-softer);
   font-size: 0.76rem;
   font-weight: 800;
@@ -169,7 +169,7 @@
 
 .dashboard-v2 .dsv2-payroll-page .payroll-alert.is-warning {
   border-color: var(--dsv2-border-gold);
-  color: #735600;
+  color: var(--dsv2-warning);
   background: var(--dsv2-gold-soft);
 }
 
@@ -312,7 +312,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-setup-badge.is-incomplete,
 .dashboard-v2 .dsv2-payroll-page .payroll-mini-badge.is-attendance-warning {
   border-color: var(--dsv2-border-gold);
-  color: #735600;
+  color: var(--dsv2-warning);
   background: var(--dsv2-gold-soft);
 }
 
@@ -328,7 +328,7 @@
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-attendance-note {
-  color: #735600 !important;
+  color: var(--dsv2-warning);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-switch {
@@ -350,7 +350,7 @@
   position: absolute;
   inset: 0;
   border-radius: var(--dsv2-radius-pill);
-  background: #d9dee5;
+  background: var(--dsv2-border-strong);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-switch > span::after {
@@ -361,7 +361,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--dsv2-surface);
   box-shadow: var(--dsv2-shadow-xs);
   transition: transform var(--dsv2-transition-fast);
 }
@@ -492,8 +492,8 @@
   overflow: auto;
   border: 1px solid var(--dsv2-border, rgba(5, 8, 13, 0.1));
   border-radius: var(--dsv2-radius-xl, 22px);
-  color: var(--dsv2-text, #05080d);
-  background: var(--dsv2-surface, #fff);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
   box-shadow: var(--dsv2-shadow-lg, 0 28px 70px rgba(5, 8, 13, 0.18));
 }
 
@@ -521,7 +521,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-modal header h2,
 .payroll-modal header h2 {
   margin: var(--dsv2-space-1, 4px) 0 0;
-  color: var(--dsv2-text, #05080d);
+  color: var(--dsv2-text);
   font-size: 1.2rem;
   font-weight: 900;
 }
@@ -531,7 +531,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-modal header span,
 .payroll-modal header span {
   margin: var(--dsv2-space-1, 4px) 0 0;
-  color: var(--dsv2-muted, #6f7784);
+  color: var(--dsv2-muted);
   font-size: 0.72rem;
 }
 
@@ -548,7 +548,7 @@
   display: grid;
   gap: var(--dsv2-space-2, 8px);
   margin: var(--dsv2-space-4, 16px) var(--dsv2-space-5, 20px) 0;
-  color: var(--dsv2-text-soft, #303641);
+  color: var(--dsv2-text-soft);
   font-size: 0.72rem;
   font-weight: 900;
 }
@@ -562,8 +562,8 @@
   padding: var(--dsv2-space-3, 12px) var(--dsv2-space-4, 16px);
   border: 1px solid var(--dsv2-border-strong, rgba(5, 8, 13, 0.17));
   border-radius: var(--dsv2-radius-md, 14px);
-  color: var(--dsv2-text, #05080d);
-  background: #fff;
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-adjustment-modal textarea,
@@ -584,9 +584,9 @@
 
 .dashboard-v2 .dsv2-payroll-page .payroll-adjustment-modal .is-primary,
 .payroll-adjustment-modal .is-primary {
-  color: var(--dsv2-on-dark, #fff);
-  border-color: var(--dsv2-black, #05080d);
-  background: var(--dsv2-black, #05080d);
+  color: var(--dsv2-on-dark);
+  border-color: var(--dsv2-black);
+  background: var(--dsv2-black);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-detail-modal > .payroll-alert,
@@ -612,7 +612,7 @@
   padding: var(--dsv2-card-padding, 20px);
   border: 1px solid var(--dsv2-border, rgba(5, 8, 13, 0.1));
   border-radius: var(--dsv2-radius-lg, 18px);
-  background: var(--dsv2-surface-soft, #f8f8f8);
+  background: var(--dsv2-surface-soft);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-detail-grid h3,
@@ -622,7 +622,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-audit-list h3,
 .payroll-audit-list h3 {
   margin: 0 0 var(--dsv2-space-3, 12px);
-  color: var(--dsv2-text, #05080d);
+  color: var(--dsv2-text);
   font-size: 0.86rem;
   font-weight: 900;
 }
@@ -652,7 +652,7 @@
 
 .dashboard-v2 .dsv2-payroll-page .payroll-detail-grid dt,
 .payroll-detail-grid dt {
-  color: var(--dsv2-muted, #6f7784);
+  color: var(--dsv2-muted);
   font-size: 0.7rem;
   font-weight: 750;
 }
@@ -660,7 +660,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-detail-grid dd,
 .payroll-detail-grid dd {
   margin: 0;
-  color: var(--dsv2-text, #05080d);
+  color: var(--dsv2-text);
   font-size: 0.72rem;
   font-weight: 900;
   text-align: left;
@@ -680,8 +680,8 @@
 .payroll-audit-list > span {
   padding: var(--dsv2-space-2, 8px) var(--dsv2-space-3, 12px);
   border-radius: var(--dsv2-radius-sm, 10px);
-  color: var(--dsv2-text-soft, #303641);
-  background: var(--dsv2-surface, #fff);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface);
   font-size: 0.68rem;
   line-height: 1.6;
 }
@@ -710,7 +710,7 @@
 
 .dashboard-v2 .dsv2-payroll-page .payroll-net-panel span,
 .payroll-net-panel span {
-  color: var(--dsv2-muted, #6f7784);
+  color: var(--dsv2-muted);
   font-size: 0.65rem;
   font-weight: 800;
 }
@@ -718,22 +718,22 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-net-panel strong,
 .payroll-net-panel strong {
   overflow-wrap: anywhere;
-  color: var(--dsv2-text, #05080d);
+  color: var(--dsv2-text);
   font-size: 0.88rem;
   font-weight: 900;
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-net-panel .is-net,
 .payroll-net-panel .is-net {
-  color: var(--dsv2-on-dark, #fff);
-  background: var(--dsv2-black, #05080d);
+  color: var(--dsv2-on-dark);
+  background: var(--dsv2-black);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-net-panel .is-net span,
 .dashboard-v2 .dsv2-payroll-page .payroll-net-panel .is-net strong,
 .payroll-net-panel .is-net span,
 .payroll-net-panel .is-net strong {
-  color: var(--dsv2-on-dark, #fff);
+  color: var(--dsv2-on-dark);
 }
 
 .dashboard-v2 .dsv2-payroll-page .payroll-adjustment-list,
@@ -760,7 +760,7 @@
 .dashboard-v2 .dsv2-payroll-page .payroll-adjustment-list article small,
 .payroll-adjustment-list article small {
   grid-column: 1 / -1;
-  color: var(--dsv2-muted, #6f7784);
+  color: var(--dsv2-muted);
   font-size: 0.68rem;
 }
 

@@ -7,8 +7,6 @@ import {
   WorkspaceMetricV2,
   WorkspaceStatusBadgeV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
-import "../../styles/dashboard-v2/pages/employee-workspace.css";
-import "../../styles/dashboard-v2/pages/employee-workspace-review-fixes-v2.css";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 

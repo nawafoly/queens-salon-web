@@ -49,7 +49,8 @@
     "migrate:packages-to-core": "node scripts/migrate-packages-d1-to-core.mjs --apply",
     "test:core:dedupe": "node --test workers/core-client-dedup.test.mjs",
     "dedupe:core-clients:dry": "node scripts/dedupe-core-clients.mjs",
-    "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply"
+    "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply",
+    "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
