@@ -101,7 +101,7 @@ import {
 } from "./DashboardBookings.helpers";
 
 // ✅ Styles
-import "../styles/DashboardBookingsEnterprise.css";
+import "../styles/dashboard-v2/pages/bookings.css";
 
 /* =========================
    Constants / Types
@@ -1063,12 +1063,12 @@ const ActionPinModal = memo(function ActionPinModal({
         {error ? <div className="bk-action-pin-error">{error}</div> : null}
       </div>
       <div className="bk-cancel-foot">
-        <button type="button" className="exp-btn ghost" onClick={handleClose} disabled={busy}>
+        <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={busy}>
           إلغاء
         </button>
         <button
           type="button"
-          className={`exp-btn ${action?.kind === "delete" ? "danger" : ""}`}
+          className={`dsv2-btn ${action?.kind === "delete" ? "dsv2-btn--danger" : "dsv2-btn--primary"}`}
           onClick={() => void handleConfirm()}
           disabled={busy}
         >
@@ -2161,10 +2161,10 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         {error ? <div style={{ color: "#b42318", marginTop: 10, fontSize: 13 }}>{error}</div> : null}
       </div>
       <div className="bk-cancel-foot">
-        <button type="button" className="exp-btn ghost" onClick={handleClose} disabled={saving}>
+        <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleClose} disabled={saving}>
           رجوع
         </button>
-        <button type="button" className="exp-btn" onClick={() => void handleSave()} disabled={saving}>
+        <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void handleSave()} disabled={saving}>
           {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
         </button>
       </div>
@@ -4234,10 +4234,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const renderBookingSection = useCallback((section: BookingDisplaySection) => (
     <section
       key={section.key}
-      className={`bk-bookings-section bk-bookings-section--${section.key}`}
+      className={`dsv2-card dsv2-card--padded bookings-v2-table-section bookings-v2-table-section--${section.key}`}
       aria-label={section.title}
     >
-      <div className="bk-bookings-section-head">
+      <div className="dsv2-section-head bookings-v2-table-section__head">
         <div className="bk-bookings-section-copy">
           <h2>{section.title}</h2>
           <p>{section.description}</p>
@@ -4253,9 +4253,9 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       </div>
 
       {section.rows.length ? (
-        <div className="bookings-table-card">
+        <div className="bookings-v2-table-card">
           <div className="bk-table-wrap">
-            <table className="bookings-table bookings-table--enterprise">
+            <table className="dsv2-table bookings-v2-table">
               <thead>
                 <tr>
                   <th className="bk-col-select">
@@ -4387,12 +4387,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </td>
                         <td className="bk-actions-cell">
                           <div className="bk-actions-row bk-actions-row--enterprise">
-                            <button type="button" className="exp-btn sm bk-primary-row-action" onClick={() => setSelectedBooking(b)}>
+                            <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm bookings-v2-row-primary" onClick={() => setSelectedBooking(b)}>
                               فتح
                             </button>
                             <button
                               type="button"
-                              className="exp-btn ghost sm bk-print-invoice-btn"
+                              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bk-print-invoice-btn"
                               onClick={() => void handlePrintBookingInvoice(b)}
                               disabled={printInvoiceBusyId === b.id}
                               title="طباعة الفاتورة"
@@ -4401,13 +4401,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
                             {canEditBookings ? (
-                              <button type="button" className="exp-btn ghost sm" onClick={() => openEditBookingModal(b)}>
+                              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
                             ) : null}
                             <button
                               type="button"
-                              className="exp-btn ghost sm bk-refund-btn"
+                              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bk-refund-btn"
                               onClick={() => openRefundModal(b)}
                               disabled={!canManageRefund(b) || refundBusyId === b.id}
                             >
@@ -4430,7 +4430,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             {uiRole === "owner" ? (
                               <button
                                 type="button"
-                                className="exp-btn danger sm"
+                                className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
                                 onClick={() => handleDeleteBooking(b)}
                                 title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
                               >
@@ -4439,8 +4439,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             ) : null}
                             {uiRole === "reception" && b.status === "pending" ? (
                               <>
-                                <button type="button" className="exp-btn sm" onClick={() => handleUpdateStatus(b.id, "confirmed")}>تأكيد</button>
-                                <button type="button" className="exp-btn danger sm" onClick={() => handleUpdateStatus(b.id, "cancelled")}>إلغاء</button>
+                                <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "confirmed")}>تأكيد</button>
+                                <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => handleUpdateStatus(b.id, "cancelled")}>إلغاء</button>
                               </>
                             ) : null}
                           </div>
@@ -4553,10 +4553,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         </div>
                       </div>
                       <div className="bk-mobile-actions">
-                        <button type="button" className="exp-btn ghost sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
+                        <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => setSelectedBooking(b)}>تفاصيل</button>
                         <button
                           type="button"
-                          className="exp-btn ghost sm w-100 bk-print-invoice-btn"
+                          className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100 bk-print-invoice-btn"
                           onClick={() => void handlePrintBookingInvoice(b)}
                           disabled={printInvoiceBusyId === b.id}
                         >
@@ -4564,13 +4564,13 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           {printInvoiceBusyId === b.id ? "جاري تجهيز الفاتورة..." : "طباعة الفاتورة"}
                         </button>
                         {canEditBookings && (
-                          <button type="button" className="exp-btn ghost sm w-100" onClick={() => openEditBookingModal(b)}>
+                          <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => openEditBookingModal(b)}>
                             تعديل
                           </button>
                         )}
                         <button
                           type="button"
-                          className="exp-btn ghost sm w-100 bk-refund-btn"
+                          className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100 bk-refund-btn"
                           onClick={() => openRefundModal(b)}
                           disabled={!canManageRefund(b) || refundBusyId === b.id}
                         >
@@ -4579,7 +4579,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         {(uiRole === "owner" || uiRole === "admin") && (
                           <>
                             {uiRole === "owner" && (
-                              <button type="button" className="exp-btn danger sm w-100" onClick={() => handleDeleteBooking(b)}>
+                              <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm w-100" onClick={() => handleDeleteBooking(b)}>
                                 حذف الحجز
                               </button>
                             )}
@@ -4599,10 +4599,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                         )}
                         {uiRole === "reception" && b.status === "pending" && (
                           <>
-                            <button type="button" className="exp-btn sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
+                            <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm w-100" onClick={() => handleUpdateStatus(b.id, "confirmed")}>
                               تأكيد
                             </button>
-                            <button type="button" className="exp-btn danger sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
+                            <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm w-100" onClick={() => handleUpdateStatus(b.id, "cancelled")}>
                               إلغاء
                             </button>
                           </>
@@ -4632,7 +4632,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 : "عند إضافة حجوزات لهذا القسم ستظهر هنا مباشرة."}
             </p>
             {hasActiveBookingFilters ? (
-              <button type="button" className="exp-btn ghost sm" onClick={resetBookingFilters}>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={resetBookingFilters}>
                 <FontAwesomeIcon icon={faRotate} /> إعادة ضبط الفلاتر
               </button>
             ) : null}
@@ -4689,20 +4689,20 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   if (loading) return <div className="p-5 text-center">جاري التحميل...</div>;
 
   return (
-    <div className="bk-page-wrapper bk-enterprise-page" dir="rtl">
-      <div className="container-fluid bk-enterprise-container">
-        <header className="bk-enterprise-hero">
-          <div className="bk-enterprise-hero-copy">
-            <p className="bk-enterprise-eyebrow">Queens Salon • Booking Operations</p>
-            <h1>مركز إدارة الحجوزات</h1>
-            <p>واجهة تشغيل موحدة لمتابعة الحجوزات الجديدة، المواعيد، التحصيل، والإجراءات اليومية.</p>
+    <main className="dsv2-page bookings-v2-page" dir="rtl" aria-labelledby="bookings-v2-title">
+      <div className="bookings-v2-layout">
+        <header className="dsv2-card dsv2-card--padded dsv2-card--elevated bookings-v2-hero">
+          <div className="bookings-v2-hero__content">
+            <span className="dsv2-badge dsv2-badge--gold">Queens Salon • Booking Operations</span>
+            <h1 id="bookings-v2-title" className="dsv2-page-title">مركز إدارة الحجوزات</h1>
+            <p className="dsv2-page-subtitle">واجهة تشغيل موحدة لمتابعة الحجوزات الجديدة، المواعيد، التحصيل، والإجراءات اليومية.</p>
           </div>
-          <div className="bk-enterprise-hero-actions">
-            <Link to="/dashboard/booking-internal" className="bk-enterprise-btn is-primary">
+          <div className="bookings-v2-hero__actions">
+            <Link to="/dashboard/booking-internal" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm">
               <FontAwesomeIcon icon={faPlus} />
               إنشاء حجز جديد
             </Link>
-            <button type="button" className="bk-enterprise-btn" onClick={refreshBookingData}>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={refreshBookingData}>
               <FontAwesomeIcon icon={faRotate} />
               تحديث
             </button>
@@ -4710,34 +4710,34 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </div>
         </header>
 
-        {error ? <div className="bookings-error bk-enterprise-error">{error}</div> : null}
+        {error ? <div className="bookings-v2-error" role="alert">{error}</div> : null}
 
-        <section className="bk-enterprise-kpis" aria-label="ملخص عمليات الحجوزات">
-          <article className="bk-enterprise-kpi">
-            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
+        <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label="ملخص عمليات الحجوزات">
+          <article className="dsv2-metric-card bookings-v2-metric">
+            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
             <div><small>حجوزات اليوم</small><strong>{bookingOperationsOverview.todayCount}</strong><em>{bookingOperationsOverview.today}</em></div>
           </article>
-          <article className="bk-enterprise-kpi">
-            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
+          <article className="dsv2-metric-card bookings-v2-metric">
+            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
             <div><small>المؤكد والمكتمل اليوم</small><strong>{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em>مؤكد {bookingOperationsOverview.todayConfirmed} • مكتمل {bookingOperationsOverview.todayCompleted}</em></div>
           </article>
-          <article className="bk-enterprise-kpi">
-            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
+          <article className="dsv2-metric-card bookings-v2-metric">
+            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
             <div><small>المحصّل اليوم</small><strong><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} /></strong><em>حسب الحجوزات المحمّلة</em></div>
           </article>
-          <article className="bk-enterprise-kpi is-alert">
-            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+          <article className="dsv2-metric-card bookings-v2-metric bookings-v2-metric--alert">
+            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
             <div><small>تحتاج متابعة</small><strong>{attentionBookingCount}</strong><em>حجوزات قديمة أو غير مغلقة</em></div>
           </article>
-          <article className="bk-enterprise-kpi">
-            <span className="bk-enterprise-kpi-icon"><FontAwesomeIcon icon={faChartLine} /></span>
+          <article className="dsv2-metric-card bookings-v2-metric">
+            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
             <div><small>إجمالي المتبقي</small><strong><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em>على كل الحجوزات غير الملغاة</em></div>
           </article>
         </section>
 
-        <section className="bk-enterprise-operations-grid">
-          <article className="bk-enterprise-panel bk-enterprise-new-queue">
-            <div className="bk-enterprise-panel-head">
+        <section className="bookings-v2-work-grid">
+          <article className="dsv2-card dsv2-card--padded bookings-v2-panel bookings-v2-panel--new-queue">
+            <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
                 <span className="bk-panel-kicker">الوارد الجديد</span>
                 <h2>الحجوزات الجديدة</h2>
@@ -4747,37 +4747,37 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             {unseenNewPreviewBookings.length ? (
-              <div className="bk-enterprise-queue-list">
+              <div className="bookings-v2-queue-list">
                 {unseenNewPreviewBookings.map((booking) => (
                   <button key={`enterprise_new_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
-                    <span className="bk-enterprise-queue-time">
+                    <span className="bookings-v2-queue-time">
                       <strong>{formatTime12(booking.time)}</strong>
                       <small>{booking.date}</small>
                     </span>
-                    <span className="bk-enterprise-queue-copy">
+                    <span className="bookings-v2-queue-copy">
                       <strong>{booking.customerName || "عميلة غير معروفة"}</strong>
                       <small>{serviceSummaryForTable(booking)} • {booking.employeeName || "بدون موظفة"}</small>
                     </span>
-                    <span className="bk-enterprise-queue-ref"><bdi dir="ltr">{bookingRef(booking)}</bdi></span>
+                    <span className="bookings-v2-queue-ref"><bdi dir="ltr">{bookingRef(booking)}</bdi></span>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="bk-enterprise-empty-state">
+              <div className="bookings-v2-empty-state">
                 <FontAwesomeIcon icon={faCheckCircle} />
                 <strong>تمت مراجعة كل الحجوزات الجديدة</strong>
                 <span>أي حجز جديد سيظهر هنا مباشرة.</span>
               </div>
             )}
 
-            <div className="bk-enterprise-panel-actions">
+            <div className="bookings-v2-panel-actions">
               <button type="button" onClick={() => { resetBookingFilters(); setSortOrder("newest"); }} disabled={!unseenNewBookings.length}>عرض الأحدث في القائمة</button>
               <button type="button" onClick={markNewBookingsSeen} disabled={!unseenNewBookings.length}>تحديد الكل كمُطّلع عليه</button>
             </div>
           </article>
 
-          <article className="bk-enterprise-panel bk-enterprise-attention-panel">
-            <div className="bk-enterprise-panel-head">
+          <article className="dsv2-card dsv2-card--padded bookings-v2-panel bookings-v2-panel--attention">
+            <div className="dsv2-section-head bookings-v2-panel__head">
               <div>
                 <span className="bk-panel-kicker">مركز المتابعة</span>
                 <h2>حجوزات تحتاج إجراء</h2>
@@ -4786,7 +4786,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <span className="bk-panel-count is-warning">{attentionBookingCount}</span>
             </div>
 
-            <div className="bk-enterprise-attention-stats">
+            <div className="bookings-v2-attention-stats">
               <button type="button" onClick={() => { setStatusFilter("pending"); setOldPendingFilter("before_today"); }}>
                 <span>قديم بالانتظار</span><strong>{stalePendingCount}</strong>
               </button>
@@ -4802,7 +4802,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             {stalePreviewBookings.length ? (
-              <div className="bk-enterprise-attention-list">
+              <div className="bookings-v2-attention-list">
                 {stalePreviewBookings.slice(0, 4).map((booking) => (
                   <button key={`attention_${booking.id}`} type="button" onClick={() => setSelectedBooking(booking)}>
                     <span className={`status-badge ${booking.status}`}>{statusLabel[booking.status]}</span>
@@ -4812,7 +4812,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 ))}
               </div>
             ) : (
-              <div className="bk-enterprise-empty-state is-compact">
+              <div className="bookings-v2-empty-state is-compact">
                 <FontAwesomeIcon icon={faCheckCircle} />
                 <strong>لا توجد حجوزات متأخرة</strong>
               </div>
@@ -4820,14 +4820,14 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </article>
         </section>
 
-        <section className="bk-enterprise-command-center" aria-label="البحث والفلاتر">
-          <div className="bk-command-heading">
-            <div><span className="bk-panel-kicker">مساحة العمل</span><h2>البحث وإدارة القائمة</h2></div>
+        <section className="dsv2-card dsv2-card--padded bookings-v2-command" aria-label="البحث والفلاتر">
+          <div className="dsv2-section-head bookings-v2-command__head">
+            <div><span className="dsv2-badge dsv2-badge--gold">مساحة العمل</span><h2 className="dsv2-section-title">البحث وإدارة القائمة</h2></div>
             <div className="bk-command-result"><strong>{filteredSorted.length}</strong><span>نتيجة مطابقة</span></div>
           </div>
 
           <div className="bk-command-primary-row">
-            <label className="bk-enterprise-search">
+            <label className="bookings-v2-search">
               <FontAwesomeIcon icon={faSearch} />
               <input
                 type="text"
@@ -4972,36 +4972,36 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         </section>
 
         {selectedBookingIds.size || bulkResultMessage || bulkError ? (
-          <section className="bk-bulk-toolbar bk-bulk-toolbar--enterprise">
+          <section className="dsv2-card dsv2-card--padded bookings-v2-bulk-toolbar">
             <div className="bk-bulk-summary"><strong>{selectedBookingIds.size}</strong><span>حجز محدد</span><small>{selectedMatchingCount} ضمن النتائج الحالية</small></div>
             <div className="bk-bulk-actions">
-              <button type="button" className="exp-btn ghost" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>{allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة"}</button>
-              <button type="button" className="exp-btn ghost" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>تحديد كل النتائج</button>
-              <button type="button" className="exp-btn ghost" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>إلغاء التحديد</button>
-              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>مكتمل</button>
-              <button type="button" className="exp-btn" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>مؤكد</button>
-              <button type="button" className="exp-btn danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>ملغي</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={toggleCurrentPageSelection} disabled={!pageBookingIds.length}>{allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة"}</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={selectAllMatchingBookings} disabled={!filteredBookingIds.length}>تحديد كل النتائج</button>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={clearSelectedBookings} disabled={!selectedBookingIds.size}>إلغاء التحديد</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("completed")} disabled={!selectedBookingIds.size}>مكتمل</button>
+              <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => openBulkStatusModal("confirmed")} disabled={!selectedBookingIds.size}>مؤكد</button>
+              <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => openBulkStatusModal("cancelled")} disabled={!selectedBookingIds.size}>ملغي</button>
             </div>
             {bulkResultMessage ? <div className="bk-bulk-result">{bulkResultMessage}</div> : null}
             {bulkError ? <div className="bk-bulk-error">{bulkError}</div> : null}
           </section>
         ) : null}
 
-        <div className="bk-bookings-sections bk-bookings-sections--enterprise">
+        <div className="bookings-v2-sections">
           {bookingSectionsView}
         </div>
 
-        <nav className="bk-pagination-bar bk-pagination-bar--enterprise" aria-label="التنقل بين صفحات الحجوزات">
+        <nav className="dsv2-card bookings-v2-pagination-bar" aria-label="التنقل بين صفحات الحجوزات">
           <div className="bk-pagination-count">
             عرض {pagedBookings.length ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, filteredSorted.length)} من {filteredSorted.length}
           </div>
           <div className="bk-pagination-controls">
             <label>لكل صفحة<select className="bk-select" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) || DEFAULT_PAGE_SIZE)}>{pageSizeOptions.map((size) => <option key={`page_size_${size}`} value={size}>{size}</option>)}</select></label>
-            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>الأولى</button>
-            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>السابق</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1}>الأولى</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>السابق</button>
             <span className="bk-page-number">{currentPage} / {totalPages}</span>
-            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>التالي</button>
-            <button type="button" className="exp-btn ghost" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>التالي</button>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</button>
           </div>
         </nav>
 
@@ -5015,7 +5015,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           >
             <div className="modal-head">
               <b>تفاصيل الحجز #{bookingRef(selectedBooking)}</b>
-              <button className="exp-btn ghost" onClick={closeBookingModal}>
+              <button className="dsv2-btn dsv2-btn--secondary" onClick={closeBookingModal}>
                 <FontAwesomeIcon icon={faXmark} />
               </button>
             </div>
@@ -5258,7 +5258,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                   <div className="bk-note-actions">
                     <button
                       type="button"
-                      className="exp-btn"
+                      className="dsv2-btn dsv2-btn--primary"
                       onClick={() => saveNote(selectedBooking.id)}
                     >
                       حفظ الملاحظة
@@ -5404,7 +5404,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                 <div className="bk-note-actions">
                   <button
                     type="button"
-                    className="exp-btn"
+                    className="dsv2-btn dsv2-btn--primary"
                     onClick={() => saveNote(selectedBooking.id)}
                   >
                     حفظ الملاحظة
@@ -5418,23 +5418,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               </div>
             <div className="modal-foot">
               {canManageRefund(selectedBooking) && (
-                <button className="exp-btn ghost" onClick={() => openRefundModal(selectedBooking)}>
+                <button className="dsv2-btn dsv2-btn--secondary" onClick={() => openRefundModal(selectedBooking)}>
                   {refundMapByBookingId[String(selectedBooking.id || "").trim()]
                     ? "إدارة الاسترجاع"
                     : "تسجيل استرجاع"}
                 </button>
               )}
               {canEditBookings && (
-                <button className="exp-btn ghost" onClick={() => openEditBookingModal(selectedBooking)}>
+                <button className="dsv2-btn dsv2-btn--secondary" onClick={() => openEditBookingModal(selectedBooking)}>
                   تعديل الحجز
                 </button>
               )}
               {uiRole === "owner" && (
-                <button className="exp-btn danger" onClick={() => handleDeleteBooking(selectedBooking)}>
+                <button className="dsv2-btn dsv2-btn--danger" onClick={() => handleDeleteBooking(selectedBooking)}>
                   حذف الحجز
                 </button>
               )}
-              <button className="exp-btn bk-close-btn" onClick={closeBookingModal}>إغلاق</button>
+              <button className="dsv2-btn dsv2-btn--primary bk-close-btn" onClick={closeBookingModal}>إغلاق</button>
             </div>
           </Modal>
         )}
@@ -5493,7 +5493,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           <div className="bk-cancel-foot">
             <button
               type="button"
-              className="exp-btn ghost"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={closeActionPinModal}
               disabled={actionPinBusy}
             >
@@ -5501,7 +5501,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
             <button
               type="button"
-              className={`exp-btn ${pendingSensitiveAction?.kind === "delete" ? "danger" : ""}`}
+              className={`dsv2-btn ${pendingSensitiveAction?.kind === "delete" ? "dsv2-btn--danger" : "dsv2-btn--primary"}`}
               onClick={confirmSensitiveAction}
               disabled={actionPinBusy}
             >
@@ -5544,12 +5544,12 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             {bulkError ? <div className="bk-action-pin-error">{bulkError}</div> : null}
           </div>
           <div className="bk-cancel-foot">
-            <button type="button" className="exp-btn ghost" onClick={closeBulkStatusModal} disabled={bulkSaving}>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeBulkStatusModal} disabled={bulkSaving}>
               رجوع
             </button>
             <button
               type="button"
-              className={`exp-btn ${bulkTargetStatus === "cancelled" ? "danger" : ""}`}
+              className={`dsv2-btn ${bulkTargetStatus === "cancelled" ? "dsv2-btn--danger" : "dsv2-btn--primary"}`}
               onClick={() => void confirmBulkStatusUpdate()}
               disabled={bulkSaving || !bulkTargetBookings.length}
             >
@@ -5667,7 +5667,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           <div className="bk-cancel-foot">
             <button
               type="button"
-              className="exp-btn ghost"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={closeRefundModal}
               disabled={refundSaving}
             >
@@ -5676,7 +5676,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             {refundTarget && refundMapByBookingId[String(refundTarget.id || "").trim()] ? (
               <button
                 type="button"
-                className="exp-btn danger"
+                className="dsv2-btn dsv2-btn--danger"
                 onClick={handleCancelRefund}
                 disabled={refundSaving}
                 title="يمكن التراجع عن الاسترجاع من هنا"
@@ -5686,7 +5686,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             ) : null}
             <button
               type="button"
-              className="exp-btn"
+              className="dsv2-btn dsv2-btn--primary"
               onClick={handleSaveRefund}
               disabled={refundSaving}
             >
@@ -5869,7 +5869,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           <div className="bk-cancel-foot">
             <button
               type="button"
-              className="exp-btn ghost"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={closeConfirmModal}
               disabled={confirmSaving}
             >
@@ -5877,7 +5877,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
             <button
               type="button"
-              className="exp-btn"
+              className="dsv2-btn dsv2-btn--primary"
               onClick={handleConfirmPending}
               disabled={confirmSaving}
             >
@@ -6157,7 +6157,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           <div className="bk-cancel-foot">
             <button
               type="button"
-              className="exp-btn ghost"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={closeEditModal}
               disabled={editSaving}
             >
@@ -6165,7 +6165,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
             <button
               type="button"
-              className="exp-btn"
+              className="dsv2-btn dsv2-btn--primary"
               onClick={handleSaveBookingEdit}
               disabled={editSaving}
             >
@@ -6194,7 +6194,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           <div className="bk-cancel-foot">
             <button
               type="button"
-              className="exp-btn ghost"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={closeCancelModal}
               disabled={cancelBusy}
             >
@@ -6202,7 +6202,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </button>
             <button
               type="button"
-              className="exp-btn danger"
+              className="dsv2-btn dsv2-btn--danger"
               onClick={confirmCancelBooking}
               disabled={cancelBusy}
             >
@@ -6211,6 +6211,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </div>
         </Modal>
       </div>
-    </div>
+    </main>
   );
 }
