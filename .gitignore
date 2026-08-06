@@ -89,3 +89,5 @@ vite-*.err.log
 /android-hr/keystore.properties
 
 master/
+
+.chatgpt-backups/
