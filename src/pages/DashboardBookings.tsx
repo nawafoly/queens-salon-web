@@ -102,7 +102,6 @@ import {
 
 // ✅ Styles
 import "../styles/DashboardBookingsEnterprise.css";
-import "../styles/dashboard-v2/pages/bookings.css";
 
 /* =========================
    Constants / Types
