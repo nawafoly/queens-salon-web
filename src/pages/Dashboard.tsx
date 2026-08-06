@@ -170,9 +170,9 @@ type StaffOperationalRow = {
 
 type DashboardStats = {
   todayBookings: number;
-  totalRevenue: number;
-  totalOperations: number;
-  employeesCount: number;
+  todayRevenue: number;
+  completedBookings: number;
+  busyEmployees: number;
 };
 
 type DashboardFinanceTransaction = {
@@ -195,12 +195,12 @@ type DashboardSnapshot = {
   savedAt: number;
 };
 
-const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v2";
+const DASHBOARD_VIEW_CACHE_KEY = "dashboard_view_cache_v3";
 const emptyDashboardStats: DashboardStats = {
   todayBookings: 0,
-  totalRevenue: 0,
-  totalOperations: 0,
-  employeesCount: 0,
+  todayRevenue: 0,
+  completedBookings: 0,
+  busyEmployees: 0,
 };
 const emptyFinanceToday = { income: 0, expenses: 0, net: 0 };
 
@@ -280,6 +280,25 @@ function normalizeStaffNameKey(value: unknown): string {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+function resolveBookingStaffIdentityKey(booking: Booking): string {
+  const employeeId = String((booking as any)?.employeeId || "").trim();
+  if (employeeId) return `id:${employeeId}`;
+
+  const employeeUid = String((booking as any)?.employeeUid || "").trim();
+  if (employeeUid) return `uid:${employeeUid}`;
+
+  const employeeName = normalizeStaffNameKey(booking.employeeName);
+  return employeeName ? `name:${employeeName}` : "";
+}
+
+function countUniqueBookingEmployees(rows: Booking[]): number {
+  return new Set(
+    (rows || [])
+      .map((booking) => resolveBookingStaffIdentityKey(booking))
+      .filter(Boolean),
+  ).size;
 }
 
 function sortScheduleBookings(rows: Booking[]): Booking[] {
@@ -531,6 +550,25 @@ function resolveIncomeDateForTodayFilter(item: any): string {
   const createdAtMs = toMillisSafe(item?.createdAt || item?.updatedAt);
   const createdAtISO = createdAtMs > 0 ? formatLocalDateISO(new Date(createdAtMs)) : "";
   return explicit || createdAtISO;
+}
+
+function resolveFinanceDateISO(item: any): string {
+  const explicit = normalizeISODateLoose(item?.date);
+  if (explicit) return explicit;
+
+  const timestampMs = toMillisSafe(item?.createdAt || item?.updatedAt);
+  return timestampMs > 0 ? formatLocalDateISO(new Date(timestampMs)) : "";
+}
+
+function resolveFinanceSortMs(item: any, fallbackDateISO: string): number {
+  const timestampMs = toMillisSafe(item?.createdAt || item?.updatedAt);
+  if (timestampMs > 0) return timestampMs;
+
+  const normalizedDate = normalizeISODateLoose(fallbackDateISO);
+  if (!normalizedDate) return 0;
+
+  const parsed = Date.parse(`${normalizedDate}T12:00:00Z`);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function isIncomeOnDate(item: any, targetDateISO: string): boolean {
@@ -1149,13 +1187,14 @@ const Dashboard: React.FC<DashboardProps> = ({
       step = "today:compute";
       const todayStr = formatLocalDateISO(new Date());
       const todayListAll = uiBookings.filter((b) => isBookingOnDate(b, todayStr));
-      const todayList = todayListAll.filter(
-        (b) => b.status === "confirmed" || b.status === "completed"
+      const todayOperationalBookings = todayListAll.filter(
+        (booking) => booking.status !== "cancelled",
       );
-      let todayRevenue = todayList.reduce((sum, b) => sum + (Number((b as any).total) || 0), 0);
-      const employeesCount = nextStaffRows.filter((staff) =>
-        isStaffOperationallyActiveForDate(staff as any, todayStr)
+      const completedBookings = todayOperationalBookings.filter(
+        (booking) => booking.status === "completed",
       ).length;
+      const busyEmployees = countUniqueBookingEmployees(todayOperationalBookings);
+      let todayRevenue = 0;
 
       let nextExpensesTotal = 0;
       let nextIncomeTotal = 0;
@@ -1199,7 +1238,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         : 0;
       const expensesToday = canReadExpensesNow
         ? expenses
-            .filter((x: any) => String((x as any)?.date || "").trim() === todayStr)
+            .filter((x: any) => resolveFinanceDateISO(x) === todayStr)
             .reduce((sum: number, x: any) => sum + (Number((x as any)?.amount) || 0), 0)
         : 0;
 
@@ -1210,14 +1249,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       };
 
       const recentIncomeTx = canReadIncomeNow
-        ? incomes.map((x: any) => ({
-            id: `inc_${String(x?.id || "")}`,
-            type: "income" as const,
-            title: formatFinanceTransactionTitle(x?.note, x?.source),
-            amount: effectiveIncomeAmount(x),
-            date: effectiveIncomeDate(x),
-            createdAt: Number(x?.createdAt || 0) || Date.now(),
-          }))
+        ? incomes.map((x: any) => {
+            const date = effectiveIncomeDate(x);
+            return {
+              id: `inc_${String(x?.id || "")}`,
+              type: "income" as const,
+              title: formatFinanceTransactionTitle(x?.note, x?.source),
+              amount: effectiveIncomeAmount(x),
+              date,
+              createdAt: resolveFinanceSortMs(x, date),
+            };
+          })
         : [];
 
       const recentExpenseTx = canReadExpensesNow
@@ -1225,28 +1267,35 @@ const Dashboard: React.FC<DashboardProps> = ({
             const rawTitle =
               String((x as any)?.title || (x as any)?.category || "مصروف").trim() || "مصروف";
             const title = /^booking$/i.test(rawTitle) ? "حجز" : rawTitle;
+            const date = resolveFinanceDateISO(x);
+
             return {
               id: `exp_${String((x as any)?.id || "")}`,
               type: "expense" as const,
               title,
               amount: Number((x as any)?.amount || 0),
-              date: String((x as any)?.date || ""),
-              createdAt: Number((x as any)?.createdAt || 0) || Date.now(),
+              date,
+              createdAt: resolveFinanceSortMs(x, date),
             };
           })
         : [];
 
       nextRecentFinanceTransactions = [...recentIncomeTx, ...recentExpenseTx]
-        .sort((a, b) => b.createdAt - a.createdAt)
+        .sort(
+          (a, b) =>
+            b.createdAt - a.createdAt ||
+            b.date.localeCompare(a.date) ||
+            b.id.localeCompare(a.id),
+        )
         .slice(0, 7);
 
       if (requestId !== refreshRequestIdRef.current) return;
 
       const nextStats: DashboardStats = {
-        todayBookings: todayList.length,
-        totalRevenue: todayRevenue,
-        totalOperations: uiBookings.length,
-        employeesCount,
+        todayBookings: todayOperationalBookings.length,
+        todayRevenue,
+        completedBookings,
+        busyEmployees,
       };
 
       step = "ui:commit";
@@ -2751,6 +2800,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                           income: totalIncome,
                           expenses: totalExpenses,
                           profit: netProfit,
+                        }}
+                        financeAccess={{
+                          income: hasPermission("income.view"),
+                          expenses: hasPermission("expenses.view"),
                         }}
                         financeToday={financeToday}
                         recentFinanceTransactions={recentFinanceTransactions}

@@ -48,9 +48,9 @@ export type DashboardOverviewV2Props = {
   userInfo: { name?: string } | null;
   stats: {
     todayBookings: number;
-    totalRevenue: number;
-    totalOperations: number;
-    employeesCount: number;
+    todayRevenue: number;
+    completedBookings: number;
+    busyEmployees: number;
   };
   scheduleBookings: Booking[];
   selectedScheduleDate: string;
@@ -62,6 +62,10 @@ export type DashboardOverviewV2Props = {
     income: number;
     expenses: number;
     profit: number;
+  };
+  financeAccess: {
+    income: boolean;
+    expenses: boolean;
   };
   financeToday: {
     income: number;
@@ -111,6 +115,7 @@ export default function DashboardOverviewV2({
   onOpenBooking,
   onQuickAction,
   financial,
+  financeAccess,
   financeToday,
   recentFinanceTransactions,
 }: DashboardOverviewV2Props) {
@@ -222,11 +227,15 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faChartLine} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">إيرادات الحجوزات</span>
+            <span className="dsv2-metric-card__label">إيرادات اليوم</span>
             <strong className="dsv2-metric-card__value">
-              {stats.totalRevenue.toLocaleString("ar-SA")} ر.س
+              {financeAccess.income
+                ? `${stats.todayRevenue.toLocaleString("ar-SA")} ر.س`
+                : "غير متاح"}
             </strong>
-            <span className="dsv2-metric-card__meta">فتح التقارير</span>
+            <span className="dsv2-metric-card__meta">
+              {financeAccess.income ? "فتح التقارير" : "تتطلب صلاحية الإيرادات"}
+            </span>
           </button>
 
           <button
@@ -237,22 +246,22 @@ export default function DashboardOverviewV2({
             <MetricIcon>
               <FontAwesomeIcon icon={faClock} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">إجمالي العمليات</span>
+            <span className="dsv2-metric-card__label">الحجوزات المكتملة</span>
             <strong className="dsv2-metric-card__value">
-              {stats.totalOperations.toLocaleString("ar-SA")}
+              {stats.completedBookings.toLocaleString("ar-SA")}
             </strong>
-            <span className="dsv2-metric-card__meta">الحجوزات المنفذة والمسجلة</span>
+            <span className="dsv2-metric-card__meta">المكتملة في تاريخ اليوم</span>
           </button>
 
           <article className="dsv2-metric-card dsv2-metric-card--danger overview-v2-metric">
             <MetricIcon>
               <FontAwesomeIcon icon={faUsers} />
             </MetricIcon>
-            <span className="dsv2-metric-card__label">موظفات لديهن حجز</span>
+            <span className="dsv2-metric-card__label">موظفات مرتبطات بحجوزات</span>
             <strong className="dsv2-metric-card__value">
-              {stats.employeesCount.toLocaleString("ar-SA")}
+              {stats.busyEmployees.toLocaleString("ar-SA")}
             </strong>
-            <span className="dsv2-metric-card__meta">عدد الموظفات المشغولات اليوم</span>
+            <span className="dsv2-metric-card__meta">عدد فريد حسب حجوزات اليوم</span>
           </article>
         </div>
       </section>
@@ -276,7 +285,9 @@ export default function DashboardOverviewV2({
             </MetricIcon>
             <span className="dsv2-metric-card__label">إجمالي الدخل</span>
             <strong className="dsv2-metric-card__value">
-              {financial.income.toLocaleString("ar-SA")} ر.س
+{financeAccess.income
+                ? `${financial.income.toLocaleString("ar-SA")} ر.س`
+                : "غير متاح"}
             </strong>
           </article>
 
@@ -286,7 +297,9 @@ export default function DashboardOverviewV2({
             </MetricIcon>
             <span className="dsv2-metric-card__label">إجمالي المصروفات</span>
             <strong className="dsv2-metric-card__value">
-              {financial.expenses.toLocaleString("ar-SA")} ر.س
+{financeAccess.expenses
+                ? `${financial.expenses.toLocaleString("ar-SA")} ر.س`
+                : "غير متاح"}
             </strong>
           </article>
 
@@ -302,7 +315,9 @@ export default function DashboardOverviewV2({
             </MetricIcon>
             <span className="dsv2-metric-card__label">صافي الربح</span>
             <strong className="dsv2-metric-card__value">
-              {financial.profit.toLocaleString("ar-SA")} ر.س
+{financeAccess.income && financeAccess.expenses
+                ? `${financial.profit.toLocaleString("ar-SA")} ر.س`
+                : "غير متاح"}
             </strong>
           </article>
         </div>
@@ -336,7 +351,6 @@ export default function DashboardOverviewV2({
                 <DashboardDatePickerV2
                   id="overview-v2-schedule-date"
                   value={selectedScheduleDate}
-                  min={todayISO}
                   clearable={false}
                   onChange={(value) =>
                     onSelectedScheduleDateChange(value || todayISO)
@@ -461,127 +475,141 @@ export default function DashboardOverviewV2({
                 <div>
                   <dt>دخل اليوم</dt>
                   <dd data-tone="success">
-                    {financeToday.income.toLocaleString("ar-SA")} ر.س
+{financeAccess.income
+                      ? `${financeToday.income.toLocaleString("ar-SA")} ر.س`
+                      : "غير متاح"}
                   </dd>
                 </div>
                 <div>
                   <dt>مصروف اليوم</dt>
                   <dd data-tone="danger">
-                    {financeToday.expenses.toLocaleString("ar-SA")} ر.س
+{financeAccess.expenses
+                      ? `${financeToday.expenses.toLocaleString("ar-SA")} ر.س`
+                      : "غير متاح"}
                   </dd>
                 </div>
                 <div className="overview-v2-summary-list__net">
                   <dt>الصافي</dt>
                   <dd data-tone={financeToday.net >= 0 ? "success" : "danger"}>
-                    {financeToday.net.toLocaleString("ar-SA")} ر.س
+{financeAccess.income && financeAccess.expenses
+                      ? `${financeToday.net.toLocaleString("ar-SA")} ر.س`
+                      : "غير متاح"}
                   </dd>
                 </div>
               </dl>
             </section>
 
-            <section className="dsv2-card overview-v2-recent-card">
-              <header className="overview-v2-card-head overview-v2-card-head--padded">
-                <div>
-                  <h3 className="dsv2-section-title">آخر العمليات</h3>
-                  <p className="dsv2-section-caption">أحدث الحركات المالية المسجلة.</p>
-                </div>
-              </header>
 
-              {recentFinanceTransactions.length === 0 ? (
-                <div className="overview-v2-recent-empty">لا توجد عمليات حديثة</div>
-              ) : (
-                <div className="overview-v2-recent-list">
-                  {recentFinanceTransactions.map((transaction) => (
-                    <article className="overview-v2-recent-item" key={transaction.id}>
-                      <div>
-                        <strong title={formatFinanceTransactionTitle(transaction.title)}>
-                          <bdi dir="auto">
-                            {formatFinanceTransactionTitle(transaction.title)}
-                          </bdi>
-                        </strong>
-                        <span>{formatFinanceDate(transaction.date)}</span>
-                      </div>
-                      <b data-tone={transaction.type === "income" ? "success" : "danger"}>
-                        {transaction.type === "income" ? "+" : "-"}
-                        {Math.abs(transaction.amount).toLocaleString("ar-SA")} ر.س
-                      </b>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
           </aside>
+
+          <section className="dsv2-card overview-v2-recent-card">
+            <header className="overview-v2-card-head overview-v2-card-head--padded">
+              <div>
+                <h3 className="dsv2-section-title">آخر العمليات</h3>
+                <p className="dsv2-section-caption">أحدث الحركات المالية المسجلة.</p>
+              </div>
+            </header>
+
+            {!financeAccess.income && !financeAccess.expenses ? (
+              <div className="overview-v2-recent-empty">
+                لا تملك صلاحية عرض العمليات المالية
+              </div>
+            ) : recentFinanceTransactions.length === 0 ? (
+              <div className="overview-v2-recent-empty">لا توجد عمليات حديثة</div>
+            ) : (
+              <div className="overview-v2-recent-list">
+                {recentFinanceTransactions.map((transaction) => (
+                  <article className="overview-v2-recent-item" key={transaction.id}>
+                    <div>
+                      <strong title={formatFinanceTransactionTitle(transaction.title)}>
+                        <bdi dir="auto">
+                          {formatFinanceTransactionTitle(transaction.title)}
+                        </bdi>
+                      </strong>
+                      <span>{formatFinanceDate(transaction.date)}</span>
+                    </div>
+                    <b data-tone={transaction.type === "income" ? "success" : "danger"}>
+                      {transaction.type === "income" ? "+" : "-"}
+                      {Math.abs(transaction.amount).toLocaleString("ar-SA")} ر.س
+                    </b>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="overview-v2-section overview-v2-actions-panel" aria-labelledby="overview-v2-actions">
+            <div className="dsv2-section-head overview-v2-section__head">
+              <div>
+                <h2 id="overview-v2-actions" className="dsv2-section-title">
+                  إجراءات سريعة
+                </h2>
+                <p className="dsv2-section-caption">
+                  انتقال مباشر إلى المهام الأكثر استخدامًا داخل لوحة الإدارة.
+                </p>
+              </div>
+            </div>
+
+            <div className="overview-v2-actions-grid">
+              <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
+                <span className="overview-v2-action-card__icon">
+                  <FontAwesomeIcon icon={faCalendarAlt} />
+                </span>
+                <div>
+                  <h3>حجز جديد</h3>
+                  <p>إنشاء حجز للعميلة وإسناده إلى الموظفة والخدمة المناسبة.</p>
+                </div>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--primary dsv2-btn--sm"
+                  onClick={() => onQuickAction("newBooking")}
+                >
+                  إضافة حجز
+                  <FontAwesomeIcon icon={faArrowLeft} />
+                </button>
+              </article>
+
+              <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
+                <span className="overview-v2-action-card__icon">
+                  <FontAwesomeIcon icon={faUsers} />
+                </span>
+                <div>
+                  <h3>إدارة الحجوزات</h3>
+                  <p>مراجعة الحالات والمواعيد والتعديلات ضمن مساحة الحجوزات.</p>
+                </div>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                  onClick={() => onQuickAction("bookings")}
+                >
+                  فتح الحجوزات
+                  <FontAwesomeIcon icon={faArrowLeft} />
+                </button>
+              </article>
+
+              <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
+                <span className="overview-v2-action-card__icon">
+                  <FontAwesomeIcon icon={faChartLine} />
+                </span>
+                <div>
+                  <h3>التقارير</h3>
+                  <p>فتح تقارير الأداء والإيرادات والمصروفات للفترة المطلوبة.</p>
+                </div>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                  onClick={() => onQuickAction("reports")}
+                >
+                  فتح التقارير
+                  <FontAwesomeIcon icon={faArrowLeft} />
+                </button>
+              </article>
+            </div>
+          </section>
         </div>
       </section>
 
-      <section className="overview-v2-section" aria-labelledby="overview-v2-actions">
-        <div className="dsv2-section-head overview-v2-section__head">
-          <div>
-            <h2 id="overview-v2-actions" className="dsv2-section-title">
-              إجراءات سريعة
-            </h2>
-            <p className="dsv2-section-caption">
-              انتقال مباشر إلى المهام الأكثر استخدامًا داخل لوحة الإدارة.
-            </p>
-          </div>
-        </div>
 
-        <div className="overview-v2-actions-grid">
-          <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
-            <span className="overview-v2-action-card__icon">
-              <FontAwesomeIcon icon={faCalendarAlt} />
-            </span>
-            <div>
-              <h3>حجز جديد</h3>
-              <p>إنشاء حجز للعميلة وإسناده إلى الموظفة والخدمة المناسبة.</p>
-            </div>
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--primary dsv2-btn--sm"
-              onClick={() => onQuickAction("newBooking")}
-            >
-              إضافة حجز
-              <FontAwesomeIcon icon={faArrowLeft} />
-            </button>
-          </article>
-
-          <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
-            <span className="overview-v2-action-card__icon">
-              <FontAwesomeIcon icon={faUsers} />
-            </span>
-            <div>
-              <h3>إدارة الحجوزات</h3>
-              <p>مراجعة الحالات والمواعيد والتعديلات ضمن مساحة الحجوزات.</p>
-            </div>
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
-              onClick={() => onQuickAction("bookings")}
-            >
-              فتح الحجوزات
-              <FontAwesomeIcon icon={faArrowLeft} />
-            </button>
-          </article>
-
-          <article className="dsv2-card dsv2-card--padded overview-v2-action-card">
-            <span className="overview-v2-action-card__icon">
-              <FontAwesomeIcon icon={faChartLine} />
-            </span>
-            <div>
-              <h3>التقارير</h3>
-              <p>فتح تقارير الأداء والإيرادات والمصروفات للفترة المطلوبة.</p>
-            </div>
-            <button
-              type="button"
-              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
-              onClick={() => onQuickAction("reports")}
-            >
-              فتح التقارير
-              <FontAwesomeIcon icon={faArrowLeft} />
-            </button>
-          </article>
-        </div>
-      </section>
     </main>
   );
 }
