@@ -22,8 +22,9 @@ import {
 } from "../helpers/staffPayroll";
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
+import { usePermissions } from "../security/PermissionContext";
 import {
   listAllExpensesFS,
   removeExpenseFS,
@@ -42,36 +43,6 @@ import {
   DashboardSelectV2,
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
-
-type UiRole = "owner" | "admin" | "staff" | "client" | "guest";
-
-function mapFirestoreRole(raw: unknown): UiRole {
-  const role = String(raw || "").toLowerCase().trim();
-  if (role === "owner") return "owner";
-  if (role === "admin") return "admin";
-  if (role === "staff") return "staff";
-  if (role === "client") return "client";
-  return "guest";
-}
-
-async function resolveRoleFromFirestore(uid: string): Promise<UiRole> {
-  const id = String(uid || "").trim();
-  if (!id) return "guest";
-
-  const salonRef = doc(db, "salons", "main", "users", id);
-  const salonSnap = await getDoc(salonRef);
-  if (salonSnap.exists()) {
-    return mapFirestoreRole((salonSnap.data() as any)?.role);
-  }
-
-  const rootRef = doc(db, "users", id);
-  const rootSnap = await getDoc(rootRef);
-  if (rootSnap.exists()) {
-    return mapFirestoreRole((rootSnap.data() as any)?.role);
-  }
-
-  return "guest";
-}
 
 function todayISO() {
   const d = new Date();
@@ -329,9 +300,9 @@ function formatDateDisplay(value: unknown): string {
 }
 
 const DashboardExpenses: React.FC = () => {
-  const [uiRole, setUiRole] = useState<UiRole>("guest");
+  const { hasPermission } = usePermissions();
   const [authReady, setAuthReady] = useState(false);
-  const allowed = uiRole === "owner" || uiRole === "admin";
+  const allowed = hasPermission("expenses.view");
 
   // ✅ settings
   const [categories, setCategories] = useState<string[]>([]);
@@ -573,7 +544,6 @@ const DashboardExpenses: React.FC = () => {
 
         if (!user) {
           if (mounted) {
-            setUiRole("guest");
             setItems([]);
             setAutoPayrollItems([]);
             setLoading(false);
@@ -583,8 +553,6 @@ const DashboardExpenses: React.FC = () => {
           return;
         }
 
-        const role = await resolveRoleFromFirestore(user.uid);
-        if (mounted) setUiRole(role);
 
         if (mounted) await loadExpenses();
 

@@ -1,6 +1,7 @@
 import { CoreAccountService } from "./CoreAccountService";
 import { CoreApiError } from "./coreApiClient";
 import type { UiRole } from "./userProfile";
+import { PERMISSION_SCHEMA_VERSION } from "../helpers/permissions";
 
 export const INTERNAL_AUTH_ROLES = [
   "owner",
@@ -119,6 +120,7 @@ export async function readVerifiedUserAccess(uid: string): Promise<VerifiedUserA
       uid: account.firebaseUid || account.uid,
       role,
       permissions: me.permissions,
+      permissionVersion: PERMISSION_SCHEMA_VERSION,
       employeeLink: me.employeeLink,
     } as Record<string, unknown>;
     return {

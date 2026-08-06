@@ -51,7 +51,7 @@ import {
 } from "./services/localAuthSession";
 import { isInternalAuthRole, normalizeAuthRole } from "./services/authAccess";
 import { IS_CUSTOMER_APP, IS_STAFF_APP } from "./config/appVariant";
-import { getEffectiveAppPermissions, type AppPermission } from "./helpers/permissions";
+import { PERMISSION_SCHEMA_VERSION, getEffectiveAppPermissions, type AppPermission } from "./helpers/permissions";
 import { CoreAccountService } from "./services/CoreAccountService";
 import { CoreApiError } from "./services/coreApiClient";
 
@@ -484,6 +484,7 @@ const App: React.FC = () => {
             uid: account.firebaseUid || account.uid || user.uid,
             role: liveRole,
             permissions: me.permissions,
+            permissionVersion: PERMISSION_SCHEMA_VERSION,
             employeeLink: me.employeeLink,
           };
           const active = resolveOperationalAccountActive(data, liveRole);

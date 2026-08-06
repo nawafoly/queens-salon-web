@@ -41,3 +41,33 @@
     margin-inline: var(--dsv2-space-2);
   }
 }
+
+/* EXPENSES PAGE SCROLL FIX */
+body:has(.dashboard-skin .expenses-v2-page) {
+  overflow: hidden !important;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page
+  .dashboard-main:has(.expenses-v2-page) {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-skin.madan-admin-shell.dashboard-page
+  .dashboard-inner:has(.expenses-v2-page) {
+  height: auto !important;
+  min-height: max-content !important;
+  overflow: visible !important;
+}
+
+.dashboard-v2 .expenses-v2-page {
+  height: auto !important;
+  min-height: max-content !important;
+  overflow: visible !important;
+}
