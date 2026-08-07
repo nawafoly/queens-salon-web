@@ -28,3 +28,89 @@
 4. العملاء والموظفات والرواتب والتارقت.
 5. العمليات والعروض والسجلات والإعدادات.
 6. حذف ملفات CSS القديمة غير المستخدمة بعد التحقق من كل صفحة.
+
+<!-- MALIKAT_DSV2_AUTHORITY_START -->
+
+## السلطة البصرية الرسمية للمشروع
+
+المرجع البصري الرسمي والوحيد لجميع صفحات لوحة مَلِكات هو:
+
+`/dashboard/design-system-v2`
+
+والمصدر البرمجي الرسمي هو:
+
+`src/styles/dashboard-v2/`
+
+### القاعدة الأساسية
+
+**Dashboard V2 هو Design System الأعلى والوحيد للمشروع.**
+
+يجب أن تعتمد جميع صفحات Dashboard الحالية والجديدة على نفس:
+
+- Design Tokens
+- Colors
+- Typography
+- Spacing
+- Layout
+- Cards
+- Buttons
+- Forms
+- Inputs / Selects
+- Tables
+- Badges
+- Metrics
+- Modals
+- Drawers
+- Loading / Empty / Error States
+- Desktop / Tablet / Mobile behavior
+
+### EnterpriseWorkspacesV2
+
+`EnterpriseWorkspacesV2` ليس Design System مستقلًا.
+
+يجب تحويله تدريجيًا ليطابق `/dashboard/design-system-v2` بصريًا، ويصبح طبقة Layout / Compatibility فقط.
+
+أي تعارض بصري بين EnterpriseWorkspacesV2 و Dashboard V2:
+
+**Dashboard V2 هو المرجع النهائي.**
+
+متغيرات `--ev2-*` والأنماط القديمة يتم إلغاؤها تدريجيًا أو ربطها مؤقتًا بـ `--dsv2-*` أثناء عملية النقل.
+
+### ممنوع إنشاء نظام بصري جديد
+
+لا يتم إنشاء:
+
+- Dashboard V3
+- Dashboard V4
+- Settings V3
+- Enterprise Theme مستقل
+- Design System خاص بصفحة منفردة
+
+إذا احتجنا Pattern أو Component بصريًا جديدًا، تتم إضافته إلى Dashboard V2 أولًا ثم تستخدمه الصفحات.
+
+### خطة التوحيد
+
+1. توحيد EnterpriseWorkspacesV2 مع Dashboard V2.
+2. نقل صفحات Dashboard القديمة تدريجيًا إلى Dashboard V2.
+3. الحفاظ على منطق البيانات والصلاحيات والوظائف أثناء النقل.
+4. اختبار Desktop وTablet وMobile لكل صفحة.
+5. حذف CSS والمكونات القديمة فقط بعد اكتمال نقل الصفحة والتحقق منها.
+6. الوصول في النهاية إلى Design System واحد فقط: Dashboard V2.
+
+### معنى "التصميم الجديد"
+
+عندما يقال:
+
+`طبق التصميم الجديد`
+
+أو:
+
+`خل الصفحة مثل التصميم الجديد`
+
+فالمقصود دائمًا:
+
+`/dashboard/design-system-v2`
+
+ولا يتم اختيار مرجع بصري آخر أو ابتكار تصميم جديد إلا بطلب صريح.
+
+<!-- MALIKAT_DSV2_AUTHORITY_END -->
