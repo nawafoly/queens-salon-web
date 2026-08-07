@@ -2,6 +2,8 @@
 import { memo, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Modal from "../components/Modal";
+import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -105,6 +107,142 @@ import {
 /* =========================
    Constants / Types
 ========================= */
+
+
+/* BOOKING_DASHBOARD_DECISION_MODAL_V1 */
+
+type BookingDecisionResult = "confirm" | "cancel" | "close";
+
+type BookingDecisionOptions = {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  tone?: "success" | "warning";
+};
+
+function BookingDecisionDialog({
+  options,
+  onDecision,
+}: {
+  options: BookingDecisionOptions;
+  onDecision: (value: BookingDecisionResult) => void;
+}) {
+  const isSuccess = options.tone !== "warning";
+
+  return (
+    <Modal
+      open
+      onClose={() => onDecision("close")}
+      ariaLabel={options.title}
+      size="sm"
+      panelClassName="bk-decision-modal"
+      overlayClassName="bk-decision-overlay"
+      closeOnOverlayClick={false}
+    >
+      <button
+        type="button"
+        className="bk-decision-modal__close"
+        onClick={() => onDecision("close")}
+        aria-label="إغلاق"
+        title="إغلاق بدون تغيير حالة الحجز"
+      >
+        <FontAwesomeIcon icon={faXmark} />
+      </button>
+
+      <div className="bk-decision-modal__body">
+        <div
+          className={[
+            "bk-decision-modal__icon",
+            isSuccess
+              ? "is-success"
+              : "is-warning",
+          ].join(" ")}
+        >
+          <FontAwesomeIcon
+            icon={
+              isSuccess
+                ? faCheckCircle
+                : faTriangleExclamation
+            }
+          />
+        </div>
+
+        <div className="bk-decision-modal__copy">
+          <span className="bk-decision-modal__kicker">
+            {isSuccess
+              ? "حالة السداد"
+              : "تأكيد الإجراء"}
+          </span>
+
+          <h3>{options.title}</h3>
+
+          <p>{options.message}</p>
+        </div>
+      </div>
+
+      <div className="bk-decision-modal__actions">
+        <button
+          type="button"
+          className="bk-decision-modal__confirm"
+          onClick={() => onDecision("confirm")}
+        >
+          <FontAwesomeIcon icon={faCheckCircle} />
+          <span>{options.confirmText}</span>
+        </button>
+
+        <button
+          type="button"
+          className="bk-decision-modal__cancel"
+          onClick={() => onDecision("cancel")}
+        >
+          {options.cancelText}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function askBookingDecision(
+  options: BookingDecisionOptions
+): Promise<BookingDecisionResult> {
+  if (typeof document === "undefined") {
+    return Promise.resolve("close");
+  }
+
+  return new Promise<BookingDecisionResult>((resolve) => {
+    const host = document.createElement("div");
+
+    host.className =
+      "bk-decision-modal-host";
+
+    document.body.appendChild(host);
+
+    const root = createRoot(host);
+
+    let settled = false;
+
+    const finish = (value: BookingDecisionResult) => {
+      if (settled) return;
+
+      settled = true;
+      resolve(value);
+
+      window.setTimeout(() => {
+        root.unmount();
+        host.remove();
+      }, 0);
+    };
+
+    root.render(
+      <BookingDecisionDialog
+        options={options}
+        onDecision={finish}
+      />
+    );
+  });
+}
+
 
 type StatusOption = BookingStatus | "all";
 type ExcludedStatusOption = "" | BookingStatus;
@@ -594,6 +732,7 @@ type EditEmployeeOption = {
 };
 
 type EditBookingDraft = {
+  status: BookingStatus;
   customerName: string;
   phone: string;
   note: string;
@@ -637,6 +776,7 @@ function buildEditBookingDraftFromBooking(b: Booking): EditBookingDraft {
   const breakdown = readPaymentBreakdown(b);
 
   return {
+    status: b.status || "pending",
     customerName: String(b.customerName || "").trim(),
     phone: String(b.phone || "").trim(),
     note: sanitizeBookingNoteForEditor((b as any)?.note),
@@ -782,6 +922,24 @@ type Booking = {
   createdAt?: any;
   updatedAt?: any;
 };
+
+
+// BOOKING_COMPLETED_PAYMENT_RULE_V2
+function completedBookingPaymentPatch(
+  booking: Booking
+): Partial<Booking> {
+  const totalAmount = round2(
+    Math.max(0, readBookingTotalAmount(booking))
+  );
+
+  return {
+    paymentMethod: "other",
+    paymentBreakdown: {},
+    paymentType: "full",
+    paidAmount: totalAmount,
+    remainingAmount: 0,
+  };
+}
 
 type BookingDisplaySection = DashboardBookingDisplaySection<Booking>;
 
@@ -1122,6 +1280,908 @@ const EditBookingCustomerSection = memo(function EditBookingCustomerSection({
   );
 });
 
+
+/* BOOKING_CUSTOM_SELECT_CONTROL_V1 */
+
+type BookingSelectOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+
+type BookingFilterDateFieldProps = {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+};
+
+const BOOKING_FILTER_MONTHS_AR = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+] as const;
+
+const BOOKING_FILTER_WEEKDAYS_AR = [
+  "ح",
+  "ن",
+  "ث",
+  "ر",
+  "خ",
+  "ج",
+  "س",
+] as const;
+
+function bookingFilterParseDate(value: string) {
+  const match = String(value || "").match(
+    /^(\d{4})-(\d{2})-(\d{2})$/
+  );
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+
+  const date = new Date(year, month, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return {
+    year,
+    month,
+    day,
+  };
+}
+
+function bookingFilterDateISO(
+  year: number,
+  month: number,
+  day: number
+) {
+  const pad = (value: number) =>
+    String(value).padStart(2, "0");
+
+  return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+const BookingFilterDateField = memo(
+  function BookingFilterDateField({
+    label,
+    value,
+    disabled = false,
+    onChange,
+  }: BookingFilterDateFieldProps) {
+    const [open, setOpen] = useState(false);
+
+    const initial =
+      bookingFilterParseDate(value);
+
+    const now = new Date();
+
+    const [cursorYear, setCursorYear] =
+      useState(
+        initial?.year ?? now.getFullYear()
+      );
+
+    const [cursorMonth, setCursorMonth] =
+      useState(
+        initial?.month ?? now.getMonth()
+      );
+
+    const [panelStyle, setPanelStyle] =
+      useState({
+        top: 0,
+        left: 0,
+        width: 320,
+      });
+
+    const rootRef =
+      useRef<HTMLDivElement>(null);
+
+    const triggerRef =
+      useRef<HTMLButtonElement>(null);
+
+    const panelRef =
+      useRef<HTMLDivElement>(null);
+
+    const selected =
+      bookingFilterParseDate(value);
+
+    const displayValue = selected
+      ? `${String(selected.day).padStart(2, "0")} / ${String(
+          selected.month + 1
+        ).padStart(2, "0")} / ${selected.year}`
+      : "اختاري التاريخ";
+
+    const updatePosition = useCallback(() => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      const trigger = triggerRef.current;
+
+      if (!trigger) return;
+
+      const rect =
+        trigger.getBoundingClientRect();
+
+      const viewportPadding = 12;
+
+      const width = Math.min(
+        Math.max(rect.width, 320),
+        window.innerWidth -
+          viewportPadding * 2
+      );
+
+      const estimatedHeight = 390;
+
+      const spaceBelow =
+        window.innerHeight -
+        rect.bottom -
+        viewportPadding;
+
+      const openAbove =
+        spaceBelow < estimatedHeight &&
+        rect.top > spaceBelow;
+
+      const top = openAbove
+        ? Math.max(
+            viewportPadding,
+            rect.top -
+              estimatedHeight -
+              8
+          )
+        : Math.min(
+            rect.bottom + 8,
+            window.innerHeight -
+              viewportPadding -
+              Math.min(
+                estimatedHeight,
+                window.innerHeight -
+                  viewportPadding * 2
+              )
+          );
+
+      const preferredLeft =
+        rect.right - width;
+
+      const left = Math.min(
+        Math.max(
+          viewportPadding,
+          preferredLeft
+        ),
+        Math.max(
+          viewportPadding,
+          window.innerWidth -
+            width -
+            viewportPadding
+        )
+      );
+
+      setPanelStyle({
+        top,
+        left,
+        width,
+      });
+    }, []);
+
+    const openCalendar = useCallback(() => {
+      if (disabled) return;
+
+      const current =
+        bookingFilterParseDate(value);
+
+      const today = new Date();
+
+      setCursorYear(
+        current?.year ??
+          today.getFullYear()
+      );
+
+      setCursorMonth(
+        current?.month ??
+          today.getMonth()
+      );
+
+      updatePosition();
+      setOpen(true);
+    }, [
+      disabled,
+      updatePosition,
+      value,
+    ]);
+
+    const moveMonth = useCallback(
+      (amount: number) => {
+        const date = new Date(
+          cursorYear,
+          cursorMonth + amount,
+          1
+        );
+
+        setCursorYear(
+          date.getFullYear()
+        );
+
+        setCursorMonth(
+          date.getMonth()
+        );
+      },
+      [cursorMonth, cursorYear]
+    );
+
+    useEffect(() => {
+      if (!open) return;
+
+      updatePosition();
+
+      const handlePointerDown = (
+        event: PointerEvent
+      ) => {
+        const target = event.target;
+
+        if (!(target instanceof Node)) {
+          return;
+        }
+
+        if (
+          rootRef.current?.contains(
+            target
+          ) ||
+          panelRef.current?.contains(
+            target
+          )
+        ) {
+          return;
+        }
+
+        setOpen(false);
+      };
+
+      const handleKeyDown = (
+        event: KeyboardEvent
+      ) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      };
+
+      const handleViewport = () => {
+        updatePosition();
+      };
+
+      document.addEventListener(
+        "pointerdown",
+        handlePointerDown
+      );
+
+      document.addEventListener(
+        "keydown",
+        handleKeyDown
+      );
+
+      window.addEventListener(
+        "resize",
+        handleViewport
+      );
+
+      window.addEventListener(
+        "scroll",
+        handleViewport,
+        true
+      );
+
+      return () => {
+        document.removeEventListener(
+          "pointerdown",
+          handlePointerDown
+        );
+
+        document.removeEventListener(
+          "keydown",
+          handleKeyDown
+        );
+
+        window.removeEventListener(
+          "resize",
+          handleViewport
+        );
+
+        window.removeEventListener(
+          "scroll",
+          handleViewport,
+          true
+        );
+      };
+    }, [
+      open,
+      updatePosition,
+    ]);
+
+    const daysInMonth =
+      new Date(
+        cursorYear,
+        cursorMonth + 1,
+        0
+      ).getDate();
+
+    const firstWeekDay =
+      new Date(
+        cursorYear,
+        cursorMonth,
+        1
+      ).getDay();
+
+    const today = new Date();
+
+    const selectDay = (
+      day: number
+    ) => {
+      onChange(
+        bookingFilterDateISO(
+          cursorYear,
+          cursorMonth,
+          day
+        )
+      );
+
+      setOpen(false);
+    };
+
+    return (
+      <div
+        ref={rootRef}
+        className={[
+          "bk-filter-date-field",
+          open ? "is-open" : "",
+          disabled ? "is-disabled" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="bk-field-label">
+          {label}
+        </div>
+
+        <div className="bk-filter-date-control">
+          <button
+            ref={triggerRef}
+            type="button"
+            className={[
+              "bk-filter-date-trigger",
+              value ? "has-value" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => {
+              if (open) {
+                setOpen(false);
+              } else {
+                openCalendar();
+              }
+            }}
+            disabled={disabled}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+          >
+            <span>{displayValue}</span>
+
+            <FontAwesomeIcon
+              icon={faCalendarDay}
+              aria-hidden="true"
+            />
+          </button>
+
+          {value ? (
+            <button
+              type="button"
+              className="bk-filter-date-clear"
+              onClick={(event) => {
+                event.stopPropagation();
+
+                onChange("");
+                setOpen(false);
+              }}
+              aria-label={`مسح ${label}`}
+              title="مسح التاريخ"
+            >
+              <FontAwesomeIcon
+                icon={faXmark}
+                aria-hidden="true"
+              />
+            </button>
+          ) : null}
+        </div>
+
+        {open &&
+        typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={panelRef}
+                className="bk-filter-calendar-portal"
+                style={panelStyle}
+                role="dialog"
+                aria-label={`اختيار ${label}`}
+              >
+                <div className="bk-filter-calendar__head">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      moveMonth(-1)
+                    }
+                    aria-label="الشهر السابق"
+                  >
+                    ‹
+                  </button>
+
+                  <strong>
+                    {
+                      BOOKING_FILTER_MONTHS_AR[
+                        cursorMonth
+                      ]
+                    }{" "}
+                    {cursorYear}
+                  </strong>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      moveMonth(1)
+                    }
+                    aria-label="الشهر التالي"
+                  >
+                    ›
+                  </button>
+                </div>
+
+                <div className="bk-filter-calendar__weekdays">
+                  {BOOKING_FILTER_WEEKDAYS_AR.map(
+                    (day) => (
+                      <span key={day}>
+                        {day}
+                      </span>
+                    )
+                  )}
+                </div>
+
+                <div className="bk-filter-calendar__days">
+                  {Array.from({
+                    length: firstWeekDay,
+                  }).map((_, index) => (
+                    <span
+                      key={`empty_${index}`}
+                      className="is-empty"
+                      aria-hidden="true"
+                    />
+                  ))}
+
+                  {Array.from({
+                    length: daysInMonth,
+                  }).map((_, index) => {
+                    const day = index + 1;
+
+                    const isSelected =
+                      selected?.year ===
+                        cursorYear &&
+                      selected?.month ===
+                        cursorMonth &&
+                      selected?.day === day;
+
+                    const isToday =
+                      today.getFullYear() ===
+                        cursorYear &&
+                      today.getMonth() ===
+                        cursorMonth &&
+                      today.getDate() === day;
+
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        className={[
+                          isSelected
+                            ? "is-selected"
+                            : "",
+                          isToday
+                            ? "is-today"
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() =>
+                          selectDay(day)
+                        }
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="bk-filter-calendar__footer">
+                  <button
+                    type="button"
+                    className="is-today-action"
+                    onClick={() => {
+                      const date =
+                        new Date();
+
+                      onChange(
+                        bookingFilterDateISO(
+                          date.getFullYear(),
+                          date.getMonth(),
+                          date.getDate()
+                        )
+                      );
+
+                      setOpen(false);
+                    }}
+                  >
+                    اليوم
+                  </button>
+
+                  {value ? (
+                    <button
+                      type="button"
+                      className="is-clear-action"
+                      onClick={() => {
+                        onChange("");
+                        setOpen(false);
+                      }}
+                    >
+                      مسح
+                    </button>
+                  ) : null}
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
+      </div>
+    );
+  }
+);
+
+type BookingSelectFieldProps = {
+  label: string;
+  value: string;
+  options: BookingSelectOption[];
+  placeholder: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+};
+
+
+const BookingSelectField = memo(function BookingSelectField({
+  label,
+  value,
+  options,
+  placeholder,
+  disabled = false,
+  onChange,
+}: BookingSelectFieldProps) {
+  const [open, setOpen] = useState(false);
+
+  const [panelStyle, setPanelStyle] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 250,
+  });
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const listboxIdRef = useRef(
+    "booking_custom_select_" +
+      Math.random().toString(36).slice(2, 10)
+  );
+
+  const selectedOption =
+    options.find((option) => option.value === value) ||
+    null;
+
+  const updatePanelPosition = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const trigger = triggerRef.current;
+
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 12;
+
+    const estimatedHeight = Math.min(
+      270,
+      Math.max(62, options.length * 48 + 14)
+    );
+
+    const spaceBelow =
+      window.innerHeight -
+      rect.bottom -
+      viewportPadding;
+
+    const spaceAbove =
+      rect.top -
+      viewportPadding;
+
+    const openAbove =
+      spaceBelow < Math.min(180, estimatedHeight) &&
+      spaceAbove > spaceBelow;
+
+    const availableSpace = openAbove
+      ? spaceAbove
+      : spaceBelow;
+
+    const maxHeight = Math.max(
+      120,
+      Math.min(270, availableSpace - 8)
+    );
+
+    const actualHeight = Math.min(
+      estimatedHeight,
+      maxHeight
+    );
+
+    const top = openAbove
+      ? Math.max(
+          viewportPadding,
+          rect.top - actualHeight - 8
+        )
+      : Math.min(
+          window.innerHeight -
+            viewportPadding -
+            actualHeight,
+          rect.bottom + 8
+        );
+
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      Math.max(
+        viewportPadding,
+        window.innerWidth -
+          rect.width -
+          viewportPadding
+      )
+    );
+
+    setPanelStyle({
+      top,
+      left,
+      width: rect.width,
+      maxHeight,
+    });
+  }, [options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    updatePanelPosition();
+
+    const handleOutsidePointer = (
+      event: PointerEvent
+    ) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) return;
+
+      const clickedInsideTrigger =
+        rootRef.current?.contains(target);
+
+      const clickedInsidePanel =
+        panelRef.current?.contains(target);
+
+      if (
+        !clickedInsideTrigger &&
+        !clickedInsidePanel
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (
+      event: KeyboardEvent
+    ) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    const handleViewportChange = () => {
+      updatePanelPosition();
+    };
+
+    document.addEventListener(
+      "pointerdown",
+      handleOutsidePointer
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    window.addEventListener(
+      "resize",
+      handleViewportChange
+    );
+
+    window.addEventListener(
+      "scroll",
+      handleViewportChange,
+      true
+    );
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleOutsidePointer
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+
+      window.removeEventListener(
+        "resize",
+        handleViewportChange
+      );
+
+      window.removeEventListener(
+        "scroll",
+        handleViewportChange,
+        true
+      );
+    };
+  }, [open, updatePanelPosition]);
+
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+    }
+  }, [disabled]);
+
+  const panel =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={panelRef}
+            id={listboxIdRef.current}
+            className="bk-custom-select__portal-panel"
+            role="listbox"
+            aria-label={label}
+            style={{
+              top: panelStyle.top,
+              left: panelStyle.left,
+              width: panelStyle.width,
+              maxHeight: panelStyle.maxHeight,
+            }}
+          >
+            {options.map((option) => {
+              const active =
+                option.value === value;
+
+              return (
+                <button
+                  key={
+                    label +
+                    "_" +
+                    (option.value || "empty")
+                  }
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={[
+                    "bk-custom-select__option",
+                    active ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  disabled={option.disabled}
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <span>{option.label}</span>
+
+                  {active ? (
+                    <FontAwesomeIcon
+                      icon={faCheckCircle}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <div className="bk-custom-select-field">
+      <div className="bk-field-label">
+        {label}
+      </div>
+
+      <div
+        ref={rootRef}
+        className={[
+          "bk-custom-select",
+          open ? "is-open" : "",
+          disabled ? "is-disabled" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <button
+          ref={triggerRef}
+          type="button"
+          className="bk-custom-select__trigger"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listboxIdRef.current}
+          disabled={disabled}
+          onClick={() => {
+            if (!open) {
+              updatePanelPosition();
+            }
+
+            setOpen((current) => !current);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "ArrowDown" ||
+              event.key === "ArrowUp"
+            ) {
+              event.preventDefault();
+              updatePanelPosition();
+              setOpen(true);
+            }
+          }}
+        >
+          <span
+            className={
+              selectedOption && value
+                ? ""
+                : "is-placeholder"
+            }
+          >
+            {selectedOption?.label || placeholder}
+          </span>
+
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      {panel}
+    </div>
+  );
+});
+
 type EditBookingCatalogSectionProps = {
   sectionId: string;
   categoryId: string;
@@ -1136,6 +2196,7 @@ type EditBookingCatalogSectionProps = {
   onServiceChange: (nextServiceId: string) => void;
 };
 
+
 const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
   sectionId,
   categoryId,
@@ -1149,65 +2210,100 @@ const EditBookingCatalogSection = memo(function EditBookingCatalogSection({
   onCategoryChange,
   onServiceChange,
 }: EditBookingCatalogSectionProps) {
+  const sectionOptions: BookingSelectOption[] = [
+    {
+      value: "",
+      label: catalogLoading
+        ? "جاري تحميل الأقسام..."
+        : "اختاري القسم",
+    },
+    ...sections.map((section) => ({
+      value: section.id,
+      label: section.name,
+    })),
+  ];
+
+  const categoryOptions: BookingSelectOption[] = [
+    {
+      value: "",
+      label: categories.length
+        ? "بدون تحديد"
+        : "لا توجد تصنيفات",
+      disabled: !categories.length,
+    },
+    ...categories.map((category) => ({
+      value: category.id,
+      label: category.name,
+    })),
+  ];
+
+  const serviceOptions: BookingSelectOption[] = [
+    {
+      value: "",
+      label: services.length
+        ? "اختاري الخدمة"
+        : "لا توجد خدمات",
+      disabled: !services.length,
+    },
+    ...services.map((service) => ({
+      value: service.id,
+      label: service.name,
+    })),
+  ];
+
   return (
     <>
       <div className="bk-edit-grid bk-edit-grid--catalog">
-        <label>
-          <div className="bk-field-label">القسم</div>
-          <select
-            className="bk-select"
-            value={sectionId}
-            onChange={(e) => onSectionChange(e.target.value)}
-            disabled={disabled || catalogLoading}
-          >
-            <option value="">اختاري القسم</option>
-            {sections.map((section) => (
-              <option key={`edit_section_${section.id}`} value={section.id}>
-                {section.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <BookingSelectField
+          label="القسم"
+          value={sectionId}
+          options={sectionOptions}
+          placeholder="اختاري القسم"
+          disabled={disabled || catalogLoading}
+          onChange={onSectionChange}
+        />
 
-        <label>
-          <div className="bk-field-label">التصنيف</div>
-          <select
-            className="bk-select"
-            value={categoryId}
-            onChange={(e) => onCategoryChange(e.target.value)}
-            disabled={disabled || catalogLoading || !sectionId || !categories.length}
-          >
-            <option value="">
-              {categories.length ? "بدون تحديد" : "لا توجد تصنيفات"}
-            </option>
-            {categories.map((category) => (
-              <option key={`edit_category_${category.id}`} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <BookingSelectField
+          label="التصنيف"
+          value={categoryId}
+          options={categoryOptions}
+          placeholder={
+            categories.length
+              ? "بدون تحديد"
+              : "لا توجد تصنيفات"
+          }
+          disabled={
+            disabled ||
+            catalogLoading ||
+            !sectionId ||
+            !categories.length
+          }
+          onChange={onCategoryChange}
+        />
       </div>
 
-      <label>
-        <div className="bk-field-label">الخدمة</div>
-        <select
-          className="bk-select"
-          value={serviceId}
-          onChange={(e) => onServiceChange(e.target.value)}
-          disabled={disabled || catalogLoading || !sectionId}
-        >
-          <option value="">{services.length ? "اختاري الخدمة" : "لا توجد خدمات"}</option>
-          {services.map((service) => (
-            <option key={`edit_service_${service.id}`} value={service.id}>
-              {service.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <BookingSelectField
+        label="الخدمة"
+        value={serviceId}
+        options={serviceOptions}
+        placeholder={
+          services.length
+            ? "اختاري الخدمة"
+            : "لا توجد خدمات"
+        }
+        disabled={
+          disabled ||
+          catalogLoading ||
+          !sectionId ||
+          !services.length
+        }
+        onChange={onServiceChange}
+      />
 
       {catalogLoading ? (
-        <div className="bk-edit-helper">جاري تحميل الأقسام والتصنيفات والخدمات...</div>
+        <div className="bk-edit-helper">
+          جاري تحميل الأقسام والتصنيفات والخدمات...
+        </div>
       ) : null}
     </>
   );
@@ -1225,6 +2321,10 @@ type EditBookingScheduleSectionProps = {
   onTimeChange: (value: string) => void;
 };
 
+
+
+
+
 const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   employeeId,
   staffOptions,
@@ -1236,53 +2336,674 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
   onDateChange,
   onTimeChange,
 }: EditBookingScheduleSectionProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  const dateTriggerRef = useRef<HTMLButtonElement>(null);
+  const datePanelRef = useRef<HTMLDivElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
+
+  const parseIsoDate = useCallback((value: string) => {
+    const match = String(value || "").match(
+      /^(\d{4})-(\d{2})-(\d{2})$/
+    );
+
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day)
+    ) {
+      return null;
+    }
+
+    return { year, month, day };
+  }, []);
+
+  const initialDate = parseIsoDate(date);
+
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    if (initialDate) {
+      return new Date(
+        initialDate.year,
+        initialDate.month - 1,
+        1
+      );
+    }
+
+    const now = new Date();
+
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1
+    );
+  });
+
+  const [calendarPosition, setCalendarPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 330,
+  });
+
+  const employeeOptions: BookingSelectOption[] = [
+    {
+      value: "",
+      label: staffLoading
+        ? "جاري تحميل الموظفات..."
+        : staffOptions.length
+          ? "اختاري الموظفة"
+          : "لا توجد موظفات متاحة",
+      disabled: !staffOptions.length,
+    },
+    ...staffOptions.map((staff) => ({
+      value: staff.id,
+      label:
+        staff.name +
+        (staff.active === false
+          ? " — غير نشطة"
+          : ""),
+    })),
+  ];
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+
+    const selected = parseIsoDate(date);
+
+    if (selected) {
+      setCalendarCursor(
+        new Date(
+          selected.year,
+          selected.month - 1,
+          1
+        )
+      );
+    }
+  }, [calendarOpen, date, parseIsoDate]);
+
+  const updateCalendarPosition = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const trigger = dateTriggerRef.current;
+
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+
+    const width = Math.min(
+      340,
+      Math.max(300, rect.width)
+    );
+
+    const viewportPadding = 12;
+    const estimatedHeight = 390;
+
+    const spaceBelow =
+      window.innerHeight -
+      rect.bottom -
+      viewportPadding;
+
+    const spaceAbove =
+      rect.top -
+      viewportPadding;
+
+    const openAbove =
+      spaceBelow < estimatedHeight &&
+      spaceAbove > spaceBelow;
+
+    let top = openAbove
+      ? rect.top - estimatedHeight - 8
+      : rect.bottom + 8;
+
+    top = Math.max(
+      viewportPadding,
+      Math.min(
+        top,
+        window.innerHeight -
+          estimatedHeight -
+          viewportPadding
+      )
+    );
+
+    let left =
+      rect.right - width;
+
+    left = Math.max(
+      viewportPadding,
+      Math.min(
+        left,
+        window.innerWidth -
+          width -
+          viewportPadding
+      )
+    );
+
+    setCalendarPosition({
+      top,
+      left,
+      width,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+
+    updateCalendarPosition();
+
+    const handlePointer = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) return;
+
+      const insideTrigger =
+        dateTriggerRef.current?.contains(target);
+
+      const insidePanel =
+        datePanelRef.current?.contains(target);
+
+      if (!insideTrigger && !insidePanel) {
+        setCalendarOpen(false);
+      }
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCalendarOpen(false);
+      }
+    };
+
+    const handleViewport = () => {
+      updateCalendarPosition();
+    };
+
+    document.addEventListener(
+      "pointerdown",
+      handlePointer
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleKey
+    );
+
+    window.addEventListener(
+      "resize",
+      handleViewport
+    );
+
+    window.addEventListener(
+      "scroll",
+      handleViewport,
+      true
+    );
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handlePointer
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleKey
+      );
+
+      window.removeEventListener(
+        "resize",
+        handleViewport
+      );
+
+      window.removeEventListener(
+        "scroll",
+        handleViewport,
+        true
+      );
+    };
+  }, [calendarOpen, updateCalendarPosition]);
+
+  const toArabicDigits = useCallback(
+    (value: string | number) =>
+      String(value).replace(
+        /\d/g,
+        (digit) =>
+          "٠١٢٣٤٥٦٧٨٩"[Number(digit)]
+      ),
+    []
+  );
+
+  const dateLabel = useMemo(() => {
+    const selected = parseIsoDate(date);
+
+    if (!selected) {
+      return "اختاري التاريخ";
+    }
+
+    return (
+      toArabicDigits(selected.day) +
+      "/" +
+      toArabicDigits(selected.month) +
+      "/" +
+      toArabicDigits(selected.year)
+    );
+  }, [date, parseIsoDate, toArabicDigits]);
+
+  const timeLabel = useMemo(() => {
+    if (!time) return "اختاري الوقت";
+    return formatTime12(time);
+  }, [time]);
+
+  const calendarYear =
+    calendarCursor.getFullYear();
+
+  const calendarMonth =
+    calendarCursor.getMonth();
+
+  const daysInMonth = useMemo(
+    () =>
+      new Date(
+        calendarYear,
+        calendarMonth + 1,
+        0
+      ).getDate(),
+    [calendarMonth, calendarYear]
+  );
+
+  const firstWeekday = useMemo(
+    () =>
+      new Date(
+        calendarYear,
+        calendarMonth,
+        1
+      ).getDay(),
+    [calendarMonth, calendarYear]
+  );
+
+  const calendarCells = useMemo(() => {
+    const cells: Array<number | null> = [];
+
+    for (
+      let index = 0;
+      index < firstWeekday;
+      index += 1
+    ) {
+      cells.push(null);
+    }
+
+    for (
+      let day = 1;
+      day <= daysInMonth;
+      day += 1
+    ) {
+      cells.push(day);
+    }
+
+    while (cells.length % 7 !== 0) {
+      cells.push(null);
+    }
+
+    return cells;
+  }, [daysInMonth, firstWeekday]);
+
+  const monthTitle = useMemo(() => {
+    return new Intl.DateTimeFormat(
+      "ar-SA-u-ca-gregory",
+      {
+        month: "long",
+        year: "numeric",
+      }
+    ).format(
+      new Date(
+        calendarYear,
+        calendarMonth,
+        1
+      )
+    );
+  }, [calendarMonth, calendarYear]);
+
+  const selectedDate = parseIsoDate(date);
+
+  const today = new Date();
+
+  const formatIso = useCallback(
+    (
+      year: number,
+      monthIndex: number,
+      day: number
+    ) => {
+      const month = String(
+        monthIndex + 1
+      ).padStart(2, "0");
+
+      const dayText = String(day).padStart(
+        2,
+        "0"
+      );
+
+      return (
+        String(year) +
+        "-" +
+        month +
+        "-" +
+        dayText
+      );
+    },
+    []
+  );
+
+  const chooseDate = useCallback(
+    (day: number) => {
+      onDateChange(
+        formatIso(
+          calendarYear,
+          calendarMonth,
+          day
+        )
+      );
+
+      setCalendarOpen(false);
+    },
+    [
+      calendarMonth,
+      calendarYear,
+      formatIso,
+      onDateChange,
+    ]
+  );
+
+  const openTimePicker = useCallback(() => {
+    if (disabled) return;
+
+    const input = timeInputRef.current;
+
+    if (!input) return;
+
+    const picker = input as HTMLInputElement & {
+      showPicker?: () => void;
+    };
+
+    try {
+      input.focus({
+        preventScroll: true,
+      });
+
+      if (
+        typeof picker.showPicker === "function"
+      ) {
+        picker.showPicker();
+        return;
+      }
+    } catch {
+      // fallback below
+    }
+
+    input.click();
+  }, [disabled]);
+
+  const calendarPanel =
+    calendarOpen &&
+    typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={datePanelRef}
+            className="bk-calendar-popover"
+            style={{
+              top: calendarPosition.top,
+              left: calendarPosition.left,
+              width: calendarPosition.width,
+            }}
+          >
+            <div className="bk-calendar-head">
+              <button
+                type="button"
+                className="bk-calendar-nav"
+                onClick={() =>
+                  setCalendarCursor(
+                    new Date(
+                      calendarYear,
+                      calendarMonth - 1,
+                      1
+                    )
+                  )
+                }
+                aria-label="الشهر السابق"
+              >
+                ‹
+              </button>
+
+              <strong>
+                {monthTitle}
+              </strong>
+
+              <button
+                type="button"
+                className="bk-calendar-nav"
+                onClick={() =>
+                  setCalendarCursor(
+                    new Date(
+                      calendarYear,
+                      calendarMonth + 1,
+                      1
+                    )
+                  )
+                }
+                aria-label="الشهر التالي"
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="bk-calendar-weekdays">
+              {[
+                "أحد",
+                "اثن",
+                "ثلا",
+                "أرب",
+                "خمي",
+                "جمع",
+                "سبت",
+              ].map((label) => (
+                <span key={label}>
+                  {label}
+                </span>
+              ))}
+            </div>
+
+            <div className="bk-calendar-grid">
+              {calendarCells.map(
+                (day, index) => {
+                  if (!day) {
+                    return (
+                      <span
+                        key={
+                          "empty_" + index
+                        }
+                        className="bk-calendar-empty"
+                      />
+                    );
+                  }
+
+                  const isSelected =
+                    !!selectedDate &&
+                    selectedDate.year ===
+                      calendarYear &&
+                    selectedDate.month ===
+                      calendarMonth + 1 &&
+                    selectedDate.day === day;
+
+                  const isToday =
+                    today.getFullYear() ===
+                      calendarYear &&
+                    today.getMonth() ===
+                      calendarMonth &&
+                    today.getDate() === day;
+
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      className={[
+                        "bk-calendar-day",
+                        isSelected
+                          ? "is-selected"
+                          : "",
+                        isToday
+                          ? "is-today"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() =>
+                        chooseDate(day)
+                      }
+                    >
+                      {toArabicDigits(day)}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+
+            <div className="bk-calendar-foot">
+              <button
+                type="button"
+                onClick={() => {
+                  onDateChange("");
+                  setCalendarOpen(false);
+                }}
+              >
+                مسح
+              </button>
+
+              <button
+                type="button"
+                className="is-primary"
+                onClick={() => {
+                  const now = new Date();
+
+                  onDateChange(
+                    formatIso(
+                      now.getFullYear(),
+                      now.getMonth(),
+                      now.getDate()
+                    )
+                  );
+
+                  setCalendarOpen(false);
+                }}
+              >
+                اليوم
+              </button>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
-    <div className="bk-edit-grid">
-      <label>
-        <div className="bk-field-label">الموظفة</div>
-        <select
-          className="bk-select"
-          value={employeeId}
-          onChange={(e) => onEmployeeChange(e.target.value)}
-          disabled={disabled || staffLoading}
+    <div className="bk-edit-grid bk-edit-grid--schedule">
+      <BookingSelectField
+        label="الموظفة"
+        value={employeeId}
+        options={employeeOptions}
+        placeholder={
+          staffLoading
+            ? "جاري تحميل الموظفات..."
+            : "اختاري الموظفة"
+        }
+        disabled={
+          disabled ||
+          staffLoading ||
+          !staffOptions.length
+        }
+        onChange={onEmployeeChange}
+      />
+
+      <div className="bk-edit-picker-field">
+        <div className="bk-field-label">
+          التاريخ
+        </div>
+
+        <button
+          ref={dateTriggerRef}
+          type="button"
+          className={[
+            "bk-edit-picker-control",
+            calendarOpen
+              ? "is-open"
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={disabled}
+          onClick={() => {
+            updateCalendarPosition();
+
+            setCalendarOpen(
+              (current) => !current
+            );
+          }}
         >
-          <option value="">
-            {staffLoading
-              ? "جاري تحميل الموظفات..."
-              : staffOptions.length
-                ? "اختاري الموظفة"
-                : "لا توجد موظفات متاحة"}
-          </option>
-          {staffOptions.map((staff) => (
-            <option key={`edit_employee_${staff.id}`} value={staff.id}>
-              {staff.name}
-              {staff.active === false ? " (غير نشطة)" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+          <span
+            className={
+              date ? "" : "is-placeholder"
+            }
+            dir="ltr"
+          >
+            {dateLabel}
+          </span>
 
-      <label>
-        <div className="bk-field-label">التاريخ</div>
-        <input
-          type="date"
-          className="bk-input"
-          value={date}
-          onChange={(e) => onDateChange(e.target.value)}
+          <FontAwesomeIcon
+            icon={faCalendarDay}
+            aria-hidden="true"
+          />
+        </button>
+
+        {calendarPanel}
+      </div>
+
+      <div className="bk-edit-picker-field">
+        <div className="bk-field-label">
+          الوقت
+        </div>
+
+        <button
+          type="button"
+          className="bk-edit-picker-control"
           disabled={disabled}
-        />
-      </label>
+          onClick={openTimePicker}
+        >
+          <span
+            className={
+              time ? "" : "is-placeholder"
+            }
+          >
+            {timeLabel}
+          </span>
 
-      <label>
-        <div className="bk-field-label">الوقت</div>
+          <FontAwesomeIcon
+            icon={faClock}
+            aria-hidden="true"
+          />
+        </button>
+
         <input
+          ref={timeInputRef}
           type="time"
-          className="bk-input"
+          className="bk-edit-picker-native-input"
           value={time}
-          onChange={(e) => onTimeChange(e.target.value)}
+          onChange={(event) =>
+            onTimeChange(event.target.value)
+          }
           disabled={disabled}
+          tabIndex={-1}
+          aria-label="اختيار الوقت"
         />
-      </label>
+      </div>
     </div>
   );
 });
@@ -1303,6 +3024,7 @@ type EditBookingPaymentSectionProps = {
   onMixedCardAmountChange: (value: string) => void;
 };
 
+
 const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   price,
   paymentMethod,
@@ -1319,114 +3041,196 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
   onMixedCardAmountChange,
 }: EditBookingPaymentSectionProps) {
   const total = Math.max(0, Number(price || 0));
-  const mixedCash = Math.max(0, Number(mixedCashAmount || 0));
-  const mixedCard = Math.max(0, Number(mixedCardAmount || 0));
+  const mixedCash = Math.max(
+    0,
+    Number(mixedCashAmount || 0)
+  );
+  const mixedCard = Math.max(
+    0,
+    Number(mixedCardAmount || 0)
+  );
   const mixedPaid = round2(mixedCash + mixedCard);
   const mixedRemaining = round2(total - mixedPaid);
+
   const remainingAfterEditText = useMemo(() => {
     const paid =
       paymentMethod === "none"
         ? 0
         : paymentMethod === "mixed"
-          ? Math.max(0, Number(mixedCashAmount || 0)) + Math.max(0, Number(mixedCardAmount || 0))
-        : paymentType === "full"
-          ? total
-          : Math.max(0, Number(paidAmount || 0));
-    return `${round2(Math.max(0, total - paid))} ر.س`;
-  }, [mixedCardAmount, mixedCashAmount, paidAmount, paymentMethod, paymentType, price, total]);
+          ? Math.max(
+              0,
+              Number(mixedCashAmount || 0)
+            ) +
+            Math.max(
+              0,
+              Number(mixedCardAmount || 0)
+            )
+          : paymentType === "full"
+            ? total
+            : Math.max(
+                0,
+                Number(paidAmount || 0)
+              );
+
+    return (
+      String(
+        round2(Math.max(0, total - paid))
+      ) + " ر.س"
+    );
+  }, [
+    mixedCardAmount,
+    mixedCashAmount,
+    paidAmount,
+    paymentMethod,
+    paymentType,
+    total,
+  ]);
+
+  const paymentModeValue =
+    paymentMethod === "none"
+      ? "none"
+      : paymentType;
+
+  const paymentModeOptions: BookingSelectOption[] = [
+    { value: "full", label: "دفع كامل" },
+    { value: "partial", label: "عربون" },
+    { value: "none", label: "بدون دفع" },
+  ];
+
+  const paymentMethodOptions: BookingSelectOption[] = [
+    { value: "cash", label: "كاش" },
+    { value: "card", label: "شبكة" },
+    { value: "transfer", label: "تحويل" },
+    { value: "mixed", label: "دفع مختلط" },
+    { value: "other", label: "أخرى" },
+  ];
 
   return (
     <>
       <label>
-        <div className="bk-field-label">السعر النهائي</div>
+        <div className="bk-field-label">
+          السعر النهائي
+        </div>
+
         <input
           type="number"
           min={0}
           step="0.01"
           className="bk-input"
           value={price}
-          onChange={(e) => onPriceChange(e.target.value)}
+          onChange={(event) =>
+            onPriceChange(event.target.value)
+          }
           placeholder="مثال: 120"
           disabled={disabled}
         />
       </label>
 
-      <label>
-        <div className="bk-field-label">نوع الدفع</div>
-        <select
-          className="bk-select"
-          value={paymentMethod === "none" ? "none" : paymentType}
-          onChange={(e) => onPaymentModeChange(e.target.value as UiPaymentMode)}
-          disabled={disabled}
-        >
-          <option value="full">دفع كامل</option>
-          <option value="partial">عربون</option>
-          <option value="none">بدون دفع</option>
-        </select>
-      </label>
+      <BookingSelectField
+        label="نوع الدفع"
+        value={paymentModeValue}
+        options={paymentModeOptions}
+        placeholder="اختاري نوع الدفع"
+        disabled={disabled}
+        onChange={(value) =>
+          onPaymentModeChange(value as UiPaymentMode)
+        }
+      />
 
       {paymentMethod !== "none" ? (
-        <label>
-          <div className="bk-field-label">طريقة الدفع</div>
-          <select
-            className="bk-select"
-            value={paymentMethod}
-            onChange={(e) => onPaymentMethodChange((e.target.value as EditPaymentMethodOption) || "transfer")}
-            disabled={disabled}
-          >
-            <option value="cash">كاش</option>
-            <option value="card">شبكة</option>
-            <option value="transfer">تحويل</option>
-            <option value="mixed">دفع مختلط</option>
-            <option value="other">أخرى</option>
-          </select>
-        </label>
+        <BookingSelectField
+          label="طريقة الدفع"
+          value={paymentMethod}
+          options={paymentMethodOptions}
+          placeholder="اختاري طريقة الدفع"
+          disabled={disabled}
+          onChange={(value) =>
+            onPaymentMethodChange(
+              (value as EditPaymentMethodOption) ||
+                "transfer"
+            )
+          }
+        />
       ) : null}
 
       {paymentMethod === "mixed" ? (
         <div className="bk-mixed-payment-box">
           <label>
-            <div className="bk-field-label">مبلغ الكاش</div>
+            <div className="bk-field-label">
+              مبلغ الكاش
+            </div>
+
             <input
               type="number"
               min={0}
               step="0.01"
               className="bk-input"
               value={mixedCashAmount}
-              onChange={(e) => onMixedCashAmountChange(e.target.value)}
+              onChange={(event) =>
+                onMixedCashAmountChange(
+                  event.target.value
+                )
+              }
               placeholder="مثال: 100"
               disabled={disabled}
             />
           </label>
+
           <label>
-            <div className="bk-field-label">مبلغ الشبكة</div>
+            <div className="bk-field-label">
+              مبلغ الشبكة
+            </div>
+
             <input
               type="number"
               min={0}
               step="0.01"
               className="bk-input"
               value={mixedCardAmount}
-              onChange={(e) => onMixedCardAmountChange(e.target.value)}
+              onChange={(event) =>
+                onMixedCardAmountChange(
+                  event.target.value
+                )
+              }
               placeholder="مثال: 200"
               disabled={disabled}
             />
           </label>
-          <div className={`bk-mixed-payment-balance ${mixedRemaining === 0 ? "is-balanced" : "is-unbalanced"}`}>
-            المجموع: {mixedPaid} ر.س | المتبقي: {round2(Math.max(0, mixedRemaining))} ر.س
+
+          <div
+            className={[
+              "bk-mixed-payment-balance",
+              mixedRemaining === 0
+                ? "is-balanced"
+                : "is-unbalanced",
+            ].join(" ")}
+          >
+            المجموع: {mixedPaid} ر.س | المتبقي:{" "}
+            {round2(
+              Math.max(0, mixedRemaining)
+            )}{" "}
+            ر.س
           </div>
         </div>
       ) : null}
 
-      {paymentMethod !== "none" && paymentMethod !== "mixed" && paymentType === "partial" ? (
+      {paymentMethod !== "none" &&
+      paymentMethod !== "mixed" &&
+      paymentType === "partial" ? (
         <label>
-          <div className="bk-field-label">مبلغ العربون</div>
+          <div className="bk-field-label">
+            مبلغ العربون
+          </div>
+
           <input
             type="number"
             min={0}
             step="0.01"
             className="bk-input"
             value={paidAmount}
-            onChange={(e) => onPaidAmountChange(e.target.value)}
+            onChange={(event) =>
+              onPaidAmountChange(event.target.value)
+            }
             placeholder="مثال: 100"
             disabled={disabled}
           />
@@ -1434,7 +3238,8 @@ const EditBookingPaymentSection = memo(function EditBookingPaymentSection({
       ) : null}
 
       <div className="bk-helper-text">
-        المتبقي بعد التعديل: {remainingAfterEditText}
+        المتبقي بعد التعديل:{" "}
+        {remainingAfterEditText}
       </div>
     </>
   );
@@ -1487,6 +3292,7 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
     target
       ? buildEditBookingDraftFromBooking(target)
       : {
+          status: "pending",
           customerName: "",
           phone: "",
           note: "",
@@ -1987,14 +3793,17 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         }
       : {};
 
-    const isFullyPaidAfterEdit = price > 0 && remainingAmount <= 0;
-    let statusAfterEdit: BookingStatus | null = null;
-    if (isFullyPaidAfterEdit && (target.status === "pending" || target.status === "confirmed")) {
-      const chooseCompleted = window.confirm(
-        "تم سداد الحجز كاملاً.\n\nاضغطي \"موافق\" لتحويل الحالة إلى \"مكتمل\".\nاضغطي \"إلغاء\" للإبقاء على الحالة \"مؤكد\"."
-      );
-      statusAfterEdit = chooseCompleted ? "completed" : "confirmed";
-    }
+    // BOOKING_EDIT_STATUS_RULE_V2
+    const statusAfterEdit: BookingStatus = draft.status;
+
+    const completionPaymentPatch: Partial<Booking> | null =
+      statusAfterEdit === "completed"
+        ? completedBookingPaymentPatch({
+            ...target,
+            finalPrice: price,
+            total: price,
+          } as Booking)
+        : null;
 
     let shouldClose = false;
     setSaving(true);
@@ -2026,6 +3835,14 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         paidAmount: round2(paidAmount),
         remainingAmount,
       } as any;
+      // BOOKING_EDIT_COMPLETION_APPLY_V2
+      if (completionPaymentPatch) {
+        Object.assign(
+          patch,
+          completionPaymentPatch
+        );
+      }
+
       await updateCoreBookingFields(target.id, patch);
       if (statusAfterEdit && statusAfterEdit !== target.status) {
         await updateCoreBookingStatus(target.id, statusAfterEdit);
@@ -2053,6 +3870,8 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
         paymentType: nextPaymentType,
         paidAmount: round2(paidAmount),
         remainingAmount,
+        // BOOKING_EDIT_COMPLETION_LOCAL_V2
+        ...(completionPaymentPatch || {}),
         status: resolvedStatus,
       });
 
@@ -2139,6 +3958,45 @@ const EditBookingModal = memo(function EditBookingModal({ target, onClose, onSav
             onTimeChange={onTimeChange}
           />
 
+
+          {/* BOOKING_EDIT_STATUS_FIELD_V2 */}
+          <BookingSelectField
+            label="حالة الحجز"
+            value={draft.status}
+            options={[
+              { value: "pending", label: "في الانتظار" },
+              { value: "confirmed", label: "مؤكد" },
+              { value: "completed", label: "مكتمل" },
+              { value: "cancelled", label: "ملغي" },
+            ]}
+            placeholder="اختاري حالة الحجز"
+            disabled={saving}
+            onChange={(value) => {
+              const nextStatus = value as BookingStatus;
+
+              setDraft((prev) => {
+                if (nextStatus !== "completed") {
+                  return {
+                    ...prev,
+                    status: nextStatus,
+                  };
+                }
+
+                const total = round2(
+                  Math.max(0, Number(prev.price || 0))
+                );
+
+                return {
+                  ...prev,
+                  status: "completed",
+                  paymentMethod: "other",
+                  paymentType: "full",
+                  paidAmount: String(total),
+                };
+              });
+            }}
+          />
+
           <EditBookingPaymentSection
             price={draft.price}
             paymentMethod={draft.paymentMethod}
@@ -2180,6 +4038,38 @@ type DashboardBookingsProps = {
 };
 
 export default function DashboardBookings({ currentRole = "guest" }: DashboardBookingsProps) {
+
+  /* BOOKING_STATUS_OUTSIDE_CLOSE_V1 */
+  useEffect(() => {
+    const handleStatusMenuOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) return;
+
+      document
+        .querySelectorAll<HTMLDetailsElement>(
+          ".dashboard-v2 .bk-status-menu[open]",
+        )
+        .forEach((menu) => {
+          if (!menu.contains(target)) {
+            menu.removeAttribute("open");
+          }
+        });
+    };
+
+    document.addEventListener(
+      "pointerdown",
+      handleStatusMenuOutsidePointer,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleStatusMenuOutsidePointer,
+      );
+    };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveBookingsSource, setLiveBookingsSource] = useState<Booking[]>([]);
@@ -2188,6 +4078,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0);
 
   const [q, setQ] = useState("");
+  const [bookingSearchFocused, setBookingSearchFocused] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusOption>("all");
   const [excludedStatus, setExcludedStatus] = useState<ExcludedStatusOption>("");
   const [settlementFilter, setSettlementFilter] = useState<SettlementFilterOption>("all");
@@ -3043,9 +4934,15 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [pagedBookings]);
 
   const unseenNewBookings = useMemo(() => {
+    const today = todayISOLocal();
+
     return bookings
       .filter((b) => {
         if (!(b.status === "pending" || b.status === "confirmed")) return false;
+
+        const bookingDate = safeISODate(b.date);
+        if (!bookingDate || bookingDate < today) return false;
+
         const createdAtMs = toMillisSafe((b as any)?.createdAt);
         return createdAtMs > newBookingsSeenAt;
       })
@@ -3055,7 +4952,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         return bMs - aMs;
       });
   }, [bookings, newBookingsSeenAt]);
-
   const unseenNewPreviewBookings = useMemo(() => unseenNewBookings.slice(0, 6), [unseenNewBookings]);
   const unseenNewBookingIds = useMemo(
     () => new Set(unseenNewBookings.map((booking) => String(booking.id || "").trim()).filter(Boolean)),
@@ -3228,10 +5124,24 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       return;
     }
     try {
+      // BOOKING_SINGLE_COMPLETED_PAYMENT_V2
+      const completedPaymentPatch: Partial<Booking> | null =
+        newStatus === "completed"
+          ? completedBookingPaymentPatch(target)
+          : null;
+
+      if (completedPaymentPatch) {
+        await updateCoreBookingFields(
+          id,
+          completedPaymentPatch as any
+        );
+      }
+
       await updateCoreBookingStatus(id, newStatus);
       const localAuditPatch = getLocalActorAudit();
       const localPatch = {
         status: newStatus,
+        ...(completedPaymentPatch || {}),
         ...localAuditPatch,
       };
       setBookings((prev) => prev.map((row) => (row.id === id ? { ...row, ...localPatch } : row)));
@@ -3607,10 +5517,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
       isFullyPaidAfterEdit &&
       (editTarget.status === "pending" || editTarget.status === "confirmed")
     ) {
-      const chooseCompleted = window.confirm(
-        "تم سداد الحجز كاملًا.\n\nاضغطي \"موافق\" لتحويل الحالة إلى \"مكتمل\".\nاضغطي \"إلغاء\" للإبقاء على الحالة \"مؤكد\"."
-      );
-      statusAfterEdit = chooseCompleted ? "completed" : "confirmed";
+      const paymentStatusDecision = await askBookingDecision({
+        title: "تم اكتمال السداد",
+        message:
+          "أصبح المتبقي 0 ر.س. اكتمال الدفع لا يعني بالضرورة أن الخدمة انتهت، لذلك اختاري حالة الحجز الصحيحة.",
+        confirmText: "تحويل إلى مكتمل",
+        cancelText: "الإبقاء مؤكدًا",
+        tone: "success",
+      });
+
+      if (paymentStatusDecision === "confirm") {
+        statusAfterEdit = "completed";
+      } else if (paymentStatusDecision === "cancel") {
+        statusAfterEdit = "confirmed";
+      } else {
+        // X / إغلاق: لا نغيّر حالة الحجز
+        statusAfterEdit = null;
+      }
     }
 
     try {
@@ -4095,6 +6018,30 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     });
   }, []);
 
+  const toggleSectionSelection = useCallback((rows: Booking[]) => {
+    const sectionIds = rows
+      .map((booking) => String(booking.id || "").trim())
+      .filter(Boolean);
+
+    if (!sectionIds.length) return;
+
+    setSelectedBookingIds((prev) => {
+      const next = new Set(prev);
+
+      const allSectionSelected =
+        sectionIds.every((id) => next.has(id));
+
+      sectionIds.forEach((id) => {
+        if (allSectionSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      });
+
+      return next;
+    });
+  }, []);
   const toggleCurrentPageSelection = useCallback(() => {
     setSelectedBookingIds((prev) => {
       const next = new Set(prev);
@@ -4107,12 +6054,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     });
   }, [pageBookingIds]);
 
-  const selectAllMatchingBookings = useCallback(() => {
+  const selectAllMatchingBookings = useCallback(async () => {
     if (!filteredBookingIds.length) return;
-    const ok = window.confirm(
-      `سيتم تحديد ${filteredBookingIds.length} حجز مطابق للفلاتر الحالية، وليس الصفحة الحالية فقط. هل تريد المتابعة؟`
-    );
-    if (!ok) return;
+    const ok = await askBookingDecision({
+      title: "تحديد كل النتائج",
+      message:
+        `سيتم تحديد ${filteredBookingIds.length} حجز مطابق للفلاتر الحالية، وليس الصفحة الحالية فقط.`,
+      confirmText: "تحديد الكل",
+      cancelText: "رجوع",
+      tone: "warning",
+    });
+
+    if (ok !== "confirm") return;
     setSelectedBookingIds(new Set(filteredBookingIds));
   }, [filteredBookingIds]);
 
@@ -4156,17 +6109,64 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
         filterSummary: filterSummaryText,
         note: `تحديث جماعي لحالة الحجوزات إلى ${statusLabel[bulkTargetStatus]}`,
       });
+
+      // BOOKING_BULK_COMPLETED_PAYMENT_V2
+      const failedBookingIds = new Set(
+        (result.failures || []).map((failure) =>
+          String(failure.bookingId || "").trim()
+        )
+      );
+
+      const successfulBookingIds =
+        bookingIds.filter(
+          (bookingId) =>
+            !failedBookingIds.has(bookingId)
+        );
+
+      if (bulkTargetStatus === "completed") {
+        const successfulTargets =
+          targets.filter((booking) =>
+            successfulBookingIds.includes(
+              String(booking.id || "").trim()
+            )
+          );
+
+        await Promise.all(
+          successfulTargets.map((booking) =>
+            updateCoreBookingFields(
+              String(booking.id || "").trim(),
+              completedBookingPaymentPatch(
+                booking
+              ) as any
+            )
+          )
+        );
+      }
       const localAuditPatch = getLocalActorAudit();
       setBookings((prev) =>
         prev.map((row) =>
-          bookingIds.includes(String(row.id || "").trim())
-            ? { ...row, status: bulkTargetStatus, ...localAuditPatch }
+          successfulBookingIds.includes(String(row.id || "").trim())
+            ? {
+                ...row,
+                status: bulkTargetStatus,
+                ...(bulkTargetStatus === "completed"
+                  ? completedBookingPaymentPatch(row)
+                  : {}),
+                ...localAuditPatch,
+              }
             : row
         )
       );
       setSelectedBooking((prev) =>
-        prev && bookingIds.includes(String(prev.id || "").trim())
-          ? { ...prev, status: bulkTargetStatus, ...localAuditPatch }
+        prev && successfulBookingIds.includes(String(prev.id || "").trim())
+          ? {
+              ...prev,
+              status: bulkTargetStatus,
+              ...(bulkTargetStatus === "completed"
+                ? completedBookingPaymentPatch(prev)
+                : {}),
+              ...localAuditPatch,
+            }
           : prev
       );
       setBulkResultMessage(
@@ -4262,9 +6262,18 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     <input
                       type="checkbox"
                       className="bk-select-checkbox"
-                      checked={allPageSelected}
-                      onChange={toggleCurrentPageSelection}
-                      aria-label="تحديد حجوزات الصفحة الحالية"
+                      checked={
+                        section.rows.length > 0 &&
+                        section.rows.every((booking) =>
+                          selectedBookingIds.has(
+                            String(booking.id || "").trim()
+                          )
+                        )
+                      }
+                      onChange={() =>
+                        toggleSectionSelection(section.rows)
+                      }
+                      aria-label={`تحديد حجوزات قسم ${section.title}`}
                     />
                   </th>
                   <th>الحجز</th>
@@ -4380,8 +6389,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               ) : null}
                             </div>
                             <div className="bk-payment-inline-metrics">
-                              <span>مدفوع <b><BookingMoney value={payment.paidAmount} /></b></span>
-                              <span>متبقي <b><BookingMoney value={payment.remainingAmount} /></b></span>
+                              <span className="bk-payment-inline-paid">مدفوع <b><BookingMoney value={payment.paidAmount} /></b></span>
+                              <span className="bk-payment-inline-remaining">متبقي <b><BookingMoney value={payment.remainingAmount} /></b></span>
                             </div>
                           </div>
                         </td>
@@ -4401,7 +6410,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
                             {canEditBookings ? (
-                              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => openEditBookingModal(b)}>
+                              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bookings-v2-row-edit" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
                             ) : null}
@@ -4439,7 +6448,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                             {uiRole === "owner" ? (
                               <button
                                 type="button"
-                                className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
+                                className="dsv2-btn dsv2-btn--danger dsv2-btn--sm bookings-v2-row-delete"
                                 onClick={() => handleDeleteBooking(b)}
                                 title="إزالة الحجز من القائمة مع حفظ السجلات المالية"
                               >
@@ -4676,6 +6685,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     resetBookingFilters,
     selectedBookingIds,
     toggleBookingSelection,
+    toggleSectionSelection,
     toggleCurrentPageSelection,
     uiRole,
     unseenNewBookingIds,
@@ -4741,23 +6751,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
         <section className="dsv2-grid--metrics bookings-v2-metrics" aria-label="ملخص عمليات الحجوزات">
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
-            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
+            <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faCalendarDay} /></span>
             <div><small className="dsv2-metric-card__label">حجوزات اليوم</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayCount}</strong><em className="dsv2-metric-card__meta">{bookingOperationsOverview.today}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--success bookings-v2-metric">
-            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
+            <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faCheckCircle} /></span>
             <div><small className="dsv2-metric-card__label">المؤكد والمكتمل اليوم</small><strong className="dsv2-metric-card__value">{bookingOperationsOverview.todayConfirmed + bookingOperationsOverview.todayCompleted}</strong><em className="dsv2-metric-card__meta">مؤكد {bookingOperationsOverview.todayConfirmed} • مكتمل {bookingOperationsOverview.todayCompleted}</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--dark bookings-v2-metric">
-            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
+            <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faMoneyBillWave} /></span>
             <div><small className="dsv2-metric-card__label">المحصّل اليوم</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.todayCollectedAmount} /></strong><em className="dsv2-metric-card__meta">حسب الحجوزات المحمّلة</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--danger bookings-v2-metric bookings-v2-metric--alert">
-            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+            <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
             <div><small className="dsv2-metric-card__label">تحتاج متابعة</small><strong className="dsv2-metric-card__value">{attentionBookingCount}</strong><em className="dsv2-metric-card__meta">حجوزات قديمة أو غير مغلقة</em></div>
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
-            <span className="bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
+            <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
             <div><small className="dsv2-metric-card__label">إجمالي المتبقي</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em className="dsv2-metric-card__meta">على كل الحجوزات غير الملغاة</em></div>
           </article>
         </section>
@@ -4857,41 +6867,69 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             <label className="bookings-v2-search">
               <FontAwesomeIcon icon={faSearch} />
               <input
-                type="text"
-                name="booking_filters_search_query"
-                autoComplete="off"
+                type="search"
+                name="malikat_booking_lookup_no_autofill"
+                autoComplete="new-password"
                 data-form-type="other"
                 data-lpignore="true"
                 data-1p-ignore="true"
+                data-bwignore="true"
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="none"
+                inputMode="search"
+                enterKeyHint="search"
+                aria-label="بحث الحجوزات"
+                readOnly={!bookingSearchFocused}
                 placeholder="ابحثي بالاسم، الجوال، رقم الحجز، الخدمة أو الموظفة..."
                 value={q}
-                onChange={(event) => setQ(event.target.value)}
+                onFocus={(event) => {
+                  setBookingSearchFocused(true);
+
+                  if (event.currentTarget.value.includes("@")) {
+                    setQ("");
+                  }
+                }}
+                onBlur={() => setBookingSearchFocused(false)}
+                onChange={(event) => {
+                  const next = event.target.value;
+
+                  if (next.includes("@")) {
+                    setQ("");
+                    return;
+                  }
+
+                  setQ(next);
+                }}
               />
               {q ? <button type="button" onClick={() => setQ("")} aria-label="مسح البحث"><FontAwesomeIcon icon={faXmark} /></button> : null}
             </label>
 
-            <label className="bk-command-select">
-              <span>الفترة</span>
-              <select
-                value={datePreset}
-                onChange={(event) => {
-                  const next = event.target.value as DatePresetOption;
-                  applyDatePreset(next);
-                  if (next === "custom") setAdvancedFiltersOpen(true);
-                }}
-              >
-                <option value="all">كل الحجوزات</option>
-                <option value="today">اليوم</option>
-                <option value="yesterday">أمس</option>
-                <option value="week">هذا الأسبوع</option>
-                <option value="month">هذا الشهر</option>
-                <option value="last_month">الشهر الماضي</option>
-                <option value="custom">نطاق مخصص</option>
-              </select>
-            </label>
+            
+            <BookingSelectField
+              label="الفترة"
+              value={datePreset}
+              options={[
+                { value: "all", label: "كل الحجوزات" },
+                { value: "today", label: "اليوم" },
+                { value: "yesterday", label: "أمس" },
+                { value: "week", label: "هذا الأسبوع" },
+                { value: "month", label: "هذا الشهر" },
+                { value: "last_month", label: "الشهر الماضي" },
+                { value: "custom", label: "نطاق مخصص" },
+              ]}
+              placeholder="اختاري الفترة"
+              onChange={(value) => {
+                const next =
+                  value as DatePresetOption;
+
+                applyDatePreset(next);
+
+                if (next === "custom") {
+                  setAdvancedFiltersOpen(true);
+                }
+              }}
+            />
 
             <button type="button" className={`bk-advanced-toggle ${advancedFiltersOpen ? "is-open" : ""}`} onClick={() => setAdvancedFiltersOpen((open) => !open)}>
               <FontAwesomeIcon icon={faFilter} />
@@ -4919,69 +6957,248 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             ))}
           </div>
 
+
           {advancedFiltersOpen ? (
-            <div className="bk-advanced-filters">
-              <div className="bk-field bk-field-date">
-                <label>من تاريخ</label>
-                <input type="date" className="bk-input bk-date-input" lang="ar-SA" dir="rtl" value={dateFrom} onChange={(event) => { setDatePreset("custom"); setDateFrom(event.target.value); }} />
-              </div>
-              <div className="bk-field bk-field-date">
-                <label>إلى تاريخ</label>
-                <input type="date" className="bk-input bk-date-input" lang="ar-SA" dir="rtl" value={dateTo} onChange={(event) => { setDatePreset("custom"); setDateTo(event.target.value); }} />
-              </div>
-              <div className="bk-field">
-                <label>استثناء حالة</label>
-                <select className="bk-select" value={excludedStatus} onChange={(event) => setExcludedStatus(event.target.value as ExcludedStatusOption)} disabled={statusFilter !== "all"}>
-                  <option value="">بدون استثناء</option>
-                  {allStatusOptions.map((status) => <option key={`exclude_${status}`} value={status}>{`استثناء: ${statusLabel[status]}`}</option>)}
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>حالة السداد</label>
-                <select className="bk-select" value={settlementFilter} onChange={(event) => setSettlementFilter(event.target.value as SettlementFilterOption)}>
-                  <option value="all">الكل</option><option value="paid">مدفوع بالكامل</option><option value="partial">مدفوع جزئيًا</option><option value="unpaid">غير مدفوع</option>
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>طريقة الدفع</label>
-                <select className="bk-select" value={paymentMethodFilter} onChange={(event) => setPaymentMethodFilter(event.target.value as PaymentMethodFilterOption)}>
-                  <option value="all">كل الطرق</option><option value="cash">كاش</option><option value="card">شبكة</option><option value="transfer">تحويل</option><option value="mixed">مختلط</option><option value="other">أخرى</option><option value="none">بدون دفع</option>
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>الموظفة</label>
-                <select className="bk-select" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
-                  <option value="all">كل الموظفات</option>{employeeFilterOptions.map(([id, label]) => <option key={`employee_filter_${id}`} value={id}>{label}</option>)}
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>الخدمة</label>
-                <select className="bk-select" value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)}>
-                  <option value="all">كل الخدمات</option>{serviceFilterOptions.map(([id, label]) => <option key={`service_filter_${id}`} value={id}>{label}</option>)}
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>مصدر الحجز</label>
-                <select className="bk-select" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as BookingSourceFilterOption)}>
-                  <option value="all">كل المصادر</option><option value="client">موقع العميلات</option><option value="dashboard">الداشبورد</option><option value="internal">الحجز الداخلي</option><option value="unknown">غير محدد</option>
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>الترتيب</label>
-                <select className="bk-select" value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrderOption)}>
-                  <option value="newest">الأحدث أولًا</option><option value="oldest">الأقدم أولًا</option>
-                </select>
-              </div>
-              <div className="bk-field">
-                <label>الحجوزات القديمة</label>
-                <select className="bk-select" value={oldPendingFilter} onChange={(event) => setOldPendingFilter(event.target.value as OldPendingFilterOption)}>
-                  <option value="off">بدون فلتر</option><option value="before_today">الأقدم من اليوم</option><option value="older_7">الأقدم من 7 أيام</option><option value="older_30">الأقدم من 30 يومًا</option><option value="custom">نطاق مخصص</option>
-                </select>
-              </div>
+            <div className="bk-advanced-filters bk-advanced-filters--custom">
+
+              <BookingFilterDateField
+                label="من تاريخ"
+                value={dateFrom}
+                onChange={(value) => {
+                  setDatePreset("custom");
+                  setDateFrom(value);
+                }}
+              />
+
+              <BookingFilterDateField
+                label="إلى تاريخ"
+                value={dateTo}
+                onChange={(value) => {
+                  setDatePreset("custom");
+                  setDateTo(value);
+                }}
+              />
+
+              <BookingSelectField
+                label="استثناء حالة"
+                value={excludedStatus}
+                options={[
+                  {
+                    value: "",
+                    label: "بدون استثناء",
+                  },
+                  ...allStatusOptions.map((status) => ({
+                    value: status,
+                    label:
+                      "استثناء: " +
+                      statusLabel[status],
+                  })),
+                ]}
+                placeholder="بدون استثناء"
+                disabled={statusFilter !== "all"}
+                onChange={(value) =>
+                  setExcludedStatus(
+                    value as ExcludedStatusOption
+                  )
+                }
+              />
+
+              <BookingSelectField
+                label="حالة السداد"
+                value={settlementFilter}
+                options={[
+                  { value: "all", label: "الكل" },
+                  {
+                    value: "paid",
+                    label: "مدفوع بالكامل",
+                  },
+                  {
+                    value: "partial",
+                    label: "مدفوع جزئيًا",
+                  },
+                  {
+                    value: "unpaid",
+                    label: "غير مدفوع",
+                  },
+                ]}
+                placeholder="كل حالات السداد"
+                onChange={(value) =>
+                  setSettlementFilter(
+                    value as SettlementFilterOption
+                  )
+                }
+              />
+
+              <BookingSelectField
+                label="طريقة الدفع"
+                value={paymentMethodFilter}
+                options={[
+                  {
+                    value: "all",
+                    label: "كل الطرق",
+                  },
+                  { value: "cash", label: "كاش" },
+                  { value: "card", label: "شبكة" },
+                  {
+                    value: "transfer",
+                    label: "تحويل",
+                  },
+                  {
+                    value: "mixed",
+                    label: "دفع مختلط",
+                  },
+                  { value: "other", label: "أخرى" },
+                  {
+                    value: "none",
+                    label: "بدون دفع",
+                  },
+                ]}
+                placeholder="كل طرق الدفع"
+                onChange={(value) =>
+                  setPaymentMethodFilter(
+                    value as PaymentMethodFilterOption
+                  )
+                }
+              />
+
+              <BookingSelectField
+                label="الموظفة"
+                value={employeeFilter}
+                options={[
+                  {
+                    value: "all",
+                    label: "كل الموظفات",
+                  },
+                  ...employeeFilterOptions.map(
+                    ([value, label]) => ({
+                      value,
+                      label,
+                    })
+                  ),
+                ]}
+                placeholder="كل الموظفات"
+                onChange={setEmployeeFilter}
+              />
+
+              <BookingSelectField
+                label="الخدمة"
+                value={serviceFilter}
+                options={[
+                  {
+                    value: "all",
+                    label: "كل الخدمات",
+                  },
+                  ...serviceFilterOptions.map(
+                    ([value, label]) => ({
+                      value,
+                      label,
+                    })
+                  ),
+                ]}
+                placeholder="كل الخدمات"
+                onChange={setServiceFilter}
+              />
+
+              <BookingSelectField
+                label="مصدر الحجز"
+                value={sourceFilter}
+                options={[
+                  {
+                    value: "all",
+                    label: "كل المصادر",
+                  },
+                  {
+                    value: "client",
+                    label: "موقع العميلات",
+                  },
+                  {
+                    value: "dashboard",
+                    label: "الداشبورد",
+                  },
+                  {
+                    value: "internal",
+                    label: "الحجز الداخلي",
+                  },
+                  {
+                    value: "unknown",
+                    label: "غير محدد",
+                  },
+                ]}
+                placeholder="كل المصادر"
+                onChange={(value) =>
+                  setSourceFilter(
+                    value as BookingSourceFilterOption
+                  )
+                }
+              />
+
+              <BookingSelectField
+                label="الترتيب"
+                value={sortOrder}
+                options={[
+                  {
+                    value: "newest",
+                    label: "الأحدث أولًا",
+                  },
+                  {
+                    value: "oldest",
+                    label: "الأقدم أولًا",
+                  },
+                ]}
+                placeholder="اختاري الترتيب"
+                onChange={(value) =>
+                  setSortOrder(
+                    value as SortOrderOption
+                  )
+                }
+              />
+
+              <BookingSelectField
+                label="الحجوزات القديمة"
+                value={oldPendingFilter}
+                options={[
+                  {
+                    value: "off",
+                    label: "بدون فلتر",
+                  },
+                  {
+                    value: "before_today",
+                    label: "الأقدم من اليوم",
+                  },
+                  {
+                    value: "older_7",
+                    label: "الأقدم من 7 أيام",
+                  },
+                  {
+                    value: "older_30",
+                    label: "الأقدم من 30 يومًا",
+                  },
+                  {
+                    value: "custom",
+                    label: "نطاق مخصص",
+                  },
+                ]}
+                placeholder="بدون فلتر"
+                onChange={(value) =>
+                  setOldPendingFilter(
+                    value as OldPendingFilterOption
+                  )
+                }
+              />
+
               {oldPendingFilter === "custom" ? (
                 <>
-                  <div className="bk-field bk-field-date"><label>قديم من</label><input type="date" className="bk-input bk-date-input" value={oldPendingFrom} onChange={(event) => setOldPendingFrom(event.target.value)} /></div>
-                  <div className="bk-field bk-field-date"><label>قديم إلى</label><input type="date" className="bk-input bk-date-input" value={oldPendingTo} onChange={(event) => setOldPendingTo(event.target.value)} /></div>
+                  <BookingFilterDateField
+                    label="قديم من"
+                    value={oldPendingFrom}
+                    onChange={setOldPendingFrom}
+                  />
+
+                  <BookingFilterDateField
+                    label="قديم إلى"
+                    value={oldPendingTo}
+                    onChange={setOldPendingTo}
+                  />
                 </>
               ) : null}
             </div>
@@ -5215,12 +7432,27 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
                             {event.changes.length ? (
                               <div className="bk-activity-changes">
-                                <span className="bk-activity-meta-label">ما الذي تغير:</span>
-                                {event.changes.map((change, index) => (
-                                  <div key={`${event.id}_change_${index}`} className="bk-activity-change">
-                                    {change}
-                                  </div>
-                                ))}
+                                <div className="bk-activity-changes__head">
+                                  <span>تفاصيل العملية</span>
+                                  <b>{event.changes.length}</b>
+                                </div>
+
+                                <div className="bk-activity-changes__grid">
+                                  {event.changes.map((change, index) => (
+                                    <div
+                                      key={`${event.id}_change_${index}`}
+                                      className="bk-activity-change"
+                                    >
+                                      <span className="bk-activity-change__index">
+                                        {index + 1}
+                                      </span>
+
+                                      <span className="bk-activity-change__text">
+                                        {change}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             ) : null}
 
@@ -5252,19 +7484,82 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     {(selectedBooking.services && selectedBooking.services.length > 0
                       ? selectedBooking.services
                       : [{ serviceName: selectedBooking.serviceName, serviceId: selectedBooking.serviceId }]
-                    ).map((s, idx) => (
-                      <div key={`modern_${selectedBooking.id}_svc_${idx}`} className="bk-service-row">
-                        <span>
-                          {toArabicOnlyLabel(String(s.serviceName || s.serviceId || ""), "خدمة")}
-                          <div className="bk-service-row-sub">
-                            {toArabicOnlyLabel(String(s.sectionLabel || ""), "—")} • {toArabicOnlyLabel(String(s.categoryLabel || ""), "—")}
+                    ).map((s, idx) => {
+                      const serviceEmployeeName = String(
+                        (s as any).employeeName ||
+                        selectedBooking.employeeName ||
+                        ""
+                      ).trim();
+
+                      const serviceMeta = [
+                        toArabicOnlyLabel(
+                          String(s.sectionLabel || ""),
+                          ""
+                        ),
+                        toArabicOnlyLabel(
+                          String(s.categoryLabel || ""),
+                          ""
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(" • ");
+
+                      const serviceDuration = Number(s.durationMin || 0);
+                      const servicePrice = Number(s.price || 0);
+
+                      return (
+                        <article
+                          key={`modern_${selectedBooking.id}_svc_${idx}`}
+                          className="bk-service-row bk-service-row--modern"
+                        >
+                          <div className="bk-service-row__main">
+                            <span className="bk-service-row__eyebrow">
+                              الخدمة
+                            </span>
+
+                            <strong className="bk-service-row__name">
+                              {toArabicOnlyLabel(
+                                String(
+                                  s.serviceName ||
+                                  s.serviceId ||
+                                  ""
+                                ),
+                                "خدمة"
+                              )}
+                            </strong>
+
+                            {serviceMeta ? (
+                              <div className="bk-service-row__meta">
+                                {serviceMeta}
+                              </div>
+                            ) : null}
                           </div>
-                        </span>
-                        <span>
-                          {Number(s.durationMin || 0) > 0 ? `${s.durationMin} د` : "—"} • {Number(s.price || 0) > 0 ? `${s.price} ر.س` : "—"}
-                        </span>
-                      </div>
-                    ))}
+
+                          <div className="bk-service-row__facts">
+                            {serviceEmployeeName ? (
+                              <span className="bk-service-fact">
+                                <small>الموظفة</small>
+                                <b>{serviceEmployeeName}</b>
+                              </span>
+                            ) : null}
+
+                            {serviceDuration > 0 ? (
+                              <span className="bk-service-fact">
+                                <small>المدة</small>
+                                <b>{serviceDuration} دقيقة</b>
+                              </span>
+                            ) : null}
+
+                            {servicePrice > 0 ? (
+                              <span className="bk-service-fact">
+                                <small>السعر</small>
+                                <b>{servicePrice} ر.س</b>
+                              </span>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 </section>
 
@@ -5763,65 +8058,74 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             </div>
 
             <div className="bk-edit-form">
-              <label>
-                <div className="bk-field-label">نوع الدفع وقت التأكيد</div>
-                <select
-                  className="bk-select"
-                  value={confirmDraft.paymentMode}
-                  onChange={(e) =>
-                    setConfirmDraft((p) => {
-                      const nextMode = e.target.value as UiPaymentMode;
-                      if (nextMode === "none") {
-                        return {
-                          ...p,
-                          paymentMode: "none",
-                          paymentType: "partial",
-                          paymentMethod: "none",
-                          paidAmount: "0",
-                        };
-                      }
+              
+              <BookingSelectField
+                label="نوع الدفع وقت التأكيد"
+                value={confirmDraft.paymentMode}
+                options={[
+                  {
+                    value: "full",
+                    label: "دفع كامل",
+                  },
+                  {
+                    value: "partial",
+                    label: "عربون",
+                  },
+                  {
+                    value: "none",
+                    label: "بدون دفع",
+                  },
+                ]}
+                placeholder="اختاري نوع الدفع"
+                disabled={confirmSaving}
+                onChange={(value) =>
+                  setConfirmDraft((p) => {
+                    const nextMode =
+                      value as UiPaymentMode;
+
+                    if (nextMode === "none") {
                       return {
                         ...p,
-                        paymentMode: nextMode,
-                        paymentType: nextMode === "full" ? "full" : "partial",
-                        paymentMethod: p.paymentMethod === "none" ? "transfer" : p.paymentMethod,
+                        paymentMode: "none",
+                        paymentType: "partial",
+                        paidAmount: "0",
                       };
-                    })
-                  }
-                  disabled={confirmSaving}
-                >
-                  <option value="full">دفع كامل</option>
-                  <option value="partial">عربون</option>
-                  <option value="none">بدون دفع</option>
-                </select>
-              </label>
+                    }
+
+                    return {
+                      ...p,
+                      paymentMode: nextMode,
+                      paymentType:
+                        nextMode === "full"
+                          ? "full"
+                          : "partial",
+                    };
+                  })
+                }
+              />
 
               {confirmDraft.paymentMode !== "none" ? (
-                <label>
-                  <div className="bk-field-label">طريقة الدفع</div>
-                  <select
-                    className="bk-select"
-                    value={confirmDraft.paymentMethod}
-                    onChange={(e) =>
-                      setConfirmDraft((p) => {
-                        const method = e.target.value as EditPaymentMethodOption;
-                        return {
-                          ...p,
-                          paymentMethod: method,
-                          paymentMode: method === "mixed" ? "full" : p.paymentMode,
-                          paymentType: method === "mixed" ? "full" : p.paymentType,
-                        };
-                      })
-                    }
-                    disabled={confirmSaving}
-                  >
-                    <option value="cash">كاش</option>
-                    <option value="card">شبكة</option>
-                    <option value="transfer">تحويل</option>
-                    <option value="mixed">دفع مختلط</option>
-                    <option value="other">أخرى</option>
-                  </select>
-                </label>
+                
+                <BookingSelectField
+                  label="طريقة الدفع"
+                  value={confirmDraft.paymentMethod}
+                  options={[
+                    { value: "cash", label: "كاش" },
+                    { value: "card", label: "شبكة" },
+                    { value: "transfer", label: "تحويل" },
+                    { value: "mixed", label: "دفع مختلط" },
+                    { value: "other", label: "أخرى" },
+                  ]}
+                  placeholder="اختاري طريقة الدفع"
+                  disabled={confirmSaving}
+                  onChange={(value) =>
+                    setConfirmDraft((p) => ({
+                      ...p,
+                      paymentMethod:
+                        value as PaymentMethod,
+                    }))
+                  }
+                />
               ) : null}
 
               {confirmDraft.paymentMethod === "mixed" ? (
