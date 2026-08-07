@@ -1,5 +1,11 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { handleAttendanceRequest } from "./attendance-worker.js";
+import {
+  assertAccountCanAuthenticate,
+  getAccountByFirebaseUid,
+  getActiveEmployeeLink,
+  getEffectivePermissions,
+} from "./core/repositories/accounts.js";
 
 const DEFAULT_FIREBASE_PROJECT_ID = "waves-hotel-dashboard";
 const DEFAULT_SALON_ID = "main";
@@ -204,6 +210,7 @@ export default {
   },
 };
 
+// ATTENDANCE_CORE_D1_AUTHORITY_V3
 async function resolveRequesterContext(request, env, db) {
   const idToken = readBearerToken(request);
 
@@ -217,7 +224,8 @@ async function resolveRequesterContext(request, env, db) {
     };
   }
 
-  const verifiedToken = await verifyFirebaseIdToken(idToken, env);
+  const verifiedToken =
+    await verifyFirebaseIdToken(idToken, env);
 
   if (!verifiedToken.ok) {
     return {
@@ -230,178 +238,265 @@ async function resolveRequesterContext(request, env, db) {
     };
   }
 
-  const tokenPayload = verifiedToken.payload;
-  const projectId = verifiedToken.projectId;
   const uid = verifiedToken.uid;
-  const email = verifiedToken.email;
+  const tokenEmail = verifiedToken.email;
+  const projectId = verifiedToken.projectId;
   const salonId = getSalonId(env);
-  const [d1Identity, cachedPermissionProfile] = await Promise.all([
-    loadRequesterAttendanceIdentity(db, uid),
-    loadPermissionCache(db, uid),
+  const coreDb = env?.CORE_DB || null;
+
+  if (!coreDb) {
+    return {
+      ok: false,
+      response: json(503, {
+        ok: false,
+        message: "missing_core_d1_binding",
+      }),
+    };
+  }
+
+  let account;
+
+  try {
+    account = await getAccountByFirebaseUid(
+      coreDb,
+      salonId,
+      uid
+    );
+
+    assertAccountCanAuthenticate(account);
+  } catch (error) {
+    const code = cleanText(
+      error?.code ||
+      error?.message ||
+      "ACCOUNT_ACCESS_DENIED"
+    );
+
+    const message =
+      code === "ACCOUNT_NOT_PROVISIONED"
+        ? "account_not_provisioned"
+        : code === "ACCOUNT_PENDING"
+          ? "account_pending"
+          : code === "ACCOUNT_DISABLED"
+            ? "account_disabled"
+            : code === "ACCOUNT_DELETED"
+              ? "account_deleted"
+              : "account_access_denied";
+
+    return {
+      ok: false,
+      response: json(403, {
+        ok: false,
+        message,
+        code,
+      }),
+    };
+  }
+
+  const [
+    effectivePermissions,
+    employeeLink,
+    attendanceIdentity,
+  ] = await Promise.all([
+    getEffectivePermissions(
+      coreDb,
+      salonId,
+      account
+    ),
+
+    getActiveEmployeeLink(
+      coreDb,
+      salonId,
+      account.id
+    ),
+
+    loadRequesterAttendanceIdentity(
+      db,
+      uid
+    ),
   ]);
 
-  const [userResult, adminResult] = await Promise.all([
-    fetchFirestoreDocument({
-      projectId,
-      idToken,
-      documentPath: `salons/${salonId}/users/${uid}`,
-      env,
-    }),
-    fetchFirestoreDocument({
-      projectId,
-      idToken,
-      documentPath: `salons/${salonId}/admin_users/${uid}`,
-      env,
-    }),
-  ]);
+  const role = normalizeRole(
+    account.primary_role
+  );
+
+  const attendancePermissions =
+    normalizeAttendancePermissions(
+      effectivePermissions
+    );
+
+  const runtime = {
+    role,
+    isActive: true,
+    permissionVersion:
+      PERMISSION_SCHEMA_VERSION,
+
+    permissions:
+      attendancePermissions,
+
+    permissionsAllow:
+      attendancePermissions,
+
+    permissionsDeny: [],
+
+    sources: {
+      coreD1: true,
+      firebaseIdentity: true,
+    },
+  };
+
+  /*
+   * Firestore يبقى مؤقتًا لبيانات تشغيلية فقط.
+   * ممنوع أن يحدد role/status/permissions.
+   */
+
+  const [userResult, adminResult] =
+    await Promise.all([
+      fetchFirestoreDocument({
+        projectId,
+        idToken,
+        documentPath:
+          `salons/${salonId}/users/${uid}`,
+        env,
+      }),
+
+      fetchFirestoreDocument({
+        projectId,
+        idToken,
+        documentPath:
+          `salons/${salonId}/admin_users/${uid}`,
+        env,
+      }),
+    ]);
 
   const userData =
     userResult.ok && userResult.found
       ? userResult.data?.data || {}
-      : null;
+      : {};
 
   const adminData =
     adminResult.ok && adminResult.found
       ? adminResult.data?.data || {}
-      : null;
+      : {};
 
-  const firestoreLookupDegraded = !userResult.ok || !adminResult.ok;
-  const selectedProfile = selectAuthoritativePermissionProfile({
-    userData,
-    adminData,
-  });
-  const authoritativeProfile = selectedProfile?.data || null;
-  const tokenRole = normalizeRole(
-    tokenPayload?.role || tokenPayload?.roleKey
-  );
-  const fallbackRole =
-    tokenRole !== "guest"
-      ? tokenRole
-      : d1Identity.employeeDocId
-        ? "staff"
-        : "guest";
-
-  let runtime;
-  let authSource;
-
-  const authoritativeRuntime = authoritativeProfile
-    ? createRuntime(authoritativeProfile)
-    : null;
-  const manualOwnerBootstrap = Boolean(
-    cachedPermissionProfile?.isActive &&
-      cachedPermissionProfile?.role === "owner" &&
-      cachedPermissionProfile?.sources?.cacheSource === "manual-bootstrap"
-  );
-
-  if (
-    authoritativeRuntime?.isActive &&
-    authoritativeRuntime.role === "owner" &&
-    !firestoreLookupDegraded
-  ) {
-    runtime = authoritativeRuntime;
-    authSource = "firebase_jwt+firestore_permissions";
-    await savePermissionCache(db, {
-      uid,
-      email,
-      runtime,
-      source: selectedProfile.source,
-    });
-  } else if (manualOwnerBootstrap) {
-    // Emergency owner cache is UID-bound, short-lived, and created only through D1 CLI.
-    // Rebuild the owner runtime instead of trusting serialized permission arrays.
-    // Owner always has the complete attendance permission set.
-    runtime = {
-      ...createVerifiedTokenRuntime("owner"),
-      permissionVersion: Math.max(
-        PERMISSION_SCHEMA_VERSION,
-        Number(cachedPermissionProfile?.permissionVersion || 0) || 0
-      ),
-      cachedAt: cachedPermissionProfile?.cachedAt || null,
-      expiresAt: cachedPermissionProfile?.expiresAt || null,
-      sources: {
-        permissionCache: true,
-        cacheSource: "manual-bootstrap",
-      },
-    };
-    authSource = "firebase_jwt+d1_manual_owner_bootstrap";
-  } else if (authoritativeProfile && !firestoreLookupDegraded) {
-    runtime = authoritativeRuntime;
-    authSource = "firebase_jwt+firestore_permissions";
-    await savePermissionCache(db, {
-      uid,
-      email,
-      runtime,
-      source: selectedProfile.source,
-    });
-  } else if (firestoreLookupDegraded && cachedPermissionProfile) {
-    runtime = cachedPermissionProfile;
-    authSource = "firebase_jwt+d1_permission_cache";
-  } else if (authoritativeProfile) {
-    runtime = createRuntime(authoritativeProfile);
-    authSource = "firebase_jwt+partial_firestore_permissions";
-  } else {
-    runtime = createVerifiedTokenRuntime(fallbackRole);
-    authSource = "firebase_jwt+employee_fallback";
-
-    if (!firestoreLookupDegraded) {
-      await deletePermissionCache(db, uid);
-    }
-  }
-
-  const identityData = {
-    ...(userData || {}),
-    ...(adminData || {}),
-    ...(authoritativeProfile || {}),
+  const operationalProfile = {
+    ...userData,
+    ...adminData,
   };
 
-  identityData.uid = firstText(identityData.uid, uid);
-  identityData.email = firstText(identityData.email, email);
-  identityData.role = firstText(identityData.role, runtime.role, fallbackRole);
-  identityData.active =
-    identityData.active === undefined ? runtime.isActive : identityData.active;
-  identityData.employeeProfileEnabled =
-    identityData.employeeProfileEnabled === undefined
-      ? Boolean(d1Identity.employeeDocId) ||
-        ATTENDANCE_FALLBACK_EMPLOYEE_ROLES.has(runtime.role)
-      : identityData.employeeProfileEnabled;
-  identityData.linkedEmployeeId = firstText(
-    userData?.linkedEmployeeId,
-    userData?.linkedEmployeeDocId,
-    userData?.employeeId,
-    adminData?.linkedEmployeeId,
-    adminData?.linkedEmployeeDocId,
-    adminData?.employeeId,
-    d1Identity.employeeDocId,
-    uid
+  [
+    "role",
+    "roleKey",
+    "primaryRole",
+    "primary_role",
+    "active",
+    "isActive",
+    "status",
+    "permissions",
+    "permissionsAllow",
+    "permissionsDeny",
+    "permissionOverrides",
+    "permissionVersion",
+  ].forEach((key) => {
+    delete operationalProfile[key];
+  });
+
+  const linkedEmployeeId = firstText(
+    employeeLink?.employee_id,
+    attendanceIdentity?.employeeDocId
   );
 
+  const employeeProfileEnabled =
+    operationalProfile.employeeProfileEnabled === false
+      ? false
+      : Boolean(linkedEmployeeId) ||
+        ATTENDANCE_FALLBACK_EMPLOYEE_ROLES.has(role);
+
+  const identityData = {
+    ...operationalProfile,
+
+    uid,
+    firebaseUid: uid,
+
+    email: firstText(
+      account.email,
+      tokenEmail
+    ),
+
+    displayName: firstText(
+      account.display_name,
+      operationalProfile.displayName,
+      operationalProfile.name,
+      account.email
+    ),
+
+    role,
+    primaryRole: role,
+
+    active: true,
+    status: "active",
+
+    employeeProfileEnabled,
+
+    linkedEmployeeId,
+    employeeId: linkedEmployeeId,
+  };
+
   if (
-    !normalizeStringArray(identityData.allowedZoneIds).length &&
-    d1Identity.lastZoneId
+    !normalizeStringArray(
+      identityData.allowedZoneIds
+    ).length &&
+    attendanceIdentity?.lastZoneId
   ) {
-    identityData.allowedZoneIds = [d1Identity.lastZoneId];
-    identityData.attendanceZoneId = firstText(
-      identityData.attendanceZoneId,
-      d1Identity.lastZoneId
-    );
+    identityData.allowedZoneIds = [
+      attendanceIdentity.lastZoneId,
+    ];
+
+    identityData.attendanceZoneId =
+      firstText(
+        identityData.attendanceZoneId,
+        attendanceIdentity.lastZoneId
+      );
   }
 
   return {
     ok: true,
+
     idToken,
     projectId,
     uid,
-    email,
+
+    email:
+      identityData.email,
+
     runtime,
-    userData: identityData,
-    adminUserData: adminData,
-    authSource,
-    permissionCache: cachedPermissionProfile
-      ? { hit: true, expiresAt: cachedPermissionProfile.expiresAt || null }
-      : { hit: false, expiresAt: null },
+
+    userData:
+      identityData,
+
+    adminUserData: null,
+
+    authSource:
+      "firebase_jwt+core_d1",
+
+    permissionCache: {
+      hit: false,
+      expiresAt: null,
+    },
+
     firestoreProfileStatus: {
-      user: userResult.ok ? (userResult.found ? "found" : "missing") : userResult.error,
-      admin: adminResult.ok ? (adminResult.found ? "found" : "missing") : adminResult.error,
+      user:
+        userResult.ok
+          ? userResult.found
+            ? "operational_metadata_only"
+            : "missing"
+          : userResult.error,
+
+      admin:
+        adminResult.ok
+          ? adminResult.found
+            ? "operational_metadata_only"
+            : "missing"
+          : adminResult.error,
     },
   };
 }

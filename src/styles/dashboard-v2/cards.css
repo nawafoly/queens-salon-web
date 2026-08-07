@@ -143,3 +143,135 @@
   font-size: 0.72rem;
   font-weight: 700;
 }
+
+/* DSV2_CANONICAL_METRIC_ICON_V2_START */
+
+/*
+  الأيقونة الرسمية لجميع Metric Cards.
+  أي صفحة تستخدم dsv2-metric-card يجب أن تستخدم:
+  dsv2-metric-card__icon
+*/
+
+.dashboard-v2
+.dsv2-metric-card
+.dsv2-metric-card__icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+
+  display: inline-grid;
+  place-items: center;
+
+  border:
+    1px solid
+    rgba(var(--dsv2-metric-rgb), 0.24);
+
+  border-radius: 14px;
+
+  color:
+    var(--dsv2-metric-color) !important;
+
+  background:
+    rgba(var(--dsv2-metric-rgb), 0.10) !important;
+
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.dashboard-v2
+.dsv2-metric-card
+.dsv2-metric-card__icon
+svg {
+  width: 19px !important;
+  height: 19px !important;
+
+  display: block !important;
+
+  color:
+    var(--dsv2-metric-color) !important;
+
+  fill:
+    var(--dsv2-metric-color) !important;
+
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.dashboard-v2
+.dsv2-metric-card
+.dsv2-metric-card__icon
+svg path {
+  color:
+    var(--dsv2-metric-color) !important;
+
+  fill:
+    var(--dsv2-metric-color) !important;
+
+  opacity: 1 !important;
+}
+
+
+/* SUCCESS */
+
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--success
+.dsv2-metric-card__icon,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--success
+.dsv2-metric-card__icon svg,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--success
+.dsv2-metric-card__icon svg path {
+  color: #177348 !important;
+  fill: #177348 !important;
+}
+
+
+/* DANGER */
+
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--danger
+.dsv2-metric-card__icon,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--danger
+.dsv2-metric-card__icon svg,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--danger
+.dsv2-metric-card__icon svg path {
+  color: #59041b !important;
+  fill: #59041b !important;
+}
+
+
+/* GOLD */
+
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--gold
+.dsv2-metric-card__icon,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--gold
+.dsv2-metric-card__icon svg,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--gold
+.dsv2-metric-card__icon svg path {
+  color: #d9a50b !important;
+  fill: #d9a50b !important;
+}
+
+
+/* DARK */
+
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--dark
+.dsv2-metric-card__icon,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--dark
+.dsv2-metric-card__icon svg,
+.dashboard-v2
+.dsv2-metric-card.dsv2-metric-card--dark
+.dsv2-metric-card__icon svg path {
+  color: #05080d !important;
+  fill: #05080d !important;
+}
+
+/* DSV2_CANONICAL_METRIC_ICON_V2_END */

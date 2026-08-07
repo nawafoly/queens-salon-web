@@ -1,3 +1,4 @@
+import { readVerifiedUserAccess } from "../services/authAccess";
 import { useEffect, useMemo, useState, useRef } from "react";
 import type React from "react";
 import { useCallback } from "react";
@@ -2669,11 +2670,18 @@ const BookingInternal = ({ internalMode = true }: { internalMode?: boolean }) =>
           return;
         }
 
-        const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-        const userSnap = await getDoc(userRef);
-        const role = String((userSnap.data() as any)?.role || "").toLowerCase();
+        const access = await readVerifiedUserAccess(u.uid);
 
-        if (!cancelled) setIsOwner(role === "owner" || role === "admin");
+        if (!cancelled) {
+          setIsOwner(
+            access.exists &&
+            access.active !== false &&
+            (
+              access.role === "owner" ||
+              access.role === "admin"
+            )
+          );
+        }
       } catch {
         if (!cancelled) setIsOwner(false);
       }

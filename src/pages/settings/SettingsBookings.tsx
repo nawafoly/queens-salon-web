@@ -1,3 +1,4 @@
+import { readVerifiedUserAccess } from "../../services/authAccess";
 // ✅ src/pages/settings/SettingsBookings.tsx
 
 import { useEffect, useMemo, useState } from "react";
@@ -583,13 +584,16 @@ export default function SettingsBookings() {
           setUiRole("guest");
           return;
         }
-        const userRef = doc(db, ...USERS_COLLECTION, user.uid);
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
+        const access = await readVerifiedUserAccess(user.uid);
+
+        if (!access.exists || access.active === false) {
           setUiRole("guest");
           return;
         }
-        setUiRole(mapFirestoreRoleToUi((snap.data() as any)?.role));
+
+        setUiRole(
+          mapFirestoreRoleToUi(access.role)
+        );
       } catch (e) {
         console.error(e);
         setUiRole("guest");

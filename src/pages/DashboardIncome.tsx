@@ -15,8 +15,7 @@ import {
   faEye,
 } from "@fortawesome/free-solid-svg-icons";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 
 import {
   listAllIncomeCore,
@@ -76,7 +75,6 @@ const BOOKING_PAYMENT_TYPE_OPTIONS = [
   { value: "partial", label: "عربون" },
 ] as const;
 
-type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 type BookingPaymentType = "full" | "partial";
 type BookingMeta = {
   bookingRef: string;
@@ -93,35 +91,6 @@ type PaymentSummaryRow = {
   label: string;
   value: number;
 };
-
-function mapFirestoreRole(raw: unknown): UiRole {
-  const role = String(raw || "").toLowerCase().trim();
-  if (role === "owner") return "owner";
-  if (role === "admin") return "admin";
-  if (role === "reception") return "reception";
-  if (role === "staff") return "staff";
-  if (role === "client") return "client";
-  return "guest";
-}
-
-async function resolveRoleFromFirestore(uid: string): Promise<UiRole> {
-  const id = String(uid || "").trim();
-  if (!id) return "guest";
-
-  const salonRef = doc(db, "salons", "main", "users", id);
-  const salonSnap = await getDoc(salonRef);
-  if (salonSnap.exists()) {
-    return mapFirestoreRole((salonSnap.data() as any)?.role);
-  }
-
-  const rootRef = doc(db, "users", id);
-  const rootSnap = await getDoc(rootRef);
-  if (rootSnap.exists()) {
-    return mapFirestoreRole((rootSnap.data() as any)?.role);
-  }
-
-  return "guest";
-}
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -500,7 +469,6 @@ function firebaseMsg(e: any) {
 function DashboardIncomeContent() {
   const [items, setItems] = useState<IncomeItem[]>([]);
   const [bookingMetaById, setBookingMetaById] = useState<Record<string, BookingMeta>>({});
-  const [uiRole, setUiRole] = useState<UiRole>("guest");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [detailsTarget, setDetailsTarget] = useState<IncomeItem | null>(null);
@@ -612,9 +580,6 @@ function DashboardIncomeContent() {
           if (mounted) setModalMsg("سجّل دخول الإدارة أولاً");
           return;
         }
-
-        const role = await resolveRoleFromFirestore(user.uid);
-        if (mounted) setUiRole(role);
 
         const data = await listAllIncomeCore();
 
@@ -1047,12 +1012,6 @@ function DashboardIncomeContent() {
     exportIncomeReportExcel(buildIncomeReportInput());
   };
 
-  const canFixPaymentMethods = uiRole === "owner" || uiRole === "admin";
-
-  const fixPaymentMethods = async () => {
-    setModalMsg("إصلاح طرق الدفع القديمة مخصص لمسار Firestore قبل النقل فقط؛ مدفوعات D1 محفوظة كسجلات مستقلة.");
-  };
-
   const hasActiveFilters = Boolean(q.trim() || fMethod !== "all" || from || to);
   const detailsBookingMeta = detailsTarget ? rowBookingMeta(detailsTarget) : undefined;
   const detailsAmount = detailsTarget ? rowEffectiveAmount(detailsTarget) : 0;
@@ -1116,23 +1075,6 @@ function DashboardIncomeContent() {
             </button>
           </div>
         </section>
-
-        {canFixPaymentMethods ? (
-          <section className="income-v2-maintenance" aria-label="أدوات الصيانة المالية">
-            <div>
-              <strong>سلامة طرق الدفع</strong>
-              <span>الأداة القديمة محفوظة للتوافق، بينما سجلات D1 مستقلة حاليًا.</span>
-            </div>
-            <button
-              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
-              type="button"
-              onClick={fixPaymentMethods}
-              disabled={loading}
-            >
-              إصلاح طرق الدفع
-            </button>
-          </section>
-        ) : null}
 
         <section className="income-v2-metrics" aria-label="ملخص الإيرادات">
           <article className="dsv2-metric-card dsv2-metric-card--gold">

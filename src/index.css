@@ -772,12 +772,6 @@ button,
 
 
 /* Icons helpers */
-.fa-check-circle,
-.fa-circle-check {
-  color: var(--qs-text);
-  font-size: 1.1em;
-  vertical-align: middle;
-}
 
 /* ===========================
    Animations
@@ -1171,10 +1165,6 @@ textarea {
 /* ===========================
    Icons
    =========================== */
-.fa-check-circle,
-.fa-circle-check {
-  color: var(--qs-text);
-}
 
 /* ===========================
    Responsive

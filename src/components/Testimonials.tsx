@@ -1,3 +1,4 @@
+import { readVerifiedUserAccess } from "../services/authAccess";
 import React, { useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
 
@@ -121,16 +122,15 @@ const Testimonials: React.FC = () => {
 
       (async () => {
         try {
-          const email = String(u.email || "").toLowerCase();
-          if (email && OWNER_EMAILS.includes(email)) {
-            if (currentSeq === seq) setIsOwner(true);
-            return;
-          }
+          const access = await readVerifiedUserAccess(u.uid);
 
-          const userRef = doc(db, "salons", SALON_ID, "users", u.uid);
-          const snap = await getDoc(userRef);
-          const role = String((snap.data() as any)?.role || "").toLowerCase();
-          if (currentSeq === seq) setIsOwner(role === "owner");
+      if (currentSeq === seq) {
+        setIsOwner(
+          access.exists &&
+          access.active !== false &&
+          access.role === "owner"
+        );
+      }
         } catch {
           if (currentSeq === seq) setIsOwner(false);
         }
