@@ -4198,6 +4198,41 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const authUserUid = String(auth.currentUser?.uid || "").trim();
   const authUserDisplayName = authUser.displayName;
   const canEditBookings = uiRole === "owner" || uiRole === "admin";
+
+  const completedBookingManagerEmail =
+    "nawafaaa6@gmail.com";
+
+  const authUserEmailNormalized =
+    String(
+      auth.currentUser?.email ||
+        authUser.email ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const canManageCompletedBooking =
+    authUserEmailNormalized ===
+    completedBookingManagerEmail;
+
+  const canEditBooking = useCallback(
+    (booking: Booking) => {
+      if (!canEditBookings) return false;
+
+      if (
+        booking.status === "completed" &&
+        !canManageCompletedBooking
+      ) {
+        return false;
+      }
+
+      return true;
+    },
+    [
+      canEditBookings,
+      canManageCompletedBooking,
+    ]
+  );
   const getLocalActorAudit = useCallback((atMs = Date.now()) => {
     const currentDisplayName = String(auth.currentUser?.displayName || authUser.displayName || "").trim();
     const currentEmail = String(auth.currentUser?.email || authUser.email || "").trim();
@@ -4879,7 +4914,10 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
     bookings.forEach((booking) => {
       const payment = resolveBookingPaymentSummary(booking);
-      if (booking.status !== "cancelled") {
+      if (
+        booking.status !== "cancelled" &&
+        booking.status !== "completed"
+      ) {
         totalOutstandingAmount += payment.remainingAmount;
       }
       if (String(booking.date || "") !== today || booking.status === "cancelled") return;
@@ -4938,24 +4976,40 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
 
     return bookings
       .filter((b) => {
-        if (!(b.status === "pending" || b.status === "confirmed")) return false;
+        if (b.status === "cancelled") return false;
 
         const bookingDate = safeISODate(b.date);
-        if (!bookingDate || bookingDate < today) return false;
-
-        const createdAtMs = toMillisSafe((b as any)?.createdAt);
-        return createdAtMs > newBookingsSeenAt;
+        return Boolean(bookingDate && bookingDate >= today);
       })
       .sort((a, b) => {
-        const aMs = toMillisSafe((a as any)?.createdAt);
-        const bMs = toMillisSafe((b as any)?.createdAt);
-        return bMs - aMs;
+        const aMs =
+          parseBookingDateTimeMs(String(a.date || ""), String(a.time || "")) ??
+          Number.MAX_SAFE_INTEGER;
+        const bMs =
+          parseBookingDateTimeMs(String(b.date || ""), String(b.time || "")) ??
+          Number.MAX_SAFE_INTEGER;
+
+        return aMs - bMs;
       });
-  }, [bookings, newBookingsSeenAt]);
-  const unseenNewPreviewBookings = useMemo(() => unseenNewBookings.slice(0, 6), [unseenNewBookings]);
-  const unseenNewBookingIds = useMemo(
-    () => new Set(unseenNewBookings.map((booking) => String(booking.id || "").trim()).filter(Boolean)),
+  }, [bookings]);
+
+  const unseenNewPreviewBookings = useMemo(
+    () => unseenNewBookings.slice(0, 6),
     [unseenNewBookings]
+  );
+
+  const unseenNewBookingIds = useMemo(
+    () =>
+      new Set(
+        unseenNewBookings
+          .filter((booking) => {
+            const createdAtMs = toMillisSafe((booking as any)?.createdAt);
+            return createdAtMs > newBookingsSeenAt;
+          })
+          .map((booking) => String(booking.id || "").trim())
+          .filter(Boolean)
+      ),
+    [unseenNewBookings, newBookingsSeenAt]
   );
 
   const markNewBookingsSeen = useCallback(() => {
@@ -5337,24 +5391,59 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   }, [requestSensitiveAction, uiRole]);
 
   const openEditBookingModalUnsafe = useCallback((b: Booking) => {
-    if (!canEditBookings) {
+    if (!canEditBooking(b)) {
+      if (
+        b.status === "completed" &&
+        !canManageCompletedBooking
+      ) {
+        alert(
+          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
+        );
+        return;
+      }
+
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
+
     setEditTarget(b);
-  }, [canEditBookings]);
+  }, [
+    canEditBooking,
+    canManageCompletedBooking,
+  ]);
 
   const openEditBookingModal = useCallback((b: Booking) => {
-    if (!canEditBookings) {
+    if (!canEditBooking(b)) {
+      if (
+        b.status === "completed" &&
+        !canManageCompletedBooking
+      ) {
+        alert(
+          "الحجز المكتمل محمي ولا يمكن تعديله من هذا الحساب."
+        );
+        return;
+      }
+
       alert("التعديل متاح فقط للمالك أو الأدمن.");
       return;
     }
+
     if (uiRole === "owner") {
       openEditBookingModalUnsafe(b);
       return;
     }
-    requestSensitiveAction({ kind: "edit", booking: b });
-  }, [canEditBookings, openEditBookingModalUnsafe, requestSensitiveAction, uiRole]);
+
+    requestSensitiveAction({
+      kind: "edit",
+      booking: b,
+    });
+  }, [
+    canEditBooking,
+    canManageCompletedBooking,
+    openEditBookingModalUnsafe,
+    requestSensitiveAction,
+    uiRole,
+  ]);
 
   const applyLocalBookingPatch = useCallback(
     (bookingId: string, patch: Partial<Booking>) => {
@@ -5644,12 +5733,46 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   */
 
   const canManageRefund = useCallback((b: Booking) => {
-    if (!(uiRole === "owner" || uiRole === "admin" || uiRole === "reception")) return false;
-    if (!(b.status === "confirmed" || b.status === "completed")) return false;
+    if (
+      !(
+        uiRole === "owner" ||
+        uiRole === "admin" ||
+        uiRole === "reception"
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      !(
+        b.status === "confirmed" ||
+        b.status === "completed"
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      b.status === "completed" &&
+      !canManageCompletedBooking
+    ) {
+      return false;
+    }
+
     const amount = readBookingTotalAmount(b);
-    if (!Number.isFinite(amount) || amount <= 0) return false;
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return false;
+    }
+
     return true;
-  }, [uiRole]);
+  }, [
+    uiRole,
+    canManageCompletedBooking,
+  ]);
 
   /*
   const detectPaymentMethod = (b: Booking): PaymentMethod => {
@@ -6076,11 +6199,23 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   const openBulkStatusModal = useCallback((nextStatus: BookingStatus) => {
     setBulkResultMessage("");
     setBulkError("");
-    const eligible = selectedBookings.filter((b) => b.status !== nextStatus);
-    if (!eligible.length) {
-      setBulkError("لا توجد حجوزات محددة تحتاج إلى هذا التغيير.");
+
+    if (!selectedBookings.length) {
+      setBulkError("لم يتم تحديد أي حجز.");
       return;
     }
+
+    const eligible = selectedBookings.filter(
+      (booking) => booking.status !== nextStatus
+    );
+
+    if (!eligible.length) {
+      setBulkError(
+        `تم تحديد ${selectedBookings.length} حجز، وجميعها حالتها بالفعل ${statusLabel[nextStatus]}.`
+      );
+      return;
+    }
+
     setBulkTargetStatus(nextStatus);
   }, [selectedBookings]);
 
@@ -6095,7 +6230,11 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
     const targets = selectedBookings.filter((b) => b.status !== bulkTargetStatus);
     const bookingIds = targets.map((b) => String(b.id || "").trim()).filter(Boolean);
     if (!bookingIds.length) {
-      setBulkError("لا توجد حجوزات محددة تحتاج إلى هذا التغيير.");
+      setBulkError(
+        selectedBookings.length && bulkTargetStatus
+          ? `جميع الحجوزات المحددة حالتها بالفعل ${statusLabel[bulkTargetStatus]}.`
+          : "لم يتم تحديد أي حجز."
+      );
       return;
     }
 
@@ -6123,25 +6262,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             !failedBookingIds.has(bookingId)
         );
 
-      if (bulkTargetStatus === "completed") {
-        const successfulTargets =
-          targets.filter((booking) =>
-            successfulBookingIds.includes(
-              String(booking.id || "").trim()
-            )
-          );
-
-        await Promise.all(
-          successfulTargets.map((booking) =>
-            updateCoreBookingFields(
-              String(booking.id || "").trim(),
-              completedBookingPaymentPatch(
-                booking
-              ) as any
-            )
-          )
-        );
-      }
       const localAuditPatch = getLocalActorAudit();
       setBookings((prev) =>
         prev.map((row) =>
@@ -6149,9 +6269,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             ? {
                 ...row,
                 status: bulkTargetStatus,
-                ...(bulkTargetStatus === "completed"
-                  ? completedBookingPaymentPatch(row)
-                  : {}),
                 ...localAuditPatch,
               }
             : row
@@ -6162,9 +6279,6 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           ? {
               ...prev,
               status: bulkTargetStatus,
-              ...(bulkTargetStatus === "completed"
-                ? completedBookingPaymentPatch(prev)
-                : {}),
               ...localAuditPatch,
             }
           : prev
@@ -6409,7 +6523,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                               <FontAwesomeIcon icon={faPrint} aria-hidden="true" />
                               <span>{printInvoiceBusyId === b.id ? "تجهيز..." : "طباعة"}</span>
                             </button>
-                            {canEditBookings ? (
+                            {canEditBooking(b) ? (
                               <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm bookings-v2-row-edit" onClick={() => openEditBookingModal(b)}>
                                 تعديل
                               </button>
@@ -6581,7 +6695,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                           <FontAwesomeIcon icon={faPrint} />
                           {printInvoiceBusyId === b.id ? "جاري تجهيز الفاتورة..." : "طباعة الفاتورة"}
                         </button>
-                        {canEditBookings && (
+                        {canEditBooking(b) && (
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm w-100" onClick={() => openEditBookingModal(b)}>
                             تعديل
                           </button>
@@ -6670,6 +6784,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
   ), [
     allPageSelected,
     canEditBookings,
+    canEditBooking,
     canManageRefund,
     handleDeleteBooking,
     handlePrintBookingInvoice,
@@ -6768,7 +6883,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
           </article>
           <article className="dsv2-metric-card dsv2-metric-card--gold bookings-v2-metric">
             <span className="dsv2-metric-card__icon bookings-v2-metric__icon"><FontAwesomeIcon icon={faChartLine} /></span>
-            <div><small className="dsv2-metric-card__label">إجمالي المتبقي</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em className="dsv2-metric-card__meta">على كل الحجوزات غير الملغاة</em></div>
+            <div><small className="dsv2-metric-card__label">إجمالي المتبقي</small><strong className="dsv2-metric-card__value"><BookingMoney value={bookingOperationsOverview.totalOutstandingAmount} /></strong><em className="dsv2-metric-card__meta">على الحجوزات المفتوحة فقط</em></div>
           </article>
         </section>
 
@@ -6778,7 +6893,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
               <div>
                 <span className="bk-panel-kicker">الوارد الجديد</span>
                 <h2 className="dsv2-section-title">الحجوزات الجديدة</h2>
-                <p className="dsv2-section-caption">أحدث الحجوزات التي لم يتم الاطلاع عليها بعد.</p>
+                <p className="dsv2-section-caption">حجوزات اليوم والمواعيد القادمة، مرتبة حسب أقرب موعد.</p>
               </div>
               <span className="bk-panel-count">{unseenNewBookings.length}</span>
             </div>
@@ -6802,8 +6917,8 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
             ) : (
               <div className="bookings-v2-empty-state">
                 <FontAwesomeIcon icon={faCheckCircle} />
-                <strong>تمت مراجعة كل الحجوزات الجديدة</strong>
-                <span>أي حجز جديد سيظهر هنا مباشرة.</span>
+                <strong>لا توجد حجوزات قادمة</strong>
+                <span>ستظهر هنا حجوزات اليوم والمواعيد المستقبلية مباشرة.</span>
               </div>
             )}
 
@@ -7768,7 +7883,7 @@ export default function DashboardBookings({ currentRole = "guest" }: DashboardBo
                     : "تسجيل استرجاع"}
                 </button>
               )}
-              {canEditBookings && (
+              {canEditBooking(selectedBooking) && (
                 <button className="dsv2-btn dsv2-btn--secondary" onClick={() => openEditBookingModal(selectedBooking)}>
                   تعديل الحجز
                 </button>

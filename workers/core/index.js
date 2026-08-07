@@ -627,7 +627,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "client:admin-overview":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requireRole(ctx.role, OPERATIONS_ROLES);
       if (method === "GET") return getAdminClientOverview(db, ctx.salonId, route.id);
       break;
 

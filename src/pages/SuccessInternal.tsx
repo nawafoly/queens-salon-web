@@ -171,6 +171,80 @@ function resolveItemPayment(item: BookingItem) {
   return resolveExistingBookingPayment(item);
 }
 
+/* THERMAL_RECEIPT_EXACT_HEIGHT_V2 */
+function prepareExactThermalPrintPage() {
+  const receipt = document.getElementById("booking-print-receipt");
+  if (!receipt) return;
+
+  const rect = receipt.getBoundingClientRect();
+  const contentPx = Math.max(
+    rect.height,
+    receipt.scrollHeight,
+    receipt.offsetHeight
+  );
+
+  const pxToMm = 25.4 / 96;
+  const contentHeightMm = Math.max(
+    25,
+    Math.ceil(contentPx * pxToMm) + 1
+  );
+
+  let style = document.getElementById(
+    "malikat-thermal-exact-page-size"
+  ) as HTMLStyleElement | null;
+
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "malikat-thermal-exact-page-size";
+    document.head.appendChild(style);
+  }
+
+  style.textContent = `
+    @media print {
+      @page {
+        size: 80mm ${contentHeightMm}mm !important;
+        margin: 0 !important;
+      }
+
+      html,
+      body,
+      #root,
+      #print-area {
+        width: 80mm !important;
+        height: ${contentHeightMm}mm !important;
+        min-height: 0 !important;
+        max-height: ${contentHeightMm}mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+      }
+
+      #booking-print-receipt {
+        position: absolute !important;
+        top: 0 !important;
+        left: 4mm !important;
+        width: 72mm !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding-bottom: 0.5mm !important;
+        overflow: visible !important;
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+      }
+
+      #booking-print-receipt > :last-child,
+      #booking-print-receipt .footer,
+      #booking-print-receipt .footer p {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+      }
+    }
+  `;
+}
+/* END_THERMAL_RECEIPT_EXACT_HEIGHT_V2 */
+
 export default function SuccessInternal() {
   const printEffectStartedRef = useRef(false);
   const bookingInfo = useMemo<CurrentBooking | null>(
@@ -331,7 +405,79 @@ export default function SuccessInternal() {
       if (closed) return;
       printed = true;
       state.printCount += 1;
-      window.print();
+
+      const receipt =
+        document.getElementById("booking-print-receipt");
+
+      if (receipt) {
+        const rect = receipt.getBoundingClientRect();
+        const pxToMm = 25.4 / 96;
+
+        const contentHeightMm = Math.max(
+          30,
+          Math.ceil(rect.height * pxToMm) + 2
+        );
+
+        let dynamicPrintStyle =
+          document.getElementById(
+            "malikat-dynamic-receipt-page-size"
+          ) as HTMLStyleElement | null;
+
+        if (!dynamicPrintStyle) {
+          dynamicPrintStyle =
+            document.createElement("style");
+
+          dynamicPrintStyle.id =
+            "malikat-dynamic-receipt-page-size";
+
+          document.head.appendChild(
+            dynamicPrintStyle
+          );
+        }
+
+        dynamicPrintStyle.textContent = `
+          @media print {
+            @page {
+              size: 80mm ${contentHeightMm}mm;
+              margin: 0;
+            }
+
+            html,
+            body,
+            #print-area {
+              width: 80mm !important;
+              height: ${contentHeightMm}mm !important;
+              min-height: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+            }
+
+            #booking-print-receipt {
+              width: 72mm !important;
+              height: auto !important;
+              min-height: 0 !important;
+              margin: 0 auto !important;
+              padding-bottom: 1mm !important;
+              break-after: avoid !important;
+              page-break-after: avoid !important;
+            }
+
+            #booking-print-receipt > :last-child {
+              margin-bottom: 0 !important;
+              padding-bottom: 0 !important;
+            }
+          }
+        `;
+      }
+
+      prepareExactThermalPrintPage();
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          window.print();
+        });
+      });
       finishTimer = window.setTimeout(finishPrintCycle, 1200);
     }, 650);
     resetTimer = window.setTimeout(finishPrintCycle, 15_000);
@@ -521,8 +667,10 @@ export default function SuccessInternal() {
 
 .footer {
   text-align: center;
-  margin-top: 12px;
-  padding-top: 8px;
+  margin-top: 8px;
+  margin-bottom: 0;
+  padding-top: 6px;
+  padding-bottom: 0;
   border-top: 1px dashed #000;
   font-size: var(--font-size-small);
   font-weight: 600;
@@ -554,7 +702,9 @@ export default function SuccessInternal() {
     margin: 0 !important;
   }
   html,
-  body {
+  body,
+  #root,
+  #print-area {
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
@@ -570,7 +720,21 @@ export default function SuccessInternal() {
   .receipt-container {
     height: auto !important;
     min-height: 0 !important;
-    padding: 3mm 2mm 2mm !important;
+    margin-bottom: 0 !important;
+    padding: 2mm 2mm 1mm !important;
+    overflow: visible !important;
+  }
+
+  #print-area {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .footer,
+  .footer p {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
   }
 }
         `}
