@@ -1,0 +1,78 @@
+name: Temporary fix dashboard bookings new window
+
+on:
+  push:
+    branches:
+      - fix/dashboard-bookings-new-today-future
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dashboard-bookings-new-today-future
+          fetch-depth: 0
+
+      - name: Patch new bookings date window
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/DashboardBookings.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          start_marker = '  const unseenNewBookings = useMemo(() => {'
+          end_marker = '  const unseenNewPreviewBookings = useMemo'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate unseenNewBookings block')
+
+          replacement = '''  const unseenNewBookings = useMemo(() => {
+            const today = todayISOLocal();
+
+            return bookings
+              .filter((b) => {
+                if (!(b.status === "pending" || b.status === "confirmed")) return false;
+
+                const bookingDate = safeISODate(b.date);
+                if (!bookingDate || bookingDate < today) return false;
+
+                const createdAtMs = toMillisSafe((b as any)?.createdAt);
+                return createdAtMs > newBookingsSeenAt;
+              })
+              .sort((a, b) => {
+                const aMs = toMillisSafe((a as any)?.createdAt);
+                const bMs = toMillisSafe((b as any)?.createdAt);
+                return bMs - aMs;
+              });
+          }, [bookings, newBookingsSeenAt]);
+
+'''
+
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+
+          check = path.read_text(encoding='utf-8')
+          required = [
+              'const today = todayISOLocal();',
+              'const bookingDate = safeISODate(b.date);',
+              'if (!bookingDate || bookingDate < today) return false;',
+          ]
+          for item in required:
+              if item not in check:
+                  raise SystemExit(f'Missing verification marker: {item}')
+
+      - name: Remove temporary workflow and commit patch
+        shell: bash
+        run: |
+          rm .github/workflows/temp-fix-dashboard-bookings-new-window.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/DashboardBookings.tsx .github/workflows/temp-fix-dashboard-bookings-new-window.yml
+          git commit -m "Fix new bookings to show today and future only"
+          git push origin HEAD:fix/dashboard-bookings-new-today-future
