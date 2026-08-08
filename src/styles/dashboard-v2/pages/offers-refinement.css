@@ -1,0 +1,523 @@
+/* =========================================================
+   Dashboard Offers V2 — visual refinement
+   Keeps DashboardOffers business logic untouched and aligns
+   the migrated page with the canonical V2 page geometry.
+========================================================= */
+
+.dashboard-v2 .dsv2-offers-page {
+  gap: var(--dsv2-section-gap);
+  padding-block: 0 var(--dsv2-page-padding-block-end);
+  background: transparent;
+}
+
+.dashboard-v2 .dsv2-offers-page > * {
+  max-width: none;
+  margin-inline: 0;
+}
+
+/* Hero: same structural language as bookings / expenses. */
+.dashboard-v2 .dsv2-offers-page .offers-header {
+  isolation: isolate;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-page-head-gap);
+  min-height: 140px;
+  overflow: hidden;
+  padding: var(--dsv2-space-6);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background:
+    radial-gradient(circle at 7% 0%, var(--dsv2-gold-soft) 0 88px, transparent 90px),
+    linear-gradient(120deg, var(--dsv2-gold-softer), transparent 48%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-head-main {
+  max-width: 760px;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 var(--dsv2-space-3);
+  border-color: var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+  font-size: .66rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-header h1 {
+  gap: var(--dsv2-space-3);
+  font-size: clamp(1.45rem, 2vw, 1.9rem);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-header h1 svg {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-sub {
+  max-width: 720px;
+  font-size: .82rem;
+  font-weight: 750;
+  line-height: 1.75;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-hero-actions {
+  max-width: 560px;
+  gap: var(--dsv2-control-gap);
+}
+
+/* Canonical button proportions. */
+.dashboard-v2 .dsv2-offers-page .dash-pill {
+  min-height: var(--dsv2-control-height);
+  padding-inline: var(--dsv2-space-4);
+  border-radius: var(--dsv2-radius-md);
+  box-shadow: none;
+  transition:
+    border-color var(--dsv2-transition-fast),
+    background var(--dsv2-transition-fast),
+    transform var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .dsv2-offers-page .dash-pill-primary {
+  border-color: var(--dsv2-black);
+  background: var(--dsv2-black);
+  color: var(--dsv2-on-dark);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-offers-page .dash-pill-sm {
+  min-height: var(--dsv2-control-height-sm);
+  padding-inline: var(--dsv2-space-3);
+}
+
+/* KPI strip. */
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpi {
+  min-height: 124px;
+  padding: var(--dsv2-card-padding);
+  gap: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpi--primary {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpi__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--dsv2-radius-md);
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpi--primary .offers-enterprise-kpi__icon {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-enterprise-kpi__copy > strong {
+  font-size: clamp(1.15rem, 1.6vw, 1.48rem);
+}
+
+/* Main surfaces. */
+.dashboard-v2 .dsv2-offers-page :where(.offers-section--packages-list, .offers-section--filters, .offers-section--offers-table) {
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-card-title,
+.dashboard-v2 .dsv2-offers-page .offers-section-heading {
+  min-height: 38px;
+  margin-bottom: var(--dsv2-space-3);
+  padding-bottom: var(--dsv2-space-3);
+  font-size: 1rem;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-section-note {
+  margin-bottom: var(--dsv2-space-5);
+  font-size: .74rem;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-section-count {
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+}
+
+/* Filters: command-bar style rather than a second design system. */
+.dashboard-v2 .dsv2-offers-page .offers-row--filters {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: var(--dsv2-space-4);
+  align-items: center;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-filter-pills {
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-search input {
+  min-height: var(--dsv2-control-height);
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+}
+
+/* Package / offer cards: tighter and closer to the V2 data-card language. */
+.dashboard-v2 .dsv2-offers-page .pkg-offers-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-card {
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+  transition:
+    border-color var(--dsv2-transition-fast),
+    box-shadow var(--dsv2-transition-fast),
+    transform var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-card:hover {
+  border-color: var(--dsv2-border-gold);
+  box-shadow: var(--dsv2-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-inner {
+  gap: 0;
+  padding: 0;
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-image-wrap {
+  aspect-ratio: 16 / 7;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-image {
+  min-height: 150px;
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-row {
+  grid-template-columns: minmax(92px, .42fr) minmax(0, 1fr);
+  gap: var(--dsv2-space-3);
+  margin-inline: var(--dsv2-space-4);
+  padding-block: var(--dsv2-space-3);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-row:first-of-type {
+  padding-top: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-label {
+  color: var(--dsv2-muted);
+  font-size: .66rem;
+}
+
+.dashboard-v2 .dsv2-offers-page .pkg-offer-value {
+  font-size: .75rem;
+}
+
+.dashboard-v2 .dsv2-offers-page .of-actions--card {
+  gap: var(--dsv2-space-2);
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  border-top: 0;
+}
+
+.dashboard-v2 .dsv2-offers-page .of-actions--card .dash-pill {
+  flex: 1 1 auto;
+}
+
+/* Editors: keep them inside the page, but use the same panel rhythm as V2. */
+.dashboard-v2 .dsv2-offers-page :where(.package-editor-v4, .offer-editor-v5) {
+  overflow: visible;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface-soft);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor-v4, .offer-editor-v5)::before {
+  display: none;
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__header, .offer-editor__header) {
+  align-items: center;
+  min-height: 104px;
+  padding: var(--dsv2-space-5) var(--dsv2-space-6);
+  border-bottom: 1px solid var(--dsv2-divider);
+  border-radius: var(--dsv2-radius-lg) var(--dsv2-radius-lg) 0 0;
+  background:
+    linear-gradient(120deg, var(--dsv2-gold-softer), transparent 46%),
+    var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__heading-icon, .offer-editor__heading-icon) {
+  width: 44px;
+  height: 44px;
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__eyebrow, .offer-editor__eyebrow) {
+  color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__heading, .offer-editor__heading) h2 {
+  font-size: 1.18rem;
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__layout, .offer-editor__layout) {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: var(--dsv2-space-5);
+  padding: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__main, .offer-editor__main) {
+  gap: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__section, .offer-editor__section) {
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-card-padding);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__section-head, .offer-editor__section-head) {
+  padding-bottom: var(--dsv2-space-3);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__step, .offer-editor__step) {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__aside, .offer-editor__aside) {
+  top: var(--dsv2-space-4);
+  gap: var(--dsv2-space-4);
+}
+
+/* Inputs and custom V2 controls. */
+.dashboard-v2 .dsv2-offers-page :where(.pkgm__field, .offer-editor__field) :where(input:not([type="checkbox"]):not([type="file"]), textarea) {
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__input-suffix, .offer-editor__input-suffix) {
+  border-color: var(--dsv2-border);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__commercial-note, .offer-editor__pricing-summary, .offer-editor__selected-summary, .package-editor__selected-strip, .offer-editor__aside-summary) {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+/* Choice / toggle / service cards. */
+.dashboard-v2 .dsv2-offers-page :where(
+  .package-editor__toggle-card,
+  .offer-editor__toggle-card,
+  .offer-editor__choice-grid button,
+  .offer-editor__category-grid button,
+  .pkgm__service-row,
+  .offer-editor__service-row
+) {
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-offers-page :where(
+  .package-editor__toggle-card.is-on,
+  .offer-editor__toggle-card.is-on,
+  .offer-editor__choice-grid button.is-active,
+  .offer-editor__category-grid button.is-selected,
+  .pkgm__service-row.is-selected,
+  .offer-editor__service-row.is-selected
+) {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page .package-editor__service-tabs {
+  padding: var(--dsv2-space-1);
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+}
+
+.dashboard-v2 .dsv2-offers-page .package-editor__service-tabs button {
+  min-height: 36px;
+  border-radius: var(--dsv2-radius-md);
+}
+
+.dashboard-v2 .dsv2-offers-page .package-editor__service-tabs button.is-active {
+  color: var(--dsv2-on-dark);
+  background: var(--dsv2-black);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.pkgm__group, .offer-editor__service-group, .offer-editor__scope-panel) {
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface-soft);
+}
+
+/* Preview / readiness cards. */
+.dashboard-v2 .dsv2-offers-page :where(
+  .package-editor__preview-card,
+  .offer-editor__preview-card,
+  .package-editor__readiness,
+  .offer-editor__readiness
+) {
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__preview-media, .offer-editor__preview-media) {
+  min-height: 180px;
+  background:
+    linear-gradient(135deg, var(--dsv2-gold-softer), transparent 64%),
+    var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__readiness.is-ready, .offer-editor__readiness.is-ready) {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page :where(.package-editor__aside-actions, .offer-editor__aside-actions) .dash-pill {
+  flex: 1 1 auto;
+}
+
+/* Inline states. */
+.dashboard-v2 .dsv2-offers-page :where(.offers-hint, .pkgm__empty, .offer-editor__empty) {
+  min-height: 128px;
+  border-color: var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface-soft);
+}
+
+/* Responsive parity with the rest of Dashboard V2. */
+@media (max-width: 1199.98px) {
+  .dashboard-v2 .dsv2-offers-page .offers-enterprise-kpis,
+  .dashboard-v2 .dsv2-offers-page .pkg-offers-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__layout, .offer-editor__layout) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__aside, .offer-editor__aside) {
+    position: static;
+  }
+}
+
+@media (max-width: 820px) {
+  .dashboard-v2 .dsv2-offers-page .offers-header,
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__header, .offer-editor__header) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .dsv2-offers-page .offers-header {
+    padding: var(--dsv2-space-5);
+  }
+
+  .dashboard-v2 .dsv2-offers-page .offers-hero-actions,
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__header-actions, .offer-editor__header-actions) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dashboard-v2 .dsv2-offers-page .offers-row--filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-offers-page .offers-search {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-v2 .dsv2-offers-page .offers-enterprise-kpis,
+  .dashboard-v2 .dsv2-offers-page .pkg-offers-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-offers-page .offers-filter-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__layout, .offer-editor__layout) {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__header, .offer-editor__header) {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__grid, .offer-editor__grid, .package-editor__commercial-grid, .package-editor__availability-grid, .offer-editor__commercial-grid, .offer-editor__limits-grid, .package-editor__toggle-grid, .offer-editor__toggle-grid, .offer-editor__choice-grid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-offers-page .pkg-offer-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2 .dsv2-offers-page .of-actions--card .dash-pill,
+  .dashboard-v2 .dsv2-offers-page .offers-hero-actions .dash-pill,
+  .dashboard-v2 .dsv2-offers-page :where(.package-editor__header-actions, .offer-editor__header-actions) .dash-pill {
+    flex: 1 1 100%;
+  }
+}
