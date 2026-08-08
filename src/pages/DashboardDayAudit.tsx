@@ -11,9 +11,10 @@ import {
   faUnlockKeyhole,
 } from "@fortawesome/free-solid-svg-icons";
 import { collection, onSnapshot } from "firebase/firestore";
+import { DashboardDatePickerV2, DashboardSkeletonV2 } from "../components/dashboard-v2";
 import { db } from "../services/firebase";
 import { FirestoreReadStats } from "../services/firestoreReadStats";
-import "../styles/DashboardEnterpriseWorkspaces.css";
+import "../styles/dashboard-v2/dashboard-v2.css";
 
 const SALON_ID = "main";
 const LOCK_KEY = "dashboard_day_audit_lock_v1";
@@ -705,198 +706,218 @@ export default function DashboardDayAudit() {
     }
   };
 
+  const diffTone = diff < 0 ? "negative" : diff > 0 ? "positive" : "zero";
+  const diffMetricClass = diff < 0
+    ? "dsv2-metric-card--danger"
+    : diff > 0
+      ? "dsv2-metric-card--gold"
+      : "dsv2-metric-card--success";
+
   return (
-    <div className="day-audit-page enterprise-workspace-page enterprise-workspace-v2 enterprise-day-audit-v2">
-      <div className="enterprise-v2-container">
-        <header className="enterprise-v2-hero day-audit-v2-hero">
-          <div className="enterprise-v2-hero__copy">
-            <span className="enterprise-v2-eyebrow">DAILY RECONCILIATION</span>
-            <h1>الجرد والإقفال اليومي</h1>
-            <p>مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.</p>
-          </div>
-
-          <div className="enterprise-v2-hero__actions no-print">
-            <div className="day-audit-v2-date-control">
-              <FontAwesomeIcon icon={faCalendarDay} />
-              <div>
-                <span>تاريخ الجرد</span>
-                <input
-                  id="day-audit-date"
-                  type="date"
-                  value={todayKey}
-                  max={todayLimitKey}
-                  onChange={(e) => applyDateSelection(String(e.target.value || ""))}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => applyDateSelection(todayLimitKey)}
-                disabled={todayKey === todayLimitKey}
-              >
-                اليوم
-              </button>
-            </div>
-
-            <div className={`enterprise-v2-status ${lock ? "is-locked" : "is-open"}`}>
-              <FontAwesomeIcon icon={lock ? faLock : faUnlockKeyhole} />
-              <span>{lock ? "اليوم مقفل" : "اليوم مفتوح"}</span>
-            </div>
-          </div>
-        </header>
-
-        {lock ? (
-          <div className="enterprise-v2-notice is-success">
-            <FontAwesomeIcon icon={faLock} />
-            <span>تم إقفال هذا اليوم في <strong>{lockTimeLabel}</strong>. القيم محفوظة وغير قابلة للتعديل.</span>
-          </div>
-        ) : null}
-
-        <section className="enterprise-v2-metrics" aria-label="ملخص الجرد">
-          <article className="enterprise-v2-metric">
-            <span className="enterprise-v2-metric__icon"><FontAwesomeIcon icon={faFileInvoiceDollar} /></span>
-            <div>
-              <small>إجمالي التحصيل</small>
-              <strong>{loading ? "جاري التحميل..." : formatAmount(bookingsRevenue)}</strong>
-              <em>{dateLabel}</em>
-            </div>
-          </article>
-
-          <article className="enterprise-v2-metric">
-            <span className="enterprise-v2-metric__icon"><FontAwesomeIcon icon={faCashRegister} /></span>
-            <div>
-              <small>تحصيل الكاش</small>
-              <strong>{formatAmount(cashRevenue)}</strong>
-              <em>حسب المدفوعات المسجلة</em>
-            </div>
-          </article>
-
-          <article className="enterprise-v2-metric">
-            <span className="enterprise-v2-metric__icon"><FontAwesomeIcon icon={faCreditCard} /></span>
-            <div>
-              <small>الشبكة والتحويل</small>
-              <strong>{formatAmount(cardRevenue + transferRevenue)}</strong>
-              <em>شبكة {formatAmount(cardRevenue)} · تحويل {formatAmount(transferRevenue)}</em>
-            </div>
-          </article>
-
-          <article className={`enterprise-v2-metric ${diff < 0 ? "is-danger" : diff > 0 ? "is-warning" : "is-success"}`}>
-            <span className="enterprise-v2-metric__icon"><FontAwesomeIcon icon={faScaleBalanced} /></span>
-            <div>
-              <small>فرق الكاش</small>
-              <strong>{formatAmount(diff)}</strong>
-              <em>الكاش الفعلي ناقص تحصيل الكاش</em>
-            </div>
-          </article>
-        </section>
-
-        <div className="day-audit-v2-layout" id="day-audit-print">
-          <section className="enterprise-v2-panel day-audit-v2-entry">
-            <div className="enterprise-v2-panel__head">
-              <div>
-                <span className="enterprise-v2-panel__kicker">CASH COUNT</span>
-                <h2>إدخال الكاش الفعلي</h2>
-                <p>أدخل المبلغ الموجود فعليًا في الصندوق، ثم راجع الفرق قبل الإقفال.</p>
-              </div>
-              <span className="enterprise-v2-panel__index">01</span>
-            </div>
-
-            <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
-              <span>مبلغ الكاش الموجود</span>
-              <div>
-                <input
-                  id="day-audit-manual-cash"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  placeholder="0.00"
-                  value={lock ? String(lock.manualCash) : manualCashInput}
-                  onChange={(e) => {
-                    setErrorText("");
-                    setManualCashInput(String(e.target.value || ""));
-                  }}
-                  disabled={!!lock}
-                />
-                <b>ر.س</b>
-              </div>
-              <small>{lock ? "تم تثبيت المبلغ عند إقفال اليوم." : "استخدم المبلغ المحسوب فعليًا من الصندوق."}</small>
-            </label>
-
-            <div className="day-audit-v2-difference">
-              <span>نتيجة المطابقة الحالية</span>
-              <strong className={diff < 0 ? "is-neg" : diff > 0 ? "is-pos" : "is-zero"}>
-                {diff === 0 ? "متطابق" : diff < 0 ? `عجز ${formatAmount(Math.abs(diff))}` : `زيادة ${formatAmount(diff)}`}
-              </strong>
-            </div>
-
-            {!!errorText && <div className="enterprise-v2-notice is-danger no-print">{errorText}</div>}
-
-            <div className="enterprise-v2-panel__actions no-print">
-              <button
-                type="button"
-                className="enterprise-v2-btn"
-                onPointerDown={primeAuditPrintPopup}
-                onClick={printAudit}
-              >
-                <FontAwesomeIcon icon={faPrint} />
-                طباعة مسودة الجرد
-              </button>
-              <button
-                type="button"
-                className="enterprise-v2-btn is-primary"
-                onPointerDown={primeAuditPrintPopup}
-                onClick={printAndLock}
-                disabled={!!lock}
-              >
-                <FontAwesomeIcon icon={faLock} />
-                {lock ? "تم إقفال اليوم" : "طباعة وإقفال اليوم"}
-              </button>
-            </div>
-          </section>
-
-          <aside className="enterprise-v2-panel day-audit-v2-breakdown">
-            <div className="enterprise-v2-panel__head">
-              <div>
-                <span className="enterprise-v2-panel__kicker">SETTLEMENT</span>
-                <h2>تفصيل التسوية</h2>
-                <p>ملخص قنوات الدفع الداخلة في جرد التاريخ المحدد.</p>
-              </div>
-              <span className="enterprise-v2-panel__index">02</span>
-            </div>
-
-            <div className="day-audit-v2-summary">
-              <div>
-                <span>إجمالي التحصيل</span>
-                <strong>{formatAmount(bookingsRevenue)}</strong>
-              </div>
-              <div>
-                <span>تحصيل الكاش بالنظام</span>
-                <strong>{formatAmount(cashRevenue)}</strong>
-              </div>
-              <div>
-                <span>تحصيل الشبكة</span>
-                <strong>{formatAmount(cardRevenue)}</strong>
-              </div>
-              <div>
-                <span>التحويل البنكي</span>
-                <strong>{formatAmount(transferRevenue)}</strong>
-              </div>
-              <div className="is-highlight">
-                <span>الكاش الفعلي</span>
-                <strong>{formatAmount(manualCash)}</strong>
-              </div>
-              <div className="is-total">
-                <span>فرق الكاش النهائي</span>
-                <strong className={diff < 0 ? "is-neg" : diff > 0 ? "is-pos" : "is-zero"}>{formatAmount(diff)}</strong>
-              </div>
-            </div>
-
-            <div className="day-audit-v2-policy">
-              <strong>قاعدة الإقفال</strong>
-              <p>التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.</p>
-            </div>
-          </aside>
+    <main className="dsv2-page day-audit-v2-page" dir="rtl">
+      <section className="dsv2-card day-audit-v2-hero">
+        <div className="day-audit-v2-hero__content">
+          <span className="dsv2-badge dsv2-badge--gold">الجرد اليومي</span>
+          <h1 className="dsv2-page-title">الجرد والإقفال اليومي</h1>
+          <p className="dsv2-page-subtitle">
+            مطابقة تحصيلات النظام مع الكاش الفعلي وإصدار محضر جرد واضح قبل إقفال اليوم.
+          </p>
         </div>
-      </div>
-    </div>
+
+        <div className="day-audit-v2-hero__controls no-print">
+          <div className="day-audit-v2-date-card">
+            <span className="day-audit-v2-date-card__icon" aria-hidden="true">
+              <FontAwesomeIcon icon={faCalendarDay} />
+            </span>
+            <label className="day-audit-v2-date-card__field" htmlFor="day-audit-date">
+              <span>تاريخ الجرد</span>
+              <DashboardDatePickerV2
+                id="day-audit-date"
+                value={todayKey}
+                max={todayLimitKey}
+                clearable={false}
+                onChange={applyDateSelection}
+              />
+            </label>
+            <button
+              className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+              type="button"
+              onClick={() => applyDateSelection(todayLimitKey)}
+              disabled={todayKey === todayLimitKey}
+            >
+              اليوم
+            </button>
+          </div>
+
+          <div className="day-audit-v2-status" data-state={lock ? "locked" : "open"}>
+            <FontAwesomeIcon icon={lock ? faLock : faUnlockKeyhole} />
+            <span>{lock ? "اليوم مقفل" : "اليوم مفتوح"}</span>
+          </div>
+        </div>
+      </section>
+
+      {lock ? (
+        <div className="day-audit-v2-notice day-audit-v2-notice--success" role="status">
+          <FontAwesomeIcon icon={faLock} />
+          <span>
+            تم إقفال هذا اليوم في <strong>{lockTimeLabel}</strong>. القيم محفوظة وغير قابلة للتعديل.
+          </span>
+        </div>
+      ) : null}
+
+      <section className="day-audit-v2-metrics" aria-label="ملخص الجرد">
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faFileInvoiceDollar} /></span>
+          <p className="dsv2-metric-card__label">إجمالي التحصيل</p>
+          <div className="dsv2-metric-card__value">
+            {loading ? <DashboardSkeletonV2 width="72%" height={22} /> : formatAmount(bookingsRevenue)}
+          </div>
+          <p className="dsv2-metric-card__meta">{dateLabel}</p>
+        </article>
+
+        <article className="dsv2-metric-card dsv2-metric-card--success">
+          <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCashRegister} /></span>
+          <p className="dsv2-metric-card__label">تحصيل الكاش</p>
+          <p className="dsv2-metric-card__value">{formatAmount(cashRevenue)}</p>
+          <p className="dsv2-metric-card__meta">حسب المدفوعات المسجلة</p>
+        </article>
+
+        <article className="dsv2-metric-card dsv2-metric-card--gold">
+          <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faCreditCard} /></span>
+          <p className="dsv2-metric-card__label">الشبكة والتحويل</p>
+          <p className="dsv2-metric-card__value">{formatAmount(cardRevenue + transferRevenue)}</p>
+          <p className="dsv2-metric-card__meta">
+            شبكة {formatAmount(cardRevenue)} · تحويل {formatAmount(transferRevenue)}
+          </p>
+        </article>
+
+        <article className={`dsv2-metric-card ${diffMetricClass}`}>
+          <span className="dsv2-metric-card__icon"><FontAwesomeIcon icon={faScaleBalanced} /></span>
+          <p className="dsv2-metric-card__label">فرق الكاش</p>
+          <p className="dsv2-metric-card__value">{formatAmount(diff)}</p>
+          <p className="dsv2-metric-card__meta">الكاش الفعلي ناقص تحصيل الكاش</p>
+        </article>
+      </section>
+
+      <section className="day-audit-v2-layout" id="day-audit-print">
+        <article className="dsv2-card day-audit-v2-panel day-audit-v2-entry">
+          <header className="day-audit-v2-panel__head">
+            <div className="day-audit-v2-panel__head-copy">
+              <span className="dsv2-badge dsv2-badge--gold">عدّ الكاش</span>
+              <h2>إدخال الكاش الفعلي</h2>
+              <p>أدخل المبلغ الموجود فعليًا في الصندوق، ثم راجع الفرق قبل الإقفال.</p>
+            </div>
+            <span className="day-audit-v2-panel__index">01</span>
+          </header>
+
+          <label className="day-audit-v2-amount-field" htmlFor="day-audit-manual-cash">
+            <span>مبلغ الكاش الموجود</span>
+            <div className="day-audit-v2-amount-control">
+              <input
+                id="day-audit-manual-cash"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                placeholder="0.00"
+                value={lock ? String(lock.manualCash) : manualCashInput}
+                onChange={(e) => {
+                  setErrorText("");
+                  setManualCashInput(String(e.target.value || ""));
+                }}
+                disabled={!!lock}
+              />
+              <b>ر.س</b>
+            </div>
+            <small>
+              {lock ? "تم تثبيت المبلغ عند إقفال اليوم." : "استخدم المبلغ المحسوب فعليًا من الصندوق."}
+            </small>
+          </label>
+
+          <div className="day-audit-v2-difference">
+            <span>نتيجة المطابقة الحالية</span>
+            <strong data-diff={diffTone}>
+              {diff === 0
+                ? "متطابق"
+                : diff < 0
+                  ? `عجز ${formatAmount(Math.abs(diff))}`
+                  : `زيادة ${formatAmount(diff)}`}
+            </strong>
+          </div>
+
+          {errorText ? (
+            <div className="day-audit-v2-notice day-audit-v2-notice--danger no-print" role="alert">
+              {errorText}
+            </div>
+          ) : null}
+
+          <div className="day-audit-v2-actions no-print">
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              onPointerDown={primeAuditPrintPopup}
+              onClick={printAudit}
+            >
+              <FontAwesomeIcon icon={faPrint} />
+              طباعة مسودة الجرد
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--primary"
+              onPointerDown={primeAuditPrintPopup}
+              onClick={printAndLock}
+              disabled={!!lock}
+            >
+              <FontAwesomeIcon icon={faLock} />
+              {lock ? "تم إقفال اليوم" : "طباعة وإقفال اليوم"}
+            </button>
+          </div>
+        </article>
+
+        <aside className="dsv2-card day-audit-v2-panel day-audit-v2-breakdown">
+          <header className="day-audit-v2-panel__head">
+            <div className="day-audit-v2-panel__head-copy">
+              <span className="dsv2-badge dsv2-badge--gold">التسوية</span>
+              <h2>تفصيل التسوية</h2>
+              <p>ملخص قنوات الدفع الداخلة في جرد التاريخ المحدد.</p>
+            </div>
+            <span className="day-audit-v2-panel__index">02</span>
+          </header>
+
+          <div className="day-audit-v2-summary">
+            <div className="day-audit-v2-summary-row">
+              <span>إجمالي التحصيل</span>
+              <strong>{formatAmount(bookingsRevenue)}</strong>
+            </div>
+            <div className="day-audit-v2-summary-row">
+              <span>تحصيل الكاش بالنظام</span>
+              <strong>{formatAmount(cashRevenue)}</strong>
+            </div>
+            <div className="day-audit-v2-summary-row">
+              <span>تحصيل الشبكة</span>
+              <strong>{formatAmount(cardRevenue)}</strong>
+            </div>
+            <div className="day-audit-v2-summary-row">
+              <span>التحويل البنكي</span>
+              <strong>{formatAmount(transferRevenue)}</strong>
+            </div>
+            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--highlight">
+              <span>الكاش الفعلي</span>
+              <strong>{formatAmount(manualCash)}</strong>
+            </div>
+            <div className="day-audit-v2-summary-row day-audit-v2-summary-row--total">
+              <span>فرق الكاش النهائي</span>
+              <strong className="day-audit-v2-value" data-diff={diffTone}>{formatAmount(diff)}</strong>
+            </div>
+          </div>
+
+          <div className="day-audit-v2-policy">
+            <strong>قاعدة الإقفال</strong>
+            <p>
+              التحويل البنكي يظهر في الإجمالي، لكنه لا يدخل في مقارنة الكاش الفعلي مع صندوق الاستقبال.
+            </p>
+          </div>
+        </aside>
+      </section>
+    </main>
   );
 }
