@@ -1,0 +1,540 @@
+/* =========================================================
+   Dashboard TV Queue V2
+   Visual layer only. Booking/video behavior stays in DashboardQueueTv.tsx.
+========================================================= */
+
+.dashboard-v2 .tv-queue-v2-page {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-section-gap);
+  padding-block: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-block-end);
+  background: var(--dsv2-page);
+}
+
+.dashboard-v2 .tv-queue-v2-page > * {
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+}
+
+/* Hero */
+.dashboard-v2 .tv-queue-v2-hero {
+  isolation: isolate;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-page-head-gap);
+  min-height: 148px;
+  padding: var(--dsv2-space-6);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(var(--dsv2-burgundy-rgb), 0.07) 0 86px, transparent 87px),
+    linear-gradient(118deg, var(--dsv2-gold-softer), transparent 44%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .tv-queue-v2-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-end: -46px;
+  inset-block-end: -82px;
+  width: 190px;
+  height: 190px;
+  border: 34px solid rgba(var(--dsv2-burgundy-rgb), 0.045);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.dashboard-v2 .tv-queue-v2-hero__content {
+  display: grid;
+  min-width: 0;
+  max-width: 760px;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .tv-queue-v2-hero__content .dsv2-badge {
+  width: max-content;
+}
+
+.dashboard-v2 .tv-queue-v2-hero__status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .tv-queue-v2-clock {
+  display: grid;
+  min-width: 180px;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: rgba(var(--dsv2-black-rgb), 0.025);
+}
+
+.dashboard-v2 .tv-queue-v2-clock span {
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .tv-queue-v2-clock strong {
+  color: var(--dsv2-text);
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.4;
+}
+
+.dashboard-v2 .tv-queue-v2-clock small {
+  color: var(--dsv2-muted-soft);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+/* Metrics */
+.dashboard-v2 .tv-queue-v2-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .tv-queue-v2-metrics .dsv2-metric-card {
+  min-height: 124px;
+}
+
+.dashboard-v2 .tv-queue-v2-metrics .dsv2-metric-card__icon {
+  margin-bottom: var(--dsv2-space-3);
+}
+
+/* Main workspace */
+.dashboard-v2 .tv-queue-v2-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(360px, 0.82fr);
+  align-items: stretch;
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .tv-queue-v2-media,
+.dashboard-v2 .tv-queue-v2-queue {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-v2 .tv-queue-v2-media {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.dashboard-v2 .tv-queue-v2-queue {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 580px;
+}
+
+.dashboard-v2 .tv-queue-v2-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-section-head-gap);
+  min-width: 0;
+  padding: var(--dsv2-space-5);
+  border-bottom: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .tv-queue-v2-panel-head__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .tv-queue-v2-panel-head__copy h2 {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+  line-height: 1.45;
+}
+
+.dashboard-v2 .tv-queue-v2-panel-head__copy p {
+  margin: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.dashboard-v2 .tv-queue-v2-panel-meta {
+  flex: 0 0 auto;
+  display: grid;
+  min-width: 92px;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-2) var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+  text-align: center;
+}
+
+.dashboard-v2 .tv-queue-v2-panel-meta span {
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .tv-queue-v2-panel-meta strong {
+  color: var(--dsv2-text);
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+/* Video */
+.dashboard-v2 .tv-queue-v2-media-body {
+  min-width: 0;
+  padding: var(--dsv2-space-4);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .tv-queue-v2-media-frame {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 520px;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-black);
+  box-shadow: inset 0 0 0 1px rgba(var(--dsv2-black-rgb), 0.35);
+}
+
+.dashboard-v2 .tv-queue-v2-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  object-fit: cover;
+  background: var(--dsv2-black);
+}
+
+.dashboard-v2 .tv-queue-v2-video-logo {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: var(--dsv2-space-4);
+  inset-inline-start: var(--dsv2-space-4);
+  width: clamp(78px, 8vw, 124px);
+  max-height: 84px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 16px rgba(var(--dsv2-black-rgb), 0.2));
+}
+
+.dashboard-v2 .tv-queue-v2-video-status {
+  position: absolute;
+  z-index: 2;
+  inset-block-end: var(--dsv2-space-4);
+  inset-inline-end: var(--dsv2-space-4);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  min-height: 34px;
+  padding: 0 var(--dsv2-space-3);
+  border: 1px solid rgba(var(--dsv2-gold-rgb), 0.28);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-on-dark);
+  background: rgba(var(--dsv2-black-rgb), 0.72);
+  box-shadow: var(--dsv2-shadow-xs);
+  backdrop-filter: blur(8px);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .tv-queue-v2-video-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsv2-green);
+  box-shadow: 0 0 0 4px rgba(var(--dsv2-green-rgb), 0.16);
+}
+
+.dashboard-v2 .tv-queue-v2-video-fallback {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--dsv2-space-8);
+  color: var(--dsv2-on-dark);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(var(--dsv2-gold-rgb), 0.12), transparent 38%),
+    rgba(var(--dsv2-black-rgb), 0.92);
+  text-align: center;
+}
+
+.dashboard-v2 .tv-queue-v2-video-fallback p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--dsv2-on-dark);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.8;
+}
+
+/* Queue */
+.dashboard-v2 .tv-queue-v2-queue-body {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--dsv2-surface-soft);
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsv2-border-strong) transparent;
+}
+
+.dashboard-v2 .tv-queue-v2-state-shell {
+  display: grid;
+  gap: var(--dsv2-space-3);
+  min-height: 220px;
+  align-content: center;
+}
+
+.dashboard-v2 .tv-queue-v2-skeleton-card {
+  display: grid;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .tv-queue-v2-booking-list {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .tv-queue-v2-booking {
+  --tv-queue-accent: var(--dsv2-gold);
+  --tv-queue-accent-rgb: var(--dsv2-gold-rgb);
+
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--tv-queue-accent-rgb), 0.2);
+  border-radius: var(--dsv2-radius-lg);
+  background:
+    linear-gradient(135deg, rgba(var(--tv-queue-accent-rgb), 0.035), transparent 66%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .tv-queue-v2-booking::after {
+  content: "";
+  position: absolute;
+  inset-block: var(--dsv2-space-3);
+  inset-inline-end: 0;
+  width: 3px;
+  border-radius: var(--dsv2-radius-pill) 0 0 var(--dsv2-radius-pill);
+  background: var(--tv-queue-accent);
+}
+
+.dashboard-v2 .tv-queue-v2-booking--current {
+  --tv-queue-accent: var(--dsv2-green);
+  --tv-queue-accent-rgb: var(--dsv2-green-rgb);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-4);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__title {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__title span {
+  color: var(--dsv2-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .tv-queue-v2-booking__title strong {
+  overflow: hidden;
+  color: var(--dsv2-text);
+  font-size: 0.95rem;
+  font-weight: 950;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  overflow: hidden;
+  border-radius: 0 0 var(--dsv2-radius-lg) var(--dsv2-radius-lg);
+  background: var(--dsv2-divider);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta > div {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-3);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta dt {
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--dsv2-text);
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.55;
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta .tv-queue-v2-countdown {
+  background: rgba(var(--tv-queue-accent-rgb), 0.065);
+}
+
+.dashboard-v2 .tv-queue-v2-booking__meta .tv-queue-v2-countdown dd {
+  color: var(--tv-queue-accent);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Responsive */
+@media (max-width: 1320px) {
+  .dashboard-v2 .tv-queue-v2-workspace {
+    grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.8fr);
+  }
+
+  .dashboard-v2 .tv-queue-v2-media-frame,
+  .dashboard-v2 .tv-queue-v2-video {
+    min-height: 460px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-v2 .tv-queue-v2-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .tv-queue-v2-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .tv-queue-v2-queue {
+    min-height: 0;
+  }
+
+  .dashboard-v2 .tv-queue-v2-queue-body {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 800px) {
+  .dashboard-v2 .tv-queue-v2-hero {
+    align-items: stretch;
+    flex-direction: column;
+    min-height: 0;
+    padding: var(--dsv2-space-5);
+  }
+
+  .dashboard-v2 .tv-queue-v2-hero__status {
+    justify-content: flex-start;
+  }
+
+  .dashboard-v2 .tv-queue-v2-clock {
+    min-width: min(100%, 220px);
+  }
+
+  .dashboard-v2 .tv-queue-v2-panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .tv-queue-v2-panel-meta {
+    width: max-content;
+    min-width: 86px;
+    text-align: start;
+  }
+
+  .dashboard-v2 .tv-queue-v2-media-frame,
+  .dashboard-v2 .tv-queue-v2-video {
+    min-height: 380px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-v2 .tv-queue-v2-page {
+    gap: var(--dsv2-space-4);
+    padding-block: var(--dsv2-space-4) var(--dsv2-space-7);
+  }
+
+  .dashboard-v2 .tv-queue-v2-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .tv-queue-v2-metrics .dsv2-metric-card {
+    min-height: 112px;
+  }
+
+  .dashboard-v2 .tv-queue-v2-panel-head,
+  .dashboard-v2 .tv-queue-v2-media-body,
+  .dashboard-v2 .tv-queue-v2-queue-body {
+    padding: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2 .tv-queue-v2-media-frame,
+  .dashboard-v2 .tv-queue-v2-video {
+    min-height: 280px;
+  }
+
+  .dashboard-v2 .tv-queue-v2-video-logo {
+    inset-block-start: var(--dsv2-space-3);
+    inset-inline-start: var(--dsv2-space-3);
+    width: 72px;
+  }
+
+  .dashboard-v2 .tv-queue-v2-video-status {
+    inset-block-end: var(--dsv2-space-3);
+    inset-inline-end: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2 .tv-queue-v2-booking__head {
+    align-items: flex-start;
+    padding: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2 .tv-queue-v2-booking__meta {
+    grid-template-columns: 1fr;
+    padding: var(--dsv2-space-3);
+  }
+}
