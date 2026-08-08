@@ -54,8 +54,15 @@ import {
   exportAttendanceReportPdf,
   type AttendanceReportRowInput,
 } from "../helpers/reports/exportAttendanceReport";
-import "../styles/DashboardAttendanceSecurity.css";
-import "../styles/DashboardAttendanceDeviceCards.css";
+import {
+  DashboardDatePickerV2,
+  DashboardDrawerV2,
+  DashboardEmptyStateV2,
+  DashboardErrorStateV2,
+  DashboardSkeletonV2,
+  DashboardSelectV2,
+  type DashboardSelectOptionV2,
+} from "../components/dashboard-v2";
 
 type AttendanceTab = "discipline" | "overview" | "records" | "devices" | "alerts" | "zones";
 type RecordResultFilter = "all" | "allowed" | "rejected";
@@ -63,6 +70,18 @@ type RecordTypeFilter = "all" | "check_in" | "check_out";
 type WeekdayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
 
 type AttendanceDisciplineRow = AttendanceReportRowInput;
+
+const RECORD_RESULT_FILTER_OPTIONS: DashboardSelectOptionV2[] = [
+  { value: "all", label: "كل النتائج" },
+  { value: "allowed", label: "المقبولة" },
+  { value: "rejected", label: "المرفوضة" },
+];
+
+const RECORD_TYPE_FILTER_OPTIONS: DashboardSelectOptionV2[] = [
+  { value: "all", label: "حضور وانصراف" },
+  { value: "check_in", label: "حضور" },
+  { value: "check_out", label: "انصراف" },
+];
 
 type FriendlyDeviceInput = {
   userAgent?: unknown;
@@ -923,16 +942,16 @@ export default function DashboardAttendanceSecurity() {
   ];
 
   return (
-    <section className="attendance-security-page" dir="rtl">
-      <header className="attendance-security-heading">
+    <section className="dsv2-page dsv2-attendance-page" dir="rtl">
+      <header className="dsv2-page-head dsv2-attendance-heading">
         <div>
-          <p className="attendance-security-eyebrow">Attendance D1</p>
-          <h1>الحضور والانضباط</h1>
-          <p>متابعة وقت الحضور والانصراف وفروقات الساعات من البصمات المقبولة حسب الدوام المعتمد.</p>
+          <p className="dsv2-badge dsv2-badge--gold">Attendance D1</p>
+          <h1 className="dsv2-page-title">الحضور والانضباط</h1>
+          <p className="dsv2-page-subtitle">متابعة وقت الحضور والانصراف وفروقات الساعات من البصمات المقبولة حسب الدوام المعتمد.</p>
         </div>
         <button
           type="button"
-          className="attendance-security-refresh"
+          className="dsv2-btn dsv2-btn--secondary dsv2-attendance-refresh"
           onClick={() => void load()}
           disabled={loading}
         >
@@ -941,8 +960,8 @@ export default function DashboardAttendanceSecurity() {
         </button>
       </header>
 
-      <div className="attendance-security-shell">
-        <nav className="attendance-security-tabs" aria-label="أقسام سجل البصمة">
+      <div className="dsv2-attendance-shell dsv2-stack dsv2-stack--lg">
+        <nav className="dsv2-card dsv2-card--padded dsv2-attendance-tabs" aria-label="أقسام سجل البصمة">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -952,57 +971,90 @@ export default function DashboardAttendanceSecurity() {
             >
               {tab.label}
               {tab.id === "alerts" && dashboard.summary.openAlerts > 0 ? (
-                <span>{dashboard.summary.openAlerts}</span>
+                <span className="dsv2-attendance-tab-count">{dashboard.summary.openAlerts}</span>
               ) : null}
             </button>
           ))}
         </nav>
 
-        {notice ? <div className="attendance-security-notice"><FiCheckCircle />{notice}</div> : null}
+        {notice ? <div className="dsv2-attendance-notice"><FiCheckCircle />{notice}</div> : null}
         {error ? (
-          <div className="attendance-security-error">
-            <FiAlertTriangle />
-            <div><strong>تعذر تحميل سجل البصمة</strong><p>{error}</p></div>
-            <button type="button" onClick={() => void load()}>إعادة المحاولة</button>
-          </div>
+          <DashboardErrorStateV2
+            compact
+            title="تعذر تحميل سجل البصمة"
+            description={error}
+            action={(
+              <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => void load()}>
+                إعادة المحاولة
+              </button>
+            )}
+          />
         ) : null}
 
         {!error && activeTab !== "overview" && activeTab !== "zones" ? (
-          <div className="attendance-security-toolbar">
-            <label className="attendance-security-search">
+          <div className="dsv2-filter-bar dsv2-attendance-toolbar">
+            <label className="dsv2-field dsv2-attendance-search">
+              <span className="dsv2-field__label">البحث</span>
+              <span className="dsv2-attendance-search-control">
               <FiSearch />
               <input
+                className="dsv2-input"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="ابحث باسم الموظفة أو الجهاز أو النطاق أو الحالة..."
               />
+              </span>
             </label>
             {activeTab === "discipline" || activeTab === "records" ? (
-              <div className="attendance-security-filters">
-                <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-                <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+              <div className="dsv2-attendance-filters">
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">من تاريخ</span>
+                  <DashboardDatePickerV2
+                    id="attendance-from-date"
+                    value={fromDate}
+                    clearable={false}
+                    onChange={setFromDate}
+                  />
+                </label>
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">إلى تاريخ</span>
+                  <DashboardDatePickerV2
+                    id="attendance-to-date"
+                    value={toDate}
+                    clearable={false}
+                    onChange={setToDate}
+                  />
+                </label>
                 {activeTab === "records" ? (
                   <>
-                <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value as RecordResultFilter)}>
-                  <option value="all">كل النتائج</option>
-                  <option value="allowed">المقبولة</option>
-                  <option value="rejected">المرفوضة</option>
-                </select>
-                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as RecordTypeFilter)}>
-                  <option value="all">حضور وانصراف</option>
-                  <option value="check_in">حضور</option>
-                  <option value="check_out">انصراف</option>
-                </select>
+                    <label className="dsv2-field">
+                      <span className="dsv2-field__label">النتيجة</span>
+                      <DashboardSelectV2
+                        id="attendance-result-filter"
+                        value={resultFilter}
+                        options={RECORD_RESULT_FILTER_OPTIONS}
+                        onChange={(value) => setResultFilter(value as RecordResultFilter)}
+                      />
+                    </label>
+                    <label className="dsv2-field">
+                      <span className="dsv2-field__label">العملية</span>
+                      <DashboardSelectV2
+                        id="attendance-type-filter"
+                        value={typeFilter}
+                        options={RECORD_TYPE_FILTER_OPTIONS}
+                        onChange={(value) => setTypeFilter(value as RecordTypeFilter)}
+                      />
+                    </label>
                   </>
                 ) : null}
               </div>
             ) : null}
             {activeTab === "discipline" ? (
-              <div className="attendance-security-export-actions" aria-label="تصدير تقرير الحضور والانضباط">
-                <button type="button" onClick={handleExportAttendancePdf} disabled={loading}>
+              <div className="dsv2-attendance-export-actions" aria-label="تصدير تقرير الحضور والانضباط">
+                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={handleExportAttendancePdf} disabled={loading}>
                   <FiFileText /> تصدير PDF
                 </button>
-                <button type="button" onClick={handleExportAttendanceExcel} disabled={loading}>
+                <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={handleExportAttendanceExcel} disabled={loading}>
                   <FiDownload /> تصدير Excel
                 </button>
               </div>
@@ -1010,20 +1062,30 @@ export default function DashboardAttendanceSecurity() {
           </div>
         ) : null}
 
+        {loading ? (
+          <div className="dsv2-card dsv2-card--padded dsv2-attendance-loading" role="status" aria-live="polite">
+            <FiRefreshCw className="is-spinning" />
+            <div>
+              <strong>جاري تحميل بيانات الحضور</strong>
+              <DashboardSkeletonV2 lines={2} />
+            </div>
+          </div>
+        ) : null}
+
         {!error && activeTab === "discipline" ? (
           <>
-            <div className="attendance-security-stats attendance-discipline-stats">
-              <article><span><FiClock /></span><small>ساعات الدوام المعتمدة</small><strong>{formatAttendanceHours(disciplineSummary.totalScheduledHours)}</strong></article>
-              <article><span><FiActivity /></span><small>ساعات العمل الفعلية</small><strong>{formatAttendanceHours(disciplineSummary.totalActualWorkedHours)}</strong></article>
-              <article><span><FiAlertTriangle /></span><small>التأخير الفعلي</small><strong>{formatAttendanceHours(disciplineSummary.totalLateHours)}</strong></article>
-              <article><span><FiCheck /></span><small>التعويض بعد الدوام</small><strong>{formatAttendanceHours(disciplineSummary.totalCompensatedLateHours)}</strong></article>
-              <article className="is-warning"><span><FiCheckCircle /></span><small>الاستئذان المحتسب</small><strong>{formatAttendanceHours(disciplineSummary.totalPermissionCoveredHours || 0)}</strong></article>
-              <article className="is-danger"><span><FiXCircle /></span><small>نقص الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalMissingHours)}</strong></article>
-              <article className="is-warning"><span><FiClock /></span><small>زيادة الساعات</small><strong>{formatAttendanceHours(disciplineSummary.totalExtraHours)}</strong></article>
+            <div className="dsv2-grid--metrics dsv2-attendance-metrics dsv2-attendance-discipline-metrics">
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiClock /></span><small className="dsv2-metric-card__label">ساعات الدوام المعتمدة</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalScheduledHours)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--success"><span className="dsv2-metric-card__icon"><FiActivity /></span><small className="dsv2-metric-card__label">ساعات العمل الفعلية</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalActualWorkedHours)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--danger"><span className="dsv2-metric-card__icon"><FiAlertTriangle /></span><small className="dsv2-metric-card__label">التأخير الفعلي</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalLateHours)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--success"><span className="dsv2-metric-card__icon"><FiCheck /></span><small className="dsv2-metric-card__label">التعويض بعد الدوام</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalCompensatedLateHours)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiCheckCircle /></span><small className="dsv2-metric-card__label">الاستئذان المحتسب</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalPermissionCoveredHours || 0)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--danger"><span className="dsv2-metric-card__icon"><FiXCircle /></span><small className="dsv2-metric-card__label">نقص الساعات</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalMissingHours)}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiClock /></span><small className="dsv2-metric-card__label">زيادة الساعات</small><strong className="dsv2-metric-card__value">{formatAttendanceHours(disciplineSummary.totalExtraHours)}</strong></article>
             </div>
 
-            <div className="attendance-security-table-wrap attendance-discipline-table-wrap">
-              <table className="attendance-security-table attendance-discipline-table">
+            <div className="dsv2-table-card dsv2-table-scroll dsv2-attendance-table-wrap dsv2-attendance-discipline-table-wrap">
+              <table className="dsv2-table dsv2-attendance-table dsv2-attendance-discipline-table">
                 <thead>
                   <tr>
                     <th>الموظفة</th>
@@ -1046,9 +1108,9 @@ export default function DashboardAttendanceSecurity() {
                     const tone = disciplineStatusTone(row.summary.status);
                     return (
                       <tr key={row.key} className={`is-discipline-${tone}`}>
-                        <td><strong>{row.employeeName}</strong><small>{row.employeeId}</small></td>
-                        <td><strong>{formatRecordDate(`${row.date}T00:00:00+03:00`)}</strong><small dir="ltr">{row.date}</small></td>
-                        <td><strong dir="ltr">{row.shiftLabel}</strong><small>{row.scheduleNote}</small></td>
+                        <td><strong className="dsv2-table__primary">{row.employeeName}</strong><small className="dsv2-table__secondary">{row.employeeId}</small></td>
+                        <td><strong className="dsv2-table__primary">{formatRecordDate(`${row.date}T00:00:00+03:00`)}</strong><small className="dsv2-table__secondary" dir="ltr">{row.date}</small></td>
+                        <td><strong className="dsv2-table__primary" dir="ltr">{row.shiftLabel}</strong><small className="dsv2-table__secondary">{row.scheduleNote}</small></td>
                         <td><strong dir="ltr">{formatRecordTime(row.firstCheckInAt)}</strong></td>
                         <td><strong dir="ltr">{formatRecordTime(row.lastCheckOutAt)}</strong></td>
                         <td>{formatAttendanceHours(row.summary.actualWorkedHours)}</td>
@@ -1058,7 +1120,7 @@ export default function DashboardAttendanceSecurity() {
                         <td>{formatAttendanceHours(row.summary.missingHours)}</td>
                         <td>{formatAttendanceHours(row.summary.extraHours)}</td>
                         <td>{formatSignedAttendanceHours(row.summary.netHourDifference)}</td>
-                        <td><span className={`attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span></td>
+                        <td><span className={`dsv2-badge dsv2-attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span></td>
                       </tr>
                     );
                   })}
@@ -1066,31 +1128,31 @@ export default function DashboardAttendanceSecurity() {
               </table>
             </div>
 
-            <div className="attendance-discipline-mobile-list" aria-label="سجل الحضور والانضباط للجوال">
+            <div className="dsv2-attendance-discipline-mobile-list" aria-label="سجل الحضور والانضباط للجوال">
               {disciplineRows.map((row) => {
                 const tone = disciplineStatusTone(row.summary.status);
                 return (
-                  <article key={row.key} className={`attendance-discipline-mobile-card is-${tone}`}>
+                  <article key={row.key} className={`dsv2-card dsv2-card--padded dsv2-attendance-discipline-mobile-card is-${tone}`}>
                     <header>
                       <div>
                         <strong>{row.employeeName}</strong>
                         <small>{row.employeeId}</small>
                       </div>
-                      <span className={`attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span>
+                      <span className={`dsv2-badge dsv2-attendance-discipline-status is-${tone}`}>{row.summary.statusLabel}</span>
                     </header>
 
-                    <div className="attendance-discipline-mobile-date">
+                    <div className="dsv2-attendance-discipline-mobile-date">
                       <strong>{formatRecordDate(`${row.date}T00:00:00+03:00`)}</strong>
                       <small dir="ltr">{row.date}</small>
                     </div>
 
-                    <div className="attendance-discipline-mobile-shift">
+                    <div className="dsv2-attendance-discipline-mobile-shift">
                       <span>الدوام المعتمد</span>
                       <strong dir="ltr">{row.shiftLabel}</strong>
                       <small>{row.scheduleNote}</small>
                     </div>
 
-                    <div className="attendance-discipline-mobile-times">
+                    <div className="dsv2-attendance-discipline-mobile-times">
                       <div>
                         <span>أول حضور</span>
                         <strong dir="ltr">{formatRecordTime(row.firstCheckInAt)}</strong>
@@ -1101,7 +1163,7 @@ export default function DashboardAttendanceSecurity() {
                       </div>
                     </div>
 
-                    <dl className="attendance-discipline-mobile-metrics">
+                    <dl className="dsv2-attendance-discipline-mobile-metrics">
                       <div><dt>العمل الفعلي</dt><dd>{formatAttendanceHours(row.summary.actualWorkedHours)}</dd></div>
                       <div><dt>التأخير</dt><dd>{formatAttendanceHours(row.summary.lateHours)}</dd></div>
                       <div><dt>التعويض</dt><dd>{formatAttendanceHours(row.summary.compensatedLateHours)}</dd></div>
@@ -1115,50 +1177,55 @@ export default function DashboardAttendanceSecurity() {
               })}
             </div>
 
-            {!loading && !disciplineRows.length ? <p className="attendance-security-empty">لا توجد سجلات حضور مكتملة أو مطابقة للفترة المحددة.</p> : null}
+            {!loading && !disciplineRows.length ? (
+              <DashboardEmptyStateV2
+                compact
+                title="لا توجد سجلات حضور مكتملة أو مطابقة للفترة المحددة."
+              />
+            ) : null}
           </>
         ) : null}
 
         {!error && activeTab === "overview" ? (
           <>
-            <div className="attendance-security-stats">
-              <article><span><FiActivity /></span><small>بصمات اليوم</small><strong>{dashboard.summary.punchesToday}</strong></article>
-              <article><span><FiUserCheck /></span><small>داخل الدوام الآن</small><strong>{dashboard.summary.checkedInNow}</strong></article>
-              <article><span><FiXCircle /></span><small>مرفوضة اليوم</small><strong>{dashboard.summary.rejectedToday}</strong></article>
-              <article><span><FiSmartphone /></span><small>أجهزة جديدة</small><strong>{dashboard.summary.newDevicesToday}</strong></article>
-              <article className="is-warning"><span><FiUsers /></span><small>أجهزة مشتركة</small><strong>{dashboard.summary.sharedDevices}</strong></article>
-              <article className="is-danger"><span><FiShield /></span><small>تنبيهات مفتوحة</small><strong>{dashboard.summary.openAlerts}</strong></article>
+            <div className="dsv2-grid--metrics dsv2-attendance-metrics">
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiActivity /></span><small className="dsv2-metric-card__label">بصمات اليوم</small><strong className="dsv2-metric-card__value">{dashboard.summary.punchesToday}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--success"><span className="dsv2-metric-card__icon"><FiUserCheck /></span><small className="dsv2-metric-card__label">داخل الدوام الآن</small><strong className="dsv2-metric-card__value">{dashboard.summary.checkedInNow}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--danger"><span className="dsv2-metric-card__icon"><FiXCircle /></span><small className="dsv2-metric-card__label">مرفوضة اليوم</small><strong className="dsv2-metric-card__value">{dashboard.summary.rejectedToday}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiSmartphone /></span><small className="dsv2-metric-card__label">أجهزة جديدة</small><strong className="dsv2-metric-card__value">{dashboard.summary.newDevicesToday}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--gold"><span className="dsv2-metric-card__icon"><FiUsers /></span><small className="dsv2-metric-card__label">أجهزة مشتركة</small><strong className="dsv2-metric-card__value">{dashboard.summary.sharedDevices}</strong></article>
+              <article className="dsv2-metric-card dsv2-metric-card--danger"><span className="dsv2-metric-card__icon"><FiShield /></span><small className="dsv2-metric-card__label">تنبيهات مفتوحة</small><strong className="dsv2-metric-card__value">{dashboard.summary.openAlerts}</strong></article>
             </div>
 
-            <div className="attendance-security-overview-grid">
-              <article className="attendance-security-panel">
-                <header><div><h2>آخر عمليات البصمة</h2><p>أحدث الحركات المقبولة والمرفوضة.</p></div><button type="button" onClick={() => setActiveTab("records")}>السجل الكامل</button></header>
-                <div className="attendance-security-compact-list">
+            <div className="dsv2-grid--2 dsv2-attendance-overview-grid">
+              <article className="dsv2-card dsv2-card--padded dsv2-attendance-panel">
+                <header><div><h2>آخر عمليات البصمة</h2><p>أحدث الحركات المقبولة والمرفوضة.</p></div><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setActiveTab("records")}>السجل الكامل</button></header>
+                <div className="dsv2-attendance-compact-list">
                   {dashboard.records.slice(0, 7).map((record) => (
                     <button key={record.id} type="button" onClick={() => setSelectedRecord(record)}>
-                      <span className={`attendance-security-record-icon is-${record.result}`}><FiActivity /></span>
+                      <span className={`dsv2-attendance-record-icon is-${record.result}`}><FiActivity /></span>
                       <span><strong>{resolveStaffName(record, staffNames)}</strong><small>{recordTypeLabel(record.type)} · {formatDateTime(record.serverTime)}</small></span>
                       <em className={`is-${record.result}`}>{recordResultLabel(record.result)}</em>
                     </button>
                   ))}
-                  {!loading && !dashboard.records.length ? <p className="attendance-security-empty">لا توجد عمليات بصمة في الفترة المحددة.</p> : null}
+                  {!loading && !dashboard.records.length ? <DashboardEmptyStateV2 compact title="لا توجد عمليات بصمة في الفترة المحددة." /> : null}
                 </div>
               </article>
 
-              <article className="attendance-security-panel">
-                <header><div><h2>تحتاج مراجعة</h2><p>جهاز جديد، تغيير جهاز، مشاركة أو رفض.</p></div><button type="button" onClick={() => setActiveTab("alerts")}>كل التنبيهات</button></header>
-                <div className="attendance-security-compact-list">
+              <article className="dsv2-card dsv2-card--padded dsv2-attendance-panel">
+                <header><div><h2>تحتاج مراجعة</h2><p>جهاز جديد، تغيير جهاز، مشاركة أو رفض.</p></div><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setActiveTab("alerts")}>كل التنبيهات</button></header>
+                <div className="dsv2-attendance-compact-list">
                   {recentRiskRecords.slice(0, 7).map((record) => {
                     const deviceView = recordDevicePresentation(record, devicesById);
                     return (
                       <button key={record.id} type="button" onClick={() => setSelectedRecord(record)}>
-                        <span className="attendance-security-record-icon is-risk"><FiAlertTriangle /></span>
+                        <span className="dsv2-attendance-record-icon is-risk"><FiAlertTriangle /></span>
                         <span><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.rejectionReason ? rejectionLabel(record.rejectionReason) : "تغيير أو مشاركة جهاز"}</small></span>
                         <em>{deviceView.status}</em>
                       </button>
                     );
                   })}
-                  {!loading && !recentRiskRecords.length ? <p className="attendance-security-empty">لا توجد عمليات تحتاج مراجعة حاليًا.</p> : null}
+                  {!loading && !recentRiskRecords.length ? <DashboardEmptyStateV2 compact title="لا توجد عمليات تحتاج مراجعة حاليًا." /> : null}
                 </div>
               </article>
             </div>
@@ -1167,22 +1234,22 @@ export default function DashboardAttendanceSecurity() {
 
         {!error && activeTab === "records" ? (
           <>
-            <div className="attendance-security-table-wrap attendance-records-table-wrap">
-              <table className="attendance-security-table">
+            <div className="dsv2-table-card dsv2-table-scroll dsv2-attendance-table-wrap dsv2-attendance-records-table-wrap">
+              <table className="dsv2-table dsv2-attendance-table">
                 <thead><tr><th>الموظفة</th><th>العملية</th><th>الوقت</th><th>النطاق</th><th>الدقة</th><th>الجهاز</th><th>النتيجة</th><th>التفاصيل</th></tr></thead>
                 <tbody>
                   {visibleRecords.map((record) => {
                     const deviceView = recordDevicePresentation(record, devicesById);
                     return (
                       <tr key={record.id} className={deviceView.hasRisk ? "is-risk" : ""}>
-                        <td><strong>{resolveStaffName(record, staffNames)}</strong><small>{record.employeeDocId || record.employeeUid}</small></td>
-                        <td><span className={`attendance-security-kind is-${record.type}`}>{recordTypeLabel(record.type)}</span></td>
-                        <td><strong>{formatRecordDate(record.serverTime)}</strong><small dir="ltr">{formatRecordTime(record.serverTime)}</small></td>
-                        <td><strong>{record.zoneName || "—"}</strong><small>{record.distanceMeters == null ? "" : `${Math.round(record.distanceMeters)} م`}</small></td>
+                        <td><strong className="dsv2-table__primary">{resolveStaffName(record, staffNames)}</strong><small className="dsv2-table__secondary">{record.employeeDocId || record.employeeUid}</small></td>
+                        <td><span className={`dsv2-badge dsv2-attendance-kind is-${record.type}`}>{recordTypeLabel(record.type)}</span></td>
+                        <td><strong className="dsv2-table__primary">{formatRecordDate(record.serverTime)}</strong><small className="dsv2-table__secondary" dir="ltr">{formatRecordTime(record.serverTime)}</small></td>
+                        <td><strong className="dsv2-table__primary">{record.zoneName || "—"}</strong><small className="dsv2-table__secondary">{record.distanceMeters == null ? "" : `${Math.round(record.distanceMeters)} م`}</small></td>
                         <td>{Math.round(Number(record.location?.accuracy || 0))} م</td>
-                        <td><strong>{deviceView.label}</strong><small className={deviceView.hasRisk ? "is-warning" : undefined}>{deviceView.status}</small></td>
-                        <td><span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>{record.rejectionReason ? <small>{rejectionLabel(record.rejectionReason)}</small> : null}</td>
-                        <td><button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}><FiEye />عرض</button></td>
+                        <td><strong className="dsv2-table__primary">{deviceView.label}</strong><small className={`dsv2-table__secondary${deviceView.hasRisk ? " is-warning" : ""}`}>{deviceView.status}</small></td>
+                        <td><span className={`dsv2-badge dsv2-attendance-result is-${record.result}`}>{recordResultLabel(record.result)}</span>{record.rejectionReason ? <small className="dsv2-table__secondary">{rejectionLabel(record.rejectionReason)}</small> : null}</td>
+                        <td><button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm dsv2-attendance-row-action" onClick={() => setSelectedRecord(record)}><FiEye />عرض</button></td>
                       </tr>
                     );
                   })}
@@ -1190,23 +1257,23 @@ export default function DashboardAttendanceSecurity() {
               </table>
             </div>
 
-            <div className="attendance-records-mobile-list" aria-label="سجل البصمات للجوال">
+            <div className="dsv2-attendance-records-mobile-list" aria-label="سجل البصمات للجوال">
               {visibleRecords.map((record) => {
                 const deviceView = recordDevicePresentation(record, devicesById);
                 return (
-                  <article key={record.id} className={`attendance-record-mobile-card is-${record.result}${deviceView.hasRisk ? " is-risk" : ""}`}>
+                  <article key={record.id} className={`dsv2-card dsv2-card--padded dsv2-attendance-record-mobile-card is-${record.result}${deviceView.hasRisk ? " is-risk" : ""}`}>
                     <header>
-                      <span className={`attendance-security-record-icon is-${record.result}`}>
+                      <span className={`dsv2-attendance-record-icon is-${record.result}`}>
                         <FiActivity />
                       </span>
                       <div>
                         <strong>{resolveStaffName(record, staffNames)}</strong>
                         <small>{record.employeeDocId || record.employeeUid}</small>
                       </div>
-                      <span className={`attendance-security-result is-${record.result}`}>{recordResultLabel(record.result)}</span>
+                      <span className={`dsv2-badge dsv2-attendance-result is-${record.result}`}>{recordResultLabel(record.result)}</span>
                     </header>
 
-                    <div className="attendance-record-mobile-main">
+                    <div className="dsv2-attendance-record-mobile-main">
                       <div>
                         <span>العملية</span>
                         <strong>{recordTypeLabel(record.type)}</strong>
@@ -1226,10 +1293,10 @@ export default function DashboardAttendanceSecurity() {
                     </dl>
 
                     {record.rejectionReason ? (
-                      <p className="attendance-record-mobile-reason">{rejectionLabel(record.rejectionReason)}</p>
+                      <p className="dsv2-attendance-record-mobile-reason">{rejectionLabel(record.rejectionReason)}</p>
                     ) : null}
 
-                    <button type="button" className="attendance-security-row-action" onClick={() => setSelectedRecord(record)}>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-attendance-row-action" onClick={() => setSelectedRecord(record)}>
                       <FiEye /> عرض التفاصيل
                     </button>
                   </article>
@@ -1237,33 +1304,33 @@ export default function DashboardAttendanceSecurity() {
               })}
             </div>
 
-            {!loading && !visibleRecords.length ? <p className="attendance-security-empty">لا توجد بصمات مطابقة للفلاتر.</p> : null}
+            {!loading && !visibleRecords.length ? <DashboardEmptyStateV2 compact title="لا توجد بصمات مطابقة للفلاتر." /> : null}
           </>
         ) : null}
 
         {!error && activeTab === "devices" ? (
-          <div className="attendance-security-device-grid">
+          <div className="dsv2-attendance-device-grid">
             {visibleDevices.map((device) => {
               const employeeNames = deviceEmployeeNames(device, staffNames);
               const primaryEmployee = primaryDeviceEmployeeName(device, staffNames);
               const isShared = employeeNames.length > 1;
               return (
-                <article key={device.deviceId} className={`attendance-security-device-card is-${device.trustStatus}`}>
+                <article key={device.deviceId} className={`dsv2-card dsv2-card--padded dsv2-attendance-device-card is-${device.trustStatus}`}>
                   <header>
                     <span><FiSmartphone /></span>
-                    <div className="attendance-security-device-identity">
+                    <div className="dsv2-attendance-device-identity">
                       <strong>{primaryEmployee}</strong>
                       <small>{friendlyDeviceName(device)}</small>
                     </div>
-                    <em>{deviceStatusLabel(device.trustStatus)}</em>
+                    <em className={`dsv2-badge dsv2-attendance-device-status is-${device.trustStatus}`}>{deviceStatusLabel(device.trustStatus)}</em>
                   </header>
 
-                  <p className="attendance-security-device-status-note">
+                  <p className="dsv2-attendance-device-status-note">
                     {deviceStatusDescription(device.trustStatus)}
                   </p>
 
                   <dl>
-                    <div className="attendance-security-device-owner">
+                    <div className="dsv2-attendance-device-owner">
                       <dt>{isShared ? "الموظفات المستخدمات للجهاز" : "الموظفة المرتبطة بالجهاز"}</dt>
                       <dd>{employeeNames.length ? employeeNames.join("، ") : "لم يتم تحديد الموظفة"}</dd>
                     </div>
@@ -1273,8 +1340,8 @@ export default function DashboardAttendanceSecurity() {
                     <div><dt>حالة الاستخدام</dt><dd>{isShared ? `مشترك بين ${employeeNames.length} موظفات` : "تستخدمه موظفة واحدة"}</dd></div>
                   </dl>
 
-                  <span className="attendance-security-device-users-label">سجل الاستخدام حسب الموظفة</span>
-                  <div className="attendance-security-device-users">
+                  <span className="dsv2-attendance-device-users-label">سجل الاستخدام حسب الموظفة</span>
+                  <div className="dsv2-attendance-device-users">
                     {device.assignments.map((assignment) => (
                       <span key={`${assignment.employeeUid}:${assignment.employeeDocId || ""}`}>
                         {resolveAssignmentName(assignment, staffNames)}
@@ -1286,24 +1353,24 @@ export default function DashboardAttendanceSecurity() {
                   <footer>
                     {canManageDevices ? (
                       <>
-                        <button type="button" className="is-primary" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "trusted"} onClick={() => void setDeviceStatus(device, "trusted")}><FiUnlock />اعتماد الجهاز</button>
-                        <button type="button" className="is-danger" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "blocked"} onClick={() => void setDeviceStatus(device, "blocked")}><FiLock />حظر الجهاز</button>
-                        {device.trustStatus !== "new" ? <button type="button" disabled={busyKey === `device:${device.deviceId}`} onClick={() => void setDeviceStatus(device, "new")}>إعادة للمراجعة</button> : null}
+                        <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "trusted"} onClick={() => void setDeviceStatus(device, "trusted")}><FiUnlock />اعتماد الجهاز</button>
+                        <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={busyKey === `device:${device.deviceId}` || device.trustStatus === "blocked"} onClick={() => void setDeviceStatus(device, "blocked")}><FiLock />حظر الجهاز</button>
+                        {device.trustStatus !== "new" ? <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={busyKey === `device:${device.deviceId}`} onClick={() => void setDeviceStatus(device, "new")}>إعادة للمراجعة</button> : null}
                       </>
                     ) : null}
-                    <button type="button" className="is-technical" onClick={() => setSelectedDevice(device)}><FiEye />التفاصيل التقنية</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setSelectedDevice(device)}><FiEye />التفاصيل التقنية</button>
                   </footer>
                 </article>
               );
             })}
-            {!loading && !visibleDevices.length ? <p className="attendance-security-empty">لا توجد أجهزة مطابقة للبحث.</p> : null}
+            {!loading && !visibleDevices.length ? <DashboardEmptyStateV2 compact title="لا توجد أجهزة مطابقة للبحث." /> : null}
           </div>
         ) : null}
 
         {!error && activeTab === "alerts" ? (
-          <div className="attendance-security-alert-list">
+          <div className="dsv2-attendance-alert-list">
             {visibleAlerts.map((event) => (
-              <article key={event.id} className={`is-${event.severity}`}>
+              <article key={event.id} className={`dsv2-card dsv2-card--padded is-${event.severity}`}>
                 <span><FiAlertTriangle /></span>
                 <div>
                   <header><strong>{event.title}</strong><em>{eventTypeLabel(event.eventType)}</em></header>
@@ -1312,88 +1379,98 @@ export default function DashboardAttendanceSecurity() {
                 </div>
                 {canResolveAlerts ? (
                   <footer>
-                    <button type="button" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "resolved")}><FiCheck />تمت المعالجة</button>
-                    <button type="button" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "ignored")}>تجاهل</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--success dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "resolved")}><FiCheck />تمت المعالجة</button>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={busyKey === `alert:${event.id}`} onClick={() => void setAlertStatus(event, "ignored")}>تجاهل</button>
                   </footer>
                 ) : null}
               </article>
             ))}
-            {!loading && !visibleAlerts.length ? <p className="attendance-security-empty">لا توجد تنبيهات مفتوحة مطابقة للبحث.</p> : null}
+            {!loading && !visibleAlerts.length ? <DashboardEmptyStateV2 compact title="لا توجد تنبيهات مفتوحة مطابقة للبحث." /> : null}
           </div>
         ) : null}
 
         {!error && activeTab === "zones" ? (
-          <div className="attendance-security-zone-grid">
+          <div className="dsv2-attendance-zone-grid">
             {dashboard.zones.map((zone) => (
-              <article key={zone.id} className={zone.active ? "is-active" : ""}>
+              <article key={zone.id} className={`dsv2-card dsv2-card--padded${zone.active ? " is-active" : ""}`}>
                 <span><FiMapPin /></span>
                 <div><strong>{zone.name}</strong><small dir="ltr">{Number(zone.lat).toFixed(5)}, {Number(zone.lng).toFixed(5)}</small></div>
                 <dl><div><dt>نصف القطر</dt><dd>{zone.radiusMeters} م</dd></div><div><dt>الحالة</dt><dd>{zone.active ? "مفعل" : "متوقف"}</dd></div></dl>
               </article>
             ))}
-            {!loading && !dashboard.zones.length ? <p className="attendance-security-empty">لا توجد نطاقات عمل مسجلة.</p> : null}
+            {!loading && !dashboard.zones.length ? <DashboardEmptyStateV2 compact title="لا توجد نطاقات عمل مسجلة." /> : null}
           </div>
         ) : null}
       </div>
 
       {selectedRecord ? (
-        <div className="attendance-security-detail-backdrop" role="presentation" onMouseDown={() => setSelectedRecord(null)}>
-          <aside className="attendance-security-detail" role="dialog" aria-modal="true" aria-label="تفاصيل عملية البصمة" onMouseDown={(event) => event.stopPropagation()}>
-            <header><div><p>تفاصيل العملية</p><h2>{recordTypeLabel(selectedRecord.type)} · {resolveStaffName(selectedRecord, staffNames)}</h2></div><button type="button" onClick={() => setSelectedRecord(null)}>×</button></header>
-            <div className="attendance-security-detail-status"><span className={`is-${selectedRecord.result}`}>{recordResultLabel(selectedRecord.result)}</span><strong>{formatDateTime(selectedRecord.serverTime)}</strong></div>
-            <dl>
-              <div><dt>رقم العملية</dt><dd dir="ltr">{selectedRecord.id}</dd></div>
-              <div><dt>الموظفة</dt><dd>{resolveStaffName(selectedRecord, staffNames)}</dd></div>
-              <div><dt>النطاق</dt><dd>{selectedRecord.zoneName || "—"}</dd></div>
-              <div><dt>المسافة</dt><dd>{selectedRecord.distanceMeters == null ? "—" : `${Math.round(selectedRecord.distanceMeters)} متر`}</dd></div>
-              <div><dt>دقة GPS</dt><dd>{Math.round(Number(selectedRecord.location?.accuracy || 0))} متر</dd></div>
-              <div><dt>سبب الرفض</dt><dd>{selectedRecord.rejectionReason ? rejectionLabel(selectedRecord.rejectionReason) : "—"}</dd></div>
-              <div><dt>معرف الجهاز</dt><dd dir="ltr">{deviceIdOf(selectedRecord) || "—"}</dd></div>
-              <div><dt>المنصة</dt><dd>{String(selectedRecord.deviceInfo?.platform || "—")}</dd></div>
-              <div><dt>المنطقة الزمنية</dt><dd>{String(selectedRecord.deviceInfo?.timeZone || "—")}</dd></div>
-              <div><dt>تغيير الجهاز</dt><dd>{selectedRecord.deviceInfo?.deviceChanged === true ? "نعم" : "لا"}</dd></div>
-            </dl>
-            <a className="attendance-security-map-link" href={`https://www.google.com/maps?q=${selectedRecord.location.lat},${selectedRecord.location.lng}`} target="_blank" rel="noreferrer"><FiMapPin />فتح الموقع على الخريطة</a>
-          </aside>
-        </div>
+        <DashboardDrawerV2
+          open={Boolean(selectedRecord)}
+          onClose={() => setSelectedRecord(null)}
+          eyebrow="تفاصيل العملية"
+          title={`${recordTypeLabel(selectedRecord.type)} · ${resolveStaffName(selectedRecord, staffNames)}`}
+          description={formatDateTime(selectedRecord.serverTime)}
+          size="md"
+          tone={selectedRecord.result === "rejected" ? "danger" : "success"}
+        >
+          <div className="dsv2-attendance-detail-status">
+            <span className={`dsv2-badge dsv2-attendance-result is-${selectedRecord.result}`}>{recordResultLabel(selectedRecord.result)}</span>
+            <strong>{formatDateTime(selectedRecord.serverTime)}</strong>
+          </div>
+          <dl className="dsv2-attendance-detail-list">
+            <div><dt>رقم العملية</dt><dd dir="ltr">{selectedRecord.id}</dd></div>
+            <div><dt>الموظفة</dt><dd>{resolveStaffName(selectedRecord, staffNames)}</dd></div>
+            <div><dt>النطاق</dt><dd>{selectedRecord.zoneName || "—"}</dd></div>
+            <div><dt>المسافة</dt><dd>{selectedRecord.distanceMeters == null ? "—" : `${Math.round(selectedRecord.distanceMeters)} متر`}</dd></div>
+            <div><dt>دقة GPS</dt><dd>{Math.round(Number(selectedRecord.location?.accuracy || 0))} متر</dd></div>
+            <div><dt>سبب الرفض</dt><dd>{selectedRecord.rejectionReason ? rejectionLabel(selectedRecord.rejectionReason) : "—"}</dd></div>
+            <div><dt>معرف الجهاز</dt><dd dir="ltr">{deviceIdOf(selectedRecord) || "—"}</dd></div>
+            <div><dt>المنصة</dt><dd>{String(selectedRecord.deviceInfo?.platform || "—")}</dd></div>
+            <div><dt>المنطقة الزمنية</dt><dd>{String(selectedRecord.deviceInfo?.timeZone || "—")}</dd></div>
+            <div><dt>تغيير الجهاز</dt><dd>{selectedRecord.deviceInfo?.deviceChanged === true ? "نعم" : "لا"}</dd></div>
+          </dl>
+          <a className="dsv2-btn dsv2-btn--primary dsv2-attendance-map-link" href={`https://www.google.com/maps?q=${selectedRecord.location.lat},${selectedRecord.location.lng}`} target="_blank" rel="noreferrer"><FiMapPin />فتح الموقع على الخريطة</a>
+        </DashboardDrawerV2>
       ) : null}
 
       {selectedDevice ? (
-        <div className="attendance-security-detail-backdrop" role="presentation" onMouseDown={() => setSelectedDevice(null)}>
-          <aside className="attendance-security-detail" role="dialog" aria-modal="true" aria-label="التفاصيل التقنية للجهاز" onMouseDown={(event) => event.stopPropagation()}>
-            <header>
-              <div><p>التفاصيل التقنية للجهاز</p><h2>{primaryDeviceEmployeeName(selectedDevice, staffNames)}</h2></div>
-              <button type="button" onClick={() => setSelectedDevice(null)}>×</button>
-            </header>
-            <div className="attendance-security-detail-status">
-              <span className={`is-${selectedDevice.trustStatus === "blocked" ? "rejected" : "allowed"}`}>{deviceStatusLabel(selectedDevice.trustStatus)}</span>
-              <strong>{friendlyDeviceName(selectedDevice)}</strong>
-            </div>
-            <dl>
-              <div><dt>معرف الجهاز</dt><dd dir="ltr">{selectedDevice.deviceId}</dd></div>
-              <div><dt>المنصة</dt><dd>{selectedDevice.platform || "—"}</dd></div>
-              <div><dt>واجهة التطبيق</dt><dd>{selectedDevice.appVariant || "—"}</dd></div>
-              <div><dt>نسخة التطبيق</dt><dd>{selectedDevice.appVersion || "—"}</dd></div>
-              <div><dt>حجم الشاشة</dt><dd>{selectedDevice.screenSize || "—"}</dd></div>
-              <div><dt>اللغة</dt><dd>{selectedDevice.language || "—"}</dd></div>
-              <div><dt>المنطقة الزمنية</dt><dd>{selectedDevice.timeZone || "—"}</dd></div>
-              <div><dt>وضع التطبيق المستقل</dt><dd>{selectedDevice.standalone ? "نعم" : "لا"}</dd></div>
-              <div><dt>أول استخدام</dt><dd>{formatDateTime(selectedDevice.firstSeenAt)}</dd></div>
-              <div><dt>آخر استخدام</dt><dd>{formatDateTime(selectedDevice.lastSeenAt)}</dd></div>
-              <div><dt>البصمات المقبولة</dt><dd>{selectedDevice.allowedRecords}</dd></div>
-              <div><dt>البصمات المرفوضة</dt><dd>{selectedDevice.rejectedRecords}</dd></div>
-              <div style={{ gridColumn: "1 / -1" }}><dt>User Agent</dt><dd dir="ltr">{selectedDevice.userAgent || "—"}</dd></div>
-            </dl>
-            <div className="attendance-security-device-detail-users">
-              {selectedDevice.assignments.map((assignment) => (
-                <span key={`${assignment.employeeUid}:${assignment.employeeDocId || ""}`}>
-                  {resolveAssignmentName(assignment, staffNames)}
-                  <small>{assignment.recordsCount} بصمة · {assignment.allowedCount} مقبولة · {assignment.rejectedCount} مرفوضة</small>
-                </span>
-              ))}
-            </div>
-          </aside>
-        </div>
+        <DashboardDrawerV2
+          open={Boolean(selectedDevice)}
+          onClose={() => setSelectedDevice(null)}
+          eyebrow="التفاصيل التقنية للجهاز"
+          title={primaryDeviceEmployeeName(selectedDevice, staffNames)}
+          description={friendlyDeviceName(selectedDevice)}
+          size="md"
+          tone={selectedDevice.trustStatus === "blocked" ? "danger" : selectedDevice.trustStatus === "trusted" ? "success" : "gold"}
+        >
+          <div className="dsv2-attendance-detail-status">
+            <span className={`dsv2-badge dsv2-attendance-device-status is-${selectedDevice.trustStatus}`}>{deviceStatusLabel(selectedDevice.trustStatus)}</span>
+            <strong>{friendlyDeviceName(selectedDevice)}</strong>
+          </div>
+          <dl className="dsv2-attendance-detail-list">
+            <div><dt>معرف الجهاز</dt><dd dir="ltr">{selectedDevice.deviceId}</dd></div>
+            <div><dt>المنصة</dt><dd>{selectedDevice.platform || "—"}</dd></div>
+            <div><dt>واجهة التطبيق</dt><dd>{selectedDevice.appVariant || "—"}</dd></div>
+            <div><dt>نسخة التطبيق</dt><dd>{selectedDevice.appVersion || "—"}</dd></div>
+            <div><dt>حجم الشاشة</dt><dd>{selectedDevice.screenSize || "—"}</dd></div>
+            <div><dt>اللغة</dt><dd>{selectedDevice.language || "—"}</dd></div>
+            <div><dt>المنطقة الزمنية</dt><dd>{selectedDevice.timeZone || "—"}</dd></div>
+            <div><dt>وضع التطبيق المستقل</dt><dd>{selectedDevice.standalone ? "نعم" : "لا"}</dd></div>
+            <div><dt>أول استخدام</dt><dd>{formatDateTime(selectedDevice.firstSeenAt)}</dd></div>
+            <div><dt>آخر استخدام</dt><dd>{formatDateTime(selectedDevice.lastSeenAt)}</dd></div>
+            <div><dt>البصمات المقبولة</dt><dd>{selectedDevice.allowedRecords}</dd></div>
+            <div><dt>البصمات المرفوضة</dt><dd>{selectedDevice.rejectedRecords}</dd></div>
+            <div className="dsv2-attendance-detail-wide"><dt>User Agent</dt><dd dir="ltr">{selectedDevice.userAgent || "—"}</dd></div>
+          </dl>
+          <div className="dsv2-attendance-device-detail-users">
+            {selectedDevice.assignments.map((assignment) => (
+              <span key={`${assignment.employeeUid}:${assignment.employeeDocId || ""}`}>
+                {resolveAssignmentName(assignment, staffNames)}
+                <small>{assignment.recordsCount} بصمة · {assignment.allowedCount} مقبولة · {assignment.rejectedCount} مرفوضة</small>
+              </span>
+            ))}
+          </div>
+        </DashboardDrawerV2>
       ) : null}
     </section>
   );

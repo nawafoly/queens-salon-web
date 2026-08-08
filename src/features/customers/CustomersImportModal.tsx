@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { FiUpload, FiX } from "react-icons/fi";
+import { FiUpload } from "react-icons/fi";
 import * as XLSX from "xlsx";
-import Modal from "../../components/Modal";
+import { DashboardModalV2 } from "../../components/dashboard-v2";
 import { CoreClientService } from "../../services/CoreClientService";
 import type { CoreClient } from "../../types/coreApi";
 import {
@@ -129,30 +129,39 @@ export default function CustomersImportModal({ open, existingClients, onClose, o
   };
 
   return (
-    <Modal open={open} onClose={resetAndClose} ariaLabel="استيراد عميلات من Excel" panelClassName="customers-import-modal" size="lg">
-      <header className="customers-modal-header">
-        <div><p className="customers-eyebrow">دمج آمن</p><h2>استيراد عميلات من Excel</h2><p>تتم المطابقة برقم الجوال من دون حذف أي سجل.</p></div>
-        <button type="button" onClick={resetAndClose} disabled={importing} aria-label="إغلاق"><FiX /></button>
-      </header>
-      <div className="customers-modal-body">
-        {error ? <div className="customers-inline-error">{error}</div> : null}
-        <label className="customers-file-picker">
+    <DashboardModalV2
+      open={open}
+      onClose={resetAndClose}
+      title="استيراد عميلات من Excel"
+      description="تتم المطابقة برقم الجوال من دون حذف أي سجل."
+      eyebrow="دمج آمن"
+      size="lg"
+      tone="gold"
+      closeOnBackdrop={!importing}
+      closeOnEscape={!importing}
+      className="dsv2-customers-import-modal"
+      footer={
+        <>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={resetAndClose} disabled={importing}>إلغاء</button>
+          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void commitImport()} disabled={importing || !preview.length}>{importing ? "جارٍ الحفظ والدمج" : "حفظ ودمج"}</button>
+        </>
+      }
+    >
+      <div className="dsv2-customers-modal-stack">
+        {error ? <div className="dsv2-customers-inline-error">{error}</div> : null}
+        <label className="dsv2-customers-file-picker">
           <FiUpload />
           <span><strong>اختاري ملف Excel</strong><small>الأعمدة المدعومة: الاسم، الجوال، VIP، ملاحظة.</small></span>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={(event) => { const file = event.target.files?.[0]; if (file) pickFile(file); }} disabled={importing} />
         </label>
         {preview.length ? (
-          <section className="customers-import-preview">
-            <header><div><h3>معاينة البيانات</h3><p>سيتم دمج {preview.length.toLocaleString("ar-SA")} عميلة اعتمادًا على رقم الجوال.</p></div></header>
-            <div><table><thead><tr><th>الاسم</th><th>الجوال</th><th>VIP</th><th>ملاحظة</th></tr></thead><tbody>{preview.slice(0, 80).map((row) => <tr key={row.digits}><td>{row.name}</td><td><bdi dir="ltr">{row.phone}</bdi></td><td>{row.vip ? "VIP" : "عادية"}</td><td>{row.note || "—"}</td></tr>)}</tbody></table></div>
+          <section className="dsv2-table-card dsv2-customers-import-preview">
+            <header className="dsv2-card--padded"><div><h3 className="dsv2-section-title">معاينة البيانات</h3><p className="dsv2-section-caption">سيتم دمج {preview.length.toLocaleString("ar-SA")} عميلة اعتمادًا على رقم الجوال.</p></div></header>
+            <div className="dsv2-table-scroll"><table className="dsv2-table"><thead><tr><th>الاسم</th><th>الجوال</th><th>VIP</th><th>ملاحظة</th></tr></thead><tbody>{preview.slice(0, 80).map((row) => <tr key={row.digits}><td>{row.name}</td><td><bdi dir="ltr">{row.phone}</bdi></td><td>{row.vip ? "VIP" : "عادية"}</td><td>{row.note || "—"}</td></tr>)}</tbody></table></div>
             {preview.length > 80 ? <p>تم عرض أول 80 صفًا من {preview.length.toLocaleString("ar-SA")}.</p> : null}
           </section>
         ) : null}
-        <footer className="customers-modal-actions">
-          <button type="button" className="customers-button is-secondary" onClick={resetAndClose} disabled={importing}>إلغاء</button>
-          <button type="button" className="customers-button is-primary" onClick={() => void commitImport()} disabled={importing || !preview.length}>{importing ? "جارٍ الحفظ والدمج" : "حفظ ودمج"}</button>
-        </footer>
       </div>
-    </Modal>
+    </DashboardModalV2>
   );
 }

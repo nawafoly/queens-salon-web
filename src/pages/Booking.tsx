@@ -178,8 +178,8 @@ import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 
 import {
   isStaffAvailableForDate,
+  isStaffBookableForPublicBooking,
   filterStaffSlotsByWorkingHours,
-  isStaffEmploymentEndedForDate,
   resolveStaffWorkingWindowsForDate,
   type ResolvedStaffWorkingWindowRange,
 } from "../helpers/staffAvailability";
@@ -3263,7 +3263,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const isFresh = Date.now() - Number(staffAllCacheLoadedAtRef.current || 0) < STAFF_DISPLAY_CACHE_TTL_MS;
     if (!forceRefresh && isFresh && Array.isArray(staffAllCacheRef.current)) return staffAllCacheRef.current;
     const all = await listActiveStaffAll(SALON_ID, "core");
-    staffAllCacheRef.current = Array.isArray(all) ? all : [];
+    staffAllCacheRef.current = (Array.isArray(all) ? all : []).filter((st: any) =>
+      isStaffBookableForPublicBooking(st)
+    );
     staffAllCacheLoadedAtRef.current = Date.now();
     return staffAllCacheRef.current;
   };
@@ -3309,7 +3311,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         });
         const directStaff = directCoreRows
           .map(coreStaffToLegacy)
-          .filter((st: any) => st?.showOnBooking !== false);
+          .filter((st: any) => isStaffBookableForPublicBooking(st));
 
         // staff_services is the authoritative assignment table in Core D1.
         // Keep the legacy specialty matcher only as migration compatibility.
@@ -3317,8 +3319,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       }
 
       const all = await getAllActiveStaffCached(forceRefresh);
-      const visibleStaff = (all || []).filter(
-        (st: any) => st?.showOnBooking !== false
+      const visibleStaff = (all || []).filter((st: any) =>
+        isStaffBookableForPublicBooking(st)
       );
 
       const matchesAny = visibleStaff.filter(
@@ -3587,7 +3589,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const sv = getServiceById(step.serviceId);
       const staffRaw = await listStaffForService(step.serviceId, sv);
       const staffList = (staffRaw || []).filter((st: any) =>
-        isStaffAvailableForDate(st, dateISO, { requireShowOnBooking: false })
+        isStaffBookableForPublicBooking(st, dateISO) &&
+        isStaffAvailableForDate(st, dateISO)
       );
       if (!staffList.length) {
         return { ok: false as const, reason: "NO_STAFF", failedIndex: idx };
@@ -4539,7 +4542,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
           const normalized = (res || []).filter((st: any) =>
             Boolean(String(st?.name || "").trim())
-          );
+          ).filter((st: any) => isStaffBookableForPublicBooking(st));
 
           setStaffByService((p) => ({ ...p, [sid]: normalized }));
           staffByServiceLoadedAtRef.current[sid] = Date.now();
@@ -4619,6 +4622,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (err) errors.add(err);
 
         const list = ((staffByService[sid] || []) as StaffPublicWithId[]).filter((st: any) => {
+          if (!isStaffBookableForPublicBooking(st, dateISO)) return false;
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           return !leave.isOnLeave;
         });
@@ -4721,6 +4725,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             const rows = await listStaffForService(sid, getServiceById(sid));
             const filtered = (rows || []).filter((st: any) => {
               if (!String((st as any)?.name || "").trim()) return false;
+              if (!isStaffBookableForPublicBooking(st, dateISO)) return false;
               const leave = getStaffLeaveMetaForDate(st, dateISO);
               return !leave.isOnLeave;
             });
@@ -4865,6 +4870,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       (st: any) => String(st?.id || "").trim() === employeeId
     );
     if (!selectedStaff) return;
+    if (!isStaffBookableForPublicBooking(selectedStaff as any, dateISO)) return;
 
     const employeeKey =
       String((selectedStaff as any)?.linkedUid || "").trim() ||
@@ -4971,6 +4977,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       (st: any) => String(st?.id || "").trim() === employeeId
     );
     if (!selectedStaff) return;
+    if (!isStaffBookableForPublicBooking(selectedStaff as any, dateISO)) {
+      openModal({
+        title: "الموظفة غير متاحة للحجز",
+        message: "الموظفة المختارة لم تعد متاحة للحجوزات الجديدة. اختاري موظفة أخرى.",
+        variant: "danger",
+      });
+      return;
+    }
 
     const employeeKey =
       String((selectedStaff as any)?.linkedUid || "").trim() ||
@@ -5046,17 +5060,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (currentStep !== 2) return;
     let cancelled = false;
 
-    const isInactiveForBooking = (staff: StaffPublicWithId) => {
-      const statusRaw = String((staff as any)?.status || "").trim().toLowerCase();
-      return (
-        (staff as any)?.active === false ||
-        (staff as any)?.showOnBooking === false ||
-        statusRaw === "inactive" ||
-        statusRaw === "disabled" ||
-        statusRaw === "suspended"
-      );
-    };
-
     async function ensureDefaultStaffSelection() {
       const items = formData.items || [];
       if (!items.length) return;
@@ -5086,14 +5089,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter(
-          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter((st) =>
+          isStaffBookableForPublicBooking(st as any, dateISO)
         );
 
         const candidateStaff = bookingVisibleStaff.filter((st) => {
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           if (leave.isOnLeave) return false;
-          if (isInactiveForBooking(st)) return false;
           const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
             dateISO,
             slots: baseSlotsForDate,
@@ -5266,8 +5268,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
         if (!serviceStaff.length) continue;
 
-        const bookingVisibleStaff = serviceStaff.filter(
-          (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+        const bookingVisibleStaff = serviceStaff.filter((st) =>
+          isStaffBookableForPublicBooking(st as any, dateISO)
         );
         if (!bookingVisibleStaff.length) continue;
 
@@ -5282,13 +5284,6 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             (async () => {
               if (cancelled) return;
               const leave = getStaffLeaveMetaForDate(st as any, dateISO);
-              const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
-              const isInactive =
-                (st as any)?.active === false ||
-                (st as any)?.showOnBooking === false ||
-                statusRaw === "inactive" ||
-                statusRaw === "disabled" ||
-                statusRaw === "suspended";
               const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
                 dateISO,
                 slots: baseSlotsForDate,
@@ -5296,7 +5291,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                 fallbackCloseTime: dayCloseTime,
               });
 
-              if (leave.isOnLeave || isInactive || !workingSlots.length) {
+              if (leave.isOnLeave || !workingSlots.length) {
                 nextState[itemId][empId] = false;
                 return;
               }
@@ -5590,11 +5585,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return [] as { date: string; times: string[] }[];
     }
 
-    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    let staffList = ((staffByService[serviceId] || []) as StaffPublicWithId[]).filter((st: any) =>
+      isStaffBookableForPublicBooking(st)
+    );
     const hasStaffCache = Object.prototype.hasOwnProperty.call(staffByService, serviceId);
     if (!hasStaffCache) {
       const res = await listStaffForService(serviceId, sv);
-      staffList = (res || []).filter((st: any) => String(st?.name || "").trim()) as any;
+      staffList = (res || [])
+        .filter((st: any) => String(st?.name || "").trim())
+        .filter((st: any) => isStaffBookableForPublicBooking(st)) as any;
 
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
@@ -5626,7 +5625,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
         const employeeIdFallback = String(staff?.id || "").trim();
         const fixedAvailable = staff
-          ? isStaffAvailableForDate(staff as any, dateISO, { requireShowOnBooking: false })
+          ? isStaffBookableForPublicBooking(staff as any, dateISO) &&
+            isStaffAvailableForDate(staff as any, dateISO)
           : false;
         if (!fixedAvailable) continue;
 
@@ -5698,10 +5698,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       DEFAULT_SERVICE_DURATION_MIN
     );
 
-    let staffList = (staffByService[serviceId] || []) as StaffPublicWithId[];
+    let staffList = ((staffByService[serviceId] || []) as StaffPublicWithId[]).filter((st: any) =>
+      isStaffBookableForPublicBooking(st)
+    );
     if (!Object.prototype.hasOwnProperty.call(staffByService, serviceId)) {
       const res = await listStaffForService(serviceId, sv);
-      staffList = (res || []) as StaffPublicWithId[];
+      staffList = (res || []).filter((st: any) =>
+        isStaffBookableForPublicBooking(st)
+      ) as StaffPublicWithId[];
       setStaffByService((p) => ({ ...p, [serviceId]: staffList }));
     }
 
@@ -5710,6 +5714,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       staffList.find((s: any) => String(s.linkedUid || s.id || "").trim() === fixedKey) ||
       staffList.find((s: any) => String(s.id || "").trim() === fixedKey) ||
       null;
+
+    if (chosenStaff && !isStaffBookableForPublicBooking(chosenStaff as any, chosenDate)) {
+      chosenStaff = null;
+    }
 
     if (chosenStaff) {
       const chosenKey =
@@ -6463,6 +6471,27 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   // ✅ Slot check for one item
   // ✅ FIX: فحص تعارض السلة قبل طلب Core
   // =========================
+  const cartItemMatchesStaff = (staff: StaffPublicWithId, item: CartItem) => {
+    const staffId = String((staff as any)?.id || "").trim();
+    const staffUid = String((staff as any)?.linkedUid || "").trim();
+    const itemEmployeeId = String(item.employeeId || "").trim();
+    const itemEmployeeUid = String(item.employeeUid || "").trim();
+    return (
+      (!!itemEmployeeId && (itemEmployeeId === staffId || itemEmployeeId === staffUid)) ||
+      (!!itemEmployeeUid && (itemEmployeeUid === staffUid || itemEmployeeUid === staffId))
+    );
+  };
+
+  const findStaffForCartItem = (
+    staffList: StaffPublicWithId[],
+    item: CartItem
+  ) => {
+    return (
+      (staffList || []).find((staff) => cartItemMatchesStaff(staff, item)) ||
+      null
+    );
+  };
+
   const checkOneItemSlot = async (it: CartItem) => {
     const employeeKey = resolveEmployeeKey(it);
     const date = String(it.date || "").trim();
@@ -6498,8 +6527,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         String((it as any)?.serviceName || "").trim()
       ) || String(it.serviceId || "").trim();
     const staffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
-    const staff = staffList.find((s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim());
+    const staff = findStaffForCartItem(staffList, it);
     if (staff) {
+      if (!isStaffBookableForPublicBooking(staff as any, date)) {
+        return { ok: false, msg: "الموظفة المختارة لم تعد متاحة للحجوزات الجديدة." };
+      }
       const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
         dateISO: date,
         fallbackOpenTime: dayOpenTime,
@@ -6763,6 +6795,60 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       return;
     }
 
+    const unavailableStaffItem = (
+      await Promise.all(
+        items.map(async (it) => {
+          if (isSequentialOfferItem(it)) return null;
+
+          const d = String(it.date || bookingDate || "").trim();
+          const hasSelectedStaff =
+            !!String(it.employeeId || "").trim() ||
+            !!String(it.employeeUid || "").trim();
+          if (!d || !hasSelectedStaff) return null;
+
+          const serviceKey =
+            resolveCanonicalServiceId(
+              String(it.serviceId || "").trim(),
+              String((it as any)?.serviceName || "").trim()
+            ) || String(it.serviceId || "").trim();
+          if (!serviceKey) return null;
+
+          const cachedStaffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
+          const cachedStaff = findStaffForCartItem(cachedStaffList, it);
+          if (cachedStaff && isStaffBookableForPublicBooking(cachedStaff as any, d)) {
+            return null;
+          }
+
+          const freshRows = await listStaffForService(
+            serviceKey,
+            getServiceById(serviceKey),
+            true
+          ).catch(() => [] as StaffPublicWithId[]);
+          const freshBookableRows = (freshRows || [])
+            .filter((st: any) => String(st?.name || "").trim())
+            .filter((st: any) => isStaffBookableForPublicBooking(st, d));
+
+          setStaffByService((prev) => ({
+            ...prev,
+            [serviceKey]: freshBookableRows,
+          }));
+
+          const freshStaff = findStaffForCartItem(freshBookableRows, it);
+          return freshStaff ? null : it;
+        })
+      )
+    ).find(Boolean);
+
+    if (unavailableStaffItem) {
+      openModal({
+        title: "الموظفة غير متاحة للحجز",
+        message: `الموظفة "${String(unavailableStaffItem.employeeName || "المختارة").trim()}" لم تعد متاحة للحجوزات الجديدة. اختاري موظفة أخرى للخدمة "${String(unavailableStaffItem.serviceName || "الخدمة").trim()}".`,
+        variant: "danger",
+        confirmText: "حسنًا",
+      });
+      return;
+    }
+
     const outOfHoursItem = items.find((it) => {
       const d = String(it.date || bookingDate || "").trim();
       const t = String(it.time || "").trim();
@@ -6789,10 +6875,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           String((it as any)?.serviceName || "").trim()
         ) || String(it.serviceId || "").trim();
       const staffList = (staffByService[serviceKey] || []) as StaffPublicWithId[];
-      const staff = staffList.find(
-        (s: any) => String(s?.id || "").trim() === String(it.employeeId || "").trim()
-      );
+      const staff = findStaffForCartItem(staffList, it);
       if (!staff) return false;
+      if (!isStaffBookableForPublicBooking(staff as any, d)) return true;
       const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
         dateISO: d,
         fallbackOpenTime: dayOpenTime,
@@ -9684,8 +9769,8 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               String((it as any)?.serviceName || "").trim()
                             ) || String(it.serviceId || "").trim();
                           const serviceStaff = staffByService[serviceKeyForStaff] || [];
-                          const bookingVisibleStaff = serviceStaff.filter(
-                            (st) => !isStaffEmploymentEndedForDate(st as any, dateISO)
+                          const bookingVisibleStaff = serviceStaff.filter((st) =>
+                            isStaffBookableForPublicBooking(st as any, dateISO)
                           );
                           const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                             const leave = getStaffLeaveMetaForDate(st, dateISO);
@@ -9695,18 +9780,11 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               fallbackOpenTime: dayOpenTimeForItem,
                               fallbackCloseTime: dayCloseTimeForItem,
                             });
-                            const statusRaw = String((st as any)?.status || "").trim().toLowerCase();
-                            const isInactive =
-                              (st as any)?.active === false ||
-                              (st as any)?.showOnBooking === false ||
-                              statusRaw === "inactive" ||
-                              statusRaw === "disabled" ||
-                              statusRaw === "suspended";
                             return {
                               staff: st,
                               leave,
                               hasWorkingHours: workingSlots.length > 0,
-                              isInactive,
+                              isInactive: false,
                             };
                           });
                           const activeVisibleStaff = staffWithLeaveMeta
@@ -9723,7 +9801,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           );
                           const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
                           const quickEligibility = packageRunId ? packageQuickEligibilityByRun[packageRunId] : undefined;
-                          const quickCommonStaff = quickEligibility?.commonStaff || [];
+                          const quickCommonStaff = (quickEligibility?.commonStaff || []).filter((st: any) =>
+                            isStaffBookableForPublicBooking(st, dateISO)
+                          );
                           const quickLoading = !!quickEligibility?.loading;
                           const isPackageRunLeader =
                             !!packageRunMeta &&

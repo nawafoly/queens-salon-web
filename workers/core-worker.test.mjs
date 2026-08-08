@@ -44,6 +44,7 @@ class FakeD1 {
       "user_permissions",
       "user_employee_links",
       "employee_profiles",
+      "employee_employment",
       "attendance_records",
       "employee_absences",
       "payroll_periods",
@@ -64,6 +65,7 @@ class FakeD1 {
     if (table === "role_permissions") return `${row.salon_id}\u0000${row.role_key}\u0000${row.permission_key}`;
     if (table === "user_employee_links") return `${row.salon_id}\u0000${row.id}`;
     if (table === "employee_profiles") return `${row.salon_id}\u0000${row.id}`;
+    if (table === "employee_employment") return `${row.salon_id}\u0000${row.employee_id}`;
     return row.id;
   }
 
@@ -3764,6 +3766,36 @@ test("authenticated client can load public /booking data without operations perm
   fake.seed("staff", {
     id: "hidden-staff", salon_id: "main", firebase_uid: "staff-hidden", name: "Hidden Staff",
     active: 1, show_on_booking: 0, employment_status: "active", created_at: now, updated_at: now,
+  });
+  fake.seed("staff", {
+    id: "inactive-staff", salon_id: "main", firebase_uid: "staff-inactive", name: "Inactive Staff",
+    active: 1, show_on_booking: 1, employment_status: "inactive", created_at: now, updated_at: now,
+  });
+  fake.seed("staff", {
+    id: "hr-inactive-staff", salon_id: "main", firebase_uid: "staff-hr-inactive", name: "HR Inactive Staff",
+    active: 1, show_on_booking: 1, employment_status: "active", created_at: now, updated_at: now,
+  });
+  fake.seed("staff", {
+    id: "disabled-account-staff", salon_id: "main", firebase_uid: "staff-disabled-account", name: "Disabled Account Staff",
+    active: 1, show_on_booking: 1, employment_status: "active", created_at: now, updated_at: now,
+  });
+  fake.seed("app_users", {
+    id: "user-disabled-account-staff", salon_id: "main", firebase_uid: "staff-disabled-account",
+    email: "disabled-staff@example.com", display_name: "Disabled Account Staff", primary_role: "staff",
+    status: "disabled", email_verified: 1, created_at: now, updated_at: now,
+  });
+  fake.seed("user_employee_links", {
+    id: "link-disabled-account-staff", salon_id: "main",
+    user_id: "user-disabled-account-staff", employee_id: "disabled-account-staff",
+    link_status: "active", linked_at: now, updated_at: now,
+  });
+  fake.seed("employee_profiles", {
+    id: "hr-inactive-staff", salon_id: "main", firebase_uid: "staff-hr-inactive", name: "HR Inactive Staff",
+    status: "inactive", created_at: now, updated_at: now,
+  });
+  fake.seed("employee_employment", {
+    salon_id: "main", employee_id: "hr-inactive-staff", employment_status: "inactive",
+    created_at: now, updated_at: now,
   });
   fake.seed("discounts", {
     id: "visible-offer", salon_id: "main", code: "VISIBLE", code_key: "VISIBLE", name: "Visible Offer",

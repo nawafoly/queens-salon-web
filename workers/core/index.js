@@ -27,6 +27,7 @@ import {
   getStaff,
   listStaff,
   patchStaff,
+  staffIsPubliclyBookable,
 } from './repositories/staff.js';
 import {
   cancelBooking,
@@ -492,7 +493,7 @@ function publicDiscountIsVisible(row, nowMs = Date.now()) {
 }
 
 function publicStaffIsVisible(row) {
-  return Number(row?.active) === 1 && Number(row?.show_on_booking ?? 1) === 1 && cleanText(row?.employment_status || "active") !== "terminated";
+  return staffIsPubliclyBookable(row);
 }
 
 async function dispatch(ctx, route, method, body, query, env) {

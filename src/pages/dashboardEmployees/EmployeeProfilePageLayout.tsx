@@ -1,5 +1,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { createPortal } from "react-dom";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
 import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import {
@@ -8,13 +9,6 @@ import {
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
-
-const CENTRAL_SAVE_TABS = new Set<EmployeeSplitTab>([
-  "basic",
-  "profile",
-  "services",
-  "booking",
-]);
 
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
   if (!props.isOpen || !props.editId || !props.editingStaff) return null;
@@ -25,8 +19,8 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
   const activeTab = tabs.find((tab) => tab.key === props.activeTab);
   const activeLabel = activeTab?.label || "البيانات الأساسية";
   const activeHint = activeTab?.hint || "إدارة بيانات الموظفة";
-  const usesCentralSave = CENTRAL_SAVE_TABS.has(props.activeTab || "basic");
-  const showSavebar = props.canManage && usesCentralSave;
+  const hasUnsavedChanges = props.canManage && !!props.hasUnsavedChanges;
+  const showSavebar = props.canManage && (hasUnsavedChanges || props.saving);
 
   const handleCancel = () => {
     (props.onCancelEdit || props.onClose)?.();
@@ -35,6 +29,63 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
   const handleSave = () => {
     props.onSave?.();
   };
+
+  const savebar = (
+    <div className="dashboard-v2 dsv2-page dsv2-floating-root employees-v2-savebar-root" aria-hidden={!showSavebar}>
+      <footer className="dsv2-ew-savebar employees-v2-profile-savebar" data-dirty={showSavebar ? "true" : "false"}>
+        <div className="dsv2-ew-savebar__status">
+          <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
+          <div>
+            <strong>{props.saving ? "جاري حفظ التغييرات" : "توجد تعديلات غير محفوظة"}</strong>
+            <small>
+              {props.saving
+                ? "يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي."
+                : "اضغط حفظ التغييرات لتثبيت القيم الحالية."}
+            </small>
+          </div>
+        </div>
+
+        <div className="dsv2-ew-savebar__actions">
+          {props.canManage && props.canDelete && props.onDelete ? (
+            <button
+              className="dsv2-btn dsv2-btn--danger"
+              type="button"
+              onClick={props.onDelete}
+              disabled={props.busy || !showSavebar}
+              data-dsv2-ignore-dirty="true"
+            >
+              <FontAwesomeIcon icon={faTrash} />
+              أرشفة الموظفة
+            </button>
+          ) : null}
+
+          <button
+            className="dsv2-btn dsv2-btn--secondary"
+            type="button"
+            onClick={handleCancel}
+            disabled={props.busy || !showSavebar}
+            data-dsv2-ignore-dirty="true"
+          >
+            إلغاء التعديلات
+          </button>
+
+          {showSavebar ? (
+            <button
+              className="dsv2-btn dsv2-btn--primary"
+              type="button"
+              onClick={handleSave}
+              disabled={props.busy}
+              data-dsv2-ignore-dirty="true"
+            >
+              {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+            </button>
+          ) : null}
+        </div>
+      </footer>
+    </div>
+  );
+  const savebarPortal =
+    typeof document === "undefined" ? savebar : createPortal(savebar, document.body);
 
   return (
     <section
@@ -157,56 +208,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         </fieldset>
       </main>
 
-      <footer className="dsv2-ew-savebar" data-dirty={showSavebar || props.saving ? "true" : "false"}>
-        <div className="dsv2-ew-savebar__status">
-          <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
-          <div>
-            <strong>{props.saving ? "جاري حفظ التغييرات" : "الحفظ متاح لهذا القسم"}</strong>
-            <small>
-              {props.saving
-                ? "يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي."
-                : "بعد أي تعديل اضغط حفظ التغييرات لتثبيت البيانات."}
-            </small>
-          </div>
-        </div>
-
-        <div className="dsv2-ew-savebar__actions">
-          {props.canManage && props.canDelete && props.onDelete ? (
-            <button
-              className="dsv2-btn dsv2-btn--danger"
-              type="button"
-              onClick={props.onDelete}
-              disabled={props.busy}
-              data-dsv2-ignore-dirty="true"
-            >
-              <FontAwesomeIcon icon={faTrash} />
-              أرشفة الموظفة
-            </button>
-          ) : null}
-
-          <button
-            className="dsv2-btn dsv2-btn--secondary"
-            type="button"
-            onClick={handleCancel}
-            disabled={props.busy}
-            data-dsv2-ignore-dirty="true"
-          >
-            إلغاء التعديلات
-          </button>
-
-          {showSavebar ? (
-            <button
-              className="dsv2-btn dsv2-btn--primary"
-              type="button"
-              onClick={handleSave}
-              disabled={props.busy}
-              data-dsv2-ignore-dirty="true"
-            >
-              {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
-            </button>
-          ) : null}
-        </div>
-      </footer>
+      {savebarPortal}
     </section>
   );
 }

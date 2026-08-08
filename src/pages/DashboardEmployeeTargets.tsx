@@ -2,14 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   FiActivity,
+  FiCalendar,
   FiCheckCircle,
   FiEdit3,
   FiRefreshCw,
   FiTarget,
   FiTrendingUp,
-  FiX,
 } from "react-icons/fi";
 
+import {
+  DashboardDatePickerV2,
+  DashboardDrawerV2,
+  DashboardSelectV2,
+} from "../components/dashboard-v2";
 import { payrollMonthBounds } from "../helpers/hr/payrollCalculations";
 import { usePermissions } from "../security/PermissionContext";
 import { CoreHrService } from "../services/CoreHrService";
@@ -21,12 +26,21 @@ import {
   type EmployeeTargetPlan,
 } from "../services/CoreEmployeeTargetService";
 import type { CoreHrEmployee } from "../types/hrCoreApi";
-import "../styles/DashboardEmployeeTargets.css";
 
 const DEFAULT_TIERS = [
   { target: 10_000, bonus: 300 },
   { target: 15_000, bonus: 600 },
   { target: 20_000, bonus: 1_000 },
+];
+
+const monthOptions = Array.from({ length: 12 }, (_, index) => {
+  const value = String(index + 1);
+  return { value, label: value.padStart(2, "0") };
+});
+
+const bonusTypeOptions = [
+  { value: "fixed", label: "مبلغ ثابت" },
+  { value: "percentage", label: "نسبة من المبيعات" },
 ];
 
 function currentPayrollParts() {
@@ -251,11 +265,36 @@ export default function DashboardEmployeeTargets() {
     [dashboard?.rows, employees]
   );
   const topCards = [
-    { label: "المبيعات المؤهلة", value: formatMoney(dashboard?.summary.totalEligibleSales), icon: FiTrendingUp },
-    { label: "مبيعات غير مسندة", value: formatMoney(dashboard?.summary.unassignedSales), icon: FiActivity },
-    { label: "حققت التارقت", value: String(dashboard?.summary.achievedCount || 0), icon: FiCheckCircle },
-    { label: "البونص المتوقع", value: formatMoney(dashboard?.summary.expectedBonuses), icon: FiTarget },
-    { label: "قريبة من الشريحة", value: String(dashboard?.summary.closeToNextTierCount || 0), icon: FiActivity },
+    {
+      label: "المبيعات المؤهلة",
+      value: formatMoney(dashboard?.summary.totalEligibleSales),
+      icon: FiTrendingUp,
+      tone: "dsv2-metric-card--gold",
+    },
+    {
+      label: "مبيعات غير مسندة",
+      value: formatMoney(dashboard?.summary.unassignedSales),
+      icon: FiActivity,
+      tone: "dsv2-metric-card--danger",
+    },
+    {
+      label: "حققت التارقت",
+      value: String(dashboard?.summary.achievedCount || 0),
+      icon: FiCheckCircle,
+      tone: "dsv2-metric-card--success",
+    },
+    {
+      label: "البونص المتوقع",
+      value: formatMoney(dashboard?.summary.expectedBonuses),
+      icon: FiTarget,
+      tone: "dsv2-metric-card--dark",
+    },
+    {
+      label: "قريبة من الشريحة",
+      value: String(dashboard?.summary.closeToNextTierCount || 0),
+      icon: FiActivity,
+      tone: "dsv2-metric-card--gold",
+    },
   ];
 
   const openDetails = async (row: EmployeeTargetDashboardRow) => {
@@ -339,70 +378,123 @@ export default function DashboardEmployeeTargets() {
   };
 
   const selectedPlanId = plans.find((plan) => plan.id === planDraft.id)?.id || "";
+  const planOptions = useMemo(
+    () => [
+      { value: "", label: "خطة جديدة" },
+      ...plans.map((plan) => ({ value: plan.id, label: plan.name })),
+    ],
+    [plans]
+  );
+  const employeeOptions = useMemo(
+    () => [
+      { value: "", label: "اختيار موظفة" },
+      ...employees.map((employee) => ({ value: employee.id, label: employee.name || employee.id })),
+    ],
+    [employees]
+  );
+  const selectedLedger = ((details?.ledger || selected?.ledger || []) as EmployeeTargetLedgerRow[]);
+  const renderProgress = (row: EmployeeTargetDashboardRow) => {
+    const percent = progressPercent(row);
+    return (
+      <div className="dsv2-targets-progress-stack">
+        <progress
+          className="dsv2-targets-progress"
+          value={percent}
+          max={100}
+          aria-label={`نسبة تقدم ${row.employeeName}`}
+        />
+        <small>{percent}%، المتبقي {formatMoney(row.remainingToNextTier)}</small>
+      </div>
+    );
+  };
 
   return (
-    <section className="targets-page" dir="rtl">
-      <header className="targets-hero">
+    <main className="dsv2-page dsv2-targets-page" dir="rtl">
+      <header className="dsv2-page-head dsv2-targets-page-head">
         <div>
-          <span>Employee Sales Targets</span>
-          <h1>تارقت الموظفات وبونص المبيعات</h1>
-          <p>احتساب من خدمات Core D1 المكتملة، الخصومات، التحصيل، الباقات، والاسترجاعات ثم ترحيله للرواتب.</p>
+          <p className="dsv2-targets-eyebrow">Employee Sales Targets</p>
+          <h1 className="dsv2-page-title">تارقت الموظفات وبونص المبيعات</h1>
+          <p className="dsv2-page-subtitle">
+            احتساب من خدمات Core D1 المكتملة، الخصومات، التحصيل، الباقات، والاسترجاعات ثم ترحيله للرواتب.
+          </p>
         </div>
-        <button type="button" onClick={rebuild} disabled={!canManage || working}>
-          <FiRefreshCw className={working ? "is-spinning" : ""} />
-          تحديث المبيعات
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--primary dsv2-targets-rebuild"
+          onClick={rebuild}
+          disabled={!canManage || working}
+        >
+          <FiRefreshCw className={working ? "dsv2-targets-spin" : ""} />
+          {working ? "جار التحديث" : "تحديث المبيعات"}
         </button>
       </header>
 
-      <div className="targets-toolbar">
-        <label>
-          <span>السنة</span>
-          <input type="number" value={year} onChange={(event) => setYear(Number(event.target.value) || initial.year)} />
+      <section className="dsv2-card dsv2-card--padded dsv2-targets-toolbar" aria-label="فترة التارقت">
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">السنة</span>
+          <input
+            className="dsv2-input"
+            type="number"
+            value={year}
+            onChange={(event) => setYear(Number(event.target.value) || initial.year)}
+          />
         </label>
-        <label>
-          <span>الشهر</span>
-          <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
-              <option key={value} value={value}>{String(value).padStart(2, "0")}</option>
-            ))}
-          </select>
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">الشهر</span>
+          <DashboardSelectV2
+            value={String(month)}
+            options={monthOptions}
+            onChange={(value) => setMonth(Number(value))}
+          />
         </label>
-        <div className="targets-period">
+        <div className="dsv2-targets-period">
+          <FiCalendar aria-hidden="true" />
           <span>{payrollBounds.payrollMonth}</span>
           <strong>{payrollBounds.monthStart} إلى {payrollBounds.monthEnd}</strong>
         </div>
-      </div>
+      </section>
 
-      {error ? <div className="targets-alert is-error">{error}</div> : null}
-      {message ? <div className="targets-alert">{message}</div> : null}
+      {error ? <div className="dsv2-targets-alert dsv2-targets-alert--error" role="alert">{error}</div> : null}
+      {message ? <div className="dsv2-targets-alert" role="status">{message}</div> : null}
       {!hasAnyPermission(["targets.manage", "targets.adjust"]) ? (
-        <div className="targets-alert is-readonly">وضع قراءة فقط: يمكنك مراجعة التارقت والبونص المتوقع دون تعديل.</div>
+        <div className="dsv2-targets-alert dsv2-targets-alert--readonly" role="status">
+          وضع قراءة فقط: يمكنك مراجعة التارقت والبونص المتوقع دون تعديل.
+        </div>
       ) : null}
 
-      <div className="targets-summary-grid">
+      <section className="dsv2-grid--metrics dsv2-targets-summary-grid" aria-label="ملخص التارقت">
         {topCards.map((card) => {
           const Icon = card.icon;
           return (
-            <article key={card.label}>
-              <Icon />
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
+            <article key={card.label} className={`dsv2-metric-card ${card.tone} dsv2-targets-metric`}>
+              <span className="dsv2-metric-card__icon"><Icon /></span>
+              <div>
+                <p className="dsv2-metric-card__label">{card.label}</p>
+                <p className="dsv2-metric-card__value">
+                  {loading ? <span className="dsv2-skeleton dsv2-targets-skeleton-value" /> : card.value}
+                </p>
+              </div>
             </article>
           );
         })}
-      </div>
+      </section>
 
-      <div className="targets-layout">
-        <section className="targets-main-panel">
-          <div className="targets-panel-head">
+      <div className="dsv2-targets-layout">
+        <section className="dsv2-table-card dsv2-targets-main-panel" aria-labelledby="employee-targets-progress-title">
+          <div className="dsv2-card--padded dsv2-targets-panel-head">
             <div>
-              <h2>تقدم الموظفات</h2>
-              <p>{dashboard?.summary.topEmployee ? `الأعلى: ${dashboard.summary.topEmployee.employeeName}` : "لا توجد حركات مؤهلة حتى الآن."}</p>
+              <p className="dsv2-targets-eyebrow">أداء الشهر</p>
+              <h2 id="employee-targets-progress-title" className="dsv2-section-title">تقدم الموظفات</h2>
+              <p className="dsv2-section-caption">
+                {dashboard?.summary.topEmployee
+                  ? `الأعلى: ${dashboard.summary.topEmployee.employeeName}`
+                  : "لا توجد حركات مؤهلة حتى الآن."}
+              </p>
             </div>
           </div>
 
-          <div className="targets-table-wrap">
-            <table className="targets-table">
+          <div className="dsv2-table-scroll">
+            <table className="dsv2-table dsv2-targets-table">
               <thead>
                 <tr>
                   <th>الموظفة</th>
@@ -417,35 +509,50 @@ export default function DashboardEmployeeTargets() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8}>جاري تحميل تارقت الموظفات...</td></tr>
+                  <tr>
+                    <td colSpan={8} className="dsv2-targets-empty-cell">
+                      <span className="dsv2-skeleton dsv2-skeleton--title" />
+                      <span className="dsv2-skeleton" />
+                      <span className="dsv2-sr-only">جاري تحميل تارقت الموظفات...</span>
+                    </td>
+                  </tr>
                 ) : rows.length ? rows.map((row) => (
                   <tr key={row.employeeId}>
-                    <td><strong>{row.employeeName}</strong><small>{row.employeeId}</small></td>
-                    <td>{row.plan?.name || "لا توجد خطة"}</td>
-                    <td><strong>{formatMoney(targetAmountForRow(row))}</strong></td>
-                    <td>{formatMoney(row.netTargetAmount)}</td>
                     <td>
-                      <div className="targets-progress">
-                        <span style={{ width: `${progressPercent(row)}%` }} />
-                      </div>
-                      <small>{progressPercent(row)}% · المتبقي {formatMoney(row.remainingToNextTier)}</small>
+                      <span className="dsv2-table__primary">{row.employeeName}</span>
+                      <span className="dsv2-table__secondary" dir="ltr">{row.employeeId}</span>
                     </td>
+                    <td>{row.plan?.name || "لا توجد خطة"}</td>
+                    <td><span className="dsv2-badge dsv2-badge--gold">{formatMoney(targetAmountForRow(row))}</span></td>
+                    <td>{formatMoney(row.netTargetAmount)}</td>
+                    <td>{renderProgress(row)}</td>
                     <td>{row.achievedTier?.tierName || row.nextTier?.tierName || "-"}</td>
-                    <td><strong>{formatMoney(row.earnedBonusAmount)}</strong></td>
-                    <td><button type="button" onClick={() => void openDetails(row)}>التفاصيل</button></td>
+                    <td><span className="dsv2-table__primary">{formatMoney(row.earnedBonusAmount)}</span></td>
+                    <td>
+                      <button
+                        type="button"
+                        className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                        onClick={() => void openDetails(row)}
+                      >
+                        التفاصيل
+                      </button>
+                    </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={8}>لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</td></tr>
+                  <tr><td colSpan={8} className="dsv2-targets-empty-cell">لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
 
-          <div className="targets-mobile-list" aria-label="تقدم الموظفات للجوال">
+          <div className="dsv2-targets-mobile-list" aria-label="تقدم الموظفات للجوال">
             {loading ? (
-              <p className="targets-empty">جاري تحميل تارقت الموظفات...</p>
+              <div className="dsv2-targets-mobile-state">
+                <span className="dsv2-skeleton dsv2-skeleton--block" />
+                <span className="dsv2-sr-only">جاري تحميل تارقت الموظفات...</span>
+              </div>
             ) : rows.length ? rows.map((row) => (
-              <article key={row.employeeId} className="targets-mobile-card">
+              <article key={row.employeeId} className="dsv2-card dsv2-card--padded dsv2-targets-mobile-card">
                 <header>
                   <div>
                     <strong>{row.employeeName}</strong>
@@ -454,16 +561,13 @@ export default function DashboardEmployeeTargets() {
                   <span>{formatMoney(row.earnedBonusAmount)}</span>
                 </header>
 
-                <div className="targets-mobile-plan">
+                <div className="dsv2-targets-mobile-plan">
                   <span>الخطة</span>
                   <strong>{row.plan?.name || "لا توجد خطة"}</strong>
                 </div>
 
-                <div className="targets-mobile-progress">
-                  <div className="targets-progress">
-                    <span style={{ width: `${progressPercent(row)}%` }} />
-                  </div>
-                  <small>{progressPercent(row)}% · المتبقي {formatMoney(row.remainingToNextTier)}</small>
+                <div className="dsv2-targets-mobile-progress">
+                  {renderProgress(row)}
                 </div>
 
                 <dl>
@@ -472,65 +576,89 @@ export default function DashboardEmployeeTargets() {
                   <div><dt>الشريحة</dt><dd>{row.achievedTier?.tierName || row.nextTier?.tierName || "-"}</dd></div>
                 </dl>
 
-                <button type="button" onClick={() => void openDetails(row)}>عرض التفاصيل</button>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary dsv2-btn--block"
+                  onClick={() => void openDetails(row)}
+                >
+                  عرض التفاصيل
+                </button>
               </article>
             )) : (
-              <p className="targets-empty">لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</p>
+              <p className="dsv2-targets-empty">لا توجد مبيعات مؤهلة في هذا الشهر حتى الآن.</p>
             )}
           </div>
         </section>
 
-        <aside className="targets-side-panel">
-          <div className="targets-panel-head">
+        <aside className="dsv2-card dsv2-card--padded dsv2-targets-side-panel" aria-labelledby="employee-targets-plan-title">
+          <div className="dsv2-section-head dsv2-targets-side-head">
             <div>
-              <h2>خطة التارقت</h2>
-              <p>الخطة الافتراضية تطبق على الموظفات ما لم توجد خطة مخصصة لاحقا.</p>
+              <p className="dsv2-targets-eyebrow">إعداد الخطة</p>
+              <h2 id="employee-targets-plan-title" className="dsv2-section-title">خطة التارقت</h2>
+              <p className="dsv2-section-caption">الخطة الافتراضية تطبق على الموظفات ما لم توجد خطة مخصصة لاحقا.</p>
             </div>
           </div>
 
-          <label>
-            <span>خطة محفوظة</span>
-            <select
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">خطة محفوظة</span>
+            <DashboardSelectV2
               value={selectedPlanId}
-              onChange={(event) => {
-                const plan = plans.find((item) => item.id === event.target.value) || null;
+              options={planOptions}
+              onChange={(value) => {
+                const plan = plans.find((item) => item.id === value) || null;
                 setPlanDraft(draftFromPlan(plan, payrollBounds.monthStart));
               }}
-            >
-              <option value="">خطة جديدة</option>
-              {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-            </select>
+            />
           </label>
 
-          <label>
-            <span>اسم الخطة</span>
-            <input value={planDraft.name} onChange={(event) => setPlanDraft((draft) => ({ ...draft, name: event.target.value }))} />
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">اسم الخطة</span>
+            <input
+              className="dsv2-input"
+              value={planDraft.name}
+              onChange={(event) => setPlanDraft((draft) => ({ ...draft, name: event.target.value }))}
+            />
           </label>
 
-          <label>
-            <span>تبدأ من</span>
-            <input type="date" value={planDraft.effectiveStart} onChange={(event) => setPlanDraft((draft) => ({ ...draft, effectiveStart: event.target.value }))} />
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">تبدأ من</span>
+            <DashboardDatePickerV2
+              value={planDraft.effectiveStart}
+              clearable={false}
+              onChange={(value) => setPlanDraft((draft) => ({ ...draft, effectiveStart: value }))}
+            />
           </label>
 
-          <label>
-            <span>نوع البونص</span>
-            <select value={planDraft.bonusType} onChange={(event) => setPlanDraft((draft) => ({ ...draft, bonusType: event.target.value as PlanDraft["bonusType"] }))}>
-              <option value="fixed">مبلغ ثابت</option>
-              <option value="percentage">نسبة من المبيعات</option>
-            </select>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">نوع البونص</span>
+            <DashboardSelectV2
+              value={planDraft.bonusType}
+              options={bonusTypeOptions}
+              onChange={(value) => setPlanDraft((draft) => ({ ...draft, bonusType: value as PlanDraft["bonusType"] }))}
+            />
           </label>
 
-          <label className="targets-check">
-            <input type="checkbox" checked={planDraft.cumulativeTiers} onChange={(event) => setPlanDraft((draft) => ({ ...draft, cumulativeTiers: event.target.checked }))} />
-            <span>احتساب الشرائح بشكل تراكمي</span>
-          </label>
+          <button
+            type="button"
+            className={`dsv2-targets-toggle ${planDraft.cumulativeTiers ? "is-on" : ""}`}
+            role="switch"
+            aria-checked={planDraft.cumulativeTiers}
+            onClick={() => setPlanDraft((draft) => ({ ...draft, cumulativeTiers: !draft.cumulativeTiers }))}
+          >
+            <span className="dsv2-targets-toggle__mark" aria-hidden="true">{planDraft.cumulativeTiers ? "✓" : ""}</span>
+            <span className="dsv2-targets-toggle__copy">
+              <strong>احتساب الشرائح بشكل تراكمي</strong>
+              <small>عند التفعيل يتم جمع مكافآت الشرائح المؤهلة.</small>
+            </span>
+          </button>
 
-          <div className="targets-tier-editor">
+          <div className="dsv2-targets-tier-editor">
             {planDraft.tierTargets.map((target, index) => (
               <div key={index}>
-                <label>
-                  <span>تارقت {index + 1}</span>
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">تارقت {index + 1}</span>
                   <input
+                    className="dsv2-input"
                     value={target}
                     onChange={(event) => setPlanDraft((draft) => {
                       const tierTargets = [...draft.tierTargets];
@@ -539,9 +667,10 @@ export default function DashboardEmployeeTargets() {
                     })}
                   />
                 </label>
-                <label>
-                  <span>{planDraft.bonusType === "percentage" ? "النسبة %" : "البونص"}</span>
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">{planDraft.bonusType === "percentage" ? "النسبة %" : "البونص"}</span>
                   <input
+                    className="dsv2-input"
                     value={planDraft.tierBonuses[index]}
                     onChange={(event) => setPlanDraft((draft) => {
                       const tierBonuses = [...draft.tierBonuses];
@@ -554,16 +683,27 @@ export default function DashboardEmployeeTargets() {
             ))}
           </div>
 
-          <button type="button" onClick={savePlan} disabled={!canManage || working}>
-            <FiEdit3 /> حفظ الخطة
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--primary dsv2-targets-save-plan"
+            onClick={savePlan}
+            disabled={!canManage || working}
+          >
+            <FiEdit3 /> {working ? "جار الحفظ" : "حفظ الخطة"}
           </button>
 
-          <div className="targets-employee-pick">
-            <span>إضافة تسوية سريعة</span>
-            <select
+          <div className="dsv2-targets-employee-pick">
+            <div className="dsv2-targets-employee-pick__head">
+              <span>إضافة تسوية سريعة</span>
+              <small>تستخدم نفس صلاحية targets.adjust ونفس خدمة التسويات الحالية.</small>
+            </div>
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">الموظفة</span>
+              <DashboardSelectV2
               value={selected?.employeeId || ""}
-              onChange={(event) => {
-                const employee = employees.find((item) => item.id === event.target.value);
+              options={employeeOptions}
+              onChange={(value) => {
+                const employee = employees.find((item) => item.id === value);
                 if (!employee) return;
                 void openDetails({
                   employeeId: employee.id,
@@ -580,57 +720,79 @@ export default function DashboardEmployeeTargets() {
                   remainingToNextTier: 0,
                 });
               }}
+              />
+            </label>
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">المبلغ</span>
+              <input
+                className="dsv2-input"
+                placeholder="المبلغ بالريال، يقبل السالب"
+                value={adjustAmount}
+                onChange={(event) => setAdjustAmount(event.target.value)}
+              />
+            </label>
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">سبب التسوية</span>
+              <input
+                className="dsv2-input"
+                placeholder="سبب التسوية"
+                value={adjustReason}
+                onChange={(event) => setAdjustReason(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--success dsv2-targets-adjust-btn"
+              onClick={createAdjustment}
+              disabled={!canAdjust || !selected || working}
             >
-              <option value="">اختيار موظفة</option>
-              {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-            </select>
-            <input placeholder="المبلغ بالريال، يقبل السالب" value={adjustAmount} onChange={(event) => setAdjustAmount(event.target.value)} />
-            <input placeholder="سبب التسوية" value={adjustReason} onChange={(event) => setAdjustReason(event.target.value)} />
-            <button type="button" onClick={createAdjustment} disabled={!canAdjust || !selected || working}>إضافة التسوية</button>
+              إضافة التسوية
+            </button>
           </div>
         </aside>
       </div>
 
-      {selected ? (
-        <div className="targets-drawer-backdrop" onMouseDown={() => setSelected(null)}>
-          <aside className="targets-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <header>
-              <div>
-                <span>{payrollBounds.payrollMonth}</span>
-                <h2>{selected.employeeName}</h2>
-                <p>{selected.plan?.name || "لا توجد خطة مفعلة"}</p>
-              </div>
-              <button type="button" onClick={() => setSelected(null)} aria-label="إغلاق"><FiX /></button>
-            </header>
-
-            <div className="targets-detail-metrics">
+      <DashboardDrawerV2
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected?.employeeName || "تفاصيل التارقت"}
+        description={selected?.plan?.name || "لا توجد خطة مفعلة"}
+        eyebrow={payrollBounds.payrollMonth}
+        size="lg"
+        tone="gold"
+        closeLabel="إغلاق تفاصيل التارقت"
+        className="dsv2-targets-drawer"
+      >
+        {selected ? (
+          <>
+            <div className="dsv2-targets-detail-metrics">
               <div><span>التارقت</span><strong>{formatMoney(targetAmountForRow(selected))}</strong></div>
               <div><span>المؤهل</span><strong>{formatMoney(selected.netTargetAmount)}</strong></div>
               <div><span>الاسترجاعات</span><strong>{formatMoney(selected.totalRefunds)}</strong></div>
               <div><span>البونص</span><strong>{formatMoney(selected.earnedBonusAmount)}</strong></div>
             </div>
 
-            <section>
-              <h3>حركات التارقت</h3>
-              {(details?.ledger || selected.ledger || []).length ? (
-                <div className="targets-ledger-list">
-                  {(details?.ledger || selected.ledger || []).map((row: EmployeeTargetLedgerRow) => (
+            <section className="dsv2-targets-ledger-section">
+              <h3 className="dsv2-section-title">حركات التارقت</h3>
+              {selectedLedger.length ? (
+                <div className="dsv2-targets-ledger-list">
+                  {selectedLedger.map((row) => (
                     <article key={row.id}>
                       <div>
                         <strong>{detailReason(row)}</strong>
-                        <small>{String(row.performedAt || "").slice(0, 10)} · {row.transactionType}</small>
+                        <small>{String(row.performedAt || "").slice(0, 10)}، {row.transactionType}</small>
                       </div>
                       <span>{formatMoney(row.eligibleAmount)}</span>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="targets-empty">لا توجد حركات مفصلة لهذه الفترة.</p>
+                <p className="dsv2-targets-empty">لا توجد حركات مفصلة لهذه الفترة.</p>
               )}
             </section>
-          </aside>
-        </div>
-      ) : null}
-    </section>
+          </>
+        ) : null}
+      </DashboardDrawerV2>
+    </main>
   );
 }

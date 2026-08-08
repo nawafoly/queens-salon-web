@@ -2,8 +2,19 @@ import { todayISO as salonTodayISO } from "./bookingDateUtils";
 import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
 
 export type StaffAvailabilityLike = {
-  active?: boolean;
-  showOnBooking?: boolean;
+  active?: boolean | number | string | null;
+  isActive?: boolean | number | string | null;
+  disabled?: boolean | number | string | null;
+  showOnBooking?: boolean | number | string | null;
+  status?: string | null;
+  employmentStatus?: string | null;
+  accountStatus?: string | null;
+  state?: string | null;
+  employeeProfile?: Record<string, unknown> | null;
+  employment?: Record<string, unknown> | null;
+  account?: Record<string, unknown> | null;
+  appUser?: Record<string, unknown> | null;
+  bookingProfile?: Record<string, unknown> | null;
   employmentEndDate?: string;
   onLeave?: boolean;
   leaveUntil?: string;
@@ -41,6 +52,28 @@ type StaffAvailabilityOptions = {
   requireShowOnBooking?: boolean;
 };
 
+const inactiveStaffStatusValues = new Set([
+  "inactive",
+  "disabled",
+  "suspended",
+  "archived",
+  "deleted",
+  "terminated",
+  "resigned",
+  "ended",
+  "stopped",
+  "blocked",
+]);
+
+const hiddenFromBookingStatusValues = new Set([
+  "hidden",
+  "private",
+  "not_bookable",
+  "not-bookable",
+  "booking_disabled",
+  "booking-disabled",
+]);
+
 export type StaffWorkingWindowSource =
   | "staff_override"
   | "staff_fixed"
@@ -72,6 +105,99 @@ export function normalizeISODate(value: string | undefined | null) {
   return isISODate(s) ? s : "";
 }
 
+function rowSources(staff: StaffAvailabilityLike | undefined | null) {
+  const base = (staff || {}) as Record<string, unknown>;
+  return [
+    base,
+    base.employeeProfile,
+    base.employment,
+    base.account,
+    base.appUser,
+    base.bookingProfile,
+  ].filter((value): value is Record<string, unknown> => {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  });
+}
+
+function readBool(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+
+  const s = String(value ?? "").trim().toLowerCase();
+  if (!s) return undefined;
+  if (["true", "1", "yes", "on", "active", "enabled"].includes(s)) return true;
+  if (
+    ["false", "0", "no", "off", "inactive", "disabled", "suspended", "deleted"].includes(s)
+  ) {
+    return false;
+  }
+  return undefined;
+}
+
+function hasFalseFlag(staff: StaffAvailabilityLike, keys: string[]) {
+  return rowSources(staff).some((source) =>
+    keys.some((key) => readBool(source[key]) === false)
+  );
+}
+
+function hasTrueFlag(staff: StaffAvailabilityLike, keys: string[]) {
+  return rowSources(staff).some((source) =>
+    keys.some((key) => readBool(source[key]) === true)
+  );
+}
+
+function statusValues(staff: StaffAvailabilityLike) {
+  const keys = [
+    "status",
+    "employmentStatus",
+    "employment_status",
+    "hrProfileStatus",
+    "hr_profile_status",
+    "hrEmploymentStatus",
+    "hr_employment_status",
+    "accountStatus",
+    "account_status",
+    "hrAccountStatus",
+    "hr_account_status",
+    "state",
+  ];
+
+  return rowSources(staff)
+    .flatMap((source) => keys.map((key) => source[key]))
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isStaffOperationallyInactive(staff: StaffAvailabilityLike) {
+  if (!staff) return true;
+  if (hasFalseFlag(staff, ["active", "isActive"])) return true;
+  if (hasTrueFlag(staff, ["disabled", "isDisabled", "accountDisabled"])) return true;
+  return statusValues(staff).some((status) =>
+    inactiveStaffStatusValues.has(status)
+  );
+}
+
+export function isStaffBookingVisibilityEnabled(staff: StaffAvailabilityLike) {
+  if (!staff) return false;
+  if (
+    hasFalseFlag(staff, [
+      "showOnBooking",
+      "show_on_booking",
+      "bookingEnabled",
+      "visibleOnBooking",
+    ])
+  ) {
+    return false;
+  }
+
+  return !statusValues(staff).some((status) =>
+    hiddenFromBookingStatusValues.has(status)
+  );
+}
+
 export function resolveEmploymentEndDate(staff: StaffAvailabilityLike) {
   const direct = normalizeISODate((staff as any)?.employmentEndDate);
   if (direct) return direct;
@@ -96,8 +222,18 @@ export function isStaffOperationallyActiveForDate(
   staff: StaffAvailabilityLike,
   dateISO?: string
 ) {
-  if (staff?.active === false) return false;
+  if (!staff) return false;
+  if (isStaffOperationallyInactive(staff)) return false;
   if (isStaffEmploymentEndedForDate(staff, dateISO)) return false;
+  return true;
+}
+
+export function isStaffBookableForPublicBooking(
+  staff: StaffAvailabilityLike,
+  dateISO?: string
+) {
+  if (!isStaffOperationallyActiveForDate(staff, dateISO)) return false;
+  if (!isStaffBookingVisibilityEnabled(staff)) return false;
   return true;
 }
 
@@ -250,8 +386,10 @@ export function isStaffAvailableForDate(
   const requireActive = opts?.requireActive ?? true;
   const requireShowOnBooking = opts?.requireShowOnBooking ?? true;
 
-  if (requireActive && staff?.active === false) return false;
-  if (requireShowOnBooking && staff?.showOnBooking === false) return false;
+  if (requireActive && !isStaffOperationallyActiveForDate(staff, dateISO)) {
+    return false;
+  }
+  if (requireShowOnBooking && !isStaffBookingVisibilityEnabled(staff)) return false;
 
   if (isStaffEmploymentEndedForDate(staff, dateISO)) return false;
 

@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
-import "../styles/AdminDashboardLoyalty.css";
+import {
+  FiAward,
+  FiSearch,
+  FiSettings,
+  FiStar,
+  FiTrendingUp,
+  FiUsers,
+} from "react-icons/fi";
+import { DashboardSelectV2 } from "../components/dashboard-v2";
 
 import {
   collection,
@@ -61,6 +69,17 @@ function formatDate(ts?: any) {
     return "-";
   }
 }
+
+function formatNumber(value: number, maximumFractionDigits = 0) {
+  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits }).format(
+    Number.isFinite(value) ? value : 0
+  );
+}
+
+const pointsModeOptions = [
+  { value: "service", label: "حسب الخدمة (زيارة واحدة = نقطة)" },
+  { value: "amount", label: "حسب المبلغ المدفوع" },
+];
 
 /* =========================
    Component
@@ -206,55 +225,114 @@ export default function DashboardLoyalty() {
     );
   }, [clients, search]);
 
+  const vipCount = useMemo(
+    () => clients.filter((client) => client?.vip?.isVip).length,
+    [clients]
+  );
+
+  const totalPoints = useMemo(
+    () => clients.reduce((sum, client) => sum + Number(client.loyaltyPoints || 0), 0),
+    [clients]
+  );
+
+  const averageScore = useMemo(
+    () => clients.length
+      ? clients.reduce((sum, client) => sum + Number(client.loyaltyStats?.loyaltyScore || 0), 0) / clients.length
+      : 0,
+    [clients]
+  );
+
   /* =========================
      UI
   ========================= */
 
   return (
-    <div className="loyalty-page">
-      <header className="loyalty-header">
-        <div className="loyalty-header-copy">
-          <p className="loyalty-kicker">Customer Retention</p>
-          <h1>برنامج الولاء والعملاء المميزون</h1>
-          <p>
+    <main className="dsv2-page dsv2-loyalty-page" dir="rtl">
+      <header className="dsv2-page-head dsv2-loyalty-page-head">
+        <div>
+          <p className="dsv2-loyalty-eyebrow">Customer Retention</p>
+          <h1 className="dsv2-page-title">برنامج الولاء والعملاء المميزون</h1>
+          <p className="dsv2-page-subtitle">
             إدارة النقاط، درجة الولاء، والتأهيل التلقائي لعملاء VIP من شاشة واحدة.
           </p>
         </div>
 
-        <div className="loyalty-header-count">
-          <span>إجمالي العملاء</span>
-          <strong>{clients.length}</strong>
-          <small>{filtered.length} نتيجة ظاهرة</small>
+        <div className="dsv2-card dsv2-card--padded dsv2-loyalty-summary">
+          <span className="dsv2-loyalty-summary__icon" aria-hidden="true"><FiAward /></span>
+          <div>
+            <span>إجمالي العملاء</span>
+            <strong>{formatNumber(clients.length)}</strong>
+            <small>{formatNumber(filtered.length)} نتيجة ظاهرة</small>
+          </div>
         </div>
       </header>
-      {/* SETTINGS */}
-      <div className="dashboard-card">
-        <h3>
-          <span style={{ fontSize: '1.5rem' }}>⚙️</span>
-          إعدادات برنامج الولاء
-        </h3>
-  
-        <div className="dash-grid">
+
+      <section className="dsv2-grid--metrics dsv2-loyalty-metrics" aria-label="ملخص الولاء">
+        <article className="dsv2-metric-card dsv2-metric-card--gold dsv2-loyalty-metric">
+          <span className="dsv2-metric-card__icon"><FiUsers /></span>
           <div>
-            <label>وضع احتساب النقاط</label>
-            <select
+            <p className="dsv2-metric-card__label">إجمالي العملاء</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(clients.length)}</p>
+            <p className="dsv2-metric-card__meta">كل حسابات العملاء المحملة</p>
+          </div>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--success dsv2-loyalty-metric">
+          <span className="dsv2-metric-card__icon"><FiStar /></span>
+          <div>
+            <p className="dsv2-metric-card__label">عملاء VIP</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(vipCount)}</p>
+            <p className="dsv2-metric-card__meta">حسب حالة VIP الحالية</p>
+          </div>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--dark dsv2-loyalty-metric">
+          <span className="dsv2-metric-card__icon"><FiTrendingUp /></span>
+          <div>
+            <p className="dsv2-metric-card__label">متوسط Loyalty Score</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(averageScore, 1)}</p>
+            <p className="dsv2-metric-card__meta">متوسط درجات العملاء</p>
+          </div>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--danger dsv2-loyalty-metric">
+          <span className="dsv2-metric-card__icon"><FiAward /></span>
+          <div>
+            <p className="dsv2-metric-card__label">رصيد النقاط</p>
+            <p className="dsv2-metric-card__value">{loading ? <span className="dsv2-skeleton dsv2-loyalty-skeleton-value" /> : formatNumber(totalPoints)}</p>
+            <p className="dsv2-metric-card__meta">مجموع النقاط الحالي</p>
+          </div>
+        </article>
+      </section>
+
+      {/* SETTINGS */}
+      <section className="dsv2-card dsv2-card--padded dsv2-loyalty-settings" aria-labelledby="loyalty-settings-title">
+        <div className="dsv2-section-head">
+          <div>
+            <p className="dsv2-loyalty-eyebrow">إعدادات البرنامج</p>
+            <h2 id="loyalty-settings-title" className="dsv2-section-title">إعدادات برنامج الولاء</h2>
+            <p className="dsv2-section-caption">تحديد طريقة احتساب النقاط وحدود التأهيل التلقائي للعملاء المميزين.</p>
+          </div>
+          <span className="dsv2-loyalty-panel-icon" aria-hidden="true"><FiSettings /></span>
+        </div>
+
+        <div className="dsv2-loyalty-settings-grid">
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">وضع احتساب النقاط</span>
+            <DashboardSelectV2
               value={settings.pointsMode}
-              onChange={(e) =>
+              options={pointsModeOptions}
+              onChange={(value) =>
                 setSettings((s) => ({
                   ...s,
-                  pointsMode: e.target.value as any,
+                  pointsMode: value as LoyaltySettings["pointsMode"],
                 }))
               }
-            >
-              <option value="service">حسب الخدمة (زيارة واحدة = نقطة)</option>
-              <option value="amount">حسب المبلغ المدفوع</option>
-            </select>
-          </div>
+            />
+          </label>
   
           {settings.pointsMode === "amount" && (
-            <div>
-              <label>قيمة النقطة (كل كم ريال = نقطة)</label>
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">قيمة النقطة (كل كم ريال = نقطة)</span>
               <input
+                className="dsv2-input"
                 type="number"
                 value={settings.amountPointsStep}
                 onChange={(e) =>
@@ -264,12 +342,13 @@ export default function DashboardLoyalty() {
                   }))
                 }
               />
-            </div>
+            </label>
           )}
   
-          <div>
-            <label>فترة تقييم الولاء (بالأيام)</label>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">فترة تقييم الولاء (بالأيام)</span>
             <input
+              className="dsv2-input"
               type="number"
               value={settings.loyaltyWindowDays}
               onChange={(e) =>
@@ -279,25 +358,32 @@ export default function DashboardLoyalty() {
                 }))
               }
             />
-          </div>
+          </label>
   
-          <div className="checkbox-container">
-            <label>تفعيل VIP تلقائي</label>
-            <input
-              type="checkbox"
-              checked={settings.vipAutoEnabled}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  vipAutoEnabled: e.target.checked,
-                }))
-              }
-            />
-          </div>
+          <button
+            type="button"
+            className={`dsv2-loyalty-toggle ${settings.vipAutoEnabled ? "is-on" : ""}`}
+            role="switch"
+            aria-checked={settings.vipAutoEnabled}
+            onClick={() =>
+              setSettings((s) => ({
+                ...s,
+                vipAutoEnabled: !s.vipAutoEnabled,
+              }))
+            }
+          >
+            <span className="dsv2-loyalty-toggle__mark" aria-hidden="true">{settings.vipAutoEnabled ? "✓" : ""}</span>
+            <span className="dsv2-loyalty-toggle__copy">
+              <strong>تفعيل VIP تلقائي</strong>
+              <small>يعتمد على حد التأهل المحدد في Loyalty Score.</small>
+            </span>
+            <span className="dsv2-loyalty-toggle__status">{settings.vipAutoEnabled ? "مفعل" : "متوقف"}</span>
+          </button>
   
-          <div>
-            <label>حد التأهل لـ VIP (Loyalty Score)</label>
+          <label className="dsv2-field">
+            <span className="dsv2-field__label">حد التأهل لـ VIP (Loyalty Score)</span>
             <input
+              className="dsv2-input"
               type="number"
               value={settings.vipAutoThreshold}
               onChange={(e) =>
@@ -307,49 +393,56 @@ export default function DashboardLoyalty() {
                 }))
               }
             />
-          </div>
+          </label>
         </div>
   
         <button 
-            className="dash-btn-primary" 
+            className="dsv2-btn dsv2-btn--primary dsv2-loyalty-save"
             onClick={saveSettings} 
             type="button"
             disabled={saving}
         >
-          {saving ? "جاري الحفظ..." : "حفظ الإعدادات"}
+          {saving ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
         </button>
-      </div>
+      </section>
   
       {/* CLIENTS */}
-      <div className="dashboard-card">
-        <h3>
-            <span style={{ fontSize: '1.5rem' }}>👥</span>
-            قائمة العملاء والولاء
-        </h3>
-  
-        <div className="search-box">
+      <section className="dsv2-table-card dsv2-loyalty-clients" aria-labelledby="loyalty-clients-title">
+        <div className="dsv2-card--padded dsv2-loyalty-clients-head">
+          <div>
+            <p className="dsv2-loyalty-eyebrow">قائمة العملاء</p>
+            <h2 id="loyalty-clients-title" className="dsv2-section-title">قائمة العملاء والولاء</h2>
+            <p className="dsv2-section-caption">عرض النقاط ودرجة الولاء وتحديث حالة VIP يدويًا.</p>
+          </div>
+          <label className="dsv2-loyalty-search">
+            <FiSearch aria-hidden="true" />
             <input
+              className="dsv2-input"
               placeholder="بحث باسم العميل أو رقم الجوال..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </label>
         </div>
   
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#777' }}>
-              <div className="loader">جاري تحميل بيانات العملاء...</div>
+          <div className="dsv2-loyalty-loading" role="status">
+            <span className="dsv2-skeleton dsv2-skeleton--title" />
+            <span className="dsv2-skeleton" />
+            <span className="dsv2-skeleton" />
+            <span className="dsv2-sr-only">جارٍ تحميل بيانات العملاء...</span>
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table className="dash-table">
+          <div className="dsv2-table-scroll">
+            <table className="dsv2-table dsv2-loyalty-table">
                 <thead>
                 <tr>
-                    <th>الاسم</th>
-                    <th>الجوال</th>
-                    <th>رصيد النقاط</th>
-                    <th>مستوى الولاء</th>
-                    <th>آخر زيارة</th>
-                    <th>الحالة VIP</th>
+                  <th>الاسم</th>
+                  <th>الجوال</th>
+                  <th>رصيد النقاط</th>
+                  <th>مستوى الولاء</th>
+                  <th>آخر زيارة</th>
+                  <th>الحالة VIP</th>
                 </tr>
                 </thead>
     
@@ -357,18 +450,18 @@ export default function DashboardLoyalty() {
                 {filtered.length > 0 ? (
                     filtered.map((c) => (
                         <tr key={c.id}>
-                        <td data-label="الاسم">{c.name || "عميل غير مسمى"}</td>
-                        <td data-label="الجوال">{c.phone || "-"}</td>
+                        <td data-label="الاسم"><span className="dsv2-table__primary">{c.name || "عميل غير مسمى"}</span></td>
+                        <td data-label="الجوال"><bdi dir="ltr">{c.phone || "-"}</bdi></td>
                         <td data-label="رصيد النقاط">
-                            <span className="points-badge">{c.loyaltyPoints || 0} نقطة</span>
+                            <span className="dsv2-badge dsv2-badge--gold">{formatNumber(c.loyaltyPoints || 0)} نقطة</span>
                         </td>
                         <td data-label="مستوى الولاء">
-                            <span className="score-badge">{c?.loyaltyStats?.loyaltyScore || 0}</span>
+                            <span className="dsv2-badge">{formatNumber(c?.loyaltyStats?.loyaltyScore || 0)}</span>
                         </td>
                         <td data-label="آخر زيارة">{formatDate(c?.loyaltyStats?.lastCompletedAt)}</td>
                         <td data-label="الحالة VIP">
                             <button
-                            className={c?.vip?.isVip ? "dash-btn-danger" : "dash-btn"}
+                            className={`dsv2-btn dsv2-btn--sm ${c?.vip?.isVip ? "dsv2-btn--danger" : "dsv2-btn--success"}`}
                             onClick={() => toggleVip(c)}
                             type="button"
                             >
@@ -379,16 +472,14 @@ export default function DashboardLoyalty() {
                     ))
                 ) : (
                     <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: '#999' }}>
-                            لا يوجد نتائج للبحث
-                        </td>
+                      <td colSpan={6} className="dsv2-loyalty-empty-cell">لا يوجد نتائج للبحث</td>
                     </tr>
                 )}
                 </tbody>
             </table>
           </div>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

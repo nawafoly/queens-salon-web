@@ -7,7 +7,15 @@ import { isRemovedFromStaffRecord } from "./staffAccountLinkService";
 export type StaffPublicDoc = {
   name: string;
   specialties: string[];
-  active?: boolean;
+  active?: boolean | number | string | null;
+  isActive?: boolean | number | string | null;
+  disabled?: boolean | number | string | null;
+  status?: string;
+  employmentStatus?: string;
+  accountStatus?: string;
+  hrProfileStatus?: string;
+  hrEmploymentStatus?: string;
+  hrAccountStatus?: string;
   avatarUrl?: string;
   avatarURL?: string;
   photoURL?: string;
@@ -24,7 +32,12 @@ export type StaffPublicDoc = {
   ratingsCount?: number;
   employmentEndDate?: string;
   linkedUid?: string;
-  showOnBooking?: boolean;
+  showOnBooking?: boolean | number | string | null;
+  employeeProfile?: Record<string, unknown> | null;
+  employment?: Record<string, unknown> | null;
+  account?: Record<string, unknown> | null;
+  appUser?: Record<string, unknown> | null;
+  bookingProfile?: Record<string, unknown> | null;
   onLeave?: boolean;
   leaveStartDate?: string;
   leaveUntil?: string;
@@ -72,6 +85,60 @@ export type StaffPublicWithId = StaffPublicDoc & { id: string };
 
 function norm(v: any) {
   return String(v ?? "").trim().toLowerCase();
+}
+
+const inactiveStaffStatusValues = new Set([
+  "inactive",
+  "disabled",
+  "suspended",
+  "archived",
+  "deleted",
+  "terminated",
+  "resigned",
+  "ended",
+  "stopped",
+  "blocked",
+]);
+
+function firstText(...values: any[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function readBool(value: any): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  const text = norm(value);
+  if (!text) return undefined;
+  if (["true", "1", "yes", "on", "active", "enabled"].includes(text)) return true;
+  if (["false", "0", "no", "off", "inactive", "disabled", "suspended", "deleted"].includes(text)) return false;
+  return undefined;
+}
+
+function hasExplicitFalse(...values: any[]) {
+  return values.some((value) => readBool(value) === false);
+}
+
+function hasExplicitTrue(...values: any[]) {
+  return values.some((value) => readBool(value) === true);
+}
+
+function isInactiveStatusValue(value: any) {
+  return inactiveStaffStatusValues.has(norm(value));
+}
+
+function mergeStatusValue(current: any, next: any) {
+  const currentText = firstText(current);
+  const nextText = firstText(next);
+  if (isInactiveStatusValue(currentText)) return currentText;
+  if (isInactiveStatusValue(nextText)) return nextText;
+  return currentText || nextText;
 }
 
 function cleanPhone(v: any) {
@@ -296,6 +363,9 @@ function normalizeStaffRow(
 ): StaffPublicWithId {
   const employeeProfile = data?.employeeProfile && typeof data.employeeProfile === "object" ? data.employeeProfile : {};
   const employment = data?.employment && typeof data.employment === "object" ? data.employment : {};
+  const bookingProfile = data?.bookingProfile && typeof data.bookingProfile === "object" ? data.bookingProfile : {};
+  const account = data?.account && typeof data.account === "object" ? data.account : {};
+  const appUser = data?.appUser && typeof data.appUser === "object" ? data.appUser : {};
   const staffId =
     source === "staff_public"
       ? id
@@ -309,6 +379,26 @@ function normalizeStaffRow(
       data?.linkedUserId ||
       ""
   ).trim();
+  const status = firstText(
+    data?.status,
+    (employeeProfile as any)?.status,
+    (employment as any)?.status,
+    (account as any)?.status,
+    (appUser as any)?.status
+  );
+  const employmentStatus = firstText(
+    data?.employmentStatus,
+    data?.employment_status,
+    (employment as any)?.employmentStatus,
+    (employment as any)?.employment_status,
+    (employeeProfile as any)?.employmentStatus
+  );
+  const accountStatus = firstText(
+    data?.accountStatus,
+    data?.account_status,
+    (account as any)?.status,
+    (appUser as any)?.status
+  );
   return {
     id: staffId,
     source,
@@ -322,7 +412,37 @@ function normalizeStaffRow(
     phone: String(data?.phone || data?.mobile || data?.phoneNumber || data?.employeePhone || "").trim() || undefined,
     name: resolveStaffName(data),
     specialties: extractSpecialties(data),
-    active: data?.active !== false && data?.isActive !== false,
+    active:
+      !hasExplicitFalse(
+        data?.active,
+        data?.isActive,
+        (employeeProfile as any)?.active,
+        (employeeProfile as any)?.isActive,
+        (employment as any)?.active
+      ) &&
+      !isInactiveStatusValue(status) &&
+      !isInactiveStatusValue(employmentStatus) &&
+      !isInactiveStatusValue(accountStatus),
+    isActive:
+      !hasExplicitFalse(data?.isActive, (employeeProfile as any)?.isActive) &&
+      !isInactiveStatusValue(status) &&
+      !isInactiveStatusValue(employmentStatus) &&
+      !isInactiveStatusValue(accountStatus),
+    disabled: hasExplicitTrue(
+      data?.disabled,
+      data?.isDisabled,
+      (employeeProfile as any)?.disabled,
+      (account as any)?.disabled,
+      (appUser as any)?.disabled
+    ),
+    status,
+    employmentStatus,
+    accountStatus,
+    employeeProfile: employeeProfile as Record<string, unknown>,
+    employment: employment as Record<string, unknown>,
+    account: account as Record<string, unknown>,
+    appUser: appUser as Record<string, unknown>,
+    bookingProfile: bookingProfile as Record<string, unknown>,
     avatarUrl: String(data?.avatarUrl ?? data?.avatarURL ?? data?.photoURL ?? data?.photoUrl ?? data?.imageUrl ?? data?.imageURL ?? data?.profileImageUrl ?? data?.profileImage ?? data?.picture ?? data?.avatar ?? "").trim() || undefined,
     avatarURL: String(data?.avatarURL ?? "").trim() || undefined,
     photoURL: String(data?.photoURL ?? "").trim() || undefined,
@@ -339,7 +459,12 @@ function normalizeStaffRow(
     ratingsCount: Number.isFinite(Number(data?.ratingsCount)) ? Number(data?.ratingsCount) : undefined,
     employmentEndDate: resolveEmploymentEndDate({ ...employment, ...employeeProfile, ...data }) || undefined,
     linkedUid: linkedUid || undefined,
-    showOnBooking: data?.showOnBooking !== false && (employeeProfile as any)?.showOnBooking !== false,
+    showOnBooking: !hasExplicitFalse(
+      data?.showOnBooking,
+      data?.show_on_booking,
+      (employeeProfile as any)?.showOnBooking,
+      (bookingProfile as any)?.showOnBooking
+    ),
     onLeave: !!data?.onLeave || (employeeProfile as any)?.onLeave === true,
     leaveStartDate: String(
       data?.leaveStartDate ??
@@ -397,7 +522,25 @@ function mergeStaffRow(current: StaffPublicWithId | undefined, next: StaffPublic
     id: primary.id || secondary.id,
     name: primary.name || secondary.name,
     specialties: Array.from(new Set([...(current.specialties || []), ...(next.specialties || [])])),
-    active: current.active !== false && next.active !== false,
+    active:
+      current.active !== false &&
+      next.active !== false &&
+      !isInactiveStatusValue(current.status) &&
+      !isInactiveStatusValue(next.status) &&
+      !isInactiveStatusValue(current.employmentStatus) &&
+      !isInactiveStatusValue(next.employmentStatus) &&
+      !isInactiveStatusValue(current.accountStatus) &&
+      !isInactiveStatusValue(next.accountStatus),
+    isActive: current.isActive !== false && next.isActive !== false,
+    disabled: hasExplicitTrue(current.disabled, next.disabled),
+    status: mergeStatusValue(current.status, next.status),
+    employmentStatus: mergeStatusValue(current.employmentStatus, next.employmentStatus),
+    accountStatus: mergeStatusValue(current.accountStatus, next.accountStatus),
+    employeeProfile: current.employeeProfile || next.employeeProfile,
+    employment: current.employment || next.employment,
+    account: current.account || next.account,
+    appUser: current.appUser || next.appUser,
+    bookingProfile: current.bookingProfile || next.bookingProfile,
     linkedUid: current.linkedUid || next.linkedUid,
     employeeId: current.employeeId || next.employeeId,
     employeeDocId: current.employeeDocId || next.employeeDocId,
@@ -406,7 +549,7 @@ function mergeStaffRow(current: StaffPublicWithId | undefined, next: StaffPublic
     authUid: current.authUid || next.authUid,
     userId: current.userId || next.userId,
     email: current.email || next.email,
-    showOnBooking: current.showOnBooking !== false && next.showOnBooking !== false,
+    showOnBooking: !hasExplicitFalse(current.showOnBooking, next.showOnBooking),
     onLeave: current.onLeave === true || next.onLeave === true,
     leaveStartDate: current.leaveStartDate || next.leaveStartDate,
     leaveUntil: current.leaveUntil || next.leaveUntil,

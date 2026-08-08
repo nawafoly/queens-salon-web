@@ -20,6 +20,7 @@ import {
   FiUsers,
   FiX,
 } from "react-icons/fi";
+import { DashboardSelectV2 } from "../../components/dashboard-v2";
 import {
   buildCustomerWhatsAppHref,
   formatCustomerCount,
@@ -43,19 +44,19 @@ import type {
 
 export function CustomersPageHeader({ visibleCount, totalCount }: { visibleCount: number; totalCount: number }) {
   return (
-    <header className="customers-page-header">
-      <div className="customers-page-heading">
-        <p className="customers-eyebrow">Queens Salon</p>
-        <h1>إدارة العملاء</h1>
-        <p>ملفات العميلات وحجوزاتهن وبيانات التواصل في مساحة واحدة منظّمة.</p>
+    <header className="dsv2-page-head dsv2-customers-page-head">
+      <div className="dsv2-customers-heading">
+        <p className="dsv2-customers-eyebrow">Queens Salon</p>
+        <h1 className="dsv2-page-title">إدارة العملاء</h1>
+        <p className="dsv2-page-subtitle">ملفات العميلات وحجوزاتهن وبيانات التواصل في مساحة واحدة منظّمة.</p>
       </div>
-      <div className="customers-header-summary" aria-label="ملخص النتائج">
-        <span><FiDatabase aria-hidden="true" /></span>
+      <div className="dsv2-card dsv2-card--padded dsv2-customers-summary-card" aria-label="ملخص النتائج">
+        <span className="dsv2-customers-summary-icon"><FiDatabase aria-hidden="true" /></span>
         <div>
           <small>المصدر الحالي</small>
           <strong>Core D1</strong>
         </div>
-        <b>{formatCustomerCount(visibleCount)} من {formatCustomerCount(totalCount)}</b>
+        <b className="dsv2-badge dsv2-badge--gold">{formatCustomerCount(visibleCount)} من {formatCustomerCount(totalCount)}</b>
       </div>
     </header>
   );
@@ -74,10 +75,11 @@ type ToolbarProps = {
 
 export function CustomersSearchToolbar(props: ToolbarProps) {
   return (
-    <section className="customers-toolbar" aria-label="بحث وأدوات العملاء">
-      <label className="customers-search-field">
+    <section className="dsv2-card dsv2-card--padded dsv2-customers-toolbar" aria-label="بحث وأدوات العملاء">
+      <label className="dsv2-customers-search-field">
         <FiSearch aria-hidden="true" />
         <input
+          className="dsv2-input"
           value={props.query}
           onChange={(event) => props.onQueryChange(event.target.value)}
           placeholder="ابحثي بالاسم أو رقم الجوال"
@@ -86,7 +88,7 @@ export function CustomersSearchToolbar(props: ToolbarProps) {
         {props.query ? (
           <button
             type="button"
-            className="customers-search-clear"
+            className="dsv2-icon-btn dsv2-customers-search-clear"
             onClick={() => props.onQueryChange("")}
             title="مسح البحث"
             aria-label="مسح البحث"
@@ -96,21 +98,21 @@ export function CustomersSearchToolbar(props: ToolbarProps) {
         ) : null}
       </label>
 
-      <div className="customers-toolbar-actions">
+      <div className="dsv2-customers-toolbar-actions">
         {props.canImport ? (
-          <button type="button" className="customers-button is-secondary" onClick={props.onImport} disabled={props.loading}>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={props.onImport} disabled={props.loading}>
             <FiUpload />
             <span>استيراد Excel</span>
           </button>
         ) : null}
         {props.canExport ? (
-          <button type="button" className="customers-button is-secondary" onClick={props.onExport} disabled={props.loading}>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={props.onExport} disabled={props.loading}>
             <FiDownload />
             <span>تصدير Excel</span>
           </button>
         ) : null}
-        <button type="button" className="customers-button is-primary" onClick={props.onRefresh} disabled={props.loading}>
-          <FiRefreshCw className={props.loading ? "is-spinning" : ""} />
+        <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={props.onRefresh} disabled={props.loading}>
+          <FiRefreshCw className={props.loading ? "dsv2-customers-spin" : ""} />
           <span>{props.loading ? "جارٍ التحديث" : "تحديث البيانات"}</span>
         </button>
       </div>
@@ -140,25 +142,45 @@ const segments: Array<{ value: CustomerSegment; label: string }> = [
   { value: "active-packages", label: "لديها باقات نشطة" },
 ];
 
+const lastVisitOptions: Array<{ value: CustomerLastVisitFilter; label: string }> = [
+  { value: "all", label: "كل الزيارات" },
+  { value: "30-days", label: "خلال 30 يومًا" },
+  { value: "90-days", label: "خلال 90 يومًا" },
+  { value: "never", label: "لم تزر بعد" },
+];
+
+const sourceOptions: Array<{ value: "all" | CustomerSource; label: string }> = [
+  { value: "all", label: "كل المصادر" },
+  { value: "combined", label: "ملف موحّد وحجوزات" },
+  { value: "client-record", label: "ملف العميلة" },
+  { value: "booking-only", label: "سجل الحجوزات" },
+];
+
+const sortOptions: Array<{ value: CustomerSort; label: string }> = [
+  { value: "latest", label: "الأحدث زيارة" },
+  { value: "newest", label: "الأحدث تسجيلًا" },
+  { value: "most", label: "الأكثر حجزًا" },
+];
+
 export function CustomersFilters(props: FiltersProps) {
   return (
-    <section className="customers-filters" aria-label="فلاتر العملاء">
-      <div className="customers-filter-heading">
-        <span><FiFilter /></span>
+    <section className="dsv2-card dsv2-card--padded dsv2-customers-filters" aria-label="فلاتر العملاء">
+      <div className="dsv2-customers-filter-heading">
+        <span className="dsv2-customers-filter-icon"><FiFilter /></span>
         <div>
           <strong>تصفية النتائج</strong>
           <small>اختاري شريحة أو رتّبي السجلات للوصول أسرع.</small>
         </div>
       </div>
 
-      <div className="customers-filter-chips" role="group" aria-label="شرائح العملاء">
+      <div className="dsv2-customers-filter-chips" role="group" aria-label="شرائح العملاء">
         {segments
           .filter((item) => item.value !== "active-packages" || props.packagesFilterAvailable)
           .map((item) => (
             <button
               key={item.value}
               type="button"
-              className={props.segment === item.value ? "is-active" : ""}
+              className={`dsv2-customers-filter-chip ${props.segment === item.value ? "is-active" : ""}`}
               onClick={() => props.onSegmentChange(item.value)}
               aria-pressed={props.segment === item.value}
             >
@@ -167,37 +189,35 @@ export function CustomersFilters(props: FiltersProps) {
           ))}
       </div>
 
-      <div className="customers-filter-selects">
-        <label>
-          <span>آخر زيارة</span>
-          <select value={props.lastVisit} onChange={(event) => props.onLastVisitChange(event.target.value as CustomerLastVisitFilter)}>
-            <option value="all">كل الزيارات</option>
-            <option value="30-days">خلال 30 يومًا</option>
-            <option value="90-days">خلال 90 يومًا</option>
-            <option value="never">لم تزر بعد</option>
-          </select>
-        </label>
-        <label>
-          <span>المصدر</span>
-          <select value={props.source} onChange={(event) => props.onSourceChange(event.target.value as "all" | CustomerSource)}>
-            <option value="all">كل المصادر</option>
-            <option value="combined">ملف موحّد وحجوزات</option>
-            <option value="client-record">ملف العميلة</option>
-            <option value="booking-only">سجل الحجوزات</option>
-          </select>
-        </label>
-        <label>
-          <span>الترتيب</span>
-          <select value={props.sort} onChange={(event) => props.onSortChange(event.target.value as CustomerSort)}>
-            <option value="latest">الأحدث زيارة</option>
-            <option value="newest">الأحدث تسجيلًا</option>
-            <option value="most">الأكثر حجزًا</option>
-          </select>
-        </label>
+      <div className="dsv2-customers-filter-selects">
+        <div className="dsv2-field">
+          <span className="dsv2-field__label">آخر زيارة</span>
+          <DashboardSelectV2
+            value={props.lastVisit}
+            options={lastVisitOptions}
+            onChange={(value) => props.onLastVisitChange(value as CustomerLastVisitFilter)}
+          />
+        </div>
+        <div className="dsv2-field">
+          <span className="dsv2-field__label">المصدر</span>
+          <DashboardSelectV2
+            value={props.source}
+            options={sourceOptions}
+            onChange={(value) => props.onSourceChange(value as "all" | CustomerSource)}
+          />
+        </div>
+        <div className="dsv2-field">
+          <span className="dsv2-field__label">الترتيب</span>
+          <DashboardSelectV2
+            value={props.sort}
+            options={sortOptions}
+            onChange={(value) => props.onSortChange(value as CustomerSort)}
+          />
+        </div>
       </div>
 
       {props.hasActiveFilters ? (
-        <button type="button" className="customers-clear-filters" onClick={props.onClear}>
+        <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm dsv2-customers-clear-filters" onClick={props.onClear}>
           <FiX /> مسح الفلاتر
         </button>
       ) : null}
@@ -216,13 +236,21 @@ type StatCardProps = {
 
 export function CustomerStatsCard(props: StatCardProps) {
   const Icon = props.icon;
+  const toneClass: Record<StatCardProps["tone"], string> = {
+    maroon: "danger",
+    blue: "dark",
+    green: "success",
+    gold: "gold",
+    purple: "gold",
+    slate: "dark",
+  };
   return (
-    <article className={`customer-stat-card is-${props.tone}`}>
-      <span className="customer-stat-icon"><Icon /></span>
-      <div>
-        <small>{props.label}</small>
-        {props.loading ? <span className="customers-skeleton customer-stat-skeleton" /> : <strong>{props.value}</strong>}
-        <p>{props.description}</p>
+    <article className={`dsv2-metric-card dsv2-metric-card--${toneClass[props.tone]} dsv2-customers-metric`}>
+      <span className="dsv2-metric-card__icon"><Icon /></span>
+      <div className="dsv2-customers-metric-copy">
+        <p className="dsv2-metric-card__label">{props.label}</p>
+        {props.loading ? <span className="dsv2-skeleton dsv2-customers-stat-skeleton" /> : <p className="dsv2-metric-card__value">{props.value}</p>}
+        <p className="dsv2-metric-card__meta">{props.description}</p>
       </div>
     </article>
   );
@@ -239,7 +267,7 @@ export function CustomersStatsGrid({ stats, loading }: { stats: CustomerStats; l
   ];
 
   return (
-    <section className="customers-stats-grid" aria-label="إحصائيات العملاء">
+    <section className="dsv2-grid--metrics dsv2-customers-stats-grid" aria-label="إحصائيات العملاء">
       {cards.map((card) => <CustomerStatsCard key={card.label} {...card} loading={loading} />)}
     </section>
   );
@@ -248,11 +276,11 @@ export function CustomersStatsGrid({ stats, loading }: { stats: CustomerStats; l
 export function CustomerName({ customer }: { customer: CustomerRow }) {
   const name = normalizeCustomerName(customer.name);
   return (
-    <div className="customer-name-block">
-      <span className="customer-avatar" aria-hidden="true">{getCustomerInitials(name)}</span>
-      <span className="customer-name-copy">
-        <strong>{name}</strong>
-        <small>{customer.clientId ? "ملف موحّد" : "من سجل الحجوزات"}</small>
+    <div className="dsv2-customers-name-block">
+      <span className="dsv2-customers-avatar" aria-hidden="true">{getCustomerInitials(name)}</span>
+      <span className="dsv2-customers-name-copy">
+        <strong className="dsv2-table__primary">{name}</strong>
+        <small className="dsv2-table__secondary">{customer.clientId ? "ملف موحّد" : "من سجل الحجوزات"}</small>
       </span>
     </div>
   );
@@ -260,11 +288,11 @@ export function CustomerName({ customer }: { customer: CustomerRow }) {
 
 function CustomerBadges({ customer }: { customer: CustomerRow }) {
   return (
-    <div className="customer-badges">
-      <span className={`customer-badge ${isCustomerActive(customer.status) ? "is-active" : "is-muted"}`}>
+    <div className="dsv2-customers-badges">
+      <span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>
         {getCustomerStatusLabel(customer.status)}
       </span>
-      <span className={`customer-badge ${customer.vip ? "is-vip" : "is-regular"}`}>
+      <span className={`dsv2-badge ${customer.vip ? "dsv2-badge--gold" : ""}`}>
         {customer.vip ? "VIP" : "عادية"}
       </span>
     </div>
@@ -282,23 +310,23 @@ export function CustomerActions({ customer, mobile = false, onCopy, onOpen }: Cu
   const hasPhone = hasCustomerPhone(customer.phone);
   const whatsappHref = buildCustomerWhatsAppHref(customer.name, customer.phone);
   return (
-    <div className={`customer-actions ${mobile ? `is-mobile ${hasPhone ? "has-phone" : "has-no-phone"}` : ""}`}>
+    <div className={`dsv2-customers-actions ${mobile ? `is-mobile ${hasPhone ? "has-phone" : "has-no-phone"}` : ""}`}>
       {mobile && hasPhone ? (
-        <a className="customer-icon-button is-call" href={`tel:${customer.phone}`} title="اتصال" aria-label={`اتصال بـ ${customer.name}`}>
+        <a className="dsv2-icon-btn dsv2-customers-action-btn is-call" href={`tel:${customer.phone}`} title="اتصال" aria-label={`اتصال بـ ${customer.name}`}>
           <FiPhone />
         </a>
       ) : null}
       {hasPhone ? (
         <>
-          <button type="button" className="customer-icon-button is-copy" onClick={() => onCopy(customer.phone)} title="نسخ رقم الجوال" aria-label={`نسخ رقم جوال ${customer.name}`}>
+          <button type="button" className="dsv2-icon-btn dsv2-customers-action-btn is-copy" onClick={() => onCopy(customer.phone)} title="نسخ رقم الجوال" aria-label={`نسخ رقم جوال ${customer.name}`}>
             <FiCopy />
           </button>
-          <a className="customer-icon-button is-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer" title="فتح واتساب" aria-label={`فتح واتساب مع ${customer.name}`}>
+          <a className="dsv2-icon-btn dsv2-customers-action-btn is-whatsapp" href={whatsappHref} target="_blank" rel="noreferrer" title="فتح واتساب" aria-label={`فتح واتساب مع ${customer.name}`}>
             <FiMessageCircle />
           </a>
         </>
       ) : null}
-      <button type="button" className="customer-open-button" onClick={() => onOpen(customer)} title="عرض ملف العميلة">
+      <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm dsv2-customers-open-btn" onClick={() => onOpen(customer)} title="عرض ملف العميلة">
         <FiEye /> <span>عرض الملف</span>
       </button>
     </div>
@@ -316,8 +344,8 @@ function CustomerTableSkeleton() {
   return (
     <tbody aria-label="جارٍ تحميل العملاء">
       {Array.from({ length: 5 }, (_, index) => (
-        <tr key={index} className="customers-table-skeleton-row">
-          {Array.from({ length: 8 }, (__, cell) => <td key={cell}><span className="customers-skeleton" /></td>)}
+        <tr key={index} className="dsv2-customers-table-skeleton-row">
+          {Array.from({ length: 8 }, (__, cell) => <td key={cell}><span className="dsv2-skeleton" /></td>)}
         </tr>
       ))}
     </tbody>
@@ -326,16 +354,16 @@ function CustomerTableSkeleton() {
 
 export function CustomersTable({ customers, loading, onCopy, onOpen }: ListProps) {
   return (
-    <section className="customers-directory-card">
-      <div className="customers-directory-heading">
+    <section className="dsv2-table-card dsv2-customers-directory">
+      <div className="dsv2-card--padded dsv2-customers-directory-heading">
         <div>
-          <p className="customers-eyebrow">دليل العملاء</p>
-          <h2>ملفات العميلات</h2>
+          <p className="dsv2-customers-eyebrow">دليل العملاء</p>
+          <h2 className="dsv2-section-title">ملفات العميلات</h2>
         </div>
-        <span>{formatCustomerCount(customers.length)} نتيجة</span>
+        <span className="dsv2-badge">{formatCustomerCount(customers.length)} نتيجة</span>
       </div>
-      <div className="customers-table-wrap">
-        <table className="customers-table">
+      <div className="dsv2-table-scroll">
+        <table className="dsv2-table dsv2-customers-table">
           <thead>
             <tr>
               <th>العميلة</th>
@@ -353,12 +381,12 @@ export function CustomersTable({ customers, loading, onCopy, onOpen }: ListProps
               {customers.map((customer) => (
                 <tr key={customer.key}>
                   <td><CustomerName customer={customer} /></td>
-                  <td><bdi className="customer-phone" dir="ltr">{customer.phone}</bdi></td>
-                  <td><span className={`customer-badge ${isCustomerActive(customer.status) ? "is-active" : "is-muted"}`}>{getCustomerStatusLabel(customer.status)}</span></td>
-                  <td><span className={`customer-badge ${customer.vip ? "is-vip" : "is-regular"}`}>{customer.vip ? "VIP" : "عادية"}</span></td>
-                  <td><strong className="customer-booking-count">{formatCustomerCount(customer.bookingsCount)}</strong></td>
-                  <td><span className="customer-last-visit">{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime)}</span></td>
-                  <td><span className={`customer-source is-${customer.source}`} title={getCustomerSourceDescription(customer.source)}>{getCustomerSourceLabel(customer.source)}</span></td>
+                  <td><bdi className="dsv2-customers-phone" dir="ltr">{customer.phone}</bdi></td>
+                  <td><span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>{getCustomerStatusLabel(customer.status)}</span></td>
+                  <td><span className={`dsv2-badge ${customer.vip ? "dsv2-badge--gold" : ""}`}>{customer.vip ? "VIP" : "عادية"}</span></td>
+                  <td><strong className="dsv2-table__primary">{formatCustomerCount(customer.bookingsCount)}</strong></td>
+                  <td><span className="dsv2-customers-last-visit">{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime)}</span></td>
+                  <td><span className={`dsv2-badge dsv2-customers-source is-${customer.source}`} title={getCustomerSourceDescription(customer.source)}>{getCustomerSourceLabel(customer.source)}</span></td>
                   <td><CustomerActions customer={customer} onCopy={onCopy} onOpen={onOpen} /></td>
                 </tr>
               ))}
@@ -372,12 +400,12 @@ export function CustomersTable({ customers, loading, onCopy, onOpen }: ListProps
 
 export function CustomerMobileCard({ customer, onCopy, onOpen }: Omit<ListProps, "customers" | "loading"> & { customer: CustomerRow }) {
   return (
-    <article className="customer-mobile-card">
+    <article className="dsv2-card dsv2-card--padded dsv2-customers-mobile-card">
       <header>
         <CustomerName customer={customer} />
         <CustomerBadges customer={customer} />
       </header>
-      <div className="customer-mobile-phone">
+      <div className="dsv2-customers-mobile-phone">
         <span>رقم الجوال</span>
         <bdi dir="ltr">{customer.phone}</bdi>
       </div>
@@ -393,9 +421,9 @@ export function CustomerMobileCard({ customer, onCopy, onOpen }: Omit<ListProps,
 
 export function CustomersMobileList(props: ListProps) {
   return (
-    <section className="customers-mobile-list" aria-label="قائمة العملاء للجوال">
+    <section className="dsv2-customers-mobile-list" aria-label="قائمة العملاء للجوال">
       {props.loading && props.customers.length === 0
-        ? Array.from({ length: 4 }, (_, index) => <div className="customer-mobile-card is-skeleton" key={index}><span className="customers-skeleton" /><span className="customers-skeleton" /><span className="customers-skeleton" /></div>)
+        ? Array.from({ length: 4 }, (_, index) => <div className="dsv2-card dsv2-card--padded dsv2-customers-mobile-card is-skeleton" key={index}><span className="dsv2-skeleton" /><span className="dsv2-skeleton" /><span className="dsv2-skeleton" /></div>)
         : props.customers.map((customer) => <CustomerMobileCard key={customer.key} customer={customer} onCopy={props.onCopy} onOpen={props.onOpen} />)}
     </section>
   );
@@ -414,17 +442,19 @@ export function CustomersEmptyState(props: EmptyStateProps) {
   const isResults = props.kind === "no-results";
   const Icon = isError ? FiAlertCircle : isResults ? FiSearch : FiInbox;
   return (
-    <section className={`customers-empty-state is-${props.kind}`}>
-      <span><Icon /></span>
-      <h2>{isError ? "تعذر تحميل بيانات العملاء" : isResults ? "لم يتم العثور على عميلات مطابقات" : "لا توجد بيانات عملاء حتى الآن"}</h2>
-      <p>{props.message || (isResults ? "جرّبي عبارة بحث أخرى أو امسحي الفلاتر الحالية." : "يمكنك إضافة عميلة من الحجز الإداري أو استيراد ملف Excel جاهز.")}</p>
-      <div>
-        <button type="button" className="customers-button is-primary" onClick={props.onPrimary}>
+    <section className={`dsv2-state ${isError ? "dsv2-state--error" : "dsv2-state--empty"} dsv2-customers-empty-state is-${props.kind}`} data-tone={isError ? undefined : "gold"} role={isError ? "alert" : "status"}>
+      <span className="dsv2-state__icon"><Icon /></span>
+      <div className="dsv2-state__content">
+        <h2 className="dsv2-state__title">{isError ? "تعذر تحميل بيانات العملاء" : isResults ? "لم يتم العثور على عميلات مطابقات" : "لا توجد بيانات عملاء حتى الآن"}</h2>
+        <p className="dsv2-state__description">{props.message || (isResults ? "جرّبي عبارة بحث أخرى أو امسحي الفلاتر الحالية." : "يمكنك إضافة عميلة من الحجز الإداري أو استيراد ملف Excel جاهز.")}</p>
+      </div>
+      <div className="dsv2-state__action">
+        <button type="button" className={`dsv2-btn ${isError ? "dsv2-btn--danger" : "dsv2-btn--accent"}`} onClick={props.onPrimary}>
           {isError ? <FiRefreshCw /> : isResults ? <FiX /> : <FiUserPlus />}
           {isError ? "إعادة المحاولة" : isResults ? "مسح البحث والفلاتر" : "إضافة عميلة"}
         </button>
         {!isError && props.canImport && props.onImport ? (
-          <button type="button" className="customers-button is-secondary" onClick={props.onImport}><FiUpload /> استيراد Excel</button>
+          <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={props.onImport}><FiUpload /> استيراد Excel</button>
         ) : null}
       </div>
     </section>

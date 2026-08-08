@@ -12,6 +12,10 @@ import {
   FiStar,
   FiUsers,
 } from "react-icons/fi";
+import {
+  DashboardDatePickerV2,
+  DashboardSelectV2,
+} from "../components/dashboard-v2";
 import { formatAttendanceHours } from "../helpers/hr/attendanceDiscipline";
 import type { StaffPerformanceResult, StaffPerformanceRow } from "../helpers/hr/staffPerformance";
 import {
@@ -19,7 +23,6 @@ import {
   exportStaffPerformanceReportPdf,
 } from "../helpers/reports/exportStaffPerformanceReport";
 import { StaffPerformanceService } from "../services/StaffPerformanceService";
-import "../styles/DashboardStaffPerformance.css";
 
 const EMPTY_RESULT: StaffPerformanceResult = {
   filters: { fromDate: "", toDate: "", bookingStatus: "completed" },
@@ -35,6 +38,16 @@ const EMPTY_RESULT: StaffPerformanceResult = {
   },
   warnings: [],
 };
+
+const monthOptions = Array.from({ length: 12 }, (_, index) => {
+  const value = String(index + 1);
+  return { value, label: (index + 1).toLocaleString("ar-SA") };
+});
+
+const bookingStatusOptions = [
+  { value: "completed", label: "المكتملة فقط" },
+  { value: "all", label: "كل الحالات للتحليل" },
+];
 
 function currentYearMonth() {
   const now = new Date();
@@ -62,9 +75,9 @@ function formatPercent(value: number | null) {
 }
 
 function scoreTone(score: number) {
-  if (score >= 80) return "is-strong";
-  if (score >= 55) return "is-steady";
-  return "is-low";
+  if (score >= 80) return "dsv2-staff-performance-score--strong";
+  if (score >= 55) return "dsv2-staff-performance-score--steady";
+  return "dsv2-staff-performance-score--low";
 }
 
 export default function DashboardStaffPerformance() {
@@ -159,24 +172,67 @@ export default function DashboardStaffPerformance() {
     exportStaffPerformanceReportExcel(staffPerformanceReportInput());
   };
 
+  const employeeSelectOptions = useMemo(
+    () => [
+      { value: "", label: "كل الموظفات" },
+      ...employeeOptions.map(([id, name]) => ({ value: id, label: name })),
+    ],
+    [employeeOptions]
+  );
+
+  const statsCards = [
+    {
+      label: "الحجوزات المكتملة",
+      value: result.summary.totalCompletedBookings.toLocaleString("ar-SA"),
+      icon: FiCalendar,
+      tone: "dsv2-metric-card--gold",
+    },
+    {
+      label: "الإيراد المنسوب",
+      value: formatSar(result.summary.totalAttributedRevenueHalalas),
+      icon: FiDollarSign,
+      tone: "dsv2-metric-card--success",
+    },
+    {
+      label: "الموظفات النشطات",
+      value: result.summary.activeEmployees.toLocaleString("ar-SA"),
+      icon: FiUsers,
+      tone: "dsv2-metric-card--dark",
+    },
+    {
+      label: "متوسط درجة الأداء",
+      value: `${result.summary.averagePerformanceScore.toLocaleString("ar-SA")}/100`,
+      icon: FiBarChart2,
+      tone: "dsv2-metric-card--danger",
+    },
+  ];
+
   return (
-    <div className="staff-performance-page">
-      <header className="staff-performance-hero">
+    <main className="dsv2-page dsv2-staff-performance-page" dir="rtl">
+      <header className="dsv2-page-head dsv2-staff-performance-page-head">
         <div>
-          <span>تحليل تشغيلي</span>
-          <h1>أداء الموظفات</h1>
-          <p>تحليل أداء الموظفات حسب الحجوزات المكتملة والحضور والإيرادات.</p>
+          <p className="dsv2-staff-performance-eyebrow">تحليل تشغيلي</p>
+          <h1 className="dsv2-page-title">أداء الموظفات</h1>
+          <p className="dsv2-page-subtitle">تحليل أداء الموظفات حسب الحجوزات المكتملة والحضور والإيرادات.</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading}>
-          <FiRefreshCw className={loading ? "is-spinning" : ""} />
-          تحديث
-        </button>
+        <div className="dsv2-staff-performance-actions">
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--primary"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            <FiRefreshCw className={loading ? "dsv2-staff-performance-spin" : ""} />
+            {loading ? "جار التحديث" : "تحديث"}
+          </button>
+        </div>
       </header>
 
-      <section className="staff-performance-toolbar" aria-label="فلاتر أداء الموظفات">
-        <label>
-          <span>السنة</span>
+      <section className="dsv2-card dsv2-card--padded dsv2-staff-performance-toolbar" aria-label="فلاتر أداء الموظفات">
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">السنة</span>
           <input
+            className="dsv2-input"
             type="number"
             value={year}
             min={2020}
@@ -184,155 +240,170 @@ export default function DashboardStaffPerformance() {
             onChange={(event) => applyMonth(Number(event.target.value), month)}
           />
         </label>
-        <label>
-          <span>الشهر</span>
-          <select value={month} onChange={(event) => applyMonth(year, Number(event.target.value))}>
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
-              <option key={value} value={value}>{value.toLocaleString("ar-SA")}</option>
-            ))}
-          </select>
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">الشهر</span>
+          <DashboardSelectV2
+            value={String(month)}
+            options={monthOptions}
+            onChange={(value) => applyMonth(year, Number(value))}
+          />
         </label>
-        <label>
-          <span>من تاريخ</span>
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">من تاريخ</span>
+          <DashboardDatePickerV2 value={fromDate} clearable={false} onChange={setFromDate} />
         </label>
-        <label>
-          <span>إلى تاريخ</span>
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">إلى تاريخ</span>
+          <DashboardDatePickerV2 value={toDate} clearable={false} onChange={setToDate} />
         </label>
-        <label>
-          <span>الموظفة</span>
-          <select
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">الموظفة</span>
+          <DashboardSelectV2
             value={employeeFilter}
-            onChange={(event) => {
-              const next = event.target.value;
+            options={employeeSelectOptions}
+            onChange={(next) => {
               setEmployeeFilter(next);
               if (routeEmployeeId) navigate(next ? `/dashboard/staff-performance/${encodeURIComponent(next)}` : "/dashboard/staff-performance");
             }}
+          />
+        </label>
+        <label className="dsv2-field">
+          <span className="dsv2-field__label">حالة الحجز</span>
+          <DashboardSelectV2
+            value={bookingStatus}
+            options={bookingStatusOptions}
+            onChange={(value) => setBookingStatus(value as "completed" | "all")}
+          />
+        </label>
+        <div className="dsv2-staff-performance-export-actions" aria-label="تصدير تقرير أداء الموظفات">
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--secondary"
+            onClick={handleExportPerformancePdf}
+            disabled={loading}
           >
-            <option value="">كل الموظفات</option>
-            {employeeOptions.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>حالة الحجز</span>
-          <select value={bookingStatus} onChange={(event) => setBookingStatus(event.target.value as "completed" | "all")}>
-            <option value="completed">المكتملة فقط</option>
-            <option value="all">كل الحالات للتحليل</option>
-          </select>
-        </label>
-        <div className="staff-performance-export-actions" aria-label="تصدير تقرير أداء الموظفات">
-          <button type="button" onClick={handleExportPerformancePdf} disabled={loading}>
             <FiFileText /> تصدير PDF
           </button>
-          <button type="button" onClick={handleExportPerformanceExcel} disabled={loading}>
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--secondary"
+            onClick={handleExportPerformanceExcel}
+            disabled={loading}
+          >
             <FiDownload /> تصدير Excel
           </button>
         </div>
       </section>
 
-      {error ? <div className="staff-performance-alert" role="alert"><FiAlertTriangle />{error}</div> : null}
+      {error ? (
+        <div className="dsv2-staff-performance-alert dsv2-staff-performance-alert--error" role="alert">
+          <FiAlertTriangle />{error}
+        </div>
+      ) : null}
       {result.warnings.length ? (
-        <div className="staff-performance-alert is-soft" role="status">
+        <div className="dsv2-staff-performance-alert" role="status">
           <FiAlertTriangle />
           <div>{result.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>
         </div>
       ) : null}
 
-      <section className="staff-performance-stats" aria-label="ملخص أداء الموظفات">
-        <article>
-          <FiCalendar />
-          <small>الحجوزات المكتملة</small>
-          <strong>{result.summary.totalCompletedBookings.toLocaleString("ar-SA")}</strong>
-        </article>
-        <article>
-          <FiDollarSign />
-          <small>الإيراد المنسوب</small>
-          <strong>{formatSar(result.summary.totalAttributedRevenueHalalas)}</strong>
-        </article>
-        <article>
-          <FiUsers />
-          <small>الموظفات النشطات</small>
-          <strong>{result.summary.activeEmployees.toLocaleString("ar-SA")}</strong>
-        </article>
-        <article>
-          <FiBarChart2 />
-          <small>متوسط درجة الأداء</small>
-          <strong>{result.summary.averagePerformanceScore.toLocaleString("ar-SA")}/100</strong>
-        </article>
+      <section className="dsv2-grid--metrics dsv2-staff-performance-stats" aria-label="ملخص أداء الموظفات">
+        {statsCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article key={card.label} className={`dsv2-metric-card ${card.tone} dsv2-staff-performance-metric`}>
+              <span className="dsv2-metric-card__icon"><Icon /></span>
+              <div>
+                <p className="dsv2-metric-card__label">{card.label}</p>
+                <p className="dsv2-metric-card__value">
+                  {loading && !result.rows.length ? <span className="dsv2-skeleton dsv2-staff-performance-skeleton-value" /> : card.value}
+                </p>
+              </div>
+            </article>
+          );
+        })}
       </section>
 
-      <section className="staff-performance-table-wrap" aria-label="جدول أداء الموظفات">
-        <table className="staff-performance-table">
-          <thead>
-            <tr>
-              <th>الموظفة</th>
-              <th>الحالة/القسم</th>
-              <th>الحجوزات المكتملة</th>
-              <th>العميلات المخدومات</th>
-              <th>الخدمات المنفذة</th>
-              <th>الإيراد المنسوب</th>
-              <th>متوسط التقييم</th>
-              <th>الالتزام بالحضور</th>
-              <th>درجة الأداء</th>
-              <th>الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.map((row) => (
-              <tr key={row.employeeId}>
-                <td className="staff-performance-person">
-                  <strong>{row.employeeName}</strong>
-                  <small>{row.employeeId}</small>
-                </td>
-                <td>
-                  <span className={`staff-performance-badge ${row.active ? "is-active" : "is-muted"}`}>
-                    {row.active ? "نشطة" : "غير نشطة"}
-                  </span>
-                  <small>{row.department || row.jobTitle || "غير محدد"}</small>
-                </td>
-                <td>{row.completedBookings.toLocaleString("ar-SA")}</td>
-                <td>{row.uniqueClients.toLocaleString("ar-SA")}</td>
-                <td>{row.servicesPerformed.toLocaleString("ar-SA")}</td>
-                <td>{formatSar(row.attributedRevenueHalalas)}</td>
-                <td>{formatRating(row)}</td>
-                <td>{formatPercent(row.attendance.commitmentPercent)}</td>
-                <td>
-                  <span className={`staff-performance-score ${scoreTone(row.performanceScore)}`}>
-                    {row.performanceScore.toLocaleString("ar-SA")}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="staff-performance-icon-btn"
-                    onClick={() => navigate(`/dashboard/staff-performance/${encodeURIComponent(row.employeeId)}`)}
-                    title="عرض التفاصيل"
-                    aria-label={`عرض تفاصيل ${row.employeeName}`}
-                  >
-                    <FiEye />
-                  </button>
-                </td>
+      <section className="dsv2-table-card dsv2-staff-performance-table-card" aria-label="جدول أداء الموظفات">
+        <div className="dsv2-table-scroll">
+          <table className="dsv2-table dsv2-staff-performance-table">
+            <thead>
+              <tr>
+                <th>الموظفة</th>
+                <th>الحالة/القسم</th>
+                <th>الحجوزات المكتملة</th>
+                <th>العميلات المخدومات</th>
+                <th>الخدمات المنفذة</th>
+                <th>الإيراد المنسوب</th>
+                <th>متوسط التقييم</th>
+                <th>الالتزام بالحضور</th>
+                <th>درجة الأداء</th>
+                <th>الإجراءات</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading && !result.rows.length ? (
+                <tr>
+                  <td colSpan={10} className="dsv2-staff-performance-empty-cell">
+                    <span className="dsv2-skeleton dsv2-skeleton--title" />
+                    <span className="dsv2-skeleton" />
+                    <span className="dsv2-sr-only">جاري تحميل مؤشرات الأداء...</span>
+                  </td>
+                </tr>
+              ) : result.rows.map((row) => (
+                <tr key={row.employeeId}>
+                  <td data-label="الموظفة">
+                    <span className="dsv2-table__primary">{row.employeeName}</span>
+                    <span className="dsv2-table__secondary" dir="ltr">{row.employeeId}</span>
+                  </td>
+                  <td data-label="الحالة/القسم">
+                    <span className={`dsv2-badge ${row.active ? "dsv2-badge--success" : ""}`}>
+                      {row.active ? "نشطة" : "غير نشطة"}
+                    </span>
+                    <span className="dsv2-table__secondary">{row.department || row.jobTitle || "غير محدد"}</span>
+                  </td>
+                  <td data-label="الحجوزات المكتملة">{row.completedBookings.toLocaleString("ar-SA")}</td>
+                  <td data-label="العميلات المخدومات">{row.uniqueClients.toLocaleString("ar-SA")}</td>
+                  <td data-label="الخدمات المنفذة">{row.servicesPerformed.toLocaleString("ar-SA")}</td>
+                  <td data-label="الإيراد المنسوب">{formatSar(row.attributedRevenueHalalas)}</td>
+                  <td data-label="متوسط التقييم">{formatRating(row)}</td>
+                  <td data-label="الالتزام بالحضور">{formatPercent(row.attendance.commitmentPercent)}</td>
+                  <td data-label="درجة الأداء">
+                    <span className={`dsv2-staff-performance-score ${scoreTone(row.performanceScore)}`}>
+                      {row.performanceScore.toLocaleString("ar-SA")}
+                    </span>
+                  </td>
+                  <td data-label="الإجراءات">
+                    <button
+                      type="button"
+                      className="dsv2-icon-btn"
+                      onClick={() => navigate(`/dashboard/staff-performance/${encodeURIComponent(row.employeeId)}`)}
+                      title="عرض التفاصيل"
+                      aria-label={`عرض تفاصيل ${row.employeeName}`}
+                    >
+                      <FiEye />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {!loading && !result.rows.length ? (
-          <p className="staff-performance-empty">لا توجد بيانات في الفترة المحددة.</p>
+          <p className="dsv2-staff-performance-empty">لا توجد بيانات في الفترة المحددة.</p>
         ) : null}
       </section>
 
       {selectedRow ? (
-        <section className="staff-performance-detail" aria-label="تفاصيل أداء الموظفة">
-          <div className="staff-performance-detail__head">
+        <section className="dsv2-card dsv2-card--padded dsv2-staff-performance-detail" aria-label="تفاصيل أداء الموظفة">
+          <div className="dsv2-section-head dsv2-staff-performance-detail__head">
             <div>
-              <span>تفاصيل الموظفة</span>
-              <h2>{selectedRow.employeeName}</h2>
+              <p className="dsv2-staff-performance-eyebrow">تفاصيل الموظفة</p>
+              <h2 className="dsv2-section-title">{selectedRow.employeeName}</h2>
             </div>
             <button
               type="button"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={() => {
                 setEmployeeFilter("");
                 navigate("/dashboard/staff-performance");
@@ -342,35 +413,35 @@ export default function DashboardStaffPerformance() {
             </button>
           </div>
 
-          <div className="staff-performance-detail-grid">
-            <article>
-              <small>متوسط قيمة الخدمة</small>
+          <div className="dsv2-staff-performance-detail-grid">
+            <article className="dsv2-card dsv2-card--padded">
+              <span>متوسط قيمة الخدمة</span>
               <strong>{formatNullableSar(selectedRow.averageServiceValueHalalas)}</strong>
             </article>
-            <article>
-              <small>متوسط قيمة الحجز</small>
+            <article className="dsv2-card dsv2-card--padded">
+              <span>متوسط قيمة الحجز</span>
               <strong>{formatNullableSar(selectedRow.averageBookingValueHalalas)}</strong>
             </article>
-            <article>
-              <small>الإلغاءات / no-show</small>
+            <article className="dsv2-card dsv2-card--padded">
+              <span>الإلغاءات / no-show</span>
               <strong>{selectedRow.cancellations.toLocaleString("ar-SA")} / {selectedRow.noShows.toLocaleString("ar-SA")}</strong>
             </article>
-            <article>
-              <small>التقييمات</small>
+            <article className="dsv2-card dsv2-card--padded">
+              <span>التقييمات</span>
               <strong>{formatRating(selectedRow)}</strong>
             </article>
           </div>
 
-          <div className="staff-performance-detail-columns">
-            <section>
-              <h3>الحجوزات المكتملة</h3>
+          <div className="dsv2-staff-performance-detail-columns">
+            <section className="dsv2-card dsv2-card--padded">
+              <h3 className="dsv2-section-title">الحجوزات المكتملة</h3>
               {selectedRow.bookingDetails.length ? (
-                <div className="staff-performance-bookings">
+                <div className="dsv2-staff-performance-bookings">
                   {selectedRow.bookingDetails.map((booking) => (
                     <article key={booking.id}>
                       <div>
                         <strong>{booking.publicId}</strong>
-                        <small>{booking.date} - {booking.clientName}</small>
+                        <small>{booking.date}، {booking.clientName}</small>
                       </div>
                       <span>{booking.serviceCount.toLocaleString("ar-SA")} خدمة</span>
                       <b>{formatSar(booking.revenueHalalas)}</b>
@@ -378,14 +449,14 @@ export default function DashboardStaffPerformance() {
                   ))}
                 </div>
               ) : (
-                <p className="staff-performance-empty">لا توجد حجوزات مكتملة لهذه الفترة.</p>
+                <p className="dsv2-staff-performance-empty">لا توجد حجوزات مكتملة لهذه الفترة.</p>
               )}
             </section>
 
-            <section>
-              <h3>أكثر الخدمات تنفيذًا</h3>
+            <section className="dsv2-card dsv2-card--padded">
+              <h3 className="dsv2-section-title">أكثر الخدمات تنفيذًا</h3>
               {selectedRow.topServices.length ? (
-                <div className="staff-performance-services">
+                <div className="dsv2-staff-performance-services">
                   {selectedRow.topServices.slice(0, 6).map((service) => (
                     <article key={service.serviceId}>
                       <span>{service.serviceName}</span>
@@ -395,13 +466,13 @@ export default function DashboardStaffPerformance() {
                   ))}
                 </div>
               ) : (
-                <p className="staff-performance-empty">لا توجد خدمات منفذة في الفترة.</p>
+                <p className="dsv2-staff-performance-empty">لا توجد خدمات منفذة في الفترة.</p>
               )}
             </section>
 
-            <section>
-              <h3>الحضور والانضباط</h3>
-              <dl className="staff-performance-attendance">
+            <section className="dsv2-card dsv2-card--padded">
+              <h3 className="dsv2-section-title">الحضور والانضباط</h3>
+              <dl className="dsv2-staff-performance-attendance">
                 <div><dt>أيام الحضور</dt><dd>{selectedRow.attendance.attendanceDays.toLocaleString("ar-SA")}</dd></div>
                 <div><dt>التأخير</dt><dd>{formatAttendanceHours(selectedRow.attendance.totalLateHours)}</dd></div>
                 <div><dt>نقص الساعات</dt><dd>{formatAttendanceHours(selectedRow.attendance.totalMissingHours)}</dd></div>
@@ -409,28 +480,34 @@ export default function DashboardStaffPerformance() {
                 <div><dt>نسبة الالتزام</dt><dd>{formatPercent(selectedRow.attendance.commitmentPercent)}</dd></div>
               </dl>
               {!selectedRow.attendance.available ? (
-                <p className="staff-performance-note">{selectedRow.attendance.note || "لا توجد بيانات حضور كافية لحساب الالتزام"}</p>
+                <p className="dsv2-staff-performance-note">{selectedRow.attendance.note || "لا توجد بيانات حضور كافية لحساب الالتزام"}</p>
               ) : null}
             </section>
 
-            <section>
-              <h3>ملاحظات البيانات</h3>
+            <section className="dsv2-card dsv2-card--padded">
+              <h3 className="dsv2-section-title">ملاحظات البيانات</h3>
               {[...selectedRow.dataWarnings, ...selectedRow.scoreNotes].length ? (
-                <ul className="staff-performance-notes">
+                <ul className="dsv2-staff-performance-notes">
                   {Array.from(new Set([...selectedRow.dataWarnings, ...selectedRow.scoreNotes])).map((warning) => (
                     <li key={warning}><FiAlertTriangle />{warning}</li>
                   ))}
                 </ul>
               ) : (
-                <p className="staff-performance-empty">لا توجد ملاحظات بيانات ناقصة.</p>
+                <p className="dsv2-staff-performance-empty">لا توجد ملاحظات بيانات ناقصة.</p>
               )}
             </section>
           </div>
         </section>
       ) : null}
 
-      {loading ? <div className="staff-performance-loading"><FiRefreshCw className="is-spinning" /> جاري تحميل مؤشرات الأداء...</div> : null}
-      {!result.summary.ratingAvailable ? <p className="staff-performance-note"><FiStar /> التقييمات غير متوفرة في بيانات الحجوزات الحالية.</p> : null}
-    </div>
+      {loading ? (
+        <div className="dsv2-staff-performance-alert" role="status">
+          <FiRefreshCw className="dsv2-staff-performance-spin" /> جاري تحميل مؤشرات الأداء...
+        </div>
+      ) : null}
+      {!result.summary.ratingAvailable ? (
+        <p className="dsv2-staff-performance-note"><FiStar /> التقييمات غير متوفرة في بيانات الحجوزات الحالية.</p>
+      ) : null}
+    </main>
   );
 }

@@ -24,4 +24,15 @@ export const CoreStaffService = {
     );
     return mapCoreStaff(row);
   },
+
+  async update(
+    id: string,
+    input: Record<string, unknown>
+  ): Promise<CoreStaff> {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/staff/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: input }
+    );
+    return mapCoreStaff(row);
+  },
 };

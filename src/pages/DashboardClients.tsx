@@ -1,7 +1,7 @@
-import "../styles/AdminDashboardClients.css";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
+import { DashboardErrorStateV2 } from "../components/dashboard-v2";
 import {
   CustomersEmptyState,
   CustomersFilters,
@@ -365,7 +365,15 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
   };
 
   if (!canViewClients) {
-    return <section className="customers-access-denied"><h1>غير مصرح</h1><p>هذه الصفحة متاحة للإدارة والاستقبال حسب الصلاحيات الحالية.</p></section>;
+    return (
+      <main className="dsv2-page dsv2-customers-page" dir="rtl">
+        <DashboardErrorStateV2
+          title="غير مصرح"
+          description="هذه الصفحة متاحة للإدارة والاستقبال حسب الصلاحيات الحالية."
+          compact
+        />
+      </main>
+    );
   }
 
   const fatalError = Boolean(error) && !loading && customers.length === 0;
@@ -373,13 +381,18 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
   const noResults = !loading && customers.length > 0 && visibleCustomers.length === 0;
 
   return (
-    <div className="customers-page" dir="rtl">
+    <main className="dsv2-page dsv2-customers-page" dir="rtl">
       <CustomersPageHeader visibleCount={visibleCustomers.length} totalCount={customers.length} />
       <CustomersSearchToolbar query={query} loading={loading} canImport={canImport} canExport={canExport} onQueryChange={setQuery} onImport={() => setImportOpen(true)} onExport={exportCustomers} onRefresh={() => void loadData()} />
       <CustomersFilters segment={segment} sort={sort} source={source} lastVisit={lastVisit} packagesFilterAvailable={packagesFilterAvailable} hasActiveFilters={hasActiveFilters} onSegmentChange={setSegment} onSortChange={setSort} onSourceChange={setSource} onLastVisitChange={setLastVisit} onClear={clearFilters} />
       <CustomersStatsGrid stats={stats} loading={loading && customers.length === 0} />
 
-      {error && !fatalError ? <div className="customers-error-banner"><span>{error}</span><button type="button" onClick={() => void loadData()}>إعادة المحاولة</button></div> : null}
+      {error && !fatalError ? (
+        <div className="dsv2-customers-alert dsv2-customers-alert--error" role="alert">
+          <span>{error}</span>
+          <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void loadData()}>إعادة المحاولة</button>
+        </div>
+      ) : null}
       {fatalError ? <CustomersEmptyState kind="error" message={error} onPrimary={() => void loadData()} /> : null}
       {noData ? <CustomersEmptyState kind="empty" canImport={canImport} onPrimary={() => navigate("/dashboard/booking-internal")} onImport={() => setImportOpen(true)} /> : null}
       {noResults ? <CustomersEmptyState kind="no-results" onPrimary={clearFilters} /> : null}
@@ -392,7 +405,7 @@ export default function DashboardClients({ currentRole = "guest" }: DashboardCli
 
       {selectedCustomer ? <CustomerRecordModal customer={selectedCustomer} bookings={selectedBookings} currentRole={currentRole} onCustomerUpdated={handleCustomerUpdated} onClose={() => setSelectedCustomer(null)} /> : null}
       <CustomersImportModal open={importOpen} existingClients={coreClients} onClose={() => setImportOpen(false)} onImported={(clients) => { setCoreClients(clients); setError(""); }} />
-      {copyToast ? <div className="customers-copy-toast" role="status">{copyToast}</div> : null}
-    </div>
+      {copyToast ? <div className="dsv2-customers-copy-toast" role="status">{copyToast}</div> : null}
+    </main>
   );
 }

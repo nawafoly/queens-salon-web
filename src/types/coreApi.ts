@@ -59,6 +59,9 @@ export type CoreStaff = {
   phoneNormalized?: string | null;
   active: boolean;
   employmentStatus?: string | null;
+  hrProfileStatus?: string | null;
+  hrEmploymentStatus?: string | null;
+  hrAccountStatus?: string | null;
   avatarUrl?: string | null;
   showOnBooking?: boolean;
   specialties?: string[];

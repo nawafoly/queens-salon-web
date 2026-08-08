@@ -24,6 +24,7 @@ export type EmployeeEditorModalProps = {
   detailTabs?: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: IconDefinition }>;
   selectedEmployeeStatusLabel?: string;
   selectedEmployeeStatusClass?: string;
+  hasUnsavedChanges?: boolean;
   canDelete?: boolean;
   onClose: () => void;
   onSave: () => void;

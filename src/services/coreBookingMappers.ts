@@ -80,6 +80,9 @@ export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
     firebase_uid: "firebaseUid",
     phone_normalized: "phoneNormalized",
     employment_status: "employmentStatus",
+    hr_profile_status: "hrProfileStatus",
+    hr_employment_status: "hrEmploymentStatus",
+    hr_account_status: "hrAccountStatus",
     avatar_url: "avatarUrl",
     show_on_booking: "showOnBooking",
     specialties_json: "specialtiesJson",
@@ -321,6 +324,18 @@ export function coreStaffToLegacy(
     name: staff.name,
     specialties: staff.specialties || [],
     active: staff.active,
+    isActive: staff.active,
+    status:
+      staff.hrAccountStatus ||
+      staff.hrProfileStatus ||
+      staff.hrEmploymentStatus ||
+      staff.employmentStatus ||
+      (staff.active ? "active" : "inactive"),
+    employmentStatus: staff.employmentStatus || (staff.active ? "active" : "inactive"),
+    accountStatus: staff.hrAccountStatus || undefined,
+    hrProfileStatus: staff.hrProfileStatus || undefined,
+    hrEmploymentStatus: staff.hrEmploymentStatus || undefined,
+    hrAccountStatus: staff.hrAccountStatus || undefined,
     linkedUid: staff.firebaseUid || undefined,
     avatarUrl: staff.avatarUrl || undefined,
     showOnBooking: staff.showOnBooking !== false,

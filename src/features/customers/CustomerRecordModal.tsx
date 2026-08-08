@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiEdit3, FiRefreshCw, FiX } from "react-icons/fi";
-import Modal from "../../components/Modal";
+import { FiEdit3, FiRefreshCw } from "react-icons/fi";
+import { DashboardModalV2 } from "../../components/dashboard-v2";
 import ClientPackagesPanel from "../../components/packages/ClientPackagesPanel";
 import { CoreApiError } from "../../services/coreApiClient";
 import { CoreClientService, type CoreClientOverview } from "../../services/CoreClientService";
@@ -10,6 +10,7 @@ import {
   customerPhoneDigits,
   formatCustomerLastVisit,
   getCustomerStatusLabel,
+  isCustomerActive,
   normalizeCustomerName,
   normalizeSaudiCustomerPhone,
   UNNAMED_CUSTOMER_LABEL,
@@ -27,6 +28,12 @@ const bookingStatusLabel: Record<BookingStatus, string> = {
   cancelled: "ملغي",
   completed: "مكتمل",
 };
+
+function bookingStatusBadgeClass(status: BookingStatus): string {
+  if (status === "confirmed" || status === "completed") return "dsv2-badge--success";
+  if (status === "cancelled") return "dsv2-badge--danger";
+  return "dsv2-badge--gold";
+}
 
 function plainNumber(value: unknown, maximumFractionDigits = 0): string {
   const amount = Number(value ?? 0);
@@ -282,118 +289,118 @@ export default function CustomerRecordModal({
   };
 
   return (
-    <Modal open onClose={onClose} ariaLabel="ملف العميلة" panelClassName="customers-record-modal" size="lg">
-      <header className="customers-modal-header">
-        <div className="customers-modal-identity">
-          <p className="customers-eyebrow">ملف العميلة</p>
-          <div className="customers-modal-title-row">
-            <h2>{normalizeCustomerName(customer.name)}</h2>
-            <span className="customers-status-pill">{getCustomerStatusLabel(customer.status)}</span>
-            {customer.vip ? <span className="customers-vip-pill">VIP</span> : null}
+    <DashboardModalV2
+      open
+      onClose={onClose}
+      title={normalizeCustomerName(customer.name)}
+      description={<bdi dir="ltr">{customer.phone === "—" ? "بدون رقم جوال" : customer.phone}</bdi>}
+      eyebrow="ملف العميلة"
+      size="xl"
+      tone="gold"
+      className="dsv2-customers-record-modal"
+    >
+      <div className="dsv2-customers-modal-stack">
+        <div className="dsv2-customers-modal-identity-row">
+          <div className="dsv2-customers-badges">
+            <span className={`dsv2-badge ${isCustomerActive(customer.status) ? "dsv2-badge--success" : ""}`}>{getCustomerStatusLabel(customer.status)}</span>
+            {customer.vip ? <span className="dsv2-badge dsv2-badge--gold">VIP</span> : null}
           </div>
-          <bdi dir="ltr">{customer.phone === "—" ? "بدون رقم جوال" : customer.phone}</bdi>
-        </div>
-        <div className="customers-modal-actions">
           {canManage && customer.clientId ? (
-            <button type="button" className="customers-button is-secondary customers-header-edit" onClick={beginEditing} disabled={editing || editSaving}>
+            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={beginEditing} disabled={editing || editSaving}>
               <FiEdit3 /> تعديل البيانات
             </button>
           ) : null}
-          <button type="button" className="customers-modal-close" onClick={onClose} aria-label="إغلاق" title="إغلاق"><FiX /></button>
         </div>
-      </header>
-
-      <div className="customers-modal-body">
-        <section className="customers-client-data" aria-labelledby="customer-data-title">
-          <header>
+        <section className="dsv2-card dsv2-card--padded dsv2-customers-client-data" aria-labelledby="customer-data-title">
+          <header className="dsv2-section-head">
             <div>
-              <p className="customers-eyebrow">البيانات الأساسية</p>
-              <h3 id="customer-data-title">بيانات العميلة</h3>
+              <p className="dsv2-customers-eyebrow">البيانات الأساسية</p>
+              <h3 id="customer-data-title" className="dsv2-section-title">بيانات العميلة</h3>
             </div>
             {!editing && canManage && customer.clientId ? (
-              <button type="button" className="customers-button is-secondary customers-section-edit" onClick={beginEditing}>
+              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm dsv2-customers-section-edit" onClick={beginEditing}>
                 <FiEdit3 /> تعديل البيانات
               </button>
             ) : null}
           </header>
 
           {editing ? (
-            <div className="customers-client-edit-form">
-              <label>
-                <span>اسم العميلة</span>
-                <input value={editName} onChange={(event) => setEditName(event.target.value)} autoComplete="name" placeholder="أدخلي اسم العميلة" disabled={editSaving} />
+            <div className="dsv2-customers-client-edit-form">
+              <label className="dsv2-field">
+                <span className="dsv2-field__label">اسم العميلة</span>
+                <input className="dsv2-input" value={editName} onChange={(event) => setEditName(event.target.value)} autoComplete="name" placeholder="أدخلي اسم العميلة" disabled={editSaving} />
               </label>
-              <label>
-                <span>رقم الجوال</span>
-                <input dir="ltr" inputMode="tel" value={editPhone} onChange={(event) => setEditPhone(event.target.value)} autoComplete="tel" placeholder="05XXXXXXXX" disabled={editSaving} />
+              <label className="dsv2-field">
+                <span className="dsv2-field__label">رقم الجوال</span>
+                <input className="dsv2-input" dir="ltr" inputMode="tel" value={editPhone} onChange={(event) => setEditPhone(event.target.value)} autoComplete="tel" placeholder="05XXXXXXXX" disabled={editSaving} />
               </label>
-              <div className="customers-client-edit-actions">
-                <button type="button" className="customers-button is-secondary" onClick={cancelEditing} disabled={editSaving}>إلغاء</button>
-                <button type="button" className="customers-button is-primary" onClick={() => void saveProfile()} disabled={editSaving}>
+              <div className="dsv2-customers-client-edit-actions">
+                <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={cancelEditing} disabled={editSaving}>إلغاء</button>
+                <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveProfile()} disabled={editSaving}>
                   {editSaving ? "جارٍ حفظ التعديلات..." : "حفظ التعديلات"}
                 </button>
               </div>
             </div>
           ) : (
-            <dl className="customers-client-data-grid">
+            <dl className="dsv2-customers-client-data-grid">
               <div><dt>اسم العميلة</dt><dd>{normalizeCustomerName(customer.name)}</dd></div>
               <div><dt>رقم الجوال</dt><dd><bdi dir="ltr">{customer.phone === "—" ? "غير مسجل" : customer.phone}</bdi></dd></div>
             </dl>
           )}
 
-          {editFeedback ? <p className={`customers-form-feedback is-${editFeedback.type}`} role="status">{editFeedback.text}</p> : null}
-          {!canManage ? <p className="customers-permission-hint">التعديل متاح للمديرة أو المشرفة فقط.</p> : null}
+          {editFeedback ? <p className={`dsv2-customers-form-feedback is-${editFeedback.type}`} role="status">{editFeedback.text}</p> : null}
+          {!canManage ? <p className="dsv2-section-caption">التعديل متاح للمديرة أو المشرفة فقط.</p> : null}
         </section>
 
-        <section className="customers-record-summary">
+        <section className="dsv2-customers-record-summary">
           <article><strong>{plainNumber(selectedBookings.length)}</strong><span>عدد الحجوزات</span></article>
           <article><strong>{formatCustomerLastVisit(customer.lastVisitDate, customer.lastVisitTime)}</strong><span>آخر زيارة</span></article>
           <article><strong>{formatMoney(totalSpend)}</strong><span>إجمالي الصرف</span></article>
         </section>
 
-        <section className="customers-overview-section" aria-label="السجل المالي والولاء">
-          <header>
-            <div><h3>السجل الموحد للعميلة</h3><p>الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.</p></div>
-            {customer.clientId ? <button type="button" className="customers-button is-secondary" onClick={() => void loadOverview()} disabled={overviewLoading}><FiRefreshCw className={overviewLoading ? "is-spinning" : ""} /> تحديث</button> : null}
+        <section className="dsv2-card dsv2-card--padded dsv2-customers-overview-section" aria-label="السجل المالي والولاء">
+          <header className="dsv2-section-head">
+            <div><h3 className="dsv2-section-title">السجل الموحد للعميلة</h3><p className="dsv2-section-caption">الحجوزات والدفعات والاسترجاعات والنقاط من Core D1.</p></div>
+            {customer.clientId ? <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void loadOverview()} disabled={overviewLoading}><FiRefreshCw className={overviewLoading ? "dsv2-customers-spin" : ""} /> تحديث</button> : null}
           </header>
 
-          {overviewLoading ? <div className="customers-overview-state"><span className="customers-skeleton" /> جارٍ تحميل السجل...</div>
-            : overviewError ? <div className="customers-overview-state is-error">{overviewError}</div>
+          {overviewLoading ? <div className="dsv2-customers-overview-state"><span className="dsv2-skeleton" /> جارٍ تحميل السجل...</div>
+            : overviewError ? <div className="dsv2-customers-overview-state is-error">{overviewError}</div>
               : overview ? (
                 <>
-                  <div className="customers-overview-grid">
+                  <div className="dsv2-customers-overview-grid">
                     <article><span>صافي المدفوع</span><strong>{formatHalalas(overview.summary.netPaidHalalas)}</strong></article>
                     <article><span>الاسترجاعات</span><strong>{formatHalalas(overview.summary.refundedHalalas)}</strong></article>
                     <article><span>الرصيد الحالي</span><strong>{plainNumber(overview.loyalty.balance)} نقطة</strong></article>
                     <article><span>آخر نشاط</span><strong>{formatDateTime(overview.summary.lastActivityAt)}</strong></article>
                   </div>
-                  <div className="customers-overview-columns">
+                  <div className="dsv2-customers-overview-columns">
                     <section>
                       <h4>النقاط والولاء</h4>
-                      <div className="customers-loyalty-summary">
+                      <div className="dsv2-customers-loyalty-summary">
                         <span>المستوى <b>{overview.loyalty.levelLabel || "غير محدد"}</b></span>
                         <span>مكتسبة <b>{plainNumber(overview.loyalty.earned)}</b></span>
                         <span>مستخدمة <b>{plainNumber(overview.loyalty.used)}</b></span>
                         <span>معكوسة <b>{plainNumber(overview.loyalty.reversed)}</b></span>
                       </div>
-                      <div className="customers-record-list">
+                      <div className="dsv2-customers-record-list">
                         {overview.loyalty.transactions.slice(0, 5).map((transaction) => (
                           <div key={transaction.id}><span>{transaction.reason || transaction.type}</span><b className={transaction.points < 0 ? "is-negative" : "is-positive"}>{transaction.points > 0 ? "+" : ""}{plainNumber(transaction.points)}</b></div>
                         ))}
                         {!overview.loyalty.transactions.length ? <p>لا توجد حركات نقاط.</p> : null}
                       </div>
                       {canManage ? (
-                        <div className="customers-loyalty-adjust">
-                          <input type="number" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
-                          <input value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder="سبب التعديل" aria-label="سبب تعديل النقاط" />
-                          <button type="button" className="customers-button is-primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? "جارٍ الحفظ" : "تسجيل الحركة"}</button>
+                        <div className="dsv2-customers-loyalty-adjust">
+                          <input className="dsv2-input" type="number" step="1" value={loyaltyPoints} onChange={(event) => setLoyaltyPoints(event.target.value)} placeholder="20 أو -20" aria-label="عدد النقاط" />
+                          <input className="dsv2-input" value={loyaltyReason} onChange={(event) => setLoyaltyReason(event.target.value)} placeholder="سبب التعديل" aria-label="سبب تعديل النقاط" />
+                          <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void adjustLoyalty()} disabled={loyaltySaving}>{loyaltySaving ? "جارٍ الحفظ" : "تسجيل الحركة"}</button>
                         </div>
                       ) : null}
-                      {loyaltyMessage ? <p className="customers-loyalty-message">{loyaltyMessage}</p> : null}
+                      {loyaltyMessage ? <p className="dsv2-customers-loyalty-message">{loyaltyMessage}</p> : null}
                     </section>
                     <section>
                       <h4>الدفعات والاسترجاعات</h4>
-                      <div className="customers-record-list">
+                      <div className="dsv2-customers-record-list">
                         {overview.payments.slice(0, 4).map((payment, index) => <div key={String(payment.id || `payment-${index}`)}><span>دفعة · {String(payment.method || payment.provider || "غير محدد")}</span><b className="is-positive">{formatHalalas(payment.amount_halalas)}</b></div>)}
                         {overview.refunds.slice(0, 4).map((refund, index) => <div key={String(refund.id || `refund-${index}`)}><span>استرجاع · {formatDateTime(refund.refunded_at || refund.created_at)}</span><b className="is-negative">-{formatHalalas(refund.amount_halalas)}</b></div>)}
                         {!overview.payments.length && !overview.refunds.length ? <p>لا توجد حركات مالية.</p> : null}
@@ -401,7 +408,7 @@ export default function CustomerRecordModal({
                     </section>
                     <section>
                       <h4>العروض المستخدمة</h4>
-                      <div className="customers-record-list">
+                      <div className="dsv2-customers-record-list">
                         {overview.offersUsed.map((offer, index) => <div key={String(offer.id || offer.code || index)}><span>{offer.title}</span><b>{formatDateTime(offer.usedAt)}</b></div>)}
                         {!overview.offersUsed.length ? <p>لم تُستخدم عروض مسجلة.</p> : null}
                       </div>
@@ -411,25 +418,25 @@ export default function CustomerRecordModal({
               ) : null}
         </section>
 
-        {customer.importedNote ? <section className="customers-note-card"><h3>ملاحظة من ملف العميلة</h3><p>{customer.importedNote}</p></section> : null}
+        {customer.importedNote ? <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card"><h3 className="dsv2-section-title">ملاحظة من ملف العميلة</h3><p>{customer.importedNote}</p></section> : null}
 
-        <section className="customers-note-card">
-          <h3>ملاحظات إدارية داخلية</h3>
-          <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة..." disabled={noteSaving} />
-          <div className="customers-note-actions">
-            <button type="button" className="customers-button is-primary" onClick={() => void saveNote()} disabled={noteSaving}>{noteSaving ? "جارٍ حفظ الملاحظة..." : "حفظ الملاحظة"}</button>
-            {noteFeedback ? <span className={`customers-form-feedback is-${noteFeedback.type}`} role="status">{noteFeedback.text}</span> : null}
+        <section className="dsv2-card dsv2-card--padded dsv2-customers-note-card">
+          <h3 className="dsv2-section-title">ملاحظات إدارية داخلية</h3>
+          <textarea className="dsv2-textarea" value={noteText} onChange={(event) => setNoteText(event.target.value)} placeholder="مثال: تفضّل موظفة معينة، حساسية، أو أوقات مناسبة..." disabled={noteSaving} />
+          <div className="dsv2-customers-note-actions">
+            <button type="button" className="dsv2-btn dsv2-btn--primary" onClick={() => void saveNote()} disabled={noteSaving}>{noteSaving ? "جارٍ حفظ الملاحظة..." : "حفظ الملاحظة"}</button>
+            {noteFeedback ? <span className={`dsv2-customers-form-feedback is-${noteFeedback.type}`} role="status">{noteFeedback.text}</span> : null}
           </div>
         </section>
 
-        <section className="customers-packages-section">
+        <section className="dsv2-card dsv2-card--padded dsv2-customers-packages">
           <ClientPackagesPanel clientId={customer.clientId || customer.legacyClientDocId} canManage={canManage} />
         </section>
 
-        <section className="customers-bookings-history">
-          <header><div><p className="customers-eyebrow">السجل</p><h3>حجوزات العميلة</h3></div><span>{plainNumber(selectedBookings.length)} حجزًا</span></header>
-          <div className="customers-history-table-wrap">
-            <table>
+        <section className="dsv2-table-card dsv2-customers-bookings-history">
+          <header className="dsv2-card--padded dsv2-customers-history-heading"><div><p className="dsv2-customers-eyebrow">السجل</p><h3 className="dsv2-section-title">حجوزات العميلة</h3></div><span className="dsv2-badge">{plainNumber(selectedBookings.length)} حجزًا</span></header>
+          <div className="dsv2-table-scroll dsv2-customers-history-table-wrap">
+            <table className="dsv2-table dsv2-customers-history-table">
               <thead><tr><th>رقم الحجز</th><th>الخدمة</th><th>الموظفة</th><th>التاريخ والوقت</th><th>الحالة</th><th>الإجمالي</th></tr></thead>
               <tbody>
                 {selectedBookings.map((booking) => (
@@ -438,25 +445,25 @@ export default function CustomerRecordModal({
                     <td>{String(booking.serviceName || "غير محددة")}</td>
                     <td>{String(booking.employeeName || "غير محددة")}</td>
                     <td>{formatCustomerLastVisit(booking.date, booking.time)}</td>
-                    <td><span className={`status-badge ${booking.status}`}>{bookingStatusLabel[booking.status] || booking.status}</span></td>
+                    <td><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{bookingStatusLabel[booking.status] || booking.status}</span></td>
                     <td>{formatMoney(booking.total)}</td>
                   </tr>
                 ))}
-                {!selectedBookings.length ? <tr><td colSpan={6} className="customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</td></tr> : null}
+                {!selectedBookings.length ? <tr><td colSpan={6} className="dsv2-customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</td></tr> : null}
               </tbody>
             </table>
           </div>
-          <div className="customers-history-mobile">
+          <div className="dsv2-customers-history-mobile">
             {selectedBookings.map((booking) => (
-              <article key={booking.id}>
-                <header><bdi dir="ltr">{bookingNoOf(booking)}</bdi><span className={`status-badge ${booking.status}`}>{bookingStatusLabel[booking.status] || booking.status}</span></header>
+              <article className="dsv2-card dsv2-card--padded" key={booking.id}>
+                <header><bdi dir="ltr">{bookingNoOf(booking)}</bdi><span className={`dsv2-badge ${bookingStatusBadgeClass(booking.status)}`}>{bookingStatusLabel[booking.status] || booking.status}</span></header>
                 <dl><div><dt>الخدمة</dt><dd>{String(booking.serviceName || "غير محددة")}</dd></div><div><dt>الموظفة</dt><dd>{String(booking.employeeName || "غير محددة")}</dd></div><div><dt>التاريخ والوقت</dt><dd>{formatCustomerLastVisit(booking.date, booking.time)}</dd></div><div><dt>الإجمالي</dt><dd>{formatMoney(booking.total)}</dd></div></dl>
               </article>
             ))}
-            {!selectedBookings.length ? <p className="customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</p> : null}
+            {!selectedBookings.length ? <p className="dsv2-customers-history-empty">لا توجد حجوزات مسجلة لهذه العميلة.</p> : null}
           </div>
         </section>
       </div>
-    </Modal>
+    </DashboardModalV2>
   );
 }

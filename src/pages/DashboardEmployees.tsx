@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   collection,
+  getDoc,
   getDocs,
   doc,
   setDoc,
@@ -41,6 +42,7 @@ import {
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { CoreHrService } from "../services/CoreHrService";
+import { CoreStaffService } from "../services/CoreStaffService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
   getTodayAttendanceDateKey,
@@ -296,6 +298,15 @@ function attendanceDebug(...args: unknown[]) {
   console.info("[attendance-debug]", ...args);
 }
 
+function employeeSaveDebug(step: string, details?: Record<string, unknown>) {
+  if (!(import.meta as any).env?.DEV) return;
+  if (details) {
+    console.info(`[employee-save] ${step}`, details);
+    return;
+  }
+  console.info(`[employee-save] ${step}`);
+}
+
 function resolveEmployeeAttendanceIdentity(
   profile: Partial<StaffPublicUi> | Record<string, any> | null | undefined,
   selectedEmployeeId = ""
@@ -373,7 +384,7 @@ type EmployeeIdentity = {
 
 function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIdentity {
   return {
-    id: cleanText(staff?.id),
+    id: cleanText((staff as any)?.staffPublicDocId || staff?.id),
     linkedUid: cleanText(
       (staff as any)?.linkedUid ||
         (staff as any)?.employeeUid ||
@@ -383,9 +394,11 @@ function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIden
         (staff as any)?.linkedUserId
     ),
     employeeId: cleanText(
-      (staff as any)?.employeeDocId ||
+      (staff as any)?.staffPublicDocId ||
+        (staff as any)?.employeeDocId ||
         (staff as any)?.linkedEmployeeDocId ||
         (staff as any)?.employeeId ||
+        (staff as any)?.sourceDocId ||
         staff?.id
     ),
     email: cleanText((staff as any)?.email).toLowerCase(),
@@ -397,10 +410,32 @@ function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIden
   };
 }
 
+function employeeIdentityValues(staff: Partial<StaffPublicUi>, rawDocId = "") {
+  return uniqueCleanTexts([
+    staff.id,
+    rawDocId,
+    (staff as any)?.sourceDocId,
+    (staff as any)?.staffPublicDocId,
+    (staff as any)?.employeeDocId,
+    (staff as any)?.linkedEmployeeDocId,
+    (staff as any)?.employeeId,
+    ...((Array.isArray((staff as any)?.legacyEmployeeIds)
+      ? (staff as any).legacyEmployeeIds
+      : []) as unknown[]),
+    (staff as any)?.linkedUid,
+    (staff as any)?.employeeUid,
+    (staff as any)?.authUid,
+    (staff as any)?.uid,
+    (staff as any)?.userId,
+    (staff as any)?.linkedUserId,
+  ]);
+}
+
 function employeeMatchesIdentity(staff: Partial<StaffPublicUi>, identity: EmployeeIdentity | null) {
   if (!identity) return false;
 
   const current = employeeIdentityOf(staff);
+  const currentValues = new Set(employeeIdentityValues(staff).map((value) => value.toLowerCase()));
 
   const hasStableIdentity =
     !!identity.id ||
@@ -410,8 +445,11 @@ function employeeMatchesIdentity(staff: Partial<StaffPublicUi>, identity: Employ
   if (hasStableIdentity) {
     return (
       (!!identity.id && current.id === identity.id) ||
+      (!!identity.id && currentValues.has(identity.id.toLowerCase())) ||
       (!!identity.linkedUid && current.linkedUid === identity.linkedUid) ||
-      (!!identity.employeeId && current.employeeId === identity.employeeId)
+      (!!identity.linkedUid && currentValues.has(identity.linkedUid.toLowerCase())) ||
+      (!!identity.employeeId && current.employeeId === identity.employeeId) ||
+      (!!identity.employeeId && currentValues.has(identity.employeeId.toLowerCase()))
     );
   }
 
@@ -425,7 +463,14 @@ function employeeMatchesRouteId(staff: Partial<StaffPublicUi>, routeId: string) 
   const needle = cleanText(routeId).toLowerCase();
   if (!needle) return false;
   const current = employeeIdentityOf(staff);
-  return [current.id, current.linkedUid, current.employeeId, current.email, current.name]
+  return [
+    current.id,
+    current.linkedUid,
+    current.employeeId,
+    ...employeeIdentityValues(staff),
+    current.email,
+    current.name,
+  ]
     .filter(Boolean)
     .some((value) => value.toLowerCase() === needle);
 }
@@ -438,6 +483,7 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
     identity.linkedUid ? `uid:${identity.linkedUid}` : "",
     identity.employeeId ? `employee:${identity.employeeId}` : "",
     rawDocId ? `doc:${cleanText(rawDocId)}` : "",
+    ...employeeIdentityValues(staff, rawDocId).map((value) => `identity:${value}`),
   ].filter(Boolean);
 
   if (stableKeys.length > 0) {
@@ -455,6 +501,30 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
 }
 
 function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): StaffPublicUi {
+  const primaryIsStaffPublic = primary.source === "staff_public";
+  const pickEditableText = (field: keyof StaffPublicDoc) =>
+    primaryIsStaffPublic
+      ? cleanText((primary as any)?.[field])
+      : cleanText((primary as any)?.[field] || (fallback as any)?.[field]);
+  const pickEditableBoolean = (field: keyof StaffPublicDoc, defaultValue: boolean) => {
+    const value = primaryIsStaffPublic
+      ? (primary as any)?.[field]
+      : (primary as any)?.[field] ?? (fallback as any)?.[field];
+    if (value === undefined || value === null || value === "") return defaultValue;
+    return !(value === false || value === 0 || value === "false" || value === "0");
+  };
+  const pickEditableNumber = (field: keyof StaffPublicDoc) =>
+    primaryIsStaffPublic
+      ? safeNonNegativeNumber((primary as any)?.[field], 0)
+      : safeNonNegativeNumber((primary as any)?.[field] ?? (fallback as any)?.[field], 0);
+  const pickEditableArray = <T,>(
+    field: keyof StaffPublicDoc,
+    normalize: (value: unknown) => T[]
+  ): T[] => {
+    const primaryValue = normalize((primary as any)?.[field]);
+    if (primaryIsStaffPublic) return primaryValue;
+    return primaryValue.length > 0 ? primaryValue : normalize((fallback as any)?.[field]);
+  };
   const linkedUid = cleanText(
     (primary as any)?.linkedUid ||
       (primary as any)?.employeeUid ||
@@ -469,10 +539,26 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
       (fallback as any)?.userId ||
       (fallback as any)?.linkedUserId
   );
+  const staffPublicDocId = cleanText((primary as any)?.staffPublicDocId || (fallback as any)?.staffPublicDocId);
+  const sourceDocId = cleanText((primary as any)?.sourceDocId || (fallback as any)?.sourceDocId);
+  const canonicalEmployeeId = cleanText(staffPublicDocId || primary.id || fallback.id);
 
   return {
     ...fallback,
     ...primary,
+    id: canonicalEmployeeId,
+    sourceDocId,
+    staffPublicDocId,
+    legacyEmployeeIds: uniqueCleanTexts([
+      ...(((fallback as any)?.legacyEmployeeIds || []) as unknown[]),
+      ...(((primary as any)?.legacyEmployeeIds || []) as unknown[]),
+      (fallback as any)?.employeeDocId,
+      (fallback as any)?.linkedEmployeeDocId,
+      (fallback as any)?.employeeId,
+      (primary as any)?.employeeDocId,
+      (primary as any)?.linkedEmployeeDocId,
+      (primary as any)?.employeeId,
+    ]).filter((value) => value !== canonicalEmployeeId),
     uid: cleanText(
       (primary as any)?.uid ||
         (primary as any)?.authUid ||
@@ -500,7 +586,8 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
         (fallback as any)?.employeeUid
     ),
     employeeDocId: cleanText(
-      (primary as any)?.employeeDocId ||
+      staffPublicDocId ||
+        (primary as any)?.employeeDocId ||
         (primary as any)?.linkedEmployeeDocId ||
         (primary as any)?.employeeId ||
         (fallback as any)?.employeeDocId ||
@@ -514,7 +601,8 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
         (fallback as any)?.linkedEmployeeDocId
     ),
     employeeId: cleanText(
-      (primary as any)?.employeeDocId ||
+      staffPublicDocId ||
+        (primary as any)?.employeeDocId ||
         (primary as any)?.linkedEmployeeDocId ||
         (primary as any)?.employeeId ||
         (fallback as any)?.employeeDocId ||
@@ -523,7 +611,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
         primary.id ||
         fallback.id
     ),
-    name: cleanText(primary.name || fallback.name),
+    name: pickEditableText("name") || cleanText(fallback.name),
     email: cleanText(primary.email || fallback.email),
     phone: cleanText(primary.phone || fallback.phone),
     department: cleanText(primary.department || fallback.department),
@@ -537,11 +625,30 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
       Array.isArray(primary.resourceIds) && primary.resourceIds.length
         ? primary.resourceIds
         : fallback.resourceIds,
-    avatarUrl: cleanText(primary.avatarUrl || fallback.avatarUrl),
-    specialties:
-      normalizeSpecialties(primary.specialties).length > 0
-        ? primary.specialties
-        : fallback.specialties,
+    active: pickEditableBoolean("active", true),
+    showOnAbout: pickEditableBoolean("showOnAbout", false),
+    showOnBooking: pickEditableBoolean("showOnBooking", false),
+    includeInEmployeeManagement: pickEditableBoolean("includeInEmployeeManagement", true),
+    bio: pickEditableText("bio"),
+    avatarUrl: pickEditableText("avatarUrl"),
+    cvUrl: pickEditableText("cvUrl"),
+    rating: pickEditableNumber("rating"),
+    reviewsCount: Math.floor(pickEditableNumber("reviewsCount")),
+    specialties: pickEditableArray("specialties", normalizeSpecialties),
+    employmentEndDate: pickEditableText("employmentEndDate"),
+    useCustomWorkingHours: pickEditableBoolean("useCustomWorkingHours", false),
+    customWorkingHours: primaryIsStaffPublic
+      ? primary.customWorkingHours
+      : primary.customWorkingHours || fallback.customWorkingHours,
+    workingScheduleVersions: pickEditableArray("workingScheduleVersions", normalizeStaffScheduleVersions),
+    customWorkingHourOverrides: pickEditableArray("customWorkingHourOverrides", normalizeWorkingHourOverrides),
+    allowedAttendanceZoneId: pickEditableText("allowedAttendanceZoneId"),
+    attendanceZoneId: pickEditableText("attendanceZoneId"),
+    attendanceScopeId: pickEditableText("attendanceScopeId"),
+    assignedAttendanceZoneId: pickEditableText("assignedAttendanceZoneId"),
+    allowedZoneIds: pickEditableArray("allowedZoneIds", (value) =>
+      Array.isArray(value) ? value.map(cleanText).filter(Boolean) : []
+    ),
     profileIncomplete:
       primary.source !== "staff_public" && fallback.source !== "staff_public",
   };
@@ -582,6 +689,7 @@ export default function DashboardEmployees() {
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
   const [repairConfirmOpen, setRepairConfirmOpen] = useState(false);
   const [repairMessage, setRepairMessage] = useState("");
   const busy = loading || saving;
@@ -2224,12 +2332,16 @@ export default function DashboardEmployees() {
           if (["client", "pending", "guest"].includes(role)) return;
 
           const employeeId = cleanText(
-            combined?.employeeDocId ||
-              combined?.linkedEmployeeDocId ||
-              combined?.employeeId ||
-              rawDocId ||
-              linkedUid
+            source === "staff_public"
+              ? rawDocId || combined?.employeeDocId || combined?.linkedEmployeeDocId || combined?.employeeId || linkedUid
+              : combined?.employeeDocId || combined?.linkedEmployeeDocId || combined?.employeeId || rawDocId || linkedUid
           );
+          const legacyEmployeeIds = uniqueCleanTexts([
+            combined?.employeeDocId,
+            combined?.linkedEmployeeDocId,
+            combined?.employeeId,
+            rawDocId,
+          ]).filter((value) => value !== employeeId);
 
           // حساب الدخول لا يتحول تلقائيًا إلى موظفة. تفضيل users هو مصدر الحقيقة،
           // ثم نرجع لعلامة السجل، وبعدها فقط نحافظ على الموظفات التشغيليات القديمة.
@@ -2256,6 +2368,9 @@ export default function DashboardEmployees() {
           const specialties = canonicalizeSpecialties(combined?.specialties, serviceLookup);
           const row: StaffPublicUi = {
             id: employeeId,
+            sourceDocId: rawDocId,
+            staffPublicDocId: source === "staff_public" ? rawDocId : cleanText(combined?.staffPublicDocId),
+            legacyEmployeeIds,
             uid: cleanText(
               combined?.uid ||
                 combined?.authUid ||
@@ -2278,12 +2393,13 @@ export default function DashboardEmployees() {
                 linkedUid
             ),
             employeeDocId: cleanText(
-              combined?.employeeDocId ||
+              (source === "staff_public" ? employeeId : "") ||
+                combined?.employeeDocId ||
                 combined?.linkedEmployeeDocId ||
                 combined?.employeeId ||
                 employeeId
             ),
-            linkedEmployeeDocId: cleanText(combined?.linkedEmployeeDocId),
+            linkedEmployeeDocId: cleanText(combined?.linkedEmployeeDocId || (source === "staff_public" ? employeeId : "")),
             employeeId,
             email: cleanText(combined?.email || combined?.userEmail),
             phone: cleanText(combined?.phone),
@@ -2337,6 +2453,7 @@ export default function DashboardEmployees() {
             exceptionalLeaveWeekdays: resolveStaffWeeklyOffDays(combined),
             useCustomWorkingHours: !!combined?.useCustomWorkingHours,
             customWorkingHours: normalizeWorkingHours(combined?.customWorkingHours),
+            workingScheduleVersions: normalizeStaffScheduleVersions(combined?.workingScheduleVersions),
             customWorkingHourOverrides: normalizeWorkingHourOverrides(combined?.customWorkingHourOverrides),
             allowedAttendanceZoneId: resolveAttendanceZoneId(combined),
             attendanceZoneId: cleanText(combined?.attendanceZoneId),
@@ -2471,9 +2588,11 @@ export default function DashboardEmployees() {
         }
 
         setList(rows);
+        return rows;
       } catch (e) {
         setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الموظفات."));
         // لا نمسح القائمة الحالية عند فشل التحديث حتى لا تُغلق الموظفة المحددة.
+        return [];
       } finally {
         setLoading(false);
       }
@@ -3008,6 +3127,7 @@ export default function DashboardEmployees() {
 
     setSaving(true);
     setErrorMsg("");
+    setSaveMessage("");
     const normalizedModalLeaveFrom = normalizeLeaveUntil(modalLeaveFrom);
     const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
     const normalizedModalLeaveType = normalizeManagedLeaveType(modalLeaveType);
@@ -3029,13 +3149,43 @@ export default function DashboardEmployees() {
           .replace(/[^\w\u0600-\u06FF_]/g, "")
           .slice(0, 40) || crypto.randomUUID()
       : "";
-    const targetEmployeeId = cleanText(editId || generatedEmployeeId);
+    const targetEmployeeId = cleanText(
+      editId
+        ? (editingStaff as any)?.staffPublicDocId ||
+            ((editingStaff as any)?.source === "staff_public" ? (editingStaff as any)?.sourceDocId : "") ||
+            editId
+        : generatedEmployeeId
+    );
+    const linkedUidForSave = cleanText(
+      (editingStaff as any)?.linkedUid ||
+        (editingStaff as any)?.employeeUid ||
+        (editingStaff as any)?.authUid ||
+        (editingStaff as any)?.uid ||
+        (editingStaff as any)?.userId ||
+        (editingStaff as any)?.linkedUserId
+    );
+    employeeSaveDebug("start", {
+      mode: editId ? "edit" : "create",
+      activeTab,
+    });
+    employeeSaveDebug("target identity", {
+      employeeId: targetEmployeeId,
+      source: (editingStaff as any)?.source || "new",
+      sourceDocId: cleanText((editingStaff as any)?.sourceDocId),
+      staffPublicDocId: cleanText((editingStaff as any)?.staffPublicDocId),
+      hasLinkedUid: !!linkedUidForSave,
+    });
 
     const payload: StaffPublicDoc = {
-      uid: cleanText((editingStaff as any)?.uid || (editingStaff as any)?.linkedUid),
-      linkedUid: cleanText((editingStaff as any)?.linkedUid || (editingStaff as any)?.uid),
-      linkedUserId: cleanText((editingStaff as any)?.linkedUserId || (editingStaff as any)?.linkedUid || (editingStaff as any)?.uid),
-      employeeId: cleanText((editingStaff as any)?.employeeId || targetEmployeeId),
+      uid: cleanText((editingStaff as any)?.uid || linkedUidForSave),
+      linkedUid: linkedUidForSave,
+      linkedUserId: cleanText((editingStaff as any)?.linkedUserId || linkedUidForSave),
+      employeeUid: cleanText((editingStaff as any)?.employeeUid || linkedUidForSave),
+      authUid: cleanText((editingStaff as any)?.authUid),
+      userId: cleanText((editingStaff as any)?.userId || (editingStaff as any)?.linkedUserId || linkedUidForSave),
+      employeeId: targetEmployeeId,
+      employeeDocId: targetEmployeeId,
+      linkedEmployeeDocId: targetEmployeeId,
       email: cleanText((editingStaff as any)?.email),
       phone: cleanText((editingStaff as any)?.phone),
       role: cleanText((editingStaff as any)?.role || "staff"),
@@ -3115,6 +3265,7 @@ export default function DashboardEmployees() {
           leaveEntries: [],
           createdAt: serverTimestamp(),
         });
+        employeeSaveDebug("firestore staff_public success", { employeeId: targetEmployeeId });
         await setDoc(doc(db, "salons", SALON_ID, "employees", targetEmployeeId), {
           employeeId: targetEmployeeId,
           name: cleanName,
@@ -3128,10 +3279,13 @@ export default function DashboardEmployees() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
       } else {
         await setDoc(staffPublicDoc(targetEmployeeId), {
           ...(payload as any),
-          employeeId: cleanText((editingStaff as any)?.employeeId || targetEmployeeId),
+          employeeId: targetEmployeeId,
+          employeeDocId: targetEmployeeId,
+          linkedEmployeeDocId: targetEmployeeId,
           "employment.allowedZoneIds": attendanceZoneProfilePatch.allowedZoneIds,
           "employment.allowedAttendanceZoneId": normalizedAttendanceZoneId,
           "employment.attendanceZoneId": normalizedAttendanceZoneId,
@@ -3143,7 +3297,9 @@ export default function DashboardEmployees() {
           "employeeProfile.employment.assignedAttendanceZoneId": normalizedAttendanceZoneId,
           "employeeProfile.employment.attendanceScopeId": normalizedAttendanceZoneId,
         }, { merge: true });
+        employeeSaveDebug("firestore staff_public success", { employeeId: targetEmployeeId });
         await setDoc(doc(db, "salons", SALON_ID, "employees", targetEmployeeId), {
+          employeeId: targetEmployeeId,
           allowedAttendanceZoneId: normalizedAttendanceZoneId,
           attendanceZoneId: normalizedAttendanceZoneId,
           assignedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -3152,6 +3308,7 @@ export default function DashboardEmployees() {
           employeeProfile: employeeProfilePatch,
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
       }
 
       const weekdayNumbers: Record<WeekdayKey, number> = {
@@ -3163,8 +3320,8 @@ export default function DashboardEmployees() {
         fri: 5,
         sat: 6,
       };
+      let coreSyncWarning = "";
       try {
-      await CoreHrService.getEmployee(targetEmployeeId).catch(async () => {
         await CoreHrService.saveEmployee({
           id: targetEmployeeId,
           name: cleanName,
@@ -3178,29 +3335,52 @@ export default function DashboardEmployees() {
             allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
           },
         });
+        await CoreStaffService.update(targetEmployeeId, {
+          name: cleanName,
+          firebaseUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
+          phone: cleanText(payload.phone),
+          active: !!active,
+          employmentStatus: active ? "active" : "inactive",
+          showOnBooking: !!active && effectiveShowOnBooking,
+          specialties: specialtiesFixed,
+          avatarUrl: avatarUrl.trim(),
+          leaveStartDate: effectiveModalOnLeave ? normalizedModalLeaveFrom : "",
+          leaveEndDate: effectiveModalOnLeave ? normalizedModalLeaveUntil : "",
+          leaveNote: effectiveModalOnLeave ? String(modalLeaveNote || "").trim() : "",
+        }).catch((staffSyncError) => {
+          console.warn("Core staff booking sync failed after employee save:", staffSyncError);
+        });
+        if (scheduleChanged) {
+          await CoreHrService.replaceSchedules(
+            targetEmployeeId,
+            WEEKDAY_OPTIONS.map((day) => {
+              const scheduleDay = normalizedCustomWorkingHours[day.key] || { enabled: false };
+              const enabled = scheduleDay.enabled !== false;
+              return {
+                id: `${targetEmployeeId}-${day.key}`,
+                salonId: SALON_ID,
+                employeeId: targetEmployeeId,
+                weekday: weekdayNumbers[day.key],
+                shiftTemplateId: enabled ? cleanText(scheduleDay.shiftTemplateId) : null,
+                active: enabled,
+                scheduleSource: enabled ? "shift_template" : "weekly_off",
+                effectiveFrom: scheduleEffectiveFrom || todayIso(),
+                effectiveTo: null,
+              };
+            })
+          );
+        }
+      employeeSaveDebug("core sync success", {
+        employeeId: targetEmployeeId,
+        scheduleChanged,
       });
-      if (scheduleChanged) {
-      await CoreHrService.replaceSchedules(
-        targetEmployeeId,
-        WEEKDAY_OPTIONS.map((day) => {
-          const scheduleDay = normalizedCustomWorkingHours[day.key] || { enabled: false };
-          const enabled = scheduleDay.enabled !== false;
-          return {
-            id: `${targetEmployeeId}-${day.key}`,
-            salonId: SALON_ID,
-            employeeId: targetEmployeeId,
-            weekday: weekdayNumbers[day.key],
-            shiftTemplateId: enabled ? cleanText(scheduleDay.shiftTemplateId) : null,
-            active: enabled,
-            scheduleSource: enabled ? "shift_template" : "weekly_off",
-            effectiveFrom: scheduleEffectiveFrom || todayIso(),
-            effectiveTo: null,
-          };
-        })
-      );
-      }
 
       } catch (coreSyncError) {
+        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "تعذرت مزامنة Core HR بعد حفظ Firestore.");
+        employeeSaveDebug("core sync failed", {
+          employeeId: targetEmployeeId,
+          message: coreSyncWarning,
+        });
         console.warn(
           "Core HR sync failed after employee Firestore save:",
           coreSyncError
@@ -3251,8 +3431,42 @@ export default function DashboardEmployees() {
         }
       }
 
-      await load();
+      const savedStaffSnap = await getDoc(staffPublicDoc(targetEmployeeId));
+      employeeSaveDebug("reload result", {
+        employeeId: targetEmployeeId,
+        staffPublicExists: savedStaffSnap.exists(),
+      });
+      if (!savedStaffSnap.exists()) {
+        throw new Error("تعذر قراءة ملف الموظفة من staff_public بعد الحفظ.");
+      }
+      const activeTabBeforeReload = activeTab;
+      const modalTabBeforeReload = modalTab;
+      const reloadedRows = await load();
+      const reloadedEmployee = reloadedRows.find(
+        (row) =>
+          row.id === targetEmployeeId ||
+          employeeMatchesIdentity(row, selectedEmployeeIdentityRef.current)
+      );
+      if (reloadedEmployee) {
+        openEdit(reloadedEmployee, false);
+        setActiveTab(activeTabBeforeReload);
+        setModalTab(
+          ["basic", "profile", "services", "booking"].includes(activeTabBeforeReload)
+            ? (activeTabBeforeReload as EmployeeModalTab)
+            : modalTabBeforeReload
+        );
+        selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
+      }
       window.dispatchEvent(new Event("queens:staff-updated"));
+      setSaveMessage(
+        coreSyncWarning
+          ? `تم حفظ التغييرات بنجاح، لكن تعذرت مزامنة Core HR: ${coreSyncWarning}`
+          : "تم حفظ التغييرات بنجاح"
+      );
+      employeeSaveDebug("completed", {
+        employeeId: targetEmployeeId,
+        coreSynced: !coreSyncWarning,
+      });
     } catch (e) {
       console.error("save employee profile failed", {
         staffPublicPath: `salons/${SALON_ID}/staff_public/${targetEmployeeId}`,
@@ -3260,6 +3474,7 @@ export default function DashboardEmployees() {
         editingSource: (editingStaff as any)?.source || null,
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
       }, e);
+      setSaveMessage("");
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
     } finally {
       setSaving(false);
@@ -4331,6 +4546,113 @@ export default function DashboardEmployees() {
     overtimePercent,
     overtimeInvoicePercent,
   ]);
+  const employeeProfileHasUnsavedChanges = useMemo(() => {
+    if (!editingStaff) return false;
+
+    const normalizeServiceIds = (value: unknown) =>
+      canonicalizeSpecialties(value, serviceOptions).slice().sort((a, b) => a.localeCompare(b));
+
+    const todayScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(editingStaff as any, todayIso());
+    const savedUseCustomWorkingHours = todayScheduleSnapshot.snapshot
+      ? todayScheduleSnapshot.snapshot.useCustomWorkingHours
+      : !!(editingStaff as any).useCustomWorkingHours;
+    const savedCustomWorkingHours = normalizeWorkingHours(
+      todayScheduleSnapshot.snapshot?.customWorkingHours || (editingStaff as any).customWorkingHours
+    );
+    const savedWeeklyOffDays = savedUseCustomWorkingHours
+      ? WEEKDAY_OPTIONS.filter(
+          (day) => savedCustomWorkingHours[day.key]?.enabled === false
+        ).map((day) => day.key)
+      : todayScheduleSnapshot.hasHistoricalVersion
+        ? normalizeExceptionalLeaveWeekdays(todayScheduleSnapshot.weeklyOffDays)
+        : resolveStaffWeeklyOffDays(editingStaff);
+    const savedAlignedWorkingHours = savedUseCustomWorkingHours
+      ? savedCustomWorkingHours
+      : WEEKDAY_OPTIONS.reduce((next, day) => {
+          next[day.key] = {
+            ...savedCustomWorkingHours[day.key],
+            enabled: !savedWeeklyOffDays.includes(day.key),
+          };
+          return next;
+        }, { ...savedCustomWorkingHours });
+
+    const saved = {
+      basic: {
+        name: cleanText(editingStaff.name),
+        active: !!editingStaff.active,
+        showOnAbout: (editingStaff as any).showOnAbout !== false,
+        showOnBooking: (editingStaff as any).showOnBooking !== false,
+        includeInEmployeeManagement: (editingStaff as any).includeInEmployeeManagement !== false,
+      },
+      profile: {
+        avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(editingStaff as any)),
+        bio: cleanText((editingStaff as any).bio),
+        cvUrl: cleanText((editingStaff as any).cvUrl),
+        rating: Math.min(5, safeNonNegativeNumber((editingStaff as any).rating, 0)),
+        reviewsCount: Math.floor(safeNonNegativeNumber((editingStaff as any).reviewsCount || (editingStaff as any).reviewCount, 0)),
+      },
+      services: {
+        specialties: normalizeServiceIds(editingStaff.specialties),
+      },
+      booking: {
+        employmentEndDate: normalizeLeaveUntil((editingStaff as any).employmentEndDate),
+        attendanceZoneId: resolveAttendanceZoneId(editingStaff),
+        useCustomWorkingHours: savedUseCustomWorkingHours,
+        customWorkingHours: normalizeWorkingHours(savedAlignedWorkingHours),
+        customWorkingHourOverrides: normalizeWorkingHourOverrides((editingStaff as any).customWorkingHourOverrides),
+      },
+    };
+
+    const current = {
+      basic: {
+        name: cleanText(name),
+        active: !!active,
+        showOnAbout: !!showOnAbout,
+        showOnBooking: !!showOnBooking,
+        includeInEmployeeManagement: !!includeInEmployeeManagement,
+      },
+      profile: {
+        avatarUrl: cleanText(avatarUrl),
+        bio: cleanText(bio),
+        cvUrl: cleanText(cvUrl),
+        rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
+        reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
+      },
+      services: {
+        specialties: normalizeServiceIds(specialties),
+      },
+      booking: {
+        employmentEndDate: normalizeLeaveUntil(employmentEndDate),
+        attendanceZoneId: cleanText(selectedAttendanceZoneId),
+        useCustomWorkingHours: !!modalUseCustomWorkingHours,
+        customWorkingHours: normalizeWorkingHours(modalCustomWorkingHours),
+        customWorkingHourOverrides: normalizeWorkingHourOverrides(modalCustomHourOverrides),
+      },
+    };
+
+    return JSON.stringify(saved) !== JSON.stringify(current);
+  }, [
+    active,
+    avatarUrl,
+    bio,
+    cvUrl,
+    editingStaff,
+    employmentEndDate,
+    includeInEmployeeManagement,
+    modalCustomHourOverrides,
+    modalCustomWorkingHours,
+    modalUseCustomWorkingHours,
+    name,
+    rating,
+    resolveAttendanceZoneId,
+    resolveStaffWeeklyOffDays,
+    reviewsCount,
+    selectedAttendanceZoneId,
+    serviceOptions,
+    showOnAbout,
+    showOnBooking,
+    specialties,
+  ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
         { key: "basic", label: "البيانات الأساسية" },
@@ -5327,6 +5649,12 @@ export default function DashboardEmployees() {
           </div>
         ) : null}
 
+        {saveMessage ? (
+          <div className="employees-v2-alert employees-v2-alert--success" role="status">
+            {saveMessage}
+          </div>
+        ) : null}
+
         {repairMessage ? (
           <div className="employees-v2-alert employees-v2-alert--success" role="status">
             {repairMessage}
@@ -5396,6 +5724,7 @@ export default function DashboardEmployees() {
               detailTabs={detailTabs}
               selectedEmployeeStatusLabel={selectedEmployeeStatusLabel}
               selectedEmployeeStatusClass={selectedEmployeeStatusClass}
+              hasUnsavedChanges={employeeProfileHasUnsavedChanges}
               canDelete={canDeleteEmployees}
               onClose={editId ? closeEmployeeDetail : closeModal}
               onSave={save}

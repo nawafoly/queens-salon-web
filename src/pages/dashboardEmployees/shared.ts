@@ -94,6 +94,9 @@ export type StaffPublicDoc = {
   employeeId?: string;
   employeeDocId?: string;
   linkedEmployeeDocId?: string;
+  sourceDocId?: string;
+  staffPublicDocId?: string;
+  legacyEmployeeIds?: string[];
   email?: string;
   phone?: string;
   role?: string;
