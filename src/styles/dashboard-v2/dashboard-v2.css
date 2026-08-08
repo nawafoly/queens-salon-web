@@ -36,4 +36,10 @@
 @import "./pages/income.css";
 @import "./pages/bookings.css";
 @import "./pages/bookings-new-queue-v2.css";
+@import "./pages/clients.css";
+@import "./pages/loyalty.css";
+@import "./pages/employee-targets.css";
+@import "./pages/staff-performance.css";
+@import "./pages/attendance.css";
+@import "./pages/offers.css";
 @import "./pages/settings.css";

@@ -13,6 +13,12 @@ const targetPageFiles = [
   "expenses.css",
   "income.css",
   "bookings.css",
+  "clients.css",
+  "loyalty.css",
+  "employee-targets.css",
+  "staff-performance.css",
+  "attendance.css",
+  "offers.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",

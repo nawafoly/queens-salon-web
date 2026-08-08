@@ -16,11 +16,8 @@ import {
   faSkullCrossbones,
   faFilter,
 } from "@fortawesome/free-solid-svg-icons";
-import "../styles/AdminDashboardOffers.css";
-import "../styles/DashboardEnterpriseWorkspaces.css";
-import "../styles/DashboardOffersEnterpriseV3.css";
-import "../styles/DashboardOffersPackageEditorV4.css";
-import "../styles/DashboardOffersOfferEditorV5.css";
+import { DashboardDatePickerV2, DashboardSelectV2 } from "../components/dashboard-v2";
+import "../styles/dashboard-v2/dashboard-v2.css";
 import { CoreCatalogService } from "../services/CoreCatalogService";
 import {
   PackageService,
@@ -94,6 +91,14 @@ type PackageDraft = {
   sortOrder: number;
 };
 type PackageListMode = "all" | "selected" | "unselected";
+
+const OFFER_STATUS_OPTIONS = [
+  { value: "draft", label: "مسودة" },
+  { value: "scheduled", label: "مجدول" },
+  { value: "active", label: "نشط" },
+  { value: "expired", label: "منتهي" },
+  { value: "disabled", label: "موقوف" },
+] as const;
 
 const MAX_IMAGE_MB = 2;
 const MAX_PACKAGE_IMAGE_MB = 2;
@@ -1430,19 +1435,11 @@ const DashboardOffers: React.FC = () => {
   };
 
   return (
-    <div className="offers-page enterprise-workspace-page enterprise-workspace-v2 enterprise-offers-v2 enterprise-offers-v3">
+    <main className="dsv2-page dsv2-offers-page" dir="rtl">
       {inlineNotice ? (
         <div
+          className={`offers-inline-notice offers-inline-notice--${inlineNotice.type}`}
           role="alert"
-          style={{
-            marginBottom: 12,
-            borderRadius: 12,
-            padding: "10px 14px",
-            fontWeight: 700,
-            background: inlineNotice.type === "success" ? "rgba(22,163,74,0.12)" : "rgba(127,29,29,0.10)",
-            color: inlineNotice.type === "success" ? "#166534" : "#7f1d1d",
-            border: inlineNotice.type === "success" ? "1px solid rgba(22,163,74,0.25)" : "1px solid rgba(127,29,29,0.22)",
-          }}
         >
           {inlineNotice.text}
         </div>
@@ -1526,7 +1523,7 @@ const DashboardOffers: React.FC = () => {
         </article>
       </div>
 
-      <div className="offers-card offers-section offers-section--packages-list">
+      <div className="offers-card dsv2-card dsv2-card--padded offers-section offers-section--packages-list">
         <div className="offers-card-title offers-section-heading">
           <span><FontAwesomeIcon icon={faTag} /> الباقات المحفوظة</span>
           <span className="offers-section-count">{packagesCatalog.length}</span>
@@ -1596,7 +1593,7 @@ const DashboardOffers: React.FC = () => {
                         <div className="pkg-offer-value pkg-offer-desc">{String(p.description)}</div>
                       </div>
                     )}
-                    <div className="of-actions" style={{ marginTop: 10 }}>
+                    <div className="of-actions of-actions--card">
                       <button
                         type="button"
                         className="dash-pill dash-pill-outline dash-pill-sm"
@@ -1632,7 +1629,7 @@ const DashboardOffers: React.FC = () => {
       {packageFormOpen && (
         <div
           ref={packageFormRef}
-          className={`offers-card pkgm offers-section offers-section--package-form package-editor-v4 ${editingPackageId ? "is-editing" : "is-creating"}`}
+          className={`offers-card dsv2-card offers-section offers-section--package-form pkgm package-editor-v4 ${editingPackageId ? "is-editing" : "is-creating"}`}
         >
           <header className="package-editor__header">
             <div className="package-editor__heading">
@@ -1836,21 +1833,19 @@ const DashboardOffers: React.FC = () => {
                 <div className="package-editor__availability-grid">
                   <div className="pkgm__field">
                     <label>تاريخ البداية</label>
-                    <input
-                      type="date"
+                    <DashboardDatePickerV2
                       value={packageDraft.startDate}
-                      onChange={(e) =>
-                        setPackageDraft((p) => ({ ...p, startDate: e.target.value }))
+                      onChange={(value) =>
+                        setPackageDraft((p) => ({ ...p, startDate: value }))
                       }
                     />
                   </div>
                   <div className="pkgm__field">
                     <label>تاريخ الانتهاء</label>
-                    <input
-                      type="date"
+                    <DashboardDatePickerV2
                       value={packageDraft.endDate}
-                      onChange={(e) =>
-                        setPackageDraft((p) => ({ ...p, endDate: e.target.value }))
+                      onChange={(value) =>
+                        setPackageDraft((p) => ({ ...p, endDate: value }))
                       }
                     />
                   </div>
@@ -2179,9 +2174,11 @@ const DashboardOffers: React.FC = () => {
                 </div>
                 <div className="package-editor__readiness-bar">
                   <span
-                    style={{
-                      width: `${(packageEditorChecks.readyCount / packageEditorChecks.items.length) * 100}%`,
-                    }}
+                    style={
+                      {
+                        "--dsv2-offers-readiness": `${(packageEditorChecks.readyCount / packageEditorChecks.items.length) * 100}%`,
+                      } as React.CSSProperties
+                    }
                   />
                 </div>
                 <ul>
@@ -2217,7 +2214,7 @@ const DashboardOffers: React.FC = () => {
       )}
 
       {/* Filters + Add */}
-      <div className="offers-card offers-section offers-section--filters">
+      <div className="offers-card dsv2-card dsv2-card--padded offers-section offers-section--filters">
         <div className="offers-card-title">
           <FontAwesomeIcon icon={faFilter} /> مركز العروض
         </div>
@@ -2277,8 +2274,8 @@ const DashboardOffers: React.FC = () => {
 
 
       {/* Table */}
-      <div className="offers-table-card offers-section offers-section--offers-table">
-        <div className="offers-card-title offers-section-heading" style={{ marginBottom: 12 }}>
+      <div className="offers-table-card dsv2-card dsv2-card--padded offers-section offers-section--offers-table">
+        <div className="offers-card-title offers-section-heading">
           <span><FontAwesomeIcon icon={faTag} /> نتائج العروض</span>
           <span className="offers-section-count">{filteredOffers.length}</span>
         </div>
@@ -2332,7 +2329,7 @@ const DashboardOffers: React.FC = () => {
                       <div className="pkg-offer-value">{(o.appliesTo || "all") === "services" ? "خدمات محددة" : "الكل"}</div>
                     </div>
 
-                    <div className="of-actions" style={{ marginTop: 10 }}>
+                    <div className="of-actions of-actions--card">
                       {!deleted && (
                         <>
                           <button className="dash-pill dash-pill-outline dash-pill-sm" type="button" onClick={() => openEdit(o)}>
@@ -2376,7 +2373,7 @@ const DashboardOffers: React.FC = () => {
       {open && (
         <div
           ref={offerFormRef}
-          className={`offers-card offers-section offers-section--offer-form offer-editor-v5 ${editing ? "is-editing" : "is-creating"}`}
+          className={`offers-card dsv2-card offers-section offers-section--offer-form offer-editor-v5 ${editing ? "is-editing" : "is-creating"}`}
         >
           <header className="offer-editor__header">
             <div className="offer-editor__heading">
@@ -2619,32 +2616,25 @@ const DashboardOffers: React.FC = () => {
                 <div className="offer-editor__grid">
                   <div className="offer-editor__field">
                     <label>تاريخ البداية</label>
-                    <input
-                      type="date"
+                    <DashboardDatePickerV2
                       value={form.startDate}
-                      onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                      onChange={(value) => setForm((prev) => ({ ...prev, startDate: value }))}
                     />
                   </div>
                   <div className="offer-editor__field">
                     <label>تاريخ النهاية</label>
-                    <input
-                      type="date"
+                    <DashboardDatePickerV2
                       value={form.endDate}
-                      onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                      onChange={(value) => setForm((prev) => ({ ...prev, endDate: value }))}
                     />
                   </div>
                   <div className="offer-editor__field">
                     <label>حالة النشر</label>
-                    <select
+                    <DashboardSelectV2
+                      options={OFFER_STATUS_OPTIONS}
                       value={form.status}
-                      onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value as OfferForm["status"] }))}
-                    >
-                      <option value="draft">مسودة</option>
-                      <option value="scheduled">مجدول</option>
-                      <option value="active">نشط</option>
-                      <option value="expired">منتهي</option>
-                      <option value="disabled">موقوف</option>
-                    </select>
+                      onChange={(value) => setForm((prev) => ({ ...prev, status: value as OfferForm["status"] }))}
+                    />
                   </div>
                   <div className="offer-editor__status-card">
                     <span>الحالة الفعلية حسب التاريخ</span>
@@ -3069,7 +3059,13 @@ const DashboardOffers: React.FC = () => {
                   <b>{offerEditorChecks.readyCount}/{offerEditorChecks.items.length}</b>
                 </div>
                 <div className="offer-editor__readiness-bar">
-                  <span style={{ width: `${(offerEditorChecks.readyCount / offerEditorChecks.items.length) * 100}%` }} />
+                  <span
+                    style={
+                      {
+                        "--dsv2-offers-readiness": `${(offerEditorChecks.readyCount / offerEditorChecks.items.length) * 100}%`,
+                      } as React.CSSProperties
+                    }
+                  />
                 </div>
                 <ul>
                   {offerEditorChecks.items.map((item) => (
@@ -3099,8 +3095,7 @@ const DashboardOffers: React.FC = () => {
           </div>
         </div>
       )}
-
-    </div>
+    </main>
   );
 };
 
