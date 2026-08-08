@@ -310,6 +310,10 @@
     transform var(--dsv2-transition-fast);
 }
 
+.dashboard-v2 .dsv2-offers-page .pkg-offer-card::before {
+  display: none;
+}
+
 .dashboard-v2 .dsv2-offers-page .pkg-offer-card:hover {
   border-color: var(--dsv2-border-gold);
   box-shadow: var(--dsv2-shadow-sm);
@@ -318,7 +322,17 @@
 
 .dashboard-v2 .dsv2-offers-page .pkg-offer-inner {
   gap: 0;
+  margin: 0;
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--dsv2-surface);
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-offers-page .offers-like-package-card,
+.dashboard-v2 .dsv2-offers-page .offers-like-package-card .pkg-offer-inner {
+  background: var(--dsv2-surface);
 }
 
 .dashboard-v2 .dsv2-offers-page .pkg-offer-image-wrap {
@@ -561,6 +575,40 @@
   font-size: .66rem;
   font-weight: 700;
   line-height: 1.55;
+}
+
+/* Actual date status: keep label and computed value on separate lines. */
+.dashboard-v2 .dsv2-offers-page .offer-editor__status-card {
+  display: grid;
+  align-content: center;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+  min-height: var(--dsv2-control-height-lg);
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-offers-page .offer-editor__status-card > span,
+.dashboard-v2 .dsv2-offers-page .offer-editor__status-card > strong {
+  display: block;
+  min-width: 0;
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-offers-page .offer-editor__status-card > span {
+  color: var(--dsv2-muted);
+  font-size: .66rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.dashboard-v2 .dsv2-offers-page .offer-editor__status-card > strong {
+  color: var(--dsv2-text);
+  font-size: .8rem;
+  font-weight: 900;
+  line-height: 1.45;
 }
 
 /* Toggle cards: offer markup has two visual columns, package markup has three. */
