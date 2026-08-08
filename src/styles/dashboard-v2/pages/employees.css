@@ -2986,3 +2986,31 @@
 }
 /* END_EMPLOYEES_SIDEBAR_SCROLLBAR_FINAL_V2 */
 
+
+/* EMPLOYEE PROFILE FIXED SAVE BAR V1 */
+@media (min-width: 861px) {
+  .dashboard-v2 .employees-v2-profile {
+    padding-bottom: 96px;
+  }
+
+  .dashboard-v2 .employees-v2-profile__footer {
+    position: fixed !important;
+    z-index: 1750 !important;
+    bottom: 12px !important;
+    left: 34px !important;
+    right: calc(252px + 34px) !important;
+    width: auto !important;
+    margin: 0 !important;
+    border: 1px solid var(--dsv2-border) !important;
+    border-radius: var(--dsv2-radius-md) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 14px 36px rgba(13, 13, 13, 0.14) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  .dashboard-skin.is-sidebar-collapsed
+  .employees-v2-profile__footer {
+    right: calc(76px + 34px) !important;
+  }
+}
+/* END EMPLOYEE PROFILE FIXED SAVE BAR V1 */

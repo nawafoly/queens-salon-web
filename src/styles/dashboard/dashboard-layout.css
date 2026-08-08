@@ -531,3 +531,14 @@
     max-width: calc(100vw - 112px);
   }
 }
+
+/* DASHBOARD EMPLOYEES SINGLE BROWSER SCROLL */
+.dashboard-skin:has(.hr-shell--employees) {
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+}
+
+.dashboard-skin:has(.hr-shell--employees)
+.hr-shell-main--embedded {
+  overflow: visible !important;
+}

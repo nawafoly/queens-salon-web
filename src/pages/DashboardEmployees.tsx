@@ -399,11 +399,23 @@ function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIden
 
 function employeeMatchesIdentity(staff: Partial<StaffPublicUi>, identity: EmployeeIdentity | null) {
   if (!identity) return false;
+
   const current = employeeIdentityOf(staff);
+
+  const hasStableIdentity =
+    !!identity.id ||
+    !!identity.linkedUid ||
+    !!identity.employeeId;
+
+  if (hasStableIdentity) {
+    return (
+      (!!identity.id && current.id === identity.id) ||
+      (!!identity.linkedUid && current.linkedUid === identity.linkedUid) ||
+      (!!identity.employeeId && current.employeeId === identity.employeeId)
+    );
+  }
+
   return (
-    (!!identity.id && current.id === identity.id) ||
-    (!!identity.linkedUid && current.linkedUid === identity.linkedUid) ||
-    (!!identity.employeeId && current.employeeId === identity.employeeId) ||
     (!!identity.email && current.email === identity.email) ||
     (!!identity.name && current.name === identity.name)
   );
@@ -420,15 +432,23 @@ function employeeMatchesRouteId(staff: Partial<StaffPublicUi>, routeId: string) 
 
 function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
   const identity = employeeIdentityOf(staff);
+
+  const stableKeys = [
+    identity.id ? `id:${identity.id}` : "",
+    identity.linkedUid ? `uid:${identity.linkedUid}` : "",
+    identity.employeeId ? `employee:${identity.employeeId}` : "",
+    rawDocId ? `doc:${cleanText(rawDocId)}` : "",
+  ].filter(Boolean);
+
+  if (stableKeys.length > 0) {
+    return Array.from(new Set(stableKeys));
+  }
+
   return Array.from(
     new Set(
       [
-        identity.id ? `id:${identity.id}` : "",
-        identity.linkedUid ? `uid:${identity.linkedUid}` : "",
-        identity.employeeId ? `employee:${identity.employeeId}` : "",
         identity.email ? `email:${identity.email}` : "",
         identity.name ? `name:${identity.name}` : "",
-        rawDocId ? `doc:${cleanText(rawDocId)}` : "",
       ].filter(Boolean)
     )
   );
@@ -2228,7 +2248,7 @@ export default function DashboardEmployees() {
               source === "employees" &&
               combined?.employeeProfileEnabled !== false);
           const includeInEmployeeManagement =
-            userVisibility ?? recordVisibility ?? legacyOperationalDefault;
+            recordVisibility ?? userVisibility ?? legacyOperationalDefault;
 
           if (!employeeId) return;
 
@@ -2931,11 +2951,12 @@ export default function DashboardEmployees() {
       : null;
 
     const normalizedCustomWorkingHours = normalizeWorkingHours(modalCustomWorkingHours);
+    const shouldValidateSchedule = !editId || activeTab === "booking";
     const missingShiftDays = WEEKDAY_OPTIONS.filter((day) => {
       const scheduleDay = normalizedCustomWorkingHours[day.key];
       return scheduleDay?.enabled !== false && !cleanText(scheduleDay?.shiftTemplateId);
     });
-    if (missingShiftDays.length) {
+    if (shouldValidateSchedule && missingShiftDays.length) {
       setErrorMsg(`اختاري شفتًا لأيام العمل التالية: ${missingShiftDays.map((day) => day.label).join("، ")}`);
       return;
     }
@@ -2952,7 +2973,9 @@ export default function DashboardEmployees() {
       useCustomWorkingHours: !!modalUseCustomWorkingHours,
       customWorkingHours: normalizedCustomWorkingHours,
     };
-    const scheduleChanged = !editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot);
+    const scheduleChanged =
+      shouldValidateSchedule &&
+      (!editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot));
     let scheduleChangeReason = cleanText(modalScheduleChangeReason);
     if (scheduleChanged && !scheduleEffectiveFrom) {
       setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
@@ -3156,6 +3179,7 @@ export default function DashboardEmployees() {
           },
         });
       });
+      if (scheduleChanged) {
       await CoreHrService.replaceSchedules(
         targetEmployeeId,
         WEEKDAY_OPTIONS.map((day) => {
@@ -3174,6 +3198,7 @@ export default function DashboardEmployees() {
           };
         })
       );
+      }
 
       } catch (coreSyncError) {
         console.warn(
