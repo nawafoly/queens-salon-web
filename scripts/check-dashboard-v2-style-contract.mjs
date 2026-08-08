@@ -23,12 +23,14 @@ const targetPageFiles = [
   "logs.css",
   "tv-queue.css",
   "day-audit.css",
+  "partners.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
   "src/styles/AdminDashboardEmployees.css",
   "src/styles/AdminDashboardExpenses.css",
   "src/styles/AdminDashboardIncome.css",
+  "src/styles/AdminDashboardPartners.css",
   "src/styles/AdminDashboardReports.css",
   "src/styles/DashboardBookingsEnterprise.css",
   "src/styles/DashboardPayroll.css",
