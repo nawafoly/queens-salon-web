@@ -19,6 +19,7 @@ const targetPageFiles = [
   "staff-performance.css",
   "attendance.css",
   "offers.css",
+  "offers-refinement.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
