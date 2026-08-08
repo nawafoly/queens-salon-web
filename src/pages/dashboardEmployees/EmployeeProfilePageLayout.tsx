@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState, type SyntheticEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 import EmployeeAvatar from "../../components/EmployeeAvatar";
@@ -10,35 +9,14 @@ import {
 import { normalizeSpecialties, type EmployeeSplitTab } from "./shared";
 import type { EmployeeEditorModalProps } from "./EmployeeEditorModal";
 
-const SELF_SAVING_LIVE_TAB_SELECTOR = [
-  "[data-dsv2-ignore-dirty='true']",
-  ".dsv2-ew-shifts-live",
-  ".dsv2-ew-requests-live",
-  ".dsv2-ew-files-live",
-  ".dsv2-ew-messages-live",
-].join(", ");
+const CENTRAL_SAVE_TABS = new Set<EmployeeSplitTab>([
+  "basic",
+  "profile",
+  "services",
+  "booking",
+]);
 
 export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProps) {
-  const [isDirty, setIsDirty] = useState(false);
-
-  useEffect(() => {
-    setIsDirty(false);
-  }, [props.editId]);
-
-  useEffect(() => {
-    if (props.saving) setIsDirty(false);
-  }, [props.saving]);
-
-  const markDirty = useCallback(
-    (event: SyntheticEvent<HTMLElement>) => {
-      if (!props.canManage || props.saving) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest?.(SELF_SAVING_LIVE_TAB_SELECTOR)) return;
-      setIsDirty(true);
-    },
-    [props.canManage, props.saving]
-  );
-
   if (!props.isOpen || !props.editId || !props.editingStaff) return null;
 
   const employeeName = String(props.editingStaff.name || props.name || "").trim();
@@ -47,10 +25,10 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
   const activeTab = tabs.find((tab) => tab.key === props.activeTab);
   const activeLabel = activeTab?.label || "البيانات الأساسية";
   const activeHint = activeTab?.hint || "إدارة بيانات الموظفة";
-  const showSavebar = props.saving || isDirty;
+  const usesCentralSave = CENTRAL_SAVE_TABS.has(props.activeTab || "basic");
+  const showSavebar = props.canManage && usesCentralSave;
 
   const handleCancel = () => {
-    setIsDirty(false);
     (props.onCancelEdit || props.onClose)?.();
   };
 
@@ -168,8 +146,6 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         <fieldset
           className={`employees-v2-profile__fieldset ${!props.canManage ? "is-readonly" : ""}`}
           disabled={!props.canManage}
-          onInputCapture={markDirty}
-          onChangeCapture={markDirty}
         >
           <div
             className="employees-v2-profile__body"
@@ -181,12 +157,16 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
         </fieldset>
       </main>
 
-      <footer className="dsv2-ew-savebar" data-dirty={showSavebar ? "true" : "false"}>
+      <footer className="dsv2-ew-savebar" data-dirty={showSavebar || props.saving ? "true" : "false"}>
         <div className="dsv2-ew-savebar__status">
           <span className="dsv2-ew-savebar__dot" aria-hidden="true" />
           <div>
-            <strong>{props.saving ? "جاري حفظ التغييرات" : "توجد تغييرات غير محفوظة"}</strong>
-            <small>{props.saving ? "لا تغلق الصفحة حتى يكتمل الحفظ." : "احفظ التغييرات أو ألغها قبل الخروج من الملف."}</small>
+            <strong>{props.saving ? "جاري حفظ التغييرات" : "الحفظ متاح لهذا القسم"}</strong>
+            <small>
+              {props.saving
+                ? "يتم الآن تثبيت بيانات الموظفة في المصدر الرئيسي."
+                : "بعد أي تعديل اضغط حفظ التغييرات لتثبيت البيانات."}
+            </small>
           </div>
         </div>
 
@@ -214,7 +194,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
             إلغاء التعديلات
           </button>
 
-          {props.canManage ? (
+          {showSavebar ? (
             <button
               className="dsv2-btn dsv2-btn--primary"
               type="button"
