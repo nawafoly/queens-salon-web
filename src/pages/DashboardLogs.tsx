@@ -20,13 +20,20 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 
-import ConfirmModal from "../components/ConfirmModal";
+import {
+  DashboardConfirmV2,
+  DashboardDatePickerV2,
+  DashboardEmptyStateV2,
+  DashboardErrorStateV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../components/dashboard-v2";
 import { db } from "../services/firebase";
 import { upsertExpenseFS } from "../services/firestoreExpenses";
 import { upsertIncomeFS } from "../services/firestoreIncome";
 import { writeAuditLog } from "../services/logService";
 import type { Expense, IncomeItem, PaymentMethod } from "../types/finance";
-import "../styles/DashboardEnterpriseWorkspaces.css";
+import "../styles/dashboard-v2/dashboard-v2.css";
 
 type UiRole = "owner" | "admin" | "reception" | "staff" | "client" | "guest";
 
@@ -325,6 +332,12 @@ function severityLabel(severity: "info" | "warning" | "critical") {
   return "نجحت";
 }
 
+function severityBadgeClass(severity: "info" | "warning" | "critical") {
+  if (severity === "critical") return "dsv2-badge--danger";
+  if (severity === "warning") return "dsv2-badge--gold";
+  return "dsv2-badge--success";
+}
+
 function resolveSummary(r: LogRow): string {
   const direct = String(r.summary || "").trim();
   if (direct) return direct;
@@ -516,110 +529,112 @@ const LogCard = memo(function LogCard({
   const clientNameLabel = display?.clientName || "-";
 
   return (
-    <div className={`log-card log-card--${severity}`}>
-      <div className="log-card-head">
-        <div className="log-action">
-          <span className="log-action-label">{actionLabel}</span>
+    <article className={`dsv2-card logs-v2-entry logs-v2-entry--${severity}`}>
+      <header className="logs-v2-entry__head">
+        <div className="logs-v2-entry__action">
+          <span className="dsv2-badge">{actionLabel}</span>
           {severity === "critical" ? (
-            <span className="log-alert-icon">
+            <span className="logs-v2-entry__alert-icon" aria-label="عملية حرجة">
               <FontAwesomeIcon icon={faTriangleExclamation} />
             </span>
           ) : null}
         </div>
-        <div className={`log-severity log-severity--${severity}`}>{severityLabel(severity)}</div>
-      </div>
+        <span className={`dsv2-badge ${severityBadgeClass(severity)}`}>{severityLabel(severity)}</span>
+      </header>
 
-      <div className="log-card-body">
-        <div className="log-main">
-          <div className="log-client">{clientNameLabel}</div>
-          <div className="log-id-chip">
+      <div className="logs-v2-entry__body">
+        <div className="logs-v2-entry__identity">
+          <strong>{clientNameLabel}</strong>
+          <span className="logs-v2-entry__entity">
             {entityLabel} • {bookingIdLabel}
-          </div>
+          </span>
         </div>
 
-        <div className="log-meta-grid">
-          <div className="log-meta-item">
-            <span>المنفذ</span>
-            <strong>
+        <dl className="logs-v2-entry__meta-grid">
+          <div className="logs-v2-entry__meta-item">
+            <dt>المنفذ</dt>
+            <dd>
               {actor} {showActorRole ? `(${actorRole})` : ""}
-            </strong>
+            </dd>
           </div>
-          <div className="log-meta-item">
-            <span>المصدر</span>
-            <strong>{sourceLabel}</strong>
+          <div className="logs-v2-entry__meta-item">
+            <dt>المصدر</dt>
+            <dd>{sourceLabel}</dd>
           </div>
-          <div className="log-meta-item">
-            <span>الوقت</span>
-            <strong>
-              {timeLabel} <span className="log-relative">• {relative}</span>
-            </strong>
+          <div className="logs-v2-entry__meta-item">
+            <dt>الوقت</dt>
+            <dd>
+              {timeLabel} <span className="logs-v2-entry__relative">• {relative}</span>
+            </dd>
           </div>
-          <div className="log-meta-item">
-            <span>الملخص</span>
-            <strong className="log-summary">{summary}</strong>
+          <div className="logs-v2-entry__meta-item">
+            <dt>الملخص</dt>
+            <dd className="logs-v2-entry__summary">{summary}</dd>
           </div>
-        </div>
+        </dl>
       </div>
 
-      <div className="log-card-actions">
-        <button className="log-action-btn" type="button" onClick={() => onToggleExpand(row)}>
+      <footer className="logs-v2-entry__actions">
+        <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => onToggleExpand(row)}>
           {expanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}
           <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} />
         </button>
         {canRestore ? (
-          <button className="log-restore-btn" type="button" onClick={() => onRestore(row)}>
+          <button className="dsv2-btn dsv2-btn--accent dsv2-btn--sm" type="button" onClick={() => onRestore(row)}>
             <FontAwesomeIcon icon={faRotateRight} />
             استرجاع هذه الحالة
           </button>
         ) : null}
-      </div>
+      </footer>
 
       {expanded ? (
-        <div className="log-details">
-          {details?.loading ? <div className="log-details-loading">جاري تحميل التفاصيل...</div> : null}
-          {details?.error ? <div className="log-details-error">{details.error}</div> : null}
-          {details?.changes && details.changes.length ? (
-            <div className="log-diff">
-              <div className="log-diff-head">
-                <span>الحقل</span>
-                <span>قبل</span>
-                <span>بعد</span>
-              </div>
-              {details.changes.map((change, index) => (
-                <div key={`${row.id}-change-${index}`} className="log-diff-row">
-                  <div className="log-diff-field">{keyLabel(change.field)}</div>
-                  <div className="log-diff-before">{change.before ?? "—"}</div>
-                  <div className="log-diff-after">{change.after ?? "—"}</div>
+        <section className="logs-v2-details" aria-label={`تفاصيل ${actionLabel}`}>
+          {details?.loading ? <div className="logs-v2-details__loading">جاري تحميل التفاصيل...</div> : null}
+          {details?.error ? <div className="logs-v2-details__error">{details.error}</div> : null}
+          {!details?.loading && details?.changes && details.changes.length ? (
+            <div className="logs-v2-diff-scroll">
+              <div className="logs-v2-diff">
+                <div className="logs-v2-diff__head">
+                  <span>الحقل</span>
+                  <span>قبل</span>
+                  <span>بعد</span>
                 </div>
-              ))}
+                {details.changes.map((change, index) => (
+                  <div key={`${row.id}-change-${index}`} className="logs-v2-diff__row">
+                    <div className="logs-v2-diff__field">{keyLabel(change.field)}</div>
+                    <div className="logs-v2-diff__before">{change.before ?? "—"}</div>
+                    <div className="logs-v2-diff__after">{change.after ?? "—"}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="log-details-empty">لا توجد تغييرات مسجلة لعرضها.</div>
-          )}
+          ) : !details?.loading ? (
+            <div className="logs-v2-details__empty">لا توجد تغييرات مسجلة لعرضها.</div>
+          ) : null}
 
           {details?.hasSnapshot ? (
-            <div className="log-details-actions">
-              <button className="log-secondary-btn" type="button" onClick={() => onToggleSnapshot(row)}>
+            <div className="logs-v2-details__actions">
+              <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => onToggleSnapshot(row)}>
                 {details?.fullOpen ? "إخفاء snapshot الكامل" : "عرض snapshot الكامل"}
               </button>
             </div>
           ) : null}
 
           {details?.fullOpen && details?.snapshot ? (
-            <div className="log-snapshot-grid">
-              <div>
+            <div className="logs-v2-snapshot-grid">
+              <div className="logs-v2-snapshot">
                 <h4>قبل</h4>
                 <pre>{JSON.stringify(details.snapshot.before ?? {}, null, 2)}</pre>
               </div>
-              <div>
+              <div className="logs-v2-snapshot">
                 <h4>بعد</h4>
                 <pre>{JSON.stringify(details.snapshot.after ?? {}, null, 2)}</pre>
               </div>
             </div>
           ) : null}
-        </div>
+        </section>
       ) : null}
-    </div>
+    </article>
   );
 });
 
@@ -1043,197 +1058,275 @@ export default function DashboardLogs() {
     }
   };
 
+  const actionSelectOptions = [
+    { value: "all", label: "كل العمليات" },
+    ...actionOptions.map((value) => ({ value, label: asLabel(ACTION_LABELS, value) })),
+  ];
+  const entitySelectOptions = [
+    { value: "all", label: "كل العناصر" },
+    ...entityOptions.map((value) => ({ value, label: asLabel(ENTITY_LABELS, value) })),
+  ];
+  const sourceSelectOptions = [
+    { value: "all", label: "كل المصادر" },
+    { value: "dashboard", label: asLabel(SOURCE_LABELS, "dashboard") },
+    { value: "internal_booking", label: asLabel(SOURCE_LABELS, "internal_booking") },
+    { value: "client_app", label: asLabel(SOURCE_LABELS, "client_app") },
+    { value: "system", label: asLabel(SOURCE_LABELS, "system") },
+  ];
+
   if (!authUser) {
     return (
-      <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
-        <div className="container">
-          <div className="dash-card">
-            <h3>غير مصرح</h3>
-          </div>
-        </div>
-      </div>
+      <main className="dsv2-page logs-v2-page" dir="rtl">
+        <DashboardErrorStateV2
+          title="غير مصرح"
+          description="يلزم تسجيل الدخول بحساب إداري للوصول إلى سجل العمليات."
+        />
+      </main>
     );
   }
 
   if (!canManage) {
     return (
-      <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
-        <div className="container">
-          <div className="dash-card">
-            <h3>صلاحيات غير كافية</h3>
-            <p>هذه الصفحة متاحة للأونر أو الأدمن فقط.</p>
-          </div>
-        </div>
-      </div>
+      <main className="dsv2-page logs-v2-page" dir="rtl">
+        <DashboardErrorStateV2
+          title="صلاحيات غير كافية"
+          description="هذه الصفحة متاحة للأونر أو الأدمن فقط."
+        />
+      </main>
     );
   }
 
   return (
-    <div className="dashboard-page logs-page enterprise-workspace-page enterprise-workspace-v2 enterprise-logs-v2">
-      <div className="container">
-        <div className="dash-topbar dash-topbar--sticky">
-          <div className="dash-topbar-title">
-            <span className="logs-kicker">AUDIT & COMPLIANCE</span>
-            <h1>سجل العمليات</h1>
-            <p>عرض احترافي للعمليات مع تفاصيل منظمة وأداء منخفض القراءة.</p>
-          </div>
+    <main className="dsv2-page logs-v2-page" dir="rtl">
+      <section className="dsv2-card logs-v2-hero">
+        <div className="logs-v2-hero__content">
+          <span className="dsv2-badge dsv2-badge--gold">التدقيق والامتثال</span>
+          <h1 className="dsv2-page-title">سجل العمليات</h1>
+          <p className="dsv2-page-subtitle">
+            مراجعة العمليات والتغييرات الحساسة والاسترجاعات من سجل إداري موحد وواضح.
+          </p>
         </div>
 
-        {errMsg && <div className="dash-alert">{errMsg}</div>}
-        {restoreErr ? <div className="logs-restore-status logs-restore-status--error">{restoreErr}</div> : null}
-        {restoreMsg ? <div className="logs-restore-status logs-restore-status--ok">{restoreMsg}</div> : null}
-
-        <section className="enterprise-metrics" aria-label="ملخص السجل الحالي">
-          <article className="enterprise-metric">
-            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faFilter} /></span>
-            <div><small>النتائج المعروضة</small><strong>{filtered.length}</strong><em>من أصل {rows.length} عملية محملة</em></div>
-          </article>
-          <article className="enterprise-metric">
-            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
-            <div><small>عمليات حرجة</small><strong>{criticalCount}</strong><em>تحتاج مراجعة ذات أولوية</em></div>
-          </article>
-          <article className="enterprise-metric">
-            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faRotateRight} /></span>
-            <div><small>تحتاج مراجعة</small><strong>{warningCount}</strong><em>تنبيهات ضمن الفلاتر الحالية</em></div>
-          </article>
-          <article className="enterprise-metric">
-            <span className="enterprise-metric__icon"><FontAwesomeIcon icon={faMagnifyingGlass} /></span>
-            <div><small>عمليات حساسة</small><strong>{sensitiveCount}</strong><em>ضمن النتائج المعروضة الآن</em></div>
-          </article>
-        </section>
-
-        <div className="dash-card logs-card">
-          <div className="logs-head">
-            <div>
-              <h3>مركز مراجعة العمليات</h3>
-              <p>تفاصيل قابلة للتوسع، مع تحميل ذكي لتقليل القراءة.</p>
-            </div>
-            <div className="logs-head-meta">
-              آخر تحديث: <b>{fmtDateTime(latestMs)}</b>
-              {latestMs ? <span> ({relativeTime(latestMs)})</span> : null}
-            </div>
+        <div className="logs-v2-hero__actions" aria-label="إجراءات سجل العمليات">
+          <div className="logs-v2-last-update">
+            <span>آخر تحديث</span>
+            <strong>{fmtDateTime(latestMs)}</strong>
+            <small>{latestMs ? relativeTime(latestMs) : "لا توجد عمليات محملة بعد"}</small>
           </div>
+          <button
+            className="dsv2-btn dsv2-btn--secondary"
+            type="button"
+            onClick={() => void loadPage("initial")}
+            disabled={loading}
+          >
+            <FontAwesomeIcon icon={faRotateRight} />
+            {loading ? "جاري التحديث..." : "تحديث السجل"}
+          </button>
+        </div>
+      </section>
 
-          <div className="logs-filters">
-            <div className="logs-search">
+      {errMsg || restoreErr || restoreMsg ? (
+        <section className="logs-v2-notices" aria-label="حالة سجل العمليات">
+          {errMsg ? <div className="logs-v2-notice logs-v2-notice--error">{errMsg}</div> : null}
+          {restoreErr ? <div className="logs-v2-notice logs-v2-notice--error">{restoreErr}</div> : null}
+          {restoreMsg ? <div className="logs-v2-notice logs-v2-notice--success">{restoreMsg}</div> : null}
+        </section>
+      ) : null}
+
+      <section className="logs-v2-metrics" aria-label="ملخص السجل الحالي">
+        <article className="dsv2-metric-card dsv2-metric-card--success">
+          <span className="dsv2-metric-card__icon" aria-hidden="true"><FontAwesomeIcon icon={faFilter} /></span>
+          <p className="dsv2-metric-card__label">النتائج المعروضة</p>
+          <p className="dsv2-metric-card__value">{filtered.length}</p>
+          <p className="dsv2-metric-card__meta">من أصل {rows.length} عملية محملة</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--danger">
+          <span className="dsv2-metric-card__icon" aria-hidden="true"><FontAwesomeIcon icon={faTriangleExclamation} /></span>
+          <p className="dsv2-metric-card__label">عمليات حرجة</p>
+          <p className="dsv2-metric-card__value">{criticalCount}</p>
+          <p className="dsv2-metric-card__meta">تحتاج مراجعة ذات أولوية</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--gold">
+          <span className="dsv2-metric-card__icon" aria-hidden="true"><FontAwesomeIcon icon={faRotateRight} /></span>
+          <p className="dsv2-metric-card__label">تحتاج مراجعة</p>
+          <p className="dsv2-metric-card__value">{warningCount}</p>
+          <p className="dsv2-metric-card__meta">تنبيهات ضمن الفلاتر الحالية</p>
+        </article>
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <span className="dsv2-metric-card__icon" aria-hidden="true"><FontAwesomeIcon icon={faMagnifyingGlass} /></span>
+          <p className="dsv2-metric-card__label">عمليات حساسة</p>
+          <p className="dsv2-metric-card__value">{sensitiveCount}</p>
+          <p className="dsv2-metric-card__meta">ضمن النتائج المعروضة الآن</p>
+        </article>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded logs-v2-panel">
+        <header className="logs-v2-panel__head">
+          <div className="logs-v2-panel__head-copy">
+            <h2>مركز مراجعة العمليات</h2>
+            <p>فلترة السجل، فتح التغييرات، مراجعة snapshots، واسترجاع الحالات المؤهلة.</p>
+          </div>
+          <span className="dsv2-badge dsv2-badge--gold logs-v2-panel__count">
+            {filtered.length} نتيجة
+          </span>
+        </header>
+
+        <div className="logs-v2-filters" aria-label="فلاتر سجل العمليات">
+          <label className="dsv2-field logs-v2-filter logs-v2-filter--search">
+            <span className="dsv2-field__label">البحث</span>
+            <span className="logs-v2-search">
               <FontAwesomeIcon icon={faMagnifyingGlass} />
               <input
-                className="dash-input"
+                className="dsv2-input"
                 value={qText}
-                onChange={(e) => setQText(e.target.value)}
-                placeholder="بحث داخل السجل..."
+                onChange={(event) => setQText(event.target.value)}
+                placeholder="بحث بالعملية أو المنفذ أو المعرف..."
               />
-            </div>
+            </span>
+          </label>
 
-            <div className="logs-select">
-              <FontAwesomeIcon icon={faFilter} />
-              <select className="dash-select" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
-                <option value="all">كل العمليات</option>
-                {actionOptions.map((x) => (
-                  <option key={x} value={x}>
-                    {asLabel(ACTION_LABELS, x)}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <label className="dsv2-field logs-v2-filter">
+            <span className="dsv2-field__label">نوع العملية</span>
+            <DashboardSelectV2
+              value={actionFilter}
+              options={actionSelectOptions}
+              onChange={(value) => setActionFilter(value)}
+            />
+          </label>
 
-            <select className="dash-select" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
-              <option value="all">كل العناصر</option>
-              {entityOptions.map((x) => (
-                <option key={x} value={x}>
-                  {asLabel(ENTITY_LABELS, x)}
-                </option>
-              ))}
-            </select>
+          <label className="dsv2-field logs-v2-filter">
+            <span className="dsv2-field__label">العنصر</span>
+            <DashboardSelectV2
+              value={entityFilter}
+              options={entitySelectOptions}
+              onChange={(value) => setEntityFilter(value)}
+            />
+          </label>
 
-            <select className="dash-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-              <option value="all">كل المصادر</option>
-              <option value="dashboard">{asLabel(SOURCE_LABELS, "dashboard")}</option>
-              <option value="internal_booking">{asLabel(SOURCE_LABELS, "internal_booking")}</option>
-              <option value="client_app">{asLabel(SOURCE_LABELS, "client_app")}</option>
-              <option value="system">{asLabel(SOURCE_LABELS, "system")}</option>
-            </select>
+          <label className="dsv2-field logs-v2-filter">
+            <span className="dsv2-field__label">المصدر</span>
+            <DashboardSelectV2
+              value={sourceFilter}
+              options={sourceSelectOptions}
+              onChange={(value) => setSourceFilter(value)}
+            />
+          </label>
 
-            <input className="dash-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <input className="dash-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <label className="dsv2-field logs-v2-filter">
+            <span className="dsv2-field__label">من تاريخ</span>
+            <DashboardDatePickerV2
+              value={fromDate}
+              placeholder="من تاريخ"
+              onChange={setFromDate}
+            />
+          </label>
 
-            <div className="logs-switches">
-              <label className="logs-sensitive-filter">
-                <input
-                  type="checkbox"
-                  checked={onlySensitive}
-                  onChange={(e) => setOnlySensitive(e.target.checked)}
-                />
-                <span>العمليات الحساسة فقط</span>
-              </label>
+          <label className="dsv2-field logs-v2-filter">
+            <span className="dsv2-field__label">إلى تاريخ</span>
+            <DashboardDatePickerV2
+              value={toDate}
+              placeholder="إلى تاريخ"
+              onChange={setToDate}
+            />
+          </label>
 
-              <label className="logs-sensitive-filter">
-                <input
-                  type="checkbox"
-                  checked={showLoginEvents}
-                  onChange={(e) => setShowLoginEvents(e.target.checked)}
-                />
-                <span>إظهار تسجيل الدخول</span>
-              </label>
-            </div>
+          <div className="logs-v2-switches">
+            <label className={`logs-v2-switch-card ${onlySensitive ? "is-checked" : ""}`}>
+              <input
+                className="logs-v2-switch-card__input"
+                type="checkbox"
+                checked={onlySensitive}
+                onChange={(event) => setOnlySensitive(event.target.checked)}
+              />
+              <span className="logs-v2-switch-card__track" aria-hidden="true" />
+              <span className="logs-v2-switch-card__copy">
+                <strong>العمليات الحساسة فقط</strong>
+                <small>عرض السجلات المصنفة حساسة وإخفاء بقية العمليات.</small>
+              </span>
+            </label>
 
-            <div className="logs-meta">
-              المعروض: <b>{filtered.length}</b> • الإجمالي: <b>{rows.length}</b>
-              {loading ? <span className="logs-loading"> • تحميل...</span> : null}
-            </div>
+            <label className={`logs-v2-switch-card ${showLoginEvents ? "is-checked" : ""}`}>
+              <input
+                className="logs-v2-switch-card__input"
+                type="checkbox"
+                checked={showLoginEvents}
+                onChange={(event) => setShowLoginEvents(event.target.checked)}
+              />
+              <span className="logs-v2-switch-card__track" aria-hidden="true" />
+              <span className="logs-v2-switch-card__copy">
+                <strong>إظهار تسجيل الدخول</strong>
+                <small>إدراج عمليات تسجيل الدخول والخروج ضمن النتائج الحالية.</small>
+              </span>
+            </label>
           </div>
 
-          {filtered.length === 0 && !loading ? (
-            <div className="logs-empty">لا توجد عمليات مسجلة ضمن الفلاتر الحالية.</div>
-          ) : (
-            <div className="logs-list">
-              {filtered.map((r) => (
-                <LogCard
-                  key={r.id}
-                  row={r}
-                  expanded={expandedId === r.id}
-                  details={detailsById[r.id]}
-                  canRestore={canRestoreRow(r) && restoringLogId !== r.id}
-                  onToggleExpand={toggleExpand}
-                  onToggleSnapshot={toggleSnapshot}
-                  onRestore={openRestoreConfirm}
-                />
-              ))}
-            </div>
-          )}
-
-          {hasMore ? (
-            <div className="logs-load-more">
-              <button
-                className="log-secondary-btn"
-                type="button"
-                onClick={() => loadPage("more")}
-                disabled={loadingMore}
-              >
-                {loadingMore ? "جاري التحميل..." : "تحميل المزيد"}
-              </button>
-            </div>
-          ) : null}
+          <div className="logs-v2-filter-summary">
+            <span>المعروض: <strong>{filtered.length}</strong> • الإجمالي المحمل: <strong>{rows.length}</strong></span>
+            {loading ? <span className="logs-v2-loading-inline">جاري تحميل أحدث السجلات...</span> : null}
+          </div>
         </div>
 
-        <ConfirmModal
-          open={Boolean(restoreTarget)}
-          title="تأكيد الاسترجاع"
-          message="سيتم استرجاع الحالة السابقة لهذا السجل. هل أنت متأكد؟"
-          variant="info"
-          confirmText={restoringLogId ? "جاري الاسترجاع..." : "تأكيد الاسترجاع"}
-          cancelText="إلغاء"
-          showCancel
-          onCancel={() => {
-            if (restoringLogId) return;
-            setRestoreTarget(null);
-          }}
-          onConfirm={() => {
-            if (restoringLogId) return;
-            void handleRestore();
-          }}
-        />
-      </div>
-    </div>
+        {loading && rows.length === 0 ? (
+          <div className="logs-v2-loading-cards" role="status" aria-label="جاري تحميل سجل العمليات">
+            {Array.from({ length: 3 }, (_, index) => (
+              <article key={index} className="dsv2-card dsv2-card--padded logs-v2-loading-card">
+                <DashboardSkeletonV2 variant="title" width="34%" />
+                <DashboardSkeletonV2 lines={3} />
+              </article>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <DashboardEmptyStateV2
+            title="لا توجد عمليات ضمن الفلاتر الحالية"
+            description="غيّر البحث أو الفلاتر أو الفترة لعرض سجلات أخرى."
+            tone="gold"
+            compact
+          />
+        ) : (
+          <div className="logs-v2-list">
+            {filtered.map((row) => (
+              <LogCard
+                key={row.id}
+                row={row}
+                expanded={expandedId === row.id}
+                details={detailsById[row.id]}
+                canRestore={canRestoreRow(row) && restoringLogId !== row.id}
+                onToggleExpand={toggleExpand}
+                onToggleSnapshot={toggleSnapshot}
+                onRestore={openRestoreConfirm}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasMore ? (
+          <div className="logs-v2-load-more">
+            <button
+              className="dsv2-btn dsv2-btn--secondary"
+              type="button"
+              onClick={() => void loadPage("more")}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "جاري التحميل..." : "تحميل المزيد"}
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <DashboardConfirmV2
+        open={Boolean(restoreTarget)}
+        title="تأكيد الاسترجاع"
+        description="سيتم استرجاع الحالة السابقة لهذا السجل وتسجيل العملية في سجل التدقيق."
+        tone="gold"
+        confirmLabel="تأكيد الاسترجاع"
+        pendingLabel="جاري الاسترجاع..."
+        cancelLabel="إلغاء"
+        onClose={() => {
+          if (restoringLogId) return;
+          setRestoreTarget(null);
+        }}
+        onConfirm={handleRestore}
+      />
+    </main>
   );
 }
