@@ -79,14 +79,12 @@ function normalizePathname(pathname: string) {
 
 function SettingsRouteFallback() {
   return (
-    <main className="dsv2-page dsv2-settings-page" dir="rtl">
-      <div className="dsv2-settings-stack">
-        <section className="settings-state settings-state--loading" aria-label="جاري تحميل الإعدادات">
-          <DashboardSkeletonV2 width="32%" height={20} />
-          <DashboardSkeletonV2 width="58%" height={14} />
-          <DashboardSkeletonV2 width="100%" height={120} />
-        </section>
-      </div>
+    <main className="dsv2-page settings-v2-page" dir="rtl">
+      <section className="dsv2-card dsv2-card--padded settings-v2-state" aria-label="جاري تحميل الإعدادات">
+        <DashboardSkeletonV2 width="32%" height={20} />
+        <DashboardSkeletonV2 width="58%" height={14} />
+        <DashboardSkeletonV2 width="100%" height={120} />
+      </section>
     </main>
   );
 }
@@ -149,13 +147,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
 
   const mainSettingsStats = useMemo(
     () => [
-      { label: "الصفحات المباشرة", value: String(accessibleNavCount), hint: "روابط متاحة حسب صلاحيات الحساب" },
-      { label: "الأقسام المفعلة", value: `${sectionsEnabledCount}/${sectionTotalCount}`, hint: "من أقسام لوحة التحكم" },
-      { label: "السياسات النشطة", value: `${policiesEnabledCount}/${policyTotalCount}`, hint: "سياسات تشغيل وصلاحيات" },
+      { label: "الصفحات المباشرة", value: String(accessibleNavCount), hint: "روابط متاحة حسب صلاحيات الحساب", tone: "dsv2-metric-card--gold" },
+      { label: "الأقسام المفعلة", value: `${sectionsEnabledCount}/${sectionTotalCount}`, hint: "من أقسام لوحة التحكم", tone: "dsv2-metric-card--success" },
+      { label: "السياسات النشطة", value: `${policiesEnabledCount}/${policyTotalCount}`, hint: "سياسات تشغيل وصلاحيات", tone: "dsv2-metric-card--danger" },
       {
         label: "الحالة الحالية",
         value: canManageGeneralSettings ? "قابل للتعديل" : "عرض محدود",
         hint: canManageGeneralSettings ? "يمكن الحفظ مباشرة" : "حسب الصلاحيات الممنوحة",
+        tone: "dsv2-metric-card--dark",
       },
     ],
     [accessibleNavCount, canManageGeneralSettings, policiesEnabledCount, policyTotalCount, sectionTotalCount, sectionsEnabledCount]
@@ -227,14 +226,12 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
 
   if (!canView) {
     return (
-      <main className="dsv2-page dsv2-settings-page" dir="rtl">
-        <div className="dsv2-settings-stack">
-          <DashboardEmptyStateV2
-            tone="gold"
-            title="غير مصرح"
-            description="لا يملك هذا الحساب صلاحية لفتح إعدادات لوحة التحكم."
-          />
-        </div>
+      <main className="dsv2-page settings-v2-page" dir="rtl">
+        <DashboardEmptyStateV2
+          tone="gold"
+          title="غير مصرح"
+          description="لا يملك هذا الحساب صلاحية لفتح إعدادات لوحة التحكم."
+        />
       </main>
     );
   }
@@ -244,214 +241,216 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     const saveFailed = savedMsg === "تعذر حفظ الإعدادات";
 
     return (
-      <main className="dsv2-page dsv2-settings-page" dir="rtl">
-        <div className="dsv2-settings-stack">
-          <section className="settings-shell__hero">
-            <div className="settings-shell__hero-copy">
-              <span className="settings-shell__eyebrow">الإعدادات الأساسية</span>
-              <h1>إعدادات لوحة التحكم</h1>
-              <p>إدارة هوية الصالون، ظهور الأقسام، وسياسات التشغيل من مساحة واحدة واضحة.</p>
-              <div className="settings-shell__badges">
-                <span className={`dsv2-badge ${canManageGeneralSettings ? "dsv2-badge--success" : ""}`}>
-                  {canManageGeneralSettings ? "قابل للتعديل" : "عرض محدود"}
-                </span>
-                <span className="dsv2-badge">{accessibleNavCount} أقسام متاحة</span>
-              </div>
-            </div>
-          </section>
-
-          <section className="dsv2-settings-metrics" aria-label="ملخص الإعدادات">
-            {mainSettingsStats.map((item) => (
-              <article key={item.label} className="settings-shell__metric">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <small>{item.hint}</small>
-              </article>
-            ))}
-          </section>
-
-          <section className="dsv2-settings-tabs" aria-label="أقسام الإعدادات الأساسية">
-            {BASIC_SECTION_ITEMS.map((item) => {
-              const active = item.id === activeBasicSection;
-              const dynamicDescription =
-                item.id === "sections"
-                  ? `${sectionsEnabledCount}/${sectionTotalCount} أقسام مفعلة`
-                  : item.id === "policies"
-                    ? `${policiesEnabledCount}/${policyTotalCount} سياسات نشطة`
-                    : item.description;
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`settings-tab-card ${active ? "is-active" : ""}`}
-                  onClick={() => setActiveBasicSection(item.id)}
-                  aria-pressed={active}
-                >
-                  <span className="settings-tab-card__index">{item.index}</span>
-                  <span className="settings-tab-card__copy">
-                    <strong>{item.title}</strong>
-                    <small>{dynamicDescription}</small>
-                  </span>
-                </button>
-              );
-            })}
-          </section>
-
-          <section className="settings-card dsv2-settings-panel">
-            <header className="settings-section-head">
-              <div>
-                <span className="settings-section-eyebrow">{activeSectionMeta?.index || "01"}</span>
-                <h2 className="settings-title">{activeSectionMeta?.title || "الإعدادات"}</h2>
-                <p className="settings-section-hint">
-                  {activeBasicSection === "identity"
-                    ? "البيانات الأساسية التي تظهر في الشاشات العامة والإدارية."
-                    : activeBasicSection === "sections"
-                      ? "تحكم في الأقسام التي تظهر داخل لوحة التحكم والصفحات المرتبطة بها."
-                      : "صلاحيات تشغيلية تتحكم بسلوك الأدوار داخل النظام."}
-                </p>
-              </div>
+      <main className="dsv2-page settings-v2-page" dir="rtl">
+        <section className="dsv2-card settings-v2-hero">
+          <div className="settings-v2-hero__content">
+            <span className="dsv2-badge dsv2-badge--gold">الإعدادات الأساسية</span>
+            <h1 className="dsv2-page-title">إعدادات لوحة التحكم</h1>
+            <p className="dsv2-page-subtitle">
+              إدارة هوية الصالون، ظهور الأقسام، وسياسات التشغيل من مساحة واحدة واضحة.
+            </p>
+            <div className="settings-v2-hero__badges">
               <span className={`dsv2-badge ${canManageGeneralSettings ? "dsv2-badge--success" : ""}`}>
-                {canManageGeneralSettings ? "جاهز للتعديل" : "عرض فقط"}
+                {canManageGeneralSettings ? "قابل للتعديل" : "عرض محدود"}
               </span>
-            </header>
-
-            <div className="settings-section-body">
-              {activeBasicSection === "identity" ? (
-                <div className="dsv2-settings-form">
-                  <label className="dsv2-field">
-                    <span className="dsv2-field__label">اسم الصالون</span>
-                    <input
-                      className="dsv2-input"
-                      value={(settings as any)?.salonName || ""}
-                      onChange={(event) =>
-                        canManageGeneralSettings && setSettings({ ...(settings as any), salonName: event.target.value })
-                      }
-                      disabled={!canManageGeneralSettings}
-                      placeholder="مثال: Queens Salon"
-                    />
-                  </label>
-
-                  <label className="dsv2-field">
-                    <span className="dsv2-field__label">الجوال</span>
-                    <input
-                      className="dsv2-input"
-                      value={(settings as any)?.phone || ""}
-                      onChange={(event) =>
-                        canManageGeneralSettings && setSettings({ ...(settings as any), phone: event.target.value })
-                      }
-                      disabled={!canManageGeneralSettings}
-                      placeholder="05xxxxxxxx"
-                      inputMode="tel"
-                    />
-                  </label>
-
-                  <label className="dsv2-field">
-                    <span className="dsv2-field__label">المدينة</span>
-                    <input
-                      className="dsv2-input"
-                      value={(settings as any)?.city || ""}
-                      onChange={(event) =>
-                        canManageGeneralSettings && setSettings({ ...(settings as any), city: event.target.value })
-                      }
-                      disabled={!canManageGeneralSettings}
-                      placeholder="المدينة المنورة"
-                    />
-                  </label>
-                </div>
-              ) : null}
-
-              {activeBasicSection === "sections" ? (
-                <div className="dsv2-settings-toggle-grid">
-                  {SECTION_ITEMS.map(([key, label, description]) => {
-                    const enabled = Boolean((settings as any)?.sections?.[key]);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`dsv2-settings-toggle ${enabled ? "is-on" : ""}`}
-                        aria-pressed={enabled}
-                        disabled={!canManageGeneralSettings}
-                        onClick={() => toggleSection(key)}
-                      >
-                        <span className="dsv2-settings-toggle__mark" aria-hidden="true">{enabled ? "✓" : ""}</span>
-                        <span className="dsv2-settings-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
-                        <span className="dsv2-settings-toggle__status">{enabled ? "ظاهر" : "مخفي"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {activeBasicSection === "policies" ? (
-                <div className="dsv2-settings-toggle-grid">
-                  {POLICY_ITEMS.map(([key, label, description]) => {
-                    const enabled = Boolean((settings as any)?.policies?.[key]);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`dsv2-settings-toggle ${enabled ? "is-on" : ""}`}
-                        aria-pressed={enabled}
-                        disabled={!canManageGeneralSettings}
-                        onClick={() => togglePolicy(key)}
-                      >
-                        <span className="dsv2-settings-toggle__mark" aria-hidden="true">{enabled ? "✓" : ""}</span>
-                        <span className="dsv2-settings-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
-                        <span className="dsv2-settings-toggle__status">{enabled ? "مفعلة" : "متوقفة"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {!canManageGeneralSettings ? (
-                <div className="dsv2-settings-note">
-                  تحتاج صلاحية <strong>settings.general.manage</strong> لتعديل هذه القيم.
-                </div>
-              ) : null}
+              <span className="dsv2-badge">{accessibleNavCount} أقسام متاحة</span>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section className="settings-page-actions">
-            <div className="settings-page-actions__copy">
-              <strong>حفظ إعدادات المنصة</strong>
-              <div className="dsv2-settings-footnote">الحفظ يطبق على كل الشاشات التي تعتمد على AppSettings.</div>
-              {savedMsg ? (
-                <span
-                  className={`dsv2-badge ${saveFailed ? "" : "dsv2-badge--success"}`}
-                  role={saveFailed ? "alert" : "status"}
-                >
-                  {savedMsg}
+        <section className="settings-v2-metrics" aria-label="ملخص الإعدادات">
+          {mainSettingsStats.map((item) => (
+            <article key={item.label} className={`dsv2-metric-card ${item.tone}`}>
+              <p className="dsv2-metric-card__label">{item.label}</p>
+              <p className="dsv2-metric-card__value">{item.value}</p>
+              <p className="dsv2-metric-card__meta">{item.hint}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="settings-v2-tabs" aria-label="أقسام الإعدادات الأساسية">
+          {BASIC_SECTION_ITEMS.map((item) => {
+            const active = item.id === activeBasicSection;
+            const dynamicDescription =
+              item.id === "sections"
+                ? `${sectionsEnabledCount}/${sectionTotalCount} أقسام مفعلة`
+                : item.id === "policies"
+                  ? `${policiesEnabledCount}/${policyTotalCount} سياسات نشطة`
+                  : item.description;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`settings-v2-tab ${active ? "is-active" : ""}`}
+                onClick={() => setActiveBasicSection(item.id)}
+                aria-pressed={active}
+              >
+                <span className="settings-v2-tab__index">{item.index}</span>
+                <span className="settings-v2-tab__copy">
+                  <strong>{item.title}</strong>
+                  <small>{dynamicDescription}</small>
                 </span>
-              ) : null}
+              </button>
+            );
+          })}
+        </section>
+
+        <section className="dsv2-card dsv2-card--padded settings-v2-panel">
+          <header className="settings-v2-panel__head">
+            <div className="settings-v2-panel__copy">
+              <span className="settings-v2-panel__eyebrow">{activeSectionMeta?.index || "01"}</span>
+              <h2>{activeSectionMeta?.title || "الإعدادات"}</h2>
+              <p>
+                {activeBasicSection === "identity"
+                  ? "البيانات الأساسية التي تظهر في الشاشات العامة والإدارية."
+                  : activeBasicSection === "sections"
+                    ? "تحكم في الأقسام التي تظهر داخل لوحة التحكم والصفحات المرتبطة بها."
+                    : "صلاحيات تشغيلية تتحكم بسلوك الأدوار داخل النظام."}
+              </p>
             </div>
-            <button
-              className="dsv2-btn dsv2-btn--primary"
-              onClick={handleSave}
-              disabled={!canManageGeneralSettings}
-              type="button"
-              title={!canManageGeneralSettings ? "تحتاج صلاحية settings.general.manage" : "حفظ الإعدادات"}
-            >
-              حفظ التغييرات
-            </button>
-          </section>
-        </div>
+            <span className={`dsv2-badge ${canManageGeneralSettings ? "dsv2-badge--success" : ""}`}>
+              {canManageGeneralSettings ? "جاهز للتعديل" : "عرض فقط"}
+            </span>
+          </header>
+
+          <div className="settings-v2-panel__body">
+            {activeBasicSection === "identity" ? (
+              <div className="settings-v2-form">
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">اسم الصالون</span>
+                  <input
+                    className="dsv2-input"
+                    value={(settings as any)?.salonName || ""}
+                    onChange={(event) =>
+                      canManageGeneralSettings && setSettings({ ...(settings as any), salonName: event.target.value })
+                    }
+                    disabled={!canManageGeneralSettings}
+                    placeholder="مثال: Queens Salon"
+                  />
+                </label>
+
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">الجوال</span>
+                  <input
+                    className="dsv2-input"
+                    value={(settings as any)?.phone || ""}
+                    onChange={(event) =>
+                      canManageGeneralSettings && setSettings({ ...(settings as any), phone: event.target.value })
+                    }
+                    disabled={!canManageGeneralSettings}
+                    placeholder="05xxxxxxxx"
+                    inputMode="tel"
+                  />
+                </label>
+
+                <label className="dsv2-field">
+                  <span className="dsv2-field__label">المدينة</span>
+                  <input
+                    className="dsv2-input"
+                    value={(settings as any)?.city || ""}
+                    onChange={(event) =>
+                      canManageGeneralSettings && setSettings({ ...(settings as any), city: event.target.value })
+                    }
+                    disabled={!canManageGeneralSettings}
+                    placeholder="المدينة المنورة"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            {activeBasicSection === "sections" ? (
+              <div className="settings-v2-toggle-grid">
+                {SECTION_ITEMS.map(([key, label, description]) => {
+                  const enabled = Boolean((settings as any)?.sections?.[key]);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`settings-v2-toggle ${enabled ? "is-on" : ""}`}
+                      aria-pressed={enabled}
+                      disabled={!canManageGeneralSettings}
+                      onClick={() => toggleSection(key)}
+                    >
+                      <span className="settings-v2-toggle__mark" aria-hidden="true">{enabled ? "✓" : ""}</span>
+                      <span className="settings-v2-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
+                      <span className="settings-v2-toggle__status">{enabled ? "ظاهر" : "مخفي"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {activeBasicSection === "policies" ? (
+              <div className="settings-v2-toggle-grid">
+                {POLICY_ITEMS.map(([key, label, description]) => {
+                  const enabled = Boolean((settings as any)?.policies?.[key]);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`settings-v2-toggle ${enabled ? "is-on" : ""}`}
+                      aria-pressed={enabled}
+                      disabled={!canManageGeneralSettings}
+                      onClick={() => togglePolicy(key)}
+                    >
+                      <span className="settings-v2-toggle__mark" aria-hidden="true">{enabled ? "✓" : ""}</span>
+                      <span className="settings-v2-toggle__copy"><strong>{label}</strong><small>{description}</small></span>
+                      <span className="settings-v2-toggle__status">{enabled ? "مفعلة" : "متوقفة"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {!canManageGeneralSettings ? (
+              <div className="settings-v2-note">
+                تحتاج صلاحية <strong>settings.general.manage</strong> لتعديل هذه القيم.
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="dsv2-card dsv2-card--padded settings-v2-savebar">
+          <div className="settings-v2-savebar__copy">
+            <strong>حفظ إعدادات المنصة</strong>
+            <p>الحفظ يطبق على كل الشاشات التي تعتمد على AppSettings.</p>
+            {savedMsg ? (
+              <span
+                className={`dsv2-badge ${saveFailed ? "" : "dsv2-badge--success"}`}
+                role={saveFailed ? "alert" : "status"}
+              >
+                {savedMsg}
+              </span>
+            ) : null}
+          </div>
+          <button
+            className="dsv2-btn dsv2-btn--primary"
+            onClick={handleSave}
+            disabled={!canManageGeneralSettings}
+            type="button"
+            title={!canManageGeneralSettings ? "تحتاج صلاحية settings.general.manage" : "حفظ الإعدادات"}
+          >
+            حفظ التغييرات
+          </button>
+        </section>
       </main>
     );
   };
 
+  const shellClassName = isSettingsIndexRoute
+    ? "dashboard-section settings-page settings-v2-shell"
+    : isLegacyNestedRoute
+      ? "dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded"
+      : "dashboard-section settings-page settings-shell settings-shell--embedded";
+
+  const shellMainClassName = isSettingsIndexRoute ? "settings-v2-shell__main" : "settings-shell__main";
+  const shellContentClassName = isSettingsIndexRoute ? "settings-v2-shell__content" : "settings-shell__content";
+
   return (
-    <div
-      className={
-        isLegacyNestedRoute
-          ? "dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded"
-          : "dashboard-section settings-page settings-shell settings-shell--embedded"
-      }
-      dir="rtl"
-    >
-      <main className="settings-shell__main" dir="rtl">
-        <section className="settings-shell__content">
+    <div className={shellClassName} dir="rtl">
+      <main className={shellMainClassName} dir="rtl">
+        <section className={shellContentClassName}>
           <Routes>
             <Route
               index
