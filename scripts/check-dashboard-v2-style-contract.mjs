@@ -118,6 +118,14 @@ const bookingsSource = readFileSync(join(root, "src/pages/DashboardBookings.tsx"
 if (/style=\{\{/i.test(bookingsSource)) errors.push("DashboardBookings.tsx still contains inline style objects.");
 if (/#[0-9a-f]{3,8}\b/i.test(bookingsSource)) errors.push("DashboardBookings.tsx still contains raw hex colors.");
 
+const settingsSource = readFileSync(join(root, "src/pages/DashboardSettings.tsx"), "utf8");
+if (/DashboardEnterpriseWorkspaces\.css/i.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx still imports DashboardEnterpriseWorkspaces.css.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx is not wired to the Dashboard V2 entry point.");
+}
+
 if (errors.length) {
   console.error("Dashboard V2 style contract failed:\n");
   for (const error of errors) console.error(`- ${error}`);
