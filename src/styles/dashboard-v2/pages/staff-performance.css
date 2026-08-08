@@ -1,0 +1,431 @@
+/* =========================================================
+   Malikat Dashboard V2 - staff performance workspace
+========================================================= */
+
+.dashboard-v2 .dsv2-staff-performance-page {
+  display: grid;
+  gap: var(--dsv2-section-gap);
+  padding-block: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-block-end);
+}
+
+.dashboard-v2 .dsv2-staff-performance-page-head {
+  align-items: center;
+}
+
+.dashboard-v2 .dsv2-staff-performance-eyebrow {
+  margin: 0 0 var(--dsv2-space-1);
+  color: var(--dsv2-gold);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.dashboard-v2 .dsv2-staff-performance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-staff-performance-toolbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  align-items: end;
+  gap: var(--dsv2-field-gap);
+}
+
+.dashboard-v2 .dsv2-staff-performance-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-staff-performance-export-actions .dsv2-btn {
+  flex: 1 1 128px;
+}
+
+.dashboard-v2 .dsv2-staff-performance-alert,
+.dashboard-v2 .dsv2-staff-performance-note {
+  display: flex;
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  min-height: 44px;
+  margin: 0;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-green-border);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.6;
+}
+
+.dashboard-v2 .dsv2-staff-performance-alert--error {
+  border-color: var(--dsv2-burgundy-border);
+  color: var(--dsv2-burgundy);
+  background: var(--dsv2-burgundy-soft);
+}
+
+.dashboard-v2 .dsv2-staff-performance-alert > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dsv2-space-2) var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-staff-performance-note {
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-staff-performance-stats {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.dashboard-v2 .dsv2-staff-performance-metric {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: var(--dsv2-space-3);
+  min-height: 124px;
+}
+
+.dashboard-v2 .dsv2-staff-performance-metric > div {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-staff-performance-skeleton-value {
+  --dsv2-skeleton-width: 92px;
+  --dsv2-skeleton-height: 28px;
+  margin-block: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-staff-performance-table-card {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-staff-performance-table {
+  min-width: 1120px;
+}
+
+.dashboard-v2 .dsv2-staff-performance-table th:first-child,
+.dashboard-v2 .dsv2-staff-performance-table td:first-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-staff-performance-table th:first-child {
+  z-index: 2;
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-staff-performance-score {
+  display: inline-flex;
+  min-width: 54px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface-muted);
+  font-weight: 950;
+}
+
+.dashboard-v2 .dsv2-staff-performance-score--strong {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-staff-performance-score--steady {
+  border-color: var(--dsv2-border-strong);
+  color: var(--dsv2-info);
+  background: rgba(var(--dsv2-black-rgb), 0.04);
+}
+
+.dashboard-v2 .dsv2-staff-performance-score--low {
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-staff-performance-empty-cell {
+  padding: var(--dsv2-space-8);
+  color: var(--dsv2-muted);
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-staff-performance-empty-cell .dsv2-skeleton {
+  margin-inline: auto;
+  max-width: 560px;
+}
+
+.dashboard-v2 .dsv2-staff-performance-empty-cell .dsv2-skeleton + .dsv2-skeleton {
+  margin-top: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .dsv2-staff-performance-empty {
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  color: var(--dsv2-muted);
+  font-weight: 850;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail {
+  display: grid;
+  gap: var(--dsv2-section-gap);
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail__head {
+  align-items: center;
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail-grid article {
+  min-height: 104px;
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail-grid span {
+  color: var(--dsv2-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail-grid strong {
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .dsv2-staff-performance-detail-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-space-4);
+}
+
+.dashboard-v2 .dsv2-staff-performance-bookings,
+.dashboard-v2 .dsv2-staff-performance-services {
+  display: grid;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-staff-performance-bookings article,
+.dashboard-v2 .dsv2-staff-performance-services article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-staff-performance-bookings strong,
+.dashboard-v2 .dsv2-staff-performance-services strong {
+  color: var(--dsv2-text);
+  font-weight: 950;
+}
+
+.dashboard-v2 .dsv2-staff-performance-bookings small,
+.dashboard-v2 .dsv2-staff-performance-services small {
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-staff-performance-bookings span,
+.dashboard-v2 .dsv2-staff-performance-bookings b,
+.dashboard-v2 .dsv2-staff-performance-services span {
+  color: var(--dsv2-gold);
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-staff-performance-attendance {
+  display: grid;
+  gap: var(--dsv2-space-2);
+  margin: 0;
+}
+
+.dashboard-v2 .dsv2-staff-performance-attendance div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  padding-block: var(--dsv2-space-2);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-staff-performance-attendance dt {
+  color: var(--dsv2-muted);
+  font-weight: 850;
+}
+
+.dashboard-v2 .dsv2-staff-performance-attendance dd {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-weight: 950;
+}
+
+.dashboard-v2 .dsv2-staff-performance-notes {
+  display: grid;
+  gap: var(--dsv2-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-v2 .dsv2-staff-performance-notes li {
+  display: flex;
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  color: var(--dsv2-warning);
+  font-weight: 850;
+}
+
+.dashboard-v2 .dsv2-staff-performance-spin {
+  animation: dsv2-staff-performance-spin 0.8s linear infinite;
+}
+
+@keyframes dsv2-staff-performance-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .dashboard-v2 .dsv2-staff-performance-page-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-actions {
+    justify-content: stretch;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-actions .dsv2-btn {
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-toolbar,
+  .dashboard-v2 .dsv2-staff-performance-stats,
+  .dashboard-v2 .dsv2-staff-performance-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-export-actions {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-detail-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-staff-performance-toolbar,
+  .dashboard-v2 .dsv2-staff-performance-stats,
+  .dashboard-v2 .dsv2-staff-performance-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-export-actions .dsv2-btn {
+    flex-basis: 100%;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table {
+    display: block;
+    min-width: 0;
+    background: transparent;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table thead {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table tbody {
+    display: grid;
+    gap: var(--dsv2-space-3);
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table tr {
+    display: grid;
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--dsv2-border);
+    border-radius: var(--dsv2-radius-lg);
+    background: var(--dsv2-surface);
+    box-shadow: var(--dsv2-shadow-xs);
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table th:first-child,
+  .dashboard-v2 .dsv2-staff-performance-table td:first-child {
+    position: static;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table td {
+    display: grid;
+    grid-template-columns: 124px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--dsv2-space-2);
+    min-height: 44px;
+    padding: var(--dsv2-space-3);
+    border-bottom: 1px solid var(--dsv2-divider);
+    background: transparent;
+    text-align: end;
+    white-space: normal;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table td::before {
+    content: attr(data-label);
+    color: var(--dsv2-muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+    text-align: start;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-table td:last-child .dsv2-icon-btn {
+    justify-self: end;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-empty-cell {
+    display: block;
+    text-align: center;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-empty-cell::before {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-staff-performance-bookings article,
+  .dashboard-v2 .dsv2-staff-performance-services article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 430px) {
+  .dashboard-v2 .dsv2-staff-performance-table td {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+}

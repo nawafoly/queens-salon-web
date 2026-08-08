@@ -1,0 +1,352 @@
+/* =========================================================
+   Malikat Dashboard V2 - loyalty workspace
+========================================================= */
+
+.dashboard-v2 .dsv2-loyalty-page {
+  display: grid;
+  gap: var(--dsv2-section-gap);
+  padding-block: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-block-end);
+}
+
+.dashboard-v2 .dsv2-loyalty-page-head {
+  align-items: center;
+}
+
+.dashboard-v2 .dsv2-loyalty-eyebrow {
+  margin: 0 0 var(--dsv2-space-1);
+  color: var(--dsv2-gold);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.dashboard-v2 .dsv2-loyalty-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: min(100%, 260px);
+}
+
+.dashboard-v2 .dsv2-loyalty-summary__icon,
+.dashboard-v2 .dsv2-loyalty-panel-icon {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-gold);
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-loyalty-summary span,
+.dashboard-v2 .dsv2-loyalty-summary strong,
+.dashboard-v2 .dsv2-loyalty-summary small {
+  display: block;
+}
+
+.dashboard-v2 .dsv2-loyalty-summary span {
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.dashboard-v2 .dsv2-loyalty-summary strong {
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-text);
+  font-size: 1.48rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.dashboard-v2 .dsv2-loyalty-summary small {
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-warning);
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.dashboard-v2 .dsv2-loyalty-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.dashboard-v2 .dsv2-loyalty-metric {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: var(--dsv2-space-3);
+  min-height: 128px;
+  padding-inline-start: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .dsv2-loyalty-metric > div {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-loyalty-skeleton-value {
+  --dsv2-skeleton-width: 74px;
+  --dsv2-skeleton-height: 28px;
+  margin-block: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .dsv2-loyalty-settings .dsv2-section-head,
+.dashboard-v2 .dsv2-loyalty-clients-head {
+  align-items: center;
+}
+
+.dashboard-v2 .dsv2-loyalty-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-field-gap);
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  min-height: 92px;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  cursor: pointer;
+  text-align: start;
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle:hover {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle.is-on {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle__mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-sm);
+  color: var(--dsv2-on-dark);
+  background: var(--dsv2-surface-muted);
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle.is-on .dsv2-loyalty-toggle__mark {
+  border-color: var(--dsv2-green);
+  background: var(--dsv2-green);
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle__copy strong {
+  color: var(--dsv2-text);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle__copy small {
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle__status {
+  padding: var(--dsv2-space-2) var(--dsv2-space-3);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-loyalty-toggle.is-on .dsv2-loyalty-toggle__status {
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-loyalty-save {
+  margin-top: var(--dsv2-space-5);
+  min-width: 180px;
+}
+
+.dashboard-v2 .dsv2-loyalty-clients {
+  overflow: hidden;
+}
+
+.dashboard-v2 .dsv2-loyalty-clients-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  gap: var(--dsv2-space-4);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-loyalty-search {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  padding: 0 var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-loyalty-search:focus-within {
+  border-color: var(--dsv2-gold);
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2 .dsv2-loyalty-search .dsv2-input {
+  min-height: var(--dsv2-control-height-lg);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-v2 .dsv2-loyalty-table {
+  min-width: 840px;
+}
+
+.dashboard-v2 .dsv2-loyalty-table bdi {
+  color: var(--dsv2-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-loyalty-empty-cell {
+  padding: var(--dsv2-space-8);
+  color: var(--dsv2-muted);
+  text-align: center;
+}
+
+.dashboard-v2 .dsv2-loyalty-loading {
+  display: grid;
+  min-height: 190px;
+  align-content: center;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-6);
+}
+
+.dashboard-v2 .dsv2-loyalty-loading .dsv2-skeleton {
+  justify-self: center;
+  max-width: 520px;
+}
+
+@media (max-width: 1199.98px) {
+  .dashboard-v2 .dsv2-loyalty-page-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-summary {
+    width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-loyalty-settings .dsv2-section-head,
+  .dashboard-v2 .dsv2-loyalty-clients-head {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-loyalty-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-loyalty-toggle {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .dsv2-loyalty-toggle__status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-save {
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table {
+    display: block;
+    min-width: 0;
+    background: transparent;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table thead {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table tbody {
+    display: grid;
+    gap: var(--dsv2-space-3);
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table tr {
+    display: grid;
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--dsv2-border);
+    border-radius: var(--dsv2-radius-lg);
+    background: var(--dsv2-surface);
+    box-shadow: var(--dsv2-shadow-xs);
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table td {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--dsv2-space-2);
+    min-height: 44px;
+    padding: var(--dsv2-space-3);
+    border-bottom: 1px solid var(--dsv2-divider);
+    background: transparent;
+    text-align: end;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table td::before {
+    content: attr(data-label);
+    color: var(--dsv2-muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+    text-align: start;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-table td:last-child .dsv2-btn {
+    width: 100%;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-empty-cell {
+    display: block;
+    text-align: center;
+  }
+
+  .dashboard-v2 .dsv2-loyalty-empty-cell::before {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-v2 .dsv2-loyalty-table td {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+}
