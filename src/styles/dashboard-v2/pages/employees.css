@@ -2917,3 +2917,72 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* EMPLOYEES_HIDE_SIDEBAR_SCROLLBAR_V3 */
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation
+:where(.sidebar-nav, .hr-shell-nav, .employee-portal-desktop-nav) {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation
+:where(.sidebar-nav, .hr-shell-nav, .employee-portal-desktop-nav)::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+/* END_EMPLOYEES_HIDE_SIDEBAR_SCROLLBAR_V3 */
+
+/* EMPLOYEES_SIDEBAR_SCROLLBAR_FINAL */
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .sidebar-nav,
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .hr-shell-nav,
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .employee-portal-desktop-nav {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .sidebar-nav::-webkit-scrollbar,
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .hr-shell-nav::-webkit-scrollbar,
+.dashboard-skin:has(.dsv2-employees-page) .malikat-portal-sidebar-v2__navigation .employee-portal-desktop-nav::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+/* END_EMPLOYEES_SIDEBAR_SCROLLBAR_FINAL */
+
+
+/* EMPLOYEES_SIDEBAR_SCROLLBAR_FINAL_V2 */
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation > nav,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .sidebar-nav,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .hr-shell-nav,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .employee-portal-desktop-nav {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation > nav::-webkit-scrollbar,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .sidebar-nav::-webkit-scrollbar,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .hr-shell-nav::-webkit-scrollbar,
+
+.dashboard-skin:has(.dsv2-employees-page)
+.malikat-portal-sidebar-v2__navigation .employee-portal-desktop-nav::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+/* END_EMPLOYEES_SIDEBAR_SCROLLBAR_FINAL_V2 */
+

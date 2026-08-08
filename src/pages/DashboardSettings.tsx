@@ -2,7 +2,7 @@
 
 // ✅ src/pages/DashboardSettings.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import "../styles/DashboardEnterpriseWorkspaces.css";
 
 import { AppSettingsService } from "../services/AppSettingsService";
@@ -65,6 +65,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
 }) => {
   const [uiRole, setUiRole] = useState<UiRole>(mapRoleToUi(initialRole ?? readStoredAuthSession()?.role ?? "guest"));
   const { hasPermission, hasAnyPermission, role: permissionRole } = usePermissions();
+  const location = useLocation();
   const [authLoading, setAuthLoading] = useState(() =>
     typeof authReady === "boolean" ? !authReady : false
   );
@@ -87,6 +88,17 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const [activeBasicSection, setActiveBasicSection] = useState<"identity" | "sections" | "policies">("identity");
 
   const currentRootPath = normalizePathname(SETTINGS_ROOT_PATH);
+  const normalizedSettingsPathname = normalizePathname(location.pathname);
+
+  const isSettingsIndexRoute =
+    normalizedSettingsPathname === currentRootPath;
+
+  const isSettingsUsersV2Route =
+    normalizedSettingsPathname === `${currentRootPath}/users` ||
+    normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
+
+  const usesNativeSettingsV2Shell =
+    isSettingsIndexRoute || isSettingsUsersV2Route;
 
   const settingsNavItems = useMemo(
     () => [
@@ -272,24 +284,24 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   ========================= */
   if (authLoading) {
     return (
-      <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
-        <div className="settings-wrap">
+      <main className="dsv2-page dsv2-settings-page">
+        <div className="dsv2-settings-stack">
           <SettingsState title="جاري التحميل…" hint="لحظات…" loading />
         </div>
-      </div>
+      </main>
     );
   }
 
   if (!canView) {
     return (
-      <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
-        <div className="settings-wrap">
+      <main className="dsv2-page dsv2-settings-page">
+        <div className="dsv2-settings-stack">
           <SettingsState
             title="غير مصرح"
             hint="هذه الصفحة مخصصة للإدارة وموظفات الاستقبال/الموظفات فقط."
           />
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -297,28 +309,28 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
      Main settings UI (index route)
   ========================= */
   const MainSettings = () => (
-    <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2">
-      <div className="settings-wrap">
+    <main className="dsv2-page dsv2-settings-page">
+      <div className="dsv2-settings-stack">
         <SettingsPageHeader
           eyebrow="الوحدة 03"
           title="الإعدادات الأساسية"
           hint={hint}
           badges={
             <>
-              <span className="settings-shell__pill settings-shell__pill--success">جاهز للحفظ</span>
-              <span className="settings-shell__pill settings-shell__pill--outline">{accessibleNavCount} روابط مباشرة</span>
-              <span className="settings-shell__pill settings-shell__pill--outline">
+              <span className="dsv2-badge dsv2-badge--success">جاهز للحفظ</span>
+              <span className="dsv2-badge">{accessibleNavCount} روابط مباشرة</span>
+              <span className="dsv2-badge">
                 {canManageGeneralSettings ? "صلاحية إعدادات عامة" : "عرض محدود"}
               </span>
             </>
           }
         />
 
-        <SettingsStats items={mainSettingsStats} />
+        <SettingsStats items={mainSettingsStats} className="dsv2-settings-metrics" />
 
         <SettingsTabs
           variant="cards"
-          className="settings-basic-tabs"
+          className="dsv2-settings-tabs"
           activeId={activeBasicSection}
           onChange={(id) => setActiveBasicSection(id as "identity" | "sections" | "policies")}
           items={[
@@ -349,17 +361,17 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             title="هوية المنصة"
             hint="البيانات الأساسية التي تظهر في الشاشات العامة والإدارية."
             actions={
-              <span className={`settings-shell__pill ${canManageGeneralSettings ? "settings-shell__pill--success" : "settings-shell__pill--outline"}`}>
+              <span className={`dsv2-badge ${canManageGeneralSettings ? "dsv2-badge--success" : ""}`}>
                 {canManageGeneralSettings ? "قابل للتعديل" : "عرض فقط"}
               </span>
             }
-            className="settings-basic-panel"
+            className="dsv2-settings-panel"
           >
-            <div className="settings-basic-form">
-              <div className="settings-field">
-                <label>اسم الصالون</label>
+            <div className="dsv2-settings-form">
+              <div className="dsv2-field">
+                <label className="dsv2-field__label">اسم الصالون</label>
                 <input
-                  className="settings-input"
+                  className="dsv2-input"
                   value={(settings as any)?.salonName || ""}
                   onChange={(e) =>
                     canManageGeneralSettings &&
@@ -370,10 +382,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 />
               </div>
 
-              <div className="settings-field">
-                <label>الجوال</label>
+              <div className="dsv2-field">
+                <label className="dsv2-field__label">الجوال</label>
                 <input
-                  className="settings-input"
+                  className="dsv2-input"
                   value={(settings as any)?.phone || ""}
                   onChange={(e) =>
                     canManageGeneralSettings &&
@@ -384,10 +396,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 />
               </div>
 
-              <div className="settings-field">
-                <label>المدينة</label>
+              <div className="dsv2-field">
+                <label className="dsv2-field__label">المدينة</label>
                 <input
-                  className="settings-input"
+                  className="dsv2-input"
                   value={(settings as any)?.city || ""}
                   onChange={(e) =>
                     canManageGeneralSettings &&
@@ -400,7 +412,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             </div>
 
             {!canManageGeneralSettings ? (
-              <div className="settings-note">* للتعديل تحتاج صلاحية settings.general.manage.</div>
+              <div className="dsv2-settings-note">* للتعديل تحتاج صلاحية settings.general.manage.</div>
             ) : null}
           </SettingsSection>
         ) : null}
@@ -411,13 +423,13 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             title="ظهور الأقسام"
             hint="تحكم في الأقسام التي تظهر داخل لوحة التحكم والصفحات المرتبطة بها."
             actions={
-              <span className="settings-shell__pill settings-shell__pill--outline">
+              <span className="dsv2-badge">
                 {sectionsEnabledCount}/{sectionTotalCount}
               </span>
             }
-            className="settings-basic-panel"
+            className="dsv2-settings-panel"
           >
-            <div className="settings-toggle-grid">
+            <div className="dsv2-settings-toggle-grid">
               {(
                 [
                   ["overview", "نظرة عامة", "ملخص سريع للوحة الرئيسية"],
@@ -435,19 +447,19 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                   <button
                     key={key}
                     type="button"
-                    className={`settings-toggle-card ${enabled ? "is-on" : ""}`}
+                    className={`dsv2-settings-toggle ${enabled ? "is-on" : ""}`}
                     aria-pressed={enabled}
                     disabled={!canManageGeneralSettings}
                     onClick={() => toggleSection(key)}
                   >
-                    <span className="settings-toggle-card__mark" aria-hidden="true">
+                    <span className="dsv2-settings-toggle__mark" aria-hidden="true">
                       {enabled ? "✓" : ""}
                     </span>
-                    <span className="settings-toggle-card__copy">
+                    <span className="dsv2-settings-toggle__copy">
                       <strong>{label}</strong>
                       <small>{description}</small>
                     </span>
-                    <span className="settings-toggle-card__status">
+                    <span className="dsv2-settings-toggle__status">
                       {enabled ? "ظاهر" : "مخفي"}
                     </span>
                   </button>
@@ -455,7 +467,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               })}
             </div>
 
-            <div className="settings-footnote">
+            <div className="dsv2-settings-footnote">
               * صفحة الإعدادات الأساسية ثابتة، وبقية الأقسام تتحكم في ظهور الروابط داخل لوحة التحكم.
             </div>
           </SettingsSection>
@@ -467,13 +479,13 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
             title="سياسات التشغيل"
             hint="صلاحيات تشغيلية تتحكم بسلوك الأدوار داخل النظام."
             actions={
-              <span className="settings-shell__pill settings-shell__pill--outline">
+              <span className="dsv2-badge">
                 {policiesEnabledCount}/{policyTotalCount}
               </span>
             }
-            className="settings-basic-panel"
+            className="dsv2-settings-panel"
           >
-            <div className="settings-toggle-grid settings-toggle-grid--policies">
+            <div className="dsv2-settings-toggle-grid">
               {[
                 [
                   "allowStaffChangeStatus",
@@ -501,19 +513,19 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                   <button
                     key={key}
                     type="button"
-                    className={`settings-toggle-card ${enabled ? "is-on" : ""}`}
+                    className={`dsv2-settings-toggle ${enabled ? "is-on" : ""}`}
                     aria-pressed={enabled}
                     disabled={!canManageGeneralSettings}
                     onClick={() => togglePolicy(key)}
                   >
-                    <span className="settings-toggle-card__mark" aria-hidden="true">
+                    <span className="dsv2-settings-toggle__mark" aria-hidden="true">
                       {enabled ? "✓" : ""}
                     </span>
-                    <span className="settings-toggle-card__copy">
+                    <span className="dsv2-settings-toggle__copy">
                       <strong>{label}</strong>
                       <small>{description}</small>
                     </span>
-                    <span className="settings-toggle-card__status">
+                    <span className="dsv2-settings-toggle__status">
                       {enabled ? "مفعلة" : "متوقفة"}
                     </span>
                   </button>
@@ -521,7 +533,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               })}
             </div>
 
-            <div className="settings-footnote">
+            <div className="dsv2-settings-footnote">
               * هذه السياسات تؤثر مباشرة على الأدوار والصلاحيات داخل لوحة التحكم.
             </div>
           </SettingsSection>
@@ -530,15 +542,15 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
         <SettingsPageActions
           note={
             <>
-              {savedMsg ? <span className="settings-saved">{savedMsg}</span> : null}
-              <div className="settings-footnote" style={{ marginTop: savedMsg ? 8 : 0 }}>
+              {savedMsg ? <span className="dsv2-badge dsv2-badge--success">{savedMsg}</span> : null}
+              <div className="dsv2-settings-footnote" style={{ marginTop: savedMsg ? 8 : 0 }}>
                 * الحفظ يطبق على كل الشاشات التي تعتمد على AppSettings.
               </div>
             </>
           }
           actions={
             <button
-              className={`exp-btn primary ${!canManageGeneralSettings ? "is-disabled" : ""}`}
+              className="dsv2-btn dsv2-btn--primary"
               onClick={handleSave}
               disabled={!canManageGeneralSettings}
               type="button"
@@ -549,14 +561,21 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
           }
         />
       </div>
-    </div>
+    </main>
   );
 
   /* =========================
      Nested routes under /dashboard/settings/*
   ========================= */
   return (
-    <div className="dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded" dir="rtl">
+    <div
+      className={
+        usesNativeSettingsV2Shell
+          ? "dashboard-section settings-page settings-shell settings-shell--embedded"
+          : "dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded"
+      }
+      dir="rtl"
+    >
       <main className="settings-shell__main" dir="rtl">
         <section className="settings-shell__content">
             <Routes>

@@ -1,35 +1,52 @@
 /*
  * Enterprise Workspaces V2
- * Final visual authority for the operational routes requested by the owner.
- * Imported by Dashboard.tsx after page modules to neutralize legacy page skins.
+ *
+ * Compatibility layer only.
+ *
+ * Final visual authority:
+ * /dashboard/design-system-v2
+ * src/styles/dashboard-v2/
+ *
+ * Legacy enterprise class names may remain temporarily while pages are
+ * migrated to native dsv2-* primitives. This file must consume Dashboard V2
+ * tokens and must not define an independent visual system.
  */
 
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route {
-  --ev2-maroon: #5b0016;
-  --ev2-maroon-2: #7a1230;
-  --ev2-maroon-soft: #fff1f5;
-  --ev2-ink: #111827;
-  --ev2-ink-soft: #344054;
-  --ev2-muted: #667085;
-  --ev2-muted-2: #98a2b3;
-  --ev2-line: #e2e6ed;
-  --ev2-line-strong: #d0d5dd;
-  --ev2-page: #fbfbfc;
-  --ev2-panel: #ffffff;
-  --ev2-soft: #f7f8fb;
-  --ev2-success: #18794e;
-  --ev2-success-soft: #ecfdf3;
-  --ev2-warning: #a65b00;
-  --ev2-warning-soft: #fff6e8;
-  --ev2-danger: #b42318;
-  --ev2-danger-soft: #fff2f0;
-  --ev2-info: #175cd3;
-  --ev2-info-soft: #eff8ff;
-  --ev2-shadow: 0 18px 52px rgba(27, 32, 47, 0.055);
-  --ev2-shadow-sm: 0 10px 30px rgba(27, 32, 47, 0.045);
-  --ev2-radius-xl: 20px;
-  --ev2-radius-lg: 16px;
-  --ev2-radius-md: 13px;
+  --ev2-maroon: var(--dsv2-burgundy);
+  --ev2-maroon-2: var(--dsv2-burgundy);
+  --ev2-maroon-soft: var(--dsv2-burgundy-soft);
+
+  --ev2-ink: var(--dsv2-text);
+  --ev2-ink-soft: var(--dsv2-text-soft);
+  --ev2-muted: var(--dsv2-muted);
+  --ev2-muted-2: var(--dsv2-muted-soft);
+
+  --ev2-line: var(--dsv2-border);
+  --ev2-line-strong: var(--dsv2-border-strong);
+
+  --ev2-page: var(--dsv2-page);
+  --ev2-panel: var(--dsv2-surface);
+  --ev2-soft: var(--dsv2-surface-soft);
+
+  --ev2-success: var(--dsv2-success);
+  --ev2-success-soft: var(--dsv2-green-soft);
+
+  --ev2-warning: var(--dsv2-warning);
+  --ev2-warning-soft: var(--dsv2-gold-soft);
+
+  --ev2-danger: var(--dsv2-danger);
+  --ev2-danger-soft: var(--dsv2-burgundy-soft);
+
+  --ev2-info: var(--dsv2-info);
+  --ev2-info-soft: var(--dsv2-black-soft);
+
+  --ev2-shadow: var(--dsv2-shadow-md);
+  --ev2-shadow-sm: var(--dsv2-shadow-xs);
+
+  --ev2-radius-xl: var(--dsv2-radius-xl);
+  --ev2-radius-lg: var(--dsv2-radius-lg);
+  --ev2-radius-md: var(--dsv2-radius-md);
 }
 
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .dashboard-main.has-single-scroll,
@@ -52,12 +69,12 @@
   min-height: calc(100vh - 90px) !important;
   display: grid !important;
   align-content: start !important;
-  gap: 18px !important;
+  gap: var(--dsv2-section-gap) !important;
   margin: 0 !important;
-  padding: clamp(16px, 2vw, 28px) !important;
+  padding: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-inline) var(--dsv2-page-padding-block-end) !important;
   background: var(--ev2-page) !important;
   color: var(--ev2-ink) !important;
-  font-family: inherit !important;
+  font-family: var(--dsv2-font-family) !important;
 }
 
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-workspace-v2::before,
@@ -1077,7 +1094,7 @@
   width: 100% !important;
   max-width: 1680px !important;
   display: grid !important;
-  gap: 18px !important;
+  gap: var(--dsv2-section-gap) !important;
   margin: 0 auto !important;
   padding: 0 !important;
 }
@@ -1251,7 +1268,7 @@
   max-width: 1680px !important;
   min-width: 0 !important;
   display: grid !important;
-  gap: 18px !important;
+  gap: var(--dsv2-section-gap) !important;
   margin: 0 auto !important;
   padding: 0 !important;
   background: transparent !important;
@@ -1262,7 +1279,7 @@
   max-width: none !important;
   min-width: 0 !important;
   display: grid !important;
-  gap: 18px !important;
+  gap: var(--dsv2-section-gap) !important;
   margin: 0 !important;
   padding: 0 !important;
   background: transparent !important;
@@ -1453,7 +1470,7 @@
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr) !important;
   align-items: start !important;
-  gap: 18px !important;
+  gap: var(--dsv2-section-gap) !important;
 }
 .dashboard-skin.madan-admin-shell.is-enterprise-workspace-route .enterprise-settings-v2 :is(.settings-split__main, .settings-split__aside, .settings-master-detail__list, .settings-master-detail__detail) {
   min-width: 0 !important;

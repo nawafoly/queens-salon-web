@@ -59,6 +59,7 @@ import {
 } from "../services/employeeHub";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import { archiveEmployee } from "../services/employeeLifecycleService";
+import { CoreAccountService } from "../services/CoreAccountService";
 import AttendanceSection from "./dashboardEmployees/AttendanceSection";
 import BasicInfoSection from "./dashboardEmployees/BasicInfoSection";
 import BookingSettingsSection from "./dashboardEmployees/BookingSettingsSection";
@@ -578,6 +579,9 @@ export default function DashboardEmployees() {
   const [onlyActive, setOnlyActive] =
     useState<"all" | "active" | "inactive">("all");
 
+  const [directoryVisibility, setDirectoryVisibility] =
+    useState<"visible" | "hidden" | "all">("visible");
+
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
 
   const [isOpen, setIsOpen] = useState(false);
@@ -602,6 +606,7 @@ export default function DashboardEmployees() {
   // ✅ جديد
   const [showOnAbout, setShowOnAbout] = useState(true);
   const [showOnBooking, setShowOnBooking] = useState(true);
+  const [includeInEmployeeManagement, setIncludeInEmployeeManagement] = useState(true);
   const [modalOnLeave, setModalOnLeave] = useState(false);
   const [modalLeaveFrom, setModalLeaveFrom] = useState("");
   const [modalLeaveUntil, setModalLeaveUntil] = useState("");
@@ -1814,6 +1819,7 @@ export default function DashboardEmployees() {
     // ✅ جديد
     setShowOnAbout(true);
     setShowOnBooking(true);
+    setIncludeInEmployeeManagement(true);
     setModalOnLeave(false);
     setModalLeaveFrom("");
     setModalLeaveUntil("");
@@ -1887,6 +1893,9 @@ export default function DashboardEmployees() {
     setReviewsCount(String((x as any).reviewsCount ?? (x as any).reviewCount ?? ""));
     setActive(!!x.active);
     setShowOnBooking((x as any).showOnBooking !== false);
+    setIncludeInEmployeeManagement(
+      (x as any).includeInEmployeeManagement !== false
+    );
     const initialLeaveUntil = normalizeLeaveUntil((x as any).leaveUntil);
     const initialLeaveFrom =
       normalizeLeaveUntil((x as any).leaveStartDate || (x as any).leaveFrom || (x as any).leaveFromDate) ||
@@ -2137,10 +2146,11 @@ export default function DashboardEmployees() {
       setErrorMsg("");
       try {
         const linkedUserRoleByUid = new Map<string, string>();
-        const [userSnap, staffSnap, employeeSnap] = await Promise.all([
+        const [userSnap, staffSnap, employeeSnap, coreAccounts] = await Promise.all([
           getDocs(usersCol()).catch(() => null),
           getDocs(staffPublicCol()),
           getDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
+          CoreAccountService.list(false, "internal").catch(() => []),
         ]);
 
         const userByUid = new Map<string, any>();
@@ -2158,15 +2168,16 @@ export default function DashboardEmployees() {
         const deduped = new Map<string, StaffPublicUi>();
         const keyAliases = new Map<string, string>();
         const sourcePriority: Record<string, number> = {
-          users: 1,
-          employees: 2,
-          staff_public: 3,
+          core_accounts: 1,
+          users: 2,
+          employees: 3,
+          staff_public: 4,
         };
 
         const upsertEmployeeRecord = (
           rawDocId: string,
           rawData: any,
-          source: "staff_public" | "employees" | "users"
+          source: "staff_public" | "employees" | "users" | "core_accounts"
         ) => {
           const data = rawData || {};
           if (isRemovedFromStaffRecord(data)) return;
@@ -2219,7 +2230,7 @@ export default function DashboardEmployees() {
           const includeInEmployeeManagement =
             userVisibility ?? recordVisibility ?? legacyOperationalDefault;
 
-          if (!includeInEmployeeManagement || !employeeId) return;
+          if (!employeeId) return;
 
           const payrollCfg = normalizePayrollConfig(combined);
           const specialties = canonicalizeSpecialties(combined?.specialties, serviceLookup);
@@ -2362,6 +2373,59 @@ export default function DashboardEmployees() {
           [...employeeIdentityKeys(existing), ...rowKeys].forEach((key) => keyAliases.set(key, dedupeKey));
         };
 
+        coreAccounts.forEach((account) => {
+          const role = cleanText(
+            account.role || account.primaryRole
+          ).toLowerCase();
+
+          if (["client", "pending", "guest"].includes(role)) return;
+
+          const firebaseUid = cleanText(
+            account.firebaseUid || account.uid
+          );
+
+          const linkedEmployeeId = cleanText(
+            account.employeeLink?.employeeId
+          );
+
+          const recordId =
+            linkedEmployeeId ||
+            firebaseUid ||
+            cleanText(account.id);
+
+          if (!recordId) return;
+
+          upsertEmployeeRecord(
+            recordId,
+            {
+              uid: firebaseUid,
+              authUid: firebaseUid,
+              employeeUid: firebaseUid,
+              linkedUid: firebaseUid,
+              linkedUserId: cleanText(account.id),
+              userId: cleanText(account.id),
+
+              employeeId: linkedEmployeeId,
+              employeeDocId: linkedEmployeeId,
+              linkedEmployeeDocId: linkedEmployeeId,
+
+              name: cleanText(
+                account.displayName || account.email
+              ),
+              displayName: cleanText(account.displayName),
+              email: cleanText(account.email),
+              phone: cleanText(account.phone),
+
+              role,
+              active: account.status === "active",
+              isActive: account.status === "active",
+
+              includeInEmployeeManagement: true,
+              employeeProfileEnabled: true,
+            },
+            "core_accounts"
+          );
+        });
         staffSnap.docs.forEach((staffDoc) =>
           upsertEmployeeRecord(staffDoc.id, staffDoc.data(), "staff_public")
         );
@@ -2955,7 +3019,7 @@ export default function DashboardEmployees() {
       department: cleanText((editingStaff as any)?.department),
       title: cleanText((editingStaff as any)?.title),
       employeeProfileEnabled: (editingStaff as any)?.employeeProfileEnabled !== false,
-      includeInEmployeeManagement: true,
+      includeInEmployeeManagement,
       name: cleanName,
       active: !!active,
       showOnAbout: !!showOnAbout,
@@ -3076,6 +3140,7 @@ export default function DashboardEmployees() {
         fri: 5,
         sat: 6,
       };
+      try {
       await CoreHrService.getEmployee(targetEmployeeId).catch(async () => {
         await CoreHrService.saveEmployee({
           id: targetEmployeeId,
@@ -3110,6 +3175,12 @@ export default function DashboardEmployees() {
         })
       );
 
+      } catch (coreSyncError) {
+        console.warn(
+          "Core HR sync failed after employee Firestore save:",
+          coreSyncError
+        );
+      }
       selectedEmployeeIdentityRef.current = {
         id: targetEmployeeId,
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
@@ -3206,6 +3277,16 @@ export default function DashboardEmployees() {
 
   const filtered = useMemo(() => {
     let rows = [...list];
+
+    if (directoryVisibility === "visible") {
+      rows = rows.filter(
+        (x) => (x as any).includeInEmployeeManagement !== false
+      );
+    } else if (directoryVisibility === "hidden") {
+      rows = rows.filter(
+        (x) => (x as any).includeInEmployeeManagement === false
+      );
+    }
     if (onlyActive === "active") rows = rows.filter((x) => x.active);
     if (onlyActive === "inactive") rows = rows.filter((x) => !x.active);
     if (specialtyFilter === "none") {
@@ -3235,7 +3316,7 @@ export default function DashboardEmployees() {
       });
     }
     return rows;
-  }, [list, onlyActive, specialtyFilter, qText]);
+  }, [list, directoryVisibility, onlyActive, specialtyFilter, qText]);
   const selectedEmployee = useMemo(() => {
     if (!selectedEmployeeId) return null;
     const selectedIdentity = selectedEmployeeIdentityRef.current;
@@ -5232,6 +5313,7 @@ export default function DashboardEmployees() {
             <EmployeeListPanel
               qText={qText}
               onlyActive={onlyActive}
+              directoryVisibility={directoryVisibility}
               specialtyFilter={specialtyFilter}
               serviceOptions={serviceOptions}
               sectionOptions={sectionOptions}
@@ -5242,6 +5324,7 @@ export default function DashboardEmployees() {
               selectedEmployeeId={selectedEmployeeId}
               onQTextChange={setQText}
               onOnlyActiveChange={setOnlyActive}
+              onDirectoryVisibilityChange={setDirectoryVisibility}
               onSpecialtyFilterChange={setSpecialtyFilter}
               canManage={canCreateEmployees}
               onCreateEmployee={openCreateEmployee}
@@ -5537,6 +5620,7 @@ export default function DashboardEmployees() {
                 active={active}
                 showOnAbout={showOnAbout}
                 showOnBooking={showOnBooking}
+                includeInEmployeeManagement={includeInEmployeeManagement}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
                     ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
@@ -5546,6 +5630,7 @@ export default function DashboardEmployees() {
                 onActiveChange={setActive}
                 onShowOnAboutChange={setShowOnAbout}
                 onShowOnBookingChange={setShowOnBooking}
+                onIncludeInEmployeeManagementChange={setIncludeInEmployeeManagement}
               />
               <BookingSettingsSection
                 isVisible={(!editingStaff && modalTab === "booking") || (!!editingStaff && activeTab === "booking")}
@@ -5696,4 +5781,3 @@ export default function DashboardEmployees() {
     </div>
   );
 }
-

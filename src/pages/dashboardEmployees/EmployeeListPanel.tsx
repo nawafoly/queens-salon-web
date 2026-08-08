@@ -26,6 +26,7 @@ import {
 type EmployeeListPanelProps = {
   qText: string;
   onlyActive: "all" | "active" | "inactive";
+  directoryVisibility: "visible" | "hidden" | "all";
   specialtyFilter: string;
   serviceOptions: ServiceOption[];
   sectionOptions: Array<{ id: string; label: string }>;
@@ -37,6 +38,7 @@ type EmployeeListPanelProps = {
   canManage: boolean;
   onQTextChange: (value: string) => void;
   onOnlyActiveChange: (value: "all" | "active" | "inactive") => void;
+  onDirectoryVisibilityChange: (value: "visible" | "hidden" | "all") => void;
   onSpecialtyFilterChange: (value: string) => void;
   onCreateEmployee: () => void;
   onOpenEmployee: (staff: StaffPublicUi) => void;
@@ -109,6 +111,7 @@ function EmployeeCardSkeleton({ index }: { index: number }) {
 export default function EmployeeListPanel({
   qText,
   onlyActive,
+  directoryVisibility,
   specialtyFilter,
   serviceOptions,
   sectionOptions,
@@ -120,12 +123,16 @@ export default function EmployeeListPanel({
   canManage,
   onQTextChange,
   onOnlyActiveChange,
+  onDirectoryVisibilityChange,
   onSpecialtyFilterChange,
   onCreateEmployee,
   onOpenEmployee,
 }: EmployeeListPanelProps) {
   const hasActiveFilters =
-    qText.trim().length > 0 || onlyActive !== "all" || specialtyFilter !== "all";
+    qText.trim().length > 0 ||
+    onlyActive !== "all" ||
+    directoryVisibility !== "visible" ||
+    specialtyFilter !== "all";
   const serviceFilterOptions = serviceOptions.filter((option, index, all) => {
     const id = cleanText(option.id);
     return !!id && all.findIndex((item) => cleanText(item.id) === id) === index;
@@ -134,6 +141,7 @@ export default function EmployeeListPanel({
   const clearFilters = () => {
     onQTextChange("");
     onOnlyActiveChange("all");
+    onDirectoryVisibilityChange("visible");
     onSpecialtyFilterChange("all");
   };
 
@@ -160,7 +168,23 @@ export default function EmployeeListPanel({
               aria-label="بحث في الموظفات"
             />
           </span>
+        </label>        <label className="dsv2-field">
+          <span className="dsv2-field__label">الظهور</span>
+          <DashboardSelectV2
+            value={directoryVisibility}
+            options={[
+              { value: "visible", label: "الظاهرات في الدليل" },
+              { value: "hidden", label: "المخفيات من الدليل" },
+              { value: "all", label: "كل الموظفات" },
+            ]}
+            onChange={(value) =>
+              onDirectoryVisibilityChange(
+                value as "visible" | "hidden" | "all"
+              )
+            }
+          />
         </label>
+
 
         <label className="dsv2-field">
           <span className="dsv2-field__label">الحالة</span>

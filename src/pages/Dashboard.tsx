@@ -1907,6 +1907,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isBookingInternalPage = location.pathname.startsWith("/dashboard/booking-internal");
   const isBookingsWorkspacePage = location.pathname === "/dashboard/bookings";
   const isAttendanceSecurityPage = location.pathname.startsWith("/dashboard/attendance");
+  const isEmployeesWorkspacePage = location.pathname.startsWith("/dashboard/employees");
+  const normalizedDashboardPathname =
+    location.pathname.replace(/\/+$/, "") || "/";
+
+  const isSettingsIndexPage =
+    normalizedDashboardPathname === "/dashboard/settings";
+
+  const isSettingsUsersV2Page =
+    normalizedDashboardPathname === "/dashboard/settings/users" ||
+    normalizedDashboardPathname.startsWith("/dashboard/settings/users/");
+
+  const isLegacySettingsSubroute =
+    normalizedDashboardPathname.startsWith("/dashboard/settings/") &&
+    !isSettingsUsersV2Page;
+
   const isEnterpriseOperationsPage = [
     "/dashboard/tv-queue",
     "/dashboard/day-audit",
@@ -1914,13 +1929,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     "/dashboard/partners",
     "/dashboard/offers",
     "/dashboard/logs",
-    "/dashboard/settings",
-  ].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
+  ].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`)) ||
+    isLegacySettingsSubroute;
   const isSingleScrollWorkspacePage =
     isHrWorkspacePage ||
     isBookingInternalPage ||
     isBookingsWorkspacePage ||
     isAttendanceSecurityPage ||
+    isEmployeesWorkspacePage ||
+    isSettingsIndexPage ||
+    isSettingsUsersV2Page ||
     isEnterpriseOperationsPage;
   useEffect(() => {
     if (!isTvQueuePage) return;

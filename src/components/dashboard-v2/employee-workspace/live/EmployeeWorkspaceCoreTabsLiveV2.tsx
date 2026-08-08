@@ -19,11 +19,13 @@ export type EmployeeBasicTabLiveV2Props = {
   active: boolean;
   showOnAbout: boolean;
   showOnBooking: boolean;
+  includeInEmployeeManagement: boolean;
   weeklyOffLabel: string;
   onNameChange: (value: string) => void;
   onActiveChange: (value: boolean) => void;
   onShowOnAboutChange: (value: boolean) => void;
   onShowOnBookingChange: (value: boolean) => void;
+  onIncludeInEmployeeManagementChange: (value: boolean) => void;
 };
 
 export function EmployeeBasicTabLiveV2({
@@ -32,11 +34,13 @@ export function EmployeeBasicTabLiveV2({
   active,
   showOnAbout,
   showOnBooking,
+  includeInEmployeeManagement,
   weeklyOffLabel,
   onNameChange,
   onActiveChange,
   onShowOnAboutChange,
   onShowOnBookingChange,
+  onIncludeInEmployeeManagementChange,
 }: EmployeeBasicTabLiveV2Props) {
   const completeness = [name.trim(), weeklyOffLabel.trim()].filter(Boolean).length === 2 ? 100 : 75;
 
@@ -79,6 +83,12 @@ export function EmployeeBasicTabLiveV2({
         <WorkspaceCardV2 title="الظهور العام" description="تحديد مواضع ظهور الموظفة أمام العميلات.">
           <div className="dsv2-ew-switch-list">
             <WorkspaceSwitchV2
+              checked={includeInEmployeeManagement}
+              disabled={readOnly}
+              label="إظهار في دليل الموظفات"
+              description="إخفاؤها من الدليل لا يحذف الملف ولا يؤثر على الحضور أو الرواتب."
+              onChange={onIncludeInEmployeeManagementChange}
+            />            <WorkspaceSwitchV2
               checked={showOnAbout}
               disabled={readOnly}
               label="الظهور في صفحة من نحن"
@@ -106,6 +116,11 @@ export function EmployeeBasicTabLiveV2({
 
       <div className="dsv2-ew-metrics">
         <WorkspaceMetricV2 label="الحساب" value={active ? "نشطة" : "غير نشطة"} tone={active ? "success" : "danger"} />
+        <WorkspaceMetricV2
+          label="دليل الموظفات"
+          value={includeInEmployeeManagement ? "ظاهرة" : "مخفية"}
+          tone={includeInEmployeeManagement ? "success" : "gold"}
+        />
         <WorkspaceMetricV2 label="من نحن" value={showOnAbout ? "ظاهرة" : "مخفية"} tone={showOnAbout ? "success" : "gold"} />
         <WorkspaceMetricV2 label="الحجز" value={showOnBooking ? "متاحة" : "متوقفة"} tone={showOnBooking ? "success" : "danger"} />
         <WorkspaceMetricV2 label="الإجازة الأسبوعية" value={weeklyOffLabel || "غير محددة"} note="تُعدل من جدول الدوام" />

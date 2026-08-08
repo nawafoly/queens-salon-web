@@ -107,7 +107,7 @@ export type StaffPublicDoc = {
   resourceIds?: string[];
   employeeProfileEnabled?: boolean;
   includeInEmployeeManagement?: boolean;
-  source?: "staff_public" | "employees" | "users";
+  source?: "staff_public" | "employees" | "users" | "core_accounts";
   profileIncomplete?: boolean;
   employeeKind?: "service" | "administrative";
   name: string;

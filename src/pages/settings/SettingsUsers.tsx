@@ -1,8 +1,16 @@
-// src/pages/settings/SettingsUsers.tsx
+﻿// src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-import EmployeeAvatar from "../../components/EmployeeAvatar";
+import {
+  DashboardConfirmV2,
+  DashboardEmptyStateV2,
+  DashboardErrorStateV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../../components/dashboard-v2";
 import {
   APP_PERMISSION_GROUPS,
   VISIBLE_APP_PERMISSION_CATALOG,
@@ -18,7 +26,7 @@ import {
 } from "../../services/CoreAccountService";
 import { CoreApiError } from "../../services/coreApiClient";
 import { usePermissions } from "../../security/PermissionContext";
-import { SettingsPageHeader, SettingsState } from "./SettingsFrame";
+
 
 type UiRole = UserRole;
 type AccountStatusFilter = "all" | "active" | "disabled" | "pending" | "deleted";
@@ -65,15 +73,15 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_TONES: Record<string, string> = {
-  owner: "gold",
-  admin: "amber",
-  hr: "mint",
-  accountant: "blue",
-  reception: "blue",
-  staff: "slate",
-  pending: "gray",
-  client: "gray",
-  guest: "gray",
+  owner: "dsv2-badge--gold",
+  admin: "dsv2-badge--gold",
+  hr: "dsv2-badge--success",
+  accountant: "",
+  reception: "",
+  staff: "",
+  pending: "dsv2-badge--gold",
+  client: "",
+  guest: "",
 };
 
 const FALLBACK_ROLES: CoreRole[] = [
@@ -195,10 +203,12 @@ export default function SettingsUsers({
   const [linkFilter, setLinkFilter] = useState<LinkFilter>("all");
   const [accountTypeFilter, setAccountTypeFilter] = useState<AccountTypeFilter>("all");
   const [permissionSearch, setPermissionSearch] = useState("");
-  const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("all");
+  const [permissionGroupFilter, setPermissionGroupFilter] = useState<"all" | (typeof APP_PERMISSION_GROUPS)[number]["key"]>("workspace");
   const [permissionsExpanded, setPermissionsExpanded] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [pendingDeleteAccount, setPendingDeleteAccount] = useState<CoreAccount | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>({
     firebaseUid: "",
     displayName: "",
@@ -263,8 +273,10 @@ export default function SettingsUsers({
       if (roleFilter !== "all" && role !== roleFilter) return false;
       if (accountTypeFilter === "administrative" && !isAdministrativeRole(role)) return false;
       if (accountTypeFilter === "operational" && !isOperationalRole(role)) return false;
-      if (statusFilter !== "all" && account.status !== statusFilter) return false;
-      const linked = Boolean(account.employeeLink?.employeeId);
+      if (statusFilter === "all" && account.status === "deleted") return false;
+      if (statusFilter === "all" && account.status === "deleted") return false;
+if (statusFilter === "all" && account.status === "deleted") return false;
+if (statusFilter !== "all" && account.status !== statusFilter) return false; const linked = Boolean(account.employeeLink?.employeeId);
       if (linkFilter === "linked" && !linked) return false;
       if (linkFilter === "unlinked" && linked) return false;
       if (!needle) return true;
@@ -324,10 +336,10 @@ export default function SettingsUsers({
       ...group,
       permissions: permissionRows.filter((permission) => permissionGroup(permission, remotePermissions) === group.key),
     })).filter((group) => {
-      if (permissionGroupFilter !== "all" && group.key !== permissionGroupFilter) return false;
+      if (!permissionSearch.trim() && permissionGroupFilter !== "all" && group.key !== permissionGroupFilter) return false;
       return group.permissions.length > 0;
     });
-  }, [permissionGroupFilter, permissionRows, remotePermissions]);
+  }, [permissionGroupFilter, permissionRows, permissionSearch, remotePermissions]);
 
   const stats = useMemo(() => {
     const total = accounts.length;
@@ -439,10 +451,7 @@ export default function SettingsUsers({
     try {
       if (action === "disable") await CoreAccountService.disable(account.id);
       if (action === "restore") await CoreAccountService.restore(account.id);
-      if (action === "delete") {
-        if (!window.confirm("سيتم حذف الحساب منطقياً من D1. هل تريد المتابعة؟")) return;
-        await CoreAccountService.remove(account.id);
-      }
+      if (action === "delete") await CoreAccountService.remove(account.id);
       if (action === "reset") await CoreAccountService.resetPassword(account.id);
       const updated = action === "delete" ? await CoreAccountService.get(account.id) : await refreshSelected(account.id);
       if (action === "delete") setAccounts((current) => current.map((item) => (item.id === account.id ? updated : item)));
@@ -458,628 +467,925 @@ export default function SettingsUsers({
     }
   }
 
-  const renderPermissionChip = (permission: AppPermission, tone = "soft") => (
-    <span key={permission} className={`accounts-permission-preview__chip accounts-chip--${tone}`}>
-      {permissionLabel(permission, remotePermissions)}
-    </span>
-  );
+  const renderPermissionChip = (permission: AppPermission, tone = "soft") => {
+    const toneClass =
+      tone === "mint"
+        ? "dsv2-badge--success"
+        : tone === "gray"
+          ? "dsv2-badge--danger"
+          : "";
+
+    return (
+      <span key={permission} className={`dsv2-badge ${toneClass}`}>
+        {permissionLabel(permission, remotePermissions)}
+      </span>
+    );
+  };
 
   if (loading || authReady === false) {
     return (
-      <div className="accounts-page accounts-page--settings">
-        <div className="accounts-shell accounts-shell--loading">
-          <SettingsState title="جاري تحميل الحسابات..." loading />
+      <main className="dsv2-page dsv2-stack dsv2-stack--lg">
+        <section className="dsv2-card dsv2-card--padded">
+          <div className="dsv2-stack">
+            <DashboardSkeletonV2 variant="title" width="34%" />
+            <DashboardSkeletonV2 lines={3} width="100%" />
+          </div>
+        </section>
+
+        <div className="dsv2-grid--metrics">
+          <DashboardSkeletonV2 variant="block" height={132} />
+          <DashboardSkeletonV2 variant="block" height={132} />
+          <DashboardSkeletonV2 variant="block" height={132} />
+          <DashboardSkeletonV2 variant="block" height={132} />
         </div>
-      </div>
+      </main>
     );
   }
 
   if (!canReadAccounts) {
     return (
-      <div className="accounts-page accounts-page--settings">
-        <div className="accounts-shell">
-          <SettingsState
-            title="ليست لديك صلاحية عرض الحسابات"
-            hint="تحتاج accounts.read أو admin_accounts.view من Core D1."
-            className="accounts-state--blocked"
-          />
-        </div>
-      </div>
+      <main className="dsv2-page">
+        <DashboardEmptyStateV2
+          title="ليست لديك صلاحية عرض الحسابات"
+          description="تحتاج accounts.read أو admin_accounts.view من Core D1."
+          tone="gold"
+        />
+      </main>
     );
   }
 
   return (
-    <div className="accounts-page accounts-page--settings" dir="rtl">
-      <div className="accounts-shell">
-        <SettingsPageHeader
-          eyebrow="Cloudflare D1"
-          title={pageTitle}
-          hint={pageHint}
-          badges={
-            <>
-              <span className="accounts-chip accounts-chip--soft">الإجمالي: {stats.total}</span>
-              <span className="accounts-chip accounts-chip--mint">نشطة: {stats.active}</span>
-              <span className="accounts-chip accounts-chip--amber">مراجعة: {stats.pending}</span>
-              <span className="accounts-chip accounts-chip--gray">معطلة: {stats.disabled}</span>
-              <span className="accounts-chip accounts-chip--blue">مرتبطة: {stats.linked}</span>
-              <span className="accounts-chip accounts-chip--soft">غير مرتبطة: {stats.unlinked}</span>
-            </>
-          }
-          actions={
-            canCreateAccounts ? (
-              <button type="button" className="accounts-btn accounts-btn--primary" onClick={() => setCreateOpen(true)}>
-                إنشاء حساب D1
-              </button>
-            ) : null
-          }
+    <main className="dsv2-page dsv2-stack dsv2-stack--lg" dir="rtl">
+      <section className="dsv2-page-head">
+        <div>
+          <h1 className="dsv2-page-title">{pageTitle}</h1>
+          <p className="dsv2-page-subtitle">{pageHint}</p>
+        </div>
+
+        <div className="dsv2-cluster">
+          <span className="dsv2-badge">Cloudflare D1</span>
+          <span className="dsv2-badge dsv2-badge--success">{stats.active} نشط</span>
+          <span className="dsv2-badge dsv2-badge--gold">{stats.pending} مراجعة</span>
+
+          {canCreateAccounts ? (
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--primary"
+              onClick={() => setCreateOpen(true)}
+            >
+              إنشاء حساب D1
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="dsv2-grid--metrics" aria-label="ملخص الحسابات">
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <span className="dsv2-metric-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0H5Z" />
+            </svg>
+          </span>
+          <p className="dsv2-metric-card__label">إجمالي الحسابات</p>
+          <p className="dsv2-metric-card__value">{stats.total}</p>
+          <p className="dsv2-metric-card__meta">جميع الحسابات التشغيلية في D1</p>
+        </article>
+
+        <article className="dsv2-metric-card dsv2-metric-card--success">
+          <span className="dsv2-metric-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </span>
+          <p className="dsv2-metric-card__label">الحسابات النشطة</p>
+          <p className="dsv2-metric-card__value">{stats.active}</p>
+          <p className="dsv2-metric-card__meta">جاهزة للاستخدام حسب الصلاحيات</p>
+        </article>
+
+        <article className="dsv2-metric-card dsv2-metric-card--gold">
+          <span className="dsv2-metric-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+            </svg>
+          </span>
+          <p className="dsv2-metric-card__label">قيد المراجعة</p>
+          <p className="dsv2-metric-card__value">{stats.pending}</p>
+          <p className="dsv2-metric-card__meta">تنتظر استكمال حالة الحساب</p>
+        </article>
+
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <span className="dsv2-metric-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M10 13a5 5 0 0 0 7.07.07l2-2A5 5 0 0 0 12 4l-1.15 1.15M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 12 20l1.15-1.15" />
+            </svg>
+          </span>
+          <p className="dsv2-metric-card__label">مرتبطة بموظفة</p>
+          <p className="dsv2-metric-card__value">{stats.linked}</p>
+          <p className="dsv2-metric-card__meta">غير مرتبطة: {stats.unlinked}</p>
+        </article>
+      </section>
+
+      {error ? (
+        <DashboardErrorStateV2
+          title="تعذر تنفيذ العملية"
+          description={error}
+          compact
         />
-
-        {(message || error) ? (
-          <div className={`accounts-banner ${error ? "accounts-banner--danger" : ""}`}>
-            {error || message}
-          </div>
-        ) : null}
-
-        <section className="accounts-mobile-shell" aria-label="إدارة الحسابات للجوال">
-          <header className="accounts-mobile-hero">
-            <div>
-              <span>Cloudflare D1</span>
-              <h1>{pageTitle}</h1>
-              <p>إدارة الحسابات، الصلاحيات، والربط الوظيفي من مكان واحد.</p>
-            </div>
-            {canCreateAccounts ? (
-              <button type="button" className="accounts-mobile-create" onClick={() => setCreateOpen(true)}>
-                إنشاء
-              </button>
-            ) : null}
-          </header>
-
-          <div className="accounts-mobile-stats" aria-label="ملخص الحسابات">
-            <span><b>{stats.total}</b><small>الإجمالي</small></span>
-            <span><b>{stats.active}</b><small>نشطة</small></span>
-            <span><b>{stats.linked}</b><small>مرتبطة</small></span>
-            <span><b>{stats.unlinked}</b><small>غير مرتبطة</small></span>
-          </div>
-
-          <section className="accounts-mobile-filters" aria-label="تصفية الحسابات">
-            <label className="accounts-mobile-field accounts-mobile-field--search">
-              <span>بحث</span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="اسم، بريد، UID" />
-            </label>
-            <label className="accounts-mobile-field">
-              <span>الدور</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
-                <option value="all">كل الأدوار</option>
-                {roleOptions.map((role) => (
-                  <option key={role.role_key} value={role.role_key}>
-                    {getRoleLabel(role.role_key)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="accounts-mobile-field">
-              <span>الحالة</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
-                <option value="all">كل الحالات</option>
-                <option value="active">نشط</option>
-                <option value="pending">قيد المراجعة</option>
-                <option value="disabled">معطل</option>
-                <option value="deleted">محذوف</option>
-              </select>
-            </label>
-            <label className="accounts-mobile-field">
-              <span>الربط</span>
-              <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as LinkFilter)}>
-                <option value="all">الكل</option>
-                <option value="linked">مرتبط</option>
-                <option value="unlinked">غير مرتبط</option>
-              </select>
-            </label>
-          </section>
-
-          <section className="accounts-mobile-list">
-            <div className="accounts-mobile-list__head">
-              <span>الحسابات</span>
-              <strong>{filteredAccounts.length}</strong>
-            </div>
-            {filteredAccounts.map((account) => {
-              const selectedRow = selected?.id === account.id;
-              const role = normalizeRole(account.role || account.primaryRole);
-              const permissionCount = normalizeAppPermissions(account.effectivePermissions || account.permissions || []).length;
-              return (
-                <article key={`mobile-${account.id}`} className={`accounts-mobile-card ${selectedRow ? "is-selected" : ""}`}>
-                  <button
-                    type="button"
-                    className="accounts-mobile-card__main"
-                    onClick={() => {
-                      setSelectedId(account.id);
-                      setPermissionsExpanded(true);
-                    }}
-                  >
-                    <EmployeeAvatar name={account.displayName || account.email} className="accounts-mobile-card__avatar" />
-                    <span className="accounts-mobile-card__copy">
-                      <strong>{account.displayName || account.email || "حساب بدون اسم"}</strong>
-                      <small>{account.email || account.firebaseUid || "-"}</small>
-                      <span>
-                        <em>{getRoleLabel(role)}</em>
-                        <em>{statusLabel(account.status)}</em>
-                        <em>{account.employeeLink?.employeeId ? "مرتبط" : "غير مرتبط"}</em>
-                      </span>
-                    </span>
-                    <span className="accounts-mobile-card__metric">
-                      <b>{permissionCount}</b>
-                      <small>صلاحية</small>
-                    </span>
-                  </button>
-
-                  {selectedRow ? (
-                    <div className="accounts-mobile-card__detail">
-                      <div className="accounts-mobile-detail-grid">
-                        <span><small>الجوال</small><b>{account.phone || "-"}</b></span>
-                        <span><small>آخر دخول</small><b>{formatDate(account.lastLoginAt)}</b></span>
-                        <span><small>ملف الموظفة</small><b>{account.employeeLink?.employee?.name || account.employeeLink?.employeeId || "غير مرتبط"}</b></span>
-                      </div>
-                      <div className="accounts-mobile-actions">
-                        {canEditTarget(account) ? (
-                          <button type="button" className="accounts-mobile-action is-primary" onClick={() => openEdit(account)}>
-                            تعديل
-                          </button>
-                        ) : null}
-                        {canResetPassword ? (
-                          <button type="button" className="accounts-mobile-action" disabled={saving || !account.email} onClick={() => void runAccountAction("reset", account)}>
-                            كلمة المرور
-                          </button>
-                        ) : null}
-                        {canDisableAccounts && account.status === "active" ? (
-                          <button type="button" className="accounts-mobile-action is-danger" disabled={saving} onClick={() => void runAccountAction("disable", account)}>
-                            تعطيل
-                          </button>
-                        ) : null}
-                        {canRestoreAccounts && ["disabled", "deleted"].includes(account.status) ? (
-                          <button type="button" className="accounts-mobile-action is-primary" disabled={saving} onClick={() => void runAccountAction("restore", account)}>
-                            استعادة
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-            {!filteredAccounts.length ? (
-              <div className="accounts-mobile-empty">
-                <strong>لا توجد حسابات مطابقة</strong>
-                <p>غيّر التصفية أو أنشئ حساب D1 جديد.</p>
-              </div>
-            ) : null}
-          </section>
-        </section>
-
-        <section className="accounts-toolbar" aria-label="تصفية الحسابات">
-          <div className="accounts-toolbar__row">
-            <label className="accounts-search">
-              <span>بحث</span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="اسم، بريد، UID، موظفة" />
-            </label>
-            <label className="accounts-filter">
-              <span>الدور</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as UiRole | "all")}>
-                <option value="all">كل الأدوار</option>
-                {roleOptions.map((role) => (
-                  <option key={role.role_key} value={role.role_key}>
-                    {getRoleLabel(role.role_key)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="accounts-filter">
-              <span>الحالة</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatusFilter)}>
-                <option value="all">كل الحالات</option>
-                <option value="active">نشط</option>
-                <option value="pending">قيد المراجعة</option>
-                <option value="disabled">معطل</option>
-                <option value="deleted">محذوف</option>
-              </select>
-            </label>
-            <label className="accounts-filter">
-              <span>نوع الحساب</span>
-              <select value={accountTypeFilter} onChange={(event) => setAccountTypeFilter(event.target.value as AccountTypeFilter)}>
-                <option value="all">الكل</option>
-                <option value="administrative">إداري</option>
-                <option value="operational">تشغيلي / موظفات</option>
-              </select>
-            </label>
-            <label className="accounts-filter">
-              <span>الربط</span>
-              <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value as LinkFilter)}>
-                <option value="all">الكل</option>
-                <option value="linked">مرتبط</option>
-                <option value="unlinked">غير مرتبط</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <div className="accounts-workspace">
-          <section className="accounts-panel accounts-panel--list">
-            <div className="accounts-panel__head">
-              <div>
-                <span className="accounts-kicker">الحسابات</span>
-                <h2>{filteredAccounts.length} حساب</h2>
-              </div>
-            </div>
-
-            <div className="accounts-list accounts-directory">
-              {filteredAccounts.map((account) => {
-                const selectedRow = selected?.id === account.id;
-                const role = normalizeRole(account.role || account.primaryRole);
-                const permissionCount = normalizeAppPermissions(account.effectivePermissions || account.permissions || []).length;
-                return (
-                  <button
-                    type="button"
-                    key={account.id}
-                    className={`accounts-card ${selectedRow ? "is-selected" : ""}`}
-                    onClick={() => {
-                      setSelectedId(account.id);
-                      setPermissionsExpanded(true);
-                    }}
-                  >
-                    <span className="accounts-card__aside">
-                      <EmployeeAvatar name={account.displayName || account.email} className="accounts-card__avatar" />
-                    </span>
-                    <span className="accounts-card__body">
-                      <span className="accounts-card__top">
-                        <strong>{account.displayName || account.email || "حساب بدون اسم"}</strong>
-                        <span>{account.email || account.firebaseUid || "-"}</span>
-                      </span>
-                      <span className="accounts-card__badgeStack">
-                        <span className={`accounts-chip accounts-chip--${getRoleTone(role)}`}>{getRoleLabel(role)}</span>
-                        <span className={`accounts-chip accounts-chip--state accounts-chip--${account.status === "active" ? "active" : account.status}`}>
-                          {statusLabel(account.status)}
-                        </span>
-                        <span className="accounts-chip accounts-chip--soft">{account.employeeLink?.employeeId ? "مرتبط" : "غير مرتبط"}</span>
-                      </span>
-                    </span>
-                    <span className="accounts-card__metric">
-                      <span>الصلاحيات</span>
-                      <strong>{permissionCount}</strong>
-                    </span>
-                  </button>
-                );
-              })}
-              {!filteredAccounts.length ? (
-                <div className="accounts-empty-state">
-                  <strong>لا توجد حسابات مطابقة.</strong>
-                  <p>غيّر التصفية أو أنشئ سجل حساب D1 جديد.</p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="accounts-panel accounts-panel--detail">
-            {selected ? (
-              <>
-                <div className="accounts-profile">
-                  <EmployeeAvatar name={selected.displayName || selected.email} className="accounts-avatar" loading="eager" />
-                  <div className="accounts-profile__copy">
-                    <span className="accounts-kicker">{selected.firebaseUid || selected.uid || selected.id}</span>
-                    <h2>{selected.displayName || selected.email || "حساب بدون اسم"}</h2>
-                    <div className="accounts-inline-tags">
-                      <span className={`accounts-chip accounts-chip--${getRoleTone(selected.role)}`}>{getRoleLabel(selected.role)}</span>
-                      <span className={`accounts-chip accounts-chip--state accounts-chip--${selected.status === "active" ? "active" : selected.status}`}>
-                        {statusLabel(selected.status)}
-                      </span>
-                      <button type="button" className="accounts-chip accounts-chip--soft" onClick={() => setPermissionsExpanded(true)}>
-                        {effectivePermissions.length} صلاحية
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="accounts-meta-grid">
-                  <div className="accounts-meta-card">
-                    <span>البريد</span>
-                    <strong>{selected.email || "-"}</strong>
-                  </div>
-                  <div className="accounts-meta-card">
-                    <span>الجوال</span>
-                    <strong>{selected.phone || "-"}</strong>
-                  </div>
-                  <div className="accounts-meta-card">
-                    <span>آخر دخول</span>
-                    <strong>{formatDate(selected.lastLoginAt)}</strong>
-                  </div>
-                  <div className="accounts-meta-card">
-                    <span>ملف الموظفة</span>
-                    <strong>{selected.employeeLink?.employee?.name || selected.employeeLink?.employeeId || "غير مرتبط"}</strong>
-                  </div>
-                </div>
-
-                <section className="accounts-permissions">
-                  <div className="accounts-permissions__head">
-                    <div>
-                      <span>الأدوار والصلاحيات</span>
-                      <small>الدور الافتراضي + المسموح المباشر - الممنوع المباشر. المنع المباشر يسبق السماح.</small>
-                    </div>
-                    <div className="accounts-actions">
-                      <button type="button" className="accounts-btn accounts-btn--ghost" onClick={() => setPermissionsExpanded((current) => !current)}>
-                        {permissionsExpanded ? "إخفاء التفاصيل" : "عرض التفاصيل"}
-                      </button>
-                      {canEditTarget(selected) ? (
-                        <button type="button" className="accounts-btn accounts-btn--primary" onClick={() => openEdit(selected)}>
-                          تعديل
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {permissionsExpanded ? (
-                    <>
-                      <div className="accounts-permission-preview">
-                        <span>صلاحيات الدور</span>
-                        <div className="accounts-permission-preview__chips">
-                          {rolePermissions.slice(0, 18).map((permission) => renderPermissionChip(permission))}
-                          {rolePermissions.length > 18 ? <span className="accounts-permission-preview__empty">+{rolePermissions.length - 18}</span> : null}
-                        </div>
-                      </div>
-                      <div className="accounts-permission-preview">
-                        <span>مسموح مباشر</span>
-                        <div className="accounts-permission-preview__chips">
-                          {allowedPermissions.length ? allowedPermissions.map((permission) => renderPermissionChip(permission, "mint")) : <span className="accounts-permission-preview__empty">لا يوجد</span>}
-                        </div>
-                      </div>
-                      <div className="accounts-permission-preview">
-                        <span>ممنوع مباشر</span>
-                        <div className="accounts-permission-preview__chips">
-                          {deniedPermissions.length ? deniedPermissions.map((permission) => renderPermissionChip(permission, "gray")) : <span className="accounts-permission-preview__empty">لا يوجد</span>}
-                        </div>
-                      </div>
-                      <label className="accounts-search">
-                        <span>بحث داخل الصلاحيات</span>
-                        <input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="accounts.update أو الحجوزات" />
-                      </label>
-                      <label className="accounts-filter accounts-filter--permission-group">
-                        <span>مجموعة الصلاحيات</span>
-                        <select value={permissionGroupFilter} onChange={(event) => setPermissionGroupFilter(event.target.value as typeof permissionGroupFilter)}>
-                          <option value="all">كل المجموعات</option>
-                          {APP_PERMISSION_GROUPS.map((group) => (
-                            <option key={group.key} value={group.key}>{group.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="accounts-permissions__grid">
-                        {permissionGroups.map((group) => (
-                          <section key={group.key} className="accounts-permission-group">
-                            <div className="accounts-permission-group__head">
-                              <strong>{group.label}</strong>
-                              <span>{group.permissions.length}</span>
-                            </div>
-                            <div className="accounts-permissions-editor__grid">
-                              {group.permissions.map((permission) => {
-                                const enabled = effectivePermissions.includes(permission);
-                                const directAllow = allowedPermissions.includes(permission);
-                                const directDeny = deniedPermissions.includes(permission);
-                                return (
-                                  <div
-                                    key={permission}
-                                    className={`accounts-permission-toggle ${enabled ? "is-active" : ""} ${directDeny ? "is-denied" : ""}`}
-                                  >
-                                    <span className="accounts-permission-toggle__dot" aria-hidden="true" />
-                                    <span className="accounts-permission-toggle__copy">
-                                      <strong>{permissionLabel(permission, remotePermissions)}</strong>
-                                      <small>{permission}</small>
-                                      <em>{directDeny ? "ممنوع مباشر" : directAllow ? "مسموح مباشر" : permissionHint(permission, remotePermissions)}</em>
-                                    </span>
-                                    <span className="accounts-permission-toggle__state">{enabled ? "مفعل" : "غير مفعل"}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </section>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                </section>
-
-                <div className="accounts-actions">
-                  {canDisableAccounts && selected.status === "active" ? (
-                    <button type="button" className="accounts-btn accounts-btn--danger" disabled={saving} onClick={() => void runAccountAction("disable", selected)}>
-                      تعطيل
-                    </button>
-                  ) : null}
-                  {canRestoreAccounts && ["disabled", "deleted"].includes(selected.status) ? (
-                    <button type="button" className="accounts-btn accounts-btn--primary" disabled={saving} onClick={() => void runAccountAction("restore", selected)}>
-                      استعادة
-                    </button>
-                  ) : null}
-                  {canDeleteAccounts && selected.status !== "deleted" ? (
-                    <button type="button" className="accounts-btn accounts-btn--danger" disabled={saving} onClick={() => void runAccountAction("delete", selected)}>
-                      حذف منطقي
-                    </button>
-                  ) : null}
-                  {canResetPassword ? (
-                    <button type="button" className="accounts-btn accounts-btn--ghost" disabled={saving || !selected.email} onClick={() => void runAccountAction("reset", selected)}>
-                      إرسال رابط كلمة المرور
-                    </button>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <div className="accounts-panel--detail-empty">
-                <strong>اختر حساباً من القائمة.</strong>
-                <p>ستظهر تفاصيل الدور والصلاحيات والربط الوظيفي هنا.</p>
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-
-      {createOpen ? (
-        <div className="accounts-modal" role="dialog" aria-modal="true">
-          <div className="accounts-modal__backdrop" onClick={() => setCreateOpen(false)} />
-          <div className="accounts-modal__card">
-            <div className="accounts-modal__head">
-              <div>
-                <span className="accounts-eyebrow">D1 app_users</span>
-                <h2>إنشاء سجل حساب</h2>
-                <p>ينشئ هذا سجلاً تشغيلياً فقط. Firebase يبقى مسؤولاً عن تسجيل الدخول وإعادة كلمة المرور.</p>
-              </div>
-              <button type="button" className="accounts-modal__close" onClick={() => setCreateOpen(false)}>×</button>
-            </div>
-            <div className="accounts-form-grid">
-              <label className="accounts-field">
-                <span>Firebase UID</span>
-                <input value={createDraft.firebaseUid} onChange={(event) => setCreateDraft((draft) => ({ ...draft, firebaseUid: event.target.value }))} />
-              </label>
-              <label className="accounts-field">
-                <span>الاسم</span>
-                <input value={createDraft.displayName} onChange={(event) => setCreateDraft((draft) => ({ ...draft, displayName: event.target.value }))} />
-              </label>
-              <label className="accounts-field">
-                <span>البريد</span>
-                <input type="email" value={createDraft.email} onChange={(event) => setCreateDraft((draft) => ({ ...draft, email: event.target.value }))} />
-              </label>
-              <label className="accounts-field">
-                <span>الجوال</span>
-                <input value={createDraft.phone} onChange={(event) => setCreateDraft((draft) => ({ ...draft, phone: event.target.value }))} />
-              </label>
-              <label className="accounts-field">
-                <span>الدور</span>
-                <select value={createDraft.role} onChange={(event) => setCreateDraft((draft) => ({ ...draft, role: normalizeRole(event.target.value) }))}>
-                  {roleOptions.map((role) => (
-                    <option key={role.role_key} value={role.role_key}>{getRoleLabel(role.role_key)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="accounts-field">
-                <span>الحالة</span>
-                <select value={createDraft.status} onChange={(event) => setCreateDraft((draft) => ({ ...draft, status: event.target.value as CreateDraft["status"] }))}>
-                  <option value="active">نشط</option>
-                  <option value="pending">قيد المراجعة</option>
-                </select>
-              </label>
-            </div>
-            <div className="accounts-modal__footer">
-              <button type="button" className="accounts-btn accounts-btn--ghost" onClick={() => setCreateOpen(false)}>إلغاء</button>
-              <button type="button" className="accounts-btn accounts-btn--primary" disabled={saving} onClick={() => void handleCreate()}>حفظ في D1</button>
-            </div>
-          </div>
-        </div>
       ) : null}
 
-      {editDraft ? (
-        <div className="accounts-modal" role="dialog" aria-modal="true">
-          <div className="accounts-modal__backdrop" onClick={() => setEditDraft(null)} />
-          <div className="accounts-modal__card accounts-modal__card--edit">
-            <div className="accounts-modal__head">
-              <div>
-                <span className="accounts-eyebrow">تعديل الحساب</span>
-                <h2>{editDraft.displayName || editDraft.email}</h2>
-              </div>
-              <button type="button" className="accounts-modal__close" onClick={() => setEditDraft(null)}>×</button>
+      {message ? (
+        <section className="dsv2-card dsv2-card--padded">
+          <div className="dsv2-cluster">
+            <span className="dsv2-badge dsv2-badge--success">تم</span>
+            <p className="dsv2-section-caption">{message}</p>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="dsv2-filter-bar" aria-label="تصفية الحسابات">
+        <DashboardFieldV2 id="accounts-search" label="بحث">
+          <input
+            id="accounts-search"
+            className="dsv2-input"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="اسم، بريد، UID، موظفة"
+          />
+        </DashboardFieldV2>
+
+        <DashboardFieldV2 id="accounts-role-filter" label="الدور">
+          <DashboardSelectV2
+            id="accounts-role-filter"
+            value={roleFilter}
+            options={[
+              { value: "all", label: "كل الأدوار" },
+              ...roleOptions.map((role) => ({
+                value: role.role_key,
+                label: getRoleLabel(role.role_key),
+              })),
+            ]}
+            onChange={(value) => setRoleFilter(value as UiRole | "all")}
+          />
+        </DashboardFieldV2>
+
+        <DashboardFieldV2 id="accounts-status-filter" label="الحالة">
+          <DashboardSelectV2
+            id="accounts-status-filter"
+            value={statusFilter}
+            options={[
+              { value: "all", label: "كل الحالات" },
+              { value: "active", label: "نشط" },
+              { value: "pending", label: "قيد المراجعة" },
+              { value: "disabled", label: "معطل" },
+              { value: "deleted", label: "محذوف" },
+            ]}
+            onChange={(value) => setStatusFilter(value as AccountStatusFilter)}
+          />
+        </DashboardFieldV2>
+
+        <DashboardFieldV2 id="accounts-type-filter" label="نوع الحساب">
+          <DashboardSelectV2
+            id="accounts-type-filter"
+            value={accountTypeFilter}
+            options={[
+              { value: "all", label: "الكل" },
+              { value: "administrative", label: "إداري" },
+              { value: "operational", label: "تشغيلي / موظفات" },
+            ]}
+            onChange={(value) => setAccountTypeFilter(value as AccountTypeFilter)}
+          />
+        </DashboardFieldV2>
+
+        <DashboardFieldV2 id="accounts-link-filter" label="الربط">
+          <DashboardSelectV2
+            id="accounts-link-filter"
+            value={linkFilter}
+            options={[
+              { value: "all", label: "الكل" },
+              { value: "linked", label: "مرتبط" },
+              { value: "unlinked", label: "غير مرتبط" },
+            ]}
+            onChange={(value) => setLinkFilter(value as LinkFilter)}
+          />
+        </DashboardFieldV2>
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded">
+        <div className="dsv2-section-head">
+          <div>
+            <h2 className="dsv2-section-title">الحسابات</h2>
+            <p className="dsv2-section-caption">
+              {filteredAccounts.length} حساب مطابق للتصفية الحالية
+            </p>
+          </div>
+          <span className="dsv2-badge">الإجمالي {stats.total}</span>
+        </div>
+
+        {filteredAccounts.length ? (
+          <div className="dsv2-table-card">
+            <div className="dsv2-table-scroll">
+              <table className="dsv2-table">
+                <thead>
+                  <tr>
+                    <th>الحساب</th>
+                    <th>الدور</th>
+                    <th>الحالة</th>
+                    <th>الربط الوظيفي</th>
+                    <th>الصلاحيات</th>
+                    <th>الإجراء</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredAccounts.map((account) => {
+                    const role = normalizeRole(account.role || account.primaryRole);
+                    const permissionCount =
+                      account.status === "active"
+                        ? normalizeAppPermissions(
+                          account.effectivePermissions || account.permissions || []
+                        ).length
+                        : 0;
+                    const statusTone =
+                      account.status === "active"
+                        ? "dsv2-badge--success"
+                        : account.status === "pending"
+                          ? "dsv2-badge--gold"
+                          : account.status === "deleted"
+                            ? "dsv2-badge--danger"
+                            : "";
+
+                    return (
+                      <tr key={account.id}>
+                        <td>
+                          <strong className="dsv2-table__primary">
+                            {account.displayName || account.email || "حساب بدون اسم"}
+                          </strong>
+                          <span className="dsv2-table__secondary">
+                            {account.email || account.firebaseUid || "-"}
+                          </span>
+                        </td>
+
+                        <td>
+                          <span className={`dsv2-badge ${getRoleTone(role)}`}>
+                            {getRoleLabel(role)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <span className={`dsv2-badge ${statusTone}`}>
+                            {statusLabel(account.status)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <span
+                            className={`dsv2-badge ${account.employeeLink?.employeeId ? "dsv2-badge--success" : ""
+                              }`}
+                          >
+                            {account.employeeLink?.employee?.name ||
+                              account.employeeLink?.employeeId ||
+                              "غير مرتبط"}
+                          </span>
+                        </td>
+
+                        <td><strong>{permissionCount}</strong></td>
+
+                        <td>
+                          <button
+                            type="button"
+                            className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                            onClick={() => {
+                              setSelectedId(account.id);
+                              setPermissionsExpanded(true);
+                              setPermissionSearch("");
+                              setPermissionGroupFilter("workspace");
+                              setDetailsOpen(true);
+                            }}
+                          >
+                            عرض التفاصيل
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            <div className="accounts-modal__body">
-              <div className="accounts-modal__sidebar">
-                <label className="accounts-field">
-                  <span>Firebase UID</span>
-                  <input value={editDraft.firebaseUid} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, firebaseUid: event.target.value } : draft)} />
-                </label>
-                <label className="accounts-field">
-                  <span>الاسم</span>
-                  <input value={editDraft.displayName} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, displayName: event.target.value } : draft)} />
-                </label>
-                <label className="accounts-field">
-                  <span>البريد</span>
-                  <input type="email" value={editDraft.email} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, email: event.target.value } : draft)} />
-                </label>
-                <label className="accounts-field">
-                  <span>الجوال</span>
-                  <input value={editDraft.phone} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, phone: event.target.value } : draft)} />
-                </label>
-                <label className="accounts-field">
-                  <span>الدور</span>
-                  <select value={editDraft.role} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, role: normalizeRole(event.target.value) } : draft)}>
-                    {roleOptions.map((role) => (
-                      <option key={role.role_key} value={role.role_key}>{getRoleLabel(role.role_key)}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="accounts-field">
-                  <span>الحالة</span>
-                  <select value={editDraft.status} onChange={(event) => setEditDraft((draft) => draft ? { ...draft, status: event.target.value as CoreAccount["status"] } : draft)}>
-                    <option value="active">نشط</option>
-                    <option value="pending">قيد المراجعة</option>
-                    <option value="disabled">معطل</option>
-                    <option value="deleted">محذوف</option>
-                  </select>
-                </label>
-                <label className="accounts-field">
-                  <span>معرف الموظفة المرتبطة</span>
-                  <input
-                    value={editDraft.employeeId}
-                    disabled={!canManageLinks}
-                    onChange={(event) => setEditDraft((draft) => draft ? { ...draft, employeeId: event.target.value } : draft)}
-                  />
-                </label>
+          </div>
+        ) : (
+          <DashboardEmptyStateV2
+            title="لا توجد حسابات مطابقة"
+            description="غيّر التصفية أو أنشئ حساب D1 جديد."
+            tone="gold"
+            compact
+          />
+        )}
+      </section>
+
+      <DashboardModalV2
+        open={detailsOpen && Boolean(selected)}
+        onClose={() => setDetailsOpen(false)}
+        eyebrow="تفاصيل الحساب"
+        title={selected?.displayName || selected?.email || "تفاصيل الحساب"}
+        description={
+          selected?.email ||
+          selected?.firebaseUid ||
+          selected?.uid ||
+          selected?.id ||
+          undefined
+        }
+        size="lg"
+        tone="default"
+      >
+        {selected ? (
+          <div className="dsv2-stack dsv2-stack--lg">
+            <div className="dsv2-section-head">
+              <div>
+                <div className="dsv2-cluster">
+                  <span className={`dsv2-badge ${getRoleTone(selected.role || selected.primaryRole)}`}>
+                    {getRoleLabel(selected.role || selected.primaryRole)}
+                  </span>
+
+                  <span
+                    className={`dsv2-badge ${selected.status === "active"
+                        ? "dsv2-badge--success"
+                        : selected.status === "pending"
+                          ? "dsv2-badge--gold"
+                          : selected.status === "deleted"
+                            ? "dsv2-badge--danger"
+                            : ""
+                      }`}
+                  >
+                    {statusLabel(selected.status)}
+                  </span>
+
+                  <span className="dsv2-badge">{selected?.status === "active" ? effectivePermissions.length : 0} صلاحية</span>
+                </div>
+
+                <h2 className="dsv2-section-title">
+                  {selected.displayName || selected.email || "حساب بدون اسم"}
+                </h2>
+                <p className="dsv2-section-caption">
+                  {selected.firebaseUid || selected.uid || selected.id}
+                </p>
               </div>
 
-              <section className="accounts-permissions-editor">
-                <div className="accounts-permissions-editor__head">
-                  <div>
-                    <h3>الصلاحيات الفعلية</h3>
-                    <p>سيحوّل Worker هذه القائمة إلى allow/deny بالنسبة للدور المحدد.</p>
-                  </div>
-                  <div className="accounts-permissions-editor__stats">
-                    <span>المحددة: {editDraft.permissions.length}</span>
-                    <span>صلاحيات المنفذ: {actorPermissions.length}</span>
-                  </div>
-                </div>
-                {!canManagePermissions ? (
-                  <div className="accounts-permissions-editor__notice">يمكنك تعديل بيانات الحساب فقط. تعديل الصلاحيات يتطلب permissions.manage.</div>
+              <div className="dsv2-cluster">
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary"
+                  onClick={() => setPermissionsExpanded((current) => !current)}
+                >
+                  {permissionsExpanded ? "إخفاء الصلاحيات" : "عرض الصلاحيات"}
+                </button>
+
+                {canEditTarget(selected) ? (
+                  <button
+                    type="button"
+                    className="dsv2-btn dsv2-btn--primary"
+                    onClick={() => {
+                      setDetailsOpen(false);
+                      openEdit(selected);
+                    }}
+                  >
+                    تعديل الحساب
+                  </button>
                 ) : null}
-                <div className="accounts-permissions-editor__grid">
-                  {VISIBLE_APP_PERMISSION_CATALOG.map((permission) => {
-                    const enabled = editDraft.permissions.includes(permission.key);
-                    const actorCanGrant = actorIsOwner || actorPermissions.includes(permission.key);
-                    return (
+              </div>
+            </div>
+
+            <div className="dsv2-grid--2">
+              <div className="dsv2-stat-row">
+                <span>البريد</span>
+                <strong>{selected.email || "-"}</strong>
+              </div>
+              <div className="dsv2-stat-row">
+                <span>الجوال</span>
+                <strong>{selected.phone || "-"}</strong>
+              </div>
+              <div className="dsv2-stat-row">
+                <span>آخر دخول</span>
+                <strong>{formatDate(selected.lastLoginAt)}</strong>
+              </div>
+              <div className="dsv2-stat-row">
+                <span>ملف الموظفة</span>
+                <strong>
+                  {selected.employeeLink?.employee?.name ||
+                    selected.employeeLink?.employeeId ||
+                    "غير مرتبط"}
+                </strong>
+              </div>
+            </div>
+
+            {canReadPermissions && permissionsExpanded ? (
+              <div className="dsv2-stack dsv2-stack--lg">
+                <div className="dsv2-grid--3">
+                  <article className="dsv2-card dsv2-card--padded dsv2-card--soft">
+                    <h3 className="dsv2-section-title">صلاحيات الدور</h3>
+                    <p className="dsv2-section-caption">الصلاحيات الموروثة من الدور الأساسي.</p>
+                    <div className="dsv2-cluster">
+                      {rolePermissions.slice(0, 18).map((permission) => renderPermissionChip(permission))}
+                      {rolePermissions.length > 18 ? (
+                        <span className="dsv2-badge">+{rolePermissions.length - 18}</span>
+                      ) : null}
+                    </div>
+                  </article>
+
+                  <article className="dsv2-card dsv2-card--padded dsv2-card--soft">
+                    <h3 className="dsv2-section-title">مسموح مباشر</h3>
+                    <p className="dsv2-section-caption">صلاحيات مضافة مباشرة إلى الحساب.</p>
+                    <div className="dsv2-cluster">
+                      {allowedPermissions.length
+                        ? allowedPermissions.map((permission) => renderPermissionChip(permission, "mint"))
+                        : <span className="dsv2-badge">لا يوجد</span>}
+                    </div>
+                  </article>
+
+                  <article className="dsv2-card dsv2-card--padded dsv2-card--soft">
+                    <h3 className="dsv2-section-title">ممنوع مباشر</h3>
+                    <p className="dsv2-section-caption">المنع المباشر يسبق السماح.</p>
+                    <div className="dsv2-cluster">
+                      {deniedPermissions.length
+                        ? deniedPermissions.map((permission) => renderPermissionChip(permission, "gray"))
+                        : <span className="dsv2-badge">لا يوجد</span>}
+                    </div>
+                  </article>
+                </div>
+
+                <section className="dsv2-filter-bar">
+                  <DashboardFieldV2 id="permission-search" label="بحث داخل الصلاحيات">
+                    <input
+                      id="permission-search"
+                      className="dsv2-input"
+                      value={permissionSearch}
+                      onChange={(event) => setPermissionSearch(event.target.value)}
+                      placeholder="accounts.update أو الحجوزات"
+                    />
+                  </DashboardFieldV2>
+
+                  <DashboardFieldV2 id="permission-group-filter" label="قسم الصلاحيات">
+                    <DashboardSelectV2
+                      id="permission-group-filter"
+                      value={permissionGroupFilter}
+                      options={[
+                        ...APP_PERMISSION_GROUPS.map((group) => ({
+                          value: group.key,
+                          label: group.label,
+                        })),
+                      ]}
+                      onChange={(value) =>
+                        setPermissionGroupFilter(value as typeof permissionGroupFilter)
+                      }
+                    />
+                  </DashboardFieldV2>
+                </section>
+
+                <div className="dsv2-stack">
+                  {permissionGroups.map((group) => (
+                    <article key={group.key} className="dsv2-card dsv2-card--padded">
+                      <div className="dsv2-section-head">
+                        <div>
+                          <h3 className="dsv2-section-title">{group.label}</h3>
+                          <p className="dsv2-section-caption">{group.permissions.length} صلاحية</p>
+                        </div>
+                      </div>
+
+                      <div className="dsv2-grid--2">
+                        {group.permissions.map((permission) => {
+                          const enabled = effectivePermissions.includes(permission);
+                          const directAllow = allowedPermissions.includes(permission);
+                          const directDeny = deniedPermissions.includes(permission);
+
+                          return (
+                            <div key={permission} className="dsv2-stat-row">
+                              <div className="dsv2-stack dsv2-stack--sm">
+                                <strong>{permissionLabel(permission, remotePermissions)}</strong>
+                              </div>
+
+                              <span
+                                className={`dsv2-badge ${enabled
+                                    ? "dsv2-badge--success"
+                                    : "dsv2-badge--danger"
+                                  }`}
+                              >
+                                {enabled ? "مفعل" : "غير مفعل"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="dsv2-cluster">
+              {canDisableAccounts && selected.status === "active" ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger"
+                  disabled={saving}
+                  onClick={() => void runAccountAction("disable", selected)}
+                >
+                  تعطيل
+                </button>
+              ) : null}
+
+              {canRestoreAccounts && ["disabled", "deleted"].includes(selected.status) ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--success"
+                  disabled={saving}
+                  onClick={() => void runAccountAction("restore", selected)}
+                >
+                  استعادة
+                </button>
+              ) : null}
+
+              {canDeleteAccounts && selected.status !== "deleted" ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger"
+                  disabled={saving}
+                  onClick={() => setPendingDeleteAccount(selected)}
+                >
+                  حذف منطقي
+                </button>
+              ) : null}
+
+              {canResetPassword ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary"
+                  disabled={saving || !selected.email}
+                  onClick={() => void runAccountAction("reset", selected)}
+                >
+                  إرسال رابط كلمة المرور
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <></>
+        )}
+      </DashboardModalV2>
+      <DashboardModalV2
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        eyebrow="D1 app_users"
+        title="إنشاء سجل حساب"
+        description="ينشئ سجلاً تشغيلياً في D1. Firebase يبقى مسؤولاً عن تسجيل الدخول وكلمة المرور."
+        size="lg"
+        tone="gold"
+        footer={
+          <>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--primary"
+              disabled={saving}
+              onClick={() => void handleCreate()}
+            >
+              حفظ في D1
+            </button>
+            <button
+              type="button"
+              className="dsv2-btn dsv2-btn--secondary"
+              disabled={saving}
+              onClick={() => setCreateOpen(false)}
+            >
+              إلغاء
+            </button>
+          </>
+        }
+      >
+        <div className="dsv2-grid--2">
+          <DashboardFieldV2 id="create-firebase-uid" label="Firebase UID">
+            <input
+              id="create-firebase-uid"
+              className="dsv2-input"
+              value={createDraft.firebaseUid}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, firebaseUid: event.target.value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="create-name" label="الاسم">
+            <input
+              id="create-name"
+              className="dsv2-input"
+              value={createDraft.displayName}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, displayName: event.target.value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="create-email" label="البريد">
+            <input
+              id="create-email"
+              type="email"
+              className="dsv2-input"
+              value={createDraft.email}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, email: event.target.value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="create-phone" label="الجوال">
+            <input
+              id="create-phone"
+              className="dsv2-input"
+              value={createDraft.phone}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, phone: event.target.value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="create-role" label="الدور">
+            <DashboardSelectV2
+              id="create-role"
+              value={createDraft.role}
+              options={roleOptions.map((role) => ({
+                value: role.role_key,
+                label: getRoleLabel(role.role_key),
+              }))}
+              onChange={(value) =>
+                setCreateDraft((draft) => ({ ...draft, role: normalizeRole(value) }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="create-status" label="الحالة">
+            <DashboardSelectV2
+              id="create-status"
+              value={createDraft.status}
+              options={[
+                { value: "active", label: "نشط" },
+                { value: "pending", label: "قيد المراجعة" },
+              ]}
+              onChange={(value) =>
+                setCreateDraft((draft) => ({
+                  ...draft,
+                  status: value as CreateDraft["status"],
+                }))
+              }
+            />
+          </DashboardFieldV2>
+        </div>
+      </DashboardModalV2>
+
+      <DashboardModalV2
+        open={Boolean(editDraft)}
+        onClose={() => setEditDraft(null)}
+        eyebrow="تعديل الحساب"
+        title={editDraft?.displayName || editDraft?.email || "تعديل الحساب"}
+        description="تعديل البيانات والدور والربط والصلاحيات الفعلية."
+        size="xl"
+        tone="default"
+        footer={
+          editDraft ? (
+            <>
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--primary"
+                disabled={saving}
+                onClick={() => void handleSaveEdit()}
+              >
+                حفظ التعديلات
+              </button>
+              <button
+                type="button"
+                className="dsv2-btn dsv2-btn--secondary"
+                disabled={saving}
+                onClick={() => setEditDraft(null)}
+              >
+                إلغاء
+              </button>
+            </>
+          ) : null
+        }
+      >
+        {editDraft ? (
+          <div className="dsv2-stack dsv2-stack--lg">
+            <div className="dsv2-grid--2">
+              <DashboardFieldV2 id="edit-firebase-uid" label="Firebase UID">
+                <input
+                  id="edit-firebase-uid"
+                  className="dsv2-input"
+                  value={editDraft.firebaseUid}
+                  onChange={(event) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, firebaseUid: event.target.value } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-name" label="الاسم">
+                <input
+                  id="edit-name"
+                  className="dsv2-input"
+                  value={editDraft.displayName}
+                  onChange={(event) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, displayName: event.target.value } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-email" label="البريد">
+                <input
+                  id="edit-email"
+                  type="email"
+                  className="dsv2-input"
+                  value={editDraft.email}
+                  onChange={(event) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, email: event.target.value } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-phone" label="الجوال">
+                <input
+                  id="edit-phone"
+                  className="dsv2-input"
+                  value={editDraft.phone}
+                  onChange={(event) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, phone: event.target.value } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-role" label="الدور">
+                <DashboardSelectV2
+                  id="edit-role"
+                  value={editDraft.role}
+                  options={roleOptions.map((role) => ({
+                    value: role.role_key,
+                    label: getRoleLabel(role.role_key),
+                  }))}
+                  onChange={(value) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, role: normalizeRole(value) } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-status" label="الحالة">
+                <DashboardSelectV2
+                  id="edit-status"
+                  value={editDraft.status}
+                  options={[
+                    { value: "active", label: "نشط" },
+                    { value: "pending", label: "قيد المراجعة" },
+                    { value: "disabled", label: "معطل" },
+                    { value: "deleted", label: "محذوف" },
+                  ]}
+                  onChange={(value) =>
+                    setEditDraft((draft) =>
+                      draft
+                        ? { ...draft, status: value as CoreAccount["status"] }
+                        : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="edit-employee-link" label="معرف الموظفة المرتبطة">
+                <input
+                  id="edit-employee-link"
+                  className="dsv2-input"
+                  value={editDraft.employeeId}
+                  disabled={!canManageLinks}
+                  onChange={(event) =>
+                    setEditDraft((draft) =>
+                      draft ? { ...draft, employeeId: event.target.value } : draft
+                    )
+                  }
+                />
+              </DashboardFieldV2>
+            </div>
+
+            <section>
+              <div className="dsv2-section-head">
+                <div>
+                  <h3 className="dsv2-section-title">الصلاحيات الفعلية</h3>
+                  <p className="dsv2-section-caption">
+                    Worker يحول القائمة إلى allow/deny حسب الدور المحدد.
+                  </p>
+                </div>
+
+                <div className="dsv2-cluster">
+                  <span className="dsv2-badge">المحددة {editDraft.permissions.length}</span>
+                  <span className="dsv2-badge">صلاحيات المنفذ {actorPermissions.length}</span>
+                </div>
+              </div>
+
+              {!canManagePermissions ? (
+                <DashboardEmptyStateV2
+                  title="تعديل الصلاحيات غير متاح"
+                  description="تعديل الصلاحيات يتطلب permissions.manage."
+                  compact
+                />
+              ) : null}
+
+              <div className="dsv2-grid--2">
+                {VISIBLE_APP_PERMISSION_CATALOG.map((permission) => {
+                  const enabled = editDraft.permissions.includes(permission.key);
+                  const actorCanGrant =
+                    actorIsOwner || actorPermissions.includes(permission.key);
+
+                  return (
+                    <article key={permission.key} className="dsv2-card dsv2-card--padded">
+                      <div className="dsv2-section-head">
+                        <div>
+                          <h4 className="dsv2-section-title">{permission.label}</h4>
+                          <p className="dsv2-section-caption">{permission.key}</p>
+                        </div>
+
+                        {permission.sensitive ? (
+                          <span className="dsv2-badge dsv2-badge--danger">حساسة</span>
+                        ) : null}
+                      </div>
+
+                      <p className="dsv2-section-caption">{permission.hint}</p>
+
                       <button
                         type="button"
-                        key={permission.key}
-                        className={`accounts-permission-toggle ${enabled ? "is-active" : ""} ${permission.sensitive ? "is-sensitive" : ""}`}
+                        className={
+                          enabled
+                            ? "dsv2-btn dsv2-btn--success dsv2-btn--block"
+                            : "dsv2-btn dsv2-btn--secondary dsv2-btn--block"
+                        }
                         aria-pressed={enabled}
                         disabled={!canManagePermissions || (!actorCanGrant && !enabled)}
                         onClick={() => {
                           setEditDraft((draft) => {
                             if (!draft) return draft;
+
                             const set = new Set(draft.permissions);
                             if (set.has(permission.key)) set.delete(permission.key);
                             else set.add(permission.key);
-                            return { ...draft, permissions: VISIBLE_APP_PERMISSION_CATALOG.map((item) => item.key).filter((key) => set.has(key)) };
+
+                            return {
+                              ...draft,
+                              permissions: VISIBLE_APP_PERMISSION_CATALOG
+                                .map((item) => item.key)
+                                .filter((key) => set.has(key)),
+                            };
                           });
                         }}
                       >
-                        <span className="accounts-permission-toggle__dot" aria-hidden="true" />
-                        <span className="accounts-permission-toggle__copy">
-                          <strong>{permission.label}</strong>
-                          <small>{permission.key}</small>
-                          <em>{permission.hint}</em>
-                        </span>
-                        <span className="accounts-permission-toggle__state">{enabled ? "مفعل" : "غير مفعل"}</span>
+                        {enabled ? "مفعل" : "غير مفعل"}
                       </button>
-                    );
-                  })}
-                </div>
-              </section>
-            </div>
-            <div className="accounts-modal__footer">
-              <button type="button" className="accounts-btn accounts-btn--ghost" onClick={() => setEditDraft(null)}>إلغاء</button>
-              <button type="button" className="accounts-btn accounts-btn--primary" disabled={saving} onClick={() => void handleSaveEdit()}>حفظ التعديلات</button>
-            </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
           </div>
-        </div>
-      ) : null}
-    </div>
+        ) : (
+          <></>
+        )}
+      </DashboardModalV2>
+
+      <DashboardConfirmV2
+        open={Boolean(pendingDeleteAccount)}
+        onClose={() => setPendingDeleteAccount(null)}
+        title="حذف الحساب منطقياً"
+        description="سيتم تغيير حالة الحساب في D1 بدون حذف سجل الهوية من Firebase."
+        tone="danger"
+        confirmLabel="حذف منطقي"
+        cancelLabel="تراجع"
+        onConfirm={async () => {
+          const account = pendingDeleteAccount;
+          if (!account) return;
+
+          await runAccountAction("delete", account);
+          setPendingDeleteAccount(null);
+        }}
+      >
+        {pendingDeleteAccount ? (
+          <span>
+            {pendingDeleteAccount.displayName ||
+              pendingDeleteAccount.email ||
+              pendingDeleteAccount.id}
+          </span>
+        ) : null}
+      </DashboardConfirmV2>
+    </main>
   );
 }
+
+
+
