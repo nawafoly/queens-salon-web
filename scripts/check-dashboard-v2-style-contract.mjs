@@ -24,6 +24,7 @@ const targetPageFiles = [
   "tv-queue.css",
   "day-audit.css",
   "partners.css",
+  "settings.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
