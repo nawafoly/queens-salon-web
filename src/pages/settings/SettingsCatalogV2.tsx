@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   collection,
   deleteDoc,
@@ -169,7 +169,7 @@ function TabButton(props: {
 
 function Field(props: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   wide?: boolean;
   hint?: string;
 }) {
@@ -489,7 +489,9 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
           ]),
           sessionsCount: Math.max(1, Number(pkg.sessionsCount || 1)),
           price: Math.max(0, Number(pkg.price || 0)),
-          validityDays: pkg.validityDays === undefined || pkg.validityDays === null ? undefined : Math.max(1, Math.floor(Number(pkg.validityDays || 1))),
+          validityDays: pkg.validityDays === undefined || pkg.validityDays === null
+            ? undefined
+            : Math.max(1, Math.floor(Number(pkg.validityDays || 1))),
           active: pkg.active !== false,
           saleEnabled: pkg.saleEnabled !== false,
           imageUrl: String(pkg.imageUrl || "").trim() || undefined,
@@ -542,7 +544,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
     setOpenedServiceId(null);
     setOpenedServiceDraft(null);
     setOpenedServiceMode("view");
-  }, [activeListMode, selectedId, sections, services]);
+  }, [activeListMode, selectedId]);
 
   useEffect(() => {
     if (!selectedSectionId || !categoriesInSection.length) {
@@ -560,13 +562,15 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
       return;
     }
     const row = services.find((service) => service.id === openedServiceId) || null;
-    setOpenedServiceDraft(row ? { ...row } : null);
-    setOpenedServiceMode("view");
-  }, [openedServiceId, services]);
+    if (openedServiceMode === "view") setOpenedServiceDraft(row ? { ...row } : null);
+  }, [openedServiceId, openedServiceMode, services]);
 
   const saveSectionRow = async (row: SectionRow) => {
     const name = String(row.name || "").trim();
-    if (!name) return showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000), false;
+    if (!name) {
+      showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
+      return false;
+    }
     try {
       setSecLoading(true);
       await setDoc(doc(db, ...SECTIONS, row.id), {
@@ -588,12 +592,21 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
 
   const saveServiceRow = async (row: ServiceRow) => {
     const name = String(row.name || "").trim();
-    if (!name) return showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000), false;
+    if (!name) {
+      showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000);
+      return false;
+    }
     const categoryId = String(row.categoryId || "").trim();
-    if (!categoryId) return showMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000), false;
+    if (!categoryId) {
+      showMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
+      return false;
+    }
     const category = categories.find((item) => item.id === categoryId);
     const sectionId = String(category?.sectionId || "").trim();
-    if (!sectionId) return showMsg("❌ التصنيف المختار غير مربوط بقسم", 2000), false;
+    if (!sectionId) {
+      showMsg("❌ التصنيف المختار غير مربوط بقسم", 2000);
+      return false;
+    }
     try {
       setSrvLoading(true);
       await setDoc(doc(db, ...SERVICES, row.id), {
@@ -854,6 +867,15 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
     setMode("view");
   };
 
+  const toggleOpenedServiceActive = async () => {
+    const live = services.find((service) => service.id === openedServiceId);
+    if (!live) return;
+    if (await saveServiceRow({ ...live, active: !live.active })) {
+      await loadCatalog();
+      setOpenedServiceMode("view");
+    }
+  };
+
   const resetPackageForm = () => {
     setPackageName("");
     setPackageDescription("");
@@ -1033,10 +1055,14 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
     setActiveCatalogPanel("items");
     setActiveListMode("services");
     setServiceSectionFilter(String(service.sectionId || "all") || "all");
+    setSearch("");
+    setStatusFilter("all");
     setSelectedId(service.id);
-    setMode("edit");
-    setActiveTab("pricing");
-    setServiceDraft({ ...service });
+    window.setTimeout(() => {
+      setActiveTab("pricing");
+      setServiceDraft({ ...service });
+      setMode("edit");
+    }, 0);
   };
 
   if (!hasAdminPower) {
@@ -1060,6 +1086,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
 
   const selectedLive = activeListMode === "sections" ? selectedSectionLive : selectedServiceLive;
   const selectedActive = selectedLive?.active !== false;
+  const openedServiceLive = services.find((service) => service.id === openedServiceId) || null;
 
   return (
     <main className="dsv2-page settings-catalog-v2-page" dir="rtl">
@@ -1172,7 +1199,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
               </div>
             ) : null}
 
-            {composerMode === "service" ? (
+            {composerMode === "service" && activeListMode === "services" ? (
               <div className="settings-catalog-v2-composer">
                 <div className="settings-catalog-v2-composer__head">
                   <strong>إضافة خدمة جديدة</strong>
@@ -1398,7 +1425,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
 
       <DashboardModalV2
         open={Boolean(selectedLive)}
-        onClose={() => { setSelectedId(null); setMode("view"); setOpenedServiceId(null); }}
+        onClose={() => { setSelectedId(null); setMode("view"); setOpenedServiceId(null); setComposerMode(null); }}
         title={selectedLive?.name || "تفاصيل الكتالوج"}
         description={activeListMode === "sections" ? "إدارة بيانات القسم والتصنيفات والخدمات المرتبطة." : "إدارة بيانات الخدمة والسعر والمدة."}
         eyebrow={activeListMode === "sections" ? "تفاصيل القسم" : "تفاصيل الخدمة"}
@@ -1435,6 +1462,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                 <>
                   <button type="button" className={activeTab === "overview" ? "is-active" : ""} onClick={() => setActiveTab("overview")}>نظرة عامة</button>
                   <button type="button" className={activeTab === "pricing" ? "is-active" : ""} onClick={() => setActiveTab("pricing")}>السعر والمدة</button>
+                  <button type="button" className={activeTab === "variants" ? "is-active" : ""} onClick={() => setActiveTab("variants")}>Variants</button>
                   <button type="button" className={activeTab === "audit" ? "is-active" : ""} onClick={() => setActiveTab("audit")}>السجل</button>
                 </>
               )}
@@ -1463,6 +1491,7 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                         <div className="settings-catalog-v2-category-card__fields">
                           <input className="dsv2-input" value={category.name} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, name: event.target.value } : row))} />
                           <input className="dsv2-input settings-catalog-v2-category-order" type="number" value={category.order} disabled={mode !== "edit"} onChange={(event) => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, order: Number(event.target.value || 0) } : row))} />
+                          <button type="button" className={`dsv2-btn dsv2-btn--sm ${category.active ? "dsv2-btn--success" : "dsv2-btn--secondary"}`} disabled={mode !== "edit"} aria-pressed={category.active} onClick={() => setCategories((previous) => previous.map((row) => row.id === category.id ? { ...row, active: !row.active } : row))}>{category.active ? "نشط" : "معطل"}</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setActiveCategoryId(category.id); setOpenedServiceId(null); }}>الخدمات ({services.filter((service) => service.categoryId === category.id).length})</button>
                           <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => void saveCategory(category)}>حفظ</button>
                           <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={mode !== "edit"} onClick={() => void deleteCategory(category.id)}>حذف</button>
@@ -1478,47 +1507,63 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                         </header>
 
                         {composerMode === "service" ? (
-                          <div className="settings-catalog-v2-inline-service-composer">
-                            <input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} placeholder="اسم الخدمة" />
-                            <input className="dsv2-input" type="number" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} placeholder="المدة" />
-                            <input className="dsv2-input" type="number" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} placeholder="السعر" />
-                            <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={() => void createService()}>إنشاء</button>
-                            <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setComposerMode(null)}>إلغاء</button>
+                          <div className="settings-catalog-v2-composer">
+                            <div className="settings-catalog-v2-form-grid">
+                              <Field label="اسم الخدمة" wide><input className="dsv2-input" value={newService.name} onChange={(event) => setNewService((previous) => ({ ...previous, name: event.target.value }))} /></Field>
+                              <Field label="المدة (دقيقة)"><input className="dsv2-input" type="number" min={5} value={newService.durationMin} onChange={(event) => setNewService((previous) => ({ ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) }))} /></Field>
+                              <Field label="السعر"><input className="dsv2-input" type="number" min={0} value={newService.price} onChange={(event) => setNewService((previous) => ({ ...previous, price: parseNumberInput(event.target.value, previous.price) }))} /></Field>
+                              <Field label="سعر الموسم"><input className="dsv2-input" type="number" min={0} value={newService.seasonPrice ?? ""} onChange={(event) => setNewService((previous) => ({ ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, Number(previous.seasonPrice || 0)) }))} /></Field>
+                            </div>
+                            <ToggleCard checked={newService.active} label="الخدمة نشطة" hint="تكون متاحة للعرض والحجز بعد الإنشاء." onChange={(active) => setNewService((previous) => ({ ...previous, active }))} />
+                            <div className="settings-catalog-v2-panel-actions">
+                              <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setComposerMode(null)}>إلغاء</button>
+                              <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" disabled={srvLoading} onClick={() => void createService()}>إنشاء</button>
+                            </div>
                           </div>
                         ) : null}
 
                         <div className="settings-catalog-v2-category-services__list">
                           {servicesInActiveCategory.length ? servicesInActiveCategory.map((service) => (
-                            <button type="button" key={service.id} className={`settings-catalog-v2-linked-service ${openedServiceId === service.id ? "is-open" : ""}`} onClick={() => setOpenedServiceId(service.id)}>
+                            <button type="button" key={service.id} className={`settings-catalog-v2-linked-service ${openedServiceId === service.id ? "is-open" : ""}`} onClick={() => { setOpenedServiceId(service.id); setOpenedServiceMode("view"); }}>
                               <span><strong>{service.name}</strong><small>{service.durationMin} د · {money(service.price)} ر.س</small></span>
                               <span className={`dsv2-badge ${service.active ? "dsv2-badge--success" : ""}`}>{service.active ? "نشط" : "معطل"}</span>
                             </button>
                           )) : <p className="settings-catalog-v2-muted">لا توجد خدمات داخل هذا التصنيف.</p>}
                         </div>
 
-                        {openedServiceId && openedServiceDraft ? (
+                        {openedServiceId && openedServiceDraft && openedServiceLive ? (
                           <div className="settings-catalog-v2-opened-service">
                             <header>
                               <div><strong>عرض الخدمة</strong><span>{openedServiceId}</span></div>
                               <div>
                                 {openedServiceMode === "edit" ? (
                                   <>
-                                    <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={async () => { if (openedServiceDraft && await saveServiceRow(openedServiceDraft)) { await loadCatalog(); setOpenedServiceMode("view"); } }}>حفظ</button>
-                                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { const live = services.find((service) => service.id === openedServiceId); setOpenedServiceDraft(live ? { ...live } : null); setOpenedServiceMode("view"); }}>إلغاء</button>
+                                    <button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" onClick={async () => { if (await saveServiceRow(openedServiceDraft)) { await loadCatalog(); setOpenedServiceMode("view"); } }}>حفظ</button>
+                                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => { setOpenedServiceDraft({ ...openedServiceLive }); setOpenedServiceMode("view"); }}>إلغاء</button>
                                   </>
                                 ) : (
                                   <>
                                     <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => setOpenedServiceMode("edit")}>تعديل</button>
-                                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void deleteService(openedServiceId, false)}>حذف</button>
+                                    <button type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" disabled={srvLoading} onClick={() => void toggleOpenedServiceActive()}>{openedServiceLive.active ? "تعطيل" : "تفعيل"}</button>
+                                    <button type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" disabled={srvLoading} onClick={() => void deleteService(openedServiceId, false)}>حذف</button>
                                   </>
                                 )}
                               </div>
                             </header>
                             <div className="settings-catalog-v2-form-grid">
                               <Field label="اسم الخدمة"><input className="dsv2-input" value={openedServiceDraft.name} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, name: event.target.value } : previous)} /></Field>
+                              <Field label="التصنيف">
+                                <DashboardSelectV2
+                                  value={openedServiceDraft.categoryId}
+                                  disabled={openedServiceMode !== "edit"}
+                                  options={categoriesInSection.map((category) => ({ value: category.id, label: category.name }))}
+                                  onChange={(categoryId) => setOpenedServiceDraft((previous) => previous ? { ...previous, categoryId, sectionId: String(categoryById.get(categoryId)?.sectionId || previous.sectionId) } : previous)}
+                                />
+                              </Field>
                               <Field label="السعر"><input className="dsv2-input" type="number" min={0} value={openedServiceDraft.price} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, price: parseNumberInput(event.target.value, previous.price) } : previous)} /></Field>
                               <Field label="المدة"><input className="dsv2-input" type="number" min={5} value={openedServiceDraft.durationMin} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
                               <Field label="سعر الموسم"><input className="dsv2-input" type="number" min={0} value={openedServiceDraft.seasonPrice ?? ""} disabled={openedServiceMode !== "edit"} onChange={(event) => setOpenedServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
+                              <ToggleCard checked={openedServiceDraft.active !== false} label="الخدمة نشطة" hint="يمكن تغيير حالة الخدمة مع بقية بياناتها." disabled={openedServiceMode !== "edit"} onChange={(active) => setOpenedServiceDraft((previous) => previous ? { ...previous, active } : previous)} />
                             </div>
                           </div>
                         ) : null}
@@ -1572,6 +1617,10 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
                     <Field label="المدة (دقيقة)"><input className="dsv2-input" type="number" min={5} value={mode === "edit" ? serviceDraft?.durationMin ?? 60 : selectedServiceLive.durationMin} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, durationMin: parseNumberInput(event.target.value, previous.durationMin) } : previous)} /></Field>
                     <Field label="سعر الموسم"><input className="dsv2-input" type="number" min={0} value={(mode === "edit" ? serviceDraft?.seasonPrice : selectedServiceLive.seasonPrice) ?? ""} disabled={mode !== "edit"} onChange={(event) => setServiceDraft((previous) => previous ? { ...previous, seasonPrice: event.target.value === "" ? null : parseNumberInput(event.target.value, 0) } : previous)} /></Field>
                   </div>
+                ) : null}
+
+                {activeTab === "variants" ? (
+                  <DashboardEmptyStateV2 title="Variants" description="هذه المساحة محفوظة لتوسعة أنواع الخدمة لاحقًا." />
                 ) : null}
 
                 {activeTab === "audit" ? (
