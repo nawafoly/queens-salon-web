@@ -14,6 +14,7 @@ import { readStoredAuthSession } from "../services/localAuthSession";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
 import SettingsBookings from "./settings/SettingsBookings";
+import SettingsCatalogV2 from "./settings/SettingsCatalogV2";
 import SettingsUsers from "./settings/SettingsUsers";
 
 const LegacySettingsRoute = React.lazy(() => import("./settings/LegacySettingsRoute"));
@@ -30,7 +31,7 @@ type UiRole =
   | "guest";
 
 type BasicSettingsSection = "identity" | "sections" | "policies";
-type LegacySettingsKind = "catalog" | "contact" | "attendance";
+type LegacySettingsKind = "contact" | "attendance";
 
 type DashboardSettingsProps = {
   initialRole?: UiRole | string;
@@ -124,11 +125,16 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const normalizedSettingsPathname = normalizePathname(location.pathname);
   const isSettingsIndexRoute = normalizedSettingsPathname === currentRootPath;
   const isSettingsBookingsV2Route = normalizedSettingsPathname === `${currentRootPath}/bookings`;
+  const isSettingsCatalogV2Route = normalizedSettingsPathname === `${currentRootPath}/catalog`;
   const isSettingsUsersV2Route =
     normalizedSettingsPathname === `${currentRootPath}/users` ||
     normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
-  const usesSettingsV2Shell = isSettingsIndexRoute || isSettingsBookingsV2Route;
-  const isLegacyNestedRoute = !isSettingsIndexRoute && !isSettingsBookingsV2Route && !isSettingsUsersV2Route;
+  const usesSettingsV2Shell = isSettingsIndexRoute || isSettingsBookingsV2Route || isSettingsCatalogV2Route;
+  const isLegacyNestedRoute =
+    !isSettingsIndexRoute &&
+    !isSettingsBookingsV2Route &&
+    !isSettingsCatalogV2Route &&
+    !isSettingsUsersV2Route;
 
   const settingsNavItems = useMemo(
     () => [
@@ -472,7 +478,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 </PermissionRoute>
               }
             />
-            <Route path="catalog" element={<PermissionRoute permission="catalog.manage">{renderLegacySettingsRoute("catalog", hasPermission("catalog.manage"))}</PermissionRoute>} />
+            <Route
+              path="catalog"
+              element={
+                <PermissionRoute permission="catalog.manage">
+                  <SettingsCatalogV2 hasAdminPower={hasPermission("catalog.manage")} />
+                </PermissionRoute>
+              }
+            />
             <Route
               path="users/*"
               element={
