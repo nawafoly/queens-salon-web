@@ -13,6 +13,7 @@ import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
+import SettingsBookings from "./settings/SettingsBookings";
 import SettingsUsers from "./settings/SettingsUsers";
 
 const LegacySettingsRoute = React.lazy(() => import("./settings/LegacySettingsRoute"));
@@ -29,7 +30,7 @@ type UiRole =
   | "guest";
 
 type BasicSettingsSection = "identity" | "sections" | "policies";
-type LegacySettingsKind = "bookings" | "catalog" | "contact" | "attendance";
+type LegacySettingsKind = "catalog" | "contact" | "attendance";
 
 type DashboardSettingsProps = {
   initialRole?: UiRole | string;
@@ -122,10 +123,12 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const currentRootPath = normalizePathname(SETTINGS_ROOT_PATH);
   const normalizedSettingsPathname = normalizePathname(location.pathname);
   const isSettingsIndexRoute = normalizedSettingsPathname === currentRootPath;
+  const isSettingsBookingsV2Route = normalizedSettingsPathname === `${currentRootPath}/bookings`;
   const isSettingsUsersV2Route =
     normalizedSettingsPathname === `${currentRootPath}/users` ||
     normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
-  const isLegacyNestedRoute = !isSettingsIndexRoute && !isSettingsUsersV2Route;
+  const usesSettingsV2Shell = isSettingsIndexRoute || isSettingsBookingsV2Route;
+  const isLegacyNestedRoute = !isSettingsIndexRoute && !isSettingsBookingsV2Route && !isSettingsUsersV2Route;
 
   const settingsNavItems = useMemo(
     () => [
@@ -438,14 +441,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     );
   };
 
-  const shellClassName = isSettingsIndexRoute
+  const shellClassName = usesSettingsV2Shell
     ? "dashboard-section settings-page settings-v2-shell"
     : isLegacyNestedRoute
       ? "dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded"
       : "dashboard-section settings-page settings-shell settings-shell--embedded";
 
-  const shellMainClassName = isSettingsIndexRoute ? "settings-v2-shell__main" : "settings-shell__main";
-  const shellContentClassName = isSettingsIndexRoute ? "settings-v2-shell__content" : "settings-shell__content";
+  const shellMainClassName = usesSettingsV2Shell ? "settings-v2-shell__main" : "settings-shell__main";
+  const shellContentClassName = usesSettingsV2Shell ? "settings-v2-shell__content" : "settings-shell__content";
 
   return (
     <div className={shellClassName} dir="rtl">
@@ -461,7 +464,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               }
             />
 
-            <Route path="bookings" element={<PermissionRoute permission="settings.booking.manage">{renderLegacySettingsRoute("bookings")}</PermissionRoute>} />
+            <Route
+              path="bookings"
+              element={
+                <PermissionRoute permission="settings.booking.manage">
+                  <SettingsBookings />
+                </PermissionRoute>
+              }
+            />
             <Route path="catalog" element={<PermissionRoute permission="catalog.manage">{renderLegacySettingsRoute("catalog", hasPermission("catalog.manage"))}</PermissionRoute>} />
             <Route
               path="users/*"
