@@ -25,6 +25,7 @@ const targetPageFiles = [
   "day-audit.css",
   "partners.css",
   "settings.css",
+  "settings-bookings.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -124,6 +125,20 @@ if (/DashboardEnterpriseWorkspaces\.css/i.test(settingsSource)) {
 }
 if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
   errors.push("DashboardSettings.tsx is not wired to the Dashboard V2 entry point.");
+}
+
+const settingsBookingsSource = readFileSync(join(root, "src/pages/settings/SettingsBookings.tsx"), "utf8");
+if (/Settings(PageHeader|PageActions|Section|State|Stats|Tabs)/.test(settingsBookingsSource)) {
+  errors.push("SettingsBookings.tsx still depends on legacy SettingsFrame presentation primitives.");
+}
+if (/style=\{\{/i.test(settingsBookingsSource)) {
+  errors.push("SettingsBookings.tsx still contains inline style objects.");
+}
+if (/\b(form-select|dash-select|dash-btn|settings-row|settings-input|settings-field)\b/i.test(settingsBookingsSource)) {
+  errors.push("SettingsBookings.tsx still contains legacy booking-settings presentation classes.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsBookingsSource)) {
+  errors.push("SettingsBookings.tsx is not wired to the Dashboard V2 entry point.");
 }
 
 if (errors.length) {
