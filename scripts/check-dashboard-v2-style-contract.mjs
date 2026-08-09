@@ -26,6 +26,7 @@ const targetPageFiles = [
   "partners.css",
   "settings.css",
   "settings-bookings.css",
+  "settings-catalog.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -126,6 +127,9 @@ if (/DashboardEnterpriseWorkspaces\.css/i.test(settingsSource)) {
 if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
   errors.push("DashboardSettings.tsx is not wired to the Dashboard V2 entry point.");
 }
+if (/renderLegacySettingsRoute\(["']catalog["']/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx still routes catalog settings through LegacySettingsRoute.");
+}
 
 const settingsBookingsSource = readFileSync(join(root, "src/pages/settings/SettingsBookings.tsx"), "utf8");
 if (/Settings(PageHeader|PageActions|Section|State|Stats|Tabs)/.test(settingsBookingsSource)) {
@@ -139,6 +143,26 @@ if (/\b(form-select|dash-select|dash-btn|settings-row|settings-input|settings-fi
 }
 if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsBookingsSource)) {
   errors.push("SettingsBookings.tsx is not wired to the Dashboard V2 entry point.");
+}
+
+const settingsCatalogSource = readFileSync(join(root, "src/pages/settings/SettingsCatalogV2.tsx"), "utf8");
+if (/Settings(PageHeader|PageActions|Section|State|Stats|Tabs)/.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx still depends on legacy SettingsFrame presentation primitives.");
+}
+if (/style=\{\{/i.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx still contains inline style objects.");
+}
+if (/<select\b/i.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx still contains native select controls instead of DashboardSelectV2.");
+}
+if (/\b(exp-btn|dash-btn|settings-input|settings-field|scatalog-ref__)\b/i.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx still contains legacy catalog presentation classes.");
+}
+if (!/DashboardModalV2/.test(settingsCatalogSource) || !/DashboardSelectV2/.test(settingsCatalogSource) || !/DashboardDatePickerV2/.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx is missing required Dashboard V2 primitives.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsCatalogSource)) {
+  errors.push("SettingsCatalogV2.tsx is not wired to the Dashboard V2 entry point.");
 }
 
 if (errors.length) {
