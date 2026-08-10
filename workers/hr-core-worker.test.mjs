@@ -39,6 +39,7 @@ async function setup() {
     '0014_app_users_permissions.sql',
     '0015_employee_type.sql',
     '0016_payroll_snapshots.sql',
+    '0016_employee_permissions.sql',
     '0017_shift_control.sql',
     '0018_employee_payroll_settings.sql',
     '0020_employee_requests.sql',
