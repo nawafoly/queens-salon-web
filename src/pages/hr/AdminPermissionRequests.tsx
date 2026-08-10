@@ -3,14 +3,19 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRotateRight,
   faCircleCheck,
-  faCircleExclamation,
   faClock,
-  faPaperPlane,
   faPlus,
   faRightFromBracket,
-  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
+import {
+  DashboardDatePickerV2,
+  DashboardEmptyStateV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../../components/dashboard-v2";
 import { listEmployeeDirectory } from "../../services/employeeDirectory";
 import {
   createPermissionRequest,
@@ -21,13 +26,14 @@ import {
   type EmployeePermissionStatus,
 } from "../../services/employeePermissionRequests";
 import { cleanText, type HrSession } from "./shared";
-import "../../styles/EmployeePermissionRequests.css";
 
 type Props = {
   session: HrSession;
 };
 
 type DirectoryEmployee = Record<string, any>;
+
+type PermissionFilter = "all" | "pending" | "approved" | "out" | "returned";
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -129,9 +135,7 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
   const [workingId, setWorkingId] = useState("");
   const [message, setMessage] = useState("");
   const [formOpen, setFormOpen] = useState(false);
-  const [filter, setFilter] = useState<
-    "all" | "pending" | "approved" | "out" | "returned"
-  >("all");
+  const [filter, setFilter] = useState<PermissionFilter>("all");
 
   const nowTime = localTimeKey();
   const [form, setForm] = useState({
@@ -154,6 +158,15 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
       employeeName(left).localeCompare(employeeName(right), "ar")
     );
   }, [roster]);
+
+  const employeeOptions = useMemo(
+    () =>
+      sortedRoster.map((item) => ({
+        value: employeeId(item) || employeeUid(item),
+        label: employeeName(item),
+      })),
+    [sortedRoster]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -302,335 +315,366 @@ export default function AdminPermissionRequestsPage({ session }: Props) {
     }
   };
 
+  const filterItems = [
+    ["all", "الكل", stats.total],
+    ["pending", "المعلقة", stats.pending],
+    ["approved", "المقبولة", stats.approved],
+    ["out", "خارج الآن", stats.out],
+    ["returned", "المعتمدة", stats.returned],
+  ] as const;
+
   return (
-    <div className="permission-workspace permission-workspace--admin" dir="rtl">
-      <section className="permission-hero">
-        <div>
-          <span>الحضور والاستئذان</span>
+    <main className="dashboard-v2 dsv2-page admin-permission-v2-page" dir="rtl">
+      <section className="admin-permission-v2-hero">
+        <div className="admin-permission-v2-hero__copy">
+          <span className="dsv2-badge">الحضور والاستئذان</span>
           <h1>إدارة الاستئذانات</h1>
           <p>
             راجع طلبات الموظفات أو سجّل استئذانًا مباشرًا؛ وقت الخروج والعودة
             المحدد في الطلب يُعتمد تلقائيًا.
           </p>
         </div>
-        <button type="button" onClick={() => setFormOpen(true)}>
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--primary"
+          onClick={() => setFormOpen(true)}
+        >
           <FontAwesomeIcon icon={faPlus} />
           تسجيل استئذان
         </button>
       </section>
 
-      {message ? <div className="permission-alert">{message}</div> : null}
+      {message ? (
+        <div className="admin-permission-v2-alert" role="status">
+          {message}
+        </div>
+      ) : null}
 
-      <section className="permission-stats">
-        <article>
-          <span>قيد المراجعة</span>
-          <strong>{stats.pending}</strong>
+      <section className="admin-permission-v2-stats" aria-label="ملخص الاستئذانات">
+        <article className="dsv2-metric-card admin-permission-v2-stat is-warning">
+          <div>
+            <span>قيد المراجعة</span>
+            <strong>{stats.pending}</strong>
+          </div>
           <FontAwesomeIcon icon={faClock} />
         </article>
-        <article>
-          <span>تمت الموافقة</span>
-          <strong>{stats.approved}</strong>
+        <article className="dsv2-metric-card admin-permission-v2-stat is-success">
+          <div>
+            <span>تمت الموافقة</span>
+            <strong>{stats.approved}</strong>
+          </div>
           <FontAwesomeIcon icon={faCircleCheck} />
         </article>
-        <article>
-          <span>خارج بإذن</span>
-          <strong>{stats.out}</strong>
+        <article className="dsv2-metric-card admin-permission-v2-stat is-active">
+          <div>
+            <span>خارج بإذن</span>
+            <strong>{stats.out}</strong>
+          </div>
           <FontAwesomeIcon icon={faRightFromBracket} />
         </article>
-        <article>
-          <span>تم الاعتماد</span>
-          <strong>{stats.returned}</strong>
+        <article className="dsv2-metric-card admin-permission-v2-stat is-neutral">
+          <div>
+            <span>تم الاعتماد</span>
+            <strong>{stats.returned}</strong>
+          </div>
           <FontAwesomeIcon icon={faArrowRotateRight} />
         </article>
       </section>
 
-      <section className="permission-panel">
-        <div className="permission-panel__head">
+      <section className="dsv2-card admin-permission-v2-panel">
+        <header className="admin-permission-v2-panel__head">
           <div>
-            <span>المتابعة التشغيلية</span>
+            <span className="dsv2-badge">المتابعة التشغيلية</span>
             <h2>سجل الاستئذانات</h2>
             <p>الموافقة تعتمد وقت الخروج والعودة المسجلين في الطلب مباشرة.</p>
           </div>
-          <div className="permission-toolbar">
-            <div className="permission-filters">
-              {(
-                [
-                  ["all", "الكل", stats.total],
-                  ["pending", "المعلقة", stats.pending],
-                  ["approved", "المقبولة", stats.approved],
-                  ["out", "خارج الآن", stats.out],
-                  ["returned", "المعتمدة", stats.returned],
-                ] as const
-              ).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={filter === value ? "is-active" : ""}
-                  onClick={() => setFilter(value)}
-                >
-                  {label}
-                  <em>{count}</em>
-                </button>
-              ))}
-            </div>
+          <button
+            type="button"
+            className="dsv2-btn dsv2-btn--secondary admin-permission-v2-refresh"
+            onClick={() => void load()}
+            disabled={loading}
+            aria-label="تحديث الاستئذانات"
+          >
+            <FontAwesomeIcon icon={faArrowRotateRight} spin={loading} />
+            <span>تحديث</span>
+          </button>
+        </header>
+
+        <div className="admin-permission-v2-filters" aria-label="تصفية الاستئذانات">
+          {filterItems.map(([value, label, count]) => (
             <button
+              key={value}
               type="button"
-              className="permission-refresh"
-              onClick={() => void load()}
-              disabled={loading}
-              aria-label="تحديث"
+              className={filter === value ? "is-active" : ""}
+              onClick={() => setFilter(value)}
             >
-              <FontAwesomeIcon icon={faArrowRotateRight} spin={loading} />
+              <span>{label}</span>
+              <em>{count}</em>
             </button>
-          </div>
+          ))}
         </div>
 
-        <div className="permission-list">
-          {filteredRequests.map((item) => {
-            const meta = statusMeta(item.status);
-            const isWorking = workingId === item.id;
-            return (
-              <article
-                key={item.id}
-                className={`permission-card is-${meta.tone}`}
-              >
-                <div className="permission-card__icon">
-                  <FontAwesomeIcon icon={faRightFromBracket} />
-                </div>
-                <div className="permission-card__body">
-                  <div className="permission-card__title">
-                    <div>
-                      <strong>{item.employeeName || item.employeeId}</strong>
+        {loading && requests.length === 0 ? (
+          <div className="admin-permission-v2-loading" aria-label="جاري تحميل الاستئذانات">
+            <DashboardSkeletonV2 variant="card" />
+            <DashboardSkeletonV2 variant="card" />
+            <DashboardSkeletonV2 variant="card" />
+          </div>
+        ) : (
+          <div className="admin-permission-v2-list">
+            {filteredRequests.map((item) => {
+              const meta = statusMeta(item.status);
+              const isWorking = workingId === item.id;
+              return (
+                <article
+                  key={item.id}
+                  className={`dsv2-card admin-permission-v2-card is-${meta.tone}`}
+                >
+                  <div className="admin-permission-v2-card__icon" aria-hidden="true">
+                    <FontAwesomeIcon icon={faRightFromBracket} />
+                  </div>
+                  <div className="admin-permission-v2-card__body">
+                    <header className="admin-permission-v2-card__title">
+                      <div>
+                        <strong>{item.employeeName || item.employeeId}</strong>
+                        <span>
+                          {item.date} • {item.reason || "استئذان"}
+                        </span>
+                      </div>
+                      <em className={`admin-permission-v2-status is-${meta.tone}`}>
+                        {meta.label}
+                      </em>
+                    </header>
+
+                    <div className="admin-permission-v2-card__times">
+                      <span>الخروج: {item.actualExitTime || item.startTime || "—"}</span>
                       <span>
-                        {item.date} • {item.reason || "استئذان"}
+                        العودة المحددة: {item.expectedReturnTime || "غير محددة"}
+                      </span>
+                      {item.actualReturnTime ? (
+                        <span>العودة المعتمدة: {item.actualReturnTime}</span>
+                      ) : null}
+                      {item.durationMinutes !== undefined ? (
+                        <span>المدة: {formatDuration(item.durationMinutes)}</span>
+                      ) : null}
+                      <span>
+                        الأثر المالي:{" "}
+                        {item.financialEffect === "unpaid"
+                          ? "غير مدفوع"
+                          : item.financialEffect === "paid"
+                            ? "مدفوع"
+                            : "بدون تأثير مالي"}
+                      </span>
+                      <span>
+                        المصدر:{" "}
+                        {item.source === "admin_direct"
+                          ? "تسجيل مباشر من الإدارة"
+                          : "طلب من الموظفة"}
                       </span>
                     </div>
-                    <em>{meta.label}</em>
+
+                    <p className={item.note ? "" : "is-muted"}>
+                      {item.note || "بدون ملاحظة إضافية"}
+                    </p>
+
+                    <div className="admin-permission-v2-card__actions">
+                      {item.status === "pending" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="dsv2-btn dsv2-btn--secondary is-approve"
+                            onClick={() => void runAction(item, "approve")}
+                            disabled={isWorking}
+                          >
+                            موافقة واعتماد الوقت
+                          </button>
+                          <button
+                            type="button"
+                            className="dsv2-btn dsv2-btn--secondary is-reject"
+                            onClick={() => void runAction(item, "reject")}
+                            disabled={isWorking}
+                          >
+                            رفض
+                          </button>
+                        </>
+                      ) : null}
+
+                      {isWorking ? <span>جاري الحفظ...</span> : null}
+                    </div>
                   </div>
+                </article>
+              );
+            })}
 
-                  <div className="permission-card__times">
-                    <span>الخروج: {item.actualExitTime || item.startTime || "—"}</span>
-                    <span>
-                      العودة المحددة: {item.expectedReturnTime || "غير محددة"}
-                    </span>
-                    {item.actualReturnTime ? (
-                      <span>العودة المعتمدة: {item.actualReturnTime}</span>
-                    ) : null}
-                    {item.durationMinutes !== undefined ? (
-                      <span>المدة: {formatDuration(item.durationMinutes)}</span>
-                    ) : null}
-                    <span>
-                      الأثر المالي:{" "}
-                      {item.financialEffect === "unpaid"
-                        ? "غير مدفوع"
-                        : item.financialEffect === "paid"
-                          ? "مدفوع"
-                          : "بدون تأثير مالي"}
-                    </span>
-                    <span>
-                      المصدر:{" "}
-                      {item.source === "admin_direct"
-                        ? "تسجيل مباشر من الإدارة"
-                        : "طلب من الموظفة"}
-                    </span>
-                  </div>
-
-                  {item.note ? (
-                    <p>{item.note}</p>
-                  ) : (
-                    <p className="is-muted">بدون ملاحظة إضافية</p>
-                  )}
-
-                  <div className="permission-card__actions">
-                    {item.status === "pending" ? (
-                      <>
-                        <button
-                          type="button"
-                          className="is-approve"
-                          onClick={() => void runAction(item, "approve")}
-                          disabled={isWorking}
-                        >
-                          موافقة واعتماد الوقت
-                        </button>
-                        <button
-                          type="button"
-                          className="is-reject"
-                          onClick={() => void runAction(item, "reject")}
-                          disabled={isWorking}
-                        >
-                          رفض
-                        </button>
-                      </>
-                    ) : null}
-
-
-                    {isWorking ? <span>جاري الحفظ...</span> : null}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-
-          {!loading && !filteredRequests.length ? (
-            <div className="permission-empty">
-              <FontAwesomeIcon icon={faCircleExclamation} />
-              <h3>لا توجد استئذانات في هذه الحالة</h3>
-              <p>يمكن تسجيل استئذان مباشر أو انتظار طلب موظفة.</p>
-            </div>
-          ) : null}
-        </div>
+            {!loading && !filteredRequests.length ? (
+              <DashboardEmptyStateV2
+                title="لا توجد استئذانات في هذه الحالة"
+                description="يمكن تسجيل استئذان مباشر أو انتظار طلب موظفة."
+                tone="neutral"
+              />
+            ) : null}
+          </div>
+        )}
       </section>
 
-      {formOpen ? (
-        <div
-          className="permission-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="admin-permission-title"
-          onMouseDown={() => setFormOpen(false)}
-        >
-          <section
-            className="permission-modal__panel"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
+      <DashboardModalV2
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="استئذان موظفة"
+        eyebrow="تسجيل إداري مباشر"
+        description="يُعتمد وقت الخروج والعودة المحددان فورًا دون خطوات إضافية."
+        size="md"
+        tone="gold"
+        className="admin-permission-v2-modal"
+        footer={
+          <div className="admin-permission-v2-modal__actions">
             <button
               type="button"
-              className="permission-modal__close"
+              className="dsv2-btn dsv2-btn--secondary"
               onClick={() => setFormOpen(false)}
-              aria-label="إغلاق"
+              disabled={saving}
             >
-              <FontAwesomeIcon icon={faXmark} />
+              إلغاء
             </button>
-
-            <div className="permission-modal__head">
-              <span>
-                <FontAwesomeIcon icon={faPaperPlane} />
-              </span>
-              <div>
-                <small>تسجيل إداري مباشر</small>
-                <h2 id="admin-permission-title">استئذان موظفة</h2>
-                <p>يُعتمد وقت الخروج والعودة المحددان فورًا دون خطوات إضافية.</p>
-              </div>
-            </div>
-
-            <div className="permission-form">
-              <label className="is-wide">
-                <span>الموظفة</span>
-                <select
-                  value={form.employeeKey}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      employeeKey: event.target.value,
-                    }))
-                  }
-                >
-                  {sortedRoster.map((item) => {
-                    const key = employeeId(item) || employeeUid(item);
-                    return (
-                      <option key={key} value={key}>
-                        {employeeName(item)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-              <label>
-                <span>التاريخ</span>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>وقت الخروج</span>
-                <input
-                  type="time"
-                  value={form.startTime}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      startTime: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>العودة المتوقعة</span>
-                <input
-                  type="time"
-                  value={form.expectedReturnTime}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      expectedReturnTime: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>الأثر المالي</span>
-                <select
-                  value={form.financialEffect}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      financialEffect: event.target.value as EmployeePermissionFinancialEffect,
-                    }))
-                  }
-                >
-                  <option value="none">بدون تأثير مالي</option>
-                  <option value="paid">استئذان مدفوع</option>
-                  <option value="unpaid">استئذان غير مدفوع</option>
-                </select>
-              </label>
-              <label className="is-wide">
-                <span>سبب الاستئذان</span>
-                <input
-                  type="text"
-                  value={form.reason}
-                  placeholder="سبب خروج الموظفة"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="is-wide">
-                <span>ملاحظة اختيارية</span>
-                <textarea
-                  value={form.note}
-                  placeholder="ملاحظة الإدارة"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      note: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
             <button
               type="button"
-              className="permission-submit"
+              className="dsv2-btn dsv2-btn--primary"
               onClick={() => void submitDirect()}
               disabled={saving || !sortedRoster.length}
             >
               <FontAwesomeIcon icon={faRightFromBracket} />
               {saving ? "جاري الاعتماد..." : "اعتماد الاستئذان"}
             </button>
-          </section>
+          </div>
+        }
+      >
+        <div className="admin-permission-v2-form">
+          <DashboardFieldV2
+            id="admin-permission-employee"
+            label="الموظفة"
+            className="is-wide"
+            required
+          >
+            <DashboardSelectV2
+              id="admin-permission-employee"
+              value={form.employeeKey}
+              options={employeeOptions}
+              placeholder="اختر الموظفة"
+              disabled={!employeeOptions.length || saving}
+              onChange={(value) =>
+                setForm((current) => ({ ...current, employeeKey: value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-permission-date" label="التاريخ" required>
+            <DashboardDatePickerV2
+              id="admin-permission-date"
+              value={form.date}
+              onChange={(value) =>
+                setForm((current) => ({ ...current, date: value }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-permission-start-time" label="وقت الخروج" required>
+            <input
+              id="admin-permission-start-time"
+              className="dsv2-input"
+              type="time"
+              value={form.startTime}
+              disabled={saving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  startTime: event.target.value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="admin-permission-return-time"
+            label="العودة المتوقعة"
+            required
+          >
+            <input
+              id="admin-permission-return-time"
+              className="dsv2-input"
+              type="time"
+              value={form.expectedReturnTime}
+              disabled={saving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  expectedReturnTime: event.target.value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-permission-financial" label="الأثر المالي">
+            <DashboardSelectV2
+              id="admin-permission-financial"
+              value={form.financialEffect}
+              options={[
+                { value: "none", label: "بدون تأثير مالي" },
+                { value: "paid", label: "استئذان مدفوع" },
+                { value: "unpaid", label: "استئذان غير مدفوع" },
+              ]}
+              disabled={saving}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  financialEffect: value as EmployeePermissionFinancialEffect,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="admin-permission-reason"
+            label="سبب الاستئذان"
+            className="is-wide"
+            required
+          >
+            <input
+              id="admin-permission-reason"
+              className="dsv2-input"
+              type="text"
+              value={form.reason}
+              placeholder="سبب خروج الموظفة"
+              disabled={saving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  reason: event.target.value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2
+            id="admin-permission-note"
+            label="ملاحظة اختيارية"
+            className="is-wide"
+          >
+            <textarea
+              id="admin-permission-note"
+              className="dsv2-textarea"
+              value={form.note}
+              placeholder="ملاحظة الإدارة"
+              disabled={saving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  note: event.target.value,
+                }))
+              }
+            />
+          </DashboardFieldV2>
         </div>
-      ) : null}
-    </div>
+      </DashboardModalV2>
+    </main>
   );
 }
