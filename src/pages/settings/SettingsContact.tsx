@@ -1,5 +1,4 @@
-// ✅ src/pages/settings/SettingsContact.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
@@ -8,19 +7,13 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
-  setDoc, // ✅ NEW
 } from "firebase/firestore";
-import { db } from "../../services/firebase";
 
-import { AppSettingsService } from "../../services/AppSettingsService";
-import {
-  SettingsPageActions,
-  SettingsPageFrame,
-  SettingsPageHeader,
-  SettingsSection,
-  SettingsStats,
-} from "./SettingsFrame";
+import { DashboardEmptyStateV2 } from "../../components/dashboard-v2";
+import { db } from "../../services/firebase";
+import "../../styles/dashboard-v2/dashboard-v2.css";
 
 const SALON_ID = "main";
 
@@ -29,13 +22,8 @@ type ContactPublic = {
   whatsapp?: string;
   email?: string;
   city?: string;
-
-  // ✅ نخليها address (لوحة التحكم)
   address?: string;
-
-  // ✅ نخليها locationText (للتوافق مع Contact.tsx عندك)
   locationText?: string;
-
   hoursText?: string;
   mapEmbedUrl?: string;
 };
@@ -51,22 +39,38 @@ type ContactMessage = {
   createdAt?: any;
 };
 
-function safeStr(v: any) {
-  return String(v ?? "").trim();
+type SettingsContactProps = {
+  hasAdminPower: boolean;
+};
+
+function safeStr(value: unknown) {
+  return String(value ?? "").trim();
 }
 
-const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
-  hasAdminPower,
-}) => {
-  // ✅ public settings doc
+function formatMessageDate(value: any) {
+  if (!value) return "";
+  try {
+    const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("ar-SA", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  } catch {
+    return "";
+  }
+}
+
+export default function SettingsContact({ hasAdminPower }: SettingsContactProps) {
   const publicRef = useMemo(
     () => doc(db, "salons", SALON_ID, "settings", "public"),
-    []
+    [],
   );
 
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
-
+  const [showMessages, setShowMessages] = useState(false);
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [publicData, setPublicData] = useState<ContactPublic>({
     phone: "",
     whatsapp: "",
@@ -78,17 +82,13 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
     mapEmbedUrl: "",
   });
 
-  // ✅ messages
-  const [showMessages, setShowMessages] = useState(false);
-  const [messages, setMessages] = useState<ContactMessage[]>([]);
-
   const unreadCount = useMemo(
-    () => messages.filter((m) => (m.status || "new") === "new").length,
-    [messages]
+    () => messages.filter((message) => (message.status || "new") === "new").length,
+    [messages],
   );
 
-  const contactStats = useMemo(() => {
-    const filledFields = [
+  const filledFields = useMemo(
+    () => [
       publicData.phone,
       publicData.whatsapp,
       publicData.email,
@@ -96,114 +96,116 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
       publicData.address,
       publicData.hoursText,
       publicData.mapEmbedUrl,
-    ].filter((v) => safeStr(v)).length;
+    ].filter((value) => safeStr(value)).length,
+    [
+      publicData.address,
+      publicData.city,
+      publicData.email,
+      publicData.hoursText,
+      publicData.mapEmbedUrl,
+      publicData.phone,
+      publicData.whatsapp,
+    ],
+  );
 
-    return [
+  const contactStats = useMemo(
+    () => [
       {
         label: "الحقول المعبأة",
-        value: String(filledFields),
+        value: `${filledFields}/7`,
         hint: "من بيانات التواصل الأساسية",
+        tone: "dsv2-metric-card--gold",
       },
       {
         label: "إجمالي الرسائل",
         value: String(messages.length),
         hint: "آخر 20 رسالة فقط",
+        tone: "dsv2-metric-card--dark",
       },
       {
         label: "الرسائل الجديدة",
         value: String(unreadCount),
-        hint: "تحتاج مراجعة",
+        hint: unreadCount ? "تحتاج مراجعة" : "لا توجد رسائل جديدة",
+        tone: unreadCount ? "dsv2-metric-card--danger" : "dsv2-metric-card--success",
       },
       {
         label: "الخريطة",
         value: publicData.mapEmbedUrl ? "مربوطة" : "غير مربوطة",
-        hint: "رابط Google Maps Embed",
+        hint: "Google Maps Embed",
+        tone: publicData.mapEmbedUrl ? "dsv2-metric-card--success" : "dsv2-metric-card--dark",
       },
-    ];
-  }, [
-    messages.length,
-    publicData.address,
-    publicData.city,
-    publicData.email,
-    publicData.hoursText,
-    publicData.mapEmbedUrl,
-    publicData.phone,
-    publicData.whatsapp,
-    unreadCount,
-  ]);
+    ],
+    [filledFields, messages.length, publicData.mapEmbedUrl, unreadCount],
+  );
 
-  // Load public settings realtime
   useEffect(() => {
-    const unsub = onSnapshot(
+    const unsubscribe = onSnapshot(
       publicRef,
-      (snap) => {
-        if (!snap.exists()) {
-          // ✅ لو الوثيقة مو موجودة: خلها فاضية (ولا ترجع)
-          setPublicData((p) => ({
-            phone: p.phone ?? "",
-            whatsapp: p.whatsapp ?? "",
-            email: p.email ?? "",
-            city: p.city ?? "",
-            address: p.address ?? "",
-            locationText: p.locationText ?? "",
-            hoursText: p.hoursText ?? "",
-            mapEmbedUrl: p.mapEmbedUrl ?? "",
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setPublicData((previous) => ({
+            phone: previous.phone ?? "",
+            whatsapp: previous.whatsapp ?? "",
+            email: previous.email ?? "",
+            city: previous.city ?? "",
+            address: previous.address ?? "",
+            locationText: previous.locationText ?? "",
+            hoursText: previous.hoursText ?? "",
+            mapEmbedUrl: previous.mapEmbedUrl ?? "",
           }));
           return;
         }
 
-        const d = snap.data() as any;
+        const data = snapshot.data() as any;
         setPublicData({
-          phone: d?.phone || "",
-          whatsapp: d?.whatsapp || "",
-          email: d?.email || "",
-          city: d?.city || "",
-          address: d?.address || "",
-          locationText: d?.locationText || d?.address || "",
-          hoursText: d?.hoursText || "",
-          mapEmbedUrl: d?.mapEmbedUrl || "",
+          phone: data?.phone || "",
+          whatsapp: data?.whatsapp || "",
+          email: data?.email || "",
+          city: data?.city || "",
+          address: data?.address || "",
+          locationText: data?.locationText || data?.address || "",
+          hoursText: data?.hoursText || "",
+          mapEmbedUrl: data?.mapEmbedUrl || "",
         });
       },
-      (err) => console.error("public settings snapshot error:", err)
+      (error) => console.error("public settings snapshot error:", error),
     );
 
-    return () => unsub();
+    return () => unsubscribe();
   }, [publicRef]);
 
-  // Load messages realtime (آخر 20)
   useEffect(() => {
-    const qy = query(
+    const messagesQuery = query(
       collection(db, "salons", SALON_ID, "contact_messages"),
       orderBy("createdAt", "desc"),
-      limit(20)
+      limit(20),
     );
 
-    const unsub = onSnapshot(
-      qy,
-      (snap) => {
-        const list: ContactMessage[] = snap.docs.map((d) => {
-          const x = d.data() as any;
+    const unsubscribe = onSnapshot(
+      messagesQuery,
+      (snapshot) => {
+        setMessages(snapshot.docs.map((messageDoc) => {
+          const data = messageDoc.data() as any;
           return {
-            id: d.id,
-            name: x?.name,
-            email: x?.email,
-            phone: x?.phone,
-            subject: x?.subject,
-            message: x?.message,
-            status: (x?.status as any) || "new",
-            createdAt: x?.createdAt,
+            id: messageDoc.id,
+            name: data?.name,
+            email: data?.email,
+            phone: data?.phone,
+            subject: data?.subject,
+            message: data?.message,
+            status: (data?.status as ContactMessage["status"]) || "new",
+            createdAt: data?.createdAt,
           };
-        });
-        setMessages(list);
+        }));
       },
-      (err) => console.error("messages snapshot error:", err)
+      (error) => console.error("messages snapshot error:", error),
     );
 
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
   const onChange = (key: keyof ContactPublic, value: string) => {
-    setPublicData((p) => ({ ...p, [key]: value }));
+    setPublicData((previous) => ({ ...previous, [key]: value }));
   };
 
   const handleSave = async () => {
@@ -211,35 +213,27 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
 
     try {
       setSaving(true);
-
       const address = safeStr(publicData.address);
       const locationText = safeStr(publicData.locationText) || address;
 
-      const payload: any = {
+      await setDoc(publicRef, {
         phone: safeStr(publicData.phone),
         whatsapp: safeStr(publicData.whatsapp),
         email: safeStr(publicData.email),
         city: safeStr(publicData.city),
-
-        // ✅ نخزن الاثنين عشان أي صفحة تعتمد على أي اسم
         address,
         locationText,
-
         hoursText: safeStr(publicData.hoursText),
         mapEmbedUrl: safeStr(publicData.mapEmbedUrl),
-
         updatedAt: serverTimestamp(),
-      };
+      }, { merge: true });
 
-      // ✅ بدل updateDoc: setDoc مع merge (ينشئ تلقائيًا)
-      await setDoc(publicRef, payload, { merge: true });
-
-      setSavedMsg("✅ تم حفظ بيانات التواصل");
-      setTimeout(() => setSavedMsg(""), 2000);
-    } catch (e) {
-      console.error("save contact public error:", e);
-      setSavedMsg("❌ تعذر الحفظ");
-      setTimeout(() => setSavedMsg(""), 2500);
+      setSavedMsg("تم حفظ بيانات التواصل");
+      window.setTimeout(() => setSavedMsg(""), 2000);
+    } catch (error) {
+      console.error("save contact public error:", error);
+      setSavedMsg("تعذر حفظ بيانات التواصل");
+      window.setTimeout(() => setSavedMsg(""), 2500);
     } finally {
       setSaving(false);
     }
@@ -249,241 +243,278 @@ const SettingsContact: React.FC<{ hasAdminPower: boolean }> = ({
     if (!hasAdminPower) return;
 
     try {
-      const ref = doc(db, "salons", SALON_ID, "contact_messages", id);
-      await updateDoc(ref, { status: "read", readAt: serverTimestamp() });
-    } catch (e) {
-      console.error("mark read error:", e);
+      const messageRef = doc(db, "salons", SALON_ID, "contact_messages", id);
+      await updateDoc(messageRef, {
+        status: "read",
+        readAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("mark read error:", error);
     }
   };
 
+  const saveFailed = savedMsg === "تعذر حفظ بيانات التواصل";
+
   return (
-    <SettingsPageFrame className="settings-contact-page">
-      <SettingsPageHeader
-        eyebrow="الوحدة 05"
-        title="بيانات التواصل واللوكيشن"
-        hint="بيانات التواصل التي تظهر في صفحة الموقع والخرائط ورسائل العميلات."
-        actions={
-          <button
-            className="exp-btn"
-            type="button"
-            onClick={() => setShowMessages((s) => !s)}
-            title="عرض آخر الرسائل"
-          >
-            الرسائل {unreadCount ? `(${unreadCount} جديد)` : ""}
-          </button>
-        }
-        compact
-      />
-
-      <SettingsStats items={contactStats} />
-
-      <SettingsSection
-        eyebrow="01"
-        title="بيانات التواصل الأساسية"
-        hint="حقول مختصرة ومباشرة تظهر في الموقع ورسائل العميلات."
-        className="settings-contact-section"
-      >
-        <div className="settings-grid">
-          <div className="settings-field">
-            <label>الجوال</label>
-            <input
-              className="settings-input"
-              value={publicData.phone || ""}
-              onChange={(e) => onChange("phone", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="05xxxxxxxx"
-            />
-          </div>
-
-          <div className="settings-field">
-            <label>واتساب</label>
-            <input
-              className="settings-input"
-              value={publicData.whatsapp || ""}
-              onChange={(e) => onChange("whatsapp", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="05xxxxxxxx"
-            />
-          </div>
-
-          <div className="settings-field">
-            <label>الإيميل</label>
-            <input
-              className="settings-input"
-              value={publicData.email || ""}
-              onChange={(e) => onChange("email", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="salon@email.com"
-            />
-          </div>
-
-          <div className="settings-field">
-            <label>المدينة</label>
-            <input
-              className="settings-input"
-              value={publicData.city || ""}
-              onChange={(e) => onChange("city", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="المدينة المنورة"
-            />
+    <main className="dsv2-page settings-contact-v2-page" dir="rtl">
+      <section className="dsv2-card settings-contact-v2-hero">
+        <div className="settings-contact-v2-hero__content">
+          <span className="dsv2-badge dsv2-badge--gold">إعدادات التواصل</span>
+          <h1 className="dsv2-page-title">بيانات التواصل واللوكيشن</h1>
+          <p className="dsv2-page-subtitle">
+            إدارة بيانات التواصل التي تظهر في الموقع، نص العنوان، الخريطة، ورسائل العميلات الواردة.
+          </p>
+          <div className="settings-contact-v2-hero__badges">
+            <span className={`dsv2-badge ${hasAdminPower ? "dsv2-badge--success" : ""}`}>
+              {hasAdminPower ? "قابل للتعديل" : "عرض فقط"}
+            </span>
+            <span className="dsv2-badge">آخر 20 رسالة</span>
           </div>
         </div>
-      </SettingsSection>
 
-      <SettingsSection
-        eyebrow="02"
-        title="العنوان والخريطة"
-        hint="نصوص الظهور في صفحة التواصل ورابط Google Maps Embed."
-        className="settings-contact-section"
-      >
-        <div className="settings-grid">
-          <div className="settings-field settings-field--wide">
-            <label>العنوان</label>
-            <input
-              className="settings-input"
-              value={publicData.address || ""}
-              onChange={(e) => onChange("address", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="شارع... حي... المدينة..."
-            />
-          </div>
-
-          <div className="settings-field settings-field--wide">
-            <label>العنوان (للعرض في صفحة Contact)</label>
-            <input
-              className="settings-input"
-              value={publicData.locationText || ""}
-              onChange={(e) => onChange("locationText", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="إذا تبي نص مختلف عن العنوان"
-            />
-            <div className="settings-field-help">
-              إذا تركتيه فاضي، النظام بيستخدم “العنوان” تلقائيًا.
-            </div>
-          </div>
-
-          <div className="settings-field settings-field--wide">
-            <label>ساعات العمل (نص)</label>
-            <textarea
-              className="settings-input settings-textarea"
-              value={publicData.hoursText || ""}
-              onChange={(e) => onChange("hoursText", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder={
-                "السبت - الأربعاء: 10:00 ص - 10:00 م\n الخميس: ...\n الجمعة: ..."
-              }
-            />
-          </div>
-
-          <div className="settings-field settings-field--wide">
-            <label>رابط الخريطة (Google Maps Embed URL)</label>
-            <input
-              className="settings-input"
-              value={publicData.mapEmbedUrl || ""}
-              onChange={(e) => onChange("mapEmbedUrl", e.target.value)}
-              disabled={!hasAdminPower}
-              placeholder="https://www.google.com/maps/embed?pb=..."
-            />
-            <div className="settings-field-help">
-              ملاحظة: هذا نفس الرابط اللي تحطه داخل iframe في صفحة Contact.
-            </div>
-          </div>
-        </div>
-      </SettingsSection>
-
-      {/* ✅ صندوق رسائل صغير مو مزعج */}
-      {showMessages ? (
-        <SettingsSection
-          eyebrow="03"
-          title="آخر الرسائل"
-          hint="آخر 20 رسالة واردة من نموذج التواصل."
-          className="settings-contact-section"
-          actions={<span className="settings-shell__pill settings-shell__pill--outline">{messages.length} رسالة</span>}
+        <button
+          className="dsv2-btn dsv2-btn--secondary"
+          type="button"
+          onClick={() => setShowMessages((current) => !current)}
         >
+          {showMessages ? "إخفاء الرسائل" : `عرض الرسائل${unreadCount ? ` (${unreadCount} جديد)` : ""}`}
+        </button>
+      </section>
 
-          {!messages.length ? (
-            <div className="settings-state">
-              <strong>لا توجد رسائل حالياً</strong>
-              <p>ستظهر رسائل العميلات هنا عند وصولها.</p>
+      <section className="settings-contact-v2-metrics" aria-label="ملخص بيانات التواصل">
+        {contactStats.map((item) => (
+          <article key={item.label} className={`dsv2-metric-card ${item.tone}`}>
+            <p className="dsv2-metric-card__label">{item.label}</p>
+            <p className="dsv2-metric-card__value">{item.value}</p>
+            <p className="dsv2-metric-card__meta">{item.hint}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="settings-contact-v2-grid">
+        <article className="dsv2-card dsv2-card--padded settings-contact-v2-panel">
+          <header className="settings-contact-v2-panel__head">
+            <div>
+              <span className="settings-contact-v2-panel__eyebrow">01</span>
+              <h2>بيانات التواصل الأساسية</h2>
+              <p>الجوال والواتساب والبريد والمدينة المستخدمة في واجهات العميلات.</p>
             </div>
-          ) : (
-            <div className="settings-contact-messages">
-              {messages.map((m) => {
-                const isNew = (m.status || "new") === "new";
+            <span className="dsv2-badge">4 حقول</span>
+          </header>
+
+          <div className="settings-contact-v2-form-grid">
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">الجوال</span>
+              <input
+                className="dsv2-input"
+                value={publicData.phone || ""}
+                onChange={(event) => onChange("phone", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="05xxxxxxxx"
+                inputMode="tel"
+              />
+            </label>
+
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">واتساب</span>
+              <input
+                className="dsv2-input"
+                value={publicData.whatsapp || ""}
+                onChange={(event) => onChange("whatsapp", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="05xxxxxxxx"
+                inputMode="tel"
+              />
+            </label>
+
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">البريد الإلكتروني</span>
+              <input
+                className="dsv2-input"
+                type="email"
+                value={publicData.email || ""}
+                onChange={(event) => onChange("email", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="salon@email.com"
+              />
+            </label>
+
+            <label className="dsv2-field">
+              <span className="dsv2-field__label">المدينة</span>
+              <input
+                className="dsv2-input"
+                value={publicData.city || ""}
+                onChange={(event) => onChange("city", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="المدينة المنورة"
+              />
+            </label>
+          </div>
+        </article>
+
+        <article className="dsv2-card dsv2-card--padded settings-contact-v2-panel">
+          <header className="settings-contact-v2-panel__head">
+            <div>
+              <span className="settings-contact-v2-panel__eyebrow">02</span>
+              <h2>العنوان والخريطة</h2>
+              <p>نص الظهور في صفحة التواصل وساعات العمل ورابط Google Maps Embed.</p>
+            </div>
+            <span className={`dsv2-badge ${publicData.mapEmbedUrl ? "dsv2-badge--success" : ""}`}>
+              {publicData.mapEmbedUrl ? "الخريطة مربوطة" : "بدون خريطة"}
+            </span>
+          </header>
+
+          <div className="settings-contact-v2-form-grid settings-contact-v2-form-grid--location">
+            <label className="dsv2-field settings-contact-v2-field--wide">
+              <span className="dsv2-field__label">العنوان</span>
+              <input
+                className="dsv2-input"
+                value={publicData.address || ""}
+                onChange={(event) => onChange("address", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="شارع... حي... المدينة..."
+              />
+            </label>
+
+            <label className="dsv2-field settings-contact-v2-field--wide">
+              <span className="dsv2-field__label">العنوان المعروض في صفحة Contact</span>
+              <input
+                className="dsv2-input"
+                value={publicData.locationText || ""}
+                onChange={(event) => onChange("locationText", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="اتركه فارغًا لاستخدام العنوان تلقائيًا"
+              />
+              <small className="settings-contact-v2-field__hint">
+                إذا كان فارغًا، يستخدم النظام قيمة العنوان تلقائيًا عند الحفظ.
+              </small>
+            </label>
+
+            <label className="dsv2-field settings-contact-v2-field--wide">
+              <span className="dsv2-field__label">ساعات العمل</span>
+              <textarea
+                className="dsv2-input settings-contact-v2-textarea"
+                value={publicData.hoursText || ""}
+                onChange={(event) => onChange("hoursText", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder={"السبت - الأربعاء: 10:00 ص - 10:00 م\nالخميس: ...\nالجمعة: ..."}
+              />
+            </label>
+
+            <label className="dsv2-field settings-contact-v2-field--wide">
+              <span className="dsv2-field__label">Google Maps Embed URL</span>
+              <input
+                className="dsv2-input"
+                value={publicData.mapEmbedUrl || ""}
+                onChange={(event) => onChange("mapEmbedUrl", event.target.value)}
+                disabled={!hasAdminPower}
+                placeholder="https://www.google.com/maps/embed?pb=..."
+                dir="ltr"
+              />
+              <small className="settings-contact-v2-field__hint">
+                استخدم رابط Embed نفسه المستخدم داخل iframe في صفحة التواصل.
+              </small>
+            </label>
+          </div>
+        </article>
+      </section>
+
+      {showMessages ? (
+        <section className="dsv2-card dsv2-card--padded settings-contact-v2-panel settings-contact-v2-messages-panel">
+          <header className="settings-contact-v2-panel__head">
+            <div>
+              <span className="settings-contact-v2-panel__eyebrow">03</span>
+              <h2>آخر الرسائل</h2>
+              <p>آخر 20 رسالة واردة من نموذج التواصل، مع حالة القراءة.</p>
+            </div>
+            <div className="settings-contact-v2-message-counts">
+              <span className="dsv2-badge">{messages.length} رسالة</span>
+              {unreadCount ? <span className="dsv2-badge dsv2-badge--gold">{unreadCount} جديدة</span> : null}
+            </div>
+          </header>
+
+          {messages.length ? (
+            <div className="settings-contact-v2-messages">
+              {messages.map((message) => {
+                const isNew = (message.status || "new") === "new";
+                const messageDate = formatMessageDate(message.createdAt);
+
                 return (
-                  <div
-                    key={m.id}
-                    className={`settings-contact-message ${isNew ? "is-new" : ""}`}
+                  <article
+                    key={message.id}
+                    className={`settings-contact-v2-message ${isNew ? "is-new" : ""}`}
                   >
-                    <div className="settings-contact-message__head">
-                      <div>
-                        {m.subject ? m.subject : "رسالة"}
-                        {isNew ? (
-                          <span className="settings-contact-message__new">
-                            • جديد
-                          </span>
-                        ) : null}
+                    <header className="settings-contact-v2-message__head">
+                      <div className="settings-contact-v2-message__title">
+                        <strong>{message.subject || "رسالة"}</strong>
+                        <div className="settings-contact-v2-message__badges">
+                          {isNew ? <span className="dsv2-badge dsv2-badge--gold">جديدة</span> : <span className="dsv2-badge dsv2-badge--success">مقروءة</span>}
+                          {messageDate ? <span className="dsv2-badge">{messageDate}</span> : null}
+                        </div>
                       </div>
 
                       {hasAdminPower ? (
                         <button
-                          className="exp-btn"
+                          className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
                           type="button"
-                          onClick={() => markRead(m.id)}
+                          onClick={() => void markRead(message.id)}
                           disabled={!isNew}
-                          title="تحديد كمقروء"
                         >
-                          مقروء
+                          تحديد كمقروء
                         </button>
                       ) : null}
+                    </header>
+
+                    <div className="settings-contact-v2-message__meta">
+                      {message.name ? <span><strong>الاسم</strong>{message.name}</span> : null}
+                      {message.phone ? <span><strong>الجوال</strong>{message.phone}</span> : null}
+                      {message.email ? <span><strong>البريد</strong>{message.email}</span> : null}
                     </div>
 
-                    <div className="settings-contact-message__meta">
-                      {m.name ? `الاسم: ${m.name}` : ""}
-                      {m.phone ? ` • الجوال: ${m.phone}` : ""}
-                      {m.email ? ` • الإيميل: ${m.email}` : ""}
-                    </div>
-
-                    <div className="settings-contact-message__body">
-                      {m.message || "—"}
-                    </div>
-                  </div>
+                    <p className="settings-contact-v2-message__body">{message.message || "—"}</p>
+                  </article>
                 );
               })}
             </div>
+          ) : (
+            <DashboardEmptyStateV2
+              title="لا توجد رسائل حالياً"
+              description="ستظهر رسائل العميلات هنا عند وصولها من نموذج التواصل."
+              compact
+              tone="gold"
+            />
           )}
-        </SettingsSection>
+        </section>
       ) : null}
 
-      <SettingsPageActions
-        note={
-          <>
-            {savedMsg ? <span className="settings-saved">{savedMsg}</span> : null}
-            {!hasAdminPower ? (
-              <div className="settings-note" style={{ marginTop: savedMsg ? 8 : 0 }}>
-                * للتعديل تحتاج صلاحية Owner / Admin. (الاستقبال/الموظفات عرض فقط)
-              </div>
-            ) : (
-              <div className="settings-footnote" style={{ marginTop: savedMsg ? 8 : 0 }}>
-                * احفظ بعد تعديل بيانات التواصل حتى تنعكس في صفحة الموقع فورًا.
-              </div>
-            )}
-          </>
-        }
-        actions={
-          <button
-            className={`exp-btn ${!hasAdminPower ? "is-disabled" : ""}`}
-            type="button"
-            disabled={!hasAdminPower || saving}
-            onClick={handleSave}
-            title={!hasAdminPower ? "تحتاج صلاحية Owner/Admin" : "حفظ بيانات التواصل"}
-          >
-            {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
-          </button>
-        }
-      />
-    </SettingsPageFrame>
-  );
-};
+      <section className="dsv2-card dsv2-card--padded settings-contact-v2-savebar">
+        <div className="settings-contact-v2-savebar__copy">
+          <strong>حفظ بيانات التواصل</strong>
+          <p>
+            {hasAdminPower
+              ? "احفظ بعد تعديل البيانات حتى تنعكس على الصفحات التي تعتمد على مستند settings/public."
+              : "الحساب الحالي يملك صلاحية العرض فقط ولا يستطيع تعديل بيانات التواصل."}
+          </p>
+          {savedMsg ? (
+            <span
+              className={`dsv2-badge ${saveFailed ? "dsv2-badge--danger" : "dsv2-badge--success"}`}
+              role={saveFailed ? "alert" : "status"}
+            >
+              {savedMsg}
+            </span>
+          ) : null}
+        </div>
 
-export default SettingsContact;
+        <button
+          className="dsv2-btn dsv2-btn--primary"
+          type="button"
+          disabled={!hasAdminPower || saving}
+          onClick={() => void handleSave()}
+          title={!hasAdminPower ? "تحتاج صلاحية settings.content.manage" : "حفظ بيانات التواصل"}
+        >
+          {saving ? "جاري الحفظ…" : "حفظ التغييرات"}
+        </button>
+      </section>
+    </main>
+  );
+}
