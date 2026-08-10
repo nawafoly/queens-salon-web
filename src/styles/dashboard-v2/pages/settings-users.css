@@ -122,10 +122,17 @@
 }
 
 .dashboard-v2 .settings-users-v2-route .dsv2-table-card {
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   border-color: var(--dsv2-border);
   border-radius: var(--dsv2-radius-lg);
   box-shadow: none;
+}
+
+.dashboard-v2 .settings-users-v2-route .dsv2-table-scroll {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .dashboard-v2 .settings-users-v2-route .dsv2-table tbody tr {
@@ -236,7 +243,106 @@
     border-radius: var(--dsv2-radius-lg);
   }
 
+  /* Mobile account cards: no horizontal table overflow. */
+  .dashboard-v2 .settings-users-v2-route .dsv2-table-card,
   .dashboard-v2 .settings-users-v2-route .dsv2-table-scroll {
-    min-width: 760px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table thead {
+    display: none;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table tbody {
+    display: grid;
+    width: 100%;
+    gap: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table tbody tr {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--dsv2-border);
+    border-radius: var(--dsv2-radius-md);
+    background: var(--dsv2-surface);
+    box-shadow: var(--dsv2-shadow-xs);
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table tbody tr:hover {
+    background: var(--dsv2-surface);
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td {
+    display: grid;
+    grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--dsv2-space-3);
+    width: 100%;
+    min-width: 0;
+    padding: var(--dsv2-space-3) var(--dsv2-space-4);
+    border-bottom: 1px solid var(--dsv2-divider);
+    text-align: start;
+    white-space: normal;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td::before {
+    color: var(--dsv2-muted);
+    font-size: 0.66rem;
+    font-weight: 900;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(1)::before {
+    content: "الحساب";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(2)::before {
+    content: "الدور";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(3)::before {
+    content: "الحالة";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(4)::before {
+    content: "الربط";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(5)::before {
+    content: "الصلاحيات";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:nth-child(6)::before {
+    content: "الإجراء";
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:last-child {
+    border-bottom: 0;
+    white-space: normal;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table td:last-child .dsv2-btn {
+    width: 100%;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table__primary,
+  .dashboard-v2 .settings-users-v2-route .dsv2-table__secondary {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-v2 .settings-users-v2-route .dsv2-table__secondary {
+    white-space: normal;
   }
 }
