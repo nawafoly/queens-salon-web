@@ -1,0 +1,392 @@
+/* =========================================================
+   Malikat Dashboard V2 — Contact settings
+   Canonical styling for /dashboard/settings/contact.
+========================================================= */
+
+.dashboard-v2 .settings-contact-v2-page {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-section-gap);
+  min-width: 0;
+  padding-block: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-block-end);
+  background: var(--dsv2-page);
+}
+
+.dashboard-v2 .settings-contact-v2-page > * {
+  width: 100%;
+  max-width: 1680px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+/* Hero */
+.dashboard-v2 .settings-contact-v2-hero {
+  isolation: isolate;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 148px;
+  gap: var(--dsv2-space-6);
+  padding: var(--dsv2-space-6);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(var(--dsv2-burgundy-rgb), 0.07) 0 86px, transparent 87px),
+    linear-gradient(118deg, var(--dsv2-gold-softer), transparent 44%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .settings-contact-v2-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-end: -46px;
+  inset-block-end: -82px;
+  width: 190px;
+  height: 190px;
+  border: 34px solid rgba(var(--dsv2-gold-rgb), 0.055);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.dashboard-v2 .settings-contact-v2-hero__content {
+  display: grid;
+  min-width: 0;
+  max-width: 860px;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-hero__content > .dsv2-badge {
+  width: max-content;
+}
+
+.dashboard-v2 .settings-contact-v2-hero__badges,
+.dashboard-v2 .settings-contact-v2-message-counts,
+.dashboard-v2 .settings-contact-v2-message__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-hero__badges {
+  margin-top: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-hero > .dsv2-btn {
+  flex: 0 0 auto;
+}
+
+/* Metrics */
+.dashboard-v2 .settings-contact-v2-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .settings-contact-v2-metrics .dsv2-metric-card {
+  min-height: 124px;
+}
+
+/* Main content */
+.dashboard-v2 .settings-contact-v2-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .settings-contact-v2-panel {
+  display: grid;
+  gap: var(--dsv2-space-5);
+  min-width: 0;
+}
+
+.dashboard-v2 .settings-contact-v2-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-section-head-gap);
+  padding-bottom: var(--dsv2-space-4);
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .settings-contact-v2-panel__head > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .settings-contact-v2-panel__eyebrow {
+  color: var(--dsv2-gold);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .settings-contact-v2-panel__head h2 {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.dashboard-v2 .settings-contact-v2-panel__head p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.dashboard-v2 .settings-contact-v2-panel__head > .dsv2-badge,
+.dashboard-v2 .settings-contact-v2-message-counts {
+  flex: 0 0 auto;
+}
+
+.dashboard-v2 .settings-contact-v2-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-field-gap);
+  min-width: 0;
+}
+
+.dashboard-v2 .settings-contact-v2-form-grid--location {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-v2 .settings-contact-v2-field--wide {
+  grid-column: 1 / -1;
+}
+
+.dashboard-v2 .settings-contact-v2-field__hint {
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.dashboard-v2 .settings-contact-v2-textarea {
+  min-height: 128px;
+  resize: vertical;
+  line-height: 1.8;
+}
+
+.dashboard-v2 .settings-contact-v2-form-grid .dsv2-field,
+.dashboard-v2 .settings-contact-v2-form-grid .dsv2-input {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Messages */
+.dashboard-v2 .settings-contact-v2-messages-panel {
+  overflow: hidden;
+}
+
+.dashboard-v2 .settings-contact-v2-messages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .settings-contact-v2-message {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-space-4);
+  min-width: 0;
+  padding: var(--dsv2-space-5);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface-soft);
+  transition:
+    transform var(--dsv2-transition-fast),
+    border-color var(--dsv2-transition-fast),
+    box-shadow var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .settings-contact-v2-message:hover {
+  transform: translateY(-1px);
+  border-color: var(--dsv2-border-gold);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .settings-contact-v2-message.is-new {
+  border-color: var(--dsv2-border-gold);
+  background:
+    linear-gradient(135deg, var(--dsv2-gold-softer), transparent 66%),
+    var(--dsv2-surface);
+}
+
+.dashboard-v2 .settings-contact-v2-message__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .settings-contact-v2-message__title {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-message__title > strong {
+  overflow-wrap: anywhere;
+  color: var(--dsv2-text);
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .settings-contact-v2-message__meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-message__meta > span {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-divider);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .settings-contact-v2-message__meta strong {
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .settings-contact-v2-message__body {
+  min-width: 0;
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Save bar */
+.dashboard-v2 .settings-contact-v2-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-5);
+  border-color: var(--dsv2-border-gold);
+  background:
+    linear-gradient(118deg, var(--dsv2-gold-softer), transparent 48%),
+    var(--dsv2-surface);
+}
+
+.dashboard-v2 .settings-contact-v2-savebar__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .settings-contact-v2-savebar__copy > strong {
+  color: var(--dsv2-text);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .settings-contact-v2-savebar__copy > p {
+  max-width: 800px;
+  margin: 0;
+  color: var(--dsv2-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.dashboard-v2 .settings-contact-v2-savebar__copy > .dsv2-badge {
+  width: max-content;
+  margin-top: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .settings-contact-v2-savebar > .dsv2-btn {
+  flex: 0 0 auto;
+}
+
+/* Responsive */
+@media (max-width: 1180px) {
+  .dashboard-v2 .settings-contact-v2-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .settings-contact-v2-messages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .dashboard-v2 .settings-contact-v2-hero {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .settings-contact-v2-hero > .dsv2-btn {
+    align-self: stretch;
+  }
+
+  .dashboard-v2 .settings-contact-v2-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-v2 .settings-contact-v2-page {
+    padding-block-start: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .settings-contact-v2-hero,
+  .dashboard-v2 .settings-contact-v2-panel,
+  .dashboard-v2 .settings-contact-v2-savebar {
+    padding: var(--dsv2-space-4);
+    border-radius: var(--dsv2-radius-lg);
+  }
+
+  .dashboard-v2 .settings-contact-v2-metrics,
+  .dashboard-v2 .settings-contact-v2-form-grid,
+  .dashboard-v2 .settings-contact-v2-message__meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .settings-contact-v2-panel__head,
+  .dashboard-v2 .settings-contact-v2-message__head,
+  .dashboard-v2 .settings-contact-v2-savebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .settings-contact-v2-panel__head > .dsv2-badge,
+  .dashboard-v2 .settings-contact-v2-message-counts,
+  .dashboard-v2 .settings-contact-v2-message__head > .dsv2-btn,
+  .dashboard-v2 .settings-contact-v2-savebar > .dsv2-btn {
+    width: 100%;
+  }
+
+  .dashboard-v2 .settings-contact-v2-message-counts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .settings-contact-v2-message__head > .dsv2-btn,
+  .dashboard-v2 .settings-contact-v2-savebar > .dsv2-btn {
+    justify-content: center;
+  }
+}
