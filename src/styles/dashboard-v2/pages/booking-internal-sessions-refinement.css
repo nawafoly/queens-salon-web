@@ -1,0 +1,232 @@
+/* =========================================================
+   Malikat Dashboard V2 — Internal booking / package sessions
+   Portal overlays, canonical controls and ledger table clarity.
+========================================================= */
+
+/* Session tables: stronger row/column separation without changing data flow. */
+.dashboard-v2.is-booking-internal-route .bk2-session-table-wrap {
+  border-color: var(--dsv2-border-strong);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table th {
+  border-block-end: 1px solid var(--dsv2-border-strong);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table td {
+  border-block-start: 0;
+  border-block-end: 1px solid var(--dsv2-border);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table th + th,
+.dashboard-v2.is-booking-internal-route .bk2-session-table td + td {
+  border-inline-start: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-session-table tbody tr:hover td {
+  background: var(--dsv2-gold-softer);
+}
+
+/* Portal drawer: the wallet is now a real viewport-level overlay. */
+.dashboard-v2 .bk2-session-wallet-drawer .dsv2-dialog__body {
+  padding: var(--dsv2-space-5);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages {
+  display: grid;
+  gap: var(--dsv2-space-3);
+  margin: 0;
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages strong,
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages small {
+  display: block;
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages small {
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages > article > b {
+  color: var(--dsv2-burgundy);
+  font-size: 1.2rem;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .bk2-session-wallet-drawer .bk2-session-wallet-packages > article > b small {
+  display: inline;
+  font-size: 0.7rem;
+}
+
+.dashboard-v2 .bk2-session-wallet-heading {
+  margin: var(--dsv2-space-6) 0 var(--dsv2-space-3);
+  color: var(--dsv2-text);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger {
+  display: grid;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  overflow: hidden;
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-space-4);
+  border: 0;
+  border-block-end: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger > div:last-child {
+  border-block-end: 0;
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger strong,
+.dashboard-v2 .bk2-session-wallet-ledger small {
+  display: block;
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger small {
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2 .bk2-session-wallet-ledger > div > b {
+  color: var(--dsv2-burgundy);
+  font-weight: 950;
+}
+
+/* Portal modals: no stacking with the dashboard header. */
+.dashboard-v2 .bk2-session-v2-modal {
+  overflow: hidden;
+}
+
+.dashboard-v2 .bk2-session-v2-modal .dsv2-dialog__body {
+  padding: var(--dsv2-space-5);
+  overflow-y: auto;
+}
+
+.dashboard-v2 .bk2-session-v2-modal .dsv2-dialog__foot {
+  padding: var(--dsv2-space-4) var(--dsv2-space-5);
+  border-block-start: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .bk2-session-v2-form {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  min-width: 0;
+}
+
+.dashboard-v2 .bk2-session-v2-modal .bk2-session-grant-grid {
+  margin-top: 0;
+}
+
+.dashboard-v2 .bk2-session-v2-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .bk2-session-v2-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.dashboard-v2 .bk2-session-v2-field > span,
+.dashboard-v2 .bk2-session-v2-modal .bk2-session-grant-grid label > span {
+  color: var(--dsv2-text-soft);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .bk2-session-v2-control,
+.dashboard-v2 .bk2-session-v2-control .dsv2-select-v2__trigger,
+.dashboard-v2 .bk2-session-v2-control .dsv2-date-v2__trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-v2 .bk2-session-v2-control .dsv2-select-v2__trigger,
+.dashboard-v2 .bk2-session-v2-control .dsv2-date-v2__trigger {
+  min-height: var(--dsv2-control-height-lg);
+  border-color: var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .bk2-session-v2-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: var(--dsv2-space-3);
+  width: 100%;
+}
+
+.dashboard-v2 .bk2-session-v2-actions .dsv2-btn {
+  width: 100%;
+  min-height: var(--dsv2-control-height-lg);
+}
+
+.dashboard-v2 .bk2-session-v2-modal .bk2-session-adjust-summary {
+  margin-top: 0;
+  border-color: var(--dsv2-border);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .bk2-session-v2-modal .bk2-session-adjust-operation {
+  margin-top: 0;
+}
+
+.dashboard-v2 .bk2-session-v2-modal .bk2-session-balance-preview {
+  margin-top: 0;
+}
+
+@media (max-width: 680px) {
+  .dashboard-v2 .bk2-session-v2-modal .dsv2-dialog__body {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .bk2-session-v2-modal .dsv2-dialog__foot {
+    padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  }
+
+  .dashboard-v2 .bk2-session-v2-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2 .bk2-session-v2-field.is-wide {
+    grid-column: auto;
+  }
+
+  .dashboard-v2 .bk2-session-wallet-drawer .dsv2-dialog__body {
+    padding: var(--dsv2-space-4);
+  }
+}
