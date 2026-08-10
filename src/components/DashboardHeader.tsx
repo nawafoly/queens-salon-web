@@ -1,8 +1,16 @@
-import type { ReactNode } from "react";
+import {
+  Children,
+  Fragment,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserTie } from "@fortawesome/free-solid-svg-icons";
 
+import EmployeeNotificationBellMenu from "./EmployeeNotificationBellMenu";
 import "../styles/DashboardHeader.css";
 
 type DashboardHeaderTheme = "dashboard" | "admin" | "employee";
@@ -25,6 +33,52 @@ function joinClassNames(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+function elementClassName(node: ReactNode) {
+  if (!isValidElement(node)) return "";
+  return typeof (node.props as { className?: unknown }).className === "string"
+    ? String((node.props as { className?: string }).className)
+    : "";
+}
+
+function isLegacyEmployeeNotificationAction(node: ReactNode) {
+  return elementClassName(node)
+    .split(/\s+/)
+    .includes("employee-header-notification");
+}
+
+function removeLegacyEmployeeNotificationAction(node: ReactNode): ReactNode {
+  if (!isValidElement(node)) return node;
+  if (isLegacyEmployeeNotificationAction(node)) return null;
+
+  if (node.type === Fragment) {
+    const element = node as ReactElement<{ children?: ReactNode }>;
+    return cloneElement(
+      element,
+      undefined,
+      Children.map(element.props.children, removeLegacyEmployeeNotificationAction)
+    );
+  }
+
+  return node;
+}
+
+function extractEmployeeNotificationUnreadCount(node: ReactNode): number {
+  if (!isValidElement(node)) return 0;
+  const element = node as ReactElement<{ className?: string; children?: ReactNode }>;
+  const classes = String(element.props.className || "").split(/\s+/);
+
+  if (classes.includes("employee-header-notification__badge")) {
+    const raw = Children.toArray(element.props.children).join("").trim();
+    const count = Number(raw.replace(/[^0-9]/g, ""));
+    return Number.isFinite(count) ? count : 0;
+  }
+
+  return Children.toArray(element.props.children).reduce(
+    (max, child) => Math.max(max, extractEmployeeNotificationUnreadCount(child)),
+    0
+  );
+}
+
 export default function DashboardHeader({
   title,
   subtitle,
@@ -43,6 +97,13 @@ export default function DashboardHeader({
   const isEmployeePortal = location.pathname.startsWith("/employee");
   const isProfilePage = location.pathname === "/employee/overview";
   const shouldShowProfileButton = showProfileButton && !isEmployeePortal;
+  const shouldUseEmployeeNotificationMenu = theme === "employee" && isEmployeePortal;
+  const employeeUnreadCount = shouldUseEmployeeNotificationMenu
+    ? extractEmployeeNotificationUnreadCount(actions)
+    : 0;
+  const visibleActions = shouldUseEmployeeNotificationMenu
+    ? removeLegacyEmployeeNotificationAction(actions)
+    : actions;
 
   const handleProfileClick = () => {
     if (!isProfilePage) {
@@ -72,7 +133,7 @@ export default function DashboardHeader({
       </div>
 
       <div className="dashboard-header__meta dash-topbar-right">
-        {shouldShowProfileButton || actions ? (
+        {shouldShowProfileButton || visibleActions || shouldUseEmployeeNotificationMenu ? (
           <div
             className={joinClassNames(
               "dashboard-header__actions",
@@ -93,7 +154,10 @@ export default function DashboardHeader({
               </button>
             ) : null}
 
-            {actions}
+            {visibleActions}
+            {shouldUseEmployeeNotificationMenu ? (
+              <EmployeeNotificationBellMenu initialUnreadCount={employeeUnreadCount} />
+            ) : null}
           </div>
         ) : null}
       </div>
