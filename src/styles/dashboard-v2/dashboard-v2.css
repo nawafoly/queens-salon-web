@@ -26,6 +26,7 @@
 @import "./portal-sidebar.css";
 @import "./portal-shell-compat.css";
 @import "./portal-sidebar-scroll-fix.css";
+@import "../AdminHrEmbeddedDashboardFix.css";
 @import "./pages/design-system-preview.css";
 @import "./pages/overview.css";
 @import "./pages/employees.css";
@@ -60,6 +61,7 @@
 @import "./pages/booking-internal-controls-refinement.css";
 @import "./pages/booking-internal-sessions-refinement.css";
 @import "./pages/hr-overview.css";
+@import "./pages/hr-overview-final.css";
 @import "./pages/employee-portal-profile.css";
 @import "./pages/employee-portal-overview.css";
 @import "./pages/employee-portal-overview-micro-fixes.css";
