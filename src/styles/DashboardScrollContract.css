@@ -1,0 +1,92 @@
+/*
+ * Malikat Dashboard — single browser scroll contract
+ *
+ * The dashboard is RTL, but the browser/document scroll owner remains LTR so
+ * the vertical scrollbar is consistently rendered on the right. Dashboard
+ * content itself stays RTL.
+ *
+ * Structural dashboard/embedded-HR wrappers must never become independent
+ * vertical scroll owners. Component-level scrolling is still allowed for
+ * intentional surfaces such as modals, popovers, notification lists and
+ * horizontal table wrappers.
+ */
+
+html:has(body .dashboard-page) {
+  direction: ltr !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+body:has(.dashboard-page),
+body:has(.dashboard-page) #root {
+  direction: rtl;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100% !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+body:has(.dashboard-page) .dashboard-skin.dashboard-page,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page > .container-fluid,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page > .container-fluid > .row,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .dashboard-main,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .dashboard-inner {
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+  overscroll-behavior-y: auto !important;
+}
+
+body:has(.dashboard-page) .dashboard-skin.dashboard-page {
+  direction: rtl;
+  min-height: 100vh !important;
+  overflow-x: clip !important;
+}
+
+/* Migrated page roots participate in the single browser scroll. */
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .dashboard-inner > .dsv2-page,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .dashboard-inner > .enterprise-workspace-v2,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .dashboard-inner > .hr-shell--embedded,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .hr-shell--embedded,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .hr-shell--embedded > .hr-shell-main,
+body:has(.dashboard-page) .dashboard-skin.dashboard-page .hr-shell--embedded .hr-stage {
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+  overscroll-behavior-y: auto !important;
+}
+
+/* Desktop: reserve one stable, visible scrollbar on the right. */
+@media (min-width: 821px) {
+  html:has(body .dashboard-page) {
+    overflow-y: scroll !important;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(89, 4, 27, 0.58) rgba(15, 23, 42, 0.06);
+  }
+
+  html:has(body .dashboard-page)::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  html:has(body .dashboard-page)::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.05);
+  }
+
+  html:has(body .dashboard-page)::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgba(89, 4, 27, 0.58);
+    background-clip: padding-box;
+  }
+
+  html:has(body .dashboard-page)::-webkit-scrollbar-thumb:hover {
+    background: rgba(89, 4, 27, 0.74);
+    background-clip: padding-box;
+  }
+}
