@@ -1,0 +1,256 @@
+/* =========================================================
+   Employee portal — notification bell dropdown
+========================================================= */
+
+.dashboard-v2 .employee-notification-bell-v2 {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-sm);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted);
+  box-shadow: var(--dsv2-shadow-xs);
+  cursor: pointer;
+}
+
+.dashboard-v2 .employee-notification-bell-v2:hover,
+.dashboard-v2 .employee-notification-bell-v2[aria-expanded="true"] {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .employee-notification-bell-v2 .employee-header-notification__badge {
+  position: absolute;
+  inset-block-start: -6px;
+  inset-inline-end: -5px;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  padding-inline: 4px;
+  border: 2px solid var(--dsv2-surface);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-burgundy);
+  color: var(--dsv2-on-dark);
+  font-size: 0.46rem;
+  font-weight: 950;
+}
+
+.employee-notification-popover-v2 {
+  position: fixed;
+  z-index: 2200;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-lg);
+  color: var(--dsv2-text);
+  direction: rtl;
+}
+
+.employee-notification-popover-v2__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-space-4);
+  border-block-end: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface-soft);
+}
+
+.employee-notification-popover-v2__header > div {
+  display: grid;
+  gap: var(--dsv2-space-1);
+  min-width: 0;
+}
+
+.employee-notification-popover-v2__header span {
+  color: var(--dsv2-gold);
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.employee-notification-popover-v2__header strong {
+  color: var(--dsv2-text);
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.employee-notification-popover-v2__header em {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--dsv2-space-1) var(--dsv2-space-2);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted);
+  font-size: 0.52rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.employee-notification-popover-v2__list {
+  display: grid;
+  max-height: min(440px, calc(100vh - 190px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.employee-notification-popover-v2__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 8px;
+  align-items: start;
+  gap: var(--dsv2-space-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 0;
+  border-block-end: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text);
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.employee-notification-popover-v2__item:last-child {
+  border-block-end: 0;
+}
+
+.employee-notification-popover-v2__item:hover {
+  background: var(--dsv2-surface-soft);
+}
+
+.employee-notification-popover-v2__item.is-unread {
+  background: var(--dsv2-gold-softer);
+}
+
+.employee-notification-popover-v2__item:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.employee-notification-popover-v2__tone {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--dsv2-space-2);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
+  font-size: 0.5rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.employee-notification-popover-v2__tone.is-success {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.employee-notification-popover-v2__tone.is-warning {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-warning);
+}
+
+.employee-notification-popover-v2__tone.is-danger {
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+}
+
+.employee-notification-popover-v2__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.employee-notification-popover-v2__copy strong {
+  overflow: hidden;
+  color: var(--dsv2-text);
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-notification-popover-v2__copy small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dsv2-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.employee-notification-popover-v2__copy time {
+  color: var(--dsv2-muted);
+  font-size: 0.5rem;
+  font-weight: 750;
+}
+
+.employee-notification-popover-v2__item > i {
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsv2-gold);
+  box-shadow: 0 0 0 4px var(--dsv2-gold-soft);
+}
+
+.employee-notification-popover-v2__state {
+  padding: var(--dsv2-space-6) var(--dsv2-space-4);
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.employee-notification-popover-v2__all {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  padding-inline: var(--dsv2-space-4);
+  border: 0;
+  border-block-start: 1px solid var(--dsv2-divider);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text);
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-notification-popover-v2__all:hover {
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-gold);
+}
+
+@media (max-width: 560px) {
+  .employee-notification-popover-v2 {
+    border-radius: var(--dsv2-radius-md);
+  }
+
+  .employee-notification-popover-v2__list {
+    max-height: min(420px, calc(100vh - 160px));
+  }
+}
