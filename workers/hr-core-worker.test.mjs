@@ -70,6 +70,17 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   }, actor);
   assert.equal(employee.employment.title, 'Stylist');
   assert.equal(employee.employment.base_salary_halalas, 450000);
+  assert.equal(employee.employment.leave_balance, 21);
+
+  const partialUpdate = await upsertHrEmployee(db, 'main', {
+    id: 'emp-1',
+    name: 'Employee 1 Updated',
+    employment: { employmentStatus: 'active' },
+  }, actor);
+  assert.equal(partialUpdate.name, 'Employee 1 Updated');
+  assert.equal(partialUpdate.employment.title, 'Stylist');
+  assert.equal(partialUpdate.employment.base_salary_halalas, 450000);
+  assert.equal(partialUpdate.employment.leave_balance, 21);
 
   const shiftTemplate = await saveShiftTemplate(db, 'main', {
     id: 'shift-day',
