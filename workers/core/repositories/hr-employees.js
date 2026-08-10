@@ -127,18 +127,30 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   const id = requiredId(data.id || data.employeeId || generatedId('employee'));
   const existing = await dbFirst(
     db,
-    'SELECT id, created_at FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
+    'SELECT * FROM employee_profiles WHERE salon_id = ? AND id = ? LIMIT 1',
     [salonId, id]
   );
+  const existingEmployment = existing
+    ? await employmentFor(db, salonId, id)
+    : null;
+  const personal = data.personal || {};
+  const requestedProfileStatus = data.status ?? data.employment?.status;
   const profile = {
     id,
     salon_id: salonId,
-    firebase_uid: optionalText(data.firebaseUid || data.employeeUid || data.uid) || null,
-    name: requiredText(data.name || data.personal?.name, 'name'),
-    email: optionalText(data.email || data.personal?.email) || null,
-    phone_normalized: normalizePhone(data.phone || data.personal?.phone) || null,
-    avatar_file_id: optionalText(data.avatarFileId || data.avatar_file_id) || null,
-    status: cleanText(data.status || data.employment?.status || 'active'),
+    firebase_uid: optionalText(
+      data.firebaseUid ?? data.employeeUid ?? data.uid ?? existing?.firebase_uid
+    ) || null,
+    name: requiredText(data.name ?? personal.name ?? existing?.name, 'name'),
+    email: optionalText(data.email ?? personal.email ?? existing?.email) || null,
+    phone_normalized:
+      data.phone === undefined && personal.phone === undefined
+        ? (existing?.phone_normalized || null)
+        : (normalizePhone(data.phone ?? personal.phone) || null),
+    avatar_file_id: optionalText(
+      data.avatarFileId ?? data.avatar_file_id ?? existing?.avatar_file_id
+    ) || null,
+    status: cleanText(requestedProfileStatus ?? existing?.status ?? 'active') || 'active',
     created_at: existing?.created_at || now,
     updated_at: now,
   };
@@ -146,54 +158,152 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   const employment = {
     salon_id: salonId,
     employee_id: id,
-    title: optionalText(employmentInput.title) || null,
-    job_title: optionalText(employmentInput.jobTitle || employmentInput.job_title) || null,
-    department: optionalText(employmentInput.department) || null,
-    employment_source: optionalText(employmentInput.employmentSource || employmentInput.employment_source) || 'salon',
-    partner_id: optionalText(employmentInput.partnerId || employmentInput.partner_id) || null,
-    partner_member_id: optionalText(employmentInput.partnerMemberId || employmentInput.partner_member_id) || null,
-    contract_id: optionalText(employmentInput.contractId || employmentInput.contract_id) || null,
-    start_date: optionalText(employmentInput.startDate || employmentInput.start_date) || null,
-    leave_balance: Number(employmentInput.leaveBalance ?? employmentInput.leave_balance ?? 0) || 0,
-    base_salary_halalas: moneyHalalas(employmentInput.baseSalaryHalalas ?? employmentInput.base_salary_halalas ?? employmentInput.baseSalary, 'baseSalary'),
-    housing_allowance_halalas: moneyHalalas(employmentInput.housingAllowanceHalalas ?? employmentInput.housing_allowance_halalas ?? employmentInput.housingAllowance, 'housingAllowance'),
-    transportation_allowance_halalas: moneyHalalas(employmentInput.transportationAllowanceHalalas ?? employmentInput.transportation_allowance_halalas ?? employmentInput.transportationAllowance, 'transportationAllowance'),
-    other_allowances_halalas: moneyHalalas(employmentInput.otherAllowancesHalalas ?? employmentInput.other_allowances_halalas ?? employmentInput.otherAllowances ?? employmentInput.allowances, 'otherAllowances'),
-    expected_work_days: employmentInput.expectedWorkDays ?? employmentInput.expected_work_days ?? null,
-    expected_work_hours: employmentInput.expectedWorkHours ?? employmentInput.expected_work_hours ?? null,
+    title: optionalText(employmentInput.title ?? existingEmployment?.title) || null,
+    job_title: optionalText(
+      employmentInput.jobTitle ?? employmentInput.job_title ?? existingEmployment?.job_title
+    ) || null,
+    department: optionalText(employmentInput.department ?? existingEmployment?.department) || null,
+    employment_source: optionalText(
+      employmentInput.employmentSource ??
+        employmentInput.employment_source ??
+        existingEmployment?.employment_source ??
+        'salon'
+    ) || 'salon',
+    partner_id: optionalText(
+      employmentInput.partnerId ?? employmentInput.partner_id ?? existingEmployment?.partner_id
+    ) || null,
+    partner_member_id: optionalText(
+      employmentInput.partnerMemberId ??
+        employmentInput.partner_member_id ??
+        existingEmployment?.partner_member_id
+    ) || null,
+    contract_id: optionalText(
+      employmentInput.contractId ?? employmentInput.contract_id ?? existingEmployment?.contract_id
+    ) || null,
+    start_date: optionalText(
+      employmentInput.startDate ?? employmentInput.start_date ?? existingEmployment?.start_date
+    ) || null,
+    leave_balance: Number(
+      employmentInput.leaveBalance ??
+        employmentInput.leave_balance ??
+        existingEmployment?.leave_balance ??
+        0
+    ) || 0,
+    base_salary_halalas: moneyHalalas(
+      employmentInput.baseSalaryHalalas ??
+        employmentInput.base_salary_halalas ??
+        employmentInput.baseSalary ??
+        existingEmployment?.base_salary_halalas,
+      'baseSalary'
+    ),
+    housing_allowance_halalas: moneyHalalas(
+      employmentInput.housingAllowanceHalalas ??
+        employmentInput.housing_allowance_halalas ??
+        employmentInput.housingAllowance ??
+        existingEmployment?.housing_allowance_halalas,
+      'housingAllowance'
+    ),
+    transportation_allowance_halalas: moneyHalalas(
+      employmentInput.transportationAllowanceHalalas ??
+        employmentInput.transportation_allowance_halalas ??
+        employmentInput.transportationAllowance ??
+        existingEmployment?.transportation_allowance_halalas,
+      'transportationAllowance'
+    ),
+    other_allowances_halalas: moneyHalalas(
+      employmentInput.otherAllowancesHalalas ??
+        employmentInput.other_allowances_halalas ??
+        employmentInput.otherAllowances ??
+        employmentInput.allowances ??
+        existingEmployment?.other_allowances_halalas,
+      'otherAllowances'
+    ),
+    expected_work_days:
+      employmentInput.expectedWorkDays ??
+      employmentInput.expected_work_days ??
+      existingEmployment?.expected_work_days ??
+      null,
+    expected_work_hours:
+      employmentInput.expectedWorkHours ??
+      employmentInput.expected_work_hours ??
+      existingEmployment?.expected_work_hours ??
+      null,
     daily_scheduled_hours: optionalNumber(
       employmentInput.dailyScheduledHours ??
         employmentInput.daily_scheduled_hours ??
         employmentInput.expectedDailyHours ??
-        employmentInput.expected_daily_hours,
+        employmentInput.expected_daily_hours ??
+        existingEmployment?.daily_scheduled_hours,
       'dailyScheduledHours'
     ),
     overtime_enabled: activeFlag(
       employmentInput.overtimeEnabled ??
         employmentInput.overtime_enabled ??
         employmentInput.payrollOvertimeEnabled ??
-        employmentInput.payroll_overtime_enabled,
+        employmentInput.payroll_overtime_enabled ??
+        existingEmployment?.overtime_enabled,
       0
     ),
     overtime_multiplier: positiveNumber(
-      employmentInput.overtimeMultiplier ?? employmentInput.overtime_multiplier,
+      employmentInput.overtimeMultiplier ??
+        employmentInput.overtime_multiplier ??
+        existingEmployment?.overtime_multiplier,
       1.5,
       'overtimeMultiplier'
     ),
     payroll_deduction_method: payrollDeductionMethod(
-      employmentInput.payrollDeductionMethod ?? employmentInput.payroll_deduction_method
+      employmentInput.payrollDeductionMethod ??
+        employmentInput.payroll_deduction_method ??
+        existingEmployment?.payroll_deduction_method ??
+        'hourly'
     ),
-    shift_start_time: optionalText(employmentInput.shiftStartTime || employmentInput.shift_start_time) || null,
-    shift_end_time: optionalText(employmentInput.shiftEndTime || employmentInput.shift_end_time) || null,
-    weekly_off_days_json: jsonArray(employmentInput.weeklyOffDays || employmentInput.weekly_off_days_json),
-    allowed_zone_ids_json: jsonArray(employmentInput.allowedZoneIds || employmentInput.allowed_zone_ids_json),
-    employment_status: cleanText(employmentInput.employmentStatus || employmentInput.employment_status || employmentInput.status || 'active'),
-    employee_code: optionalText(employmentInput.employeeCode || employmentInput.employee_code) || null,
-    fingerprint_number: optionalText(employmentInput.fingerprintNumber || employmentInput.fingerprint_number) || null,
-    admin_notes: optionalText(employmentInput.adminNotes || employmentInput.admin_notes) || null,
-    updated_by_uid: optionalText(actor.uid) || null,
-    updated_by_email: optionalText(actor.email) || null,
-    created_at: now,
+    shift_start_time: optionalText(
+      employmentInput.shiftStartTime ??
+        employmentInput.shift_start_time ??
+        existingEmployment?.shift_start_time
+    ) || null,
+    shift_end_time: optionalText(
+      employmentInput.shiftEndTime ??
+        employmentInput.shift_end_time ??
+        existingEmployment?.shift_end_time
+    ) || null,
+    weekly_off_days_json: jsonArray(
+      employmentInput.weeklyOffDays ??
+        employmentInput.weekly_off_days_json ??
+        existingEmployment?.weekly_off_days_json ??
+        []
+    ),
+    allowed_zone_ids_json: jsonArray(
+      employmentInput.allowedZoneIds ??
+        employmentInput.allowed_zone_ids_json ??
+        existingEmployment?.allowed_zone_ids_json ??
+        []
+    ),
+    employment_status: cleanText(
+      employmentInput.employmentStatus ??
+        employmentInput.employment_status ??
+        employmentInput.status ??
+        existingEmployment?.employment_status ??
+        'active'
+    ) || 'active',
+    employee_code: optionalText(
+      employmentInput.employeeCode ??
+        employmentInput.employee_code ??
+        existingEmployment?.employee_code
+    ) || null,
+    fingerprint_number: optionalText(
+      employmentInput.fingerprintNumber ??
+        employmentInput.fingerprint_number ??
+        existingEmployment?.fingerprint_number
+    ) || null,
+    admin_notes: optionalText(
+      employmentInput.adminNotes ??
+        employmentInput.admin_notes ??
+        existingEmployment?.admin_notes
+    ) || null,
+    updated_by_uid: optionalText(actor.uid) || existingEmployment?.updated_by_uid || null,
+    updated_by_email: optionalText(actor.email) || existingEmployment?.updated_by_email || null,
+    created_at: existingEmployment?.created_at || now,
     updated_at: now,
   };
 
