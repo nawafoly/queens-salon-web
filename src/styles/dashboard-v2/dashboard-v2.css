@@ -67,3 +67,6 @@
 @import "./pages/employee-portal-overview.css";
 @import "./pages/employee-portal-overview-micro-fixes.css";
 @import "./pages/dashboard-mobile-more-groups.css";
+
+/* Final dashboard-wide structural contract: one browser vertical scroll. */
+@import "../DashboardScrollContract.css";
