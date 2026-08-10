@@ -1,4 +1,4 @@
-﻿import { createPortal } from "react-dom";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -7,7 +7,6 @@ import {
   faCheck,
   faClock,
   faCommentDots,
-  faFilter,
   faInbox,
   faListCheck,
   faLock,
@@ -21,6 +20,13 @@ import {
 import type { HrSession } from "./shared";
 import { CoreFilesService } from "../../services/CoreFilesService";
 import { usePermissions } from "../../security/PermissionContext";
+import {
+  DashboardDatePickerV2,
+  DashboardEmptyStateV2,
+  DashboardFieldV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../../components/dashboard-v2";
 import {
   addEmployeeRequestComment,
   employeeRequestAction,
@@ -67,6 +73,14 @@ type DialogState = {
 
 const TYPES = Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[];
 const STATUSES = Object.keys(EMPLOYEE_REQUEST_STATUS_LABELS) as EmployeeRequestStatus[];
+const TYPE_OPTIONS = [
+  { value: "", label: "كل الأنواع" },
+  ...TYPES.map((item) => ({ value: item, label: EMPLOYEE_REQUEST_TYPE_LABELS[item] })),
+];
+const STATUS_OPTIONS = [
+  { value: "", label: "كل الحالات" },
+  ...STATUSES.map((item) => ({ value: item, label: EMPLOYEE_REQUEST_STATUS_LABELS[item] })),
+];
 const HIDDEN_TIMELINE_EVENTS = new Set(["comment_added", "internal_note_added"]);
 const MESSAGE_EVENT_TYPES = new Set(["request_info", "request-info"]);
 
@@ -483,7 +497,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
     if (!dialog || !selected) return null;
     const copy = ACTION_DIALOG_COPY[dialog.kind];
     return createPortal(
-      <div className="employee-request-action-modal" role="dialog" aria-modal="true" aria-labelledby="employee-request-action-title">
+      <div className="employee-request-action-modal dashboard-v2" role="dialog" aria-modal="true" aria-labelledby="employee-request-action-title">
         <button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={closeDialog} />
         <section className="employee-request-action-modal__panel">
           <header>
@@ -603,7 +617,11 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
                   <>
                     <label className="employee-request-action-field">
                       <span>آخر يوم عمل الفعلي</span>
-                      <input type="date" value={dialog.finalWorkingDay} onChange={(event) => setDialog({ ...dialog, finalWorkingDay: event.target.value })} />
+                      <DashboardDatePickerV2
+                        value={dialog.finalWorkingDay}
+                        onChange={(value) => setDialog({ ...dialog, finalWorkingDay: value })}
+                        clearable={false}
+                      />
                     </label>
                     <label className="employee-request-action-confirmation">
                       <input type="checkbox" checked={dialog.confirmClearance} onChange={(event) => setDialog({ ...dialog, confirmClearance: event.target.checked })} />
@@ -665,12 +683,12 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
       );
 
     return (
-      <section className="admin-employee-request-detail">
-        <header>
-          <button type="button" onClick={() => setSelectedId("")}>
+      <section className="dsv2-page admin-employee-request-detail admin-employee-request-detail-v2">
+        <header className="admin-request-detail-hero-v2">
+          <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => setSelectedId("")}>
             <FontAwesomeIcon icon={faArrowRight} /> العودة للمركز
           </button>
-          <div>
+          <div className="admin-request-detail-hero-v2__copy">
             <small>{selected.request_number}</small>
             <h1>{selected.title}</h1>
             <span className={`employee-request-status is-${statusTone(selected.status)}`}>
@@ -679,15 +697,15 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
           </div>
         </header>
 
-        {error ? <div className="employee-request-error">{error}</div> : null}
+        {error ? <div className="admin-request-error-v2"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
         {selected.execution_error ? (
-          <div className="employee-request-decision is-danger">
+          <div className="admin-request-decision-v2">
             <strong>تعذر تنفيذ الطلب</strong>
             <p>{employeeRequestExecutionErrorLabel(selected.execution_error)}</p>
           </div>
         ) : null}
         {selected.status === "cancelled" ? (
-          <div className="employee-request-decision is-closed">
+          <div className="admin-request-decision-v2 is-closed">
             <strong>تم إغلاق الطلب</strong>
             <p>{closureEvent?.note || "أُغلق الطلب إداريًا وتوقفت إجراءاته الحالية."}</p>
             <div className="employee-request-closed-meta">
@@ -698,7 +716,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
         ) : null}
 
         <div className="admin-employee-request-detail__layout">
-          <article className="admin-employee-request-panel">
+          <article className="dsv2-card admin-employee-request-panel">
             <h2>بيانات الطلب</h2>
             <dl>
               <div><dt>الموظفة</dt><dd>{selected.employee_name_snapshot || selected.employee_id}</dd></div>
@@ -719,7 +737,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
             </div>
           </article>
 
-          <article className="admin-employee-request-panel">
+          <article className="dsv2-card admin-employee-request-panel">
             <h2>الإجراءات</h2>
             <div className="admin-request-actions">
               {can("employee_requests.assign") && !["completed", "rejected", "cancelled"].includes(selected.status) ? (
@@ -786,7 +804,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
           </article>
         </div>
 
-        <article className="employee-request-attachments">
+        <article className="dsv2-card employee-request-attachments">
           <h3>المرفقات</h3>
           {(selected.attachments || []).length ? (
             <div className="employee-request-attachments__list">
@@ -803,12 +821,12 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
               ))}
             </div>
           ) : (
-            <p className="employee-requests-empty-text">لا توجد مرفقات.</p>
+            <DashboardEmptyStateV2 compact title="لا توجد مرفقات" description="لا توجد ملفات مرتبطة بهذا الطلب حاليًا." />
           )}
         </article>
 
         <div className="employee-request-communication-grid">
-          <article className="employee-request-conversation">
+          <article className="dsv2-card employee-request-conversation">
             <header>
               <div>
                 <h3><FontAwesomeIcon icon={faCommentDots} /> محادثة الطلب</h3>
@@ -843,7 +861,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
               />
               <div>
                 {hasPermission("employee_requests.internal_notes") ? (
-                  <label className="employee-request-internal-toggle">
+                  <label className="employee-request-internal-toggle admin-request-internal-toggle">
                     <input type="checkbox" checked={internal} onChange={(event) => setInternal(event.target.checked)} />
                     <span><FontAwesomeIcon icon={faLock} /> ملاحظة داخلية</span>
                   </label>
@@ -855,7 +873,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
             </div>
           </article>
 
-          <article className="employee-request-timeline employee-request-timeline--operations">
+          <article className="dsv2-card employee-request-timeline employee-request-timeline--operations">
             <header>
               <h3><FontAwesomeIcon icon={faListCheck} /> سجل الإجراءات</h3>
               <p>انتقالات الحالة والقرارات والتنفيذ فقط.</p>
@@ -880,51 +898,128 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
   }
 
   return (
-    <div className="admin-employee-requests-page">
-      <header className="admin-employee-requests-hero">
-        <div><small>الموارد البشرية</small><h1>مركز طلبات الموظفات</h1><p>الاستلام والمراجعة والقرار والتنفيذ مع سجل تدقيق كامل.</p></div>
-        <button type="button" onClick={() => void loadList()} disabled={loading}><FontAwesomeIcon icon={faRotate} spin={loading} /> تحديث</button>
-      </header>
-      <div className="admin-request-stats">
+    <div className="dsv2-page admin-employee-requests-page admin-employee-requests-v2-page">
+      <section className="dsv2-card admin-employee-requests-hero">
+        <div className="admin-employee-requests-hero__copy">
+          <span className="dsv2-badge dsv2-badge--gold">الموارد البشرية</span>
+          <h1>مركز طلبات الموظفات</h1>
+          <p>الاستلام والمراجعة والقرار والتنفيذ مع سجل تدقيق كامل من مساحة إدارية موحدة.</p>
+        </div>
+        <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => void loadList()} disabled={loading}>
+          <FontAwesomeIcon icon={faRotate} spin={loading} /> تحديث
+        </button>
+      </section>
+
+      <section className="admin-request-stats-v2" aria-label="ملخص حالات الطلبات">
         {Object.entries(counts).map(([key, value]) => (
-          <button type="button" key={key} className={status === key ? "is-selected" : ""} onClick={() => setStatus(key as EmployeeRequestStatus)}>
-            <span>{EMPLOYEE_REQUEST_STATUS_LABELS[key as EmployeeRequestStatus]}</span><strong>{value}</strong>
+          <button
+            type="button"
+            key={key}
+            className={`admin-request-stat-v2 ${status === key ? "is-selected" : ""}`}
+            onClick={() => setStatus(key as EmployeeRequestStatus)}
+          >
+            <span>{EMPLOYEE_REQUEST_STATUS_LABELS[key as EmployeeRequestStatus]}</span>
+            <strong>{value}</strong>
           </button>
         ))}
-        <button type="button" className={`is-overdue ${overdueOnly ? "is-selected" : ""}`} onClick={() => setOverdueOnly((value) => !value)}>
-          <span>متأخر</span><strong>{overdue}</strong>
+        <button
+          type="button"
+          className={`admin-request-stat-v2 is-overdue ${overdueOnly ? "is-selected" : ""}`}
+          onClick={() => setOverdueOnly((value) => !value)}
+        >
+          <span>متأخر</span>
+          <strong>{overdue}</strong>
         </button>
-      </div>
-      <div className="employee-requests-filters admin-employee-requests-filters">
-        <span><FontAwesomeIcon icon={faFilter} /> الفلاتر</span>
-        <select value={type} onChange={(event) => setType(event.target.value as EmployeeRequestType | "")}><option value="">كل الأنواع</option>{TYPES.map((item) => <option key={item} value={item}>{EMPLOYEE_REQUEST_TYPE_LABELS[item]}</option>)}</select>
-        <select value={status} onChange={(event) => setStatus(event.target.value as EmployeeRequestStatus | "")}><option value="">كل الحالات</option>{STATUSES.map((item) => <option key={item} value={item}>{EMPLOYEE_REQUEST_STATUS_LABELS[item]}</option>)}</select>
-        <input value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} placeholder="معرف الموظفة" />
-        <input value={assignedToUid} onChange={(event) => setAssignedToUid(event.target.value)} placeholder="UID المسؤول" />
-        <input value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="الفرع أو الموقع" />
-        <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="من تاريخ" />
-        <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="إلى تاريخ" />
-        <label className="employee-request-check"><input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} /><span>المتأخرة فقط</span></label>
-      </div>
-      {error ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
-      <div className="admin-request-table">
-        <div className="admin-request-table__head"><span>رقم الطلب</span><span>الموظفة</span><span>النوع</span><span>الحالة</span><span>الأولوية</span><span>المسؤول</span><span>العمر</span><span>آخر تحديث</span></div>
-        {loading ? <div className="employee-requests-loading">جاري التحميل...</div> : rows.map((row) => {
-          const ageDays = Math.max(0, Math.floor((Date.now() - Date.parse(row.submitted_at)) / 86400000));
-          return (
-            <button type="button" key={row.id} onClick={() => setSelectedId(row.id)}>
-              <span>{row.request_number}</span>
-              <span>{row.employee_name_snapshot || row.employee_id}</span>
-              <span>{EMPLOYEE_REQUEST_TYPE_LABELS[row.request_type]}</span>
-              <span className={`employee-request-status is-${statusTone(row.status)}`}>{EMPLOYEE_REQUEST_STATUS_LABELS[row.status]}</span>
-              <span>{EMPLOYEE_REQUEST_PRIORITY_LABELS[row.priority] || row.priority}</span>
-              <span>{row.assigned_to_name || "غير معيّن"}</span>
-              <span>{ageDays} يوم</span>
-              <span>{formatDateTime(row.updated_at)}</span>
-            </button>
-          );
-        })}
-      </div>
+      </section>
+
+      <section className="dsv2-card admin-employee-requests-filter-card">
+        <header className="admin-employee-requests-filter-head">
+          <div>
+            <span className="dsv2-badge dsv2-badge--neutral">الفلاتر</span>
+            <h2>تصفية الطلبات</h2>
+            <p>حدّد النوع والحالة والموظفة والمسؤول والفترة للوصول للطلب المطلوب بسرعة.</p>
+          </div>
+          <span className="dsv2-badge dsv2-badge--gold">{rows.length} طلب</span>
+        </header>
+
+        <div className="admin-employee-requests-filter-grid">
+          <DashboardFieldV2 id="admin-requests-type" label="نوع الطلب">
+            <DashboardSelectV2
+              id="admin-requests-type"
+              options={TYPE_OPTIONS}
+              value={type}
+              onChange={(value) => setType(value as EmployeeRequestType | "")}
+            />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-status" label="الحالة">
+            <DashboardSelectV2
+              id="admin-requests-status"
+              options={STATUS_OPTIONS}
+              value={status}
+              onChange={(value) => setStatus(value as EmployeeRequestStatus | "")}
+            />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-employee" label="معرف الموظفة">
+            <input id="admin-requests-employee" className="dsv2-input" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} placeholder="معرف الموظفة" />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-assignee" label="UID المسؤول">
+            <input id="admin-requests-assignee" className="dsv2-input" value={assignedToUid} onChange={(event) => setAssignedToUid(event.target.value)} placeholder="UID المسؤول" />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-branch" label="الفرع أو الموقع" className="admin-request-filter-search">
+            <input id="admin-requests-branch" className="dsv2-input" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="الفرع أو الموقع" />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-from" label="من تاريخ">
+            <DashboardDatePickerV2 id="admin-requests-from" value={fromDate} onChange={setFromDate} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="admin-requests-to" label="إلى تاريخ">
+            <DashboardDatePickerV2 id="admin-requests-to" value={toDate} onChange={setToDate} />
+          </DashboardFieldV2>
+          <label className="admin-request-overdue-toggle">
+            <input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} />
+            <span>المتأخرة فقط</span>
+          </label>
+        </div>
+      </section>
+
+      {error ? <div className="admin-request-error-v2"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
+
+      <section className="admin-request-table-v2">
+        {loading ? (
+          <div className="admin-request-table-state-v2">
+            <DashboardSkeletonV2 variant="title" width="34%" />
+            <DashboardSkeletonV2 lines={7} />
+          </div>
+        ) : !rows.length ? (
+          <div className="admin-request-table-state-v2">
+            <DashboardEmptyStateV2
+              title="لا توجد طلبات مطابقة"
+              description="غيّر الفلاتر أو الفترة، وستظهر الطلبات المطابقة هنا."
+              tone="gold"
+            />
+          </div>
+        ) : (
+          <div className="admin-request-table-v2__scroll">
+            <div className="admin-request-table__head">
+              <span>رقم الطلب</span><span>الموظفة</span><span>النوع</span><span>الحالة</span><span>الأولوية</span><span>المسؤول</span><span>العمر</span><span>آخر تحديث</span>
+            </div>
+            {rows.map((row) => {
+              const ageDays = Math.max(0, Math.floor((Date.now() - Date.parse(row.submitted_at)) / 86400000));
+              return (
+                <button className="admin-request-row-v2" type="button" key={row.id} onClick={() => setSelectedId(row.id)}>
+                  <span>{row.request_number}</span>
+                  <span>{row.employee_name_snapshot || row.employee_id}</span>
+                  <span>{EMPLOYEE_REQUEST_TYPE_LABELS[row.request_type]}</span>
+                  <span className={`admin-request-status-v2 is-${statusTone(row.status)}`}>{EMPLOYEE_REQUEST_STATUS_LABELS[row.status]}</span>
+                  <span>{EMPLOYEE_REQUEST_PRIORITY_LABELS[row.priority] || row.priority}</span>
+                  <span>{row.assigned_to_name || "غير معيّن"}</span>
+                  <span>{ageDays} يوم</span>
+                  <span>{formatDateTime(row.updated_at)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
       {renderDialog()}
     </div>
   );
