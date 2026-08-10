@@ -942,7 +942,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
 
   if (attendanceOnly) {
     return (
-      <div className="employee-panel employee-overview employee-attendance-month-page">
+      <div className="employee-overview-v2-page employee-attendance-month-page">
         <AttendanceMonthView
           rows={attendanceMonthRows}
           loading={attendanceMonthLoading || attendanceLoading}
@@ -977,7 +977,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }
 
   return (
-    <div className="employee-panel employee-overview">
+    <div className="employee-overview-v2-page">
       <section className="employee-app-intro">
         <div className="employee-app-intro__identity">
           <EmployeeAvatar
@@ -1100,7 +1100,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
             {punchHint ? <small id="employee-punch-hint">{punchHint}</small> : null}
           </button>
-</div>
+        </div>
 
         <div className="employee-attendance-records">
           <div className={attendance?.checkInAtClient ? "is-in" : ""}>
@@ -1200,7 +1200,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </div>
       </section>
 
-
       <section className="employee-overview-block">
         <div className="employee-block-head">
           <h2>آخر الطلبات</h2>
@@ -1253,8 +1252,3 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     </div>
   );
 }
-
-
-
-
-
