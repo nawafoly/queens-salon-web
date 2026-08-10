@@ -41,6 +41,7 @@ async function setup() {
     '0016_payroll_snapshots.sql',
     '0017_shift_control.sql',
     '0018_employee_payroll_settings.sql',
+    '0020_employee_requests.sql',
     '0022_shift_attendance_policy.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
