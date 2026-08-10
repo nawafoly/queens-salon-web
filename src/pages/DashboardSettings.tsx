@@ -15,7 +15,7 @@ import "../styles/dashboard-v2/dashboard-v2.css";
 
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalogV2 from "./settings/SettingsCatalogV2";
-import SettingsUsers from "./settings/SettingsUsers";
+import SettingsUsersV2 from "./settings/SettingsUsersV2";
 
 const LegacySettingsRoute = React.lazy(() => import("./settings/LegacySettingsRoute"));
 
@@ -129,7 +129,11 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const isSettingsUsersV2Route =
     normalizedSettingsPathname === `${currentRootPath}/users` ||
     normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
-  const usesSettingsV2Shell = isSettingsIndexRoute || isSettingsBookingsV2Route || isSettingsCatalogV2Route;
+  const usesSettingsV2Shell =
+    isSettingsIndexRoute ||
+    isSettingsBookingsV2Route ||
+    isSettingsCatalogV2Route ||
+    isSettingsUsersV2Route;
   const isLegacyNestedRoute =
     !isSettingsIndexRoute &&
     !isSettingsBookingsV2Route &&
@@ -490,7 +494,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="users/*"
               element={
                 <PermissionRoute anyOf={["admin_accounts.view", "admin_accounts.manage"]}>
-                  <SettingsUsers initialRole={uiRole} authReady={!authLoading} allowAdminManageUsers={allowAdminManageUsers} />
+                  <SettingsUsersV2 initialRole={uiRole} authReady={!authLoading} allowAdminManageUsers={allowAdminManageUsers} />
                 </PermissionRoute>
               }
             />
