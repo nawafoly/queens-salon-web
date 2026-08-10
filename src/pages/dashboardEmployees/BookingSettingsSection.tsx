@@ -109,6 +109,38 @@ export default function BookingSettingsSection({
     return rows;
   }, [shiftTemplates]);
 
+  useEffect(() => {
+    if (!isVisible || shiftTemplatesLoading || shiftTemplates.length === 0) return;
+
+    // Legacy employee schedules may contain only start/end snapshots without a
+    // shiftTemplateId. The UI already resolves those snapshots to a template by
+    // matching the time window. Keep the editable parent state in sync with the
+    // exact template shown in the select so save validation and Core schedules
+    // use the same source of truth as the visible UI.
+    WEEKDAY_OPTIONS.forEach((day) => {
+      const current = resolveWorkingDay(day.key, modalCustomWorkingHours);
+      if (current.shiftTemplateId) return;
+
+      const matchedTemplate = templateByWindow.get(`${current.start}|${current.end}`) || null;
+      if (!matchedTemplate?.id) return;
+
+      onUpdateModalWorkingDay(day.key, {
+        ...current,
+        shiftTemplateId: matchedTemplate.id,
+        shiftName: String(matchedTemplate.name || current.shiftName || "").trim(),
+        start: normalizeTimeHHMM(matchedTemplate.startTime) || current.start,
+        end: normalizeTimeHHMM(matchedTemplate.endTime) || current.end,
+      });
+    });
+  }, [
+    isVisible,
+    modalCustomWorkingHours,
+    onUpdateModalWorkingDay,
+    shiftTemplates,
+    shiftTemplatesLoading,
+    templateByWindow,
+  ]);
+
   if (!isVisible) return null;
 
   const weeklyOffDays = new Set(modalExceptionalLeaveWeekdays);
