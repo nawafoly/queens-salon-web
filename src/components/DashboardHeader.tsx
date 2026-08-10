@@ -73,7 +73,7 @@ function extractEmployeeNotificationUnreadCount(node: ReactNode): number {
     return Number.isFinite(count) ? count : 0;
   }
 
-  return Children.toArray(element.props.children).reduce(
+  return Children.toArray(element.props.children).reduce<number>(
     (max, child) => Math.max(max, extractEmployeeNotificationUnreadCount(child)),
     0
   );
