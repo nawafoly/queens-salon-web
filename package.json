@@ -56,6 +56,7 @@
     "check:employee-portal-overview-v2": "node scripts/check-employee-portal-overview-v2.mjs",
     "check:dashboard-hr-v2": "node scripts/check-dashboard-hr-v2.mjs",
     "check:dashboard-requests-v2": "node scripts/check-dashboard-requests-v2.mjs",
+    "check:dashboard-permissions-v2": "node scripts/check-dashboard-permissions-v2.mjs",
     "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs && node scripts/check-booking-internal-v2-style.mjs && node scripts/check-booking-internal-contract.mjs"
   },
   "dependencies": {
