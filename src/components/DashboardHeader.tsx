@@ -40,7 +40,9 @@ export default function DashboardHeader({
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const isEmployeePortal = location.pathname.startsWith("/employee");
   const isProfilePage = location.pathname === "/employee/overview";
+  const shouldShowProfileButton = showProfileButton && !isEmployeePortal;
 
   const handleProfileClick = () => {
     if (!isProfilePage) {
@@ -70,14 +72,14 @@ export default function DashboardHeader({
       </div>
 
       <div className="dashboard-header__meta dash-topbar-right">
-        {showProfileButton || actions ? (
+        {shouldShowProfileButton || actions ? (
           <div
             className={joinClassNames(
               "dashboard-header__actions",
               actionsClassName
             )}
           >
-            {showProfileButton ? (
+            {shouldShowProfileButton ? (
               <button
                 type="button"
                 className="dashboard-header__profile-button internal-portal-switcher__item"
