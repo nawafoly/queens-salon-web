@@ -1,0 +1,943 @@
+/* =========================================================
+   Malikat Dashboard V2 — Employee Portal Overview
+   Scope: /employee/overview + /employee/attendance shell.
+========================================================= */
+
+.dashboard-v2 .employee-overview-v2-page {
+  display: grid;
+  align-content: start;
+  gap: var(--dsv2-section-gap);
+  width: 100%;
+  min-width: 0;
+  padding-block: var(--dsv2-page-padding-block-start) var(--dsv2-page-padding-block-end);
+  color: var(--dsv2-text);
+}
+
+.dashboard-v2 .employee-overview-v2-page > * {
+  width: 100%;
+  max-width: 1680px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+/* Hero */
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-6);
+  min-height: 148px;
+  padding: var(--dsv2-space-6);
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(var(--dsv2-burgundy-rgb), 0.07) 0 86px, transparent 87px),
+    linear-gradient(118deg, var(--dsv2-gold-softer), transparent 44%),
+    var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-end: -46px;
+  inset-block-end: -82px;
+  width: 190px;
+  height: 190px;
+  border: 34px solid rgba(var(--dsv2-gold-rgb), 0.055);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--dsv2-space-4);
+  min-width: 0;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__avatar {
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: 50%;
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__identity > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__identity p {
+  margin: 0;
+  color: var(--dsv2-gold);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__identity h1 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dsv2-text);
+  font-size: clamp(1.4rem, 2.2vw, 2rem);
+  font-weight: 950;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__identity > div > span {
+  overflow: hidden;
+  color: var(--dsv2-muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsv2-space-2);
+  max-width: 440px;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-app-intro__meta > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: var(--dsv2-space-1) var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text-soft);
+  font-size: 0.62rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-status-pill.is-active {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-status-pill.is-leave {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-status-pill.is-inactive {
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+}
+
+/* KPI summary */
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpi {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  min-width: 0;
+  min-height: 112px;
+  padding: var(--dsv2-card-padding);
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text);
+  box-shadow: var(--dsv2-shadow-xs);
+  text-decoration: none;
+  transition: border-color var(--dsv2-transition-fast), transform var(--dsv2-transition-fast), box-shadow var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpi:hover {
+  border-color: var(--dsv2-border-gold);
+  box-shadow: var(--dsv2-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpi > svg {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 22px;
+  height: 22px;
+  padding: var(--dsv2-space-3);
+  box-sizing: content-box;
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpi > span {
+  align-self: end;
+  color: var(--dsv2-muted);
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-kpi > strong {
+  align-self: start;
+  color: var(--dsv2-text);
+  font-size: 1.7rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+/* Target card */
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-panel-padding);
+  overflow: hidden;
+  border: 1px solid var(--dsv2-green-border);
+  border-radius: var(--dsv2-radius-xl);
+  background: linear-gradient(135deg, var(--dsv2-green-soft), var(--dsv2-surface));
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head > span {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+  font-size: 1.05rem;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head small {
+  display: block;
+  color: var(--dsv2-green);
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head h2 {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head a {
+  display: inline-flex;
+  min-height: var(--dsv2-control-height-sm);
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-green-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-green);
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__numbers > div {
+  min-width: 0;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__numbers span,
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__updated span,
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot span,
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot small {
+  color: var(--dsv2-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__numbers strong {
+  display: block;
+  margin-top: var(--dsv2-space-1);
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-progress {
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--dsv2-radius-pill);
+  background: rgba(var(--dsv2-black-rgb), 0.08);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dsv2-green), var(--dsv2-gold));
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot strong {
+  color: var(--dsv2-green);
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot small {
+  justify-self: end;
+  text-align: end;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__updated {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card__message {
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-target-home-card--error {
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+}
+
+/* Attendance */
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-card {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-panel-padding);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-sm);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-section-title,
+.dashboard-v2 .employee-overview-v2-page .employee-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dsv2-section-head-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-section-title > div,
+.dashboard-v2 .employee-overview-v2-page .employee-block-head {
+  min-width: 0;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-section-title small {
+  color: var(--dsv2-gold);
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-section-title h2,
+.dashboard-v2 .employee-overview-v2-page .employee-block-head h2 {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-text);
+  font-size: 0.95rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-section-title p,
+.dashboard-v2 .employee-overview-v2-page .employee-block-head p {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-gps-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsv2-space-2);
+  min-height: 32px;
+  padding-inline: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-green-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+  font-size: 0.6rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-gps-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsv2-green);
+  box-shadow: 0 0 0 4px var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-console {
+  display: grid;
+  grid-template-columns: minmax(230px, 360px);
+  justify-content: center;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button {
+  display: grid;
+  width: 100%;
+  min-height: 124px;
+  place-items: center;
+  align-content: center;
+  gap: var(--dsv2-space-2);
+  padding: var(--dsv2-space-5);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-lg);
+  background: linear-gradient(135deg, var(--dsv2-gold-soft), var(--dsv2-surface));
+  color: var(--dsv2-text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--dsv2-transition-fast), box-shadow var(--dsv2-transition-fast), border-color var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button:hover:not(:disabled) {
+  border-color: var(--dsv2-gold);
+  box-shadow: var(--dsv2-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button--out {
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button--done {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+  font-size: 1.05rem;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button strong {
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button small {
+  max-width: 250px;
+  color: inherit;
+  opacity: 0.75;
+  font-size: 0.56rem;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records > div {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records__icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: var(--dsv2-radius-sm);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records > div > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records strong {
+  color: var(--dsv2-text);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records small {
+  color: var(--dsv2-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-records b {
+  color: var(--dsv2-text);
+  font-size: 0.82rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-3);
+  min-height: 44px;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-note.is-done {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-note > span {
+  min-width: 0;
+  font-size: 0.62rem;
+  font-weight: 850;
+  line-height: 1.6;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-note > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-note small {
+  display: inline-flex;
+  padding: var(--dsv2-space-1) var(--dsv2-space-2);
+  border-radius: var(--dsv2-radius-xs);
+  background: var(--dsv2-surface);
+  color: inherit;
+  font-size: 0.54rem;
+  font-weight: 850;
+}
+
+/* Shared overview panels */
+.dashboard-v2 .employee-overview-v2-page .employee-overview-block {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  padding: var(--dsv2-panel-padding);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-shortcut-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-height: 72px;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text);
+  text-decoration: none;
+  transition: border-color var(--dsv2-transition-fast), background-color var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-shortcut-card:hover {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-shortcut-card svg {
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  padding: var(--dsv2-space-3);
+  border-radius: var(--dsv2-radius-sm);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-shortcut-card span {
+  color: var(--dsv2-text);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  min-height: 76px;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text);
+  text-decoration: none;
+  transition: border-color var(--dsv2-transition-fast), background-color var(--dsv2-transition-fast);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-row:hover {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-copy strong {
+  color: var(--dsv2-text);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-copy span {
+  color: var(--dsv2-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: var(--dsv2-radius-sm);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-gold);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-hr-info-arrow {
+  color: var(--dsv2-muted-soft);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-request-list {
+  display: grid;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-request-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text);
+  font-family: inherit;
+  text-align: start;
+}
+
+.dashboard-v2 button.employee-request-row {
+  cursor: pointer;
+}
+
+.dashboard-v2 button.employee-request-row:hover {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-request-row > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-request-row strong {
+  color: var(--dsv2-text);
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-request-row small {
+  color: var(--dsv2-muted);
+  font-size: 0.56rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-notification-tone {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--dsv2-space-2);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted);
+  font-size: 0.54rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-notification-tone--success {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-notification-tone--info,
+.dashboard-v2 .employee-overview-v2-page .employee-notification-tone--message,
+.dashboard-v2 .employee-overview-v2-page .employee-notification-tone--file {
+  border-color: var(--dsv2-border-gold);
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-empty-box {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+  padding: var(--dsv2-space-4);
+  border: 1px dashed var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsv2-grid-gap);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-balance-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsv2-space-4);
+  min-height: 86px;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-balance-card span {
+  color: var(--dsv2-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-balance-card strong {
+  color: var(--dsv2-text);
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+
+/* Attendance-only route */
+.dashboard-v2 .employee-overview-v2-page.employee-attendance-month-page {
+  min-height: 0;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-month-message {
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-warning);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1080px) {
+  .dashboard-v2 .employee-overview-v2-page .employee-overview-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-hr-info-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .dashboard-v2 .employee-overview-v2-page {
+    gap: var(--dsv2-space-4);
+    padding-block: var(--dsv2-space-2) var(--dsv2-space-6);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-app-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    min-height: 0;
+    gap: var(--dsv2-space-4);
+    padding: var(--dsv2-space-5);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-app-intro__meta {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card,
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-card,
+  .dashboard-v2 .employee-overview-v2-page .employee-overview-block {
+    padding: var(--dsv2-space-4);
+    border-radius: var(--dsv2-radius-lg);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__numbers,
+  .dashboard-v2 .employee-overview-v2-page .employee-shortcuts-grid,
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-records,
+  .dashboard-v2 .employee-overview-v2-page .employee-overview-bottom-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__foot small {
+    justify-self: stretch;
+    text-align: start;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-section-title,
+  .dashboard-v2 .employee-overview-v2-page .employee-block-head,
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-note {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-v2 .employee-overview-v2-page .employee-overview-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-overview-kpi {
+    min-height: 92px;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-app-intro__avatar {
+    flex-basis: 58px;
+    width: 58px;
+    height: 58px;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head > span {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-target-home-card__head a {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-records > div {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-records b {
+    grid-column: 2;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-hr-info-row {
+    grid-template-columns: 24px minmax(0, 1fr) 40px;
+  }
+}
