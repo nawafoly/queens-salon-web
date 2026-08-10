@@ -1,0 +1,20 @@
+/* Dashboard Bookings V2 — mobile booking list visibility fix.
+   Keep the shared booking section container mounted on mobile;
+   hide only the desktop table so the sibling mobile cards can render. */
+
+@media (max-width: 860px) {
+  .dashboard-v2 .bookings-v2-page .bookings-v2-table-card {
+    display: block;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .dashboard-v2 .bookings-v2-page .bookings-v2-table-card > .bk-table-wrap {
+    display: none;
+  }
+
+  .dashboard-v2 .bookings-v2-page .bookings-v2-table-card > .bk-mobile-grid {
+    display: grid;
+  }
+}
