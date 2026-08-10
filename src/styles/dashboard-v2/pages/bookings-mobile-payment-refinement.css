@@ -1,0 +1,84 @@
+/* Dashboard Bookings V2 — mobile payment layout refinement */
+
+@media (max-width: 860px) {
+  .dashboard-v2 .bk-mobile-payment-val {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--dsv2-space-2);
+    text-align: end;
+  }
+
+  .dashboard-v2 .bk-mobile-payment-val > strong {
+    min-width: 0;
+    color: var(--dsv2-text);
+    font-size: 0.8rem;
+    font-weight: 950;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .dashboard-v2 .bk-mobile-payment-val > .bk-payment-method-chip {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .dashboard-v2 .bk-mobile-payment-line {
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    gap: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2 .bk-mobile-payment-line .bk-payment-metric-row {
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dsv2-space-2);
+    border: 1px solid var(--dsv2-border);
+    border-radius: var(--dsv2-radius-sm);
+    padding: 6px 8px;
+    background: var(--dsv2-surface-soft);
+  }
+
+  .dashboard-v2 .bk-mobile-payment-line .bk-payment-metric-row.paid {
+    border-color: rgba(var(--dsv2-green-rgb), 0.22);
+    background: var(--dsv2-green-soft);
+  }
+
+  .dashboard-v2 .bk-mobile-payment-line .bk-payment-metric-row.remaining {
+    border-color: rgba(var(--dsv2-burgundy-rgb), 0.2);
+    background: var(--dsv2-burgundy-soft);
+  }
+
+  .dashboard-v2 .bk-mobile-payment-line .bk-payment-metric-label,
+  .dashboard-v2 .bk-mobile-payment-line .bk-payment-metric-value {
+    min-width: 0;
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-v2 .bk-mobile-row:has(.bk-mobile-payment-val) {
+    align-items: flex-start;
+  }
+
+  .dashboard-v2 .bk-mobile-payment-val {
+    gap: 5px;
+  }
+
+  .dashboard-v2 .bk-mobile-payment-val > strong {
+    font-size: 0.76rem;
+  }
+}
