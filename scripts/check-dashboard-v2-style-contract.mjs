@@ -30,6 +30,7 @@ const targetPageFiles = [
   "settings-users.css",
   "settings-contact.css",
   "settings-attendance.css",
+  "admin-profile.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -234,6 +235,26 @@ if (!/settings-attendance-v2-page/.test(settingsAttendanceSource)) {
 }
 if (!/upsertWorkZoneInAttendanceWorker/.test(settingsAttendanceSource) || !/deleteWorkZoneFromAttendanceWorker/.test(settingsAttendanceSource)) {
   errors.push("SettingsAttendance.tsx is missing Attendance Worker zone synchronization.");
+}
+
+const adminProfileSource = readFileSync(join(root, "src/pages/DashboardAdminProfile.tsx"), "utf8");
+if (/\b(settings-wrap|settings-card|settings-input|settings-field|settings-alert|exp-btn)\b/i.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx still contains legacy admin-profile presentation classes.");
+}
+if (/style=\{\{/i.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx still contains inline style objects.");
+}
+if (/#[0-9a-f]{3,8}\b/i.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx still contains raw hex colors.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx is not wired to the Dashboard V2 entry point.");
+}
+if (!/admin-profile-v2-page/.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx is missing its isolated V2 page root.");
+}
+if (!/updateDoc/.test(adminProfileSource) || !/authChanged/.test(adminProfileSource)) {
+  errors.push("DashboardAdminProfile.tsx is missing its existing profile save/session refresh flow.");
 }
 
 if (errors.length) {
