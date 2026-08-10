@@ -197,8 +197,11 @@ export default function EmployeeStatsSection({
 
   const payrollSetup = payroll.setupPreview;
   const leaveBalanceLabel = loading ? "جاري التحميل..." : `${formatNumber(leaveBalanceDays)} يوم`;
-  const readOnlyPayroll = busy || !canManagePayroll;
-  const readOnlyLeave = busy || !canManageLeaveBalance;
+  // Background reads must never lock write controls. `busy` is loading || saving
+  // in DashboardEmployees, so only treat it as a write lock when loading is false.
+  const writeBusy = busy && !loading;
+  const readOnlyPayroll = writeBusy || payroll.savingSettings || !canManagePayroll;
+  const readOnlyLeave = writeBusy || !canManageLeaveBalance;
   const activeLeaveNow = leave.modalOnLeave && isLeaveActiveNow(leave.modalLeaveFrom, leave.modalLeaveUntil);
   const upcomingLeave =
     leave.modalOnLeave &&
