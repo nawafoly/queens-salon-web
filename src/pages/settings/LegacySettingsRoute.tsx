@@ -1,9 +1,8 @@
 import "../../styles/DashboardEnterpriseWorkspaces.css";
 
 import SettingsAttendance from "./SettingsAttendance";
-import SettingsContact from "./SettingsContact";
 
-type LegacySettingsRouteKind = "contact" | "attendance";
+type LegacySettingsRouteKind = "attendance";
 
 type LegacySettingsRouteProps = {
   kind: LegacySettingsRouteKind;
@@ -11,9 +10,8 @@ type LegacySettingsRouteProps = {
 };
 
 export default function LegacySettingsRoute({
-  kind,
+  kind: _kind,
   hasAdminPower = false,
 }: LegacySettingsRouteProps) {
-  if (kind === "contact") return <SettingsContact hasAdminPower={hasAdminPower} />;
   return <SettingsAttendance hasAdminPower={hasAdminPower} />;
 }
