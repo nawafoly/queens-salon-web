@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import {
   DashboardEmptyStateV2,
@@ -13,12 +13,11 @@ import type { AppSettings, SectionKey } from "../services/AppSettingsService";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
+import SettingsAttendance from "./settings/SettingsAttendance";
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalogV2 from "./settings/SettingsCatalogV2";
 import SettingsContact from "./settings/SettingsContact";
 import SettingsUsersV2 from "./settings/SettingsUsersV2";
-
-const LegacySettingsRoute = React.lazy(() => import("./settings/LegacySettingsRoute"));
 
 type UiRole =
   | "owner"
@@ -32,7 +31,6 @@ type UiRole =
   | "guest";
 
 type BasicSettingsSection = "identity" | "sections" | "policies";
-type LegacySettingsKind = "attendance";
 
 type DashboardSettingsProps = {
   initialRole?: UiRole | string;
@@ -75,11 +73,6 @@ function mapRoleToUi(roleRaw: unknown): UiRole {
   return normalizeAuthRole(roleRaw);
 }
 
-function normalizePathname(pathname: string) {
-  const trimmed = String(pathname || "").trim().replace(/\/+$/, "");
-  return trimmed || "/";
-}
-
 function SettingsRouteFallback() {
   return (
     <main className="dsv2-page settings-v2-page" dir="rtl">
@@ -101,7 +94,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     mapRoleToUi(initialRole ?? readStoredAuthSession()?.role ?? "guest")
   );
   const { hasPermission, hasAnyPermission, role: permissionRole } = usePermissions();
-  const location = useLocation();
   const [authLoading, setAuthLoading] = useState(() =>
     typeof authReady === "boolean" ? !authReady : false
   );
@@ -121,28 +113,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     "settings.content.manage",
     "attendance.settings.manage",
   ]);
-
-  const currentRootPath = normalizePathname(SETTINGS_ROOT_PATH);
-  const normalizedSettingsPathname = normalizePathname(location.pathname);
-  const isSettingsIndexRoute = normalizedSettingsPathname === currentRootPath;
-  const isSettingsBookingsV2Route = normalizedSettingsPathname === `${currentRootPath}/bookings`;
-  const isSettingsCatalogV2Route = normalizedSettingsPathname === `${currentRootPath}/catalog`;
-  const isSettingsContactV2Route = normalizedSettingsPathname === `${currentRootPath}/contact`;
-  const isSettingsUsersV2Route =
-    normalizedSettingsPathname === `${currentRootPath}/users` ||
-    normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
-  const usesSettingsV2Shell =
-    isSettingsIndexRoute ||
-    isSettingsBookingsV2Route ||
-    isSettingsCatalogV2Route ||
-    isSettingsContactV2Route ||
-    isSettingsUsersV2Route;
-  const isLegacyNestedRoute =
-    !isSettingsIndexRoute &&
-    !isSettingsBookingsV2Route &&
-    !isSettingsCatalogV2Route &&
-    !isSettingsContactV2Route &&
-    !isSettingsUsersV2Route;
 
   const settingsNavItems = useMemo(
     () => [
@@ -232,12 +202,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
       policies: { ...(previous.policies || {}), [key]: !previous.policies?.[key] },
     }));
   };
-
-  const renderLegacySettingsRoute = (kind: LegacySettingsKind, hasAdminPower = false) => (
-    <React.Suspense fallback={<SettingsRouteFallback />}>
-      <LegacySettingsRoute kind={kind} hasAdminPower={hasAdminPower} />
-    </React.Suspense>
-  );
 
   if (authLoading) return <SettingsRouteFallback />;
 
@@ -455,19 +419,10 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     );
   };
 
-  const shellClassName = usesSettingsV2Shell
-    ? "dashboard-section settings-page settings-v2-shell"
-    : isLegacyNestedRoute
-      ? "dashboard-section settings-page enterprise-workspace-page enterprise-workspace-v2 enterprise-settings-v2 settings-shell settings-shell--embedded"
-      : "dashboard-section settings-page settings-shell settings-shell--embedded";
-
-  const shellMainClassName = usesSettingsV2Shell ? "settings-v2-shell__main" : "settings-shell__main";
-  const shellContentClassName = usesSettingsV2Shell ? "settings-v2-shell__content" : "settings-shell__content";
-
   return (
-    <div className={shellClassName} dir="rtl">
-      <main className={shellMainClassName} dir="rtl">
-        <section className={shellContentClassName}>
+    <div className="dashboard-section settings-page settings-v2-shell" dir="rtl">
+      <main className="settings-v2-shell__main" dir="rtl">
+        <section className="settings-v2-shell__content">
           <Routes>
             <Route
               index
@@ -477,7 +432,6 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 </PermissionRoute>
               }
             />
-
             <Route
               path="bookings"
               element={
@@ -498,7 +452,11 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
               path="users/*"
               element={
                 <PermissionRoute anyOf={["admin_accounts.view", "admin_accounts.manage"]}>
-                  <SettingsUsersV2 initialRole={uiRole} authReady={!authLoading} allowAdminManageUsers={allowAdminManageUsers} />
+                  <SettingsUsersV2
+                    initialRole={uiRole}
+                    authReady={!authLoading}
+                    allowAdminManageUsers={allowAdminManageUsers}
+                  />
                 </PermissionRoute>
               }
             />
@@ -510,7 +468,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 </PermissionRoute>
               }
             />
-            <Route path="attendance" element={<PermissionRoute permission="attendance.settings.manage">{renderLegacySettingsRoute("attendance", hasPermission("attendance.settings.manage"))}</PermissionRoute>} />
+            <Route
+              path="attendance"
+              element={
+                <PermissionRoute permission="attendance.settings.manage">
+                  <SettingsAttendance hasAdminPower={hasPermission("attendance.settings.manage")} />
+                </PermissionRoute>
+              }
+            />
 
             <Route path="advanced" element={<Navigate to={SETTINGS_ROOT_PATH} replace />} />
             <Route path="advanced/bookings" element={<Navigate to={`${SETTINGS_ROOT_PATH}/bookings`} replace />} />
