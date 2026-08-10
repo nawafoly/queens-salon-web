@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiClock, FiCreditCard, FiPlus, FiSearch, FiShoppingBag, FiUser, FiUsers } from "react-icons/fi";
 import ConfirmModal from "../../components/ConfirmModal";
+import { DashboardDatePickerV2, DashboardSelectV2 } from "../../components/dashboard-v2";
 import "./booking-internal-v2.css";
 import PackageSessionsManager from "./PackageSessionsManager";
 import { resolveCoreBookingDataSource } from "../../services/bookingDataSource";
@@ -126,6 +127,7 @@ function readQuickClients(): ClientCandidate[] {
         phone: phone10Digits(value?.phone || ""),
         source: String(value?.source || "history"),
         visits: Math.max(0, Number(value?.usedCount || 0)),
+        sessions: Math.max(0, Number(value?.sessions || value?.remainingSessions || 0)) || undefined,
         _lastUsedAt: Math.max(0, Number(value?.lastUsedAt || 0)),
       }))
       .sort((a: any, b: any) => b._lastUsedAt - a._lastUsedAt)
@@ -325,7 +327,6 @@ function serviceCategoryId(service: any) {
   return String(service?.categoryId ?? service?.category_id ?? service?.["معرف_التصنيف"] ?? "").trim();
 }
 
-
 function weekdayKey(dateISO: string) {
   const date = new Date(`${dateISO}T12:00:00`);
   const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -429,7 +430,6 @@ export default function BookingInternalV2() {
   const [couponOffer, setCouponOffer] = useState<CoreDiscount | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState("");
-
 
   const createNewClient = useCallback(async () => {
     const name = String(newClientName || "").trim();
@@ -775,7 +775,6 @@ export default function BookingInternalV2() {
     return keys;
   }, [cart, scheduleByService, hasCartScheduleConflict]);
 
-
   const eligibleStaffByService = useMemo(() => {
     const out: Record<string, StaffRow[]> = {};
     cart.forEach((service) => {
@@ -1074,9 +1073,6 @@ export default function BookingInternalV2() {
         })
       );
 
-      // The booking is already committed at this point. Preserve its success
-      // state even if a later network call fails, then retry idempotent financial
-      // posting so mixed payments cannot leave duplicate income rows.
       setCreatedBookingIds(savedIds);
       markQuickClientUsage(selectedClient);
 
@@ -1209,22 +1205,7 @@ export default function BookingInternalV2() {
       return;
     }
     popup.focus();
-  }, [
-    createdBookingIds,
-    selectedClient,
-    cart,
-    scheduleByService,
-    bookingDate,
-    paymentType,
-    paymentMethod,
-    effectivePaidAmount,
-    remainingAmount,
-    cashAmount,
-    cardAmount,
-    transferAmount,
-    selectedSectionId,
-    discountSnapshot,
-  ]);
+  }, [createdBookingIds, selectedClient, cart, scheduleByService, bookingDate, paymentType, paymentMethod, effectivePaidAmount, remainingAmount, cashAmount, cardAmount, transferAmount, selectedSectionId, discountSnapshot]);
 
   const resetCompletedBooking = useCallback(() => {
     setCart([]); setScheduleByService({}); setAvailableTimes({}); setSelectedClient(null);
@@ -1244,16 +1225,13 @@ export default function BookingInternalV2() {
           <h1>الحجز الإداري</h1>
           <p>إنشاء حجز جديد بخطوات واضحة وسريعة.</p>
         </div>
-
         <div className="bk2-mode-switch" aria-label="وضع الحجز">
           <button className={mode === "new" ? "is-active" : ""} onClick={() => setMode("new")}>حجز جديد</button>
           <button className={mode === "sessions" ? "is-active" : ""} onClick={() => setMode("sessions")}>الباقات والجلسات</button>
         </div>
       </header>
 
-      {mode === "sessions" ? (
-        <PackageSessionsManager />
-      ) : (
+      {mode === "sessions" ? <PackageSessionsManager /> : (
         <>
           <nav className="bk2-stepper" aria-label="خطوات الحجز">
             {steps.map((item, index) => {
@@ -1261,17 +1239,10 @@ export default function BookingInternalV2() {
               const active = step === item.id;
               const completed = step > item.id;
               return (
-                <button
-                  key={item.id}
-                  className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`}
-                  onClick={() => setStep(item.id)}
-                >
+                <button key={item.id} className={`${active ? "is-active" : ""} ${completed ? "is-complete" : ""}`} onClick={() => setStep(item.id)}>
                   <span className="bk2-step-number">{completed ? "✓" : item.id}</span>
                   <span className="bk2-step-icon"><Icon /></span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.subtitle}</small>
-                  </span>
+                  <span><strong>{item.title}</strong><small>{item.subtitle}</small></span>
                   {index < steps.length - 1 ? <i aria-hidden="true" /> : null}
                 </button>
               );
@@ -1282,160 +1253,66 @@ export default function BookingInternalV2() {
             <main className="bk2-main-card">
               {step === 1 ? (
                 <section className="bk2-client-step">
-                  <div className="bk2-section-title">
-                    <div>
-                      <h2>البحث عن العميلة</h2>
-                      <p>ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.</p>
-                    </div>
-                    <span><FiUser /></span>
-                  </div>
-
-                  <label className="bk2-search-box">
-                    <FiSearch />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)"
-                    />
-                  </label>
-                  {(clientSearching || clientMessage) ? (
-                    <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>
-                      {clientSearching ? "جاري البحث في بيانات السيرفر..." : clientMessage}
-                    </p>
-                  ) : null}
-
-                  <div className="bk2-recent-header">
-                    <h3>{query ? "نتائج البحث" : "العميلات الأخيرات"}</h3>
-                    <span>{visibleClients.length} عميلات</span>
-                  </div>
-
+                  <div className="bk2-section-title"><div><h2>البحث عن العميلة</h2><p>ابحثي بالاسم أو رقم الجوال أو رقم العضوية MK.</p></div><span><FiUser /></span></div>
+                  <label className="bk2-search-box"><FiSearch /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحثي بالاسم أو رقم الجوال أو رقم العضوية (MK)" /></label>
+                  {(clientSearching || clientMessage) ? <p className={`bk2-status-line ${clientSearching ? "is-loading" : ""}`}>{clientSearching ? "جاري البحث في بيانات السيرفر..." : clientMessage}</p> : null}
+                  <div className="bk2-recent-header"><h3>{query ? "نتائج البحث" : "العميلات الأخيرات"}</h3><span>{visibleClients.length} عميلات</span></div>
                   <div className="bk2-client-grid">
                     {visibleClients.map((client) => (
-                      <button
-                        key={client.id}
-                        className={selectedClient?.id === client.id ? "is-selected" : ""}
-                        onClick={() => { setSelectedClient(client); markQuickClientUsage(client); }}
-                      >
+                      <button key={client.id} className={selectedClient?.id === client.id ? "is-selected" : ""} onClick={() => { setSelectedClient(client); markQuickClientUsage(client); }}>
                         <span className="bk2-avatar">{client.name.slice(0, 1)}</span>
-                        <span className="bk2-client-copy">
-                          <strong>{client.name}</strong>
-                          <small>{client.phone}</small>
-                          <span className="bk2-client-badges">
-                            <em>{client.visits ? `${client.visits} استخدامات` : client.publicId ? client.publicId : client.source || "عميلة"}</em>
-                            {client.sessions ? <em className="is-green">{client.sessions} جلسات متبقية</em> : null}
-                          </span>
-                        </span>
+                        <span className="bk2-client-copy"><strong>{client.name}</strong><small>{client.phone}</small><span className="bk2-client-badges"><em>{client.visits ? `${client.visits} استخدامات` : client.publicId ? client.publicId : client.source || "عميلة"}</em>{client.sessions ? <em className="is-green">{client.sessions} جلسات متبقية</em> : null}</span></span>
                       </button>
                     ))}
                   </div>
-
                   <div className="bk2-divider"><span>أو</span></div>
-
-                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); }}>
-                    <FiPlus />
-                    إضافة عميلة جديدة
-                  </button>
-
+                  <button className="bk2-add-client" type="button" onClick={() => { setShowNewClient(true); setNewClientError(""); }}><FiPlus />إضافة عميلة جديدة</button>
                   {showNewClient ? (
                     <div className="bk2-new-client-panel">
-                      <div className="bk2-new-client-head">
-                        <div><strong>إضافة عميلة جديدة</strong><small>سيتم حفظها في مصدر البيانات الحالي واختيارها مباشرة.</small></div>
-                        <button type="button" onClick={() => setShowNewClient(false)}>×</button>
-                      </div>
+                      <div className="bk2-new-client-head"><div><strong>إضافة عميلة جديدة</strong><small>سيتم حفظها في مصدر البيانات الحالي واختيارها مباشرة.</small></div><button type="button" onClick={() => setShowNewClient(false)}>×</button></div>
                       <div className="bk2-new-client-grid">
                         <label><span>اسم العميلة *</span><input autoFocus value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="مثال: رانيا الحربي" /></label>
                         <label><span>رقم الجوال *</span><input inputMode="numeric" value={newClientPhone} onChange={(e) => setNewClientPhone(normalizeDigits(e.target.value).slice(0, 10))} placeholder="05xxxxxxxx" /></label>
                         <label className="is-wide"><span>البريد الإلكتروني (اختياري)</span><input type="email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="name@example.com" /></label>
                       </div>
                       {newClientError ? <p className="bk2-inline-warning">{newClientError}</p> : null}
-                      <div className="bk2-new-client-actions">
-                        <button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>إلغاء</button>
-                        <button type="button" className="is-primary" onClick={() => void createNewClient()} disabled={creatingClient}>{creatingClient ? "جاري الحفظ..." : "حفظ واختيار العميلة"}</button>
-                      </div>
+                      <div className="bk2-new-client-actions"><button type="button" className="is-secondary" onClick={() => setShowNewClient(false)} disabled={creatingClient}>إلغاء</button><button type="button" className="is-primary" onClick={() => void createNewClient()} disabled={creatingClient}>{creatingClient ? "جاري الحفظ..." : "حفظ واختيار العميلة"}</button></div>
                     </div>
                   ) : null}
-
-                  <div className="bk2-tip">
-                    <span>i</span>
-                    <div>
-                      <strong>نصيحة</strong>
-                      <p>استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.</p>
-                    </div>
-                  </div>
+                  <div className="bk2-tip"><span>i</span><div><strong>نصيحة</strong><p>استخدمي الاسم أو رقم الجوال أو رقم العضوية للوصول إلى العميلة بسرعة.</p></div></div>
                 </section>
               ) : step === 2 ? (
                 <section className="bk2-services-step">
-                  <div className="bk2-section-title">
-                    <div><h2>اختيار الخدمات</h2><p>القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.</p></div>
-                    <span><FiShoppingBag /></span>
-                  </div>
-
-                  <label className="bk2-search-box">
-                    <FiSearch />
-                    <input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="ابحثي عن خدمة..." />
-                  </label>
-
-                  <div className="bk2-section-tabs">
-                    {sections.map((section) => (
-                      <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => setSelectedSectionId(String(section.id))}>
-                        {catalogLabel(section, "قسم")}
-                      </button>
-                    ))}
-                  </div>
-
-                  {categories.length ? (
-                    <div className="bk2-category-tabs">
-                      <button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>الكل</button>
-                      {categories.map((category) => (
-                        <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>
-                          {catalogLabel(category, "تصنيف")}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
+                  <div className="bk2-section-title"><div><h2>اختيار الخدمات</h2><p>القائمة مرتبطة الآن بكتالوج الخدمات الحقيقي.</p></div><span><FiShoppingBag /></span></div>
+                  <label className="bk2-search-box"><FiSearch /><input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="ابحثي عن خدمة..." /></label>
+                  <div className="bk2-section-tabs">{sections.map((section) => <button key={section.id} className={selectedSectionId === String(section.id) ? "is-active" : ""} onClick={() => setSelectedSectionId(String(section.id))}>{catalogLabel(section, "قسم")}</button>)}</div>
+                  {categories.length ? <div className="bk2-category-tabs"><button className={!selectedCategoryId ? "is-active" : ""} onClick={() => setSelectedCategoryId("")}>الكل</button>{categories.map((category) => <button key={category.id} className={selectedCategoryId === String(category.id) ? "is-active" : ""} onClick={() => setSelectedCategoryId(String(category.id))}>{catalogLabel(category, "تصنيف")}</button>)}</div> : null}
                   {(catalogLoading || catalogMessage) ? <p className={`bk2-status-line ${catalogLoading ? "is-loading" : ""}`}>{catalogLoading ? "جاري تحميل الخدمات..." : catalogMessage}</p> : null}
-
                   <div className="bk2-service-list">
                     {visibleServices.map((service) => {
                       const inCart = cart.some((item) => String(item.id) === String(service.id));
-                      return (
-                        <button key={service.id} className={inCart ? "is-selected" : ""} onClick={() => setCart((current) => inCart ? current.filter((item) => String(item.id) !== String(service.id)) : [...current, service])}>
-                          <span className="bk2-service-copy"><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) ? `${serviceDuration(service)} دقيقة` : "المدة حسب الخدمة"}</small></span>
-                          <span className="bk2-service-price">{servicePrice(service).toLocaleString("ar-SA")} ر.س</span>
-                          <span className="bk2-service-add">{inCart ? "✓" : "+"}</span>
-                        </button>
-                      );
+                      return <button key={service.id} className={inCart ? "is-selected" : ""} onClick={() => setCart((current) => inCart ? current.filter((item) => String(item.id) !== String(service.id)) : [...current, service])}><span className="bk2-service-copy"><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) ? `${serviceDuration(service)} دقيقة` : "المدة حسب الخدمة"}</small></span><span className="bk2-service-price">{servicePrice(service).toLocaleString("ar-SA")} ر.س</span><span className="bk2-service-add">{inCart ? "✓" : "+"}</span></button>;
                     })}
                   </div>
-
                   {!catalogLoading && !visibleServices.length ? <div className="bk2-no-results">لا توجد خدمات مطابقة في هذا القسم.</div> : null}
                 </section>
               ) : step === 3 ? (
                 <section className="bk2-schedule-step">
-                  <div className="bk2-section-title">
-                    <div><h2>الموظفة والموعد</h2><p>الموظفات والأوقات مرتبطة الآن ببيانات الدوام والحجوزات الفعلية.</p></div>
-                    <span><FiClock /></span>
-                  </div>
-
-                  <label className="bk2-date-field">
+                  <div className="bk2-section-title"><div><h2>الموظفة والموعد</h2><p>الموظفات والأوقات مرتبطة الآن ببيانات الدوام والحجوزات الفعلية.</p></div><span><FiClock /></span></div>
+                  <div className="bk2-date-field">
                     <span>تاريخ الحجز</span>
-                    <input
-                      type="date"
+                    <DashboardDatePickerV2
                       value={bookingDate}
-                      onChange={(event) => setBookingDate(event.target.value)}
+                      onChange={setBookingDate}
+                      clearable={false}
+                      className="bk2-date-picker-v2"
                       aria-describedby={isPastBookingDate ? "bk2-past-date-warning" : undefined}
                     />
-                    {isPastBookingDate ? (
-                      <p id="bk2-past-date-warning" className="bk2-past-date-warning" role="status">
-                        أنت تقوم بإنشاء حجز بتاريخ سابق
-                      </p>
-                    ) : null}
-                  </label>
+                    {isPastBookingDate ? <p id="bk2-past-date-warning" className="bk2-past-date-warning" role="status">أنت تقوم بإنشاء حجز بتاريخ سابق</p> : null}
+                  </div>
                   {!dayHours.enabled ? <p className="bk2-status-line">الصالون مغلق في هذا اليوم حسب إعدادات الدوام.</p> : null}
                   {staffLoading ? <p className="bk2-status-line is-loading">جاري تحميل الموظفات...</p> : null}
                   {scheduleMessage ? <p className="bk2-status-line">{scheduleMessage}</p> : null}
-
                   <div className="bk2-schedule-list">
                     {cart.map((service, index) => {
                       const key = String(service.id);
@@ -1446,41 +1323,30 @@ export default function BookingInternalV2() {
                         <article key={key} className={`bk2-schedule-item ${selection?.time ? "is-complete" : ""}`}>
                           <header><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{serviceDuration(service) || 30} دقيقة</small></div>{selection?.time ? <em>✓ مكتمل</em> : null}</header>
                           <div className="bk2-schedule-controls">
-                            <label>
+                            <div className="bk2-staff-field">
                               <span>الموظفة</span>
-                              <select value={selection?.staffId || ""} onChange={(event) => {
-                                const chosen = staffRows.find((row) => staffId(row) === event.target.value);
-                                setScheduleByService((current) => ({ ...current, [key]: { staffId: event.target.value, staffName: chosen ? staffName(chosen) : "", time: "" } }));
-                                setAvailableTimes((current) => ({ ...current, [key]: [] }));
-                                if (chosen) void loadTimesForService(service, chosen);
-                              }}>
-                                <option value="">اختاري الموظفة</option>
-                                {staffRows.map((row) => <option key={staffId(row)} value={staffId(row)}>{staffName(row)}</option>)}
-                              </select>
-                            </label>
+                              <DashboardSelectV2
+                                value={selection?.staffId || ""}
+                                placeholder="اختاري الموظفة"
+                                className="bk2-staff-select-v2"
+                                options={staffRows.map((row) => ({ value: staffId(row), label: staffName(row) }))}
+                                onChange={(value) => {
+                                  const chosen = staffRows.find((row) => staffId(row) === value);
+                                  setScheduleByService((current) => ({ ...current, [key]: { staffId: value, staffName: chosen ? staffName(chosen) : "", time: "" } }));
+                                  setAvailableTimes((current) => ({ ...current, [key]: [] }));
+                                  if (chosen) void loadTimesForService(service, chosen);
+                                }}
+                              />
+                            </div>
                             <div className="bk2-time-picker">
                               <span>الأوقات المتاحة</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? (
-                                <div className="bk2-busy-intervals">
-                                  {getBusyIntervalsForService(key, selection.staffId).map((busy) => (
-                                    <p key={`${busy.serviceTitle}-${busy.start}`}>
-                                      الموظفة مشغولة من <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong>
-                                      <span>بسبب: {busy.serviceTitle}</span>
-                                    </p>
-                                  ))}
-                                </div>
-                              ) : null}
+                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>الموظفة مشغولة من <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong><span>بسبب: {busy.serviceTitle}</span></p>)}</div> : null}
                               {!selection?.staffId ? <p>اختاري الموظفة أولًا.</p> : timesLoading[key] ? <p>جاري فحص المواعيد...</p> : times.length ? (
                                 <div>{times.map((time) => {
                                   const conflict = getCartScheduleConflict(key, selection.staffId, time);
                                   const conflicting = Boolean(conflict);
-                                  const conflictTitle = conflict
-                                    ? `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}`
-                                    : "";
-                                  return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `اختيار ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => {
-                                    if (conflicting) return;
-                                    setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } }));
-                                  }}>{formatTime12(time, time)}</button>;
+                                  const conflictTitle = conflict ? `غير متاح: يتعارض مع ${serviceTitle(conflict.service)} من ${formatTime12(conflict.start, conflict.start)} إلى ${formatTime12(conflict.end, conflict.end)}` : "";
+                                  return <button type="button" key={time} disabled={conflicting} title={conflictTitle} aria-label={conflictTitle || `اختيار ${formatTime12(time, time)}`} className={`${selection?.time === time ? "is-active" : ""} ${conflicting ? "is-conflicting" : ""}`} onClick={() => { if (conflicting) return; setScheduleByService((current) => ({ ...current, [key]: { ...current[key], time } })); }}>{formatTime12(time, time)}</button>;
                                 })}</div>
                               ) : <p>لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.</p>}
                             </div>
@@ -1494,177 +1360,17 @@ export default function BookingInternalV2() {
                 </section>
               ) : (
                 <section className="bk2-payment-step">
-                  <div className="bk2-section-title">
-                    <div><h2>المراجعة والدفع</h2><p>راجعي الحجز ثم اختاري طريقة ونوع التحصيل.</p></div>
-                    <span><FiCreditCard /></span>
-                  </div>
-
+                  <div className="bk2-section-title"><div><h2>المراجعة والدفع</h2><p>راجعي الحجز ثم اختاري طريقة ونوع التحصيل.</p></div><span><FiCreditCard /></span></div>
                   {createdBookingIds.length ? (
-                    <div className="bk2-booking-success">
-                      <strong>✓ تم حفظ الحجز بنجاح</strong>
-                      {createdBookingReference ? (
-                        <div className="bk2-booking-success-reference">
-                          <span>رقم الحجز</span>
-                          <bdi dir="ltr">{createdBookingReference}</bdi>
-                        </div>
-                      ) : null}
-                      <p>تم ربط {cart.length} {cart.length === 1 ? "خدمة" : "خدمات"} بالعميلة والموظفات المختارات.</p>
-                      {postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}
-                      <div className="bk2-booking-success-actions">
-                        <button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button>
-                        <button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button>
-                      </div>
-                    </div>
+                    <div className="bk2-booking-success"><strong>✓ تم حفظ الحجز بنجاح</strong>{createdBookingReference ? <div className="bk2-booking-success-reference"><span>رقم الحجز</span><bdi dir="ltr">{createdBookingReference}</bdi></div> : null}<p>تم ربط {cart.length} {cart.length === 1 ? "خدمة" : "خدمات"} بالعميلة والموظفات المختارات.</p>{postSaveWarning ? <p className="bk2-inline-warning">{postSaveWarning}</p> : null}<div className="bk2-booking-success-actions"><button type="button" onClick={printCreatedBookingInvoice}>طباعة الفاتورة</button><button type="button" onClick={resetCompletedBooking}>إنشاء حجز جديد</button></div></div>
                   ) : (
                     <>
-                      <div className="bk2-review-list">
-                        {cart.map((service, index) => {
-                          const schedule = scheduleByService[String(service.id)];
-                          const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id));
-                          const originalAmount = servicePrice(service);
-                          const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0;
-                          const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount;
-                          return (
-                            <article key={service.id}>
-                              <span>{index + 1}</span>
-                              <div>
-                                <strong>{serviceTitle(service)}</strong>
-                                <small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>
-                                {rowDiscount > 0 ? <small>خصم هذه الخدمة: {rowDiscount.toLocaleString("ar-SA")} ر.س</small> : null}
-                              </div>
-                              <b>
-                                {rowDiscount > 0 ? <small className="bk2-price-before">{originalAmount.toLocaleString("ar-SA")} ر.س</small> : null}
-                                {rowFinal.toLocaleString("ar-SA")} ر.س
-                              </b>
-                            </article>
-                          );
-                        })}
-                      </div>
-
-                      <div className="bk2-payment-block bk2-discount-block">
-                        <h3>إضافة خصم أو كوبون</h3>
-                        <button type="button" className="bk2-discount-toggle" onClick={() => setDiscountOpen((open) => !open)}>
-                          {discountOpen ? "إخفاء خيارات الخصم" : "+ إضافة خصم أو كوبون"}
-                        </button>
-                        {discountOpen || discountMode !== "none" ? (
-                          <>
-                            <div className="bk2-choice-grid five">
-                              <button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>بدون خصم</button>
-                              <button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>مبلغ ثابت</button>
-                              <button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>نسبة</button>
-                              <button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>عرض محفوظ</button>
-                              <button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>كوبون</button>
-                            </div>
-
-                            {discountMode === "fixed" ? (
-                              <label className="bk2-payment-input">
-                                <span>قيمة الخصم</span>
-                                <input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" />
-                                <em>ر.س</em>
-                              </label>
-                            ) : null}
-
-                            {discountMode === "percent" ? (
-                              <div className="bk2-discount-grid">
-                                <label>
-                                  <span>النسبة</span>
-                                  <input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" />
-                                </label>
-                                <label>
-                                  <span>حد أقصى اختياري</span>
-                                  <input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="بدون حد" />
-                                </label>
-                              </div>
-                            ) : null}
-
-                            {discountMode === "offer" ? (
-                              <div className="bk2-offers-list">
-                                {offersLoading ? <p>جاري تحميل العروض...</p> : null}
-                                {!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}
-                                {!offersLoading && offers.map((offer) => {
-                                  const preview = buildDiscountSnapshot(discountItems, {
-                                    source: "offer",
-                                    sourceId: String((offer as any)?.id || ""),
-                                    code: String((offer as any)?.code || ""),
-                                    title: String(offer.name || ""),
-                                    offer,
-                                  });
-                                  const selected = selectedOfferId === String((offer as any)?.id || "");
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={offer.id}
-                                      className={selected ? "is-active" : ""}
-                                      onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}
-                                    >
-                                      <strong>{offer.name}</strong>
-                                      <span>{offerValueLabel(offer)} · {preview.ok ? `خصم متوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA")} ر.س` : discountReasonText(preview.reason)}</span>
-                                      {Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>خدمات محددة: {offer.serviceIds.length}</small> : null}
-                                      {Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>تصنيفات محددة: {(offer as any).categoryIds.length}</small> : null}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-
-                            {discountMode === "coupon" ? (
-                              <div className="bk2-coupon-row">
-                                <label>
-                                  <span>كود الكوبون</span>
-                                  <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" />
-                                </label>
-                                <button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>
-                                  {couponChecking ? "جاري التحقق..." : "تحقق"}
-                                </button>
-                              </div>
-                            ) : null}
-
-                            {couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}
-                            {discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}
-                            {discountSnapshot ? (
-                              <div className="bk2-discount-preview">
-                                <span>الإجمالي المؤهل: {halalasToSar(discountSnapshot.eligibleSubtotalHalalas).toLocaleString("ar-SA")} ر.س</span>
-                                <strong>الخصم: {discountAmount.toLocaleString("ar-SA")} ر.س</strong>
-                              </div>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </div>
-
-                      <div className="bk2-payment-block">
-                        <h3>نوع التحصيل</h3>
-                        <div className="bk2-choice-grid">
-                          <button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>دفع كامل</button>
-                          <button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>عربون</button>
-                          <button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>بدون دفع الآن</button>
-                        </div>
-                        {paymentType === "partial" ? <label className="bk2-payment-input"><span>قيمة العربون</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>ر.س</em></label> : null}
-                      </div>
-
-                      {paymentType !== "none" ? <div className="bk2-payment-block">
-                        <h3>طريقة الدفع</h3>
-                        <div className="bk2-choice-grid four">
-                          <button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>كاش</button>
-                          <button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>شبكة</button>
-                          <button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>تحويل</button>
-                          <button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>مختلط</button>
-                        </div>
-                        {paymentMethod === "mixed" ? <div className="bk2-mixed-grid">
-                          <label><span>كاش</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label>
-                          <label><span>شبكة</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label>
-                          <label><span>تحويل</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label>
-                          <p>المجموع: {mixedTotal.toLocaleString("ar-SA")} من {effectivePaidAmount.toLocaleString("ar-SA")} ر.س</p>
-                        </div> : null}
-                      </div> : null}
-
+                      <div className="bk2-review-list">{cart.map((service, index) => { const schedule = scheduleByService[String(service.id)]; const allocation = discountSnapshot?.allocations?.find((row) => row.bookingItemId === `item_${index}` || row.serviceId === String(service.id)); const originalAmount = servicePrice(service); const rowDiscount = allocation ? halalasToSar(allocation.discountAmountHalalas) : 0; const rowFinal = allocation ? halalasToSar(allocation.finalAmountHalalas) : originalAmount; return <article key={service.id}><span>{index + 1}</span><div><strong>{serviceTitle(service)}</strong><small>{schedule?.staffName} · {bookingDate} · {formatTime12(schedule?.time, schedule?.time)}</small>{rowDiscount > 0 ? <small>خصم هذه الخدمة: {rowDiscount.toLocaleString("ar-SA")} ر.س</small> : null}</div><b>{rowDiscount > 0 ? <small className="bk2-price-before">{originalAmount.toLocaleString("ar-SA")} ر.س</small> : null}{rowFinal.toLocaleString("ar-SA")} ر.س</b></article>; })}</div>
+                      <div className="bk2-payment-block bk2-discount-block"><h3>إضافة خصم أو كوبون</h3><button type="button" className="bk2-discount-toggle" onClick={() => setDiscountOpen((open) => !open)}>{discountOpen ? "إخفاء خيارات الخصم" : "+ إضافة خصم أو كوبون"}</button>{discountOpen || discountMode !== "none" ? <><div className="bk2-choice-grid five"><button type="button" className={discountMode === "none" ? "is-active" : ""} onClick={() => { setDiscountMode("none"); setCouponOffer(null); setSelectedOfferId(""); }}>بدون خصم</button><button type="button" className={discountMode === "fixed" ? "is-active" : ""} onClick={() => { setDiscountMode("fixed"); setCouponOffer(null); setSelectedOfferId(""); }}>مبلغ ثابت</button><button type="button" className={discountMode === "percent" ? "is-active" : ""} onClick={() => { setDiscountMode("percent"); setCouponOffer(null); setSelectedOfferId(""); }}>نسبة</button><button type="button" className={discountMode === "offer" ? "is-active" : ""} onClick={() => { setDiscountMode("offer"); setCouponOffer(null); }}>عرض محفوظ</button><button type="button" className={discountMode === "coupon" ? "is-active" : ""} onClick={() => { setDiscountMode("coupon"); setSelectedOfferId(""); }}>كوبون</button></div>{discountMode === "fixed" ? <label className="bk2-payment-input"><span>قيمة الخصم</span><input inputMode="decimal" value={manualFixedDiscount} onChange={(e) => setManualFixedDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>ر.س</em></label> : null}{discountMode === "percent" ? <div className="bk2-discount-grid"><label><span>النسبة</span><input inputMode="decimal" value={manualPercentDiscount} onChange={(e) => setManualPercentDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0 - 100" /></label><label><span>حد أقصى اختياري</span><input inputMode="decimal" value={manualMaxDiscount} onChange={(e) => setManualMaxDiscount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="بدون حد" /></label></div> : null}{discountMode === "offer" ? <div className="bk2-offers-list">{offersLoading ? <p>جاري تحميل العروض...</p> : null}{!offersLoading && offersMessage ? <p>{offersMessage}</p> : null}{!offersLoading && offers.map((offer) => { const preview = buildDiscountSnapshot(discountItems, { source: "offer", sourceId: String((offer as any)?.id || ""), code: String((offer as any)?.code || ""), title: String(offer.name || ""), offer }); const selected = selectedOfferId === String((offer as any)?.id || ""); return <button type="button" key={offer.id} className={selected ? "is-active" : ""} onClick={() => setSelectedOfferId(String((offer as any)?.id || ""))}><strong>{offer.name}</strong><span>{offerValueLabel(offer)} · {preview.ok ? `خصم متوقع ${halalasToSar(preview.discountHalalas).toLocaleString("ar-SA")} ر.س` : discountReasonText(preview.reason)}</span>{Array.isArray(offer.serviceIds) && offer.serviceIds.length ? <small>خدمات محددة: {offer.serviceIds.length}</small> : null}{Array.isArray((offer as any).categoryIds) && (offer as any).categoryIds.length ? <small>تصنيفات محددة: {(offer as any).categoryIds.length}</small> : null}</button>; })}</div> : null}{discountMode === "coupon" ? <div className="bk2-coupon-row"><label><span>كود الكوبون</span><input value={couponInput} onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponOffer(null); setCouponMessage(""); }} placeholder="QSXXXX" /></label><button type="button" onClick={() => void verifyCoupon()} disabled={couponChecking || !couponInput.trim()}>{couponChecking ? "جاري التحقق..." : "تحقق"}</button></div> : null}{couponMessage ? <p className={couponOffer ? "bk2-inline-success" : "bk2-inline-warning"}>{couponMessage}</p> : null}{discountMode !== "none" && discountMessage ? <p className="bk2-inline-warning">{discountMessage}</p> : null}{discountSnapshot ? <div className="bk2-discount-preview"><span>الإجمالي المؤهل: {halalasToSar(discountSnapshot.eligibleSubtotalHalalas).toLocaleString("ar-SA")} ر.س</span><strong>الخصم: {discountAmount.toLocaleString("ar-SA")} ر.س</strong></div> : null}</> : null}</div>
+                      <div className="bk2-payment-block"><h3>نوع التحصيل</h3><div className="bk2-choice-grid"><button type="button" className={paymentType === "full" ? "is-active" : ""} onClick={() => setPaymentType("full")}>دفع كامل</button><button type="button" className={paymentType === "partial" ? "is-active" : ""} onClick={() => setPaymentType("partial")}>عربون</button><button type="button" className={paymentType === "none" ? "is-active" : ""} onClick={() => setPaymentType("none")}>بدون دفع الآن</button></div>{paymentType === "partial" ? <label className="bk2-payment-input"><span>قيمة العربون</span><input inputMode="decimal" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /><em>ر.س</em></label> : null}</div>
+                      {paymentType !== "none" ? <div className="bk2-payment-block"><h3>طريقة الدفع</h3><div className="bk2-choice-grid four"><button type="button" className={paymentMethod === "cash" ? "is-active" : ""} onClick={() => setPaymentMethod("cash")}>كاش</button><button type="button" className={paymentMethod === "card" ? "is-active" : ""} onClick={() => setPaymentMethod("card")}>شبكة</button><button type="button" className={paymentMethod === "transfer" ? "is-active" : ""} onClick={() => setPaymentMethod("transfer")}>تحويل</button><button type="button" className={paymentMethod === "mixed" ? "is-active" : ""} onClick={() => setPaymentMethod("mixed")}>مختلط</button></div>{paymentMethod === "mixed" ? <div className="bk2-mixed-grid"><label><span>كاش</span><input inputMode="decimal" value={cashAmount} onChange={(e) => setCashAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>شبكة</span><input inputMode="decimal" value={cardAmount} onChange={(e) => setCardAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><label><span>تحويل</span><input inputMode="decimal" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value.replace(/[^0-9.]/g, ""))} /></label><p>المجموع: {mixedTotal.toLocaleString("ar-SA")} من {effectivePaidAmount.toLocaleString("ar-SA")} ر.س</p></div> : null}</div> : null}
                       <label className="bk2-note-field"><span>ملاحظة الحجز (اختياري)</span><textarea value={bookingNote} onChange={(e) => setBookingNote(e.target.value)} placeholder="أي تفاصيل مهمة للموظفة أو الاستقبال..." /></label>
-                      <div className="bk2-payment-summary">
-                        <div><span>الإجمالي قبل الخصم</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div>
-                        <div><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div>
-                        <div><span>الإجمالي بعد الخصم</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div>
-                        <div><span>المدفوع الآن</span><strong>{effectivePaidAmount.toLocaleString("ar-SA")} ر.س</strong></div>
-                        <div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA")} ر.س</strong></div>
-                      </div>
+                      <div className="bk2-payment-summary"><div><span>الإجمالي قبل الخصم</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div><div><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div><div><span>الإجمالي بعد الخصم</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div><div><span>المدفوع الآن</span><strong>{effectivePaidAmount.toLocaleString("ar-SA")} ر.س</strong></div><div><span>المتبقي</span><strong>{remainingAmount.toLocaleString("ar-SA")} ر.س</strong></div></div>
                       {submitError ? <p className="bk2-inline-warning">{submitError}</p> : null}
                       <div className="bk2-final-actions"><button type="button" className="is-secondary" onClick={() => setStep(3)} disabled={submitting}>العودة للموعد</button><button type="button" className="is-primary" onClick={requestSubmitBooking} disabled={submitting}>{submitting ? "جاري حفظ الحجز..." : paymentType === "none" ? "حفظ كحجز غير مدفوع" : paymentType === "partial" ? `حفظ الحجز بعربون ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س` : `حفظ الحجز وتحصيل ${effectivePaidAmount.toLocaleString("ar-SA")} ر.س`}</button></div>
                     </>
@@ -1674,70 +1380,18 @@ export default function BookingInternalV2() {
             </main>
 
             <aside className="bk2-summary-card">
-              <div className="bk2-summary-title">
-                <h2>ملخص الحجز</h2>
-                <FiCalendar />
-              </div>
-
-              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}>
-                <span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span>
-                <div>
-                  <strong>{selectedClient?.name || "لم يتم اختيار عميلة بعد"}</strong>
-                  <small>{selectedClient?.phone || "اختاري عميلة للمتابعة"}</small>
-                </div>
-              </div>
-
-              <dl className="bk2-summary-meta">
-                <div><dt><FiShoppingBag /> نوع الحجز</dt><dd>حجز داخل الصالون</dd></div>
-                <div><dt><FiCalendar /> التاريخ</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div>
-                <div><dt><FiUsers /> الموظفة</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div>
-              </dl>
-
-              {cart.length ? (
-                <div className="bk2-summary-services">
-                  {cart.map((service) => {
-                    const schedule = scheduleByService[String(service.id)];
-                    return <div key={service.id}><span>{serviceTitle(service)}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}</span><strong>{servicePrice(service).toLocaleString("ar-SA")} ر.س</strong></div>;
-                  })}
-                </div>
-              ) : (
-                <div className="bk2-empty-services"><FiShoppingBag /><p>لم تتم إضافة خدمات بعد</p></div>
-              )}
-
-              <div className="bk2-totals">
-                <div><span>الإجمالي الفرعي</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div>
-                <div className="is-discount"><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div>
-                <div className="is-total"><span>الإجمالي</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div>
-              </div>
-
-              <button
-                className="bk2-continue"
-                disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4}
-                onClick={() => {
-                  if (step === 1 && canContinue) setStep(2);
-                  else if (step === 2 && cart.length) setStep(3);
-                  else if (step === 3 && allScheduled) setStep(4);
-                }}
-              >
-                {step === 1 ? "المتابعة للخدمات" : step === 2 ? "المتابعة للموظفة والموعد" : step === 3 ? "المتابعة للمراجعة والدفع" : "راجعي وأكدي الحجز أعلاه"}
-                <FiChevronLeft />
-              </button>
-
+              <div className="bk2-summary-title"><h2>ملخص الحجز</h2><FiCalendar /></div>
+              <div className={`bk2-selected-client ${selectedClient ? "has-client" : ""}`}><span className="bk2-avatar">{selectedClient ? selectedClient.name.slice(0, 1) : <FiUser />}</span><div><strong>{selectedClient?.name || "لم يتم اختيار عميلة بعد"}</strong><small>{selectedClient?.phone || "اختاري عميلة للمتابعة"}</small></div></div>
+              <dl className="bk2-summary-meta"><div><dt><FiShoppingBag /> نوع الحجز</dt><dd>حجز داخل الصالون</dd></div><div><dt><FiCalendar /> التاريخ</dt><dd>{step >= 3 ? bookingDate : "—"}</dd></div><div><dt><FiUsers /> الموظفة</dt><dd>{Object.values(scheduleByService)[0]?.staffName || "—"}</dd></div></dl>
+              {cart.length ? <div className="bk2-summary-services">{cart.map((service) => { const schedule = scheduleByService[String(service.id)]; return <div key={service.id}><span>{serviceTitle(service)}{schedule?.time ? <small>{schedule.staffName} · {formatTime12(schedule.time, schedule.time)}</small> : null}</span><strong>{servicePrice(service).toLocaleString("ar-SA")} ر.س</strong></div>; })}</div> : <div className="bk2-empty-services"><FiShoppingBag /><p>لم تتم إضافة خدمات بعد</p></div>}
+              <div className="bk2-totals"><div><span>الإجمالي الفرعي</span><strong>{cartTotal.toLocaleString("ar-SA")} ر.س</strong></div><div className="is-discount"><span>الخصم</span><strong>{discountAmount.toLocaleString("ar-SA")} ر.س</strong></div><div className="is-total"><span>الإجمالي</span><strong>{finalTotal.toLocaleString("ar-SA")} ر.س</strong></div></div>
+              <button className="bk2-continue" disabled={step === 1 ? !canContinue : step === 2 ? !cart.length : step === 3 ? !allScheduled : step === 4} onClick={() => { if (step === 1 && canContinue) setStep(2); else if (step === 2 && cart.length) setStep(3); else if (step === 3 && allScheduled) setStep(4); }}>{step === 1 ? "المتابعة للخدمات" : step === 2 ? "المتابعة للموظفة والموعد" : step === 3 ? "المتابعة للمراجعة والدفع" : "راجعي وأكدي الحجز أعلاه"}<FiChevronLeft /></button>
               <p className="bk2-safe-note">هذه نسخة V2 تجريبية منفصلة، ولم تستبدل نظام الحجز الحالي.</p>
             </aside>
           </div>
         </>
       )}
-      <ConfirmModal
-        open={showPastDateConfirmation}
-        title="تأكيد الحجز بتاريخ سابق"
-        message="تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟"
-        confirmText="تأكيد وإنشاء الحجز"
-        cancelText="إلغاء"
-        showCancel
-        onConfirm={confirmPastDateBooking}
-        onCancel={() => setShowPastDateConfirmation(false)}
-      />
+      <ConfirmModal open={showPastDateConfirmation} title="تأكيد الحجز بتاريخ سابق" message="تاريخ الحجز المحدد سابق لتاريخ اليوم. هل تريد متابعة إنشاء الحجز؟" confirmText="تأكيد وإنشاء الحجز" cancelText="إلغاء" showCancel onConfirm={confirmPastDateBooking} onCancel={() => setShowPastDateConfirmation(false)} />
     </div>
   );
 }
