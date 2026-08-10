@@ -27,6 +27,7 @@ const targetPageFiles = [
   "settings.css",
   "settings-bookings.css",
   "settings-catalog.css",
+  "settings-users.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -130,6 +131,9 @@ if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
 if (/renderLegacySettingsRoute\(["']catalog["']/.test(settingsSource)) {
   errors.push("DashboardSettings.tsx still routes catalog settings through LegacySettingsRoute.");
 }
+if (!/isSettingsUsersV2Route[\s\S]*usesSettingsV2Shell/.test(settingsSource) || !/SettingsUsersV2/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx does not keep settings/users on the native V2 shell.");
+}
 
 const settingsBookingsSource = readFileSync(join(root, "src/pages/settings/SettingsBookings.tsx"), "utf8");
 if (/Settings(PageHeader|PageActions|Section|State|Stats|Tabs)/.test(settingsBookingsSource)) {
@@ -163,6 +167,21 @@ if (!/DashboardModalV2/.test(settingsCatalogSource) || !/DashboardSelectV2/.test
 }
 if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsCatalogSource)) {
   errors.push("SettingsCatalogV2.tsx is not wired to the Dashboard V2 entry point.");
+}
+
+const settingsUsersSource = readFileSync(join(root, "src/pages/settings/SettingsUsers.tsx"), "utf8");
+const settingsUsersV2Source = readFileSync(join(root, "src/pages/settings/SettingsUsersV2.tsx"), "utf8");
+if (/\b(exp-btn|dash-btn|settings-input|settings-field|settings-shell__)\b/i.test(settingsUsersSource)) {
+  errors.push("SettingsUsers.tsx still contains legacy account-settings presentation classes.");
+}
+if (/<select\b/i.test(settingsUsersSource)) {
+  errors.push("SettingsUsers.tsx still contains native select controls instead of DashboardSelectV2.");
+}
+if (!/DashboardModalV2/.test(settingsUsersSource) || !/DashboardSelectV2/.test(settingsUsersSource) || !/DashboardConfirmV2/.test(settingsUsersSource)) {
+  errors.push("SettingsUsers.tsx is missing required Dashboard V2 account primitives.");
+}
+if (!/settings-users-v2-route/.test(settingsUsersV2Source)) {
+  errors.push("SettingsUsersV2.tsx is missing the isolated V2 route wrapper.");
 }
 
 if (errors.length) {
