@@ -6,6 +6,7 @@ const canonicalPath = resolve(root, "src/styles/dashboard-v2/pages/booking-inter
 const controlsPath = resolve(root, "src/styles/dashboard-v2/pages/booking-internal-controls-refinement.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const dashboardPath = resolve(root, "src/pages/Dashboard.tsx");
+const bookingPath = resolve(root, "src/features/internal-booking-v2/BookingInternalV2.tsx");
 const errors = [];
 
 function checkCanonicalCss(path, label) {
@@ -41,6 +42,26 @@ if (!dashboard.includes("isBookingInternalPage")) {
 }
 if (!dashboard.includes("is-booking-internal-route")) {
   errors.push("Dashboard no longer exposes the internal-booking route scope class.");
+}
+
+const booking = readFileSync(bookingPath, "utf8");
+if (!booking.includes("DashboardDatePickerV2")) {
+  errors.push("BookingInternalV2.tsx is not using DashboardDatePickerV2.");
+}
+if (!booking.includes("DashboardSelectV2")) {
+  errors.push("BookingInternalV2.tsx is not using DashboardSelectV2.");
+}
+if (/<select\b/i.test(booking)) {
+  errors.push("BookingInternalV2.tsx still contains a native select control.");
+}
+if (/type\s*=\s*["']date["']/i.test(booking)) {
+  errors.push("BookingInternalV2.tsx still contains a native date input.");
+}
+if (!booking.includes('className="bk2-date-picker-v2"')) {
+  errors.push("BookingInternalV2.tsx is missing the isolated V2 date-picker class.");
+}
+if (!booking.includes('className="bk2-staff-select-v2"')) {
+  errors.push("BookingInternalV2.tsx is missing the isolated V2 staff-select class.");
 }
 
 if (errors.length) {
