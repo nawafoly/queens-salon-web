@@ -9,10 +9,15 @@ import {
   FiPlus,
   FiMinus,
   FiRefreshCw,
-  FiX,
   FiSearch,
   FiUsers,
 } from "react-icons/fi";
+import {
+  DashboardDatePickerV2,
+  DashboardDrawerV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+} from "../../components/dashboard-v2";
 import {
   PackageOperationsService,
   type PackageCatalogRecord,
@@ -622,56 +627,52 @@ export default function PackageSessionsManager() {
         </div>
       ) : null}
 
-      {selectedClientId ? (
-        <aside className="bk2-session-wallet" aria-label="محفظة العميلة">
-          <header>
-            <div><strong>{selectedClientPackages[0]?.clientName || "محفظة العميلة"}</strong><small dir="ltr">{selectedClientPackages[0]?.phone || selectedClientId}</small></div>
-            <button type="button" onClick={() => setSelectedClientId("")} aria-label="إغلاق">×</button>
-          </header>
-          <div className="bk2-session-wallet-packages">
-            {selectedClientPackages.map((pkg) => (
-              <article key={pkg.id}><div><strong>{pkg.packageName}</strong><small>{statusLabel(pkg.status)} · تنتهي {dateText(pkg.expiresAt)}</small></div><b>{pkg.remainingSessions}<small> جلسات</small></b></article>
-            ))}
-          </div>
-          <h4>آخر الحركات</h4>
-          <div className="bk2-session-wallet-ledger">
-            {selectedClientTransactions.slice(0, 12).map((row) => (
-              <div key={row.id}><span><strong>{transactionLabel(row.type)}</strong><small>{dateTimeText(row.createdAt)}</small></span><b>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</b></div>
-            ))}
-            {!selectedClientTransactions.length ? <p>لا توجد حركات مسجلة.</p> : null}
-          </div>
-        </aside>
-      ) : null}
+      <DashboardDrawerV2
+        open={Boolean(selectedClientId)}
+        onClose={() => setSelectedClientId("")}
+        eyebrow="محفظة الجلسات"
+        title={selectedClientPackages[0]?.clientName || "محفظة العميلة"}
+        description={<span dir="ltr">{selectedClientPackages[0]?.phone || selectedClientId}</span>}
+        size="md"
+        side="end"
+        className="bk2-session-wallet-drawer"
+      >
+        <div className="bk2-session-wallet-packages">
+          {selectedClientPackages.map((pkg) => (
+            <article key={pkg.id}><div><strong>{pkg.packageName}</strong><small>{statusLabel(pkg.status)} · تنتهي {dateText(pkg.expiresAt)}</small></div><b>{pkg.remainingSessions}<small> جلسات</small></b></article>
+          ))}
+        </div>
+        <h4 className="bk2-session-wallet-heading">آخر الحركات</h4>
+        <div className="bk2-session-wallet-ledger">
+          {selectedClientTransactions.slice(0, 12).map((row) => (
+            <div key={row.id}><span><strong>{transactionLabel(row.type)}</strong><small>{dateTimeText(row.createdAt)}</small></span><b>{row.sessionsDelta > 0 ? "+" : ""}{row.sessionsDelta}</b></div>
+          ))}
+          {!selectedClientTransactions.length ? <p>لا توجد حركات مسجلة.</p> : null}
+        </div>
+      </DashboardDrawerV2>
 
-      {adjustPackage ? (
-        <div
-          className="bk2-session-dialog-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !adjustSaving) setAdjustPackage(null);
-          }}
-        >
-          <form
-            className="bk2-session-dialog bk2-session-dialog--adjust"
-            onSubmit={submitAdjustment}
-            aria-label="تعديل رصيد جلسات الباقة"
-          >
-            <button
-              type="button"
-              className="bk2-session-dialog-close"
-              onClick={() => setAdjustPackage(null)}
-              disabled={adjustSaving}
-              aria-label="إغلاق"
-            >
-              <FiX />
+      <DashboardModalV2
+        open={Boolean(adjustPackage)}
+        onClose={() => { if (!adjustSaving) setAdjustPackage(null); }}
+        eyebrow="إدارة الرصيد"
+        title="تعديل جلسات الباقة"
+        description="التعديل يطبّق على الباقة الحالية فقط، ويُحفظ كحركة إدارية في سجل الجلسات."
+        size="md"
+        tone="success"
+        closeOnBackdrop={!adjustSaving}
+        closeOnEscape={!adjustSaving}
+        className="bk2-session-v2-modal"
+        footer={adjustPackage ? (
+          <div className="bk2-session-v2-actions">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setAdjustPackage(null)} disabled={adjustSaving}>إلغاء</button>
+            <button type="submit" form="bk2-adjust-sessions-form" className="dsv2-btn dsv2-btn--primary" disabled={adjustSaving}>
+              {adjustSaving ? "جاري الحفظ..." : "حفظ تعديل الجلسات"}
             </button>
-
-            <div className="bk2-session-dialog-icon is-adjust">
-              <FiActivity />
-            </div>
-            <h3>تعديل جلسات الباقة</h3>
-            <p>التعديل يطبّق على الباقة الحالية فقط، ويُحفظ كحركة إدارية في سجل الجلسات.</p>
-
+          </div>
+        ) : null}
+      >
+        {adjustPackage ? (
+          <form id="bk2-adjust-sessions-form" className="bk2-session-v2-form" onSubmit={submitAdjustment}>
             <dl className="bk2-session-adjust-summary">
               <div><dt>العميلة</dt><dd>{adjustPackage.clientName || "عميلة بدون اسم"}</dd></div>
               <div><dt>الجوال</dt><dd dir="ltr">{adjustPackage.phone || "—"}</dd></div>
@@ -739,44 +740,31 @@ export default function PackageSessionsManager() {
             })()}
 
             {adjustError ? <div className="bk2-session-grant-message is-error">{adjustError}</div> : null}
-
-            <div className="bk2-session-dialog-actions">
-              <button type="button" className="is-cancel" onClick={() => setAdjustPackage(null)} disabled={adjustSaving}>
-                إلغاء
-              </button>
-              <button type="submit" className="is-primary" disabled={adjustSaving}>
-                {adjustSaving ? "جاري الحفظ..." : "حفظ تعديل الجلسات"}
-              </button>
-            </div>
           </form>
-        </div>
-      ) : null}
+        ) : null}
+      </DashboardModalV2>
 
-      {detailsPackage ? (
-        <div
-          className="bk2-session-dialog-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !detailsSaving) setDetailsPackage(null);
-          }}
-        >
-          <form
-            className="bk2-session-dialog"
-            onSubmit={submitPackageDetails}
-            aria-label="تعديل بيانات الباقة"
-          >
-            <button
-              type="button"
-              className="bk2-session-dialog-close"
-              onClick={() => setDetailsPackage(null)}
-              disabled={detailsSaving}
-              aria-label="إغلاق"
-            >
-              <FiX />
+      <DashboardModalV2
+        open={Boolean(detailsPackage)}
+        onClose={() => { if (!detailsSaving) setDetailsPackage(null); }}
+        eyebrow="بيانات الباقة"
+        title="تعديل بيانات الباقة"
+        description="عدّلي اسم الباقة أو تاريخ الانتهاء فقط. رصيد الجلسات له إجراء مستقل ومحفوظ في السجل."
+        size="sm"
+        closeOnBackdrop={!detailsSaving}
+        closeOnEscape={!detailsSaving}
+        className="bk2-session-v2-modal"
+        footer={detailsPackage ? (
+          <div className="bk2-session-v2-actions">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>إلغاء</button>
+            <button type="submit" form="bk2-package-details-form" className="dsv2-btn dsv2-btn--primary" disabled={detailsSaving}>
+              {detailsSaving ? "جاري الحفظ..." : "حفظ بيانات الباقة"}
             </button>
-            <div className="bk2-session-dialog-icon"><FiEdit3 /></div>
-            <h3>بيانات الباقة</h3>
-            <p>عدّلي اسم الباقة أو تاريخ الانتهاء فقط. رصيد الجلسات له إجراء مستقل ومحفوظ في السجل.</p>
+          </div>
+        ) : null}
+      >
+        {detailsPackage ? (
+          <form id="bk2-package-details-form" className="bk2-session-v2-form" onSubmit={submitPackageDetails}>
             <div className="bk2-session-grant-grid">
               <label className="is-wide">
                 <span>اسم الباقة *</span>
@@ -787,194 +775,153 @@ export default function PackageSessionsManager() {
                   disabled={detailsSaving}
                 />
               </label>
-              <label className="is-wide">
+              <div className="bk2-session-v2-field is-wide">
                 <span>تاريخ الانتهاء</span>
-                <input
-                  type="date"
+                <DashboardDatePickerV2
                   value={detailsForm.expiresAt}
-                  onChange={(event) => setDetailsForm((current) => ({ ...current, expiresAt: event.target.value }))}
+                  onChange={(value) => setDetailsForm((current) => ({ ...current, expiresAt: value }))}
                   disabled={detailsSaving}
+                  className="bk2-session-v2-control"
                 />
-              </label>
+              </div>
             </div>
             {detailsError ? <div className="bk2-session-grant-message is-error">{detailsError}</div> : null}
-            <div className="bk2-session-dialog-actions">
-              <button type="button" className="is-cancel" onClick={() => setDetailsPackage(null)} disabled={detailsSaving}>إلغاء</button>
-              <button type="submit" className="is-primary" disabled={detailsSaving}>
-                {detailsSaving ? "جاري الحفظ..." : "حفظ بيانات الباقة"}
-              </button>
-            </div>
           </form>
-        </div>
-      ) : null}
+        ) : null}
+      </DashboardModalV2>
 
-      {grantOpen ? (
-        <div
-          className="bk2-session-dialog-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !grantSaving) {
-              setGrantOpen(false);
-            }
-          }}
-        >
-          <form
-            className="bk2-session-dialog bk2-session-dialog--grant"
-            onSubmit={submitGrant}
-            aria-label="إضافة جلسة لعميلة"
-          >
-            <button
-              type="button"
-              className="bk2-session-dialog-close"
-              onClick={() => setGrantOpen(false)}
-              disabled={grantSaving}
-              aria-label="إغلاق"
-            >
-              <FiX />
+      <DashboardModalV2
+        open={grantOpen}
+        onClose={() => { if (!grantSaving) setGrantOpen(false); }}
+        eyebrow="جلسة يدوية"
+        title="إضافة جلسة لعميلة"
+        description="أدخلي بيانات العميلة وحددي الباقة وعدد الجلسات. إذا لم يكن لها ملف، سيتم إنشاؤه تلقائيًا داخل Core D1."
+        size="lg"
+        tone="success"
+        closeOnBackdrop={!grantSaving}
+        closeOnEscape={!grantSaving}
+        className="bk2-session-v2-modal bk2-session-v2-modal--grant"
+        footer={(
+          <div className="bk2-session-v2-actions">
+            <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={() => setGrantOpen(false)} disabled={grantSaving}>إلغاء</button>
+            <button type="submit" form="bk2-grant-session-form" className="dsv2-btn dsv2-btn--primary" disabled={grantSaving || !catalog.length}>
+              {grantSaving ? "جاري الإضافة..." : "حفظ وإضافة الجلسة"}
             </button>
-
-            <div className="bk2-session-dialog-icon is-grant">
-              <FiPlus />
-            </div>
-            <h3>إضافة جلسة لعميلة</h3>
-            <p>
-              أدخلي بيانات العميلة وحددي الباقة وعدد الجلسات. إذا لم يكن لها ملف،
-              سيتم إنشاؤه تلقائيًا داخل Core D1.
-            </p>
-
-            <div className="bk2-session-grant-grid">
-              <label>
-                <span>اسم العميلة *</span>
-                <input
-                  autoFocus
-                  value={grantForm.clientName}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      clientName: event.target.value,
-                    }))
-                  }
-                  placeholder="مثال: غادة العليان"
-                  disabled={grantSaving}
-                />
-              </label>
-
-              <label>
-                <span>رقم الجوال *</span>
-                <input
-                  dir="ltr"
-                  inputMode="tel"
-                  value={grantForm.phone}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      phone: event.target.value,
-                    }))
-                  }
-                  placeholder="05xxxxxxxx"
-                  disabled={grantSaving}
-                />
-              </label>
-
-              <label className="is-wide">
-                <span>الباقة أو الخدمة المرتبطة *</span>
-                <select
-                  value={grantForm.packageCatalogId}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      packageCatalogId: event.target.value,
-                    }))
-                  }
-                  disabled={grantSaving || !catalog.length}
-                >
-                  {!catalog.length ? (
-                    <option value="">لا توجد باقات نشطة</option>
-                  ) : null}
-                  {catalog.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} · {item.sessionsCount} جلسات في الكتالوج
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span>عدد الجلسات المراد إضافتها *</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={grantForm.sessionsCount}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      sessionsCount: event.target.value,
-                    }))
-                  }
-                  disabled={grantSaving}
-                />
-              </label>
-
-              <label>
-                <span>تاريخ الانتهاء</span>
-                <input
-                  type="date"
-                  value={grantForm.expiresAt}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      expiresAt: event.target.value,
-                    }))
-                  }
-                  disabled={grantSaving}
-                />
-              </label>
-
-              <label className="is-wide">
-                <span>ملاحظة</span>
-                <textarea
-                  rows={3}
-                  value={grantForm.reason}
-                  onChange={(event) =>
-                    setGrantForm((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
-                  }
-                  placeholder="سبب الإضافة أو أي ملاحظة داخلية"
-                  disabled={grantSaving}
-                />
-              </label>
-            </div>
-
-            {grantError ? (
-              <div className="bk2-session-grant-message is-error">{grantError}</div>
-            ) : null}
-            {grantSuccess ? (
-              <div className="bk2-session-grant-message is-success">{grantSuccess}</div>
-            ) : null}
-
-            <div className="bk2-session-dialog-actions">
-              <button
-                type="button"
-                className="is-cancel"
-                onClick={() => setGrantOpen(false)}
+          </div>
+        )}
+      >
+        <form id="bk2-grant-session-form" className="bk2-session-v2-form" onSubmit={submitGrant}>
+          <div className="bk2-session-grant-grid">
+            <label>
+              <span>اسم العميلة *</span>
+              <input
+                autoFocus
+                value={grantForm.clientName}
+                onChange={(event) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    clientName: event.target.value,
+                  }))
+                }
+                placeholder="مثال: غادة العليان"
                 disabled={grantSaving}
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="is-primary"
+              />
+            </label>
+
+            <label>
+              <span>رقم الجوال *</span>
+              <input
+                dir="ltr"
+                inputMode="tel"
+                value={grantForm.phone}
+                onChange={(event) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    phone: event.target.value,
+                  }))
+                }
+                placeholder="05xxxxxxxx"
+                disabled={grantSaving}
+              />
+            </label>
+
+            <div className="bk2-session-v2-field is-wide">
+              <span>الباقة أو الخدمة المرتبطة *</span>
+              <DashboardSelectV2
+                value={grantForm.packageCatalogId}
+                options={catalog.map((item) => ({
+                  value: item.id,
+                  label: `${item.name} · ${item.sessionsCount} جلسات في الكتالوج`,
+                }))}
+                placeholder={catalog.length ? "اختاري الباقة أو الخدمة" : "لا توجد باقات نشطة"}
                 disabled={grantSaving || !catalog.length}
-              >
-                {grantSaving ? "جاري الإضافة..." : "حفظ وإضافة الجلسة"}
-              </button>
+                className="bk2-session-v2-control"
+                onChange={(value) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    packageCatalogId: value,
+                  }))
+                }
+              />
             </div>
-          </form>
-        </div>
-      ) : null}
+
+            <label>
+              <span>عدد الجلسات المراد إضافتها *</span>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                value={grantForm.sessionsCount}
+                onChange={(event) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    sessionsCount: event.target.value,
+                  }))
+                }
+                disabled={grantSaving}
+              />
+            </label>
+
+            <div className="bk2-session-v2-field">
+              <span>تاريخ الانتهاء</span>
+              <DashboardDatePickerV2
+                value={grantForm.expiresAt}
+                onChange={(value) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    expiresAt: value,
+                  }))
+                }
+                disabled={grantSaving}
+                className="bk2-session-v2-control"
+              />
+            </div>
+
+            <label className="is-wide">
+              <span>ملاحظة</span>
+              <textarea
+                rows={3}
+                value={grantForm.reason}
+                onChange={(event) =>
+                  setGrantForm((current) => ({
+                    ...current,
+                    reason: event.target.value,
+                  }))
+                }
+                placeholder="سبب الإضافة أو أي ملاحظة داخلية"
+                disabled={grantSaving}
+              />
+            </label>
+          </div>
+
+          {grantError ? (
+            <div className="bk2-session-grant-message is-error">{grantError}</div>
+          ) : null}
+          {grantSuccess ? (
+            <div className="bk2-session-grant-message is-success">{grantSuccess}</div>
+          ) : null}
+        </form>
+      </DashboardModalV2>
 
       {loading && !dashboard.packages.length ? <div className="bk2-session-loading">جاري تحميل بيانات الباقات والجلسات...</div> : null}
     </section>
