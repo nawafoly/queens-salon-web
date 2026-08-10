@@ -2,8 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
+import {
+  DashboardEmptyStateV2,
+  DashboardFieldV2,
+  DashboardSkeletonV2,
+} from "../components/dashboard-v2";
 import { auth, db } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
+import "../styles/dashboard-v2/dashboard-v2.css";
 
 type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending" | "client" | "guest";
 
@@ -18,6 +24,17 @@ type AdminProfileDoc = {
 const SALON_ID = "main";
 const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
+const ROLE_LABELS: Record<UiRole, string> = {
+  owner: "المالك",
+  admin: "الإدارة",
+  hr: "الموارد البشرية",
+  reception: "الاستقبال",
+  staff: "الموظفات",
+  pending: "قيد المراجعة",
+  client: "عميلة",
+  guest: "ضيف",
+};
+
 function normalizeRole(raw: unknown): UiRole {
   const role = String(raw || "").toLowerCase().trim();
   if (role === "owner") return "owner";
@@ -28,6 +45,19 @@ function normalizeRole(raw: unknown): UiRole {
   if (role === "pending") return "pending";
   if (role === "client") return "client";
   return "guest";
+}
+
+function profileInitials(name: string, email: string) {
+  const cleanName = String(name || "").trim();
+  if (cleanName) {
+    return cleanName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase();
+  }
+  return String(email || "A").trim().charAt(0).toUpperCase() || "A";
 }
 
 const DashboardAdminProfile: React.FC = () => {
@@ -224,111 +254,197 @@ const DashboardAdminProfile: React.FC = () => {
 
   if (authLoading) {
     return (
-      <div className="dashboard-section settings-page">
-        <div className="settings-wrap">
-          <div className="settings-card">
-            <h3 className="settings-title">جاري تحميل الملف الشخصي...</h3>
-          </div>
-        </div>
-      </div>
+      <main className="dsv2-page admin-profile-v2-page" dir="rtl">
+        <section className="dsv2-card dsv2-card--padded admin-profile-v2-loading" aria-label="جاري تحميل الملف الشخصي">
+          <DashboardSkeletonV2 variant="title" width="34%" />
+          <DashboardSkeletonV2 lines={3} width="100%" />
+        </section>
+        <section className="admin-profile-v2-metrics">
+          <DashboardSkeletonV2 variant="block" height={124} />
+          <DashboardSkeletonV2 variant="block" height={124} />
+          <DashboardSkeletonV2 variant="block" height={124} />
+          <DashboardSkeletonV2 variant="block" height={124} />
+        </section>
+      </main>
     );
   }
 
   if (!hasAdminPower) {
     return (
-      <div className="dashboard-section settings-page">
-        <div className="settings-wrap">
-          <div className="settings-card">
-            <h3 className="settings-title">غير مصرح</h3>
-            <p style={{ margin: 0, opacity: 0.8 }}>
-              هذه الصفحة مخصصة لحسابات Owner / Admin فقط.
-            </p>
-          </div>
-        </div>
-      </div>
+      <main className="dsv2-page admin-profile-v2-page" dir="rtl">
+        <DashboardEmptyStateV2
+          tone="gold"
+          title="غير مصرح"
+          description="هذه الصفحة مخصصة لحسابات Owner / Admin فقط."
+        />
+      </main>
     );
   }
 
+  const roleLabel = ROLE_LABELS[profile.role] || profile.role;
+  const initials = profileInitials(profile.displayName, profile.email);
+  const messageTone = msg.startsWith("تم ") ? "is-success" : "is-error";
+
   return (
-    <div className="dashboard-section settings-page">
-      <div className="settings-wrap">
-        <div className="settings-header">
-          <div>
-            <h1>الملف الشخصي</h1>
-            <p className="settings-hint">
-              بيانات حساب الإدارة محفوظة في المسار: salons/{SALON_ID}/users/{uid}
-            </p>
+    <main className="dsv2-page admin-profile-v2-page" dir="rtl">
+      <section className="dsv2-card admin-profile-v2-hero">
+        <div className="admin-profile-v2-hero__content">
+          <span className="dsv2-badge dsv2-badge--gold">الملف الشخصي الإداري</span>
+          <h1 className="dsv2-page-title">الملف الشخصي</h1>
+          <p className="dsv2-page-subtitle">
+            تحديث بيانات حساب الإدارة التي تظهر داخل لوحة التحكم مع إبقاء الهوية والدور محميين.
+          </p>
+          <div className="admin-profile-v2-hero__badges">
+            <span className="dsv2-badge dsv2-badge--success">{roleLabel}</span>
+            <span className={`dsv2-badge ${docExists ? "dsv2-badge--success" : "dsv2-badge--danger"}`}>
+              {docExists ? "الملف مرتبط" : "المستند غير موجود"}
+            </span>
           </div>
+        </div>
 
-          <div className="settings-save">
-            {!!msg && (
-              <span className={`settings-alert ${docExists ? "success" : "error"}`}>{msg}</span>
+        <div className="admin-profile-v2-identity" aria-label="هوية الحساب">
+          <div className="admin-profile-v2-avatar" aria-hidden={!profile.photoURL}>
+            {profile.photoURL ? (
+              <img src={profile.photoURL} alt={profile.displayName || "صورة الحساب"} />
+            ) : (
+              <span>{initials}</span>
             )}
-            <button
-              className="exp-btn primary"
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !docExists}
-              title={!docExists ? "المستند غير موجود" : "حفظ"}
-            >
-              {saving ? "جاري الحفظ..." : "حفظ"}
-            </button>
+          </div>
+          <div>
+            <strong>{profile.displayName || "حساب الإدارة"}</strong>
+            <span>{profile.email || "لا يوجد بريد مسجل"}</span>
           </div>
         </div>
+      </section>
 
-        <div className="settings-card">
-          <h3 className="settings-title">بيانات الحساب</h3>
+      <section className="admin-profile-v2-metrics" aria-label="ملخص الملف الشخصي">
+        <article className="dsv2-metric-card dsv2-metric-card--gold">
+          <p className="dsv2-metric-card__label">الدور</p>
+          <p className="dsv2-metric-card__value">{roleLabel}</p>
+          <p className="dsv2-metric-card__meta">صلاحية الحساب الحالية</p>
+        </article>
 
-          <div className="settings-grid">
-            <div className="settings-field">
-              <label>الاسم</label>
-              <input
-                className="settings-input"
-                value={profile.displayName}
-                onChange={(e) => setProfile((p) => ({ ...p, displayName: e.target.value }))}
-                disabled={!docExists || saving}
-              />
-            </div>
+        <article className={`dsv2-metric-card ${docExists ? "dsv2-metric-card--success" : "dsv2-metric-card--danger"}`}>
+          <p className="dsv2-metric-card__label">مستند الحساب</p>
+          <p className="dsv2-metric-card__value">{docExists ? "موجود" : "مفقود"}</p>
+          <p className="dsv2-metric-card__meta">salons/{SALON_ID}/users</p>
+        </article>
 
-            <div className="settings-field">
-              <label>رقم الجوال</label>
-              <input
-                className="settings-input"
-                value={profile.phone}
-                onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
-                disabled={!docExists || saving}
-              />
-            </div>
+        <article className="dsv2-metric-card dsv2-metric-card--dark">
+          <p className="dsv2-metric-card__label">البريد الإلكتروني</p>
+          <p className="dsv2-metric-card__value">{profile.email ? "مرتبط" : "غير مسجل"}</p>
+          <p className="dsv2-metric-card__meta">يُعرض فقط ولا يُعدل هنا</p>
+        </article>
 
-            <div className="settings-field">
-              <label>البريد الإلكتروني</label>
-              <input className="settings-input" value={profile.email} disabled />
-            </div>
+        <article className="dsv2-metric-card">
+          <p className="dsv2-metric-card__label">الصورة الشخصية</p>
+          <p className="dsv2-metric-card__value">{profile.photoURL ? "مضافة" : "اختيارية"}</p>
+          <p className="dsv2-metric-card__meta">رابط صورة الحساب</p>
+        </article>
+      </section>
 
-            <div className="settings-field">
-              <label>الصورة (اختياري)</label>
-              <input
-                className="settings-input"
-                value={profile.photoURL}
-                onChange={(e) => setProfile((p) => ({ ...p, photoURL: e.target.value }))}
-                disabled={!docExists || saving}
-              />
-            </div>
-
-            <div className="settings-field">
-              <label>الدور</label>
-              <input className="settings-input" value={profile.role} disabled />
-            </div>
+      <section className="dsv2-card dsv2-card--padded admin-profile-v2-panel">
+        <header className="admin-profile-v2-panel__head">
+          <div>
+            <span className="admin-profile-v2-panel__eyebrow">01</span>
+            <h2>بيانات الحساب</h2>
+            <p>يمكن تعديل الاسم والجوال والصورة فقط. البريد والدور يبقيان للعرض من مصدر الهوية الحالي.</p>
           </div>
+          <span className={`dsv2-badge ${docExists ? "dsv2-badge--success" : "dsv2-badge--danger"}`}>
+            {docExists ? "جاهز للحفظ" : "الحفظ متوقف"}
+          </span>
+        </header>
 
-          {!docExists && (
-            <div className="settings-note">
-              * لم يتم الحفظ لأن مستند المستخدم غير موجود. الحفظ هنا يستخدم updateDoc فقط بدون إنشاء مستند.
-            </div>
-          )}
+        <div className="admin-profile-v2-form">
+          <DashboardFieldV2 id="admin-profile-name" label="الاسم">
+            <input
+              id="admin-profile-name"
+              className="dsv2-input"
+              value={profile.displayName}
+              onChange={(event) => setProfile((current) => ({ ...current, displayName: event.target.value }))}
+              disabled={!docExists || saving}
+              autoComplete="name"
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-profile-phone" label="رقم الجوال">
+            <input
+              id="admin-profile-phone"
+              className="dsv2-input"
+              value={profile.phone}
+              onChange={(event) => setProfile((current) => ({ ...current, phone: event.target.value }))}
+              disabled={!docExists || saving}
+              inputMode="tel"
+              autoComplete="tel"
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-profile-email" label="البريد الإلكتروني">
+            <input
+              id="admin-profile-email"
+              className="dsv2-input"
+              value={profile.email}
+              disabled
+              dir="ltr"
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-profile-role" label="الدور">
+            <input
+              id="admin-profile-role"
+              className="dsv2-input"
+              value={roleLabel}
+              disabled
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="admin-profile-photo" label="رابط الصورة الشخصية">
+            <input
+              id="admin-profile-photo"
+              className="dsv2-input"
+              value={profile.photoURL}
+              onChange={(event) => setProfile((current) => ({ ...current, photoURL: event.target.value }))}
+              disabled={!docExists || saving}
+              placeholder="https://..."
+              dir="ltr"
+            />
+          </DashboardFieldV2>
         </div>
-      </div>
-    </div>
+
+        <div className="admin-profile-v2-source">
+          <span>مسار ملف الحساب</span>
+          <code dir="ltr">salons/{SALON_ID}/users/{uid || "—"}</code>
+        </div>
+
+        {!docExists ? (
+          <div className="admin-profile-v2-note" role="alert">
+            لم يتم تفعيل الحفظ لأن مستند المستخدم غير موجود. هذه الصفحة تستخدم updateDoc فقط ولا تنشئ مستندًا جديدًا.
+          </div>
+        ) : null}
+      </section>
+
+      <section className="dsv2-card dsv2-card--padded admin-profile-v2-savebar">
+        <div className="admin-profile-v2-savebar__copy">
+          <strong>حفظ الملف الشخصي</strong>
+          <p>يحفظ الاسم والجوال ورابط الصورة ثم يحدّث بيانات الجلسة المحلية المستخدمة في لوحة التحكم.</p>
+          {msg ? (
+            <span className={`admin-profile-v2-message ${messageTone}`} role={messageTone === "is-error" ? "alert" : "status"}>
+              {msg}
+            </span>
+          ) : null}
+        </div>
+
+        <button
+          className="dsv2-btn dsv2-btn--primary"
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !docExists}
+          title={!docExists ? "المستند غير موجود" : "حفظ الملف الشخصي"}
+        >
+          {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+        </button>
+      </section>
+    </main>
   );
 };
 
