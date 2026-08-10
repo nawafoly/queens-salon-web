@@ -1,0 +1,29 @@
+/*
+ * /dashboard/requests legacy neutralization.
+ * EmployeeRequests.css is still shared with /employee/requests and contains
+ * old admin-only !important title colors. Keep this override narrowly scoped
+ * to the migrated Dashboard V2 admin page until the shared legacy stylesheet
+ * is split during the employee portal migration.
+ */
+
+.dashboard-v2 .admin-employee-requests-v2-page .admin-employee-requests-hero__copy {
+  justify-items: start;
+}
+
+.dashboard-v2 .admin-employee-requests-v2-page .admin-employee-requests-hero__copy > .dsv2-badge {
+  width: fit-content;
+  justify-self: start;
+}
+
+.dashboard-v2 .admin-employee-requests-v2-page .admin-employee-requests-hero__copy > h1 {
+  color: var(--dsv2-text) !important;
+  -webkit-text-fill-color: var(--dsv2-text) !important;
+  background: none !important;
+  background-image: none !important;
+  text-shadow: none !important;
+}
+
+.dashboard-v2 .admin-employee-requests-v2-page .admin-employee-requests-hero__copy > p {
+  color: var(--dsv2-muted) !important;
+  -webkit-text-fill-color: var(--dsv2-muted) !important;
+}
