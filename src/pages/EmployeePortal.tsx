@@ -453,7 +453,7 @@ export default function EmployeePortal() {
 
   if (session.loading) {
     return (
-      <div className="employee-portal madan-employee-portal" dir="rtl">
+      <div className="employee-portal madan-employee-portal dashboard-v2" dir="rtl">
         <div className="employee-portal-layout employee-portal-layout--loading">
           <PortalSkeleton
             title="جاري تحميل بوابة الموظف"
@@ -465,7 +465,7 @@ export default function EmployeePortal() {
   }
 
   return (
-    <div className={`employee-portal madan-employee-portal malikat-portal-shell-v2${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
+    <div className={`employee-portal madan-employee-portal dashboard-v2 malikat-portal-shell-v2${isSidebarCollapsed ? " is-sidebar-collapsed" : ""}`} dir="rtl">
       <DashboardHeader
         theme="employee"
         title={employeeHeaderTitle}
