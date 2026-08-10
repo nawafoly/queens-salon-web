@@ -43,6 +43,154 @@ function uniqueText(values: unknown[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
+function isBrokenIdentityText(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return true;
+  const compact = text.replace(/\s+/g, "");
+  if (!compact) return true;
+  return compact.replace(/[?\uFFFD]/g, "").length === 0;
+}
+
+function firstUsableIdentityText(values: unknown[]) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text && !isBrokenIdentityText(text)) return text;
+  }
+  return "";
+}
+
+function identityRecordParts(data: Record<string, any> | null | undefined) {
+  const record = data || {};
+  const employeeProfile =
+    record.employeeProfile && typeof record.employeeProfile === "object"
+      ? record.employeeProfile
+      : {};
+  const personal =
+    employeeProfile.personal && typeof employeeProfile.personal === "object"
+      ? employeeProfile.personal
+      : record.personal && typeof record.personal === "object"
+        ? record.personal
+        : {};
+  const profile =
+    record.profile && typeof record.profile === "object"
+      ? record.profile
+      : {};
+
+  return { record, employeeProfile, personal, profile };
+}
+
+function identityNameCandidates(data: Record<string, any> | null | undefined) {
+  const { record, employeeProfile, personal, profile } = identityRecordParts(data);
+  return [
+    record.displayName,
+    record.name,
+    record.fullName,
+    record.employeeName,
+    record.nameAr,
+    record.arabicName,
+    personal.displayName,
+    personal.name,
+    personal.fullName,
+    employeeProfile.displayName,
+    employeeProfile.name,
+    employeeProfile.fullName,
+    profile.displayName,
+    profile.name,
+    profile.fullName,
+  ];
+}
+
+function identityAvatarCandidates(data: Record<string, any> | null | undefined) {
+  const { record, employeeProfile, personal, profile } = identityRecordParts(data);
+  return [
+    record.avatarUrl,
+    record.avatarURL,
+    record.photoURL,
+    record.photoUrl,
+    record.imageUrl,
+    record.imageURL,
+    record.profileImageUrl,
+    record.profileImage,
+    record.profilePhotoUrl,
+    record.profilePhoto,
+    record.photo,
+    record.image,
+    record.picture,
+    record.avatar,
+    employeeProfile.avatarUrl,
+    employeeProfile.avatarURL,
+    employeeProfile.photoURL,
+    employeeProfile.photoUrl,
+    employeeProfile.imageUrl,
+    employeeProfile.imageURL,
+    employeeProfile.profileImageUrl,
+    employeeProfile.profileImage,
+    employeeProfile.profilePhotoUrl,
+    employeeProfile.profilePhoto,
+    employeeProfile.photo,
+    employeeProfile.image,
+    personal.avatarUrl,
+    personal.avatarURL,
+    personal.photoURL,
+    personal.photoUrl,
+    personal.imageUrl,
+    personal.imageURL,
+    personal.profileImageUrl,
+    personal.profileImage,
+    personal.profilePhotoUrl,
+    personal.profilePhoto,
+    personal.photo,
+    personal.image,
+    profile.avatarUrl,
+    profile.avatarURL,
+    profile.photoURL,
+    profile.photoUrl,
+    profile.imageUrl,
+    profile.imageURL,
+    profile.profileImageUrl,
+    profile.profileImage,
+    profile.profilePhotoUrl,
+    profile.profilePhoto,
+    profile.photo,
+    profile.image,
+  ];
+}
+
+function resolveSessionDisplayName(args: {
+  employeeDoc: Record<string, any> | null;
+  staffDoc: Record<string, any> | null;
+  userDoc: Record<string, any> | null;
+  authDisplayName?: string | null;
+  email?: string | null;
+}) {
+  return (
+    firstUsableIdentityText([
+      ...identityNameCandidates(args.employeeDoc),
+      ...identityNameCandidates(args.staffDoc),
+      ...identityNameCandidates(args.userDoc),
+      args.authDisplayName,
+    ]) || cleanEmail(args.email || "") || "الموظفة"
+  );
+}
+
+function resolveSessionAvatarUrl(args: {
+  employeeDoc: Record<string, any> | null;
+  staffDoc: Record<string, any> | null;
+  userDoc: Record<string, any> | null;
+  authPhotoUrl?: string | null;
+}) {
+  return cleanText(
+    [
+      ...identityAvatarCandidates(args.employeeDoc),
+      ...identityAvatarCandidates(args.staffDoc),
+      ...identityAvatarCandidates(args.userDoc),
+      args.authPhotoUrl,
+    ]
+      .map(cleanText)
+      .find(Boolean) || ""
+  );
+}
+
 function recordUidCandidates(data: Record<string, any> | null | undefined) {
   return uniqueText([
     data?.linkedUid,
@@ -300,7 +448,7 @@ export function useEmployeeSession() {
 
       const uid = user.uid;
       const email = cleanEmail(user.email || "");
-      const displayName = cleanText(user.displayName || "");
+      const authDisplayName = cleanText(user.displayName || "");
 
       const userDoc = await getDoc(hrDoc("users", uid))
         .then((snap) => (snap.exists() ? (snap.data() as Record<string, any>) : null))
@@ -315,20 +463,50 @@ export function useEmployeeSession() {
         userDoc,
       });
       const employeeId = resolvedEmployee.employeeId;
+      const resolvedDisplayName = resolveSessionDisplayName({
+        employeeDoc: resolvedEmployee.employeeDoc,
+        staffDoc: resolvedEmployee.staffDoc,
+        userDoc,
+        authDisplayName,
+        email: userDoc?.email || email,
+      });
+      const resolvedAvatarUrl = resolveSessionAvatarUrl({
+        employeeDoc: resolvedEmployee.employeeDoc,
+        staffDoc: resolvedEmployee.staffDoc,
+        userDoc,
+        authPhotoUrl: user.photoURL,
+      });
+      const normalizedEmployeeDoc = resolvedEmployee.employeeDoc
+        ? {
+            ...resolvedEmployee.employeeDoc,
+            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
+          }
+        : null;
+      const normalizedStaffDoc = resolvedEmployee.staffDoc
+        ? {
+            ...resolvedEmployee.staffDoc,
+            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
+          }
+        : null;
+      const normalizedUserDoc = userDoc
+        ? {
+            ...userDoc,
+            displayName: resolvedDisplayName,
+            ...(resolvedAvatarUrl ? { avatarUrl: resolvedAvatarUrl } : {}),
+          }
+        : null;
 
       if (!alive || requestId !== requestSeqRef.current) return;
       setSession({
         user,
         uid: cleanText(uid),
         email: cleanEmail(userDoc?.email || email || ""),
-        displayName: cleanText(
-          userDoc?.displayName || userDoc?.name || displayName || ""
-        ),
+        displayName: resolvedDisplayName,
         role,
         employeeId,
-        userDoc,
-        employeeDoc: resolvedEmployee.employeeDoc || null,
-        staffDoc: resolvedEmployee.staffDoc || null,
+        userDoc: normalizedUserDoc,
+        employeeDoc: normalizedEmployeeDoc,
+        staffDoc: normalizedStaffDoc,
         loading: false,
       });
     });
