@@ -127,7 +127,6 @@ function readQuickClients(): ClientCandidate[] {
         phone: phone10Digits(value?.phone || ""),
         source: String(value?.source || "history"),
         visits: Math.max(0, Number(value?.usedCount || 0)),
-        sessions: Math.max(0, Number(value?.sessions || value?.remainingSessions || 0)) || undefined,
         _lastUsedAt: Math.max(0, Number(value?.lastUsedAt || 0)),
       }))
       .sort((a: any, b: any) => b._lastUsedAt - a._lastUsedAt)
@@ -499,7 +498,6 @@ export default function BookingInternalV2() {
     try {
       const rows = await resolveCoreBookingDataSource().searchClients(qRaw);
       (Array.isArray(rows) ? rows : []).forEach((row: any) => push(row, "core_d1"));
-
       setClients(found.slice(0, 25));
       setClientMessage(found.length ? `تم العثور على ${found.length} نتيجة.` : "لم يتم العثور على عميلة مطابقة.");
     } catch (error) {
