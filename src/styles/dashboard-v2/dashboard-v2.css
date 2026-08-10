@@ -24,8 +24,8 @@
 @import "./spacing.css";
 @import "./sidebar.css";
 @import "./portal-sidebar.css";
-@import "./portal-sidebar-scroll-fix.css";
 @import "./portal-shell-compat.css";
+@import "./portal-sidebar-scroll-fix.css";
 @import "./pages/design-system-preview.css";
 @import "./pages/overview.css";
 @import "./pages/employees.css";
