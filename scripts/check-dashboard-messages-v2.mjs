@@ -7,12 +7,14 @@ const routerPath = path.join(root, "src/pages/hr/EmployeeMessages.tsx");
 const adminPath = path.join(root, "src/pages/hr/AdminMessagesV2.tsx");
 const legacyPath = path.join(root, "src/pages/hr/EmployeeMessagesLegacy.tsx");
 const stylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-messages.css");
+const metricStylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-messages-metrics.css");
 const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
 
 const router = fs.readFileSync(routerPath, "utf8");
 const admin = fs.readFileSync(adminPath, "utf8");
 const legacy = fs.readFileSync(legacyPath, "utf8");
 const style = fs.readFileSync(stylePath, "utf8");
+const metricStyle = fs.readFileSync(metricStylePath, "utf8");
 const entry = fs.readFileSync(entryPath, "utf8");
 
 const failures = [];
@@ -58,7 +60,14 @@ requireText(legacy, "hr-comms-page", "Employee legacy messages presentation must
 requireText(style, ".admin-messages-v2-page", "Admin messages stylesheet is missing its page scope.");
 if (/!important\b/.test(style)) failures.push("admin-messages.css contains !important.");
 if (/#[0-9a-fA-F]{3,8}\b/.test(style)) failures.push("admin-messages.css contains a raw hex color.");
+
+requireText(metricStyle, "inset-inline-start: auto;", "Admin messages KPI icon must not occupy the RTL copy side.");
+requireText(metricStyle, "inset-inline-end: var(--dsv2-space-5);", "Admin messages KPI icon must stay on the opposite side of the copy.");
+if (/!important\b/.test(metricStyle)) failures.push("admin-messages-metrics.css contains !important.");
+if (/#[0-9a-fA-F]{3,8}\b/.test(metricStyle)) failures.push("admin-messages-metrics.css contains a raw hex color.");
+
 requireText(entry, '@import "./pages/admin-messages.css";', "dashboard-v2.css must import admin-messages.css.");
+requireText(entry, '@import "./pages/admin-messages-metrics.css";', "dashboard-v2.css must import admin-messages-metrics.css.");
 
 if (failures.length) {
   console.error("Dashboard messages V2 migration guard failed:\n");
