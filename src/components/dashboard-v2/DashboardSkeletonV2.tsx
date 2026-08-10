@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-export type DashboardSkeletonVariantV2 = "text" | "title" | "circle" | "button" | "block";
+export type DashboardSkeletonVariantV2 = "text" | "title" | "circle" | "button" | "block" | "card";
 
 export type DashboardSkeletonV2Props = {
   variant?: DashboardSkeletonVariantV2;
@@ -32,11 +32,12 @@ export default function DashboardSkeletonV2({
   label = "جارٍ تحميل المحتوى",
 }: DashboardSkeletonV2Props) {
   const safeLines = Math.max(1, Math.floor(lines));
+  const visualVariant = variant === "card" ? "block" : variant;
   const style: DashboardSkeletonStyleV2 = {
     "--dsv2-skeleton-width": toCssSize(width),
     "--dsv2-skeleton-height": toCssSize(height),
   };
-  const classes = ["dsv2-skeleton", `dsv2-skeleton--${variant}`, className]
+  const classes = ["dsv2-skeleton", `dsv2-skeleton--${visualVariant}`, className]
     .filter(Boolean)
     .join(" ");
 
