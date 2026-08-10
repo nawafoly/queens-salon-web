@@ -78,6 +78,7 @@ export default function MalikatPortalSidebarV2({
 }: MalikatPortalSidebarV2Props) {
   const classes = variantClasses[variant];
   const expanded = !collapsed;
+  const visibleFooter = variant === "employee" ? null : footer;
 
   return (
     <aside
@@ -145,8 +146,8 @@ export default function MalikatPortalSidebarV2({
 
       <div className="malikat-portal-sidebar-v2__navigation">{navigation}</div>
 
-      {footer ? (
-        <footer className="malikat-portal-sidebar-v2__footer">{footer}</footer>
+      {visibleFooter ? (
+        <footer className="malikat-portal-sidebar-v2__footer">{visibleFooter}</footer>
       ) : null}
     </aside>
   );
