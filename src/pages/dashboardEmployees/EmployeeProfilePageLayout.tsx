@@ -28,6 +28,17 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
 
   const handleSave = () => {
     props.onSave?.();
+
+    // Validation messages are rendered near the top of the employee page.
+    // If save is rejected before the async write begins, surface that message
+    // instead of making the fixed save button look unresponsive.
+    window.setTimeout(() => {
+      const alert = document.querySelector<HTMLElement>(
+        ".dsv2-employees-page .employees-v2-alert[role='alert']"
+      );
+      if (!alert || !String(alert.textContent || "").trim()) return;
+      alert.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
   };
 
   const savebar = (
@@ -51,7 +62,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
               className="dsv2-btn dsv2-btn--danger"
               type="button"
               onClick={props.onDelete}
-              disabled={props.busy || !showSavebar}
+              disabled={props.saving || !showSavebar}
               data-dsv2-ignore-dirty="true"
             >
               <FontAwesomeIcon icon={faTrash} />
@@ -63,7 +74,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
             className="dsv2-btn dsv2-btn--secondary"
             type="button"
             onClick={handleCancel}
-            disabled={props.busy || !showSavebar}
+            disabled={props.saving || !showSavebar}
             data-dsv2-ignore-dirty="true"
           >
             إلغاء التعديلات
@@ -74,7 +85,7 @@ export default function EmployeeProfilePageLayout(props: EmployeeEditorModalProp
               className="dsv2-btn dsv2-btn--primary"
               type="button"
               onClick={handleSave}
-              disabled={props.busy}
+              disabled={props.saving}
               data-dsv2-ignore-dirty="true"
             >
               {props.saving ? "جاري الحفظ..." : "حفظ التغييرات"}
