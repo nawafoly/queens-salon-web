@@ -1,21 +1,58 @@
-@media (max-width: 820px) {
-  html:has(.dashboard-page .hr-shell--embedded) {
-    width: 100% !important;
-    height: auto !important;
-    min-width: 0 !important;
-    min-height: 100% !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-  }
+/*
+ * Embedded HR workspace compatibility inside /dashboard/*.
+ *
+ * Contract:
+ * - /hr standalone may own an app-style internal scroll.
+ * - /dashboard/* HR routes are embedded and MUST use the dashboard/browser
+ *   document scroll only.
+ * - No embedded HR shell, stage, dashboard main, or dashboard page may become
+ *   a second vertical scroll owner.
+ */
 
-  body:has(.dashboard-page .hr-shell--embedded),
-  body:has(.dashboard-page .hr-shell--embedded) #root {
-    width: 100% !important;
-    height: auto !important;
-    min-width: 0 !important;
-    min-height: 100% !important;
-    overflow: visible !important;
-  }
+/* One scroll owner for every embedded HR route, on desktop and mobile. */
+html:has(.dashboard-page .hr-shell--embedded) {
+  width: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+body:has(.dashboard-page .hr-shell--embedded),
+body:has(.dashboard-page .hr-shell--embedded) #root {
+  width: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 100% !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* This generalizes the old employees-only single-browser-scroll fix to every
+ * HR workspace embedded under /dashboard (requests, permissions, files, etc.). */
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+}
+
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) > .container-fluid,
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) > .container-fluid > .row,
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) .dashboard-main,
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) .dashboard-inner {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+}
+
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) .dashboard-main,
+.dashboard-skin.dashboard-page:has(.hr-shell--embedded) .dashboard-inner {
+  min-height: 0 !important;
 }
 
 .dashboard-page .hr-shell.hr-shell--embedded {
