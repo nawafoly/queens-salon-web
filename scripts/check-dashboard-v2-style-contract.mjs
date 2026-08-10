@@ -28,6 +28,7 @@ const targetPageFiles = [
   "settings-bookings.css",
   "settings-catalog.css",
   "settings-users.css",
+  "settings-contact.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -131,8 +132,14 @@ if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
 if (/renderLegacySettingsRoute\(["']catalog["']/.test(settingsSource)) {
   errors.push("DashboardSettings.tsx still routes catalog settings through LegacySettingsRoute.");
 }
+if (/renderLegacySettingsRoute\(["']contact["']/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx still routes contact settings through LegacySettingsRoute.");
+}
 if (!/isSettingsUsersV2Route[\s\S]*usesSettingsV2Shell/.test(settingsSource) || !/SettingsUsersV2/.test(settingsSource)) {
   errors.push("DashboardSettings.tsx does not keep settings/users on the native V2 shell.");
+}
+if (!/isSettingsContactV2Route[\s\S]*usesSettingsV2Shell/.test(settingsSource) || !/SettingsContact/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx does not keep settings/contact on the native V2 shell.");
 }
 
 const settingsBookingsSource = readFileSync(join(root, "src/pages/settings/SettingsBookings.tsx"), "utf8");
@@ -182,6 +189,23 @@ if (!/DashboardModalV2/.test(settingsUsersSource) || !/DashboardSelectV2/.test(s
 }
 if (!/settings-users-v2-route/.test(settingsUsersV2Source)) {
   errors.push("SettingsUsersV2.tsx is missing the isolated V2 route wrapper.");
+}
+
+const settingsContactSource = readFileSync(join(root, "src/pages/settings/SettingsContact.tsx"), "utf8");
+if (/Settings(PageHeader|PageActions|PageFrame|Section|Stats)/.test(settingsContactSource)) {
+  errors.push("SettingsContact.tsx still depends on legacy SettingsFrame presentation primitives.");
+}
+if (/style=\{\{/i.test(settingsContactSource)) {
+  errors.push("SettingsContact.tsx still contains inline style objects.");
+}
+if (/\b(exp-btn|settings-input|settings-field|settings-shell__|settings-contact-page)\b/i.test(settingsContactSource)) {
+  errors.push("SettingsContact.tsx still contains legacy contact-settings presentation classes.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsContactSource)) {
+  errors.push("SettingsContact.tsx is not wired to the Dashboard V2 entry point.");
+}
+if (!/settings-contact-v2-page/.test(settingsContactSource)) {
+  errors.push("SettingsContact.tsx is missing its isolated V2 page root.");
 }
 
 if (errors.length) {
