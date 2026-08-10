@@ -18,6 +18,13 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
+  DashboardEmptyStateV2,
+  DashboardFieldV2,
+  DashboardModalV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../../components/dashboard-v2";
+import {
   createRecruitmentApplication,
   listRecruitmentApplications,
   updateRecruitmentApplication,
@@ -33,6 +40,13 @@ type ApplicationFilter = "all" | "new" | "reviewing" | "accepted" | "rejected" |
 
 const STAFF_DRAFT_STORAGE_KEY = "queens.hr.createStaffDraft";
 
+const ROLE_OPTIONS = [
+  { value: "staff", label: "موظف" },
+  { value: "reception", label: "الاستقبال" },
+  { value: "hr", label: "الموارد البشرية" },
+  { value: "admin", label: "الإدارة" },
+] as const;
+
 function statusLabel(status?: RecruitmentApplication["status"] | string | null) {
   const value = cleanText(status).toLowerCase();
   if (value === "new") return "جديد";
@@ -42,6 +56,15 @@ function statusLabel(status?: RecruitmentApplication["status"] | string | null) 
   if (value === "rejected") return "مرفوض";
   if (value === "hired") return "تم التوظيف";
   return cleanText(status) || "غير محدد";
+}
+
+function statusTone(status?: RecruitmentApplication["status"] | string | null) {
+  const value = cleanText(status || "new").toLowerCase();
+  if (value === "accepted" || value === "hired") return "success";
+  if (value === "rejected") return "danger";
+  if (value === "new") return "warning";
+  if (value === "reviewing" || value === "interview") return "active";
+  return "neutral";
 }
 
 function roleLabel(role?: string | null) {
@@ -234,150 +257,337 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
     navigate(`/dashboard/create-staff?applicationId=${encodeURIComponent(selected.id)}`);
   };
 
+  const filterItems = [
+    ["all", "الكل", stats.total],
+    ["new", "جديد", stats.new],
+    ["reviewing", "مراجعة", stats.reviewing],
+    ["accepted", "مقبول", stats.accepted],
+    ["hired", "موظف", stats.hired],
+    ["rejected", "مرفوض", stats.rejected],
+  ] as const;
+
+  const closeCreate = () => {
+    if (!saving) setCreateOpen(false);
+  };
+
   return (
-    <div className="hr-ops-page hr-recruitment-page" dir="rtl">
-      <section className="hr-ops-hero">
-        <div className="hr-ops-hero__icon"><FontAwesomeIcon icon={faUserTie} /></div>
-        <div>
-          <span>دورة التوظيف</span>
-          <h2>طلبات التوظيف</h2>
+    <main className="dashboard-v2 dsv2-page recruitment-applications-v2-page" dir="rtl">
+      <section className="recruitment-v2-hero">
+        <div className="recruitment-v2-hero__copy">
+          <span className="dsv2-badge">دورة التوظيف</span>
+          <h1>طلبات التوظيف</h1>
           <p>استقبال الطلبات، مراجعتها، ثم تحويل المرشح المقبول إلى حساب موظف مترابط مع النظام.</p>
         </div>
-        <div className="hr-ops-hero__actions">
-          <button className="hr-ops-button hr-ops-button--ghost" type="button" onClick={() => void reload()} disabled={loading || saving}>
-            <FontAwesomeIcon icon={faRotate} /><span>{loading ? "جارٍ التحديث" : "تحديث"}</span>
+        <div className="recruitment-v2-hero__actions">
+          <button
+            className="dsv2-btn dsv2-btn--secondary"
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading || saving}
+          >
+            <FontAwesomeIcon icon={faRotate} spin={loading} />
+            <span>{loading ? "جارٍ التحديث" : "تحديث"}</span>
           </button>
-          <button className="hr-ops-button hr-ops-button--primary" type="button" onClick={() => setCreateOpen(true)}>
-            <FontAwesomeIcon icon={faPlus} /><span>طلب جديد</span>
+          <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setCreateOpen(true)}>
+            <FontAwesomeIcon icon={faPlus} />
+            <span>طلب جديد</span>
           </button>
         </div>
       </section>
 
-      <section className="hr-ops-stats" aria-label="إحصاءات التوظيف">
-        <article><span>إجمالي الطلبات</span><strong>{stats.total}</strong><FontAwesomeIcon icon={faBriefcase} /></article>
-        <article className={stats.new ? "is-warning" : ""}><span>طلبات جديدة</span><strong>{stats.new}</strong><FontAwesomeIcon icon={faUserClock} /></article>
-        <article><span>قيد المراجعة</span><strong>{stats.reviewing}</strong><FontAwesomeIcon icon={faClock} /></article>
-        <article className="is-success"><span>تم التوظيف</span><strong>{stats.hired}</strong><FontAwesomeIcon icon={faUserCheck} /></article>
+      <section className="recruitment-v2-stats" aria-label="إحصاءات التوظيف">
+        <article className="dsv2-metric-card recruitment-v2-stat">
+          <span>إجمالي الطلبات</span>
+          <strong>{stats.total}</strong>
+          <FontAwesomeIcon icon={faBriefcase} />
+        </article>
+        <article className={`dsv2-metric-card recruitment-v2-stat${stats.new ? " is-warning" : ""}`}>
+          <span>طلبات جديدة</span>
+          <strong>{stats.new}</strong>
+          <FontAwesomeIcon icon={faUserClock} />
+        </article>
+        <article className="dsv2-metric-card recruitment-v2-stat is-active">
+          <span>قيد المراجعة</span>
+          <strong>{stats.reviewing}</strong>
+          <FontAwesomeIcon icon={faClock} />
+        </article>
+        <article className="dsv2-metric-card recruitment-v2-stat is-success">
+          <span>تم التوظيف</span>
+          <strong>{stats.hired}</strong>
+          <FontAwesomeIcon icon={faUserCheck} />
+        </article>
       </section>
 
-      {notice ? <div className="hr-ops-alert">{notice}</div> : null}
+      {notice ? <div className="recruitment-v2-alert" role="status">{notice}</div> : null}
 
-      <section className="hr-recruitment-shell">
-        <aside className="hr-recruitment-list-panel">
-          <div className="hr-recruitment-list-panel__head">
-            <div><span>قائمة المرشحين</span><strong>{filteredItems.length} طلب</strong></div>
-            <label className="hr-ops-search">
-              <FontAwesomeIcon icon={faMagnifyingGlass} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو البريد..." />
-            </label>
-          </div>
+      <section className="recruitment-v2-workspace">
+        <aside className="dsv2-card recruitment-v2-list-panel">
+          <header className="recruitment-v2-list-panel__head">
+            <div className="recruitment-v2-section-title">
+              <span>قائمة المرشحين</span>
+              <strong>{filteredItems.length} طلب</strong>
+            </div>
+            <DashboardFieldV2 id="recruitment-search" label="البحث" className="recruitment-v2-search-field">
+              <div className="recruitment-v2-search-control">
+                <FontAwesomeIcon icon={faMagnifyingGlass} aria-hidden="true" />
+                <input
+                  id="recruitment-search"
+                  className="dsv2-input"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="ابحث بالاسم أو البريد..."
+                />
+              </div>
+            </DashboardFieldV2>
+          </header>
 
-          <div className="hr-recruitment-filters">
-            {([
-              ["all", "الكل", stats.total],
-              ["new", "جديد", stats.new],
-              ["reviewing", "مراجعة", stats.reviewing],
-              ["accepted", "مقبول", stats.accepted],
-              ["hired", "موظف", stats.hired],
-              ["rejected", "مرفوض", stats.rejected],
-            ] as Array<[ApplicationFilter, string, number]>).map(([value, label, count]) => (
-              <button key={value} type="button" className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>
-                <span>{label}</span><em>{count}</em>
+          <div className="recruitment-v2-filters" aria-label="تصفية طلبات التوظيف">
+            {filterItems.map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                className={filter === value ? "is-active" : ""}
+                onClick={() => setFilter(value)}
+                aria-pressed={filter === value}
+              >
+                <span>{label}</span>
+                <em>{count}</em>
               </button>
             ))}
           </div>
 
-          <div className="hr-recruitment-list">
-            {filteredItems.map((item) => (
-              <button key={item.id} type="button" className={selectedId === item.id ? "is-active" : ""} onClick={() => setSelectedId(item.id)}>
-                <span className="hr-recruitment-avatar">{initials(item.fullName)}</span>
-                <span className="hr-recruitment-list__copy">
-                  <strong>{item.fullName || "مرشح بدون اسم"}</strong>
-                  <small>{roleLabel(item.roleApplied)}</small>
-                  <p>{item.email || item.phone || "لا توجد بيانات تواصل"}</p>
-                </span>
-                <span className={`hr-status-pill is-${cleanText(item.status || "new")}`}>{statusLabel(item.status)}</span>
-              </button>
-            ))}
+          <div className="recruitment-v2-list">
+            {loading && items.length === 0 ? (
+              <div className="recruitment-v2-loading" role="status" aria-label="جارٍ تحميل طلبات التوظيف">
+                <DashboardSkeletonV2 variant="block" height={86} />
+                <DashboardSkeletonV2 variant="block" height={86} />
+                <DashboardSkeletonV2 variant="block" height={86} />
+              </div>
+            ) : (
+              filteredItems.map((item) => {
+                const tone = statusTone(item.status);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`recruitment-v2-candidate${selectedId === item.id ? " is-active" : ""}`}
+                    onClick={() => setSelectedId(item.id)}
+                    aria-pressed={selectedId === item.id}
+                  >
+                    <span className="recruitment-v2-avatar" aria-hidden="true">{initials(item.fullName)}</span>
+                    <span className="recruitment-v2-candidate__copy">
+                      <strong>{item.fullName || "مرشح بدون اسم"}</strong>
+                      <small>{roleLabel(item.roleApplied)}</small>
+                      <span>{item.email || item.phone || "لا توجد بيانات تواصل"}</span>
+                    </span>
+                    <span className={`recruitment-v2-status is-${tone}`}>{statusLabel(item.status)}</span>
+                  </button>
+                );
+              })
+            )}
+
             {!loading && !filteredItems.length ? (
-              <div className="hr-ops-empty"><FontAwesomeIcon icon={faUserTie} /><strong>لا توجد طلبات مطابقة</strong><span>غيّر البحث أو أضف طلبًا جديدًا.</span></div>
+              <DashboardEmptyStateV2
+                title="لا توجد طلبات مطابقة"
+                description="غيّر البحث أو أضف طلبًا جديدًا."
+                icon={<FontAwesomeIcon icon={faUserTie} />}
+                tone="gold"
+                compact
+              />
             ) : null}
-            {loading ? <div className="hr-ops-loading">جارٍ تحميل طلبات التوظيف...</div> : null}
           </div>
         </aside>
 
-        <main className="hr-recruitment-detail">
+        <section className="dsv2-card recruitment-v2-detail" aria-label="تفاصيل طلب التوظيف">
           {selected ? (
             <>
-              <header className="hr-recruitment-detail__head">
-                <span className="hr-recruitment-avatar hr-recruitment-avatar--large">{initials(selected.fullName)}</span>
-                <div>
+              <header className="recruitment-v2-detail__head">
+                <span className="recruitment-v2-avatar recruitment-v2-avatar--large" aria-hidden="true">
+                  {initials(selected.fullName)}
+                </span>
+                <div className="recruitment-v2-detail__identity">
                   <span>طلب توظيف</span>
-                  <h3>{selected.fullName}</h3>
+                  <h2>{selected.fullName}</h2>
                   <p>{roleLabel(selected.roleApplied)} · {formatDate(selected.createdAt)}</p>
                 </div>
-                <span className={`hr-status-pill is-${cleanText(selected.status || "new")}`}>{statusLabel(selected.status)}</span>
+                <span className={`recruitment-v2-status is-${statusTone(selected.status)}`}>
+                  {statusLabel(selected.status)}
+                </span>
               </header>
 
-              <div className="hr-recruitment-contact-grid">
-                <a href={`mailto:${selected.email}`}><FontAwesomeIcon icon={faEnvelope} /><span><small>البريد الإلكتروني</small><strong>{selected.email || "—"}</strong></span></a>
-                <a href={selected.phone ? `tel:${selected.phone}` : undefined}><FontAwesomeIcon icon={faPhone} /><span><small>رقم الجوال</small><strong>{selected.phone || "—"}</strong></span></a>
-                <div><FontAwesomeIcon icon={faBriefcase} /><span><small>الوظيفة</small><strong>{roleLabel(selected.roleApplied)}</strong></span></div>
+              <div className="recruitment-v2-contact-grid">
+                <a href={`mailto:${selected.email}`}>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <span><small>البريد الإلكتروني</small><strong>{selected.email || "—"}</strong></span>
+                </a>
+                <a href={selected.phone ? `tel:${selected.phone}` : undefined}>
+                  <FontAwesomeIcon icon={faPhone} />
+                  <span><small>رقم الجوال</small><strong>{selected.phone || "—"}</strong></span>
+                </a>
+                <div>
+                  <FontAwesomeIcon icon={faBriefcase} />
+                  <span><small>الوظيفة</small><strong>{roleLabel(selected.roleApplied)}</strong></span>
+                </div>
               </div>
 
-              <section className="hr-recruitment-copy">
-                <div><span>رسالة المرشح</span><p>{selected.message || "لم يرفق المرشح رسالة إضافية."}</p></div>
-                <div><span>ملاحظات الموارد البشرية</span><p>{selected.notes || "لا توجد ملاحظات مسجلة."}</p></div>
+              <section className="recruitment-v2-copy-grid">
+                <article>
+                  <span>رسالة المرشح</span>
+                  <p>{selected.message || "لم يرفق المرشح رسالة إضافية."}</p>
+                </article>
+                <article>
+                  <span>ملاحظات الموارد البشرية</span>
+                  <p>{selected.notes || "لا توجد ملاحظات مسجلة."}</p>
+                </article>
               </section>
 
               {selected.status === "hired" ? (
-                <div className="hr-recruitment-hired">
+                <div className="recruitment-v2-hired-state">
                   <FontAwesomeIcon icon={faUserCheck} />
-                  <div><strong>تم تحويل الطلب إلى موظف</strong><span>معرّف الموظف: {selected.hiredEmployeeId || selected.hiredUid || "محفوظ في حساب الموظف"}</span></div>
+                  <div>
+                    <strong>تم تحويل الطلب إلى موظف</strong>
+                    <span>معرّف الموظف: {selected.hiredEmployeeId || selected.hiredUid || "محفوظ في حساب الموظف"}</span>
+                  </div>
                 </div>
               ) : null}
 
-              <footer className="hr-recruitment-actions">
-                <button type="button" className="hr-ops-button hr-ops-button--ghost" onClick={() => void handleStatus("reviewing")} disabled={saving || selected.status === "hired"}>
-                  <FontAwesomeIcon icon={faClock} /><span>قيد المراجعة</span>
+              <footer className="recruitment-v2-actions">
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--secondary"
+                  onClick={() => void handleStatus("reviewing")}
+                  disabled={saving || selected.status === "hired"}
+                >
+                  <FontAwesomeIcon icon={faClock} />
+                  <span>قيد المراجعة</span>
                 </button>
-                <button type="button" className="hr-ops-button hr-ops-button--soft-success" onClick={() => void handleStatus("accepted")} disabled={saving || selected.status === "hired"}>
-                  <FontAwesomeIcon icon={faCheck} /><span>قبول مبدئي</span>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--success"
+                  onClick={() => void handleStatus("accepted")}
+                  disabled={saving || selected.status === "hired"}
+                >
+                  <FontAwesomeIcon icon={faCheck} />
+                  <span>قبول مبدئي</span>
                 </button>
-                <button type="button" className="hr-ops-button hr-ops-button--danger" onClick={() => void handleStatus("rejected")} disabled={saving || selected.status === "hired"}>
-                  <FontAwesomeIcon icon={faXmark} /><span>رفض الطلب</span>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger"
+                  onClick={() => void handleStatus("rejected")}
+                  disabled={saving || selected.status === "hired"}
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                  <span>رفض الطلب</span>
                 </button>
-                <button type="button" className="hr-ops-button hr-ops-button--primary" onClick={openCreateAccount} disabled={saving || selected.status === "hired"}>
-                  <FontAwesomeIcon icon={faUserPlus} /><span>تحويل إلى حساب موظف</span>
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--primary"
+                  onClick={openCreateAccount}
+                  disabled={saving || selected.status === "hired"}
+                >
+                  <FontAwesomeIcon icon={faUserPlus} />
+                  <span>تحويل إلى حساب موظف</span>
                 </button>
               </footer>
             </>
           ) : (
-            <div className="hr-ops-empty hr-ops-empty--large"><FontAwesomeIcon icon={faUserTie} /><strong>اختر طلب توظيف</strong><span>حدد مرشحًا من القائمة لعرض التفاصيل والإجراءات.</span></div>
+            <DashboardEmptyStateV2
+              title="اختر طلب توظيف"
+              description="حدد مرشحًا من القائمة لعرض التفاصيل والإجراءات."
+              icon={<FontAwesomeIcon icon={faUserTie} />}
+              tone="gold"
+            />
           )}
-        </main>
+        </section>
       </section>
 
-      {createOpen ? (
-        <div className="hr-ops-modal" role="dialog" aria-modal="true" aria-label="إضافة طلب توظيف">
-          <button className="hr-ops-modal__backdrop" type="button" onClick={() => !saving && setCreateOpen(false)} aria-label="إغلاق" />
-          <section className="hr-ops-modal__card">
-            <header>
-              <div><span>إضافة مرشح</span><h3>طلب توظيف جديد</h3><p>أدخل بيانات التواصل والوظيفة المطلوبة.</p></div>
-              <button type="button" onClick={() => !saving && setCreateOpen(false)} aria-label="إغلاق"><FontAwesomeIcon icon={faXmark} /></button>
-            </header>
-            <div className="hr-ops-form-grid">
-              <label className="hr-ops-field"><span>الاسم الكامل</span><input value={newApp.fullName} onChange={(event) => setNewApp((current) => ({ ...current, fullName: event.target.value }))} /></label>
-              <label className="hr-ops-field"><span>البريد الإلكتروني</span><input type="email" value={newApp.email} onChange={(event) => setNewApp((current) => ({ ...current, email: event.target.value }))} /></label>
-              <label className="hr-ops-field"><span>رقم الجوال</span><input value={newApp.phone} onChange={(event) => setNewApp((current) => ({ ...current, phone: event.target.value }))} /></label>
-              <label className="hr-ops-field"><span>الوظيفة المتقدم لها</span><select value={newApp.roleApplied} onChange={(event) => setNewApp((current) => ({ ...current, roleApplied: event.target.value }))}><option value="staff">موظف</option><option value="reception">الاستقبال</option><option value="hr">الموارد البشرية</option><option value="admin">الإدارة</option></select></label>
-              <label className="hr-ops-field hr-ops-field--wide"><span>رسالة المرشح</span><textarea rows={4} value={newApp.message} onChange={(event) => setNewApp((current) => ({ ...current, message: event.target.value }))} /></label>
-              <label className="hr-ops-field hr-ops-field--wide"><span>ملاحظات داخلية</span><textarea rows={4} value={newApp.notes} onChange={(event) => setNewApp((current) => ({ ...current, notes: event.target.value }))} /></label>
-            </div>
-            <footer><button className="hr-ops-button hr-ops-button--ghost" type="button" onClick={() => setCreateOpen(false)} disabled={saving}>إلغاء</button><button className="hr-ops-button hr-ops-button--primary" type="button" onClick={() => void handleCreateApplication()} disabled={saving}><FontAwesomeIcon icon={faUserPlus} /><span>{saving ? "جارٍ الحفظ" : "حفظ الطلب"}</span></button></footer>
-          </section>
+      <DashboardModalV2
+        open={createOpen}
+        onClose={closeCreate}
+        title="طلب توظيف جديد"
+        description="أدخل بيانات التواصل والوظيفة المطلوبة."
+        eyebrow="إضافة مرشح"
+        size="lg"
+        tone="gold"
+        closeOnBackdrop={!saving}
+        closeOnEscape={!saving}
+        className="recruitment-v2-create-modal"
+        footer={
+          <>
+            <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={closeCreate} disabled={saving}>
+              إلغاء
+            </button>
+            <button
+              className="dsv2-btn dsv2-btn--primary"
+              type="button"
+              onClick={() => void handleCreateApplication()}
+              disabled={saving}
+            >
+              <FontAwesomeIcon icon={faUserPlus} />
+              <span>{saving ? "جارٍ الحفظ" : "حفظ الطلب"}</span>
+            </button>
+          </>
+        }
+      >
+        <div className="recruitment-v2-form-grid">
+          <DashboardFieldV2 id="recruitment-full-name" label="الاسم الكامل" required>
+            <input
+              id="recruitment-full-name"
+              className="dsv2-input"
+              value={newApp.fullName}
+              onChange={(event) => setNewApp((current) => ({ ...current, fullName: event.target.value }))}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="recruitment-email" label="البريد الإلكتروني" required>
+            <input
+              id="recruitment-email"
+              className="dsv2-input"
+              type="email"
+              value={newApp.email}
+              onChange={(event) => setNewApp((current) => ({ ...current, email: event.target.value }))}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="recruitment-phone" label="رقم الجوال">
+            <input
+              id="recruitment-phone"
+              className="dsv2-input"
+              value={newApp.phone}
+              onChange={(event) => setNewApp((current) => ({ ...current, phone: event.target.value }))}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="recruitment-role" label="الوظيفة المتقدم لها">
+            <DashboardSelectV2
+              id="recruitment-role"
+              value={newApp.roleApplied}
+              options={ROLE_OPTIONS}
+              onChange={(value) => setNewApp((current) => ({ ...current, roleApplied: value }))}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="recruitment-message" label="رسالة المرشح" className="recruitment-v2-field--wide">
+            <textarea
+              id="recruitment-message"
+              className="dsv2-textarea"
+              rows={4}
+              value={newApp.message}
+              onChange={(event) => setNewApp((current) => ({ ...current, message: event.target.value }))}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="recruitment-notes" label="ملاحظات داخلية" className="recruitment-v2-field--wide">
+            <textarea
+              id="recruitment-notes"
+              className="dsv2-textarea"
+              rows={4}
+              value={newApp.notes}
+              onChange={(event) => setNewApp((current) => ({ ...current, notes: event.target.value }))}
+            />
+          </DashboardFieldV2>
         </div>
-      ) : null}
-    </div>
+      </DashboardModalV2>
+    </main>
   );
 }
