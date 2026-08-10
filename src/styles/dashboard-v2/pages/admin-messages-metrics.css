@@ -1,0 +1,41 @@
+/* =========================================================
+   Malikat Dashboard V2 — admin messages KPI layout
+   Keeps metric copy on the RTL start side and reserves the
+   opposite side for the canonical metric icon.
+========================================================= */
+
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card {
+  min-height: 132px;
+  padding-inline-start: var(--dsv2-space-5);
+  padding-inline-end: calc(var(--dsv2-space-8) + 44px);
+}
+
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card__icon {
+  inset-inline-start: auto;
+  inset-inline-end: var(--dsv2-space-5);
+  inset-block-start: var(--dsv2-space-5);
+}
+
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card__label,
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card__value {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  text-align: start;
+}
+
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card__label {
+  padding-inline-end: var(--dsv2-space-2);
+  white-space: normal;
+}
+
+.dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card__value {
+  margin-top: var(--dsv2-space-1);
+}
+
+@media (max-width: 560px) {
+  .dashboard-v2 .admin-messages-v2-stats .dsv2-metric-card {
+    min-height: 116px;
+  }
+}
