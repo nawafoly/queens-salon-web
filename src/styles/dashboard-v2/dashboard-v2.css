@@ -62,6 +62,7 @@
 @import "./pages/booking-internal-sessions-refinement.css";
 @import "./pages/hr-overview-final.css";
 @import "./pages/admin-employee-requests.css";
+@import "./pages/admin-employee-requests-legacy-neutralize.css";
 @import "./pages/employee-portal-profile.css";
 @import "./pages/employee-portal-overview.css";
 @import "./pages/employee-portal-overview-micro-fixes.css";
