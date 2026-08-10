@@ -44,9 +44,19 @@ type NavigationItem = PermissionRule & {
   primary?: boolean;
 };
 
+type MoreGroupId = "operations" | "hr" | "management" | "settings";
+
 type MoreItem = NavigationItem & {
   description?: string;
+  group: MoreGroupId;
 };
+
+const MORE_GROUPS: Array<{ id: MoreGroupId; label: string }> = [
+  { id: "operations", label: "الحجوزات والعملاء والمالية" },
+  { id: "hr", label: "الموظفات والموارد البشرية" },
+  { id: "management", label: "الإدارة والتقارير" },
+  { id: "settings", label: "الموظفات والحسابات والإعدادات" },
+];
 
 export default function DashboardMobileNav({
   missingExpenseNotesCount,
@@ -104,6 +114,7 @@ export default function DashboardMobileNav({
         description: "ملخص لوحة التشغيل",
         icon: faHouse,
         permission: "workspace.dashboard.view",
+        group: "operations",
       },
       {
         to: "/dashboard/booking-internal",
@@ -111,6 +122,7 @@ export default function DashboardMobileNav({
         description: "إنشاء حجز من داخل الإدارة",
         icon: faUserShield,
         permission: "bookings.create",
+        group: "operations",
       },
       {
         to: "/dashboard/day-audit",
@@ -118,6 +130,7 @@ export default function DashboardMobileNav({
         description: "مراجعة العمليات وإقفال اليوم",
         icon: faWallet,
         permission: "bookings.day_audit.manage",
+        group: "operations",
       },
       {
         to: "/dashboard/tv-queue",
@@ -125,6 +138,7 @@ export default function DashboardMobileNav({
         description: "عرض نداء ومتابعة الحجوزات",
         icon: faTv,
         permission: "bookings.queue_tv.view",
+        group: "operations",
       },
       {
         to: "/dashboard/clients",
@@ -132,15 +146,16 @@ export default function DashboardMobileNav({
         description: "ملفات العملاء والباقات",
         icon: faUser,
         permission: "clients.view",
+        group: "operations",
       },
 
-      /* الموظفات والموارد البشرية — نفس خريطة صلاحيات السايدبار */
       {
         to: "/dashboard/hr",
         label: "ملخص الموارد البشرية",
         description: "نظرة عامة على شؤون الموظفات",
         icon: faUserShield,
         permission: "employees.view",
+        group: "hr",
       },
       {
         to: "/dashboard/employees",
@@ -148,6 +163,7 @@ export default function DashboardMobileNav({
         description: "الملفات والبيانات الوظيفية",
         icon: faUsers,
         permission: "employees.view",
+        group: "hr",
       },
       {
         to: "/dashboard/requests",
@@ -155,6 +171,7 @@ export default function DashboardMobileNav({
         description: "متابعة الطلبات والقرارات",
         icon: faPaperPlane,
         permission: "employee_requests.view",
+        group: "hr",
       },
       {
         to: "/dashboard/permissions",
@@ -162,6 +179,7 @@ export default function DashboardMobileNav({
         description: "مراجعة الاستئذانات والإجازات",
         icon: faFingerprint,
         permission: "attendance.leaves.manage",
+        group: "hr",
       },
       {
         to: "/dashboard/attendance",
@@ -169,6 +187,7 @@ export default function DashboardMobileNav({
         description: "متابعة البصمات والأجهزة والتنبيهات",
         icon: faFingerprint,
         permission: "attendance.view",
+        group: "hr",
       },
       {
         to: "/dashboard/recruitment-applications",
@@ -176,6 +195,7 @@ export default function DashboardMobileNav({
         description: "مراجعة طلبات التوظيف",
         icon: faUserTie,
         permission: "recruitment.view",
+        group: "hr",
       },
       {
         to: "/dashboard/messages",
@@ -183,6 +203,7 @@ export default function DashboardMobileNav({
         description: "التواصل الداخلي مع الموظفات",
         icon: faPaperPlane,
         permission: "messages.manage",
+        group: "hr",
       },
       {
         to: "/dashboard/files",
@@ -190,6 +211,7 @@ export default function DashboardMobileNav({
         description: "العقود والمستندات والمرفقات",
         icon: faFileLines,
         permission: "employees.files.view",
+        group: "hr",
       },
       {
         to: "/dashboard/create-staff",
@@ -197,6 +219,7 @@ export default function DashboardMobileNav({
         description: "إضافة حساب موظفة جديد",
         icon: faUserShield,
         allOf: ["admin_accounts.manage", "employees.create"],
+        group: "hr",
       },
       {
         to: "/dashboard/payroll",
@@ -204,6 +227,7 @@ export default function DashboardMobileNav({
         description: "مسيرات الرواتب الشهرية والاعتماد والدفع",
         icon: faMoneyBillWave,
         permission: "payroll.view",
+        group: "hr",
       },
       {
         to: "/dashboard/employee-targets",
@@ -211,6 +235,7 @@ export default function DashboardMobileNav({
         description: "متابعة المبيعات المؤهلة والشرائح وبونص الرواتب",
         icon: faChartPie,
         anyOf: ["targets.view", "targets.view_all", "payroll.view"],
+        group: "hr",
       },
       {
         to: "/dashboard/staff-performance",
@@ -218,6 +243,7 @@ export default function DashboardMobileNav({
         description: "تحليل أداء ومبيعات الموظفات",
         icon: faChartLine,
         permission: "staffPerformance.view",
+        group: "hr",
       },
 
       {
@@ -226,22 +252,79 @@ export default function DashboardMobileNav({
         description: "إدارة المستأجرات ومقاعد العمل",
         icon: faStore,
         permission: "partners.manage",
+        group: "management",
       },
-      { to: "/dashboard/offers", label: "العروض والكوبونات", icon: faPercent, permission: "offers.manage" },
-      { to: "/dashboard/logs", label: "سجل الحركات", icon: faClockRotateLeft, permission: "logs.view" },
-      { to: "/dashboard/loyalty", label: "الولاء VIP", icon: faChartPie, permission: "clients.loyalty.manage" },
-      { to: "/dashboard/admin-profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.dashboard.view" },
-      { to: "/dashboard/settings", label: "الإعدادات الأساسية", icon: faCog, permission: "settings.general.manage" },
-      { to: "/dashboard/settings/bookings", label: "إعدادات الحجوزات", icon: faCalendarAlt, permission: "settings.booking.manage" },
-      { to: "/dashboard/settings/catalog", label: "إدارة الكتالوج", icon: faPercent, permission: "catalog.manage" },
+      {
+        to: "/dashboard/offers",
+        label: "العروض والكوبونات",
+        icon: faPercent,
+        permission: "offers.manage",
+        group: "management",
+      },
+      {
+        to: "/dashboard/logs",
+        label: "سجل الحركات",
+        icon: faClockRotateLeft,
+        permission: "logs.view",
+        group: "management",
+      },
+      {
+        to: "/dashboard/loyalty",
+        label: "الولاء VIP",
+        icon: faChartPie,
+        permission: "clients.loyalty.manage",
+        group: "management",
+      },
+
+      {
+        to: "/dashboard/admin-profile",
+        label: "الملف الشخصي",
+        icon: faUser,
+        permission: "workspace.dashboard.view",
+        group: "settings",
+      },
+      {
+        to: "/dashboard/settings",
+        label: "الإعدادات الأساسية",
+        icon: faCog,
+        permission: "settings.general.manage",
+        group: "settings",
+      },
+      {
+        to: "/dashboard/settings/bookings",
+        label: "إعدادات الحجوزات",
+        icon: faCalendarAlt,
+        permission: "settings.booking.manage",
+        group: "settings",
+      },
+      {
+        to: "/dashboard/settings/catalog",
+        label: "إدارة الكتالوج",
+        icon: faPercent,
+        permission: "catalog.manage",
+        group: "settings",
+      },
       {
         to: "/dashboard/settings/users",
         label: "إدارة الحسابات",
         icon: faUserShield,
         anyOf: ["admin_accounts.view", "admin_accounts.manage"],
+        group: "settings",
       },
-      { to: "/dashboard/settings/contact", label: "محتوى الموقع", icon: faHouse, permission: "settings.content.manage" },
-      { to: "/dashboard/settings/attendance", label: "إعدادات البصمة والنطاقات", icon: faCog, permission: "attendance.settings.manage" },
+      {
+        to: "/dashboard/settings/contact",
+        label: "محتوى الموقع",
+        icon: faHouse,
+        permission: "settings.content.manage",
+        group: "settings",
+      },
+      {
+        to: "/dashboard/settings/attendance",
+        label: "إعدادات البصمة والنطاقات",
+        icon: faCog,
+        permission: "attendance.settings.manage",
+        group: "settings",
+      },
     ];
 
     return items
@@ -253,6 +336,14 @@ export default function DashboardMobileNav({
           : item
       );
   }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primaryItems]);
+
+  const moreGroups = useMemo(
+    () => MORE_GROUPS.map((group) => ({
+      ...group,
+      items: moreItems.filter((item) => item.group === group.id),
+    })).filter((group) => group.items.length > 0),
+    [moreItems]
+  );
 
   const isMoreActive = moreItems.some(
     (item) => item.to !== "/" && location.pathname.startsWith(item.to)
@@ -316,7 +407,7 @@ export default function DashboardMobileNav({
                 <div className="dashboard-mobile-more-header__title">
                   <span>القائمة الإدارية</span>
                   <h2>المزيد</h2>
-                  <p>تظهر هنا كل الأقسام التي تسمح بها صلاحيات حسابك.</p>
+                  <p>نفس أقسام السايدبار، مرتبة حسب الصلاحيات المتاحة لحسابك.</p>
                 </div>
                 <button
                   type="button"
@@ -330,24 +421,33 @@ export default function DashboardMobileNav({
             </header>
 
             <div className="dashboard-mobile-more-grid">
-              {moreItems.map((item) => (
-                <button
-                  key={`${item.to}:${item.label}`}
-                  type="button"
-                  className="dashboard-mobile-more-card"
-                  onClick={() => {
-                    setMoreOpen(false);
-                    navigate(item.to);
-                  }}
-                >
-                  <span className="dashboard-mobile-more-card__icon">
-                    <FontAwesomeIcon icon={item.icon} />
-                  </span>
-                  <span className="dashboard-mobile-more-card__copy">
-                    <strong>{item.label}</strong>
-                    {item.description ? <small>{item.description}</small> : null}
-                  </span>
-                </button>
+              {moreGroups.map((group) => (
+                <section key={group.id} className="dashboard-mobile-more-group" aria-labelledby={`dashboard-more-${group.id}`}>
+                  <h3 id={`dashboard-more-${group.id}`} className="dashboard-mobile-more-group__title">
+                    {group.label}
+                  </h3>
+                  <div className="dashboard-mobile-more-group__items">
+                    {group.items.map((item) => (
+                      <button
+                        key={`${item.to}:${item.label}`}
+                        type="button"
+                        className="dashboard-mobile-more-card"
+                        onClick={() => {
+                          setMoreOpen(false);
+                          navigate(item.to);
+                        }}
+                      >
+                        <span className="dashboard-mobile-more-card__icon">
+                          <FontAwesomeIcon icon={item.icon} />
+                        </span>
+                        <span className="dashboard-mobile-more-card__copy">
+                          <strong>{item.label}</strong>
+                          {item.description ? <small>{item.description}</small> : null}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           </section>
