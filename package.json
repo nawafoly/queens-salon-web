@@ -51,7 +51,8 @@
     "dedupe:core-clients:dry": "node scripts/dedupe-core-clients.mjs",
     "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply",
     "check:booking-internal-contract": "node scripts/check-booking-internal-contract.mjs",
-    "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs && node scripts/check-booking-internal-contract.mjs"
+    "check:booking-internal-v2-style": "node scripts/check-booking-internal-v2-style.mjs",
+    "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs && node scripts/check-booking-internal-v2-style.mjs && node scripts/check-booking-internal-contract.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",
