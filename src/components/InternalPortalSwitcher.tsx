@@ -42,6 +42,7 @@ export default function InternalPortalSwitcher({
 }: InternalPortalSwitcherProps) {
   const location = useLocation();
   const pathname = location.pathname;
+  const isEmployeeArea = pathname.startsWith("/employee");
   const dashboardSection = pathname.replace(/^\/dashboard\/?/, "").split("/")[0];
   const isHrArea =
     pathname.startsWith("/dashboard") &&
@@ -71,7 +72,7 @@ export default function InternalPortalSwitcher({
         </NavLink>
       ) : null}
 
-      {showPortalLinks && canOpenHr && !isHrArea ? (
+      {showPortalLinks && canOpenHr && !isHrArea && !isEmployeeArea ? (
         <NavLink
           to="/dashboard/hr"
           className={() =>
