@@ -15,6 +15,7 @@ import "../styles/dashboard-v2/dashboard-v2.css";
 
 import SettingsBookings from "./settings/SettingsBookings";
 import SettingsCatalogV2 from "./settings/SettingsCatalogV2";
+import SettingsContact from "./settings/SettingsContact";
 import SettingsUsersV2 from "./settings/SettingsUsersV2";
 
 const LegacySettingsRoute = React.lazy(() => import("./settings/LegacySettingsRoute"));
@@ -31,7 +32,7 @@ type UiRole =
   | "guest";
 
 type BasicSettingsSection = "identity" | "sections" | "policies";
-type LegacySettingsKind = "contact" | "attendance";
+type LegacySettingsKind = "attendance";
 
 type DashboardSettingsProps = {
   initialRole?: UiRole | string;
@@ -126,6 +127,7 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
   const isSettingsIndexRoute = normalizedSettingsPathname === currentRootPath;
   const isSettingsBookingsV2Route = normalizedSettingsPathname === `${currentRootPath}/bookings`;
   const isSettingsCatalogV2Route = normalizedSettingsPathname === `${currentRootPath}/catalog`;
+  const isSettingsContactV2Route = normalizedSettingsPathname === `${currentRootPath}/contact`;
   const isSettingsUsersV2Route =
     normalizedSettingsPathname === `${currentRootPath}/users` ||
     normalizedSettingsPathname.startsWith(`${currentRootPath}/users/`);
@@ -133,11 +135,13 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
     isSettingsIndexRoute ||
     isSettingsBookingsV2Route ||
     isSettingsCatalogV2Route ||
+    isSettingsContactV2Route ||
     isSettingsUsersV2Route;
   const isLegacyNestedRoute =
     !isSettingsIndexRoute &&
     !isSettingsBookingsV2Route &&
     !isSettingsCatalogV2Route &&
+    !isSettingsContactV2Route &&
     !isSettingsUsersV2Route;
 
   const settingsNavItems = useMemo(
@@ -498,7 +502,14 @@ const DashboardSettings: React.FC<DashboardSettingsProps> = ({
                 </PermissionRoute>
               }
             />
-            <Route path="contact" element={<PermissionRoute permission="settings.content.manage">{renderLegacySettingsRoute("contact", hasPermission("settings.content.manage"))}</PermissionRoute>} />
+            <Route
+              path="contact"
+              element={
+                <PermissionRoute permission="settings.content.manage">
+                  <SettingsContact hasAdminPower={hasPermission("settings.content.manage")} />
+                </PermissionRoute>
+              }
+            />
             <Route path="attendance" element={<PermissionRoute permission="attendance.settings.manage">{renderLegacySettingsRoute("attendance", hasPermission("attendance.settings.manage"))}</PermissionRoute>} />
 
             <Route path="advanced" element={<Navigate to={SETTINGS_ROOT_PATH} replace />} />
