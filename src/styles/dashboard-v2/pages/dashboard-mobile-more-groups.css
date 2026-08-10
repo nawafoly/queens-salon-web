@@ -1,0 +1,34 @@
+/* Dashboard mobile "more" groups — mirrors the desktop sidebar sections. */
+
+@media (max-width: 991px) {
+  .dashboard-v2 .dashboard-mobile-more-grid {
+    align-content: start;
+    gap: var(--dsv2-space-5);
+  }
+
+  .dashboard-v2 .dashboard-mobile-more-group {
+    display: grid;
+    gap: var(--dsv2-space-2);
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dashboard-mobile-more-group + .dashboard-mobile-more-group {
+    padding-top: var(--dsv2-space-4);
+    border-top: 1px solid var(--dsv2-divider);
+  }
+
+  .dashboard-v2 .dashboard-mobile-more-group__title {
+    margin: 0;
+    padding-inline: var(--dsv2-space-2);
+    color: var(--dsv2-muted);
+    font-size: 0.7rem;
+    font-weight: 950;
+    line-height: 1.5;
+  }
+
+  .dashboard-v2 .dashboard-mobile-more-group__items {
+    display: grid;
+    gap: var(--dsv2-space-2);
+    min-width: 0;
+  }
+}
