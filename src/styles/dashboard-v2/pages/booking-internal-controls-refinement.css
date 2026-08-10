@@ -1,40 +1,31 @@
 /* =========================================================
    Malikat Dashboard V2 — Internal booking control refinement
    Search, section/category controls, date and staff select only.
-   Presentation only: no booking workflow behavior lives here.
 ========================================================= */
 
-/* Search */
+/* Search: one visible control boundary only. */
 .dashboard-v2.is-booking-internal-route .bk2-search-box {
   position: relative;
+  display: block;
   min-height: var(--dsv2-control-height-lg);
   margin-top: var(--dsv2-space-5);
-  padding-inline: var(--dsv2-space-4);
-  gap: var(--dsv2-space-3);
-  border: 1px solid var(--dsv2-border-strong);
-  border-radius: var(--dsv2-radius-md);
-  background: var(--dsv2-surface);
-  box-shadow: var(--dsv2-shadow-xs);
-  transition:
-    border-color var(--dsv2-transition-fast),
-    box-shadow var(--dsv2-transition-fast),
-    background var(--dsv2-transition-fast);
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-search-box:hover {
-  border-color: var(--dsv2-border-gold);
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-search-box:focus-within {
-  border-color: var(--dsv2-gold);
-  background: var(--dsv2-surface);
-  box-shadow: var(--dsv2-focus-ring);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-search-box svg {
-  flex: 0 0 auto;
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: var(--dsv2-space-4);
+  inset-block-start: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
   color: var(--dsv2-muted);
-  font-size: 1rem;
+  pointer-events: none;
   transition: color var(--dsv2-transition-fast);
 }
 
@@ -42,27 +33,46 @@
   color: var(--dsv2-gold);
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-search-box input {
+.dashboard-v2.is-booking-internal-route .bk2-main-card .bk2-search-box input {
+  display: block;
   width: 100%;
   min-width: 0;
   height: var(--dsv2-control-height-lg);
-  padding: 0;
-  border: 0;
-  border-radius: 0;
+  box-sizing: border-box;
+  padding-block: 0;
+  padding-inline-start: var(--dsv2-space-4);
+  padding-inline-end: var(--dsv2-space-12);
+  border: 1px solid var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
   outline: 0;
-  background: transparent;
-  box-shadow: none;
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
   color: var(--dsv2-text);
   font: inherit;
   font-weight: 750;
+  appearance: none;
+  transition:
+    border-color var(--dsv2-transition-fast),
+    box-shadow var(--dsv2-transition-fast),
+    background var(--dsv2-transition-fast);
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-search-box input::placeholder {
+.dashboard-v2.is-booking-internal-route .bk2-main-card .bk2-search-box input:hover {
+  border-color: var(--dsv2-border-gold);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-main-card .bk2-search-box input:focus {
+  border-color: var(--dsv2-gold);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-focus-ring);
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-main-card .bk2-search-box input::placeholder {
   color: var(--dsv2-muted-soft);
   opacity: 1;
 }
 
-/* Section + category controls */
+/* Section + category controls. */
 .dashboard-v2.is-booking-internal-route .bk2-section-tabs,
 .dashboard-v2.is-booking-internal-route .bk2-category-tabs {
   display: flex;
@@ -144,125 +154,56 @@
   box-shadow: inset 0 0 0 1px var(--dsv2-gold-softer);
 }
 
-/* Booking date */
+/* Booking date — canonical DashboardDatePickerV2. */
 .dashboard-v2.is-booking-internal-route .bk2-date-field {
+  display: grid;
   gap: var(--dsv2-space-2);
   margin-bottom: var(--dsv2-space-5);
 }
 
 .dashboard-v2.is-booking-internal-route .bk2-date-field > span,
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls label > span,
+.dashboard-v2.is-booking-internal-route .bk2-staff-field > span,
 .dashboard-v2.is-booking-internal-route .bk2-time-picker > span {
   color: var(--dsv2-text-soft);
   font-size: 0.78rem;
   font-weight: 900;
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-date-field input[type="date"] {
+.dashboard-v2.is-booking-internal-route .bk2-date-picker-v2,
+.dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 {
   width: 100%;
-  min-height: var(--dsv2-control-height-lg);
-  box-sizing: border-box;
-  padding-inline: var(--dsv2-space-4);
-  border: 1px solid var(--dsv2-border-strong);
-  border-radius: var(--dsv2-radius-md);
-  outline: 0;
-  background: var(--dsv2-surface);
-  color: var(--dsv2-text);
-  box-shadow: var(--dsv2-shadow-xs);
-  color-scheme: light;
-  font: inherit;
-  font-weight: 850;
-  cursor: pointer;
-  transition:
-    border-color var(--dsv2-transition-fast),
-    box-shadow var(--dsv2-transition-fast),
-    background var(--dsv2-transition-fast);
+  min-width: 0;
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-date-field input[type="date"]:hover {
+.dashboard-v2.is-booking-internal-route .bk2-date-picker-v2 .dsv2-date-v2__trigger,
+.dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 .dsv2-select-v2__trigger {
+  min-height: var(--dsv2-control-height-lg);
+  border-color: var(--dsv2-border-strong);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+  font-weight: 850;
+}
+
+.dashboard-v2.is-booking-internal-route .bk2-date-picker-v2 .dsv2-date-v2__trigger:hover,
+.dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 .dsv2-select-v2__trigger:hover {
   border-color: var(--dsv2-border-gold);
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-date-field input[type="date"]:focus {
+.dashboard-v2.is-booking-internal-route .bk2-date-picker-v2 .dsv2-date-v2__trigger:focus-visible,
+.dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 .dsv2-select-v2__trigger:focus-visible,
+.dashboard-v2.is-booking-internal-route .bk2-date-picker-v2 .dsv2-date-v2__trigger[data-open="true"],
+.dashboard-v2.is-booking-internal-route .bk2-staff-select-v2 .dsv2-select-v2__trigger[data-open="true"] {
+  outline: 0;
   border-color: var(--dsv2-gold);
   box-shadow: var(--dsv2-focus-ring);
 }
 
-.dashboard-v2.is-booking-internal-route .bk2-date-field input[type="date"]::-webkit-calendar-picker-indicator {
-  width: 20px;
-  height: 20px;
-  padding: var(--dsv2-space-1);
-  border-radius: var(--dsv2-radius-xs);
-  cursor: pointer;
-  opacity: 0.72;
-}
-
-/* Staff dropdown — keeps the existing onChange/availability flow intact. */
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls label {
-  position: relative;
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls label::after {
-  content: "⌄";
-  position: absolute;
-  inset-inline-end: var(--dsv2-space-4);
-  inset-block-end: 14px;
-  z-index: 1;
-  color: var(--dsv2-muted);
-  font-size: 1rem;
-  font-weight: 950;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select {
-  width: 100%;
-  min-height: var(--dsv2-control-height-lg);
-  box-sizing: border-box;
-  padding-block: 0;
-  padding-inline-start: var(--dsv2-space-4);
-  padding-inline-end: var(--dsv2-space-10);
-  appearance: none;
-  border: 1px solid var(--dsv2-border-strong);
-  border-radius: var(--dsv2-radius-md);
-  outline: 0;
-  background: var(--dsv2-surface);
-  color: var(--dsv2-text);
-  box-shadow: var(--dsv2-shadow-xs);
-  color-scheme: light;
-  font: inherit;
-  font-weight: 850;
-  cursor: pointer;
-  transition:
-    border-color var(--dsv2-transition-fast),
-    box-shadow var(--dsv2-transition-fast),
-    background var(--dsv2-transition-fast);
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select:hover {
-  border-color: var(--dsv2-border-gold);
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select:focus {
-  border-color: var(--dsv2-gold);
-  box-shadow: var(--dsv2-focus-ring);
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select:disabled {
-  background: var(--dsv2-surface-muted);
-  color: var(--dsv2-muted-soft);
-  cursor: not-allowed;
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select option {
-  background: var(--dsv2-surface);
-  color: var(--dsv2-text);
-  font: inherit;
-}
-
-.dashboard-v2.is-booking-internal-route .bk2-schedule-controls select option:checked {
-  background: var(--dsv2-black);
-  color: var(--dsv2-on-dark);
+/* Staff field — canonical DashboardSelectV2; no native browser menu. */
+.dashboard-v2.is-booking-internal-route .bk2-staff-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-2);
 }
 
 @media (min-width: 980px) {
@@ -292,10 +233,5 @@
 
   .dashboard-v2.is-booking-internal-route .bk2-category-tabs button {
     min-height: 34px;
-  }
-
-  .dashboard-v2.is-booking-internal-route .bk2-date-field input[type="date"],
-  .dashboard-v2.is-booking-internal-route .bk2-schedule-controls select {
-    min-height: var(--dsv2-control-height-lg);
   }
 }
