@@ -29,6 +29,13 @@ import DashboardSidebarTooltipV2 from "../components/DashboardSidebarTooltipV2";
 import MalikatPortalSidebarV2 from "../components/MalikatPortalSidebarV2";
 import InternalPortalSwitcher from "../components/InternalPortalSwitcher";
 import PermissionRoute from "../components/PermissionRoute";
+import {
+  DashboardDatePickerV2,
+  DashboardEmptyStateV2,
+  DashboardFieldV2,
+  DashboardSelectV2,
+  DashboardSkeletonV2,
+} from "../components/dashboard-v2";
 import { usePermissions } from "../security/PermissionContext";
 import type { AppPermission } from "../helpers/permissions";
 import { logoutFirebase } from "../services/authService";
@@ -155,7 +162,6 @@ function readableRole(role: unknown) {
   if (value === "staff") return "الموظفين";
   return cleanText(role) || "غير محدد";
 }
-
 
 function formatLongDate(value: unknown) {
   const raw = cleanText(value);
@@ -312,6 +318,12 @@ function getEmployeeFileBadgeTone(status: EmployeeFile["status"]): StatusTone {
   return "neutral";
 }
 
+function dashboardBadgeToneClass(tone: StatusTone) {
+  if (tone === "success") return "dsv2-badge--success";
+  if (tone === "warning") return "dsv2-badge--gold";
+  return "";
+}
+
 function uniqueCleanTexts(values: unknown[]) {
   return Array.from(
     new Set(values.map(cleanText).filter(Boolean))
@@ -424,10 +436,10 @@ function HrMetricCard({
   hint: string;
 }) {
   return (
-    <article className="hr-metric-card">
-      <span className="hr-metric-card__label">{label}</span>
-      <strong className="hr-metric-card__value">{value}</strong>
-      <p className="hr-metric-card__hint">{hint}</p>
+    <article className="dsv2-metric-card hr-overview-v2__metric">
+      <p className="dsv2-metric-card__label">{label}</p>
+      <p className="dsv2-metric-card__value">{value}</p>
+      <p className="dsv2-metric-card__meta">{hint}</p>
     </article>
   );
 }
@@ -500,6 +512,17 @@ function HrOverview({
       return getEmployeeName(a).localeCompare(getEmployeeName(b), "ar");
     });
   }, [roster]);
+
+  const employeeSelectOptions = useMemo(
+    () =>
+      rosterSorted
+        .map((item) => ({
+          value: getRosterAttendanceId(item),
+          label: getEmployeeName(item),
+        }))
+        .filter((option) => Boolean(option.value)),
+    [rosterSorted]
+  );
 
   const filteredRoster = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -816,363 +839,391 @@ function HrOverview({
   const selectedStartDate = selected ? getStartDate(selected) : "غير محدد";
 
   return (
-    <div className="hr-overview madan-hr-overview-v3">
-      <section className="hr-hero hr-overview-hero">
-        <div className="hr-hero__copy">
-          <span className="hr-hero__eyebrow">مركز الموارد البشرية</span>
-          <h2>ملخص الموارد البشرية</h2>
-          <p>
-            هذه الصفحة للمتابعة السريعة فقط: الحضور، الطلبات، الملفات والغياب. إدارة بيانات الموظفات
-            والرواتب والإجازات التفصيلية أصبحت في صفحة واحدة مخصصة لتقليل التكرار والتعليق.
-          </p>
+    <div className="dashboard-v2 hr-overview-v2-scope" dir="rtl">
+      <div className="dsv2-page hr-overview-v2">
+        <section className="dsv2-card hr-overview-v2__hero">
+          <div className="hr-overview-v2__hero-copy">
+            <span className="dsv2-badge dsv2-badge--gold">الموارد البشرية</span>
+            <h1 className="dsv2-page-title">ملخص الموارد البشرية</h1>
+            <p className="dsv2-page-subtitle">
+              متابعة الحضور والطلبات والملفات والغياب من نفس لغة لوحة التحكم الموحدة، مع إبقاء إدارة
+              الموظفات والرواتب التفصيلية في مساحاتها المخصصة.
+            </p>
 
-          <div className="hr-hero__actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/dashboard/employees")}>
-              <FontAwesomeIcon icon={faUsers} />
-              فتح إدارة الموظفات
-            </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
-              <FontAwesomeIcon icon={faUserTie} />
-              طلبات التوظيف
-            </button>
-          </div>
-        </div>
-
-        <div className="hr-hero__aside">
-          <span className="hr-chip">الحساب الحالي</span>
-          <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
-          <span>{session.email || "غير محدد"}</span>
-          <div className="hr-hero__badges">
-            <span className="hr-badge hr-badge--soft">{readableRole(session.role)}</span>
-            <span className="hr-badge hr-badge--outline">متابعة مباشرة</span>
-          </div>
-        </div>
-      </section>
-
-      {loading ? (
-        <div className="hr-overview-loading" role="status" aria-live="polite">
-          <span className="hr-workspace-loading__spinner" />
-          <div>
-            <strong>جاري تحديث ملخص الموارد البشرية</strong>
-            <small>لن يتم تحميل شاشة إدارة الموظفات الثقيلة إلا عند فتحها.</small>
-          </div>
-        </div>
-      ) : null}
-
-      <section className="hr-metric-grid hr-metric-grid--overview" aria-label="ملخص الموارد البشرية">
-        <HrMetricCard label="إجمالي الموظفات" value={String(rosterSorted.length)} hint="إجمالي الملفات الوظيفية الحالية." />
-        <HrMetricCard label="على رأس العمل" value={String(activeCount)} hint="الحسابات والملفات النشطة حاليًا." />
-        <HrMetricCard label="في إجازة" value={String(leaveCount)} hint="الموظفات المسجلات في إجازة حالية." />
-        <HrMetricCard label="حاضرون الآن" value={String(attendanceSummary.checkedIn)} hint="تم تسجيل حضورهم ولم يسجلوا الانصراف." />
-        <HrMetricCard label="طلبات إجازة معلقة" value={String(pendingLeaveRequests)} hint="طلبات تحتاج مراجعة من الإدارة." />
-        <HrMetricCard label="طلبات توظيف معلقة" value={String(pendingApplications)} hint="طلبات جديدة أو قيد المراجعة." />
-      </section>
-
-      <section className="hr-overview-command-grid">
-        <article className="hr-card hr-card--attendance-overview">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">الحضور اليوم</p>
-              <h3>الحالة التشغيلية الحالية</h3>
+            <div className="hr-overview-v2__hero-actions">
+              <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => onNavigate("/dashboard/employees")}>
+                <FontAwesomeIcon icon={faUsers} />
+                فتح إدارة الموظفات
+              </button>
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
+                <FontAwesomeIcon icon={faUserTie} />
+                طلبات التوظيف
+              </button>
             </div>
-            <span className="hr-badge hr-badge--neutral">{attendanceDate}</span>
           </div>
 
-          <div className="hr-mini-stats">
-            <div><span>حاضرون الآن</span><strong>{attendanceSummary.checkedIn}</strong></div>
-            <div><span>سجلوا الانصراف</span><strong>{attendanceSummary.checkedOut}</strong></div>
-            <div><span>لم يسجلوا</span><strong>{attendanceSummary.notStarted}</strong></div>
-          </div>
+          <aside className="hr-overview-v2__identity">
+            <span className="dsv2-badge">الحساب الحالي</span>
+            <strong>{session.displayName || "مستخدم الموارد البشرية"}</strong>
+            <span>{session.email || "غير محدد"}</span>
+            <div className="hr-overview-v2__identity-badges">
+              <span className="dsv2-badge dsv2-badge--gold">{readableRole(session.role)}</span>
+              <span className="dsv2-badge">متابعة مباشرة</span>
+            </div>
+          </aside>
+        </section>
 
-          <div className="hr-card-toolbar">
-            <strong>آخر سجلات اليوم</strong>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => void onRefresh()} disabled={loading}>
-              {loading ? "جارٍ التحديث..." : "تحديث"}
-            </button>
-          </div>
+        {loading ? (
+          <section className="dsv2-card dsv2-card--padded hr-overview-v2__loading" role="status" aria-live="polite">
+            <DashboardSkeletonV2 variant="title" width="42%" />
+            <DashboardSkeletonV2 lines={3} />
+          </section>
+        ) : null}
 
-          <div className="hr-leave-list hr-list-compact">
-            {recentAttendanceRows.map(({ row, employeeName }) => (
-              <div key={`${row.employeeId}-${row.date}`} className="hr-leave-item">
-                <div className="hr-leave-item__head">
-                  <strong>{employeeName}</strong>
-                  <span className={`hr-badge hr-badge--${getAttendancePunchTone(row.status)}`}>
-                    {getAttendancePunchLabel(row.status)}
-                  </span>
-                </div>
-                <div className="hr-leave-item__meta">
-                  <span>الحضور: {formatAttendanceTime(row.checkInAtClient)}</span>
-                  <span>الانصراف: {formatAttendanceTime(row.checkOutAtClient)}</span>
-                </div>
+        <section className="hr-overview-v2__metrics" aria-label="ملخص الموارد البشرية">
+          <HrMetricCard label="إجمالي الموظفات" value={String(rosterSorted.length)} hint="إجمالي الملفات الوظيفية الحالية." />
+          <HrMetricCard label="على رأس العمل" value={String(activeCount)} hint="الحسابات والملفات النشطة حاليًا." />
+          <HrMetricCard label="في إجازة" value={String(leaveCount)} hint="الموظفات المسجلات في إجازة حالية." />
+          <HrMetricCard label="حاضرون الآن" value={String(attendanceSummary.checkedIn)} hint="تم تسجيل حضورهم ولم يسجلوا الانصراف." />
+          <HrMetricCard label="طلبات إجازة معلقة" value={String(pendingLeaveRequests)} hint="طلبات تحتاج مراجعة من الإدارة." />
+          <HrMetricCard label="طلبات توظيف معلقة" value={String(pendingApplications)} hint="طلبات جديدة أو قيد المراجعة." />
+        </section>
+
+        <section className="hr-overview-v2__grid">
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">الحضور اليوم</p>
+                <h2>الحالة التشغيلية الحالية</h2>
               </div>
-            ))}
-            {!recentAttendanceRows.length ? (
-              <div className="hr-empty-state">
-                <p>لا توجد سجلات حضور لهذا اليوم بعد.</p>
-                <small>ستظهر السجلات هنا بعد تسجيل الحضور أو الانصراف.</small>
-              </div>
-            ) : null}
-          </div>
-        </article>
-
-        <article className="hr-card">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">إجراءات سريعة</p>
-              <h3>انتقل مباشرة إلى المهمة المطلوبة</h3>
+              <span className="dsv2-badge">{attendanceDate}</span>
             </div>
-          </div>
-          <div className="hr-quick-actions">
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/employees")}>
-              <FontAwesomeIcon icon={faUsers} />
-              <strong>إدارة الموظفات</strong>
-              <span>الملف الوظيفي والحضور والرواتب والإجازات والخدمات.</span>
-            </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>
-              <FontAwesomeIcon icon={faPlus} />
-              <strong>إنشاء حساب</strong>
-              <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>
-            </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/messages")}>
-              <FontAwesomeIcon icon={faEnvelope} />
-              <strong>الرسائل الداخلية</strong>
-              <span>مراجعة الرسائل والتنبيهات الواردة من الموظفات.</span>
-            </button>
-            <button className="hr-action-card" type="button" onClick={() => onNavigate("/dashboard/files")}>
-              <FontAwesomeIcon icon={faFileLines} />
-              <strong>الملفات الداخلية</strong>
-              <span>متابعة المرفقات والمستندات الإدارية.</span>
-            </button>
-          </div>
-        </article>
 
-        <article className="hr-card">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">طلبات الإجازة</p>
-              <h3>أحدث الطلبات</h3>
+            <div className="hr-overview-v2__mini-stats">
+              <div className="hr-overview-v2__mini-stat"><span>حاضرون الآن</span><strong>{attendanceSummary.checkedIn}</strong></div>
+              <div className="hr-overview-v2__mini-stat"><span>سجلوا الانصراف</span><strong>{attendanceSummary.checkedOut}</strong></div>
+              <div className="hr-overview-v2__mini-stat"><span>لم يسجلوا</span><strong>{attendanceSummary.notStarted}</strong></div>
             </div>
-            <span className="hr-badge hr-badge--warning">{pendingLeaveRequests}</span>
-          </div>
-          <div className="hr-leave-list hr-list-compact">
-            {recentLeaveRequests.map((item) => {
-              const status = getLeaveStatusMeta(item.status);
-              return (
-                <div key={item.id} className="hr-leave-item">
-                  <div className="hr-leave-item__head">
-                    <strong>{getLeaveRequestEmployeeName(item)}</strong>
-                    <span className={`hr-badge hr-badge--${getLeaveBadgeTone(item.status)}`}>{status.label}</span>
+
+            <div className="hr-overview-v2__toolbar">
+              <strong>آخر سجلات اليوم</strong>
+              <button className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" type="button" onClick={() => void onRefresh()} disabled={loading}>
+                {loading ? "جارٍ التحديث..." : "تحديث"}
+              </button>
+            </div>
+
+            {recentAttendanceRows.length ? (
+              <div className="hr-overview-v2__list">
+                {recentAttendanceRows.map(({ row, employeeName }) => (
+                  <div key={`${row.employeeId}-${row.date}`} className="hr-overview-v2__list-item">
+                    <div className="hr-overview-v2__list-item-head">
+                      <strong>{employeeName}</strong>
+                      <span className={`dsv2-badge ${dashboardBadgeToneClass(getAttendancePunchTone(row.status))}`}>
+                        {getAttendancePunchLabel(row.status)}
+                      </span>
+                    </div>
+                    <div className="hr-overview-v2__list-item-meta">
+                      <span>الحضور: {formatAttendanceTime(row.checkInAtClient)}</span>
+                      <span>الانصراف: {formatAttendanceTime(row.checkOutAtClient)}</span>
+                    </div>
                   </div>
-                  <div className="hr-leave-item__meta">
-                    <span>{getLeaveTypeLabel(item.type)}</span>
-                    <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
-                  </div>
-                  {item.note ? <p>{item.note}</p> : null}
-                </div>
-              );
-            })}
-            {!recentLeaveRequests.length ? (
-              <div className="hr-empty-state"><p>لا توجد طلبات إجازة.</p><small>الطلبات الجديدة ستظهر هنا.</small></div>
-            ) : null}
-          </div>
-        </article>
-
-        <article className="hr-card">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">التوظيف</p>
-              <h3>حالة الطلبات</h3>
-            </div>
-            <span className="hr-badge hr-badge--neutral">{applications.length}</span>
-          </div>
-          <div className="hr-mini-stats">
-            <div><span>إجمالي الطلبات</span><strong>{applications.length}</strong></div>
-            <div><span>بانتظار المراجعة</span><strong>{pendingApplications}</strong></div>
-          </div>
-          <div className="hr-copy-block">
-            <p>افتح صفحة التوظيف لمراجعة الطلبات وتحويل المقبول منها إلى حساب موظفة.</p>
-          </div>
-          <div className="hr-actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
-              <FontAwesomeIcon icon={faChartLine} /> فتح الطلبات
-            </button>
-          </div>
-        </article>
-
-        <article className="hr-card">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">الملفات الداخلية</p>
-              <h3>أحدث الملفات</h3>
-            </div>
-            <span className="hr-badge hr-badge--neutral">{employeeFiles.length}</span>
-          </div>
-          <div className="hr-leave-list hr-list-compact">
-            {recentEmployeeFiles.map((item) => (
-              <div key={item.id} className="hr-leave-item">
-                <div className="hr-leave-item__head">
-                  <strong>{item.title}</strong>
-                  <span className={`hr-badge hr-badge--${getEmployeeFileBadgeTone(item.status)}`}>
-                    {getEmployeeFileStatusLabel(item.status, item.status !== "replaced")}
-                  </span>
-                </div>
-                <div className="hr-leave-item__meta">
-                  <span>{getEmployeeFileTypeLabel(item.fileType)}</span>
-                  <span>{item.fileName || "بدون اسم ملف"}</span>
-                </div>
+                ))}
               </div>
-            ))}
-            {!recentEmployeeFiles.length ? (
-              <div className="hr-empty-state"><p>لا توجد ملفات داخلية.</p><small>المرفقات الجديدة ستظهر هنا.</small></div>
-            ) : null}
-          </div>
-        </article>
-      </section>
+            ) : (
+              <DashboardEmptyStateV2
+                compact
+                className="hr-overview-v2__state"
+                title="لا توجد سجلات حضور لهذا اليوم بعد"
+                description="ستظهر السجلات هنا بعد تسجيل الحضور أو الانصراف."
+              />
+            )}
+          </article>
 
-      <section className="hr-overview-operations">
-        <article className="hr-card hr-card--operation">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">الغياب اليدوي</p>
-              <h3>تسجيل غياب أو نصف يوم</h3>
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">إجراءات سريعة</p>
+                <h2>انتقل مباشرة إلى المهمة المطلوبة</h2>
+              </div>
             </div>
-            <span className="hr-badge hr-badge--neutral">{absences.length}</span>
-          </div>
+            <div className="hr-overview-v2__quick-actions">
+              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/employees")}>
+                <FontAwesomeIcon icon={faUsers} />
+                <strong>إدارة الموظفات</strong>
+                <span>الملف الوظيفي والحضور والرواتب والإجازات والخدمات.</span>
+              </button>
+              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/create-staff")}>
+                <FontAwesomeIcon icon={faPlus} />
+                <strong>إنشاء حساب</strong>
+                <span>إنشاء حساب موظفة وربطه بالملف الوظيفي.</span>
+              </button>
+              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/messages")}>
+                <FontAwesomeIcon icon={faEnvelope} />
+                <strong>الرسائل الداخلية</strong>
+                <span>مراجعة الرسائل والتنبيهات الواردة من الموظفات.</span>
+              </button>
+              <button className="hr-overview-v2__action-card" type="button" onClick={() => onNavigate("/dashboard/files")}>
+                <FontAwesomeIcon icon={faFileLines} />
+                <strong>الملفات الداخلية</strong>
+                <span>متابعة المرفقات والمستندات الإدارية.</span>
+              </button>
+            </div>
+          </article>
 
-          <div className="hr-form-grid">
-            <label className="hr-field hr-field--wide">
-              <span>الموظفة</span>
-              <select value={absenceForm.employeeKey} onChange={(e) => setAbsenceForm((current) => ({ ...current, employeeKey: e.target.value }))}>
-                {rosterSorted.map((item) => {
-                  const employeeId = getRosterAttendanceId(item);
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">طلبات الإجازة</p>
+                <h2>أحدث الطلبات</h2>
+              </div>
+              <span className="dsv2-badge dsv2-badge--gold">{pendingLeaveRequests}</span>
+            </div>
+            {recentLeaveRequests.length ? (
+              <div className="hr-overview-v2__list">
+                {recentLeaveRequests.map((item) => {
+                  const status = getLeaveStatusMeta(item.status);
                   return (
-                    <option
-                      key={`absence-${employeeId || getEmployeeName(item)}`}
-                      value={employeeId}
-                    >
-                      {getEmployeeName(item)}
-                    </option>
+                    <div key={item.id} className="hr-overview-v2__list-item">
+                      <div className="hr-overview-v2__list-item-head">
+                        <strong>{getLeaveRequestEmployeeName(item)}</strong>
+                        <span className={`dsv2-badge ${dashboardBadgeToneClass(getLeaveBadgeTone(item.status))}`}>{status.label}</span>
+                      </div>
+                      <div className="hr-overview-v2__list-item-meta">
+                        <span>{getLeaveTypeLabel(item.type)}</span>
+                        <span>{formatLeaveDateRange(item.fromDate, item.toDate)}</span>
+                      </div>
+                      {item.note ? <p>{item.note}</p> : null}
+                    </div>
                   );
                 })}
-              </select>
-            </label>
-            <label className="hr-field">
-              <span>التاريخ</span>
-              <input type="date" value={absenceForm.date} onChange={(e) => setAbsenceForm((current) => ({ ...current, date: e.target.value }))} />
-            </label>
-            <label className="hr-field">
-              <span>النوع</span>
-              <select value={absenceForm.type} onChange={(e) => setAbsenceForm((current) => ({ ...current, type: e.target.value as EmployeeAbsence["type"] }))}>
-                <option value="full_day">يوم كامل</option>
-                <option value="half_day">نصف يوم</option>
-              </select>
-            </label>
-            <label className="hr-field hr-field--wide">
-              <span>السبب أو الملاحظة</span>
-              <textarea rows={3} value={absenceForm.note} onChange={(e) => setAbsenceForm((current) => ({ ...current, note: e.target.value }))} placeholder="ملاحظة اختيارية" />
-            </label>
-          </div>
-          {absenceMessage ? <div className="hr-alert">{absenceMessage}</div> : null}
-          <div className="hr-actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => void handleCreateAbsence()} disabled={absenceSaving || loading || !rosterSorted.length}>
-              {absenceSaving ? "جارٍ الحفظ..." : "حفظ الغياب"}
-            </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/employees")}>فتح سجل الموظفة</button>
-          </div>
-
-          <div className="hr-leave-list hr-list-compact">
-            {recentAbsences.map((item) => (
-              <div key={item.id} className="hr-leave-item">
-                <div className="hr-leave-item__head">
-                  <strong>{item.employeeName || item.employeeId || item.employeeUid || "موظفة غير محددة"}</strong>
-                  <span className="hr-badge hr-badge--warning">{getEmployeeAbsenceTypeLabel(item.type)}</span>
-                </div>
-                <div className="hr-leave-item__meta">
-                  <span>{formatEmployeeAbsenceDate(item.date)}</span>
-                  {item.createdByName || item.createdByUid ? <span>{item.createdByName || item.createdByUid}</span> : null}
-                </div>
-                {item.note ? <p>{item.note}</p> : null}
               </div>
-            ))}
-          </div>
-        </article>
+            ) : (
+              <DashboardEmptyStateV2 compact className="hr-overview-v2__state" title="لا توجد طلبات إجازة" description="الطلبات الجديدة ستظهر هنا." />
+            )}
+          </article>
 
-        <article className="hr-card hr-card--operation">
-          <div className="hr-card-head">
-            <div>
-              <p className="hr-card-kicker">معاينة الراتب</p>
-              <h3>حساب مبدئي دون إنشاء سجل</h3>
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">التوظيف</p>
+                <h2>حالة الطلبات</h2>
+              </div>
+              <span className="dsv2-badge">{applications.length}</span>
             </div>
-            <span className="hr-badge hr-badge--neutral">معاينة فقط</span>
-          </div>
-
-          <div className="hr-form-grid">
-            <label className="hr-field hr-field--wide">
-              <span>الموظفة</span>
-              <select value={payrollForm.employeeKey} onChange={(e) => handlePayrollEmployeeChange(e.target.value)}>
-                {rosterSorted.map((item) => {
-                  const employeeId = getRosterAttendanceId(item);
-                  return (
-                    <option
-                      key={`payroll-${employeeId || getEmployeeName(item)}`}
-                      value={employeeId}
-                    >
-                      {getEmployeeName(item)}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-            <label className="hr-field">
-              <span>الشهر</span>
-              <input type="month" value={payrollForm.payrollMonth} onChange={(e) => {
-                setPayrollForm((current) => ({ ...current, payrollMonth: e.target.value }));
-                setPayrollPreview(null);
-                setPayrollMessage("");
-              }} />
-            </label>
-            <label className="hr-field">
-              <span>الراتب الأساسي</span>
-              <input type="number" min="0" step="0.01" value={payrollForm.baseSalary} onChange={(e) => {
-                setPayrollForm((current) => ({ ...current, baseSalary: e.target.value }));
-                setPayrollPreview(null);
-              }} />
-            </label>
-          </div>
-          {payrollMessage ? <div className="hr-alert">{payrollMessage}</div> : null}
-          <div className="hr-actions">
-            <button className="hr-button hr-button--primary" type="button" onClick={() => void handleCalculatePayrollPreview()} disabled={payrollLoading || !rosterSorted.length}>
-              {payrollLoading ? "جارٍ الحساب..." : "حساب المعاينة"}
-            </button>
-            <button className="hr-button hr-button--ghost" type="button" onClick={() => onNavigate("/dashboard/employees")}>إدارة الرواتب التفصيلية</button>
-          </div>
-
-          {payrollPreview ? (
-            <div className="hr-audit-stack">
-              <div className="hr-copy-block">
-                <p>معاينة للموظفة {payrollPreview.employeeName} عن شهر {payrollPreview.payrollMonth}. لا يتم حفظ أي سجل راتب من هذه البطاقة.</p>
-              </div>
-              <div className="hr-mini-stats hr-mini-stats--payroll">
-                <div><span>أيام الإجازة المعتمدة</span><strong>{payrollPreview.approvedLeaveDays}</strong></div>
-                <div><span>فترة الحساب</span><strong>{payrollPreview.fromDate} - {payrollPreview.toDate}</strong></div>
-                <div><span>أيام العمل</span><strong>{payrollPreview.requiredWorkDays}</strong></div>
-                <div><span>أيام الحضور</span><strong>{payrollPreview.attendanceRecordedDays}</strong></div>
-                <div><span>أيام بلا بصمة</span><strong>{payrollPreview.daysWithoutAttendance}</strong></div>
-                <div><span>ساعات العمل المطلوبة</span><strong>{formatHours(payrollPreview.expectedWorkHours)}</strong></div>
-                <div><span>الساعات الفعلية</span><strong>{formatHours(payrollPreview.actualWorkedHours)}</strong></div>
-                <div><span>ساعات النقص</span><strong>{formatHours(payrollPreview.missingHours)}</strong></div>
-                <div><span>الأوفر تايم</span><strong>{formatHours(payrollPreview.overtimeHours)}</strong></div>
-                <div><span>خصم الغياب</span><strong>{formatMoney(payrollPreview.absenceDeduction)}</strong></div>
-                <div><span>خصم نقص الساعات</span><strong>{formatMoney(payrollPreview.missingHoursDeduction)}</strong></div>
-                <div><span>الراتب الأساسي</span><strong>{formatMoney(payrollPreview.baseSalary)}</strong></div>
-                <div className="is-total"><span>الصافي المبدئي</span><strong>{formatMoney(payrollPreview.finalSalary)}</strong></div>
-              </div>
+            <div className="hr-overview-v2__mini-stats">
+              <div className="hr-overview-v2__mini-stat"><span>إجمالي الطلبات</span><strong>{applications.length}</strong></div>
+              <div className="hr-overview-v2__mini-stat"><span>بانتظار المراجعة</span><strong>{pendingApplications}</strong></div>
             </div>
-          ) : (
-            <div className="hr-empty-state"><p>لم يتم حساب المعاينة بعد.</p><small>اختر الموظفة والشهر ثم اضغط حساب المعاينة.</small></div>
-          )}
-        </article>
-      </section>
+            <p className="hr-overview-v2__copy">افتح صفحة التوظيف لمراجعة الطلبات وتحويل المقبول منها إلى حساب موظفة.</p>
+            <div className="hr-overview-v2__actions">
+              <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => onNavigate("/dashboard/recruitment-applications")}>
+                <FontAwesomeIcon icon={faChartLine} /> فتح الطلبات
+              </button>
+            </div>
+          </article>
+
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">الملفات الداخلية</p>
+                <h2>أحدث الملفات</h2>
+              </div>
+              <span className="dsv2-badge">{employeeFiles.length}</span>
+            </div>
+            {recentEmployeeFiles.length ? (
+              <div className="hr-overview-v2__list">
+                {recentEmployeeFiles.map((item) => (
+                  <div key={item.id} className="hr-overview-v2__list-item">
+                    <div className="hr-overview-v2__list-item-head">
+                      <strong>{item.title}</strong>
+                      <span className={`dsv2-badge ${dashboardBadgeToneClass(getEmployeeFileBadgeTone(item.status))}`}>
+                        {getEmployeeFileStatusLabel(item.status, item.status !== "replaced")}
+                      </span>
+                    </div>
+                    <div className="hr-overview-v2__list-item-meta">
+                      <span>{getEmployeeFileTypeLabel(item.fileType)}</span>
+                      <span>{item.fileName || "بدون اسم ملف"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmptyStateV2 compact className="hr-overview-v2__state" title="لا توجد ملفات داخلية" description="المرفقات الجديدة ستظهر هنا." />
+            )}
+          </article>
+        </section>
+
+        <section className="hr-overview-v2__operations">
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">الغياب اليدوي</p>
+                <h2>تسجيل غياب أو نصف يوم</h2>
+              </div>
+              <span className="dsv2-badge">{absences.length}</span>
+            </div>
+
+            <div className="hr-overview-v2__form-grid">
+              <DashboardFieldV2 id="hr-overview-absence-employee" label="الموظفة" className="hr-overview-v2__field--wide">
+                <DashboardSelectV2
+                  id="hr-overview-absence-employee"
+                  value={absenceForm.employeeKey}
+                  options={employeeSelectOptions}
+                  placeholder="اختر الموظفة"
+                  disabled={absenceSaving || loading || !employeeSelectOptions.length}
+                  onChange={(value) => setAbsenceForm((current) => ({ ...current, employeeKey: value }))}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="hr-overview-absence-date" label="التاريخ">
+                <DashboardDatePickerV2
+                  id="hr-overview-absence-date"
+                  value={absenceForm.date}
+                  clearable={false}
+                  disabled={absenceSaving}
+                  onChange={(value) => setAbsenceForm((current) => ({ ...current, date: value }))}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="hr-overview-absence-type" label="النوع">
+                <DashboardSelectV2
+                  id="hr-overview-absence-type"
+                  value={absenceForm.type}
+                  options={[
+                    { value: "full_day", label: "يوم كامل" },
+                    { value: "half_day", label: "نصف يوم" },
+                  ]}
+                  disabled={absenceSaving}
+                  onChange={(value) => setAbsenceForm((current) => ({ ...current, type: value as EmployeeAbsence["type"] }))}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="hr-overview-absence-note" label="السبب أو الملاحظة" className="hr-overview-v2__field--wide">
+                <textarea
+                  id="hr-overview-absence-note"
+                  className="dsv2-textarea"
+                  rows={3}
+                  value={absenceForm.note}
+                  onChange={(event) => setAbsenceForm((current) => ({ ...current, note: event.target.value }))}
+                  placeholder="ملاحظة اختيارية"
+                  disabled={absenceSaving}
+                />
+              </DashboardFieldV2>
+            </div>
+
+            {absenceMessage ? <div className="hr-overview-v2__alert">{absenceMessage}</div> : null}
+            <div className="hr-overview-v2__actions">
+              <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void handleCreateAbsence()} disabled={absenceSaving || loading || !rosterSorted.length}>
+                {absenceSaving ? "جارٍ الحفظ..." : "حفظ الغياب"}
+              </button>
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => onNavigate("/dashboard/employees")}>فتح سجل الموظفة</button>
+            </div>
+
+            {recentAbsences.length ? (
+              <div className="hr-overview-v2__list">
+                {recentAbsences.map((item) => (
+                  <div key={item.id} className="hr-overview-v2__list-item">
+                    <div className="hr-overview-v2__list-item-head">
+                      <strong>{item.employeeName || item.employeeId || item.employeeUid || "موظفة غير محددة"}</strong>
+                      <span className="dsv2-badge dsv2-badge--gold">{getEmployeeAbsenceTypeLabel(item.type)}</span>
+                    </div>
+                    <div className="hr-overview-v2__list-item-meta">
+                      <span>{formatEmployeeAbsenceDate(item.date)}</span>
+                      {item.createdByName || item.createdByUid ? <span>{item.createdByName || item.createdByUid}</span> : null}
+                    </div>
+                    {item.note ? <p>{item.note}</p> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </article>
+
+          <article className="dsv2-card dsv2-card--padded hr-overview-v2__card">
+            <div className="hr-overview-v2__card-head">
+              <div>
+                <p className="hr-overview-v2__kicker">معاينة الراتب</p>
+                <h2>حساب مبدئي دون إنشاء سجل</h2>
+              </div>
+              <span className="dsv2-badge">معاينة فقط</span>
+            </div>
+
+            <div className="hr-overview-v2__form-grid">
+              <DashboardFieldV2 id="hr-overview-payroll-employee" label="الموظفة" className="hr-overview-v2__field--wide">
+                <DashboardSelectV2
+                  id="hr-overview-payroll-employee"
+                  value={payrollForm.employeeKey}
+                  options={employeeSelectOptions}
+                  placeholder="اختر الموظفة"
+                  disabled={payrollLoading || !employeeSelectOptions.length}
+                  onChange={handlePayrollEmployeeChange}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="hr-overview-payroll-month" label="الشهر">
+                <input
+                  id="hr-overview-payroll-month"
+                  className="dsv2-input"
+                  type="month"
+                  value={payrollForm.payrollMonth}
+                  disabled={payrollLoading}
+                  onChange={(event) => {
+                    setPayrollForm((current) => ({ ...current, payrollMonth: event.target.value }));
+                    setPayrollPreview(null);
+                    setPayrollMessage("");
+                  }}
+                />
+              </DashboardFieldV2>
+
+              <DashboardFieldV2 id="hr-overview-payroll-base" label="الراتب الأساسي">
+                <input
+                  id="hr-overview-payroll-base"
+                  className="dsv2-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payrollForm.baseSalary}
+                  disabled={payrollLoading}
+                  onChange={(event) => {
+                    setPayrollForm((current) => ({ ...current, baseSalary: event.target.value }));
+                    setPayrollPreview(null);
+                  }}
+                />
+              </DashboardFieldV2>
+            </div>
+
+            {payrollMessage ? <div className="hr-overview-v2__alert">{payrollMessage}</div> : null}
+            <div className="hr-overview-v2__actions">
+              <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => void handleCalculatePayrollPreview()} disabled={payrollLoading || !rosterSorted.length}>
+                {payrollLoading ? "جارٍ الحساب..." : "حساب المعاينة"}
+              </button>
+              <button className="dsv2-btn dsv2-btn--secondary" type="button" onClick={() => onNavigate("/dashboard/employees")}>إدارة الرواتب التفصيلية</button>
+            </div>
+
+            {payrollPreview ? (
+              <div className="hr-overview-v2__audit">
+                <p className="hr-overview-v2__copy">معاينة للموظفة {payrollPreview.employeeName} عن شهر {payrollPreview.payrollMonth}. لا يتم حفظ أي سجل راتب من هذه البطاقة.</p>
+                <div className="hr-overview-v2__mini-stats hr-overview-v2__payroll-stats">
+                  <div className="hr-overview-v2__mini-stat"><span>أيام الإجازة المعتمدة</span><strong>{payrollPreview.approvedLeaveDays}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>فترة الحساب</span><strong>{payrollPreview.fromDate} - {payrollPreview.toDate}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>أيام العمل</span><strong>{payrollPreview.requiredWorkDays}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>أيام الحضور</span><strong>{payrollPreview.attendanceRecordedDays}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>أيام بلا بصمة</span><strong>{payrollPreview.daysWithoutAttendance}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>ساعات العمل المطلوبة</span><strong>{formatHours(payrollPreview.expectedWorkHours)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>الساعات الفعلية</span><strong>{formatHours(payrollPreview.actualWorkedHours)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>ساعات النقص</span><strong>{formatHours(payrollPreview.missingHours)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>الأوفر تايم</span><strong>{formatHours(payrollPreview.overtimeHours)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>خصم الغياب</span><strong>{formatMoney(payrollPreview.absenceDeduction)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>خصم نقص الساعات</span><strong>{formatMoney(payrollPreview.missingHoursDeduction)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat"><span>الراتب الأساسي</span><strong>{formatMoney(payrollPreview.baseSalary)}</strong></div>
+                  <div className="hr-overview-v2__mini-stat is-total"><span>الصافي المبدئي</span><strong>{formatMoney(payrollPreview.finalSalary)}</strong></div>
+                </div>
+              </div>
+            ) : (
+              <DashboardEmptyStateV2 compact className="hr-overview-v2__state" title="لم يتم حساب المعاينة بعد" description="اختر الموظفة والشهر ثم اضغط حساب المعاينة." tone="gold" />
+            )}
+          </article>
+        </section>
+      </div>
     </div>
   );
 }
