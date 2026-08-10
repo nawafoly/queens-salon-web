@@ -664,14 +664,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       if (method === "POST") {
         if (ctx.role === "client") {
-          // A client may only create/resolve their own canonical record. Ignore
-          // browser-supplied UID values and bind to the verified token identity.
           return resolveSelfClient(db, ctx.salonId, ctx.identity, {
             createIfMissing: true,
           });
         }
         if (ctx.guestAccess) {
-          // Guests can be deduplicated by phone, but cannot claim a Firebase UID.
           const { firebaseUid, uid, authUid, ...safeBody } = body || {};
           return createClient(db, ctx.salonId, safeBody);
         }
@@ -774,10 +771,6 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "bookings:internal":
-      // This route is deliberately non-public. actor() verifies the Firebase
-      // token and dispatch() applies the existing operational-role guard before
-      // this branch is reached. Never trust a browser-supplied isAdmin flag or
-      // source value when allowing a backdated booking.
       return createBooking(
         db,
         ctx.salonId,
@@ -1001,25 +994,46 @@ async function dispatch(ctx, route, method, body, query, env) {
     }
 
     case "hr-employees":
-      requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET" && route.id) return getHrEmployee(db, ctx.salonId, route.id);
-      if (method === "GET") return listHrEmployees(db, ctx.salonId, query);
-      if (method === "POST") return upsertHrEmployee(db, ctx.salonId, body, actorInfo);
-      if (method === "PATCH" && route.id) return upsertHrEmployee(db, ctx.salonId, { ...body, id: route.id }, actorInfo);
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "employees.view",
+          "employees.update",
+          "employees.manage",
+          "payroll.view",
+          "payroll.manage",
+          "attendance.view",
+          "attendance.leaves.manage",
+        ]);
+        if (route.id) return getHrEmployee(db, ctx.salonId, route.id);
+        return listHrEmployees(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requireAnyPermission(ctx, ["employees.create", "employees.manage"]);
+        return upsertHrEmployee(db, ctx.salonId, body, actorInfo);
+      }
+      if (method === "PATCH" && route.id) {
+        requireAnyPermission(ctx, [
+          "employees.update",
+          "employees.manage",
+          "payroll.manage",
+          "attendance.leaves.manage",
+        ]);
+        return upsertHrEmployee(db, ctx.salonId, { ...body, id: route.id }, actorInfo);
+      }
       break;
 
     case "hr-employee:schedules":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
       return replaceHrSchedules(db, ctx.salonId, route.id, body.schedules || []);
 
     case "shift-templates":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.settings.manage"]);
       if (method === "GET") return listShiftTemplates(db, ctx.salonId, query);
       if (["POST", "PATCH"].includes(method)) return saveShiftTemplate(db, ctx.salonId, { ...body, ...(route.id ? { id: route.id } : {}) }, actorInfo);
       break;
 
     case "shift-assignments":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
       if (method === "GET") return listShiftAssignments(db, ctx.salonId, query);
       if (method === "POST") return createShiftAssignment(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return updateShiftAssignment(db, ctx.salonId, route.id, body, actorInfo);
@@ -1027,34 +1041,39 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "schedule-exceptions":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
       if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
       if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return updateScheduleException(db, ctx.salonId, route.id, body, actorInfo);
       break;
 
     case "shift-change-preview":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "employees.schedule.manage");
       if (method === "POST") return previewShiftChange(db, ctx.salonId, body);
       break;
 
     case "shift-payroll-adjustments":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "payroll.view", "payroll.manage"]);
       if (method === "GET") return listShiftPayrollAdjustments(db, ctx.salonId, query);
       break;
 
     case "shift-payroll-period-locks":
-      requireRole(ctx.role, ADMIN_ROLES);
-      if (method === "GET") return listShiftPayrollPeriodLocks(db, ctx.salonId, query);
-      if (method === "POST") return saveShiftPayrollPeriodLock(db, ctx.salonId, body, actorInfo);
+      if (method === "GET") {
+        requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+        return listShiftPayrollPeriodLocks(db, ctx.salonId, query);
+      }
+      if (method === "POST") {
+        requirePermission(ctx, "payroll.manage");
+        return saveShiftPayrollPeriodLock(db, ctx.salonId, body, actorInfo);
+      }
       break;
 
     case "hr-shift:resolve":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.view", "payroll.view", "payroll.manage"]);
       return resolveEmployeeShift(db, ctx.salonId, route.id, query.date);
 
     case "attendance":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "attendance.view");
       if (method === "GET") return listAttendance(db, ctx.salonId, query, env.ATTENDANCE_DB || null);
       break;
 
@@ -1073,11 +1092,11 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "leave:approve":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "attendance.leaves.manage");
       return decideLeave(db, ctx.salonId, route.id, { ...body, status: "approved" }, actorInfo);
 
     case "leave:reject":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "attendance.leaves.manage");
       return decideLeave(db, ctx.salonId, route.id, { ...body, status: "rejected" }, actorInfo);
 
     case "permissions": {
@@ -1143,7 +1162,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       return permissionPayrollSummary(db, ctx.salonId, query);
 
     case "absences":
-      requireRole(ctx.role, ADMIN_ROLES);
+      requirePermission(ctx, "attendance.absences.manage");
       if (method === "GET") return listAbsences(db, ctx.salonId, query);
       if (method === "POST") return createAbsence(db, ctx.salonId, body, actorInfo);
       if (method === "DELETE" && route.id) return deleteAbsence(db, ctx.salonId, route.id);
