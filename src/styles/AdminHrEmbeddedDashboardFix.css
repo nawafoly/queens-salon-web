@@ -1,14 +1,5 @@
-/*
- * Embedded HR workspace compatibility inside /dashboard/*.
- * The standalone HR mobile shell intentionally locks document scrolling,
- * but the embedded dashboard workspace must participate in the dashboard
- * document scroll instead of becoming a second full-screen app shell.
- */
-
 @media (max-width: 820px) {
-  html:has(.dashboard-page .hr-shell--embedded),
-  body:has(.dashboard-page .hr-shell--embedded),
-  body:has(.dashboard-page .hr-shell--embedded) #root {
+  html:has(.dashboard-page .hr-shell--embedded) {
     width: 100% !important;
     height: auto !important;
     min-width: 0 !important;
@@ -17,59 +8,74 @@
     overflow-y: auto !important;
   }
 
-  .dashboard-page .hr-shell.hr-shell--embedded {
-    position: relative !important;
-    inset: auto !important;
-    display: block !important;
+  body:has(.dashboard-page .hr-shell--embedded),
+  body:has(.dashboard-page .hr-shell--embedded) #root {
     width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
     height: auto !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    transform: none !important;
-    background: transparent !important;
-  }
-
-  .dashboard-page .hr-shell.hr-shell--embedded > .hr-shell-main,
-  .dashboard-page .hr-shell.hr-shell--embedded > .hr-shell-main--embedded {
-    position: relative !important;
-    inset: auto !important;
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
     min-width: 0 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    min-height: 100% !important;
     overflow: visible !important;
-    overscroll-behavior: auto !important;
-    transform: none !important;
-    background: transparent !important;
   }
+}
 
-  .dashboard-page .hr-shell.hr-shell--embedded .hr-stage,
-  .dashboard-page .hr-shell.hr-shell--embedded .hr-stage--workspace {
-    position: relative !important;
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    transform: none !important;
-  }
+.dashboard-page .hr-shell.hr-shell--embedded {
+  position: relative !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+  transform: none !important;
+  background: transparent !important;
+}
 
-  .dashboard-page .hr-shell.hr-shell--embedded .hr-stage > *,
-  .dashboard-page .hr-shell.hr-shell--embedded .hr-stage--workspace > * {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-  }
+.dashboard-page .hr-shell.hr-shell--embedded > .hr-shell-main,
+.dashboard-page .hr-shell.hr-shell--embedded > .hr-shell-main--embedded,
+.dashboard-page .hr-shell.hr-shell--embedded > .hr-shell-main--workspace {
+  position: relative !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+  transform: none !important;
+  background: transparent !important;
+}
+
+.dashboard-page .hr-shell.hr-shell--embedded .hr-stage,
+.dashboard-page .hr-shell.hr-shell--embedded .hr-stage--workspace {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+  transform: none !important;
+}
+
+.dashboard-page .hr-shell.hr-shell--embedded .hr-stage > *,
+.dashboard-page .hr-shell.hr-shell--embedded .hr-stage--workspace > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
 }
