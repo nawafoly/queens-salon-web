@@ -4,17 +4,22 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
   faCalendarAlt,
+  faChartLine,
   faChartPie,
   faClockRotateLeft,
   faCog,
+  faFileLines,
   faFingerprint,
   faHouse,
   faMoneyBillWave,
+  faPaperPlane,
   faPercent,
   faStore,
   faTv,
   faUser,
+  faUsers,
   faUserShield,
+  faUserTie,
   faWallet,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
@@ -26,11 +31,16 @@ type DashboardMobileNavProps = {
   missingExpenseNotesCount: number;
 };
 
-type NavigationItem = {
+type PermissionRule = {
+  permission?: AppPermission;
+  anyOf?: AppPermission[];
+  allOf?: AppPermission[];
+};
+
+type NavigationItem = PermissionRule & {
   to: string;
   label: string;
   icon: typeof faHouse;
-  permission: AppPermission;
   primary?: boolean;
 };
 
@@ -43,7 +53,7 @@ export default function DashboardMobileNav({
 }: DashboardMobileNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { hasPermission } = usePermissions();
+  const { hasPermission, hasAnyPermission } = usePermissions();
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -63,6 +73,19 @@ export default function DashboardMobileNav({
     };
   }, [moreOpen]);
 
+  const canOpenItem = (item: PermissionRule) => {
+    if (item.allOf?.length && !item.allOf.every((permission) => hasPermission(permission))) {
+      return false;
+    }
+    if (item.anyOf?.length && !hasAnyPermission(item.anyOf)) {
+      return false;
+    }
+    if (item.permission && !hasPermission(item.permission)) {
+      return false;
+    }
+    return Boolean(item.permission || item.anyOf?.length || item.allOf?.length);
+  };
+
   const primaryItems = useMemo<NavigationItem[]>(() => {
     const items: NavigationItem[] = [
       { to: "/dashboard/bookings", label: "الحجوزات", icon: faCalendarAlt, permission: "bookings.view" },
@@ -70,8 +93,8 @@ export default function DashboardMobileNav({
       { to: "/dashboard/expenses", label: "المصروفات", icon: faMoneyBillWave, permission: "expenses.view", primary: true },
       { to: "/dashboard/reports", label: "التقارير", icon: faChartPie, permission: "reports.view" },
     ];
-    return items.filter((item) => hasPermission(item.permission));
-  }, [hasPermission]);
+    return items.filter(canOpenItem);
+  }, [hasPermission, hasAnyPermission]);
 
   const moreItems = useMemo<MoreItem[]>(() => {
     const items: MoreItem[] = [
@@ -110,6 +133,71 @@ export default function DashboardMobileNav({
         icon: faUser,
         permission: "clients.view",
       },
+
+      /* الموظفات والموارد البشرية — نفس خريطة صلاحيات السايدبار */
+      {
+        to: "/dashboard/hr",
+        label: "ملخص الموارد البشرية",
+        description: "نظرة عامة على شؤون الموظفات",
+        icon: faUserShield,
+        permission: "employees.view",
+      },
+      {
+        to: "/dashboard/employees",
+        label: "إدارة الموظفات",
+        description: "الملفات والبيانات الوظيفية",
+        icon: faUsers,
+        permission: "employees.view",
+      },
+      {
+        to: "/dashboard/requests",
+        label: "طلبات الموظفات",
+        description: "متابعة الطلبات والقرارات",
+        icon: faPaperPlane,
+        permission: "employee_requests.view",
+      },
+      {
+        to: "/dashboard/permissions",
+        label: "الاستئذانات والإجازات",
+        description: "مراجعة الاستئذانات والإجازات",
+        icon: faFingerprint,
+        permission: "attendance.leaves.manage",
+      },
+      {
+        to: "/dashboard/attendance",
+        label: "الحضور والبصمة",
+        description: "متابعة البصمات والأجهزة والتنبيهات",
+        icon: faFingerprint,
+        permission: "attendance.view",
+      },
+      {
+        to: "/dashboard/recruitment-applications",
+        label: "طلبات التوظيف",
+        description: "مراجعة طلبات التوظيف",
+        icon: faUserTie,
+        permission: "recruitment.view",
+      },
+      {
+        to: "/dashboard/messages",
+        label: "الرسائل الداخلية",
+        description: "التواصل الداخلي مع الموظفات",
+        icon: faPaperPlane,
+        permission: "messages.manage",
+      },
+      {
+        to: "/dashboard/files",
+        label: "ملفات الموظفات",
+        description: "العقود والمستندات والمرفقات",
+        icon: faFileLines,
+        permission: "employees.files.view",
+      },
+      {
+        to: "/dashboard/create-staff",
+        label: "إنشاء حساب موظفة",
+        description: "إضافة حساب موظفة جديد",
+        icon: faUserShield,
+        allOf: ["admin_accounts.manage", "employees.create"],
+      },
       {
         to: "/dashboard/payroll",
         label: "إدارة الرواتب",
@@ -122,8 +210,16 @@ export default function DashboardMobileNav({
         label: "تارقت الموظفات",
         description: "متابعة المبيعات المؤهلة والشرائح وبونص الرواتب",
         icon: faChartPie,
-        permission: "targets.view",
+        anyOf: ["targets.view", "targets.view_all", "payroll.view"],
       },
+      {
+        to: "/dashboard/staff-performance",
+        label: "أداء الموظفات",
+        description: "تحليل أداء ومبيعات الموظفات",
+        icon: faChartLine,
+        permission: "staffPerformance.view",
+      },
+
       {
         to: "/dashboard/partners",
         label: "الشريكات والمساحات",
@@ -133,32 +229,30 @@ export default function DashboardMobileNav({
       },
       { to: "/dashboard/offers", label: "العروض والكوبونات", icon: faPercent, permission: "offers.manage" },
       { to: "/dashboard/logs", label: "سجل الحركات", icon: faClockRotateLeft, permission: "logs.view" },
-      {
-        to: "/dashboard/attendance",
-        label: "سجل البصمة والأجهزة",
-        description: "متابعة البصمات والأجهزة والتنبيهات",
-        icon: faFingerprint,
-        permission: "attendance.view",
-      },
       { to: "/dashboard/loyalty", label: "الولاء VIP", icon: faChartPie, permission: "clients.loyalty.manage" },
       { to: "/dashboard/admin-profile", label: "الملف الشخصي", icon: faUser, permission: "workspace.dashboard.view" },
       { to: "/dashboard/settings", label: "الإعدادات الأساسية", icon: faCog, permission: "settings.general.manage" },
       { to: "/dashboard/settings/bookings", label: "إعدادات الحجوزات", icon: faCalendarAlt, permission: "settings.booking.manage" },
       { to: "/dashboard/settings/catalog", label: "إدارة الكتالوج", icon: faPercent, permission: "catalog.manage" },
-      { to: "/dashboard/settings/users", label: "إدارة الحسابات", icon: faUserShield, permission: "admin_accounts.view" },
+      {
+        to: "/dashboard/settings/users",
+        label: "إدارة الحسابات",
+        icon: faUserShield,
+        anyOf: ["admin_accounts.view", "admin_accounts.manage"],
+      },
       { to: "/dashboard/settings/contact", label: "محتوى الموقع", icon: faHouse, permission: "settings.content.manage" },
       { to: "/dashboard/settings/attendance", label: "إعدادات البصمة والنطاقات", icon: faCog, permission: "attendance.settings.manage" },
     ];
 
     return items
-      .filter((item) => hasPermission(item.permission))
+      .filter(canOpenItem)
       .filter((item) => !primaryItems.some((primary) => primary.to === item.to))
       .map((item) =>
         item.to === "/dashboard/expenses" && missingExpenseNotesCount > 0
           ? { ...item, label: `المصروفات (${missingExpenseNotesCount})` }
           : item
       );
-  }, [hasPermission, missingExpenseNotesCount, primaryItems]);
+  }, [hasPermission, hasAnyPermission, missingExpenseNotesCount, primaryItems]);
 
   const isMoreActive = moreItems.some(
     (item) => item.to !== "/" && location.pathname.startsWith(item.to)
@@ -222,7 +316,7 @@ export default function DashboardMobileNav({
                 <div className="dashboard-mobile-more-header__title">
                   <span>القائمة الإدارية</span>
                   <h2>المزيد</h2>
-                  <p>تظهر هنا الأقسام التي تسمح بها صلاحيات حسابك.</p>
+                  <p>تظهر هنا كل الأقسام التي تسمح بها صلاحيات حسابك.</p>
                 </div>
                 <button
                   type="button"
@@ -238,7 +332,7 @@ export default function DashboardMobileNav({
             <div className="dashboard-mobile-more-grid">
               {moreItems.map((item) => (
                 <button
-                  key={`${item.permission}:${item.to}`}
+                  key={`${item.to}:${item.label}`}
                   type="button"
                   className="dashboard-mobile-more-card"
                   onClick={() => {
