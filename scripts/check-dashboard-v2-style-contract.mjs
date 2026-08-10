@@ -29,6 +29,7 @@ const targetPageFiles = [
   "settings-catalog.css",
   "settings-users.css",
   "settings-contact.css",
+  "settings-attendance.css",
 ];
 const deletedLegacyFiles = [
   "src/styles/AdminDashboardBookings.css",
@@ -39,6 +40,7 @@ const deletedLegacyFiles = [
   "src/styles/AdminDashboardReports.css",
   "src/styles/DashboardBookingsEnterprise.css",
   "src/styles/DashboardPayroll.css",
+  "src/styles/SettingsAttendancePrecision.css",
   "src/styles/dashboard/dashboard-bookings.css",
   "src/styles/dashboard/dashboard-employees.css",
   "src/styles/dashboard/dashboard-reports.css",
@@ -129,17 +131,17 @@ if (/DashboardEnterpriseWorkspaces\.css/i.test(settingsSource)) {
 if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsSource)) {
   errors.push("DashboardSettings.tsx is not wired to the Dashboard V2 entry point.");
 }
-if (/renderLegacySettingsRoute\(["']catalog["']/.test(settingsSource)) {
-  errors.push("DashboardSettings.tsx still routes catalog settings through LegacySettingsRoute.");
+if (/LegacySettingsRoute|renderLegacySettingsRoute|enterprise-settings-v2|settings-shell__main|settings-shell__content/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx still contains legacy settings routing or shell wiring.");
 }
-if (/renderLegacySettingsRoute\(["']contact["']/.test(settingsSource)) {
-  errors.push("DashboardSettings.tsx still routes contact settings through LegacySettingsRoute.");
+if (!/SettingsUsersV2/.test(settingsSource) || !/SettingsContact/.test(settingsSource) || !/SettingsAttendance/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx is missing direct V2 settings routes.");
 }
-if (!/isSettingsUsersV2Route[\s\S]*usesSettingsV2Shell/.test(settingsSource) || !/SettingsUsersV2/.test(settingsSource)) {
-  errors.push("DashboardSettings.tsx does not keep settings/users on the native V2 shell.");
+if (!/settings-v2-shell__main/.test(settingsSource) || !/settings-v2-shell__content/.test(settingsSource)) {
+  errors.push("DashboardSettings.tsx is not fully pinned to the native V2 settings shell.");
 }
-if (!/isSettingsContactV2Route[\s\S]*usesSettingsV2Shell/.test(settingsSource) || !/SettingsContact/.test(settingsSource)) {
-  errors.push("DashboardSettings.tsx does not keep settings/contact on the native V2 shell.");
+if (existsSync(join(root, "src/pages/settings/LegacySettingsRoute.tsx"))) {
+  errors.push("LegacySettingsRoute.tsx still exists after all settings routes migrated to V2.");
 }
 
 const settingsBookingsSource = readFileSync(join(root, "src/pages/settings/SettingsBookings.tsx"), "utf8");
@@ -206,6 +208,32 @@ if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsContactSource)) {
 }
 if (!/settings-contact-v2-page/.test(settingsContactSource)) {
   errors.push("SettingsContact.tsx is missing its isolated V2 page root.");
+}
+
+const settingsAttendanceSource = readFileSync(join(root, "src/pages/settings/SettingsAttendance.tsx"), "utf8");
+if (/Settings(PageHeader|PageActions|PageFrame|Section|State|Stats)/.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx still depends on legacy SettingsFrame presentation primitives.");
+}
+if (/style=\{\{/i.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx still contains JSX inline style objects.");
+}
+if (/#[0-9a-f]{3,8}\b/i.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx still contains raw hex colors.");
+}
+if (/\b(exp-btn|settings-input|settings-field|settings-shell__|settings-toggle-card)\b/i.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx still contains legacy attendance-settings presentation classes.");
+}
+if (/SettingsAttendancePrecision\.css/.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx still imports the legacy precision stylesheet.");
+}
+if (!/styles\/dashboard-v2\/dashboard-v2\.css/i.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx is not wired to the Dashboard V2 entry point.");
+}
+if (!/settings-attendance-v2-page/.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx is missing its isolated V2 page root.");
+}
+if (!/upsertWorkZoneInAttendanceWorker/.test(settingsAttendanceSource) || !/deleteWorkZoneFromAttendanceWorker/.test(settingsAttendanceSource)) {
+  errors.push("SettingsAttendance.tsx is missing Attendance Worker zone synchronization.");
 }
 
 if (errors.length) {
