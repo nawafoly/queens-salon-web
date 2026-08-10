@@ -115,6 +115,56 @@ function getProfileSource(session: HrSession) {
   return session.staffDoc || session.employeeDoc || session.userDoc || {};
 }
 
+function resolveOverviewAvatarUrl(session: HrSession) {
+  const records = [
+    session.staffDoc,
+    session.employeeDoc,
+    session.userDoc,
+  ].filter(Boolean) as Array<Record<string, any>>;
+
+  for (const record of records) {
+    const employeeProfile =
+      record.employeeProfile && typeof record.employeeProfile === "object"
+        ? record.employeeProfile
+        : {};
+    const personal =
+      employeeProfile.personal && typeof employeeProfile.personal === "object"
+        ? employeeProfile.personal
+        : record.personal && typeof record.personal === "object"
+          ? record.personal
+          : {};
+
+    const candidates = [
+      record.avatarUrl,
+      record.avatarURL,
+      record.photoURL,
+      record.photoUrl,
+      record.imageUrl,
+      record.imageURL,
+      record.profileImageUrl,
+      record.profileImage,
+      record.picture,
+      record.avatar,
+      employeeProfile.avatarUrl,
+      employeeProfile.avatarURL,
+      employeeProfile.photoURL,
+      employeeProfile.photoUrl,
+      employeeProfile.imageUrl,
+      employeeProfile.profileImageUrl,
+      personal.avatarUrl,
+      personal.photoURL,
+      personal.photoUrl,
+      personal.imageUrl,
+      personal.profileImageUrl,
+    ];
+
+    const resolved = candidates.map(cleanText).find(Boolean);
+    if (resolved) return resolved;
+  }
+
+  return cleanText(session.user?.photoURL);
+}
+
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
   sun: "sunday",
@@ -394,7 +444,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const displayName = cleanText(profile.displayName || profile.name || session.displayName || session.email || "Employee");
   const department = cleanText(profile.department || "");
   const title = cleanText(profile.title || "");
-  const avatarUrl = cleanText(profile.avatarUrl || profile.photoURL || profile.photoUrl || "");
+  const avatarUrl = resolveOverviewAvatarUrl(session);
   const today = new Date().toISOString().slice(0, 10);
   const leaveFrom = cleanText(profile.leaveStartDate || profile.leaveFrom || profile.leaveFromDate || "");
   const leaveUntil = cleanText(profile.leaveUntil || "");
