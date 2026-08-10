@@ -52,6 +52,7 @@
     "dedupe:core-clients": "node scripts/dedupe-core-clients.mjs --apply",
     "check:booking-internal-contract": "node scripts/check-booking-internal-contract.mjs",
     "check:booking-internal-v2-style": "node scripts/check-booking-internal-v2-style.mjs",
+    "check:employee-profile-v2": "node scripts/check-employee-profile-v2.mjs",
     "check:dashboard-v2": "node scripts/check-dashboard-v2-style-contract.mjs && node scripts/check-booking-internal-v2-style.mjs && node scripts/check-booking-internal-contract.mjs"
   },
   "dependencies": {
@@ -84,7 +85,7 @@
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.6.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
