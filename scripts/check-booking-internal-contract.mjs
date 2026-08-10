@@ -52,7 +52,7 @@ requireText(booking, "resolveCoreBookingDataSource().searchClients", "Client sea
 requireText(booking, "resolveCoreBookingDataSource().createClient", "Client creation is no longer Core-backed.");
 requireText(booking, "resolveCoreBookingDataSource().getServiceSections", "Service sections are no longer loaded through the booking data source.");
 requireText(booking, "resolveCoreBookingDataSource().getServices", "Services are no longer loaded through the booking data source.");
-requireText(booking, "CoreSettingsService.get<InternalBookingAppSettings>(\"app\")", "Booking settings are no longer loaded from Core settings.");
+requireText(booking, 'CoreSettingsService.get<InternalBookingAppSettings>("app")', "Booking settings are no longer loaded from Core settings.");
 
 // Scheduling safety. These checks intentionally protect the fresh-availability
 // revalidation performed immediately before write, not only the UI-time lookup.
