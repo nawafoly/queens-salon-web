@@ -151,22 +151,6 @@ function mergeHrStatus(row, maps) {
   };
 }
 
-async function schedulesForStaff(db, salonId, staffId) {
-  if (db.__fakeD1 && typeof db.rows === "function") {
-    return db
-      .rows("staff_schedules")
-      .filter(
-        (row) =>
-          row.salon_id === salonId && row.staff_id === staffId
-      );
-  }
-  return dbAll(
-    db,
-    "SELECT * FROM staff_schedules WHERE salon_id = ? AND staff_id = ? ORDER BY weekday, start_time",
-    [salonId, staffId]
-  );
-}
-
 export async function listStaff(db, salonId, query = {}) {
   const rows = await dbAll(
     db,
@@ -206,12 +190,7 @@ export async function listStaff(db, salonId, query = {}) {
     filtered = filtered.filter((row) => allowedIds.has(row.id));
   }
 
-  return Promise.all(
-    filtered.map(async (row) => ({
-      ...row,
-      schedules: await schedulesForStaff(db, salonId, row.id),
-    }))
-  );
+  return filtered;
 }
 
 export async function getStaff(db, salonId, id) {
@@ -223,10 +202,7 @@ export async function getStaff(db, salonId, id) {
   if (!row) rowNotFound("staff");
   const hrStatusMaps = await hrStatusMapsForStaff(db, salonId);
   const merged = mergeHrStatus(row, hrStatusMaps);
-  return {
-    ...merged,
-    schedules: await schedulesForStaff(db, salonId, merged.id),
-  };
+  return merged;
 }
 
 export async function patchStaff(db, salonId, id, data) {

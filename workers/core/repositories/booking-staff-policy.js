@@ -122,26 +122,6 @@ function partialLeaveRanges(leaves) {
     }));
 }
 
-function legacyScheduleAvailability(staff, date, startTime = '', endTime = '') {
-  const schedules = Array.isArray(staff?.schedules) ? staff.schedules : [];
-  if (!schedules.length || !date) return { available: true, window: null };
-  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
-  const daySchedules = schedules.filter(
-    (schedule) => Number(schedule.weekday) === weekday && Number(schedule.active) === 1
-  );
-  if (!daySchedules.length) return { available: false, window: null };
-  if (!startTime && !endTime) {
-    const first = daySchedules[0];
-    return { available: true, window: first };
-  }
-  if (!startTime || !endTime) return { available: false, window: null };
-  const matched = daySchedules.find((schedule) =>
-    timeInsideRange(startTime, cleanText(schedule.start_time), cleanText(schedule.end_time)) &&
-    timeInsideRange(endTime, cleanText(schedule.start_time), cleanText(schedule.end_time))
-  );
-  return { available: Boolean(matched), window: matched || null };
-}
-
 export async function resolveStaffBookingDay(db, salonId, staff, dateValue, startTime = '', endTime = '') {
   const employeeId = cleanText(staff?.id);
   const date = cleanText(dateValue);
@@ -242,23 +222,12 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     };
   }
 
-  // Migration compatibility only: use legacy staff_schedules if no HR-dated truth exists.
-  const legacy = legacyScheduleAvailability(staff, date, startTime, endTime);
-  if (!legacy.available) {
-    return {
-      available: false,
-      reason: 'legacy_schedule_off',
-      source: 'staff_schedules',
-      blockedRanges,
-    };
-  }
-
+  // No dated HR truth means the employee is not bookable.
+  // Never fall back to staff_schedules: hr_work_schedules / exceptions / assignments are authoritative.
   return {
-    available: true,
-    reason: '',
-    source: legacy.window ? 'staff_schedules' : 'fallback',
-    startTime: cleanText(legacy.window?.start_time),
-    endTime: cleanText(legacy.window?.end_time),
+    available: false,
+    reason: 'no_hr_schedule',
+    source: 'hr_schedule',
     blockedRanges,
   };
 }

@@ -179,8 +179,6 @@ import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 import {
   isStaffAvailableForDate,
   isStaffBookableForPublicBooking,
-  filterStaffSlotsByWorkingHours,
-  resolveStaffWorkingWindowsForDate,
   type ResolvedStaffWorkingWindowRange,
 } from "../helpers/staffAvailability";
 import {
@@ -1757,6 +1755,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [staffFullDayByItem, setStaffFullDayByItem] = useState<
     Record<string, Record<string, boolean>>
   >({});
+  const [staffFullDayResolvedKeyByItem, setStaffFullDayResolvedKeyByItem] = useState<
+    Record<string, string>
+  >({});
   const [packageQuickByRun, setPackageQuickByRun] = useState<Record<string, PackageQuickState>>({});
   const [packageQuickEligibilityByRun, setPackageQuickEligibilityByRun] = useState<
     Record<string, PackageQuickEligibility>
@@ -1771,6 +1772,39 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   const [futureTargetItemId, setFutureTargetItemId] = useState("");
   const autoStaffDefaultContextRef = useRef<Record<string, string>>({});
   const manualStaffChoiceContextRef = useRef<Record<string, string>>({});
+  const coreStaffWindowsRef = useRef<Record<string, ResolvedStaffWorkingWindowRange[]>>({});
+  const [, setCoreStaffWindowsVersion] = useState(0);
+
+  function coreStaffWindowsKey(dateISO: string, staffId: string) {
+    return `${String(dateISO || "").trim()}__${String(staffId || "").trim()}`;
+  }
+
+  function normalizeCoreScheduleWindows(availability: any): ResolvedStaffWorkingWindowRange[] {
+    return (Array.isArray(availability?.scheduleWindows) ? availability.scheduleWindows : [])
+      .map((window: any) => ({
+        start: String(window?.startTime || window?.start_time || "").trim(),
+        end: String(window?.endTime || window?.end_time || "").trim(),
+        source: "staff_fixed" as const,
+      }))
+      .filter((window: ResolvedStaffWorkingWindowRange) => !!window.start && !!window.end && window.start !== window.end);
+  }
+
+  function getCoreStaffWindows(dateISO: string, staffId: string) {
+    return coreStaffWindowsRef.current[coreStaffWindowsKey(dateISO, staffId)] || [];
+  }
+
+  function filterSlotsToCoreWindows(slots: TimeSlot[], windows: ResolvedStaffWorkingWindowRange[]) {
+    if (!windows.length) return [];
+    return (slots || []).filter((slot: TimeSlot) =>
+      windows.some((window) =>
+        isTimeInsideWindowRange(
+          String(slot?.value24 || "").trim(),
+          String(window.start || "").trim(),
+          String(window.end || "").trim()
+        )
+      )
+    );
+  }
 
   async function openFutureSearchFromItem(it: CartItem) {
     const sid = String(it?.serviceId || "").trim();
@@ -5096,12 +5130,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         const candidateStaff = bookingVisibleStaff.filter((st) => {
           const leave = getStaffLeaveMetaForDate(st, dateISO);
           if (leave.isOnLeave) return false;
-          const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
-            dateISO,
-            slots: baseSlotsForDate,
-            fallbackOpenTime: dayOpenTime,
-            fallbackCloseTime: dayCloseTime,
-          });
+          const workingSlots = filterSlotsToCoreWindows(baseSlotsForDate, getCoreStaffWindows(dateISO, String((st as any)?.id || "").trim()));
           return workingSlots.length > 0;
         });
 
@@ -5227,6 +5256,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   useEffect(() => {
     if (currentStep !== 2) {
       setStaffFullDayByItem({});
+      setStaffFullDayResolvedKeyByItem({});
       return;
     }
 
@@ -5235,11 +5265,15 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     async function loadStaffFullDayState() {
       const items = formData.items || [];
       if (!items.length) {
-        if (!cancelled) setStaffFullDayByItem({});
+        if (!cancelled) {
+          setStaffFullDayByItem({});
+          setStaffFullDayResolvedKeyByItem({});
+        }
         return;
       }
 
       const nextState: Record<string, Record<string, boolean>> = {};
+      const nextResolvedKeys: Record<string, string> = {};
       const availabilityCache = new Map<string, Promise<boolean>>();
       const tasks: Promise<void>[] = [];
 
@@ -5266,6 +5300,18 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         if (!serviceKey) continue;
 
         const serviceStaff = (staffByService[serviceKey] || []) as StaffPublicWithId[];
+        const staffFingerprint = serviceStaff
+          .map((st) => String((st as any)?.id || "").trim())
+          .filter(Boolean)
+          .sort()
+          .join(",");
+        nextResolvedKeys[itemId] = [
+          dateISO,
+          serviceKey,
+          String(Math.max(1, Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN))),
+          staffFingerprint,
+        ].join("__");
+        nextState[itemId] = nextState[itemId] || {};
         if (!serviceStaff.length) continue;
 
         const bookingVisibleStaff = serviceStaff.filter((st) =>
@@ -5284,12 +5330,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
             (async () => {
               if (cancelled) return;
               const leave = getStaffLeaveMetaForDate(st as any, dateISO);
-              const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
-                dateISO,
-                slots: baseSlotsForDate,
-                fallbackOpenTime: dayOpenTime,
-                fallbackCloseTime: dayCloseTime,
-              });
+              const workingSlots = filterSlotsToCoreWindows(baseSlotsForDate, getCoreStaffWindows(dateISO, String((st as any)?.id || "").trim()));
 
               if (leave.isOnLeave || !workingSlots.length) {
                 nextState[itemId][empId] = false;
@@ -5346,15 +5387,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       await Promise.all(tasks);
       if (cancelled) return;
       setStaffFullDayByItem(nextState);
+      setStaffFullDayResolvedKeyByItem(nextResolvedKeys);
     }
 
-    const t = window.setTimeout(() => {
-      if (cancelled) return;
-      void loadStaffFullDayState();
-    }, 150);
+    void loadStaffFullDayState();
     return () => {
       cancelled = true;
-      window.clearTimeout(t);
     };
   }, [
     currentStep,
@@ -5402,6 +5440,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         bufferMin,
         forceFresh,
       });
+      const windowsKey = coreStaffWindowsKey(dateISO, fallbackId || key);
+      const nextCoreWindows = normalizeCoreScheduleWindows(availability);
+      const previousCoreWindows = coreStaffWindowsRef.current[windowsKey] || [];
+      const previousSignature = previousCoreWindows.map((w) => `${w.start}|${w.end}`).join(",");
+      const nextSignature = nextCoreWindows.map((w) => `${w.start}|${w.end}`).join(",");
+      coreStaffWindowsRef.current[windowsKey] = nextCoreWindows;
+      if (previousSignature !== nextSignature) setCoreStaffWindowsVersion((value) => value + 1);
+
       const rows = availability.availableForDate === false
         ? Array.from(
             { length: Math.ceil((24 * 60) / Math.max(5, slotStepMin)) },
@@ -5489,26 +5535,13 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
 
     let staffScopedSlots = slotsForThisService;
     if (staff) {
-      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
-        dateISO,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
+      const staffId = String((staff as any)?.id || employeeIdFallback || employeeKey || "").trim();
+      const staffWindows = getCoreStaffWindows(dateISO, staffId);
       if (!staffWindows.length) return [];
-      const workingStarts = filterStaffSlotsByWorkingHours(staff as any, {
-        dateISO,
-        slots: slotsForThisService,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
-      const orderedByValue = new Map<string, TimeSlot>(
-        (slotsForThisService || [])
-          .map((slot) => [String(slot?.value24 || "").trim(), slot] as const)
-          .filter(([k]) => !!k)
-      );
+      const workingStarts = filterSlotsToCoreWindows(slotsForThisService, staffWindows);
       const allowedByValue = new Set<string>();
       for (const window of staffWindows) {
-        const scopedWindowStarts = (workingStarts || []).filter((slot) =>
+        const startsInWindow = workingStarts.filter((slot: TimeSlot) =>
           isTimeInsideWindowRange(
             String(slot?.value24 || "").trim(),
             String(window.start || "").trim(),
@@ -5516,7 +5549,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           )
         );
         const allowedInWindow = filterSlotsByServiceEnd(
-          scopedWindowStarts,
+          startsInWindow,
           String(window.end || "").trim(),
           normalizedDuration,
           bufferMin,
@@ -5527,15 +5560,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           if (value) allowedByValue.add(value);
         }
       }
-      staffScopedSlots = (slotsForThisService || []).filter((slot) =>
+      staffScopedSlots = slotsForThisService.filter((slot: TimeSlot) =>
         allowedByValue.has(String(slot?.value24 || "").trim())
       );
-      if (!staffScopedSlots.length) {
-        // Keep deterministic order from the original day slots.
-        staffScopedSlots = Array.from(orderedByValue.entries())
-          .filter(([value]) => allowedByValue.has(value))
-          .map(([, slot]) => slot);
-      }
     }
 
     if (!staffScopedSlots.length) return [];
@@ -5877,25 +5904,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           const selectedStaff =
             serviceStaff.find((s: any) => String(s?.id || "").trim() === employeeId) || null;
           if (selectedStaff) {
-            const staffWindows = resolveStaffWorkingWindowsForDate(selectedStaff as any, {
-              dateISO: date,
-              fallbackOpenTime: dayOpenTime,
-              fallbackCloseTime: dayCloseTime,
-            });
-            const staffWorkingSlots = staffWindows.length
-              ? filterStaffSlotsByWorkingHours(selectedStaff as any, {
-                dateISO: date,
-                slots: slotsForThisService,
-                fallbackOpenTime: dayOpenTime,
-                fallbackCloseTime: dayCloseTime,
-              })
-              : [];
+            const staffWindows = getCoreStaffWindows(date, employeeId);
             if (!staffWindows.length) {
               slotsForThisService = [];
             } else {
+              const staffWorkingSlots = filterSlotsToCoreWindows(slotsForThisService, staffWindows);
               const allowedByValue = new Set<string>();
               for (const window of staffWindows) {
-                const startsInWindow = (staffWorkingSlots || []).filter((slot) =>
+                const startsInWindow = staffWorkingSlots.filter((slot: TimeSlot) =>
                   isTimeInsideWindowRange(
                     String(slot?.value24 || "").trim(),
                     String(window.start || "").trim(),
@@ -5914,7 +5930,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                   if (value) allowedByValue.add(value);
                 }
               }
-              slotsForThisService = (slotsForThisService || []).filter((slot) =>
+              slotsForThisService = slotsForThisService.filter((slot: TimeSlot) =>
                 allowedByValue.has(String(slot?.value24 || "").trim())
               );
             }
@@ -6513,7 +6529,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const dayOpenTime = safeTimeHHMM(dayCfg.openTime, openTime);
     const dayCloseTime = safeTimeHHMM(dayCfg.closeTime, closeTime);
     const baseSlotsForDay = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
-    if (!baseSlotsForDay.some((s) => String(s.value24 || "").trim() === time)) {
+    if (!baseSlotsForDay.some((s: TimeSlot) => String(s.value24 || "").trim() === time)) {
       return { ok: false, msg: "الوقت المختار خارج دوام الصالون في هذا اليوم." };
     }
 
@@ -6525,7 +6541,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       bufferMin,
       ALLOW_OVERTIME_MIN
     );
-    if (!salonAllowedStarts.some((s) => String(s.value24 || "").trim() === time)) {
+    if (!salonAllowedStarts.some((s: TimeSlot) => String(s.value24 || "").trim() === time)) {
       return { ok: false, msg: "هذا الوقت لا يكفي لإنهاء الخدمة ضمن دوام الصالون." };
     }
 
@@ -6540,23 +6556,14 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       if (!isStaffBookableForPublicBooking(staff as any, date)) {
         return { ok: false, msg: "الموظفة المختارة لم تعد متاحة للحجوزات الجديدة." };
       }
-      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
-        dateISO: date,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
+      const staffWindows = getCoreStaffWindows(date, String((staff as any)?.id || "").trim());
       if (!staffWindows.length) {
         return { ok: false, msg: "الموظفة غير متاحة في هذا اليوم." };
       }
-      const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
-        dateISO: date,
-        slots: salonAllowedStarts,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
+      const staffWorkingStarts = filterSlotsToCoreWindows(salonAllowedStarts, getCoreStaffWindows(date, String((staff as any)?.id || "").trim()));
       const staffAllowedSet = new Set<string>();
       for (const window of staffWindows) {
-        const startsInWindow = (staffWorkingStarts || []).filter((slot) =>
+        const startsInWindow = (staffWorkingStarts || []).filter((slot: TimeSlot) =>
           isTimeInsideWindowRange(
             String(slot?.value24 || "").trim(),
             String(window.start || "").trim(),
@@ -6575,10 +6582,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           if (value) staffAllowedSet.add(value);
         }
       }
-      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot) =>
+      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot: TimeSlot) =>
         staffAllowedSet.has(String(slot?.value24 || "").trim())
       );
-      if (!staffAllowedStarts.some((s) => String(s.value24 || "").trim() === time)) {
+      if (!staffAllowedStarts.some((s: TimeSlot) => String(s.value24 || "").trim() === time)) {
         return { ok: false, msg: "هذا الوقت لا يكفي لإنهاء الخدمة ضمن دوام الموظفة." };
       }
     }
@@ -6866,7 +6873,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const dayOpenTime = safeTimeHHMM(cfg.openTime, openTime);
       const dayCloseTime = safeTimeHHMM(cfg.closeTime, closeTime);
       const slots = generateSalonTimeSlots(dayOpenTime, dayCloseTime, slotStepMin);
-      if (!slots.some((s) => String(s.value24 || "").trim() === t)) return true;
+      if (!slots.some((s: TimeSlot) => String(s.value24 || "").trim() === t)) return true;
 
       const salonAllowedStarts = filterSlotsByServiceEnd(
         slots,
@@ -6875,7 +6882,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         bufferMin,
         ALLOW_OVERTIME_MIN
       );
-      if (!salonAllowedStarts.some((s) => String(s.value24 || "").trim() === t)) return true;
+      if (!salonAllowedStarts.some((s: TimeSlot) => String(s.value24 || "").trim() === t)) return true;
 
       const serviceKey =
         resolveCanonicalServiceId(
@@ -6886,21 +6893,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       const staff = findStaffForCartItem(staffList, it);
       if (!staff) return false;
       if (!isStaffBookableForPublicBooking(staff as any, d)) return true;
-      const staffWindows = resolveStaffWorkingWindowsForDate(staff as any, {
-        dateISO: d,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
+      const staffWindows = getCoreStaffWindows(d, String((staff as any)?.id || "").trim());
       if (!staffWindows.length) return true;
-      const staffWorkingStarts = filterStaffSlotsByWorkingHours(staff as any, {
-        dateISO: d,
-        slots: salonAllowedStarts,
-        fallbackOpenTime: dayOpenTime,
-        fallbackCloseTime: dayCloseTime,
-      });
+      const staffWorkingStarts = filterSlotsToCoreWindows(salonAllowedStarts, getCoreStaffWindows(d, String((staff as any)?.id || "").trim()));
       const staffAllowedSet = new Set<string>();
       for (const window of staffWindows) {
-        const startsInWindow = (staffWorkingStarts || []).filter((slot) =>
+        const startsInWindow = (staffWorkingStarts || []).filter((slot: TimeSlot) =>
           isTimeInsideWindowRange(
             String(slot?.value24 || "").trim(),
             String(window.start || "").trim(),
@@ -6919,10 +6917,10 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           if (value) staffAllowedSet.add(value);
         }
       }
-      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot) =>
+      const staffAllowedStarts = (staffWorkingStarts || []).filter((slot: TimeSlot) =>
         staffAllowedSet.has(String(slot?.value24 || "").trim())
       );
-      return !staffAllowedStarts.some((s) => String(s.value24 || "").trim() === t);
+      return !staffAllowedStarts.some((s: TimeSlot) => String(s.value24 || "").trim() === t);
     });
     if (outOfHoursItem) {
       const d = String(outOfHoursItem.date || bookingDate || "").trim();
@@ -9782,12 +9780,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           );
                           const staffWithLeaveMeta = bookingVisibleStaff.map((st) => {
                             const leave = getStaffLeaveMetaForDate(st, dateISO);
-                            const workingSlots = filterStaffSlotsByWorkingHours(st as any, {
-                              dateISO,
-                              slots: baseSlotsForUi,
-                              fallbackOpenTime: dayOpenTimeForItem,
-                              fallbackCloseTime: dayCloseTimeForItem,
-                            });
+                            const workingSlots = filterSlotsToCoreWindows(baseSlotsForUi, getCoreStaffWindows(dateISO, String((st as any)?.id || "").trim()));
                             return {
                               staff: st,
                               leave,
@@ -9796,14 +9789,30 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             };
                           });
                           const availableStaff = staffWithLeaveMeta
-                            .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)
+                            .filter((x) => !x.isInactive)
                             .map((x) => x.staff);
                           const coreUnavailableForItem = staffFullDayByItem[it.id] || {};
-                          const staffChoicesForItem = availableStaff.filter((staff: any) => {
-                            const id = String(staff?.id || "").trim();
-                            return !id || !coreUnavailableForItem[id];
-                          });
-                          const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
+                          const staffFingerprintForItem = serviceStaff
+                            .map((staff: any) => String(staff?.id || "").trim())
+                            .filter(Boolean)
+                            .sort()
+                            .join(",");
+                          const coreAvailabilityKeyForItem = [
+                            dateISO,
+                            serviceKeyForStaff,
+                            String(Math.max(1, Number(it.durationMin || DEFAULT_SERVICE_DURATION_MIN))),
+                            staffFingerprintForItem,
+                          ].join("__");
+                          const coreAvailabilityLoading =
+                            staffFullDayResolvedKeyByItem[it.id] !== coreAvailabilityKeyForItem;
+                          const staffChoicesForItem = coreAvailabilityLoading
+                            ? []
+                            : availableStaff.filter((staff: any) => {
+                                const id = String(staff?.id || "").trim();
+                                return !id || !coreUnavailableForItem[id];
+                              });
+                          const staffLoading =
+                            !!staffLoadingByService[serviceKeyForStaff] || coreAvailabilityLoading;
                           const staffError = staffErrorByService[serviceKeyForStaff] || "";
                           const selectedEmployeeAvailable = staffChoicesForItem.some(
                             (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
@@ -9862,20 +9871,12 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                           const selectedStaffForTime = staffChoicesForItem.find(
                             (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
                           );
-                          const staffWorkingSlots = selectedStaffForTime
-                            ? filterStaffSlotsByWorkingHours(selectedStaffForTime as any, {
-                              dateISO,
-                              slots: baseSlotsForUi,
-                              fallbackOpenTime: dayOpenTimeForItem,
-                              fallbackCloseTime: dayCloseTimeForItem,
-                            })
-                            : [];
+                          const selectedStaffId = String((selectedStaffForTime as any)?.id || "").trim();
                           const staffWindows = selectedStaffForTime
-                            ? resolveStaffWorkingWindowsForDate(selectedStaffForTime as any, {
-                              dateISO,
-                              fallbackOpenTime: dayOpenTimeForItem,
-                              fallbackCloseTime: dayCloseTimeForItem,
-                            })
+                            ? getCoreStaffWindows(dateISO, selectedStaffId)
+                            : [];
+                          const staffWorkingSlots = selectedStaffForTime
+                            ? filterSlotsToCoreWindows(baseSlotsForUi, staffWindows)
                             : [];
                           const exactCartTakenStarts = getLocalExactTakenStartTimesForItem(
                             itemsList,
@@ -9889,7 +9890,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             slotCards: TimeSlotCard[];
                           }> = selectedStaffForTime
                               ? staffWindows.map((window, idx) => {
-                                const windowSlots = staffWorkingSlots.filter((slot) =>
+                                const windowSlots = staffWorkingSlots.filter((slot: TimeSlot) =>
                                   isTimeInsideWindowRange(
                                     String(slot?.value24 || "").trim(),
                                     String(window.start || "").trim(),

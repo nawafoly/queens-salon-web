@@ -293,32 +293,9 @@ export function coreServicesToSections(
   );
 }
 
-const dayKeys = [
-  "sun",
-  "mon",
-  "tue",
-  "wed",
-  "thu",
-  "fri",
-  "sat",
-] as const;
-
 export function coreStaffToLegacy(
   staff: CoreStaff
 ): StaffPublicWithId {
-  const customWorkingHours: NonNullable<
-    StaffPublicWithId["customWorkingHours"]
-  > = {};
-
-  for (const schedule of staff.schedules || []) {
-    const key = dayKeys[schedule.weekday] || "sun";
-    customWorkingHours[key] = {
-      enabled: schedule.active,
-      start: schedule.startTime || "10:00",
-      end: schedule.endTime || "22:00",
-    };
-  }
-
   return {
     id: staff.id,
     name: staff.name,
@@ -339,8 +316,8 @@ export function coreStaffToLegacy(
     linkedUid: staff.firebaseUid || undefined,
     avatarUrl: staff.avatarUrl || undefined,
     showOnBooking: staff.showOnBooking !== false,
-    useCustomWorkingHours: Boolean(staff.schedules?.length),
-    customWorkingHours,
+    // Runtime booking schedule comes only from Core availability / HR resolver.
+    useCustomWorkingHours: false,
     onLeave: Boolean(staff.leaveStartDate || staff.leaveEndDate),
     leaveUntil: staff.leaveEndDate || undefined,
     leaveNote: staff.leaveNote || undefined,

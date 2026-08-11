@@ -26,6 +26,10 @@ class FakeD1 {
       "staff",
       "staff_services",
       "staff_schedules",
+      "hr_work_schedules",
+      "hr_schedule_exceptions",
+      "hr_shift_assignments",
+      "hr_shift_templates",
       "bookings",
       "booking_items",
       "booking_slot_locks",
@@ -182,6 +186,109 @@ class FakeD1 {
   async all(sql, params = []) {
     this.allQueryCount += 1;
     const normalized = sql.replace(/\s+/g, " ").trim();
+
+    if (normalized.includes("FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t")) {
+      const [salonId, employeeId, dateFrom, dateTo] = params;
+      return this.rows("hr_schedule_exceptions")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.status === "approved" &&
+          Number(row.enabled) === 1 &&
+          row.date_from <= dateFrom &&
+          row.date_to >= dateTo
+        )
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+        .slice(0, 1)
+        .map((row) => {
+          const template = row.shift_template_id
+            ? this.rows("hr_shift_templates").find((item) => item.id === row.shift_template_id)
+            : null;
+          return {
+            ...row,
+            shift_name: template?.name || null,
+            template_start_time: template?.start_time || null,
+            template_end_time: template?.end_time || null,
+            crosses_midnight: template?.crosses_midnight || 0,
+            break_minutes: template?.break_minutes || 0,
+            late_grace_minutes: template?.late_grace_minutes || 0,
+            early_leave_grace_minutes: 0,
+            attendance_lock_enabled: template?.attendance_lock_enabled || 0,
+            attendance_lock_after_minutes: template?.attendance_lock_after_minutes || 30,
+            overtime_after_minutes: template?.overtime_after_minutes || 0,
+          };
+        });
+    }
+
+    if (normalized.includes("FROM hr_work_schedules s") && normalized.includes("LEFT JOIN hr_shift_templates t")) {
+      const [salonId, employeeId, weekday, dateFrom, dateTo] = params;
+      return this.rows("hr_work_schedules")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          Number(row.weekday) === Number(weekday) &&
+          (!row.effective_from || row.effective_from <= dateFrom) &&
+          (!row.effective_to || row.effective_to >= dateTo)
+        )
+        .sort((a, b) => {
+          const byFrom = String(b.effective_from || "0000-01-01").localeCompare(String(a.effective_from || "0000-01-01"));
+          if (byFrom !== 0) return byFrom;
+          return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+        })
+        .slice(0, 1)
+        .map((row) => {
+          const template = row.shift_template_id
+            ? this.rows("hr_shift_templates").find((item) => item.id === row.shift_template_id)
+            : null;
+          return {
+            ...row,
+            shift_name: template?.name || null,
+            shift_code: template?.code || null,
+            template_start_time: template?.start_time || null,
+            template_end_time: template?.end_time || null,
+            crosses_midnight: template?.crosses_midnight || 0,
+            break_minutes: template?.break_minutes || 0,
+            late_grace_minutes: template?.late_grace_minutes || 0,
+            early_leave_grace_minutes: 0,
+            attendance_lock_enabled: template?.attendance_lock_enabled || 0,
+            attendance_lock_after_minutes: template?.attendance_lock_after_minutes || 30,
+            overtime_after_minutes: template?.overtime_after_minutes || 0,
+          };
+        });
+    }
+
+    if (normalized.includes("FROM hr_shift_assignments a") && normalized.includes("LEFT JOIN hr_shift_templates t")) {
+      const [salonId, employeeId, dateFrom, dateTo] = params;
+      return this.rows("hr_shift_assignments")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.status === "published" &&
+          row.effective_from <= dateFrom &&
+          (!row.effective_to || row.effective_to >= dateTo)
+        )
+        .sort((a, b) => String(b.effective_from || "").localeCompare(String(a.effective_from || "")))
+        .slice(0, 1)
+        .map((row) => {
+          const template = row.shift_template_id
+            ? this.rows("hr_shift_templates").find((item) => item.id === row.shift_template_id)
+            : null;
+          return {
+            ...row,
+            shift_name: template?.name || null,
+            template_start_time: template?.start_time || null,
+            template_end_time: template?.end_time || null,
+            crosses_midnight: template?.crosses_midnight || 0,
+            break_minutes: template?.break_minutes || 0,
+            late_grace_minutes: template?.late_grace_minutes || 0,
+            early_leave_grace_minutes: 0,
+            attendance_lock_enabled: template?.attendance_lock_enabled || 0,
+            attendance_lock_after_minutes: template?.attendance_lock_after_minutes || 30,
+            overtime_after_minutes: template?.overtime_after_minutes || 0,
+          };
+        });
+    }
+
     if (normalized.startsWith("SELECT * FROM app_users WHERE salon_id = ? AND firebase_uid = ?")) {
       const [salonId, uid] = params;
       return this.rows("app_users").filter((row) => row.salon_id === salonId && row.firebase_uid === uid).slice(0, 1);
@@ -1232,7 +1339,33 @@ function seedCore(fake) {
   const now = "2027-01-01T00:00:00.000Z";
   fake.seed("clients", { id: "client-a", salon_id: "main", name: "Client A", phone_normalized: "0500000001", email: null, firebase_uid: "client1", status: "active", notes: null, created_at: now, updated_at: now });
   fake.seed("services", { id: "svc-a", salon_id: "main", name: "Service A", category_id: null, description: null, duration_minutes: 30, price_halalas: 7500, active: 1, image_url: null, sort_order: 0, created_at: now, updated_at: now });
-  fake.seed("staff", { id: "staff-a", salon_id: "main", firebase_uid: "staff1", name: "Staff A", phone_normalized: null, active: 1, employment_status: "active", created_at: now, updated_at: now });
+  fake.seed("staff", { id: "staff-a", salon_id: "main", firebase_uid: "staff1", name: "Staff A", phone_normalized: null, active: 1, employment_status: "active", show_on_booking: 1, created_at: now, updated_at: now });
+  fake.seed("staff_services", {
+    id: "staff-a__svc-a",
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-a",
+    active: 1,
+    created_at: now,
+    updated_at: now,
+  });
+  for (let weekday = 0; weekday <= 6; weekday += 1) {
+    fake.seed("hr_work_schedules", {
+      id: `staff-a__weekday-${weekday}`,
+      salon_id: "main",
+      employee_id: "staff-a",
+      weekday,
+      shift_template_id: null,
+      active: 1,
+      start_time: "09:00",
+      end_time: "23:00",
+      effective_from: "2020-01-01",
+      effective_to: null,
+      schedule_source: "test_fixture",
+      created_at: now,
+      updated_at: now,
+    });
+  }
 }
 
 function seedEmployeeTargetAuthScenario(fake) {
@@ -2147,6 +2280,14 @@ test("booking creation resolves a legacy Arabic service label to one canonical C
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
   });
+  fake.seed("staff_services", {
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-blowdry-short",
+    active: 1,
+    created_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
+    updated_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
+  });
   fake.seed("services", {
     id: "svc-blowdry-long",
     salon_id: "main",
@@ -2159,6 +2300,14 @@ test("booking creation resolves a legacy Arabic service label to one canonical C
     sort_order: 3,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  fake.seed("staff_services", {
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-blowdry-long",
+    active: 1,
+    created_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
+    updated_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
   });
 
   const response = await worker.fetch(request("/api/core/bookings", {
@@ -2263,6 +2412,14 @@ test("dashboard booking edit updates schedule service client totals and payment 
     sort_order: 2,
     created_at: now,
     updated_at: now,
+  });
+  fake.seed("staff_services", {
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-b",
+    active: 1,
+    created_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
+    updated_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
   });
 
   let response = await worker.fetch(request("/api/core/bookings", {
@@ -2441,6 +2598,14 @@ test("booking offer discount applies only to eligible services and rounds alloca
     value: 50,
     applies_to: "services",
     service_ids_json: JSON.stringify(["svc-a"]),
+  });
+  fake.seed("staff_services", {
+    salon_id: "main",
+    staff_id: "staff-a",
+    service_id: "svc-b",
+    active: 1,
+    created_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
+    updated_at: typeof now === "string" ? now : "2026-01-01T00:00:00.000Z",
   });
 
   const response = await worker.fetch(request("/api/core/bookings", {

@@ -40,28 +40,6 @@ function weekdayForDate(date) {
   return new Date(`${date}T12:00:00.000Z`).getUTCDay();
 }
 
-async function scheduleRows(db, salonId, staffId, weekday) {
-  if (db.__fakeD1 && typeof db.rows === "function") {
-    return db
-      .rows("staff_schedules")
-      .filter(
-        (row) =>
-          row.salon_id === salonId &&
-          row.staff_id === staffId &&
-          Number(row.weekday) === weekday &&
-          Number(row.active) === 1
-      )
-      .sort((left, right) => cleanText(left.start_time).localeCompare(cleanText(right.start_time)));
-  }
-  return dbAll(
-    db,
-    `SELECT * FROM staff_schedules
-      WHERE salon_id = ? AND staff_id = ? AND weekday = ? AND active = 1
-      ORDER BY start_time`,
-    [salonId, staffId, weekday]
-  );
-}
-
 async function slotLockRows(db, salonId, staffId, date) {
   if (db.__fakeD1 && typeof db.rows === "function") {
     return db
@@ -158,8 +136,7 @@ export async function getStaffAvailability(db, salonId, query = {}) {
 
   const staff = await getStaff(db, salonId, staffId);
   const weekday = weekdayForDate(date);
-  const [legacySchedules, locks, bookings, bookingDay] = await Promise.all([
-    scheduleRows(db, salonId, staffId, weekday),
+  const [locks, bookings, bookingDay] = await Promise.all([
     slotLockRows(db, salonId, staffId, date),
     bookedRows(db, salonId, staffId, date),
     resolveStaffBookingDay(db, salonId, staff, date),
@@ -210,22 +187,13 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     }
   }
 
-  let scheduleWindows = [];
-  if (bookingDay.available && bookingDay.startTime && bookingDay.endTime) {
-    scheduleWindows = [{
-      id: `hr:${bookingDay.source || 'schedule'}`,
-      startTime: cleanText(bookingDay.startTime),
-      endTime: cleanText(bookingDay.endTime),
-    }];
-  } else if (bookingDay.available && bookingDay.source === 'fallback') {
-    scheduleWindows = legacySchedules
-      .map((row) => ({
-        id: cleanText(row.id),
-        startTime: cleanText(row.start_time),
-        endTime: cleanText(row.end_time),
-      }))
-      .filter((row) => row.startTime && row.endTime);
-  }
+  const scheduleWindows = bookingDay.available && bookingDay.startTime && bookingDay.endTime
+    ? [{
+        id: `hr:${bookingDay.source || 'schedule'}`,
+        startTime: cleanText(bookingDay.startTime),
+        endTime: cleanText(bookingDay.endTime),
+      }]
+    : [];
 
   const showOnBooking = Number(staff.show_on_booking ?? 1) === 1;
   const onLeave = bookingDay.reason === 'approved_leave';
