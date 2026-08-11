@@ -293,6 +293,15 @@ export type CoreAvailabilityBookingSlot = {
   bufferMin?: number;
 };
 
+export type CoreAvailabilityBlockedRange = {
+  startTime: string;
+  endTime: string;
+  source?: string;
+  reason?: string;
+  leaveId?: string;
+  leaveType?: string;
+};
+
 export type CoreStaffAvailability = {
   salonId: string;
   date: string;
@@ -304,7 +313,10 @@ export type CoreStaffAvailability = {
   onLeave: boolean;
   leaveNote: string;
   availableForDate: boolean;
+  unavailableReason?: string;
+  availabilitySource?: string;
   scheduleWindows: Array<{ id: string; startTime: string; endTime: string }>;
+  blockedRanges?: CoreAvailabilityBlockedRange[];
   lockedTimes: string[];
   takenTimes: string[];
   bookedSlots: Record<string, CoreAvailabilityBookingSlot>;
@@ -369,4 +381,37 @@ export type CoreAuditLog = {
   afterJson?: string | null;
   metaJson?: string | null;
   createdAt: string;
+};
+
+export type CoreRefundInput = {
+  id?: string;
+  paymentId?: string;
+  invoiceId?: string;
+  bookingId?: string;
+  clientId?: string;
+  amountHalalas: number;
+  method?: string;
+  reason?: string;
+  idempotencyKey?: string;
+  providerReference?: string;
+};
+
+export type CoreRefundPatch = {
+  status?: string;
+  reason?: string | null;
+};
+
+export type CoreAuditInput = {
+  id?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  description?: string;
+  source?: string;
+  actorUid?: string;
+  actorEmail?: string;
+  actorName?: string;
+  before?: unknown;
+  after?: unknown;
+  meta?: unknown;
 };
