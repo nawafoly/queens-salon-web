@@ -58,6 +58,10 @@ function isTemporaryWeeklyOffException(row: Record<string, unknown>) {
   return cleanText(row.note).startsWith(TEMP_WEEKLY_OFF_PREFIX);
 }
 
+function toCoreRows(rows: unknown[]) {
+  return rows.map((row) => row as Record<string, unknown>);
+}
+
 async function saveProfileOverrides(employeeId: string, overrides: TemporaryWeeklyOffOverride[]) {
   await setDoc(
     doc(db, "salons", SALON_ID, "staff_public", employeeId),
@@ -98,7 +102,7 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
   const affectedDates = new Set(input.affectedDates.filter(isDateKey));
   if (!affectedDates.size) throw new Error("لا توجد أيام مطابقة داخل الفترة المختارة.");
 
-  const existing = (await CoreHrService.listScheduleExceptions({ employeeId })) as Array<Record<string, unknown>>;
+  const existing = toCoreRows(await CoreHrService.listScheduleExceptions({ employeeId }));
   const conflicts = existing.filter((row) =>
     isApprovedException(row) &&
     rangesOverlapDate(row, affectedDates) &&
@@ -181,7 +185,7 @@ export async function removeTemporaryWeeklyOff(input: RemoveTemporaryWeeklyOffIn
   const employeeId = cleanText(input.employeeId);
   if (!employeeId) throw new Error("تعذر تحديد الموظفة لإزالة تغيير الإجازة الأسبوعية.");
 
-  const existing = (await CoreHrService.listScheduleExceptions({ employeeId })) as Array<Record<string, unknown>>;
+  const existing = toCoreRows(await CoreHrService.listScheduleExceptions({ employeeId }));
   const matching = existing.filter((row) =>
     isApprovedException(row) && cleanText(row.note).startsWith(input.token)
   );
