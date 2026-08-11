@@ -76,7 +76,7 @@ function initialForm(type: EmployeeRequestType): FormState {
   if (type === "permission") return { ...common, date: today, startTime: "12:00", endTime: "13:00" };
   if (type === "overtime") return { ...common, date: today, startTime: "23:00", endTime: "00:00", taskSummary: "", location: "", requestedByManager: "" };
   if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };
-  if (type === "leave") return { ...common, leaveType: "annual", startDate: today, endDate: today, durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "" };
+  if (type === "leave") return { ...common, leaveType: "annual", startDate: today, endDate: today, durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
   if (type === "exit_return") return { ...common, expectedExitAt: localDateTimeValue(1), expectedReturnAt: localDateTimeValue(3), destination: "", contactMethod: "" };
   return { ...common, submissionDate: today, proposedLastWorkingDay: today, noticeDays: "30", hasAssetsToReturn: false, acknowledgement: false };
 }
@@ -100,7 +100,7 @@ function statusTone(status: EmployeeRequestStatus) {
 }
 
 function readablePayload(payload: Record<string, unknown>) {
-  const hidden = new Set(["acknowledgement"]);
+  const hidden = new Set(["acknowledgement", "employeeSignatureDataUrl"]);
   return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);
 }
 
@@ -179,6 +179,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
 
   useEffect(() => { setForm(initialForm(type)); setAttachment(null); }, [type]);
   const update = (name: string, value: string | boolean) => setForm((current) => ({ ...current, [name]: value }));
+  const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -186,6 +187,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
     setBusy(true);
     setError("");
     try {
+      if (type === "leave" && leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
       if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error("حجم المرفق يتجاوز 10 ميجابايت.");
       const request = await createEmployeeRequest({ requestType: type, payload: form });
       if (attachment) {
@@ -217,7 +219,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
       }
       onCreated(request);
     } catch (cause) {
-      setError(String((cause as Error)?.message || "تعذر إرسال الطلب."));
+      setError(employeeRequestErrorMessage(cause, String((cause as Error)?.message || "تعذر إرسال الطلب.")));
     } finally {
       setBusy(false);
     }
@@ -290,8 +292,9 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
           )}
           <label className="employee-request-field employee-request-field--wide"><span>مرفق اختياري</span><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><small>يُحفظ الملف بشكل خاص وآمن، وبحد أقصى 10 ميجابايت.</small></label>
           {type === "salary_advance" || type === "resignation" ? <label className="employee-request-check employee-request-check--ack"><input type="checkbox" required checked={Boolean(form.acknowledgement)} onChange={(event) => update("acknowledgement", event.target.checked)} /><span>أقر بصحة البيانات وأفهم أن الطلب يخضع للمراجعة والاعتماد.</span></label> : null}
+          {type === "leave" && leaveSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الإجازة.</div> : null}
           {error ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
-          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>
+          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy || leaveSignatureMissing}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>
         </form>
       </div>
     </div>
