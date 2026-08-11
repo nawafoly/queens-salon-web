@@ -1,6 +1,6 @@
 // CORE D1 ONLY — booking availability must follow the operational HR truth.
 
-import { cleanText, dbFirst } from '../d1.js';
+import { cleanText, dbAll, dbFirst } from '../d1.js';
 import { resolveEmployeeShift } from './shift-control.js';
 import { staffIsActive, staffIsAvailableForDate } from './staff.js';
 
@@ -22,23 +22,23 @@ function legacyLeaveActive(staff, date) {
   return true;
 }
 
-async function approvedLeaveForDate(db, salonId, employeeId, date) {
+async function approvedLeavesForDate(db, salonId, employeeId, date) {
   if (db?.__fakeD1) {
-    return safeFakeRows(db, 'employee_leaves').find((row) =>
+    return safeFakeRows(db, 'employee_leaves').filter((row) =>
       row.salon_id === salonId &&
       cleanText(row.employee_id) === employeeId &&
       cleanText(row.status).toLowerCase() === 'approved' &&
       cleanText(row.start_date) <= date &&
       cleanText(row.end_date) >= date
-    ) || null;
+    );
   }
 
-  return dbFirst(
+  return dbAll(
     db,
     `SELECT * FROM employee_leaves
       WHERE salon_id = ? AND employee_id = ? AND LOWER(status) = 'approved'
         AND start_date <= ? AND end_date >= ?
-      ORDER BY start_date DESC LIMIT 1`,
+      ORDER BY start_date DESC`,
     [salonId, employeeId, date, date]
   );
 }
@@ -77,30 +77,69 @@ function timeInsideRange(time, start, end) {
   return value >= start && value <= end;
 }
 
+function isPartialLeave(row) {
+  return cleanText(row?.duration_kind).toLowerCase() === 'partial' &&
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(cleanText(row?.partial_start_time)) &&
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(cleanText(row?.partial_end_time));
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return Boolean(startA && endA && startB && endB && startA < endB && endA > startB);
+}
+
+function partialLeaveRanges(leaves) {
+  return leaves
+    .filter(isPartialLeave)
+    .map((row) => ({
+      startTime: cleanText(row.partial_start_time),
+      endTime: cleanText(row.partial_end_time),
+      source: 'employee_leaves',
+      reason: 'partial_leave',
+      leaveId: cleanText(row.id),
+      leaveType: cleanText(row.leave_type),
+    }));
+}
+
 export async function resolveStaffBookingDay(db, salonId, staff, dateValue, startTime = '', endTime = '') {
   const employeeId = cleanText(staff?.id);
   const date = cleanText(dateValue);
   if (!employeeId || !date || !staffIsActive(staff)) {
-    return { available: false, reason: 'inactive', source: 'staff' };
+    return { available: false, reason: 'inactive', source: 'staff', blockedRanges: [] };
   }
 
-  // Compatibility mirror for older approved leave flows.
+  // Compatibility mirror for older full-day approved leave flows.
   if (legacyLeaveActive(staff, date)) {
-    return { available: false, reason: 'approved_leave', source: 'legacy_leave' };
+    return { available: false, reason: 'approved_leave', source: 'legacy_leave', blockedRanges: [] };
   }
 
-  const leave = await approvedLeaveForDate(db, salonId, employeeId, date);
-  if (leave) {
+  const leaves = await approvedLeavesForDate(db, salonId, employeeId, date);
+  const fullLeave = leaves.find((row) => !isPartialLeave(row));
+  if (fullLeave) {
     return {
       available: false,
       reason: 'approved_leave',
       source: 'employee_leaves',
-      leaveType: cleanText(leave.leave_type),
-      leaveId: cleanText(leave.id),
+      leaveType: cleanText(fullLeave.leave_type),
+      leaveId: cleanText(fullLeave.id),
+      blockedRanges: [],
     };
   }
 
-  // A recorded absence means the employee must not receive a customer booking for that date.
+  const blockedRanges = partialLeaveRanges(leaves);
+  if (
+    startTime &&
+    endTime &&
+    blockedRanges.some((range) => rangesOverlap(startTime, endTime, range.startTime, range.endTime))
+  ) {
+    return {
+      available: false,
+      reason: 'partial_leave',
+      source: 'employee_leaves',
+      blockedRanges,
+    };
+  }
+
+  // A recorded full-day absence means the employee must not receive a customer booking for that date.
   const absence = await absenceForDate(db, salonId, employeeId, date);
   if (absence) {
     return {
@@ -109,6 +148,7 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
       source: 'employee_absences',
       absenceType: cleanText(absence.absence_type),
       absenceId: cleanText(absence.id),
+      blockedRanges,
     };
   }
 
@@ -122,25 +162,53 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
         reason: exceptionType === 'rest' ? 'rest' : 'weekly_or_schedule_off',
         source: cleanText(shift.source) || 'hr_schedule',
         shift,
+        blockedRanges,
       };
     }
 
     const { start, end } = resolvedShiftWindow(shift);
     if (!start || !end) {
-      return { available: false, reason: 'no_working_window', source: cleanText(shift.source), shift };
+      return {
+        available: false,
+        reason: 'no_working_window',
+        source: cleanText(shift.source),
+        shift,
+        blockedRanges,
+      };
     }
     if (startTime || endTime) {
       if (!startTime || !endTime || !timeInsideRange(startTime, start, end) || !timeInsideRange(endTime, start, end)) {
-        return { available: false, reason: 'outside_shift', source: cleanText(shift.source), startTime: start, endTime: end, shift };
+        return {
+          available: false,
+          reason: 'outside_shift',
+          source: cleanText(shift.source),
+          startTime: start,
+          endTime: end,
+          shift,
+          blockedRanges,
+        };
       }
     }
-    return { available: true, reason: '', source: cleanText(shift.source), startTime: start, endTime: end, shift };
+    return {
+      available: true,
+      reason: '',
+      source: cleanText(shift.source),
+      startTime: start,
+      endTime: end,
+      shift,
+      blockedRanges,
+    };
   }
 
   // Migration compatibility only: use legacy staff_schedules if no HR-dated truth exists.
   const legacyAvailable = staffIsAvailableForDate(staff, date, startTime, endTime);
   if (!legacyAvailable) {
-    return { available: false, reason: 'legacy_schedule_off', source: 'staff_schedules' };
+    return {
+      available: false,
+      reason: 'legacy_schedule_off',
+      source: 'staff_schedules',
+      blockedRanges,
+    };
   }
 
   const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
@@ -153,6 +221,7 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     source: legacyWindow ? 'staff_schedules' : 'fallback',
     startTime: cleanText(legacyWindow?.start_time),
     endTime: cleanText(legacyWindow?.end_time),
+    blockedRanges,
   };
 }
 
