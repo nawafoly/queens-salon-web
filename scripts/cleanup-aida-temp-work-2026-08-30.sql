@@ -14,7 +14,8 @@ WHERE salon_id = 'main'
   AND date_to = '2026-08-30'
   AND status = 'approved'
   AND enabled = 1
-  AND note LIKE '[TEMP_WEEKLY_OFF:sun:none:2026-08-11:2026-08-30]%TEMP_WORK%';
+  AND instr(COALESCE(note, ''), '[TEMP_WEEKLY_OFF:sun:none:2026-08-11:2026-08-30]') = 1
+  AND instr(COALESCE(note, ''), 'TEMP_WORK') > 0;
 
 SELECT id, employee_id, exception_type, date_from, date_to, enabled, status, note
 FROM hr_schedule_exceptions
