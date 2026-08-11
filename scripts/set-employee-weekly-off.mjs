@@ -85,11 +85,21 @@ function parseArgs(argv) {
 }
 
 function run(command, args, { capture = false } = {}) {
-  const invocation = resolveSpawnInvocation(command, args);
+  const isWindowsGcloud = process.platform === "win32" && command === "gcloud";
+  const invocation = isWindowsGcloud
+    ? { executable: command, args, shell: true }
+    : resolveSpawnInvocation(command, args);
+  const gcloudBin = process.env.LOCALAPPDATA
+    ? `${process.env.LOCALAPPDATA}\\Google\\Cloud SDK\\google-cloud-sdk\\bin`
+    : "";
+  const childEnv = isWindowsGcloud && gcloudBin
+    ? { ...process.env, PATH: `${gcloudBin};${process.env.PATH || ""}` }
+    : process.env;
   const result = spawnSync(invocation.executable, invocation.args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
     shell: invocation.shell,
+    env: childEnv,
   });
   if (result.error || result.status !== 0) {
     const diagnostics = [result.error?.message, text(result.stderr), text(result.stdout)].filter(Boolean).join(" | ");
