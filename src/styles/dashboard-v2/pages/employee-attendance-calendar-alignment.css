@@ -1,0 +1,21 @@
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment {
+  display: contents;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-1 .dsv2-ew-attendance-month-grid::before,
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-2 .dsv2-ew-attendance-month-grid::before,
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-3 .dsv2-ew-attendance-month-grid::before,
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-4 .dsv2-ew-attendance-month-grid::before,
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-5 .dsv2-ew-attendance-month-grid::before,
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-6 .dsv2-ew-attendance-month-grid::before {
+  content: "";
+  min-height: 1px;
+  pointer-events: none;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-1 .dsv2-ew-attendance-month-grid::before { grid-column: span 1; }
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-2 .dsv2-ew-attendance-month-grid::before { grid-column: span 2; }
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-3 .dsv2-ew-attendance-month-grid::before { grid-column: span 3; }
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-4 .dsv2-ew-attendance-month-grid::before { grid-column: span 4; }
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-5 .dsv2-ew-attendance-month-grid::before { grid-column: span 5; }
+.dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-6 .dsv2-ew-attendance-month-grid::before { grid-column: span 6; }
