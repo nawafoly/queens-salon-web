@@ -1,5 +1,6 @@
 import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/employeeRequests";
+import DashboardDatePickerV2 from "../dashboard-v2/DashboardDatePickerV2";
 import SignatureCaptureField from "./SignatureCaptureField";
 import "../../styles/LeaveRequestDocument.css";
 import "../../styles/LeaveRequestPrintCompact.css";
@@ -33,11 +34,14 @@ export function leaveTypeLabel(value: unknown) {
 export function leaveDays(start: unknown, end: unknown) {
   const from = String(start || "");
   const to = String(end || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return 0;
-  const startDate = new Date(`${from}T00:00:00`);
-  const endDate = new Date(`${to}T00:00:00`);
-  const diff = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000);
-  return diff >= 0 ? diff + 1 : 0;
+  const fromMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from);
+  const toMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(to);
+  if (!fromMatch || !toMatch) return 0;
+
+  const startUtc = Date.UTC(Number(fromMatch[1]), Number(fromMatch[2]) - 1, Number(fromMatch[3]));
+  const endUtc = Date.UTC(Number(toMatch[1]), Number(toMatch[2]) - 1, Number(toMatch[3]));
+  const diff = Math.floor((endUtc - startUtc) / 86400000);
+  return diff >= 0 ? diff : 0;
 }
 
 function formatDate(value: unknown) {
@@ -126,6 +130,11 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
   const requestDate = todayKey();
   const employeeSignature = String(form.employeeSignatureDataUrl || "");
 
+  const updateStartDate = (value: string) => {
+    update("startDate", value);
+    if (value && endDate && endDate <= value) update("endDate", "");
+  };
+
   return (
     <section className="leave-doc leave-doc--editable" dir="rtl">
       <header className="leave-doc-header">
@@ -156,14 +165,27 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
       </div>
 
       <div className="leave-doc-fields-grid">
-        <label>
+        <div className="leave-doc-date-field">
           <span>من تاريخ</span>
-          <input type="date" required value={startDate} onChange={(event) => update("startDate", event.target.value)} />
-        </label>
-        <label>
+          <DashboardDatePickerV2
+            value={startDate}
+            required
+            clearable
+            placeholder="اختر تاريخ البداية"
+            onChange={updateStartDate}
+          />
+        </div>
+        <div className="leave-doc-date-field">
           <span>إلى تاريخ</span>
-          <input type="date" required min={startDate} value={endDate} onChange={(event) => update("endDate", event.target.value)} />
-        </label>
+          <DashboardDatePickerV2
+            value={endDate}
+            min={startDate || undefined}
+            required
+            clearable
+            placeholder="اختر تاريخ النهاية"
+            onChange={(value) => update("endDate", value)}
+          />
+        </div>
         <div className="leave-doc-static-field">
           <span>عدد الأيام</span>
           <strong>{days || "—"}</strong>
