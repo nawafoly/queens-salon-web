@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 
 import { EmployeeScheduleTabLiveV2 } from "../../components/dashboard-v2/employee-workspace/live";
 import WorkHourOverridesEditor, { type WorkHourOverridesEditorProps } from "./WorkHourOverridesEditor";
@@ -53,6 +54,15 @@ function resolveWorkingDay(day: WeekdayKey, rows: Record<WeekdayKey, StaffWorkin
   };
 }
 
+function findOperationalWeekBody(root: HTMLElement | null) {
+  if (!root) return null;
+  const cards = Array.from(root.querySelectorAll<HTMLElement>("article.dsv2-ew-card"));
+  const operationalCard = cards.find((card) =>
+    card.querySelector<HTMLElement>(".dsv2-ew-card__title")?.textContent?.trim() === "الأسبوع التشغيلي"
+  );
+  return operationalCard?.querySelector<HTMLElement>(".dsv2-ew-card__body") || null;
+}
+
 export default function BookingSettingsSection({
   isVisible,
   busy,
@@ -80,6 +90,8 @@ export default function BookingSettingsSection({
 }: BookingSettingsSectionProps) {
   const [shiftTemplates, setShiftTemplates] = useState<CoreShiftTemplate[]>([]);
   const [shiftTemplatesLoading, setShiftTemplatesLoading] = useState(false);
+  const [operationalWeekBody, setOperationalWeekBody] = useState<HTMLElement | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -142,6 +154,27 @@ export default function BookingSettingsSection({
     templateByWindow,
   ]);
 
+  useEffect(() => {
+    if (!isVisible) {
+      setOperationalWeekBody(null);
+      return;
+    }
+    const root = sectionRef.current;
+    if (!root) return;
+
+    const syncTarget = () => {
+      setOperationalWeekBody((current) => {
+        const next = findOperationalWeekBody(root);
+        return current === next ? current : next;
+      });
+    };
+
+    syncTarget();
+    const observer = new MutationObserver(syncTarget);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [isVisible]);
+
   if (!isVisible) return null;
 
   const weeklyOffDays = new Set(modalExceptionalLeaveWeekdays);
@@ -161,8 +194,22 @@ export default function BookingSettingsSection({
     };
   });
 
+  const weeklyOffManager = operationalWeekBody
+    ? createPortal(
+        <TemporaryWeeklyOffPeriodCard
+          busy={busy}
+          workingDays={workingDays}
+          overrides={overrideEditor.modalCustomHourOverrides || []}
+          onOverridesChange={overrideEditor.setModalCustomHourOverrides}
+        />,
+        operationalWeekBody
+      )
+    : null;
+
   return (
-    <section className="dsv2-ew-tab-panel">
+    <section ref={sectionRef} className="dsv2-ew-tab-panel">
+      {weeklyOffManager}
+
       <EmployeeScheduleTabLiveV2
         readOnly={busy}
         loading={loading}
@@ -198,13 +245,6 @@ export default function BookingSettingsSection({
             ...(patch.end !== undefined ? { end: patch.end } : {}),
           });
         }}
-      />
-
-      <TemporaryWeeklyOffPeriodCard
-        busy={busy}
-        workingDays={workingDays}
-        overrides={overrideEditor.modalCustomHourOverrides || []}
-        onOverridesChange={overrideEditor.setModalCustomHourOverrides}
       />
 
       {modalUseCustomWorkingHours ? (
