@@ -26,6 +26,8 @@ function camel<T>(row: Record<string, unknown>): T {
   return out as T;
 }
 
+const CORE_STAFF_LEAVE_FIELDS = ["leaveStartDate", "leaveEndDate", "leaveNote"] as const;
+
 export const CoreHrService = {
   async listEmployees(query: { search?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/employees", { query });
@@ -37,7 +39,34 @@ export const CoreHrService = {
   },
   async saveEmployee(input: Record<string, unknown>) {
     const id = String(input.id || "").trim();
-    const row = await coreApiRequest<Record<string, unknown>>(id ? `/api/core/hr/employees/${encodeURIComponent(id)}` : "/api/core/hr/employees", { method: id ? "PATCH" : "POST", body: input });
+    const hrInput: Record<string, unknown> = { ...input };
+
+    if (id) {
+      const staffLeavePatch: Record<string, unknown> = {};
+      for (const key of CORE_STAFF_LEAVE_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(input, key)) continue;
+        staffLeavePatch[key] = input[key];
+        delete hrInput[key];
+      }
+
+      if (Object.keys(staffLeavePatch).length > 0) {
+        const staffRow = await coreApiRequest<Record<string, unknown>>(
+          `/api/core/staff/${encodeURIComponent(id)}`,
+          { method: "PATCH", body: staffLeavePatch }
+        );
+        const hasHrFields = Object.entries(hrInput).some(
+          ([key, value]) => key !== "id" && value !== undefined
+        );
+        if (!hasHrFields) {
+          return camel<CoreHrEmployee>({
+            id,
+            name: staffRow.name || id,
+          });
+        }
+      }
+    }
+
+    const row = await coreApiRequest<Record<string, unknown>>(id ? `/api/core/hr/employees/${encodeURIComponent(id)}` : "/api/core/hr/employees", { method: id ? "PATCH" : "POST", body: hrInput });
     return camel<CoreHrEmployee>(row);
   },
   async replaceSchedules(employeeId: string, schedules: CoreHrSchedule[]) {
