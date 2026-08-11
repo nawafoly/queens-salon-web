@@ -2,7 +2,9 @@ export const SALON_ID = "main";
 export const DEFAULT_SERVICE_DURATION_MIN = 60;
 export const PACKAGE_SECTION_ID = "service-packages";
 export const PACKAGE_SECTION_TITLE = "البكيجات";
-export const ALLOW_OVERTIME_MIN = 15;
+// Booking must finish the service and buffer inside the employee HR shift.
+// Overtime is never used to extend customer/internal booking availability.
+export const ALLOW_OVERTIME_MIN = 0;
 export const HOME_SERVICE_MIN_TOTAL_SAR = 1000;
 export const MANI_PEDI_SECTION_KEYWORDS = [
   "manicure",
