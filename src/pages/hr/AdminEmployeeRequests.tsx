@@ -19,6 +19,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { HrSession } from "./shared";
 import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";
+import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
 import { exportLeaveRequestToExcel, printLeaveRequestDocument } from "../../services/leaveRequestExport";
 import { usePermissions } from "../../security/PermissionContext";
@@ -71,6 +72,7 @@ type DialogState = {
   approvedMinutes: string;
   finalWorkingDay: string;
   confirmClearance: boolean;
+  signatureDataUrl: string;
 };
 
 const TYPES = Object.keys(EMPLOYEE_REQUEST_TYPE_LABELS) as EmployeeRequestType[];
@@ -134,13 +136,13 @@ const ACTION_DIALOG_COPY: Record<ActionDialogKind, { title: string; description:
   },
   approve: {
     title: "اعتماد الطلب",
-    description: "راجع البيانات قبل الاعتماد. الملاحظة اختيارية وستظهر ضمن سجل القرار.",
+    description: "راجع البيانات قبل الاعتماد. طلب الإجازة لا يعتمد بدون توقيع المراجع أو المسؤول.",
     confirm: "تأكيد الموافقة",
     tone: "success",
   },
   reject: {
     title: "رفض الطلب",
-    description: "اكتب سببًا واضحًا للرفض؛ سيظهر للموظفة داخل تفاصيل الطلب.",
+    description: "اكتب سببًا واضحًا للرفض؛ وفي طلب الإجازة يجب توقيع القرار قبل اعتماده.",
     confirm: "تأكيد الرفض",
     tone: "danger",
   },
@@ -197,7 +199,8 @@ function formatPayloadValue(key: string, value: unknown) {
 }
 
 function payloadEntries(payload: Record<string, unknown>) {
-  return Object.entries(payload || {}).filter(([, value]) => value !== "" && value !== null && value !== undefined);
+  const hidden = new Set(["employeeSignatureDataUrl"]);
+  return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);
 }
 
 function emptyDialog(kind: ActionDialogKind): DialogState {
@@ -212,10 +215,11 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     approvedMinutes: "",
     finalWorkingDay: "",
     confirmClearance: false,
+    signatureDataUrl: "",
   };
 }
 
-export default function AdminEmployeeRequestsPage(_props: Props) {
+export default function AdminEmployeeRequestsPage({ session }: Props) {
   const { hasPermission } = usePermissions();
   const [rows, setRows] = useState<EmployeeRequest[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -339,6 +343,12 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
     if (!dialog || !selected || busy) return;
     let action: Parameters<typeof employeeRequestAction>[1];
     const body: Record<string, unknown> = {};
+    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);
+
+    if (leaveDecisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
+      setDialogError("يجب توقيع قرار طلب الإجازة بخط اليد قبل اعتماده.");
+      return;
+    }
 
     if (dialog.kind === "assign") {
       const assignee = assignees.find((item) => item.uid === dialog.assigneeUid);
@@ -362,6 +372,12 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
     } else if (dialog.kind === "approve") {
       action = "approve";
       body.note = dialog.note.trim();
+      if (selected.request_type === "leave") {
+        body.payload = {
+          reviewerSignatureDataUrl: dialog.signatureDataUrl,
+          reviewerSignatureCapturedAt: new Date().toISOString(),
+        };
+      }
     } else if (dialog.kind === "reject") {
       if (!dialog.note.trim()) {
         setDialogError("سبب الرفض مطلوب.");
@@ -369,6 +385,12 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
       }
       action = "reject";
       body.reason = dialog.note.trim();
+      if (selected.request_type === "leave") {
+        body.payload = {
+          reviewerSignatureDataUrl: dialog.signatureDataUrl,
+          reviewerSignatureCapturedAt: new Date().toISOString(),
+        };
+      }
     } else if (dialog.kind === "cancel") {
       if (!dialog.note.trim()) {
         setDialogError("سبب الإلغاء الإداري مطلوب.");
@@ -378,7 +400,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
       body.note = dialog.note.trim();
     } else if (dialog.kind === "reopen") {
       if (!dialog.note.trim()) {
-        setDialogError("سبب إعادة فتح الطلب مطلوب.");
+        setDialogError("سبب إعادة الفتح مطلوب.");
         return;
       }
       action = "reopen";
@@ -498,6 +520,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
   const renderDialog = () => {
     if (!dialog || !selected) return null;
     const copy = ACTION_DIALOG_COPY[dialog.kind];
+    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);
     return createPortal(
       <div className="employee-request-action-modal dashboard-v2" role="dialog" aria-modal="true" aria-labelledby="employee-request-action-title">
         <button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={closeDialog} />
@@ -591,6 +614,16 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
               </label>
             ) : null}
 
+            {leaveDecisionNeedsSignature ? (
+              <SignatureCaptureField
+                required
+                label="توقيع المراجع / المسؤول"
+                signerName={String(session.displayName || session.email || "المراجع")}
+                value={dialog.signatureDataUrl}
+                onChange={(signatureDataUrl) => setDialog({ ...dialog, signatureDataUrl })}
+              />
+            ) : null}
+
             {dialog.kind === "execute" ? (
               <div className="employee-request-execution-form">
                 {selected.request_type === "salary_advance" ? (
@@ -647,7 +680,7 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
 
           <footer>
             <button type="button" className="is-secondary" onClick={closeDialog} disabled={busy}>إلغاء</button>
-            <button type="button" className={`is-${copy.tone}`} onClick={() => void submitDialog()} disabled={busy || assigneesLoading}>
+            <button type="button" className={`is-${copy.tone}`} onClick={() => void submitDialog()} disabled={busy || assigneesLoading || (leaveDecisionNeedsSignature && !dialog.signatureDataUrl)}>
               {busy ? "جارٍ التنفيذ..." : copy.confirm}
             </button>
           </footer>
