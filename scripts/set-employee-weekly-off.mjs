@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { resolveSpawnInvocation } from "./migrate-packages-d1-to-core.mjs";
 
 const DEFAULT_DATABASE = "queens-salon-core";
 const DEFAULT_CONFIG = "wrangler.core.jsonc";
@@ -84,11 +85,11 @@ function parseArgs(argv) {
 }
 
 function run(command, args, { capture = false } = {}) {
-  const isWindows = process.platform === "win32";
-  const result = spawnSync(command, args, {
+  const invocation = resolveSpawnInvocation(command, args);
+  const result = spawnSync(invocation.executable, invocation.args, {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
-    shell: isWindows,
+    shell: invocation.shell,
   });
   if (result.error || result.status !== 0) {
     const diagnostics = [result.error?.message, text(result.stderr), text(result.stdout)].filter(Boolean).join(" | ");
