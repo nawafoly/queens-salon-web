@@ -59,6 +59,7 @@ export type PayrollAttendanceSummarySnapshot = {
   incompleteDays: number;
   approvedLeaveDays?: number;
   approvedAbsenceDays?: number;
+  absenceDeductionOverlapHours?: number;
   attendanceRecordCount?: number;
   attendanceLinkStatus?: "confirmed" | "unlinked" | "not_ready";
   attendanceDeductionEligible?: boolean;
@@ -292,6 +293,7 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     incompleteDays: Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
     approvedLeaveDays: days(input.attendanceSummary.approvedLeaveDays),
     approvedAbsenceDays: days(input.attendanceSummary.approvedAbsenceDays),
+    absenceDeductionOverlapHours: hours(input.attendanceSummary.absenceDeductionOverlapHours),
     attendanceRecordCount: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceRecordCount || 0))),
     attendanceLinkStatus:
       input.attendanceSummary.attendanceLinkStatus ||
@@ -326,9 +328,15 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     .filter((item) => item.kind === "advance")
     .reduce((total, item) => total + money(item.amountHalalas), 0);
 
+  const explicitAbsenceOverlapHours = input.attendanceSummary.absenceDeductionOverlapHours;
+  const inferredAbsenceOverlapHours = hours(
+    (attendanceSummary.approvedAbsenceDays || 0) * dailyScheduledHours
+  );
   const absenceCoveredMissingHours = Math.min(
     attendanceSummary.totalMissingHours,
-    hours((attendanceSummary.approvedAbsenceDays || 0) * dailyScheduledHours)
+    explicitAbsenceOverlapHours === null || explicitAbsenceOverlapHours === undefined
+      ? inferredAbsenceOverlapHours
+      : attendanceSummary.absenceDeductionOverlapHours || 0
   );
   const attendanceMissingHoursForDeduction = hours(
     Math.max(0, attendanceSummary.totalMissingHours - absenceCoveredMissingHours)
