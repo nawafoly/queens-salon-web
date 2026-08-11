@@ -1,5 +1,6 @@
 import malikatLogo from "../../assets/images/ssunnamed.png";
-import type { EmployeeRequest } from "../../services/employeeRequests";
+import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/employeeRequests";
+import SignatureCaptureField from "./SignatureCaptureField";
 import "../../styles/LeaveRequestDocument.css";
 import "../../styles/LeaveRequestPrintCompact.css";
 
@@ -71,6 +72,25 @@ function todayKey() {
   }).format(new Date());
 }
 
+function parseEventPayload(event?: EmployeeRequestEvent | null) {
+  if (!event?.payload_json) return {} as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(event.payload_json);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function administrativeRoleLabel(role: unknown) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "owner") return "مالك الصالون";
+  if (normalized === "admin") return "الإدارة";
+  if (normalized === "hr") return "الموارد البشرية";
+  if (normalized === "accountant") return "المحاسبة";
+  return normalized || "المراجع";
+}
+
 function CheckBox({ checked, label, onClick }: { checked: boolean; label: string; onClick?: () => void }) {
   const interactive = typeof onClick === "function";
   return (
@@ -104,6 +124,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
   const endDate = String(form.endDate || "");
   const days = leaveDays(startDate, endDate);
   const requestDate = todayKey();
+  const employeeSignature = String(form.employeeSignatureDataUrl || "");
 
   return (
     <section className="leave-doc leave-doc--editable" dir="rtl">
@@ -164,12 +185,19 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 
       <div className="leave-doc-signature-row">
         <div><span>الاسم</span><strong>{employeeName || "الموظفة"}</strong></div>
-        <div><span>التوقيع</span><strong>توقيع إلكتروني عند إرسال الطلب</strong></div>
+        <SignatureCaptureField
+          compact
+          required
+          label="توقيع الموظفة"
+          signerName={employeeName || "الموظفة"}
+          value={employeeSignature}
+          onChange={(signature) => update("employeeSignatureDataUrl", signature)}
+        />
       </div>
 
       <section className="leave-doc-admin-block is-preview">
         <h3>رأي المدير الإداري</h3>
-        <p>يُستكمل هذا القسم من الإدارة بعد وصول الطلب.</p>
+        <p>يُستكمل هذا القسم من الإدارة بعد وصول الطلب، ولا يعتمد القرار بدون توقيع المراجع أو المسؤول.</p>
         <div className="leave-doc-admin-options">
           <CheckBox checked={false} label="مع الموافقة" />
           <CheckBox checked={false} label="أخرى" />
@@ -188,12 +216,15 @@ function decisionInfo(request: EmployeeRequest) {
     ["approve", "approved"].includes(String(decisionEvent?.event_type || "").toLowerCase());
   const rejected = request.status === "rejected" ||
     ["reject", "rejected"].includes(String(decisionEvent?.event_type || "").toLowerCase());
+  const eventPayload = parseEventPayload(decisionEvent);
   return {
     approved,
     rejected,
     actorName: decisionEvent?.actor_name || request.assigned_to_name || "—",
+    actorRole: administrativeRoleLabel(decisionEvent?.actor_role),
     note: request.rejection_reason || request.decision_note || decisionEvent?.note || "—",
     decidedAt: decisionEvent?.created_at || request.approved_at || request.rejected_at || "",
+    signatureDataUrl: String(eventPayload.reviewerSignatureDataUrl || ""),
   };
 }
 
@@ -204,6 +235,7 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
   const days = leaveDays(startDate, endDate);
   const decision = decisionInfo(request);
   const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
+  const employeeSignature = String(payload.employeeSignatureDataUrl || "");
 
   return (
     <section className="leave-doc leave-request-print-root" dir="rtl" data-request-number={request.request_number}>
@@ -246,7 +278,11 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
 
       <div className="leave-doc-signature-row">
         <div><span>الاسم</span><strong>{employeeName}</strong></div>
-        <div><span>التوقيع</span><strong>توقيع إلكتروني</strong><small>{formatDateTime(request.submitted_at)}</small></div>
+        <div>
+          <span>توقيع الموظفة</span>
+          {employeeSignature ? <img className="leave-doc-signature-image" src={employeeSignature} alt={`توقيع ${employeeName}`} /> : <strong>غير موقع</strong>}
+          <small>{employeeSignature ? formatDateTime(request.submitted_at) : ""}</small>
+        </div>
       </div>
 
       <section className="leave-doc-manager-opinion">
@@ -254,8 +290,16 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
         <p>مع التحية والتقدير لإدارة مؤسسة صالون أحمد العليان (ملكات)</p>
         <p>تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.</p>
         <div className="leave-doc-signature-row">
-          <div><span>الاسم</span><strong>{decision.actorName}</strong></div>
-          <div><span>التوقيع</span><strong>{decision.decidedAt ? "توقيع إلكتروني" : "—"}</strong><small>{decision.decidedAt ? formatDateTime(decision.decidedAt) : ""}</small></div>
+          <div>
+            <span>الاسم</span>
+            <strong>{decision.actorName}</strong>
+            {decision.decidedAt ? <small>{decision.actorRole}</small> : null}
+          </div>
+          <div>
+            <span>توقيع المراجع / المسؤول</span>
+            {decision.signatureDataUrl ? <img className="leave-doc-signature-image" src={decision.signatureDataUrl} alt={`توقيع ${decision.actorName}`} /> : <strong>{decision.decidedAt ? "التوقيع غير محفوظ" : "—"}</strong>}
+            <small>{decision.decidedAt ? formatDateTime(decision.decidedAt) : ""}</small>
+          </div>
         </div>
       </section>
 
@@ -266,7 +310,7 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
           <CheckBox checked={decision.rejected} label="أخرى" />
         </div>
         <div className="leave-doc-print-text"><span>الملاحظات / القرار</span><p>{decision.note}</p></div>
-        <div className="leave-doc-admin-footer"><span>التوقيع الإلكتروني</span><span>الختم</span></div>
+        <div className="leave-doc-admin-footer"><span>التوقيع أعلاه معتمد إلكترونيًا</span><span>الختم</span></div>
       </section>
 
       <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات</footer>
