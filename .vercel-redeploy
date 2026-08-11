@@ -1,2 +1,7 @@
-Redeploy requested at 2026-07-16T23:38:13Z
-Purpose: retrigger Vercel deployment after attendance zone precision controls update.
+Redeploy requested at 2026-08-11T19:36:00Z
+Purpose: force Vercel production redeploy from latest main after iPad employee portal sidebar and leave date fixes.
+Expected source includes:
+- leave start/end dates empty on new request
+- DashboardDatePickerV2 instead of Safari native date input
+- leave duration uses end-start difference (2026-08-12 to 2026-08-22 = 10)
+- tablet/iPad employee portal sidebar kept inside layout
