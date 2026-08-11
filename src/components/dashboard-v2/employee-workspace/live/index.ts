@@ -15,10 +15,13 @@ export type {
 
 export {
   EmployeeScheduleTabLiveV2,
-  EmployeeAttendanceTabLiveV2,
   EmployeePayrollTabLiveV2,
   EmployeeLinkedModuleTabLiveV2,
 } from "./EmployeeWorkspaceOperationalTabsLiveV2";
+
+export {
+  EmployeeAttendanceCalendarAlignedLiveV2 as EmployeeAttendanceTabLiveV2,
+} from "./EmployeeAttendanceCalendarAlignedLiveV2";
 
 export type {
   EmployeeScheduleTabLiveV2Props,
