@@ -1,3 +1,4 @@
+import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "../../services/employeeRequests";
 import "../../styles/LeaveRequestDocument.css";
 
@@ -85,6 +86,18 @@ function CheckBox({ checked, label, onClick }: { checked: boolean; label: string
   );
 }
 
+function MalikatDocumentLogo() {
+  return (
+    <div className="leave-doc-brand" aria-label="شعار ملكات">
+      <img
+        src={malikatLogo}
+        alt="شعار ملكات"
+        style={{ width: "40mm", maxWidth: "100%", height: "auto", objectFit: "contain", display: "block" }}
+      />
+    </div>
+  );
+}
+
 export function LeaveRequestFormFields({ employeeName, form, update }: FormProps) {
   const startDate = String(form.startDate || "");
   const endDate = String(form.endDate || "");
@@ -94,10 +107,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
   return (
     <section className="leave-doc leave-doc--editable" dir="rtl">
       <header className="leave-doc-header">
-        <div className="leave-doc-brand" aria-label="ملكات">
-          <strong>مَلِكات</strong>
-          <small>Malikat</small>
-        </div>
+        <MalikatDocumentLogo />
         <h2>طلب إجازة</h2>
       </header>
 
@@ -197,10 +207,7 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
   return (
     <section className="leave-doc leave-request-print-root" dir="rtl" data-request-number={request.request_number}>
       <header className="leave-doc-header">
-        <div className="leave-doc-brand" aria-label="ملكات">
-          <strong>مَلِكات</strong>
-          <small>Malikat</small>
-        </div>
+        <MalikatDocumentLogo />
         <h2>طلب إجازة</h2>
       </header>
 
