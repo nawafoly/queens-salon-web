@@ -1,0 +1,410 @@
+.leave-doc {
+  width: min(100%, 210mm);
+  margin: 0 auto;
+  box-sizing: border-box;
+  direction: rtl;
+  color: #111;
+  background: #fff;
+  border: 1px solid #111;
+  padding: 14mm 13mm 12mm;
+  font-family: Tahoma, Arial, sans-serif;
+  line-height: 1.75;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+}
+
+.leave-doc * {
+  box-sizing: border-box;
+}
+
+.leave-doc-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  min-height: 34mm;
+  border-bottom: 1px solid #222;
+  margin-bottom: 9mm;
+}
+
+.leave-doc-header h2 {
+  grid-column: 2;
+  margin: 5mm 0 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.leave-doc-brand {
+  grid-column: 1;
+  justify-self: start;
+  display: grid;
+  text-align: center;
+  line-height: 1.05;
+  min-width: 44mm;
+  padding-top: 2mm;
+}
+
+.leave-doc-brand strong {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+
+.leave-doc-brand small {
+  margin-top: 2px;
+  font-size: 11px;
+  direction: ltr;
+}
+
+.leave-doc-number {
+  margin: -5mm 0 6mm;
+  font-size: 12px;
+  color: #444;
+}
+
+.leave-doc-type-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 9mm;
+}
+
+.leave-doc-checkbox {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 4px;
+  font: inherit;
+  cursor: default;
+}
+
+.leave-doc-checkbox:not(:disabled) {
+  cursor: pointer;
+}
+
+.leave-doc-checkbox > span {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 2px solid #222;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  background: #fff;
+}
+
+.leave-doc-checkbox.is-checked > span {
+  color: #111;
+}
+
+.leave-doc-checkbox strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.leave-doc-letter {
+  margin-bottom: 7mm;
+  font-size: 14px;
+}
+
+.leave-doc-letter p {
+  margin: 4px 0;
+}
+
+.leave-doc-addressee {
+  font-weight: 800;
+}
+
+.leave-doc-greeting {
+  margin-top: 5mm !important;
+  margin-bottom: 4mm !important;
+}
+
+.leave-doc-inline-value {
+  display: inline-block;
+  min-width: 28mm;
+  text-align: center;
+  border-bottom: 1px dotted #333;
+  padding-inline: 3px;
+}
+
+.leave-doc-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 7mm 0;
+}
+
+.leave-doc-fields-grid label,
+.leave-doc-static-field,
+.leave-doc-wide-field,
+.leave-doc-print-text {
+  display: grid;
+  gap: 5px;
+}
+
+.leave-doc-fields-grid label > span,
+.leave-doc-static-field > span,
+.leave-doc-wide-field > span,
+.leave-doc-print-text > span {
+  font-size: 11px;
+  color: #444;
+  font-weight: 700;
+}
+
+.leave-doc-fields-grid input,
+.leave-doc-wide-field textarea {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #222;
+  border-radius: 0;
+  background: transparent;
+  color: #111;
+  font: inherit;
+  min-height: 38px;
+  padding: 6px 4px;
+  outline: none;
+}
+
+.leave-doc-wide-field {
+  margin: 6mm 0;
+}
+
+.leave-doc-wide-field textarea {
+  min-height: 74px;
+  resize: vertical;
+  border: 1px solid #bbb;
+  padding: 8px;
+}
+
+.leave-doc-static-field {
+  border-bottom: 1px solid #222;
+  min-height: 48px;
+  padding: 4px 2px 7px;
+}
+
+.leave-doc-static-field strong {
+  font-size: 14px;
+}
+
+.leave-doc-signature-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14mm;
+  margin-top: 8mm;
+}
+
+.leave-doc-signature-row > div {
+  min-height: 17mm;
+  border-bottom: 1px solid #222;
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.leave-doc-signature-row span {
+  color: #444;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.leave-doc-signature-row strong {
+  font-size: 13px;
+}
+
+.leave-doc-signature-row small {
+  font-size: 10px;
+  color: #555;
+}
+
+.leave-doc-manager-opinion {
+  margin-top: 12mm;
+  padding-top: 6mm;
+  border-top: 1px solid #222;
+}
+
+.leave-doc-manager-opinion h3,
+.leave-doc-admin-block h3 {
+  margin: 0 0 4mm;
+  font-size: 15px;
+  text-decoration: underline;
+}
+
+.leave-doc-manager-opinion p {
+  margin: 2px 0;
+  font-size: 12px;
+}
+
+.leave-doc-admin-block {
+  margin-top: 8mm;
+  padding-top: 5mm;
+  border-top: 1px solid #222;
+}
+
+.leave-doc-admin-block.is-preview {
+  opacity: 0.72;
+}
+
+.leave-doc-admin-block.is-preview p {
+  font-size: 12px;
+  color: #555;
+}
+
+.leave-doc-admin-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 3mm 0 5mm;
+}
+
+.leave-doc-print-text {
+  margin: 5mm 0;
+}
+
+.leave-doc-print-text p {
+  margin: 0;
+  min-height: 16mm;
+  padding: 5px 2px;
+  border-bottom: 1px solid #222;
+  white-space: pre-wrap;
+}
+
+.leave-doc-admin-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20mm;
+  margin-top: 8mm;
+  font-size: 12px;
+  text-align: center;
+}
+
+.leave-doc-admin-footer span {
+  min-height: 16mm;
+  border-top: 1px solid #222;
+  padding-top: 4px;
+}
+
+.leave-doc-copy-note {
+  margin-top: 12mm;
+  font-size: 9px;
+  color: #666;
+}
+
+.leave-request-export-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.leave-request-export-toolbar button {
+  border: 1px solid #d5dae4;
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 16px;
+  background: #fff;
+  color: #0b1638;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.leave-request-export-toolbar button.is-primary {
+  background: #0b1638;
+  color: #fff;
+  border-color: #0b1638;
+}
+
+.leave-request-form-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.leave-request-form-shell .employee-request-field--wide {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .leave-doc {
+    width: 100%;
+    padding: 18px 14px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .leave-doc-header {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    gap: 8px;
+    padding-bottom: 14px;
+  }
+
+  .leave-doc-header h2,
+  .leave-doc-brand {
+    grid-column: 1;
+  }
+
+  .leave-doc-brand {
+    justify-self: start;
+  }
+
+  .leave-doc-type-row,
+  .leave-doc-fields-grid,
+  .leave-doc-signature-row,
+  .leave-doc-admin-options {
+    grid-template-columns: 1fr;
+  }
+
+  .leave-doc-checkbox {
+    justify-content: flex-start;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .leave-request-print-root,
+  .leave-request-print-root * {
+    visibility: visible !important;
+  }
+
+  .leave-request-print-root {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 194mm !important;
+    min-height: 281mm;
+    margin: 0 !important;
+    padding: 10mm 11mm 8mm !important;
+    border: 1px solid #111 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+
+  .leave-request-export-toolbar,
+  .employee-request-action-modal,
+  .dashboard-sidebar,
+  .navbar,
+  .bottom-nav {
+    display: none !important;
+  }
+
+  .leave-doc-checkbox {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
