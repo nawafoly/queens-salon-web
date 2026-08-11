@@ -120,6 +120,12 @@ export async function saveTemporaryWeeklyOff(input: SaveTemporaryWeeklyOffInput)
 
   const createdIds: string[] = [];
   try {
+    // A temporary weekly-off change can create both kinds of rows:
+    // - offDates close the temporary replacement day.
+    // - workDates reopen the employee's base weekly-off day.
+    // A suspension intentionally sends no offDates and only workDates, which
+    // means there is no weekly-off day during that bounded period. The base
+    // schedule itself remains unchanged and becomes effective again afterward.
     for (const date of input.offDates) {
       const saved = await CoreHrService.createScheduleException({
         employeeId,
