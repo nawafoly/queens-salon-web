@@ -5329,13 +5329,9 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
           tasks.push(
             (async () => {
               if (cancelled) return;
-              const leave = getStaffLeaveMetaForDate(st as any, dateISO);
-              const workingSlots = filterSlotsToCoreWindows(baseSlotsForDate, getCoreStaffWindows(dateISO, String((st as any)?.id || "").trim()));
-
-              if (leave.isOnLeave || !workingSlots.length) {
-                nextState[itemId][empId] = false;
-                return;
-              }
+              // Core availability below is authoritative for dated staff visibility.
+              // Do not pre-decide availability from the schedule-window cache before
+              // the request has populated it; this avoids showing off/leave staff.
 
               const empKey = String((st as any)?.linkedUid || "").trim() || empId;
               const localTaken = getLocalTakenTimesForItem(
