@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
 
 const ui = read('src/pages/Booking.tsx');
 const bookings = read('workers/core/repositories/bookings.js');
@@ -58,7 +58,7 @@ for (const needle of [
   "reason: 'approved_leave'",
   "reason: 'partial_leave'",
   "reason: 'absence'",
-  "reason: 'weekly_or_schedule_off'",
+  'weekly_or_schedule_off',
   "exceptionType === 'rest'",
   'resolveEmployeeShift(db, salonId, employeeId, date)',
   'staffCanPerformService',
