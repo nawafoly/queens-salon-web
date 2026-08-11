@@ -50,6 +50,20 @@ bookingRepo = replaceOnce(
   'backend create booking staff-service assignment guard'
 );
 
+bookingRepo = replaceOnce(
+  bookingRepo,
+  `    const staffId = patch.staffId === null || patch.staff_id === null\n      ? null\n      : optionalText(patch.staffId || patch.staff_id) || defaultStaff || current.staff_id || booking.staff_id || null;\n    await assertStaffRangeAvailable(`,
+  `    const staffId = patch.staffId === null || patch.staff_id === null\n      ? null\n      : optionalText(patch.staffId || patch.staff_id) || defaultStaff || current.staff_id || booking.staff_id || null;\n    if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {\n      throw new AppError(409, "core_booking:staff_service_not_assigned");\n    }\n    await assertStaffRangeAvailable(`,
+  'backend reschedule staff-service assignment guard'
+);
+
+bookingRepo = replaceOnce(
+  bookingRepo,
+  `  if (shouldHoldSlots) {\n    if (timeToMinutes(startTime) % slotStepMin !== 0) {\n      throw new AppError(400, "core_booking:invalid_slot_alignment");\n    }\n    await assertStaffRangeAvailable(`,
+  `  if (shouldHoldSlots) {\n    if (timeToMinutes(startTime) % slotStepMin !== 0) {\n      throw new AppError(400, "core_booking:invalid_slot_alignment");\n    }\n    if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {\n      throw new AppError(409, "core_booking:staff_service_not_assigned");\n    }\n    await assertStaffRangeAvailable(`,
+  'backend booking edit staff-service assignment guard'
+);
+
 const uiChanged = writeIfChanged(bookingUiPath, bookingUi);
 const repoChanged = writeIfChanged(bookingRepoPath, bookingRepo);
 
