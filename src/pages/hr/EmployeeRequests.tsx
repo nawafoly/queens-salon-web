@@ -1,4 +1,4 @@
-﻿import { createPortal } from "react-dom";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -18,6 +18,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { HrSession } from "./shared";
+import LeaveRequestDocument, { LeaveRequestFormFields } from "../../components/hr/LeaveRequestDocument";
 import {
   addEmployeeRequestAttachment,
   addEmployeeRequestComment,
@@ -164,9 +165,10 @@ function SelectField({ label, name, value, onChange, options }: {
   );
 }
 
-function RequestForm({ type, employeeId, onCreated, onClose }: {
+function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
   type: EmployeeRequestType;
   employeeId: string;
+  employeeName: string;
   onCreated: (request: EmployeeRequest) => void;
   onClose: () => void;
 }) {
@@ -232,62 +234,60 @@ function RequestForm({ type, employeeId, onCreated, onClose }: {
           <button type="button" onClick={onClose} aria-label="إغلاق"><FontAwesomeIcon icon={faXmark} /></button>
         </header>
         <form onSubmit={submit}>
-          <div className="employee-request-form-grid">
-            {type === "attendance_correction" ? <>
-              <TextField label="التاريخ" name="date" type="date" required value={String(form.date)} onChange={update} />
-              <SelectField label="نوع التصحيح" name="correctionType" value={String(form.correctionType)} onChange={update} options={[
-                { value: "add_check_in", label: "إضافة حضور" }, { value: "add_check_out", label: "إضافة انصراف" },
-                { value: "update_check_in", label: "تعديل حضور" }, { value: "update_check_out", label: "تعديل انصراف" },
-                { value: "delete_record", label: "حذف بصمة خاطئة" },
-              ]} />
-              <TextField label="الوقت الحالي إن وجد" name="currentTime" type="time" value={String(form.currentTime)} onChange={update} />
-              {form.correctionType !== "delete_record" ? <TextField label="الوقت المطلوب" name="requestedTime" type="time" required value={String(form.requestedTime)} onChange={update} /> : null}
-              <TextField label="معرف السجل إن وجد" name="recordId" value={String(form.recordId)} onChange={update} />
-            </> : null}
-            {type === "permission" ? <>
-              <TextField label="تاريخ الاستئذان" name="date" type="date" required value={String(form.date)} onChange={update} />
-              <TextField label="وقت الخروج" name="startTime" type="time" required value={String(form.startTime)} onChange={update} />
-              <TextField label="وقت العودة" name="endTime" type="time" required value={String(form.endTime)} onChange={update} />
-            </> : null}
-            {type === "overtime" ? <>
-              <TextField label="التاريخ" name="date" type="date" required value={String(form.date)} onChange={update} />
-              <TextField label="وقت البداية" name="startTime" type="time" required value={String(form.startTime)} onChange={update} />
-              <TextField label="وقت النهاية" name="endTime" type="time" required value={String(form.endTime)} onChange={update} />
-              <TextField label="المهمة المنفذة" name="taskSummary" required value={String(form.taskSummary)} onChange={update} />
-              <TextField label="الفرع أو الموقع" name="location" value={String(form.location)} onChange={update} />
-              <TextField label="المدير الذي طلب العمل" name="requestedByManager" value={String(form.requestedByManager)} onChange={update} />
-            </> : null}
-            {type === "salary_advance" ? <>
-              <TextField label="المبلغ المطلوب بالريال" name="amount" type="number" min="1" required value={String(form.amount)} onChange={update} />
-              <TextField label="تاريخ الحاجة" name="neededDate" type="date" required value={String(form.neededDate)} onChange={update} />
-              <SelectField label="طريقة الاستقطاع" name="repaymentMethod" value={String(form.repaymentMethod)} onChange={update} options={[{ value: "single", label: "دفعة واحدة" }, { value: "installments", label: "أقساط" }]} />
-              {form.repaymentMethod === "installments" ? <TextField label="عدد الأقساط" name="installmentCount" type="number" min="2" max="24" required value={String(form.installmentCount)} onChange={update} /> : null}
-            </> : null}
-            {type === "leave" ? <>
-              <SelectField label="نوع الإجازة" name="leaveType" value={String(form.leaveType)} onChange={update} options={[
-                { value: "annual", label: "سنوية" }, { value: "sick", label: "مرضية" }, { value: "unpaid", label: "بدون راتب" }, { value: "emergency", label: "طارئة" },
-              ]} />
-              <TextField label="تاريخ البداية" name="startDate" type="date" required value={String(form.startDate)} onChange={update} />
-              <TextField label="تاريخ النهاية" name="endDate" type="date" required min={String(form.startDate)} value={String(form.endDate)} onChange={update} />
-              <SelectField label="المدة" name="durationKind" value={String(form.durationKind)} onChange={update} options={[{ value: "full_day", label: "يوم كامل" }, { value: "partial", label: "جزئية" }]} />
-              {form.durationKind === "partial" ? <><TextField label="بداية الإجازة الجزئية" name="partialStartTime" type="time" required value={String(form.partialStartTime)} onChange={update} /><TextField label="نهاية الإجازة الجزئية" name="partialEndTime" type="time" required value={String(form.partialEndTime)} onChange={update} /></> : null}
-              <TextField label="جهة التواصل أثناء الإجازة" name="contactDuringLeave" value={String(form.contactDuringLeave)} onChange={update} />
-            </> : null}
-            {type === "exit_return" ? <>
-              <TextField label="الخروج المتوقع" name="expectedExitAt" type="datetime-local" required value={String(form.expectedExitAt)} onChange={update} />
-              <TextField label="العودة المتوقعة" name="expectedReturnAt" type="datetime-local" required value={String(form.expectedReturnAt)} onChange={update} />
-              <TextField label="الوجهة أو الجهة" name="destination" required value={String(form.destination)} onChange={update} />
-              <TextField label="وسيلة التواصل" name="contactMethod" required value={String(form.contactMethod)} onChange={update} />
-            </> : null}
-            {type === "resignation" ? <>
-              <TextField label="تاريخ تقديم الاستقالة" name="submissionDate" type="date" required value={String(form.submissionDate)} onChange={update} />
-              <TextField label="آخر يوم عمل مقترح" name="proposedLastWorkingDay" type="date" required min={String(form.submissionDate)} value={String(form.proposedLastWorkingDay)} onChange={update} />
-              <TextField label="مدة الإشعار بالأيام" name="noticeDays" type="number" min="0" max="365" value={String(form.noticeDays)} onChange={update} />
-              <label className="employee-request-check"><input type="checkbox" checked={Boolean(form.hasAssetsToReturn)} onChange={(event) => update("hasAssetsToReturn", event.target.checked)} /><span>يوجد عهد أو ممتلكات للتسليم</span></label>
-            </> : null}
-          </div>
-          <label className="employee-request-field employee-request-field--wide"><span>السبب *</span><textarea required value={String(form.reason)} onChange={(event) => update("reason", event.target.value)} /></label>
-          <label className="employee-request-field employee-request-field--wide"><span>ملاحظات إضافية</span><textarea value={String(form.notes)} onChange={(event) => update("notes", event.target.value)} /></label>
+          {type === "leave" ? (
+            <div className="leave-request-form-shell">
+              <LeaveRequestFormFields employeeName={employeeName} form={form} update={update} />
+            </div>
+          ) : (
+            <>
+              <div className="employee-request-form-grid">
+                {type === "attendance_correction" ? <>
+                  <TextField label="التاريخ" name="date" type="date" required value={String(form.date)} onChange={update} />
+                  <SelectField label="نوع التصحيح" name="correctionType" value={String(form.correctionType)} onChange={update} options={[
+                    { value: "add_check_in", label: "إضافة حضور" }, { value: "add_check_out", label: "إضافة انصراف" },
+                    { value: "update_check_in", label: "تعديل حضور" }, { value: "update_check_out", label: "تعديل انصراف" },
+                    { value: "delete_record", label: "حذف بصمة خاطئة" },
+                  ]} />
+                  <TextField label="الوقت الحالي إن وجد" name="currentTime" type="time" value={String(form.currentTime)} onChange={update} />
+                  {form.correctionType !== "delete_record" ? <TextField label="الوقت المطلوب" name="requestedTime" type="time" required value={String(form.requestedTime)} onChange={update} /> : null}
+                  <TextField label="معرف السجل إن وجد" name="recordId" value={String(form.recordId)} onChange={update} />
+                </> : null}
+                {type === "permission" ? <>
+                  <TextField label="تاريخ الاستئذان" name="date" type="date" required value={String(form.date)} onChange={update} />
+                  <TextField label="وقت الخروج" name="startTime" type="time" required value={String(form.startTime)} onChange={update} />
+                  <TextField label="وقت العودة" name="endTime" type="time" required value={String(form.endTime)} onChange={update} />
+                </> : null}
+                {type === "overtime" ? <>
+                  <TextField label="التاريخ" name="date" type="date" required value={String(form.date)} onChange={update} />
+                  <TextField label="وقت البداية" name="startTime" type="time" required value={String(form.startTime)} onChange={update} />
+                  <TextField label="وقت النهاية" name="endTime" type="time" required value={String(form.endTime)} onChange={update} />
+                  <TextField label="المهمة المنفذة" name="taskSummary" required value={String(form.taskSummary)} onChange={update} />
+                  <TextField label="الفرع أو الموقع" name="location" value={String(form.location)} onChange={update} />
+                  <TextField label="المدير الذي طلب العمل" name="requestedByManager" value={String(form.requestedByManager)} onChange={update} />
+                </> : null}
+                {type === "salary_advance" ? <>
+                  <TextField label="المبلغ المطلوب بالريال" name="amount" type="number" min="1" required value={String(form.amount)} onChange={update} />
+                  <TextField label="تاريخ الحاجة" name="neededDate" type="date" required value={String(form.neededDate)} onChange={update} />
+                  <SelectField label="طريقة الاستقطاع" name="repaymentMethod" value={String(form.repaymentMethod)} onChange={update} options={[{ value: "single", label: "دفعة واحدة" }, { value: "installments", label: "أقساط" }]} />
+                  {form.repaymentMethod === "installments" ? <TextField label="عدد الأقساط" name="installmentCount" type="number" min="2" max="24" required value={String(form.installmentCount)} onChange={update} /> : null}
+                </> : null}
+                {type === "exit_return" ? <>
+                  <TextField label="الخروج المتوقع" name="expectedExitAt" type="datetime-local" required value={String(form.expectedExitAt)} onChange={update} />
+                  <TextField label="العودة المتوقعة" name="expectedReturnAt" type="datetime-local" required value={String(form.expectedReturnAt)} onChange={update} />
+                  <TextField label="الوجهة أو الجهة" name="destination" required value={String(form.destination)} onChange={update} />
+                  <TextField label="وسيلة التواصل" name="contactMethod" required value={String(form.contactMethod)} onChange={update} />
+                </> : null}
+                {type === "resignation" ? <>
+                  <TextField label="تاريخ تقديم الاستقالة" name="submissionDate" type="date" required value={String(form.submissionDate)} onChange={update} />
+                  <TextField label="آخر يوم عمل مقترح" name="proposedLastWorkingDay" type="date" required min={String(form.submissionDate)} value={String(form.proposedLastWorkingDay)} onChange={update} />
+                  <TextField label="مدة الإشعار بالأيام" name="noticeDays" type="number" min="0" max="365" value={String(form.noticeDays)} onChange={update} />
+                  <label className="employee-request-check"><input type="checkbox" checked={Boolean(form.hasAssetsToReturn)} onChange={(event) => update("hasAssetsToReturn", event.target.checked)} /><span>يوجد عهد أو ممتلكات للتسليم</span></label>
+                </> : null}
+              </div>
+              <label className="employee-request-field employee-request-field--wide"><span>السبب *</span><textarea required value={String(form.reason)} onChange={(event) => update("reason", event.target.value)} /></label>
+              <label className="employee-request-field employee-request-field--wide"><span>ملاحظات إضافية</span><textarea value={String(form.notes)} onChange={(event) => update("notes", event.target.value)} /></label>
+            </>
+          )}
           <label className="employee-request-field employee-request-field--wide"><span>مرفق اختياري</span><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><small>يُحفظ الملف بشكل خاص وآمن، وبحد أقصى 10 ميجابايت.</small></label>
           {type === "salary_advance" || type === "resignation" ? <label className="employee-request-check employee-request-check--ack"><input type="checkbox" required checked={Boolean(form.acknowledgement)} onChange={(event) => update("acknowledgement", event.target.checked)} /><span>أقر بصحة البيانات وأفهم أن الطلب يخضع للمراجعة والاعتماد.</span></label> : null}
           {error ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
@@ -415,6 +415,7 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
           </div>
         </div>
       ) : null}
+      {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}
       <div className="employee-request-detail__grid">
         <article><h3>بيانات الطلب</h3><dl>{readablePayload(request.payload).map(([key, value]) => <div key={key}><dt>{FIELD_LABELS[key] || key}</dt><dd>{typeof value === "boolean" ? (value ? "نعم" : "لا") : String(value)}</dd></div>)}</dl></article>
         <article><h3>متابعة الطلب</h3><dl><div><dt>الحالة</dt><dd>{EMPLOYEE_REQUEST_STATUS_LABELS[request.status]}</dd></div><div><dt>تاريخ الإرسال</dt><dd>{formatDateTime(request.submitted_at)}</dd></div><div><dt>آخر تحديث</dt><dd>{formatDateTime(request.updated_at)}</dd></div>{request.status === "cancelled" ? <div><dt>وقت الإغلاق</dt><dd>{formatDateTime(request.cancelled_at || closureEvent?.created_at || request.updated_at)}</dd></div> : null}<div><dt>المسؤول</dt><dd>{request.assigned_to_name || "لم يعيّن بعد"}</dd></div><div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[request.execution_status] || request.execution_status}</dd></div></dl></article>
@@ -486,7 +487,7 @@ export default function EmployeeRequestsPage({ session, onPortalChange }: Props)
       <div className="employee-requests-filters"><span><FontAwesomeIcon icon={faFilter} /> تصفية</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as EmployeeRequestType | "")}><option value="">كل الأنواع</option>{REQUEST_TYPES.map((type) => <option value={type} key={type}>{EMPLOYEE_REQUEST_TYPE_LABELS[type]}</option>)}</select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as EmployeeRequestStatus | "")}><option value="">كل الحالات</option>{STATUS_OPTIONS.map((status) => <option value={status} key={status}>{EMPLOYEE_REQUEST_STATUS_LABELS[status]}</option>)}</select><button type="button" onClick={() => void load()}><FontAwesomeIcon icon={faRotate} /></button></div>
       {error ? <div className="employee-request-error">{error}</div> : null}
       {loading ? <div className="employee-requests-loading">جاري تحميل الطلبات...</div> : rows.length ? <div className="employee-requests-list">{rows.map((request) => <button type="button" className={`employee-request-card ${request.status === "cancelled" ? "is-closed" : ""}`} key={request.id} onClick={() => navigate(`/employee/requests/${request.id}`)}><span className="employee-request-card__icon"><FontAwesomeIcon icon={request.status === "completed" ? faCheckCircle : request.status === "cancelled" ? faXmark : faFileCircleCheck} /></span><div><small>{request.request_number}</small><strong>{request.title}</strong><p>{request.status === "cancelled" ? `تم إغلاق الطلب • ${formatDateTime(request.cancelled_at || request.updated_at)}` : `${formatDateTime(request.submitted_at)} • آخر تحديث ${formatDateTime(request.updated_at)}`}</p></div><span className={`employee-request-status is-${statusTone(request.status)}`}>{EMPLOYEE_REQUEST_STATUS_LABELS[request.status]}</span></button>)}</div> : <div className="employee-requests-empty"><FontAwesomeIcon icon={faCalendarDays} /><h2>لا توجد طلبات</h2><p>أنشئ أول طلب ليصل مباشرة إلى إدارة الموارد البشرية.</p></div>}
-      {newType ? <RequestForm type={newType} employeeId={String(session.employeeId || session.uid)} onClose={closeForm} onCreated={(request) => { setSuccess(request); closeForm(); void load(); void onPortalChange?.(); }} /> : null}
+      {newType ? <RequestForm type={newType} employeeId={String(session.employeeId || session.uid)} employeeName={String(session.displayName || session.email || "الموظفة")} onClose={closeForm} onCreated={(request) => { setSuccess(request); closeForm(); void load(); void onPortalChange?.(); }} /> : null}
       {success ? <div className="employee-request-modal" role="dialog" aria-modal="true"><div className="employee-request-success"><FontAwesomeIcon icon={faCheckCircle} /><small>تم استلام الطلب</small><h2>{success.request_number}</h2><p>{EMPLOYEE_REQUEST_TYPE_LABELS[success.request_type]}</p><span>{EMPLOYEE_REQUEST_STATUS_LABELS[success.status]} • {formatDateTime(success.submitted_at)}</span><div><button type="button" onClick={() => setSuccess(null)}>إغلاق</button><button type="button" onClick={() => navigate(`/employee/requests/${success.id}`)}>عرض التفاصيل</button></div></div></div> : null}
     </div>
   );
