@@ -20,6 +20,14 @@ import {
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
 const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
+const TEMP_WEEKLY_OFF_SYNC_EVENT = "queens:temporary-weekly-off-updated";
+
+type TemporaryWeeklyOffSyncDetail = {
+  employeeId?: string;
+  overrides?: Record<string, unknown>[];
+  offDates?: string[];
+  workDates?: string[];
+};
 
 type AttendanceSectionProps = {
   isVisible: boolean;
@@ -669,7 +677,67 @@ export default function AttendanceSection({
   const [clearingPunchType, setClearingPunchType] = useState<"check_in" | "check_out" | "">("");
   const [punchClearMessage, setPunchClearMessage] = useState("");
   const [punchClearError, setPunchClearError] = useState("");
+  const [temporaryWeeklyOffSync, setTemporaryWeeklyOffSync] = useState<{
+    overrides: Record<string, unknown>[];
+    offDates: string[];
+    workDates: string[];
+  } | null>(null);
+  const [coreScheduleRefreshVersion, setCoreScheduleRefreshVersion] = useState(0);
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
+
+  const effectiveSchedule = useMemo<Record<string, unknown> | null>(() => {
+    if (!temporaryWeeklyOffSync) return schedule;
+    return {
+      ...(schedule || {}),
+      customWorkingHourOverrides: temporaryWeeklyOffSync.overrides,
+    };
+  }, [schedule, temporaryWeeklyOffSync]);
+
+  const temporaryWorkDateKeys = useMemo(
+    () => new Set((temporaryWeeklyOffSync?.workDates || []).map(normalizeDateKey).filter(Boolean)),
+    [temporaryWeeklyOffSync]
+  );
+
+  const temporaryOffSpecialDays = useMemo<AttendanceSpecialDay[]>(() =>
+    (temporaryWeeklyOffSync?.offDates || [])
+      .map(normalizeDateKey)
+      .filter(Boolean)
+      .map((date) => ({
+        date,
+        kind: "exception_off" as const,
+        label: LABEL_EXCEPTION_OFF,
+        source: "temporary_weekly_off_live_sync",
+      })),
+    [temporaryWeeklyOffSync]
+  );
+
+  useEffect(() => {
+    setTemporaryWeeklyOffSync(null);
+  }, [employeeIdsKey]);
+
+  useEffect(() => {
+    const identityIds = new Set(employeeIdsKey.split("|").filter(Boolean));
+    const handleTemporaryWeeklyOffUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<TemporaryWeeklyOffSyncDetail>).detail || {};
+      const targetEmployeeId = cleanText(detail.employeeId);
+      if (!targetEmployeeId || !identityIds.has(targetEmployeeId)) return;
+
+      setTemporaryWeeklyOffSync({
+        overrides: Array.isArray(detail.overrides) ? detail.overrides : [],
+        offDates: Array.isArray(detail.offDates) ? detail.offDates : [],
+        workDates: Array.isArray(detail.workDates) ? detail.workDates : [],
+      });
+      setCoreResolvedShiftsByDate({});
+      setCoreShiftError("");
+      setCoreScheduleRefreshVersion((version) => version + 1);
+      onReload();
+    };
+
+    window.addEventListener(TEMP_WEEKLY_OFF_SYNC_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
+    return () => {
+      window.removeEventListener(TEMP_WEEKLY_OFF_SYNC_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
+    };
+  }, [employeeIdsKey, onReload]);
 
   useEffect(() => {
     const identityIds = employeeIdsKey.split("|").filter(Boolean);
@@ -712,14 +780,14 @@ export default function AttendanceSection({
     return () => {
       cancelled = true;
     };
-  }, [employeeIdsKey, isVisible, monthKey]);
+  }, [coreScheduleRefreshVersion, employeeIdsKey, isVisible, monthKey]);
 
   useEffect(() => {
     setPunchClearMessage("");
     setPunchClearError("");
   }, [selectedDate]);
 
-  const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, schedule)), [rows, schedule]);
+  const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, effectiveSchedule)), [effectiveSchedule, rows]);
   const rowSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
     return rows.flatMap((row) => {
       const record = row as StaffAttendanceWithId & Record<string, unknown>;
@@ -762,13 +830,25 @@ export default function AttendanceSection({
     [...specialDays, ...rowSpecialDays, ...resolvedCoreSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
       const date = cleanText(day.date);
       if (!date) return;
+      if (
+        temporaryWorkDateKeys.has(date) &&
+        (day.kind === "weekly_off" || day.kind === "exception_off")
+      ) {
+        return;
+      }
       const current = byDate.get(date);
       if (!current || specialDayPriority(day) >= specialDayPriority(current)) {
         byDate.set(date, day);
       }
     });
+    temporaryOffSpecialDays.forEach((day) => {
+      const current = byDate.get(day.date);
+      if (!current || specialDayPriority(day) >= specialDayPriority(current)) {
+        byDate.set(day.date, day);
+      }
+    });
     return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
-  }, [rowSpecialDays, resolvedCoreSpecialDays, selectedCoreSpecialDay, specialDays]);
+  }, [resolvedCoreSpecialDays, rowSpecialDays, selectedCoreSpecialDay, specialDays, temporaryOffSpecialDays, temporaryWorkDateKeys]);
   const selectedSpecialDay = useMemo(
     () => mergedSpecialDays.find((day) => day.date === cleanText(selectedDate)) || null,
     [mergedSpecialDays, selectedDate]
@@ -784,7 +864,7 @@ export default function AttendanceSection({
     () => resolveSelectedShiftInfo({
       dateKey: cleanText(selectedDate),
       row: selectedRawRow,
-      schedule,
+      schedule: effectiveSchedule,
       salonBusinessHours,
       approvedLeaveDateKeys,
       specialDay: selectedSpecialDay,
@@ -792,7 +872,7 @@ export default function AttendanceSection({
       coreLoading: coreShiftLoading,
       coreError: coreShiftError,
     }),
-    [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
+    [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, effectiveSchedule, salonBusinessHours, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
   const selectedRawRecord = (selectedRawRow || {}) as StaffAttendanceWithId & Record<string, unknown>;
