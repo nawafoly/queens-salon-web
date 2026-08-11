@@ -1,4 +1,4 @@
-import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule";
+import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule.ts";
 import { calculateAttendanceMinutePolicy } from "./attendancePolicyMath.js";
 import {
   calculatePermissionCoverage,
@@ -6,7 +6,7 @@ import {
   permissionIntervalsFromRequests,
   roundPermissionHours,
   type PermissionIntervalInput,
-} from "./permissionAttendance";
+} from "./permissionAttendance.ts";
 
 export type AttendanceRecord = {
   id?: string;
