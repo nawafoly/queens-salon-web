@@ -2,13 +2,27 @@ import {
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
   type ComponentProps,
 } from "react";
 import { createPortal } from "react-dom";
 
 import { EmployeeAttendanceTabLiveV2 as EmployeeAttendanceTabBaseLiveV2 } from "./EmployeeWorkspaceOperationalTabsLiveV2";
 import "../../../../styles/dashboard-v2/pages/employee-attendance-calendar-alignment.css";
+
+const MONTH_NAMES = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
 
 function monthStartWeekday(monthKey: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
@@ -20,15 +34,6 @@ function monthStartWeekday(monthKey: string) {
 
 function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function openMonthPicker(input: HTMLInputElement | null) {
-  if (!input) return;
-  if (typeof input.showPicker === "function") {
-    input.showPicker();
-    return;
-  }
-  input.click();
 }
 
 function AttendanceMonthSearchIcon() {
@@ -47,16 +52,38 @@ function AttendanceMonthSearchIcon() {
   );
 }
 
+function ChevronIcon({ direction }: { direction: "prev" | "next" }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" width="15" height="15">
+      <path
+        d={direction === "prev" ? "m12.5 4.5-5 5 5 5" : "m7.5 4.5 5 5-5 5"}
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 type EmployeeAttendanceTabBaseProps = ComponentProps<typeof EmployeeAttendanceTabBaseLiveV2>;
 
 export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanceTabBaseProps) {
   const weekdayOffset = monthStartWeekday(props.monthKey);
   const rootRef = useRef<HTMLDivElement>(null);
-  const monthInputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
-  const pickerMonth = /^\d{4}-\d{2}$/.test(String(props.monthKey || "").trim())
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const normalizedMonth = /^\d{4}-\d{2}$/.test(String(props.monthKey || "").trim())
     ? String(props.monthKey).trim()
-    : "";
+    : localDateKey().slice(0, 7);
+  const selectedYear = Number(normalizedMonth.slice(0, 4));
+  const selectedMonth = Number(normalizedMonth.slice(5, 7));
+  const [viewYear, setViewYear] = useState(selectedYear);
+
+  useEffect(() => {
+    setViewYear(selectedYear);
+  }, [selectedYear]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -76,40 +103,104 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
     return () => observer.disconnect();
   }, []);
 
-  const handleMonthPickerChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextMonth = event.target.value;
-    if (!/^\d{4}-\d{2}$/.test(nextMonth)) return;
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return;
+      setPickerOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [pickerOpen]);
+
+  const selectMonth = (monthIndex: number) => {
+    const nextMonth = `${viewYear}-${String(monthIndex + 1).padStart(2, "0")}`;
     const today = localDateKey();
     props.onMonthChange(nextMonth);
     props.onSelectedDateChange(
       nextMonth === today.slice(0, 7) ? today : `${nextMonth}-01`
     );
+    setPickerOpen(false);
   };
 
   const compactMonthPicker = toolbarTarget
     ? createPortal(
-        <>
+        <div ref={pickerRef} className="dsv2-ew-attendance-month-control">
           <button
             type="button"
             className="dsv2-ew-icon-btn dsv2-ew-attendance-month-trigger"
             aria-label="اختيار شهر الحضور"
+            aria-expanded={pickerOpen}
             title="اختيار الشهر"
             disabled={props.readOnly || props.loading}
-            onClick={() => openMonthPicker(monthInputRef.current)}
+            onClick={() => setPickerOpen((current) => !current)}
           >
             <AttendanceMonthSearchIcon />
           </button>
-          <input
-            ref={monthInputRef}
-            className="dsv2-ew-attendance-month-native"
-            type="month"
-            value={pickerMonth}
-            disabled={props.readOnly || props.loading}
-            aria-label="شهر الحضور"
-            tabIndex={-1}
-            onChange={handleMonthPickerChange}
-          />
-        </>,
+
+          {pickerOpen ? (
+            <div className="dsv2-ew-attendance-month-popover" role="dialog" aria-label="اختيار شهر الحضور">
+              <div className="dsv2-ew-attendance-month-popover__head">
+                <button
+                  type="button"
+                  className="dsv2-ew-attendance-month-nav"
+                  aria-label="السنة السابقة"
+                  onClick={() => setViewYear((year) => year - 1)}
+                >
+                  <ChevronIcon direction="prev" />
+                </button>
+                <strong>{viewYear}</strong>
+                <button
+                  type="button"
+                  className="dsv2-ew-attendance-month-nav"
+                  aria-label="السنة التالية"
+                  onClick={() => setViewYear((year) => year + 1)}
+                >
+                  <ChevronIcon direction="next" />
+                </button>
+              </div>
+
+              <div className="dsv2-ew-attendance-month-grid" role="grid">
+                {MONTH_NAMES.map((monthName, index) => {
+                  const active = viewYear === selectedYear && index + 1 === selectedMonth;
+                  return (
+                    <button
+                      key={monthName}
+                      type="button"
+                      className="dsv2-ew-attendance-month-option"
+                      data-active={active ? "true" : "false"}
+                      aria-current={active ? "date" : undefined}
+                      onClick={() => selectMonth(index)}
+                    >
+                      {monthName}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                className="dsv2-ew-attendance-month-current"
+                onClick={() => {
+                  const today = localDateKey();
+                  const nextMonth = today.slice(0, 7);
+                  props.onMonthChange(nextMonth);
+                  props.onSelectedDateChange(today);
+                  setPickerOpen(false);
+                }}
+              >
+                هذا الشهر
+              </button>
+            </div>
+          ) : null}
+        </div>,
         toolbarTarget
       )
     : null;
