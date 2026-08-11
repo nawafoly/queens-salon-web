@@ -6,7 +6,6 @@ import {
   DashboardSelectV2,
 } from "../../components/dashboard-v2";
 import {
-  WorkspaceCardV2,
   WorkspaceNoticeV2,
   WorkspaceStatusBadgeV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
@@ -34,10 +33,13 @@ type WorkingDayView = {
   end: string;
 };
 
+type TemporaryWeeklyOffMode = "change" | "suspend";
+
 type TemporaryWeeklyOffGroup = {
   token: string;
   baseDay: WeekdayKey;
-  temporaryDay: WeekdayKey;
+  mode: TemporaryWeeklyOffMode;
+  temporaryDay: WeekdayKey | null;
   fromDate: string;
   toDate: string;
 };
@@ -49,7 +51,7 @@ type TemporaryWeeklyOffPeriodCardProps = {
   onOverridesChange: (rows: StaffWorkingHourOverride[]) => void;
 };
 
-const TEMP_WEEKLY_OFF_PATTERN = /^\[TEMP_WEEKLY_OFF:(sat|sun|mon|tue|wed|thu|fri):(sat|sun|mon|tue|wed|thu|fri):(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\]/;
+const TEMP_WEEKLY_OFF_PATTERN = /^\[TEMP_WEEKLY_OFF:(sat|sun|mon|tue|wed|thu|fri):(sat|sun|mon|tue|wed|thu|fri|none):(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\]/;
 const TEMP_WEEKLY_OFF_SYNC_EVENT = "queens:temporary-weekly-off-updated";
 const WEEKDAY_INDEX: Record<WeekdayKey, number> = {
   sun: 0,
@@ -103,8 +105,15 @@ function notifyTemporaryWeeklyOffUpdated(input: {
   );
 }
 
-function temporaryWeeklyOffToken(baseDay: WeekdayKey, temporaryDay: WeekdayKey, fromDate: string, toDate: string) {
-  return `[TEMP_WEEKLY_OFF:${baseDay}:${temporaryDay}:${fromDate}:${toDate}]`;
+function temporaryWeeklyOffToken(
+  baseDay: WeekdayKey,
+  mode: TemporaryWeeklyOffMode,
+  temporaryDay: WeekdayKey | "",
+  fromDate: string,
+  toDate: string
+) {
+  const target = mode === "suspend" ? "none" : temporaryDay;
+  return `[TEMP_WEEKLY_OFF:${baseDay}:${target}:${fromDate}:${toDate}]`;
 }
 
 function parseTemporaryWeeklyOffGroups(rows: StaffWorkingHourOverride[]) {
@@ -113,10 +122,12 @@ function parseTemporaryWeeklyOffGroups(rows: StaffWorkingHourOverride[]) {
     const note = String(row?.note || "").trim();
     const match = TEMP_WEEKLY_OFF_PATTERN.exec(note);
     if (!match || groups.has(match[0])) return;
+    const target = match[2];
     groups.set(match[0], {
       token: match[0],
       baseDay: match[1] as WeekdayKey,
-      temporaryDay: match[2] as WeekdayKey,
+      mode: target === "none" ? "suspend" : "change",
+      temporaryDay: target === "none" ? null : target as WeekdayKey,
       fromDate: match[3],
       toDate: match[4],
     });
@@ -130,6 +141,7 @@ export default function TemporaryWeeklyOffPeriodCard({
   overrides,
   onOverridesChange,
 }: TemporaryWeeklyOffPeriodCardProps) {
+  const [mode, setMode] = useState<TemporaryWeeklyOffMode>("change");
   const [temporaryDay, setTemporaryDay] = useState<WeekdayKey | "">("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -139,7 +151,9 @@ export default function TemporaryWeeklyOffPeriodCard({
 
   const baseOffDays = workingDays.filter((day) => !day.enabled);
   const baseOffDay = baseOffDays.length === 1 ? baseOffDays[0] : null;
-  const temporaryOffDates = temporaryDay ? weekdayDatesInRange(fromDate, toDate, temporaryDay) : [];
+  const temporaryOffDates = mode === "change" && temporaryDay
+    ? weekdayDatesInRange(fromDate, toDate, temporaryDay)
+    : [];
   const temporaryWorkDates = baseOffDay ? weekdayDatesInRange(fromDate, toDate, baseOffDay.key) : [];
   const savedGroups = useMemo(() => parseTemporaryWeeklyOffGroups(overrides || []), [overrides]);
   const employeeId = dashboardEmployeeIdFromPath();
@@ -151,21 +165,21 @@ export default function TemporaryWeeklyOffPeriodCard({
     if (!baseOffDay) {
       setError(
         baseOffDays.length > 1
-          ? "يوجد أكثر من يوم إجازة أسبوعية معتمد. يجب أن يكون هناك يوم معتمد واحد قبل إنشاء تغيير مؤقت."
-          : "حدّد يوم الإجازة الأسبوعية المعتمد أولاً من الأسبوع التشغيلي."
+          ? "يوجد أكثر من يوم إجازة أسبوعية أساسي. يجب أن يكون هناك يوم واحد قبل إنشاء استثناء مؤقت."
+          : "حدّد يوم الإجازة الأسبوعية الأساسي أولاً من الأسبوع التشغيلي."
       );
       return;
     }
-    if (!temporaryDay) {
+    if (mode === "change" && !temporaryDay) {
       setError("اختر يوم الإجازة الأسبوعية المؤقت.");
       return;
     }
-    if (temporaryDay === baseOffDay.key) {
-      setError("اليوم المؤقت مطابق لليوم المعتمد حاليًا؛ اختر يومًا مختلفًا.");
+    if (mode === "change" && temporaryDay === baseOffDay.key) {
+      setError("اليوم المؤقت مطابق لليوم الأساسي؛ اختر يومًا مختلفًا.");
       return;
     }
     if (!isDateKey(fromDate) || !isDateKey(toDate)) {
-      setError("حدد تاريخ البداية والنهاية للتغيير المؤقت.");
+      setError("حدد تاريخ البداية والنهاية للفترة المؤقتة.");
       return;
     }
     if (fromDate > toDate) {
@@ -181,7 +195,7 @@ export default function TemporaryWeeklyOffPeriodCard({
       return;
     }
 
-    const token = temporaryWeeklyOffToken(baseOffDay.key, temporaryDay, fromDate, toDate);
+    const token = temporaryWeeklyOffToken(baseOffDay.key, mode, temporaryDay, fromDate, toDate);
     const affectedDates = new Set([...temporaryOffDates, ...temporaryWorkDates]);
     const currentOverrides = Array.isArray(overrides) ? overrides : [];
     const conflicts = currentOverrides.filter((row) => {
@@ -205,14 +219,16 @@ export default function TemporaryWeeklyOffPeriodCard({
       ...temporaryOffDates.map((date) => ({
         date,
         enabled: false,
-        note: `${token} TEMP_OFF | ${weekdayLabel(temporaryDay)} إجازة مؤقتة بدل ${baseOffDay.label}`,
+        note: `${token} TEMP_OFF | ${weekdayLabel(temporaryDay as WeekdayKey)} إجازة مؤقتة بدل ${baseOffDay.label}`,
       })),
       ...temporaryWorkDates.map((date) => ({
         date,
         enabled: true,
         start: workStart,
         end: workEnd,
-        note: `${token} TEMP_WORK | ${baseOffDay.label} يوم عمل داخل الفترة المؤقتة`,
+        note: mode === "suspend"
+          ? `${token} TEMP_WORK | ${baseOffDay.label} يوم عمل لأن الإجازة الأسبوعية موقوفة مؤقتًا`
+          : `${token} TEMP_WORK | ${baseOffDay.label} يوم عمل داخل فترة تغيير الإجازة`,
       })),
     ].sort((left, right) => left.date.localeCompare(right.date));
     const nextOverrides = [...preserved, ...generated].sort((left, right) =>
@@ -239,10 +255,12 @@ export default function TemporaryWeeklyOffPeriodCard({
         workDates: temporaryWorkDates,
       });
       setMessage(
-        `تم الحفظ. ${weekdayLabel(temporaryDay)} إجازة داخل الفترة، و${baseOffDay.label} يوم عمل بديل. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية تلقائيًا. تمت مزامنة ${result.createdCoreExceptions} يومًا مع Core.`
+        mode === "suspend"
+          ? `تم إيقاف ${baseOffDay.label} كإجازة أسبوعية خلال الفترة. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية تلقائيًا. تمت مزامنة ${result.createdCoreExceptions} يومًا مع Core.`
+          : `تم الحفظ. ${weekdayLabel(temporaryDay as WeekdayKey)} إجازة داخل الفترة، و${baseOffDay.label} يوم عمل بديل. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية تلقائيًا. تمت مزامنة ${result.createdCoreExceptions} يومًا مع Core.`
       );
     } catch (saveError) {
-      setError(String((saveError as Error)?.message || "تعذر حفظ تغيير الإجازة الأسبوعية المؤقت."));
+      setError(String((saveError as Error)?.message || "تعذر حفظ استثناء الإجازة الأسبوعية المؤقت."));
     } finally {
       setSaving(false);
     }
@@ -255,15 +273,18 @@ export default function TemporaryWeeklyOffPeriodCard({
       setError("تعذر تحديد الموظفة من رابط الصفحة.");
       return;
     }
-    if (!window.confirm(`إزالة تغيير ${weekdayLabel(group.temporaryDay)} بدل ${weekdayLabel(group.baseDay)} للفترة ${group.fromDate} إلى ${group.toDate}؟`)) {
-      return;
-    }
+    const confirmation = group.mode === "suspend"
+      ? `إزالة إيقاف الإجازة الأسبوعية للفترة ${group.fromDate} إلى ${group.toDate}؟`
+      : `إزالة تغيير ${weekdayLabel(group.temporaryDay as WeekdayKey)} بدل ${weekdayLabel(group.baseDay)} للفترة ${group.fromDate} إلى ${group.toDate}؟`;
+    if (!window.confirm(confirmation)) return;
 
     const nextOverrides = (overrides || []).filter((row) =>
       !String(row?.note || "").trim().startsWith(group.token)
     );
     const restoredWeeklyOffDates = weekdayDatesInRange(group.fromDate, group.toDate, group.baseDay);
-    const restoredWorkDates = weekdayDatesInRange(group.fromDate, group.toDate, group.temporaryDay);
+    const restoredWorkDates = group.temporaryDay
+      ? weekdayDatesInRange(group.fromDate, group.toDate, group.temporaryDay)
+      : [];
     setSaving(true);
     try {
       await removeTemporaryWeeklyOff({
@@ -278,55 +299,94 @@ export default function TemporaryWeeklyOffPeriodCard({
         offDates: restoredWeeklyOffDates,
         workDates: restoredWorkDates,
       });
-      setMessage(`تمت إزالة التغيير المؤقت. عاد ${weekdayLabel(group.baseDay)} إلى الجدول الأسبوعي المعتمد.`);
+      setMessage(`تمت إزالة الاستثناء المؤقت. عاد ${weekdayLabel(group.baseDay)} إلى الجدول الأسبوعي الأساسي.`);
     } catch (removeError) {
-      setError(String((removeError as Error)?.message || "تعذر إزالة التغيير المؤقت."));
+      setError(String((removeError as Error)?.message || "تعذر إزالة الاستثناء المؤقت."));
     } finally {
       setSaving(false);
     }
   };
 
+  const previewReady = Boolean(
+    baseOffDay &&
+    isDateKey(fromDate) &&
+    isDateKey(toDate) &&
+    fromDate <= toDate &&
+    (mode === "suspend" || temporaryDay)
+  );
+
   return (
-    <WorkspaceCardV2
-      title="تغيير يوم الإجازة الأسبوعية لفترة محددة"
-      description="غيّر يوم الإجازة الأسبوعية مؤقتًا بين تاريخين، وبعد انتهاء الفترة يعود تلقائيًا إلى اليوم المعتمد."
-      actions={
-        baseOffDay ? (
-          <WorkspaceStatusBadgeV2 tone="gold">اليوم المعتمد: {baseOffDay.label}</WorkspaceStatusBadgeV2>
+    <div className="dsv2-stack dsv2-stack--sm" data-weekly-off-management="true">
+      <div className="dsv2-section-head">
+        <div>
+          <h4 className="dsv2-section-title">إدارة الإجازة الأسبوعية المؤقتة</h4>
+          <p className="dsv2-section-caption">
+            غيّر يوم الإجازة أو أوقفها مؤقتًا بين تاريخين، ثم يعود النظام تلقائيًا إلى اليوم الأساسي.
+          </p>
+        </div>
+        {baseOffDay ? (
+          <WorkspaceStatusBadgeV2 tone="gold">اليوم الأساسي: {baseOffDay.label}</WorkspaceStatusBadgeV2>
         ) : (
-          <WorkspaceStatusBadgeV2 tone="danger">اليوم المعتمد غير محدد</WorkspaceStatusBadgeV2>
-        )
-      }
-    >
+          <WorkspaceStatusBadgeV2 tone="danger">اليوم الأساسي غير محدد</WorkspaceStatusBadgeV2>
+        )}
+      </div>
+
       <WorkspaceNoticeV2
-        title={baseOffDay ? `الإجازة الأسبوعية المعتمدة حاليًا: ${baseOffDay.label}` : "حدد يوم الإجازة المعتمد أولاً"}
+        title="دليل الاستخدام"
         description={
           baseOffDay
-            ? "داخل الفترة فقط يصبح اليوم الجديد إجازة، واليوم المعتمد يصبح يوم عمل. بعد تاريخ النهاية يرجع الجدول الأسبوعي الأساسي تلقائيًا."
-            : "عطّل يومًا واحدًا من الأسبوع التشغيلي ليكون اليوم المعتمد، ثم استخدم هذا القسم للتغييرات المؤقتة."
+            ? `الإجازة الأساسية حاليًا هي ${baseOffDay.label}. اختر «تغيير يوم الإجازة مؤقتًا» إذا أردت نقلها ليوم آخر خلال فترة محددة، أو «إيقاف الإجازة مؤقتًا» إذا كانت الموظفة ستعمل كل أيامها خلال الفترة. بعد تاريخ النهاية يعود ${baseOffDay.label} تلقائيًا بدون تدخل يدوي.`
+            : "حدد يوم إجازة أسبوعية أساسي واحد من الأيام أعلاه أولًا. بعد ذلك يمكنك تغييره أو إيقافه مؤقتًا بدون حذف الإعداد الأساسي."
         }
         tone={baseOffDay ? "neutral" : "gold"}
       />
 
       <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-        <DashboardFieldV2 id="employee-temp-weekly-off-day" label="اليوم المؤقت" required>
+        <DashboardFieldV2 id="employee-temp-weekly-off-mode" label="نوع التعديل المؤقت" required>
           <DashboardSelectV2
-            id="employee-temp-weekly-off-day"
-            value={temporaryDay}
+            id="employee-temp-weekly-off-mode"
+            value={mode}
             disabled={busy || saving || !baseOffDay}
-            placeholder="اختر اليوم"
-            options={WEEKDAY_OPTIONS.map((day) => ({
-              value: day.key,
-              label: day.label,
-              disabled: day.key === baseOffDay?.key,
-            }))}
+            options={[
+              { value: "change", label: "تغيير يوم الإجازة مؤقتًا" },
+              { value: "suspend", label: "إيقاف الإجازة مؤقتًا" },
+            ]}
             onChange={(value) => {
-              setTemporaryDay(value as WeekdayKey);
+              setMode(value as TemporaryWeeklyOffMode);
+              setTemporaryDay("");
               setMessage("");
               setError("");
             }}
           />
         </DashboardFieldV2>
+
+        {mode === "change" ? (
+          <DashboardFieldV2 id="employee-temp-weekly-off-day" label="اليوم المؤقت" required>
+            <DashboardSelectV2
+              id="employee-temp-weekly-off-day"
+              value={temporaryDay}
+              disabled={busy || saving || !baseOffDay}
+              placeholder="اختر اليوم"
+              options={WEEKDAY_OPTIONS.map((day) => ({
+                value: day.key,
+                label: day.label,
+                disabled: day.key === baseOffDay?.key,
+              }))}
+              onChange={(value) => {
+                setTemporaryDay(value as WeekdayKey);
+                setMessage("");
+                setError("");
+              }}
+            />
+          </DashboardFieldV2>
+        ) : (
+          <div className="dsv2-ew-notice" data-tone="gold">
+            <div>
+              <strong>بدون إجازة أسبوعية داخل الفترة</strong>
+              <p>{baseOffDay ? `${baseOffDay.label} يصبح يوم عمل مؤقتًا، ثم يرجع إجازة بعد نهاية الفترة.` : "حدد اليوم الأساسي أولًا."}</p>
+            </div>
+          </div>
+        )}
 
         <DashboardFieldV2 id="employee-temp-weekly-off-from" label="من تاريخ" required>
           <DashboardDatePickerV2
@@ -359,10 +419,14 @@ export default function TemporaryWeeklyOffPeriodCard({
         </DashboardFieldV2>
       </div>
 
-      {baseOffDay && temporaryDay && isDateKey(fromDate) && isDateKey(toDate) && fromDate <= toDate ? (
+      {previewReady && baseOffDay ? (
         <WorkspaceNoticeV2
           title="معاينة قبل الحفظ"
-          description={`${weekdayLabel(temporaryDay)}: ${temporaryOffDates.length} أيام إجازة. ${baseOffDay.label}: ${temporaryWorkDates.length} أيام عمل بديلة داخل الفترة. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية.`}
+          description={
+            mode === "suspend"
+              ? `${baseOffDay.label}: ${temporaryWorkDates.length} أيام ستتحول إلى أيام عمل داخل الفترة. لا توجد إجازة أسبوعية بديلة. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية تلقائيًا.`
+              : `${weekdayLabel(temporaryDay as WeekdayKey)}: ${temporaryOffDates.length} أيام إجازة. ${baseOffDay.label}: ${temporaryWorkDates.length} أيام عمل بديلة داخل الفترة. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية.`
+          }
           tone="gold"
         />
       ) : null}
@@ -371,10 +435,10 @@ export default function TemporaryWeeklyOffPeriodCard({
         <button
           type="button"
           className="dsv2-btn dsv2-btn--primary"
-          disabled={busy || saving || !baseOffDay || !temporaryDay || !fromDate || !toDate}
+          disabled={busy || saving || !baseOffDay || !fromDate || !toDate || (mode === "change" && !temporaryDay)}
           onClick={() => void applyChange()}
         >
-          {saving ? "جاري الحفظ..." : "حفظ التغيير المؤقت"}
+          {saving ? "جاري الحفظ..." : mode === "suspend" ? "حفظ إيقاف الإجازة المؤقت" : "حفظ تغيير الإجازة المؤقت"}
         </button>
       </div>
 
@@ -383,11 +447,15 @@ export default function TemporaryWeeklyOffPeriodCard({
 
       {savedGroups.length ? (
         <div className="dsv2-stack dsv2-stack--sm">
-          <strong className="dsv2-section-title">التغييرات المؤقتة المسجلة</strong>
+          <strong className="dsv2-section-title">الاستثناءات المؤقتة المسجلة</strong>
           {savedGroups.map((group) => (
             <div key={group.token} className="dsv2-ew-selected-item">
               <div>
-                <strong>{weekdayLabel(group.temporaryDay)} بدل {weekdayLabel(group.baseDay)}</strong>
+                <strong>
+                  {group.mode === "suspend"
+                    ? `الإجازة الأسبوعية موقوفة مؤقتًا · الأساس ${weekdayLabel(group.baseDay)}`
+                    : `${weekdayLabel(group.temporaryDay as WeekdayKey)} بدل ${weekdayLabel(group.baseDay)}`}
+                </strong>
                 <small>{group.fromDate} إلى {group.toDate} · يعود بعدها إلى {weekdayLabel(group.baseDay)}</small>
               </div>
               <button
@@ -396,12 +464,12 @@ export default function TemporaryWeeklyOffPeriodCard({
                 disabled={busy || saving}
                 onClick={() => void removeChange(group)}
               >
-                إزالة التغيير
+                إزالة الاستثناء
               </button>
             </div>
           ))}
         </div>
       ) : null}
-    </WorkspaceCardV2>
+    </div>
   );
 }
