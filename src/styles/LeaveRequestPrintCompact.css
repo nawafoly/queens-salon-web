@@ -1,8 +1,36 @@
 /* Compact A4 override for the official leave-request document only. */
+.leave-doc-word-export {
+  display: none;
+}
+
+.admin-leave-request-document-shell .leave-doc-word-export {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  margin: 0 0 12px;
+  padding: 0 15px;
+  border: 1px solid #d5dae4;
+  border-radius: 11px;
+  background: #fff;
+  color: #0b1638;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-leave-request-document-shell .leave-doc-word-export:hover {
+  border-color: #0b1638;
+}
+
 @media print {
   @page {
     size: A4 portrait;
     margin: 6mm;
+  }
+
+  .leave-doc-word-export {
+    display: none !important;
   }
 
   .leave-request-print-root {
