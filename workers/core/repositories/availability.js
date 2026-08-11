@@ -3,12 +3,12 @@
 import {
   cleanText,
   dbAll,
-  dbFirst,
   integer,
   requiredId,
   validDate,
 } from '../d1.js';
 import { getStaff, staffIsActive } from './staff.js';
+import { resolveStaffBookingDay } from './booking-staff-policy.js';
 
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "rejected"]);
 
@@ -29,9 +29,6 @@ function expandRange(startTime, endTime, stepMin, bufferMin = 0) {
   if (start === null || end === null || end <= start) return [];
   const out = [];
   const until = Math.min(24 * 60, end + Math.max(0, bufferMin));
-  // Project the occupied interval onto the caller's day-wide slot grid. Do
-  // not anchor the grid at the booking start, because bookings created with a
-  // five-minute step must still block overlapping ten-minute UI slots.
   const firstGridMinute = Math.ceil(start / stepMin) * stepMin;
   for (let minute = firstGridMinute; minute < until; minute += stepMin) {
     out.push(minutesToTime(minute));
@@ -41,15 +38,6 @@ function expandRange(startTime, endTime, stepMin, bufferMin = 0) {
 
 function weekdayForDate(date) {
   return new Date(`${date}T12:00:00.000Z`).getUTCDay();
-}
-
-function isOnLeave(staff, date) {
-  const start = cleanText(staff?.leave_start_date);
-  const end = cleanText(staff?.leave_end_date);
-  if (!start && !end) return false;
-  if (start && date < start) return false;
-  if (end && date > end) return false;
-  return true;
 }
 
 async function scheduleRows(db, salonId, staffId, weekday) {
@@ -170,10 +158,11 @@ export async function getStaffAvailability(db, salonId, query = {}) {
 
   const staff = await getStaff(db, salonId, staffId);
   const weekday = weekdayForDate(date);
-  const [schedules, locks, bookings] = await Promise.all([
+  const [legacySchedules, locks, bookings, bookingDay] = await Promise.all([
     scheduleRows(db, salonId, staffId, weekday),
     slotLockRows(db, salonId, staffId, date),
     bookedRows(db, salonId, staffId, date),
+    resolveStaffBookingDay(db, salonId, staff, date),
   ]);
 
   const takenTimes = new Set(
@@ -214,14 +203,25 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     }
   }
 
-  const onLeave = isOnLeave(staff, date);
-  const scheduleWindows = schedules
-    .map((row) => ({
-      id: cleanText(row.id),
-      startTime: cleanText(row.start_time),
-      endTime: cleanText(row.end_time),
-    }))
-    .filter((row) => row.startTime && row.endTime);
+  let scheduleWindows = [];
+  if (bookingDay.available && bookingDay.startTime && bookingDay.endTime) {
+    scheduleWindows = [{
+      id: `hr:${bookingDay.source || 'schedule'}`,
+      startTime: cleanText(bookingDay.startTime),
+      endTime: cleanText(bookingDay.endTime),
+    }];
+  } else if (bookingDay.available && bookingDay.source === 'fallback') {
+    scheduleWindows = legacySchedules
+      .map((row) => ({
+        id: cleanText(row.id),
+        startTime: cleanText(row.start_time),
+        endTime: cleanText(row.end_time),
+      }))
+      .filter((row) => row.startTime && row.endTime);
+  }
+
+  const showOnBooking = Number(staff.show_on_booking ?? 1) === 1;
+  const onLeave = bookingDay.reason === 'approved_leave';
 
   return {
     salonId,
@@ -230,14 +230,12 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     staffId,
     staffName: cleanText(staff.name),
     active: staffIsActive(staff),
-    showOnBooking: Number(staff.show_on_booking ?? 1) === 1,
+    showOnBooking,
     onLeave,
     leaveNote: onLeave ? cleanText(staff.leave_note) : "",
-    availableForDate:
-      staffIsActive(staff) &&
-      Number(staff.show_on_booking ?? 1) === 1 &&
-      !onLeave &&
-      (staff.schedules?.length ? scheduleWindows.length > 0 : true),
+    availableForDate: Boolean(bookingDay.available && showOnBooking),
+    unavailableReason: bookingDay.available ? "" : cleanText(bookingDay.reason),
+    availabilitySource: cleanText(bookingDay.source),
     scheduleWindows,
     lockedTimes,
     takenTimes: [...takenTimes].sort(),
