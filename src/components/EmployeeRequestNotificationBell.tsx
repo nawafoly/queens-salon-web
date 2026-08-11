@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell } from "@fortawesome/free-solid-svg-icons";
 import { useNavigate } from "react-router-dom";
+import { usePermissions } from "../security/PermissionContext";
 import {
   listEmployeeRequestNotifications,
   markAllEmployeeRequestNotificationsRead,
@@ -10,6 +11,7 @@ import {
   type CoreEmployeeRequestNotification,
 } from "../services/employeeRequests";
 import "../styles/EmployeeRequests.css";
+import "../styles/EmployeeRequestNotificationBell.css";
 
 type Props = {
   enabled?: boolean;
@@ -36,13 +38,15 @@ function formatNotificationTime(value: unknown) {
 
 export default function EmployeeRequestNotificationBell({ enabled = true, className = "" }: Props) {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
+  const allowed = enabled && hasPermission("employee_requests.view");
   const [notifications, setNotifications] = useState<CoreEmployeeRequestNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!enabled) {
+    if (!allowed) {
       setNotifications([]);
       setUnreadCount(0);
       return;
@@ -59,10 +63,10 @@ export default function EmployeeRequestNotificationBell({ enabled = true, classN
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [allowed]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!allowed) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30_000);
     const handleChanged = () => void refresh();
@@ -71,7 +75,7 @@ export default function EmployeeRequestNotificationBell({ enabled = true, classN
       window.clearInterval(timer);
       window.removeEventListener("employee-request-notifications-changed", handleChanged);
     };
-  }, [enabled, refresh]);
+  }, [allowed, refresh]);
 
   useEffect(() => {
     if (!open) return;
@@ -123,7 +127,7 @@ export default function EmployeeRequestNotificationBell({ enabled = true, classN
     }
   }, [unreadCount]);
 
-  if (!enabled) return null;
+  if (!allowed) return null;
 
   return (
     <>
