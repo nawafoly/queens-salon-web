@@ -5,6 +5,15 @@ const root = process.cwd();
 const bookingUiPath = path.join(root, 'src/pages/Booking.tsx');
 const bookingRepoPath = path.join(root, 'workers/core/repositories/bookings.js');
 
+function readSource(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  return {
+    raw,
+    eol: raw.includes('\r\n') ? '\r\n' : '\n',
+    content: raw.replace(/\r\n/g, '\n'),
+  };
+}
+
 function replaceOnce(content, before, after, label) {
   const first = content.indexOf(before);
   if (first < 0) throw new Error(`[booking-hardening] expected source not found: ${label}`);
@@ -13,14 +22,17 @@ function replaceOnce(content, before, after, label) {
   return content.slice(0, first) + after + content.slice(first + before.length);
 }
 
-function writeIfChanged(filePath, next) {
-  const current = fs.readFileSync(filePath, 'utf8');
-  if (current === next) return false;
+function writeIfChanged(filePath, source, nextNormalized) {
+  const next = source.eol === '\r\n'
+    ? nextNormalized.replace(/\n/g, '\r\n')
+    : nextNormalized;
+  if (source.raw === next) return false;
   fs.writeFileSync(filePath, next, 'utf8');
   return true;
 }
 
-let bookingUi = fs.readFileSync(bookingUiPath, 'utf8');
+const bookingUiSource = readSource(bookingUiPath);
+let bookingUi = bookingUiSource.content;
 bookingUi = replaceOnce(
   bookingUi,
   `                          const activeVisibleStaff = staffWithLeaveMeta\n                            .filter((x) => !x.isInactive)\n                            .map((x) => x.staff);\n                          const availableStaff = staffWithLeaveMeta\n                            .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)\n                            .map((x) => x.staff);\n                          const staffChoicesForItem = activeVisibleStaff;`,
@@ -35,7 +47,8 @@ bookingUi = replaceOnce(
   'customer booking must honor Core full-day unavailability'
 );
 
-let bookingRepo = fs.readFileSync(bookingRepoPath, 'utf8');
+const bookingRepoSource = readSource(bookingRepoPath);
+let bookingRepo = bookingRepoSource.content;
 bookingRepo = replaceOnce(
   bookingRepo,
   `import {\n  getStaff,\n  staffIsActive,\n  staffIsAvailableForDate,\n} from './staff.js';`,
@@ -71,8 +84,8 @@ bookingRepo = replaceOnce(
   'backend booking edit staff-service assignment guard'
 );
 
-const uiChanged = writeIfChanged(bookingUiPath, bookingUi);
-const repoChanged = writeIfChanged(bookingRepoPath, bookingRepo);
+const uiChanged = writeIfChanged(bookingUiPath, bookingUiSource, bookingUi);
+const repoChanged = writeIfChanged(bookingRepoPath, bookingRepoSource, bookingRepo);
 
 console.log(`[booking-hardening] Booking.tsx: ${uiChanged ? 'updated' : 'unchanged'}`);
 console.log(`[booking-hardening] bookings.js: ${repoChanged ? 'updated' : 'unchanged'}`);
