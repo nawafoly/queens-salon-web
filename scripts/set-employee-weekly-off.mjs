@@ -118,8 +118,7 @@ function d1Json(args, sql) {
   return parseWranglerJson(
     run("npx", [
       "wrangler", "d1", "execute", args.database,
-      "--remote", "--config", args.config,
-      "--command", sql, "--json",
+      "--remote", "--command", sql, "--json",
     ], { capture: true }),
     sql
   );
@@ -128,8 +127,7 @@ function d1Json(args, sql) {
 function d1Execute(args, sql) {
   return run("npx", [
     "wrangler", "d1", "execute", args.database,
-    "--remote", "--config", args.config,
-    "--command", sql,
+    "--remote", "--command", sql,
   ]);
 }
 
