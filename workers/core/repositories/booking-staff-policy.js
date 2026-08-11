@@ -35,15 +35,6 @@ function staffIsActiveForBooking(staff) {
   return Number(staff?.active) === 1 && statuses.every((status) => !INACTIVE_EMPLOYMENT_STATUSES.has(status));
 }
 
-function legacyLeaveActive(staff, date) {
-  const start = cleanText(staff?.leave_start_date);
-  const end = cleanText(staff?.leave_end_date);
-  if (!start && !end) return false;
-  if (start && date < start) return false;
-  if (end && date > end) return false;
-  return true;
-}
-
 async function approvedLeavesForDate(db, salonId, employeeId, date) {
   if (db?.__fakeD1) {
     return safeFakeRows(db, 'employee_leaves').filter((row) =>
@@ -129,11 +120,8 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     return { available: false, reason: 'inactive', source: 'staff', blockedRanges: [] };
   }
 
-  // Compatibility mirror for older full-day approved leave flows.
-  if (legacyLeaveActive(staff, date)) {
-    return { available: false, reason: 'approved_leave', source: 'legacy_leave', blockedRanges: [] };
-  }
-
+  // Approved employee_leaves is the only leave authority for booking runtime.
+  // Legacy mirrored leave_start_date / leave_end_date fields are intentionally ignored.
   const leaves = await approvedLeavesForDate(db, salonId, employeeId, date);
   const fullLeave = leaves.find((row) => !isPartialLeave(row));
   if (fullLeave) {
@@ -161,7 +149,6 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     };
   }
 
-  // A recorded full-day absence means the employee must not receive a customer booking for that date.
   const absence = await absenceForDate(db, salonId, employeeId, date);
   if (absence) {
     return {
@@ -174,7 +161,6 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     };
   }
 
-  // HR schedule is authoritative when a dated schedule/exception/assignment exists.
   const shift = await resolveEmployeeShift(db, salonId, employeeId, date).catch(() => null);
   if (shift && cleanText(shift.source) !== 'none') {
     const exceptionType = cleanText(shift.exception_type || shift.exceptionType).toLowerCase();
@@ -222,8 +208,6 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     };
   }
 
-  // No dated HR truth means the employee is not bookable.
-  // Never fall back to staff_schedules: hr_work_schedules / exceptions / assignments are authoritative.
   return {
     available: false,
     reason: 'no_hr_schedule',
