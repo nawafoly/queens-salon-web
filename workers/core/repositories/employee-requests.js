@@ -149,12 +149,6 @@ function addMonths(monthKey, offset) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-function previousDateKey(dateKey) {
-  const date = new Date(`${validDate(dateKey)}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
-
 function riyadhDateKey() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -224,9 +218,8 @@ function validatePayload(type, rawPayload) {
     case 'leave': {
       const startDate = validDate(payload.startDate, 'startDate');
       const endDate = validDate(payload.endDate, 'endDate');
+      if (endDate < startDate) throw new AppError(400, 'core_employee_request:invalid_leave_range');
       const durationKind = cleanText(payload.durationKind) === 'partial' ? 'partial' : 'full_day';
-      if (durationKind === 'full_day' && endDate <= startDate) throw new AppError(400, 'core_employee_request:invalid_leave_range');
-      if (durationKind === 'partial' && endDate < startDate) throw new AppError(400, 'core_employee_request:invalid_leave_range');
       const partialStartTime = durationKind === 'partial' ? validTime(payload.partialStartTime, 'partialStartTime') : null;
       const partialEndTime = durationKind === 'partial' ? validTime(payload.partialEndTime, 'partialEndTime') : null;
       if (durationKind === 'partial' && startDate !== endDate) throw new AppError(400, 'core_employee_request:partial_leave_single_day');
@@ -670,18 +663,17 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
 async function createLeaveEffect(db, salonId, row, payload, actor) {
   const existingLeave = await dbFirst(db, `SELECT * FROM employee_leaves WHERE salon_id = ? AND request_id = ? LIMIT 1`, [salonId, row.id]);
   if (existingLeave) return { leaveId: existingLeave.id, permissionId: null, days: Number(existingLeave.days_count || 0) };
-  const effectiveEndDate = payload.durationKind === 'partial' ? payload.endDate : previousDateKey(payload.endDate);
   const overlap = await dbFirst(
     db,
     `SELECT id FROM employee_leaves WHERE salon_id = ? AND employee_id = ? AND status = 'approved'
       AND NOT (end_date < ? OR start_date > ?) LIMIT 1`,
-    [salonId, row.employee_id, payload.startDate, effectiveEndDate]
+    [salonId, row.employee_id, payload.startDate, payload.endDate]
   );
   if (overlap) throw new AppError(409, 'core_employee_request:leave_overlap');
   const id = generatedId('leave');
   const start = new Date(`${payload.startDate}T12:00:00Z`);
   const end = new Date(`${payload.endDate}T12:00:00Z`);
-  const fullDays = Math.floor((end.getTime() - start.getTime()) / 86400000);
+  const fullDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
   const partialMinutes = payload.durationKind === 'partial'
     ? durationMinutes(payload.partialStartTime, payload.partialEndTime)
     : 0;
@@ -705,7 +697,7 @@ async function createLeaveEffect(db, salonId, row, payload, actor) {
        duration_kind, partial_start_time, partial_end_time, request_id)
      VALUES (?, ?, ?, ?, ?, NULL, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [id, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot,
-      payload.leaveType, payload.startDate, effectiveEndDate, days, payload.reason,
+      payload.leaveType, payload.startDate, payload.endDate, days, payload.reason,
       optionalText(payload.hrNote) || null, now, cleanText(actor.uid) || null,
       cleanText(actor.email) || null, cleanText(actor.name) || null, now, now,
       payload.durationKind, payload.partialStartTime || null, payload.partialEndTime || null, row.id],
@@ -783,7 +775,7 @@ async function refreshExternalAttendanceState(externalDb, row, dateKey) {
         last_type = excluded.last_type, last_record_id = excluded.last_record_id,
         last_server_time = excluded.last_server_time, last_location_lat = excluded.last_location_lat,
         last_location_lng = excluded.last_location_lng,
-        last_location_accuracy = excluded.location_accuracy,
+        last_location_accuracy = excluded.last_location_accuracy,
         last_zone_id = excluded.last_zone_id, updated_at = excluded.updated_at`,
       [
         row.employee_uid,
