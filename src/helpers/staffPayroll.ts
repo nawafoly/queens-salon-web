@@ -1,4 +1,4 @@
-﻿import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
+import { resolveStaffScheduleVersionForDate } from "./hr/staffScheduleHistory";
 export type WeekdayKey = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
 
 export type StaffWorkingDay = {
@@ -522,6 +522,15 @@ function resolveStaffDayHours(
 function isWeeklyOffForPayrollDate(dateIso: string, staff: StaffPayrollSource): boolean {
   const day = weekdayFromIso(dateIso);
   if (!day) return false;
+
+  const override = normalizeWorkingHourOverrides(staff.customWorkingHourOverrides)
+    .find((row) => row.date === dateIso);
+  if (override) {
+    // A date-specific override is more specific than the recurring weekly day:
+    // enabled=false makes the date off, enabled=true re-opens the normal day off.
+    return override.enabled === false;
+  }
+
   const historicalVersion = resolveStaffScheduleVersionForDate(staff.workingScheduleVersions, dateIso);
   if (historicalVersion) {
     if (!historicalVersion.useCustomWorkingHours) return false;
@@ -532,7 +541,7 @@ function isWeeklyOffForPayrollDate(dateIso: string, staff: StaffPayrollSource): 
 }
 
 function safeNumber(v: any, fallback: number): number {
-  const n = Number(v);
+  const n = Number(v || 0);
   return Number.isFinite(n) ? n : fallback;
 }
 
