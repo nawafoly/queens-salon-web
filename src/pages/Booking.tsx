@@ -5402,13 +5402,21 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         bufferMin,
         forceFresh,
       });
-      const rows = Array.from(
-        new Set(
-          (availability.takenTimes || [])
-            .map((time) => String(time || "").trim())
-            .filter(Boolean)
-        )
-      );
+      const rows = availability.availableForDate === false
+        ? Array.from(
+            { length: Math.ceil((24 * 60) / Math.max(5, slotStepMin)) },
+            (_, index) => {
+              const minute = index * Math.max(5, slotStepMin);
+              return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+            }
+          )
+        : Array.from(
+            new Set(
+              (availability.takenTimes || [])
+                .map((time) => String(time || "").trim())
+                .filter(Boolean)
+            )
+          );
       takenTimesCacheRef.current[cacheKey] = {
         ts: Date.now(),
         values: rows,
@@ -9787,16 +9795,17 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                               isInactive: false,
                             };
                           });
-                          const activeVisibleStaff = staffWithLeaveMeta
-                            .filter((x) => !x.isInactive)
-                            .map((x) => x.staff);
                           const availableStaff = staffWithLeaveMeta
                             .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)
                             .map((x) => x.staff);
-                          const staffChoicesForItem = activeVisibleStaff;
+                          const coreUnavailableForItem = staffFullDayByItem[it.id] || {};
+                          const staffChoicesForItem = availableStaff.filter((staff: any) => {
+                            const id = String(staff?.id || "").trim();
+                            return !id || !coreUnavailableForItem[id];
+                          });
                           const staffLoading = !!staffLoadingByService[serviceKeyForStaff];
                           const staffError = staffErrorByService[serviceKeyForStaff] || "";
-                          const selectedEmployeeAvailable = availableStaff.some(
+                          const selectedEmployeeAvailable = staffChoicesForItem.some(
                             (emp) => String(emp?.id || "").trim() === String(it.employeeId || "").trim()
                           );
                           const packageRunMeta = packageRunId ? packageRunMetaByRun[packageRunId] : undefined;
@@ -9850,7 +9859,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
                             bufferMin,
                             ALLOW_OVERTIME_MIN
                           );
-                          const selectedStaffForTime = bookingVisibleStaff.find(
+                          const selectedStaffForTime = staffChoicesForItem.find(
                             (x) => String(x.id || "").trim() === String(it.employeeId || "").trim()
                           );
                           const staffWorkingSlots = selectedStaffForTime

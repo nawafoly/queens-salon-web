@@ -27,8 +27,11 @@ import { getService, resolveBookingService, serviceIsActive } from './services.j
 import {
   getStaff,
   staffIsActive,
-  staffIsAvailableForDate,
 } from './staff.js';
+import {
+  resolveStaffBookingDay,
+  staffCanPerformService,
+} from './booking-staff-policy.js';
 import { resolveBookingDiscount } from './discount-application.js';
 import { safeRefreshTargetsForBooking } from './employee-targets.js';
 
@@ -214,9 +217,18 @@ async function assertStaffRangeAvailable(
     error.code = "core_booking:staff_inactive";
     throw error;
   }
-  if (!staffIsAvailableForDate(staff, bookingDate, startTime, endTime)) {
+  const bookingDay = await resolveStaffBookingDay(
+    db,
+    salonId,
+    staff,
+    bookingDate,
+    startTime,
+    endTime
+  );
+  if (!bookingDay.available) {
     const error = new Error("staff_unavailable");
     error.code = "core_booking:staff_unavailable";
+    error.reason = bookingDay.reason || "unavailable";
     throw error;
   }
   if (
@@ -491,6 +503,11 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
       throw error;
     }
     const staffId = optionalText(item.staffId || item.staff_id) || parentStaffId;
+    if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {
+      const error = new Error("staff_service_not_assigned");
+      error.code = "core_booking:staff_service_not_assigned";
+      throw error;
+    }
     await assertStaffRangeAvailable(
       db,
       salonId,
@@ -842,6 +859,9 @@ export async function rescheduleBooking(db, salonId, idValue, data) {
     const staffId = patch.staffId === null || patch.staff_id === null
       ? null
       : optionalText(patch.staffId || patch.staff_id) || defaultStaff || current.staff_id || booking.staff_id || null;
+    if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {
+      throw new AppError(409, "core_booking:staff_service_not_assigned");
+    }
     await assertStaffRangeAvailable(
       db,
       salonId,
@@ -1088,6 +1108,9 @@ export async function patchBooking(db, salonId, id, data, actor = {}) {
   if (shouldHoldSlots) {
     if (timeToMinutes(startTime) % slotStepMin !== 0) {
       throw new AppError(400, "core_booking:invalid_slot_alignment");
+    }
+    if (staffId && !(await staffCanPerformService(db, salonId, staffId, service.id))) {
+      throw new AppError(409, "core_booking:staff_service_not_assigned");
     }
     await assertStaffRangeAvailable(
       db,
