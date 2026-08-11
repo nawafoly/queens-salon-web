@@ -23,9 +23,16 @@ function writeIfChanged(filePath, next) {
 let bookingUi = fs.readFileSync(bookingUiPath, 'utf8');
 bookingUi = replaceOnce(
   bookingUi,
-  'const staffChoicesForItem = activeVisibleStaff;',
-  'const staffChoicesForItem = availableStaff;',
-  'customer booking must display only date-available staff'
+  `                          const activeVisibleStaff = staffWithLeaveMeta\n                            .filter((x) => !x.isInactive)\n                            .map((x) => x.staff);\n                          const availableStaff = staffWithLeaveMeta\n                            .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)\n                            .map((x) => x.staff);\n                          const staffChoicesForItem = activeVisibleStaff;`,
+  `                          const availableStaff = staffWithLeaveMeta\n                            .filter((x) => !x.leave.isOnLeave && x.hasWorkingHours && !x.isInactive)\n                            .map((x) => x.staff);\n                          const coreUnavailableForItem = staffFullDayByItem[it.id] || {};\n                          const staffChoicesForItem = availableStaff.filter((staff: any) => {\n                            const id = String(staff?.id || "").trim();\n                            return !id || !coreUnavailableForItem[id];\n                          });`,
+  'customer booking must display only staff with a usable slot on the selected date'
+);
+
+bookingUi = replaceOnce(
+  bookingUi,
+  `      const rows = Array.from(\n        new Set(\n          (availability.takenTimes || [])\n            .map((time) => String(time || "").trim())\n            .filter(Boolean)\n        )\n      );`,
+  `      const rows = availability.availableForDate === false\n        ? Array.from(\n            { length: Math.ceil((24 * 60) / Math.max(5, slotStepMin)) },\n            (_, index) => {\n              const minute = index * Math.max(5, slotStepMin);\n              return \`${'${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}' }\`;\n            }\n          )\n        : Array.from(\n            new Set(\n              (availability.takenTimes || [])\n                .map((time) => String(time || "").trim())\n                .filter(Boolean)\n            )\n          );`,
+  'customer booking must honor Core full-day unavailability'
 );
 
 let bookingRepo = fs.readFileSync(bookingRepoPath, 'utf8');
