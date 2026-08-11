@@ -18,7 +18,9 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import type { HrSession } from "./shared";
+import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";
 import { CoreFilesService } from "../../services/CoreFilesService";
+import { exportLeaveRequestToExcel, printLeaveRequestDocument } from "../../services/leaveRequestExport";
 import { usePermissions } from "../../security/PermissionContext";
 import {
   DashboardDatePickerV2,
@@ -713,6 +715,16 @@ export default function AdminEmployeeRequestsPage(_props: Props) {
               <time>{formatDateTime(selected.cancelled_at || closureEvent?.created_at || selected.updated_at)}</time>
             </div>
           </div>
+        ) : null}
+
+        {selected.request_type === "leave" ? (
+          <section className="admin-leave-request-document-shell">
+            <div className="leave-request-export-toolbar">
+              <button type="button" className="is-primary" onClick={printLeaveRequestDocument}>طباعة / حفظ PDF</button>
+              <button type="button" onClick={() => exportLeaveRequestToExcel(selected)}>تصدير Excel</button>
+            </div>
+            <LeaveRequestDocument request={selected} />
+          </section>
         ) : null}
 
         <div className="admin-employee-request-detail__layout">
