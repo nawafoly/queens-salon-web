@@ -1,6 +1,7 @@
 import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "../../services/employeeRequests";
 import "../../styles/LeaveRequestDocument.css";
+import "../../styles/LeaveRequestPrintCompact.css";
 
 export type LeaveRequestFormState = Record<string, string | boolean>;
 
