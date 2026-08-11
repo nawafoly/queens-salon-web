@@ -2,7 +2,19 @@
 
 import { cleanText, dbAll, dbFirst } from '../d1.js';
 import { resolveEmployeeShift } from './shift-control.js';
-import { staffIsActive, staffIsAvailableForDate } from './staff.js';
+
+const INACTIVE_EMPLOYMENT_STATUSES = new Set([
+  'inactive',
+  'disabled',
+  'suspended',
+  'archived',
+  'deleted',
+  'terminated',
+  'resigned',
+  'ended',
+  'stopped',
+  'blocked',
+]);
 
 function safeFakeRows(db, table) {
   if (!db?.__fakeD1 || typeof db.rows !== 'function') return [];
@@ -11,6 +23,16 @@ function safeFakeRows(db, table) {
   } catch {
     return [];
   }
+}
+
+function staffIsActiveForBooking(staff) {
+  const statuses = [
+    staff?.employment_status,
+    staff?.hr_profile_status,
+    staff?.hr_employment_status,
+    staff?.hr_account_status,
+  ].map((status) => cleanText(status || 'active').toLowerCase());
+  return Number(staff?.active) === 1 && statuses.every((status) => !INACTIVE_EMPLOYMENT_STATUSES.has(status));
 }
 
 function legacyLeaveActive(staff, date) {
@@ -100,10 +122,30 @@ function partialLeaveRanges(leaves) {
     }));
 }
 
+function legacyScheduleAvailability(staff, date, startTime = '', endTime = '') {
+  const schedules = Array.isArray(staff?.schedules) ? staff.schedules : [];
+  if (!schedules.length || !date) return { available: true, window: null };
+  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+  const daySchedules = schedules.filter(
+    (schedule) => Number(schedule.weekday) === weekday && Number(schedule.active) === 1
+  );
+  if (!daySchedules.length) return { available: false, window: null };
+  if (!startTime && !endTime) {
+    const first = daySchedules[0];
+    return { available: true, window: first };
+  }
+  if (!startTime || !endTime) return { available: false, window: null };
+  const matched = daySchedules.find((schedule) =>
+    timeInsideRange(startTime, cleanText(schedule.start_time), cleanText(schedule.end_time)) &&
+    timeInsideRange(endTime, cleanText(schedule.start_time), cleanText(schedule.end_time))
+  );
+  return { available: Boolean(matched), window: matched || null };
+}
+
 export async function resolveStaffBookingDay(db, salonId, staff, dateValue, startTime = '', endTime = '') {
   const employeeId = cleanText(staff?.id);
   const date = cleanText(dateValue);
-  if (!employeeId || !date || !staffIsActive(staff)) {
+  if (!employeeId || !date || !staffIsActiveForBooking(staff)) {
     return { available: false, reason: 'inactive', source: 'staff', blockedRanges: [] };
   }
 
@@ -201,8 +243,8 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
   }
 
   // Migration compatibility only: use legacy staff_schedules if no HR-dated truth exists.
-  const legacyAvailable = staffIsAvailableForDate(staff, date, startTime, endTime);
-  if (!legacyAvailable) {
+  const legacy = legacyScheduleAvailability(staff, date, startTime, endTime);
+  if (!legacy.available) {
     return {
       available: false,
       reason: 'legacy_schedule_off',
@@ -211,16 +253,12 @@ export async function resolveStaffBookingDay(db, salonId, staff, dateValue, star
     };
   }
 
-  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
-  const legacyWindow = (Array.isArray(staff?.schedules) ? staff.schedules : []).find((row) =>
-    Number(row.weekday) === weekday && Number(row.active) === 1
-  );
   return {
     available: true,
     reason: '',
-    source: legacyWindow ? 'staff_schedules' : 'fallback',
-    startTime: cleanText(legacyWindow?.start_time),
-    endTime: cleanText(legacyWindow?.end_time),
+    source: legacy.window ? 'staff_schedules' : 'fallback',
+    startTime: cleanText(legacy.window?.start_time),
+    endTime: cleanText(legacy.window?.end_time),
     blockedRanges,
   };
 }
