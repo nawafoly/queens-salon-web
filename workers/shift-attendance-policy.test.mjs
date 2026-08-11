@@ -32,6 +32,26 @@ test("late minutes must be compensated after the shift", () => {
   );
 });
 
+test("five-minute late arrival remains five missing minutes unless compensated", () => {
+  const withoutCompensation = calculateAttendanceMinutePolicy({
+    actualLateMinutes: 5,
+    afterScheduleMinutes: 0,
+    earlyLeaveMinutes: 0,
+  });
+  assert.equal(withoutCompensation.actualLateMinutes, 5);
+  assert.equal(withoutCompensation.uncompensatedLateMinutes, 5);
+  assert.equal(withoutCompensation.missingMinutes, 5);
+
+  const fullyCompensated = calculateAttendanceMinutePolicy({
+    actualLateMinutes: 5,
+    afterScheduleMinutes: 5,
+    earlyLeaveMinutes: 0,
+  });
+  assert.equal(fullyCompensated.compensatedLateMinutes, 5);
+  assert.equal(fullyCompensated.uncompensatedLateMinutes, 0);
+  assert.equal(fullyCompensated.missingMinutes, 0);
+});
+
 test("there is no early-departure grace and early arrival does not compensate it", () => {
   assert.equal(
     calculateAttendanceMinutePolicy({
@@ -85,6 +105,24 @@ test("check-in remains open at the exact boundary and closes one minute later", 
       lockAfterMinutes: 30,
     }
   );
+});
+
+test("Riyadh 15:05 is inside a 15:00 shift check-in window", () => {
+  const result = evaluateCheckInWindow({
+    type: "check_in",
+    now: "2026-08-05T12:05:00.000Z",
+    shift: {
+      source: "weekly_schedule",
+      active: 1,
+      template_start_time: "15:00",
+      late_grace_minutes: 15,
+      attendance_lock_enabled: 1,
+      attendance_lock_after_minutes: 30,
+    },
+  });
+  assert.equal(result.result, "allowed");
+  assert.equal(result.dateKey, "2026-08-05");
+  assert.equal(result.closesAtMinutes, 930);
 });
 
 test("check-out is never blocked by the late check-in window", () => {
