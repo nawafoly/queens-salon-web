@@ -280,8 +280,8 @@ function isResolvedShiftOff(value?: Record<string, unknown> | CoreResolvedShift 
 function specialDayPriority(day?: AttendanceSpecialDay | null) {
   if (!day) return 0;
   if (day.kind === "leave" || day.kind === "rest") return 40;
+  if (day.kind === "weekly_off") return 35;
   if (day.kind === "exception_off") return 30;
-  if (day.kind === "weekly_off") return 20;
   return 0;
 }
 
