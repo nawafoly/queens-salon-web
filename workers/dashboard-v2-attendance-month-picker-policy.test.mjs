@@ -43,3 +43,12 @@ test("the compact picker remains inside the calendar toolbar instead of restorin
     /\.dsv2-ew-attendance-calendar-card \.dsv2-ew-card__actions/
   );
 });
+
+test("the month popover grid is isolated from the attendance calendar alignment grid", () => {
+  assert.match(attendancePickerSource, /dsv2-ew-attendance-month-picker-grid/);
+  assert.match(attendancePickerStyles, /\.dashboard-v2 \.dsv2-ew-attendance-month-picker-grid/);
+  assert.doesNotMatch(
+    attendancePickerSource,
+    /className=["']dsv2-ew-attendance-month-grid["']\s+role=["']grid["']/
+  );
+});
