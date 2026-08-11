@@ -1,5 +1,9 @@
-import * as XLSX from "xlsx";
 import type { EmployeeRequest } from "./employeeRequests";
+import {
+  EMPLOYEE_REQUEST_STATUS_LABELS,
+} from "./employeeRequests";
+import { exportReportToExcelV2 } from "./exports-v2/excel";
+import type { ExportV2Report } from "./exports-v2/types";
 import { LEAVE_REQUEST_ADDRESSEE, leaveDays, leaveTypeLabel } from "../components/hr/LeaveRequestDocument";
 
 function sanitizeFilePart(value: unknown) {
@@ -42,12 +46,18 @@ function decisionData(request: EmployeeRequest) {
   const rejected = request.status === "rejected" ||
     ["reject", "rejected"].includes(String(event?.event_type || "").toLowerCase());
   return {
-    decision: approved ? "موافقة" : rejected ? "رفض / أخرى" : "قيد المراجعة",
-    actor: event?.actor_name || request.assigned_to_name || "",
-    note: request.rejection_reason || request.decision_note || event?.note || "",
+    decision: approved ? "مع الموافقة" : rejected ? "أخرى / مرفوض" : "قيد المراجعة",
+    actor: event?.actor_name || request.assigned_to_name || "لم يحدد بعد",
+    note: request.rejection_reason || request.decision_note || event?.note || "—",
     date: event?.created_at || request.approved_at || request.rejected_at || "",
   };
 }
+
+type LeaveExcelRow = {
+  section: string;
+  field: string;
+  value: string | number;
+};
 
 export function printLeaveRequestDocument() {
   window.print();
@@ -58,42 +68,68 @@ export function exportLeaveRequestToExcel(request: EmployeeRequest) {
   const decision = decisionData(request);
   const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
   const days = leaveDays(payload.startDate, payload.endDate);
+  const statusLabel = EMPLOYEE_REQUEST_STATUS_LABELS[request.status] || request.status;
 
-  const rows: Array<[string, string | number]> = [
-    ["طلب إجازة", ""],
-    ["الجهة", LEAVE_REQUEST_ADDRESSEE],
-    ["رقم الطلب", request.request_number],
-    ["اسم الموظفة", employeeName],
-    ["رقم الموظفة", request.employee_id],
-    ["نوع الإجازة", leaveTypeLabel(payload.leaveType)],
-    ["من تاريخ", formatDate(payload.startDate)],
-    ["إلى تاريخ", formatDate(payload.endDate)],
-    ["عدد الأيام", days],
-    ["سبب الإجازة", String(payload.reason || "")],
-    ["ملاحظات الموظفة", String(payload.notes || "")],
-    ["تاريخ تقديم الطلب", formatDateTime(request.submitted_at)],
-    ["توقيع الموظفة", `توقيع إلكتروني - ${formatDateTime(request.submitted_at)}`],
-    ["", ""],
-    ["رأي المدير الإداري", ""],
-    ["اسم المسؤول", decision.actor],
-    ["القرار", decision.decision],
-    ["ملاحظات القرار", decision.note],
-    ["تاريخ القرار", formatDateTime(decision.date)],
-    ["التوقيع الإداري", decision.date ? `توقيع إلكتروني - ${formatDateTime(decision.date)}` : ""],
-    ["حالة الطلب", request.status],
+  const rows: LeaveExcelRow[] = [
+    { section: "بيانات الخطاب", field: "الجهة", value: LEAVE_REQUEST_ADDRESSEE },
+    { section: "بيانات الخطاب", field: "رقم الطلب", value: request.request_number },
+    { section: "بيانات الموظفة", field: "اسم الموظفة", value: employeeName },
+    { section: "بيانات الموظفة", field: "رقم الموظفة", value: request.employee_id },
+    { section: "بيانات الإجازة", field: "نوع الإجازة", value: leaveTypeLabel(payload.leaveType) },
+    { section: "بيانات الإجازة", field: "من تاريخ", value: formatDate(payload.startDate) },
+    { section: "بيانات الإجازة", field: "إلى تاريخ", value: formatDate(payload.endDate) },
+    { section: "بيانات الإجازة", field: "عدد الأيام", value: days },
+    { section: "بيانات الإجازة", field: "سبب الإجازة", value: String(payload.reason || "—") },
+    { section: "بيانات الإجازة", field: "ملاحظات الموظفة", value: String(payload.notes || "—") },
+    { section: "التوقيع الإلكتروني", field: "تاريخ تقديم الطلب", value: formatDateTime(request.submitted_at) },
+    { section: "التوقيع الإلكتروني", field: "توقيع الموظفة", value: `توقيع إلكتروني - ${formatDateTime(request.submitted_at)}` },
+    { section: "رأي المدير الإداري", field: "اسم المسؤول", value: decision.actor },
+    { section: "رأي المدير الإداري", field: "القرار", value: decision.decision },
+    { section: "رأي المدير الإداري", field: "ملاحظات / القرار", value: decision.note },
+    { section: "رأي المدير الإداري", field: "تاريخ القرار", value: decision.date ? formatDateTime(decision.date) : "—" },
+    { section: "رأي المدير الإداري", field: "التوقيع الإداري", value: decision.date ? `توقيع إلكتروني - ${formatDateTime(decision.date)}` : "—" },
+    { section: "حالة الطلب", field: "الحالة", value: statusLabel },
   ];
 
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
-  worksheet["!cols"] = [{ wch: 24 }, { wch: 62 }];
-  worksheet["!merges"] = [
-    XLSX.utils.decode_range("A1:B1"),
-    XLSX.utils.decode_range("A15:B15"),
-  ];
+  const report: ExportV2Report<LeaveExcelRow> = {
+    slug: `طلب-اجازة-${sanitizeFilePart(employeeName)}`,
+    reportCode: request.request_number,
+    title: "طلب إجازة",
+    subtitle: LEAVE_REQUEST_ADDRESSEE,
+    summarySheetName: "نموذج الإجازة",
+    detailsSheetName: "بيانات الطلب",
+    period: `${formatDate(payload.startDate)} - ${formatDate(payload.endDate)}`,
+    generatedAt: new Date().toISOString(),
+    generatedBy: employeeName,
+    branding: {
+      salonName: "ملكات",
+      brandName: "Malikat",
+    },
+    filters: [
+      { label: "رقم الطلب", value: request.request_number },
+      { label: "الموظفة", value: employeeName },
+      { label: "الحالة", value: statusLabel },
+    ],
+    summary: [
+      { label: "رقم الطلب", value: request.request_number, tone: "gold" },
+      { label: "الموظفة", value: employeeName, tone: "dark" },
+      { label: "نوع الإجازة", value: leaveTypeLabel(payload.leaveType), tone: "neutral" },
+      { label: "عدد الأيام", value: days, type: "number", tone: "gold" },
+      { label: "القرار", value: decision.decision, tone: decision.decision === "مع الموافقة" ? "success" : decision.decision.includes("مرفوض") ? "danger" : "neutral" },
+      { label: "الحالة", value: statusLabel, tone: "neutral" },
+    ],
+    columns: [
+      { key: "section", header: "القسم", width: 22 },
+      { key: "field", header: "البيان", width: 26 },
+      { key: "value", header: "التفاصيل", width: 42 },
+    ],
+    rows,
+    notes: [
+      "نسخة إلكترونية كاملة من طلب الإجازة.",
+      "التوقيعات المعروضة هي توقيعات إلكترونية مرتبطة بسجل الطلب داخل النظام.",
+    ],
+    pdfOrientation: "portrait",
+  };
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "طلب إجازة");
-
-  const requestDate = String(payload.startDate || request.submitted_at || "").slice(0, 10);
-  const fileName = `طلب-اجازة-${sanitizeFilePart(employeeName)}-${sanitizeFilePart(requestDate)}.xlsx`;
-  XLSX.writeFile(workbook, fileName, { compression: true });
+  exportReportToExcelV2(report);
 }
