@@ -206,7 +206,6 @@ function buildCorePlan({ args, weekday, employee, schedules }) {
   });
 
   const statements = [
-    `-- Weekly-off migration for ${text(employee.name)} (${args.employeeId})`,
     `UPDATE hr_work_schedules
 SET effective_to = ${sqlValue(beforeDate)}, updated_at = ${sqlValue(now)}
 WHERE salon_id = ${sqlValue(args.salonId)}
