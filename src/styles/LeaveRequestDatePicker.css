@@ -1,0 +1,56 @@
+.leave-doc-date-field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.leave-doc-date-field > span {
+  color: #444;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.leave-doc-date-field.dashboard-v2 {
+  --dsv2-control-height: 44px;
+}
+
+.leave-doc-date-field.dashboard-v2 .dsv2-date-v2__trigger {
+  min-height: 44px;
+  padding-inline: 4px;
+  border: 0;
+  border-bottom: 1px solid #222;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.leave-doc-date-field.dashboard-v2 .dsv2-date-v2__trigger[data-open="true"] {
+  border-bottom-color: #b78a1b;
+  box-shadow: 0 2px 0 rgba(183, 138, 27, 0.16);
+}
+
+.leave-doc-date-field.dashboard-v2 .dsv2-date-v2__value {
+  color: #111;
+  font-family: Tahoma, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.leave-doc-date-field.dashboard-v2 .dsv2-date-v2__value[data-placeholder="true"] {
+  color: #8a94a4;
+  direction: rtl;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .leave-doc-date-field.dashboard-v2 .dsv2-date-v2__trigger {
+    min-height: 46px;
+  }
+}
+
+@media print {
+  .leave-doc-date-field {
+    display: none !important;
+  }
+}
