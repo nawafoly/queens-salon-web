@@ -405,6 +405,11 @@ export function buildAttendanceSpecialDayMap(input: {
       });
       return;
     }
+    if (override?.enabled === true) {
+      // An explicit working override re-opens a normally closed weekly-off day
+      // for this date only. Do not also label the same date as weekly off.
+      return;
+    }
 
     if (isWeeklyOffDateKey(date, profileWeeklyOffDaysForDate(profile, date))) {
       addSpecialDate(days, {
