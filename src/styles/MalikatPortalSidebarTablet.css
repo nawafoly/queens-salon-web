@@ -1,0 +1,58 @@
+/* Keep the employee portal sidebar inside the layout on tablets/iPad.
+   The desktop sidebar used to sit over the route content at landscape widths. */
+@media (min-width: 821px) and (max-width: 1366px) {
+  html body #root .employee-portal.madan-employee-portal .employee-portal-layout--app {
+    display: flex !important;
+    flex-direction: row-reverse !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+    direction: ltr !important;
+  }
+
+  html body #root .employee-portal.madan-employee-portal .employee-portal-layout--app > .employee-portal-sidebar {
+    position: sticky !important;
+    inset: auto !important;
+    top: 0 !important;
+    right: auto !important;
+    left: auto !important;
+    z-index: 40 !important;
+    flex: 0 0 min(286px, 27vw) !important;
+    width: min(286px, 27vw) !important;
+    max-width: min(286px, 27vw) !important;
+    min-width: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    transform: none !important;
+    direction: rtl !important;
+  }
+
+  html body #root .employee-portal.madan-employee-portal .employee-portal-layout--app > .employee-portal-sidebar.is-collapsed {
+    flex-basis: 78px !important;
+    width: 78px !important;
+    max-width: 78px !important;
+  }
+
+  html body #root .employee-portal.madan-employee-portal .employee-portal-layout--app > .employee-portal-main {
+    position: relative !important;
+    inset: auto !important;
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding-inline: 0 !important;
+    transform: none !important;
+    overflow-x: hidden !important;
+    direction: rtl !important;
+  }
+
+  html body #root .employee-portal.madan-employee-portal .employee-request-modal,
+  html body #root .employee-portal.madan-employee-portal .employee-request-sheet {
+    z-index: 1200 !important;
+  }
+}
