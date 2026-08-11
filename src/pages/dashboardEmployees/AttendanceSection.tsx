@@ -205,14 +205,22 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
         ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
         ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
       ];
+  const weeklyOffDays = [...explicitOffDays, ...customOffDays];
+  const overrideReopensDay = override?.enabled === true;
+  const effectiveWeeklyOffDays = overrideReopensDay
+    ? weeklyOffDays.filter((value) => {
+        const token = cleanText(value).toLowerCase();
+        return token !== weekdayKey && token !== WEEKDAY_TO_OFF_KEY[weekdayKey];
+      })
+    : weeklyOffDays;
 
-  if (override?.enabled === false || customDay?.enabled === false) {
+  if (override?.enabled === false || (!overrideReopensDay && customDay?.enabled === false)) {
     return {
       startTime: "",
       endTime: "",
       lateGraceMinutes: readPolicyMinutes(effectiveSource.lateGraceMinutes, effectiveSource.late_grace_minutes),
       earlyLeaveGraceMinutes: 0,
-      weeklyOffDays: [...explicitOffDays, ...customOffDays],
+      weeklyOffDays: effectiveWeeklyOffDays,
     };
   }
 
@@ -235,7 +243,7 @@ function resolveAttendanceSchedule(dateKey: string, schedule?: Record<string, un
       "17:00",
     lateGraceMinutes: readPolicyMinutes(effectiveSource.lateGraceMinutes, effectiveSource.late_grace_minutes),
     earlyLeaveGraceMinutes: 0,
-    weeklyOffDays: [...explicitOffDays, ...customOffDays],
+    weeklyOffDays: effectiveWeeklyOffDays,
   };
 }
 
@@ -563,10 +571,15 @@ function resolveSelectedShiftInfo(input: {
       tone: "gold",
     };
   }
+  const dayOverride = getDayOverride(dateKey, schedule || {});
+  const coreSource = cleanText(coreResolvedShift?.source).toLowerCase();
+  const coreExceptionType = cleanText(coreResolvedShift?.exceptionType || coreResolvedShift?.exception_type).toLowerCase();
+  const coreWeeklyOff = coreSource === "weekly_schedule" &&
+    (coreExceptionType === "off" || Number((coreResolvedShift as any)?.active) !== 1);
   const coreInfo = coreShiftInfo(dateKey, coreResolvedShift);
-  if (coreInfo) return coreInfo;
+  if (coreInfo && !(dayOverride?.enabled === true && coreWeeklyOff)) return coreInfo;
   const rowInfo = recordShiftInfo(dateKey, row);
-  if (rowInfo) return rowInfo;
+  if (rowInfo && !(dayOverride?.enabled === true && coreWeeklyOff)) return rowInfo;
   const fallback = fallbackShiftInfo({ dateKey, schedule, salonBusinessHours });
   if (coreLoading) {
     return {
