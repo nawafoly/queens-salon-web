@@ -11,6 +11,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserTie } from "@fortawesome/free-solid-svg-icons";
 
 import EmployeeNotificationBellMenu from "./EmployeeNotificationBellMenu";
+import EmployeeRequestNotificationBell from "./EmployeeRequestNotificationBell";
 import "../styles/DashboardHeader.css";
 
 type DashboardHeaderTheme = "dashboard" | "admin" | "employee";
@@ -98,6 +99,10 @@ export default function DashboardHeader({
   const isProfilePage = location.pathname === "/employee/overview";
   const shouldShowProfileButton = showProfileButton && !isEmployeePortal;
   const shouldUseEmployeeNotificationMenu = theme === "employee" && isEmployeePortal;
+  const shouldUseDashboardRequestNotificationBell =
+    theme === "dashboard" &&
+    location.pathname.startsWith("/dashboard") &&
+    !location.pathname.startsWith("/dashboard/tv-queue");
   const employeeUnreadCount = shouldUseEmployeeNotificationMenu
     ? extractEmployeeNotificationUnreadCount(actions)
     : 0;
@@ -133,7 +138,7 @@ export default function DashboardHeader({
       </div>
 
       <div className="dashboard-header__meta dash-topbar-right">
-        {shouldShowProfileButton || visibleActions || shouldUseEmployeeNotificationMenu ? (
+        {shouldShowProfileButton || visibleActions || shouldUseEmployeeNotificationMenu || shouldUseDashboardRequestNotificationBell ? (
           <div
             className={joinClassNames(
               "dashboard-header__actions",
@@ -154,6 +159,9 @@ export default function DashboardHeader({
               </button>
             ) : null}
 
+            {shouldUseDashboardRequestNotificationBell ? (
+              <EmployeeRequestNotificationBell />
+            ) : null}
             {visibleActions}
             {shouldUseEmployeeNotificationMenu ? (
               <EmployeeNotificationBellMenu initialUnreadCount={employeeUnreadCount} />
