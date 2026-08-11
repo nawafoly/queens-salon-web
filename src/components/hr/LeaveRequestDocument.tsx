@@ -3,6 +3,7 @@ import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/emplo
 import DashboardDatePickerV2 from "../dashboard-v2/DashboardDatePickerV2";
 import SignatureCaptureField from "./SignatureCaptureField";
 import "../../styles/LeaveRequestDocument.css";
+import "../../styles/LeaveRequestDatePicker.css";
 import "../../styles/LeaveRequestPrintCompact.css";
 
 export type LeaveRequestFormState = Record<string, string | boolean>;
@@ -165,7 +166,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
       </div>
 
       <div className="leave-doc-fields-grid">
-        <div className="leave-doc-date-field">
+        <div className="leave-doc-date-field dashboard-v2">
           <span>من تاريخ</span>
           <DashboardDatePickerV2
             value={startDate}
@@ -175,7 +176,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
             onChange={updateStartDate}
           />
         </div>
-        <div className="leave-doc-date-field">
+        <div className="leave-doc-date-field dashboard-v2">
           <span>إلى تاريخ</span>
           <DashboardDatePickerV2
             value={endDate}
