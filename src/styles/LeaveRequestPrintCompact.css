@@ -1,0 +1,172 @@
+/* Compact A4 override for the official leave-request document only. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+
+  .leave-request-print-root {
+    width: 198mm !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 7mm 10mm 6mm !important;
+    font-size: 10.5px !important;
+    line-height: 1.45 !important;
+    overflow: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid-page !important;
+  }
+
+  .leave-request-print-root .leave-doc-header {
+    min-height: 20mm !important;
+    margin-bottom: 4mm !important;
+    padding-bottom: 2mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-header h2 {
+    margin-top: 2mm !important;
+    font-size: 18px !important;
+  }
+
+  .leave-request-print-root .leave-doc-brand {
+    min-width: 34mm !important;
+    padding-top: 0 !important;
+  }
+
+  .leave-request-print-root .leave-doc-brand img {
+    width: 34mm !important;
+    max-height: 17mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-number {
+    margin: -1mm 0 2.5mm !important;
+    font-size: 9.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-type-row {
+    gap: 3px !important;
+    margin-bottom: 3mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-checkbox {
+    padding: 2px 1px !important;
+    gap: 5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-checkbox > span {
+    width: 16px !important;
+    height: 16px !important;
+    flex-basis: 16px !important;
+    border-width: 1.4px !important;
+    font-size: 11px !important;
+  }
+
+  .leave-request-print-root .leave-doc-checkbox strong {
+    font-size: 10.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-letter {
+    margin-bottom: 2.5mm !important;
+    font-size: 10.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-letter p {
+    margin: 1px 0 !important;
+  }
+
+  .leave-request-print-root .leave-doc-greeting {
+    margin-top: 2mm !important;
+    margin-bottom: 1.5mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-inline-value {
+    min-width: 19mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-fields-grid {
+    gap: 4px 10px !important;
+    margin: 3mm 0 !important;
+  }
+
+  .leave-request-print-root .leave-doc-static-field {
+    min-height: 11mm !important;
+    padding: 1px 1px 3px !important;
+  }
+
+  .leave-request-print-root .leave-doc-static-field > span,
+  .leave-request-print-root .leave-doc-print-text > span,
+  .leave-request-print-root .leave-doc-signature-row span {
+    font-size: 8.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-static-field strong,
+  .leave-request-print-root .leave-doc-signature-row strong {
+    font-size: 10.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-print-text {
+    margin: 2.5mm 0 !important;
+  }
+
+  .leave-request-print-root .leave-doc-print-text p {
+    min-height: 8mm !important;
+    padding: 2px 1px !important;
+    font-size: 10px !important;
+  }
+
+  .leave-request-print-root .leave-doc-signature-row {
+    gap: 10mm !important;
+    margin-top: 3mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-signature-row > div {
+    min-height: 10mm !important;
+    gap: 1px !important;
+  }
+
+  .leave-request-print-root .leave-doc-signature-row small {
+    font-size: 8px !important;
+  }
+
+  .leave-request-print-root .leave-doc-manager-opinion {
+    margin-top: 4mm !important;
+    padding-top: 3mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-manager-opinion h3,
+  .leave-request-print-root .leave-doc-admin-block h3 {
+    margin-bottom: 1.5mm !important;
+    font-size: 11.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-manager-opinion p {
+    margin: 0 !important;
+    font-size: 9.5px !important;
+  }
+
+  .leave-request-print-root .leave-doc-admin-block {
+    margin-top: 3mm !important;
+    padding-top: 2.5mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-admin-options {
+    gap: 6px !important;
+    margin: 1mm 0 2mm !important;
+  }
+
+  .leave-request-print-root .leave-doc-admin-footer {
+    gap: 12mm !important;
+    margin-top: 3mm !important;
+    font-size: 9px !important;
+  }
+
+  .leave-request-print-root .leave-doc-admin-footer span {
+    min-height: 7mm !important;
+    padding-top: 2px !important;
+  }
+
+  .leave-request-print-root .leave-doc-copy-note {
+    margin-top: 3mm !important;
+    font-size: 7.5px !important;
+  }
+}
