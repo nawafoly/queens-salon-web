@@ -10,7 +10,7 @@ const pattern = /\n\s*const leave = getStaffLeaveMetaForDate\(st as any, dateISO
 
 const matches = [...text.matchAll(new RegExp(pattern.source, 'g'))];
 if (matches.length !== 1) {
-  throw new Error(`[core-availability-precheck-race] expected exactly 1 legacy pre-check, found ${matches.length}`);
+  throw new Error(`[core-availability-precheck-race] expected exactly 1 target pre-check, found ${matches.length}`);
 }
 
 text = text.replace(
@@ -18,8 +18,9 @@ text = text.replace(
   `\n              // Core availability below is authoritative for dated staff visibility.\n              // Do not pre-decide availability from the schedule-window cache before\n              // the request has populated it; this avoids showing off/leave staff.\n`
 );
 
-if (text.includes('const workingSlots = filterSlotsToCoreWindows(baseSlotsForDate, getCoreStaffWindows(dateISO')) {
-  throw new Error('[core-availability-precheck-race] legacy pre-check still present after replacement');
+// Validate only the targeted race block. Other Core-window reads elsewhere are valid.
+if (pattern.test(text)) {
+  throw new Error('[core-availability-precheck-race] target pre-check still present after replacement');
 }
 
 const output = eol === '\r\n' ? text.replace(/\n/g, '\r\n') : text;
