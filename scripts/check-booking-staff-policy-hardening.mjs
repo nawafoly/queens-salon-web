@@ -17,9 +17,16 @@ const rejectText = (content, needle, message) => {
   if (content.includes(needle)) failures.push(message);
 };
 
+// Customer booking must wait for the authoritative Core date/service/staff context,
+// then render only staff that still have a usable slot on that date.
 requireText(
   ui,
-  'const staffChoicesForItem = availableStaff.filter((staff: any) => {',
+  'const coreAvailabilityLoading =',
+  'Customer booking must wait for Core availability before rendering staff.'
+);
+requireText(
+  ui,
+  ': availableStaff.filter((staff: any) => {',
   'Customer booking must hide staff without a usable slot on the selected date.'
 );
 requireText(
