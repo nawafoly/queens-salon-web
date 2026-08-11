@@ -426,6 +426,7 @@ export function buildAttendanceSpecialDayMap(input: {
     coreShifts.forEach((item) => {
       const date = normalizeDateKey(item.date || item.dateKey);
       if (!date || date < fromDate || date > toDate || !isCoreResolvedOff(item.resolvedShift || item)) return;
+      if (days.get(date)?.kind === "weekly_off") return;
       addSpecialDate(days, {
         date,
         kind: "exception_off",
@@ -437,6 +438,7 @@ export function buildAttendanceSpecialDayMap(input: {
     Object.entries(coreShifts).forEach(([dateValue, shift]) => {
       const date = normalizeDateKey(dateValue);
       if (!date || date < fromDate || date > toDate || !isCoreResolvedOff(shift)) return;
+      if (days.get(date)?.kind === "weekly_off") return;
       addSpecialDate(days, {
         date,
         kind: "exception_off",
