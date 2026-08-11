@@ -76,7 +76,7 @@ function initialForm(type: EmployeeRequestType): FormState {
   if (type === "permission") return { ...common, date: today, startTime: "12:00", endTime: "13:00" };
   if (type === "overtime") return { ...common, date: today, startTime: "23:00", endTime: "00:00", taskSummary: "", location: "", requestedByManager: "" };
   if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };
-  if (type === "leave") return { ...common, leaveType: "annual", startDate: today, endDate: today, durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
+  if (type === "leave") return { ...common, leaveType: "annual", startDate: "", endDate: "", durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
   if (type === "exit_return") return { ...common, expectedExitAt: localDateTimeValue(1), expectedReturnAt: localDateTimeValue(3), destination: "", contactMethod: "" };
   return { ...common, submissionDate: today, proposedLastWorkingDay: today, noticeDays: "30", hasAssetsToReturn: false, acknowledgement: false };
 }
@@ -187,7 +187,13 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
     setBusy(true);
     setError("");
     try {
-      if (type === "leave" && leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
+      if (type === "leave") {
+        const startDate = String(form.startDate || "");
+        const endDate = String(form.endDate || "");
+        if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وتاريخ العودة قبل الإرسال.");
+        if (endDate <= startDate) throw new Error("يجب أن يكون تاريخ العودة بعد تاريخ بداية الإجازة.");
+        if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
+      }
       if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error("حجم المرفق يتجاوز 10 ميجابايت.");
       const request = await createEmployeeRequest({ requestType: type, payload: form });
       if (attachment) {
