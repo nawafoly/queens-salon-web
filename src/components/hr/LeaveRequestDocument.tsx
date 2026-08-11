@@ -237,8 +237,19 @@ export default function LeaveRequestDocument({ request }: DocumentProps) {
   const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
   const employeeSignature = String(payload.employeeSignatureDataUrl || "");
 
+  const exportWord = async () => {
+    try {
+      const { exportLeaveRequestToWord } = await import("../../services/leaveRequestExport");
+      await exportLeaveRequestToWord(request);
+    } catch (cause) {
+      window.alert(String((cause as Error)?.message || "تعذر تصدير ملف Word."));
+    }
+  };
+
   return (
     <section className="leave-doc leave-request-print-root" dir="rtl" data-request-number={request.request_number}>
+      <button type="button" className="leave-doc-word-export" onClick={() => void exportWord()}>تصدير Word</button>
+
       <header className="leave-doc-header">
         <MalikatDocumentLogo />
         <h2>طلب إجازة</h2>
