@@ -6,8 +6,14 @@
   display: none;
 }
 
-.dashboard-v2 .dsv2-ew-attendance-month-trigger {
+.dashboard-v2 .dsv2-ew-attendance-month-control {
+  position: relative;
   order: -1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-trigger {
   inline-size: 36px;
   block-size: 36px;
   min-inline-size: 36px;
@@ -19,12 +25,120 @@
   block-size: 17px;
 }
 
-.dashboard-v2 .dsv2-ew-attendance-month-native {
+.dashboard-v2 .dsv2-ew-attendance-month-popover {
   position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
+  inset-inline-start: 0;
+  inset-block-start: calc(100% + 10px);
+  z-index: 60;
+  inline-size: min(330px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 18px;
+  background: var(--dsv2-surface);
+  box-shadow: 0 18px 48px rgb(5 8 13 / 18%);
+  direction: rtl;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-popover::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 12px;
+  inset-block-start: -6px;
+  inline-size: 11px;
+  block-size: 11px;
+  border-inline-start: 1px solid var(--dsv2-ew-border);
+  border-block-start: 1px solid var(--dsv2-ew-border);
+  background: var(--dsv2-surface);
+  transform: rotate(45deg);
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-popover__head {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-popover__head strong {
+  color: var(--dsv2-black);
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-nav {
+  display: grid;
+  place-items: center;
+  inline-size: 36px;
+  block-size: 36px;
+  padding: 0;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 11px;
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-nav:hover {
+  border-color: color-mix(in srgb, var(--dsv2-gold) 55%, transparent);
+  color: var(--dsv2-black);
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-option {
+  min-block-size: 42px;
+  padding: 8px 6px;
+  border: 1px solid var(--dsv2-ew-border);
+  border-radius: 12px;
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-option:hover {
+  border-color: color-mix(in srgb, var(--dsv2-gold) 55%, transparent);
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-black);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-option[data-active="true"] {
+  border-color: var(--dsv2-black);
+  background: var(--dsv2-black);
+  color: var(--dsv2-surface);
+  box-shadow: inset 0 -3px 0 var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-current {
+  inline-size: 100%;
+  margin-block-start: 10px;
+  min-block-size: 38px;
+  border: 1px solid color-mix(in srgb, var(--dsv2-gold) 45%, var(--dsv2-ew-border));
+  border-radius: 12px;
+  background: var(--dsv2-gold-soft);
+  color: var(--dsv2-black);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dashboard-v2 .dsv2-ew-attendance-month-trigger:focus-visible,
+.dashboard-v2 .dsv2-ew-attendance-month-nav:focus-visible,
+.dashboard-v2 .dsv2-ew-attendance-month-option:focus-visible,
+.dashboard-v2 .dsv2-ew-attendance-month-current:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dsv2-gold) 70%, var(--dsv2-surface));
+  outline-offset: 2px;
 }
 
 .dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-1 .dsv2-ew-attendance-month-grid::before,
@@ -44,3 +158,16 @@
 .dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-4 .dsv2-ew-attendance-month-grid::before { grid-column: span 4; }
 .dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-5 .dsv2-ew-attendance-month-grid::before { grid-column: span 5; }
 .dashboard-v2 .dsv2-ew-attendance-calendar-alignment--start-6 .dsv2-ew-attendance-month-grid::before { grid-column: span 6; }
+
+@media (max-width: 640px) {
+  .dashboard-v2 .dsv2-ew-attendance-month-popover {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    inline-size: min(300px, calc(100vw - 24px));
+  }
+
+  .dashboard-v2 .dsv2-ew-attendance-month-popover::before {
+    inset-inline-start: auto;
+    inset-inline-end: 12px;
+  }
+}
