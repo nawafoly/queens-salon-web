@@ -1,4 +1,4 @@
-﻿
+
 export function payrollMonthBounds(year: number, month: number) {
   const normalizedMonth = Math.max(1, Math.min(12, Math.trunc(Number(month) || 1)));
   const payYear = Math.trunc(Number(year) || new Date().getFullYear());
@@ -326,9 +326,16 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     .filter((item) => item.kind === "advance")
     .reduce((total, item) => total + money(item.amountHalalas), 0);
 
+  const absenceCoveredMissingHours = Math.min(
+    attendanceSummary.totalMissingHours,
+    hours((attendanceSummary.approvedAbsenceDays || 0) * dailyScheduledHours)
+  );
+  const attendanceMissingHoursForDeduction = hours(
+    Math.max(0, attendanceSummary.totalMissingHours - absenceCoveredMissingHours)
+  );
   const missingHoursDeductionHalalas =
     attendanceDeductionEligible
-      ? roundHalalas(attendanceSummary.totalMissingHours * hourlyRateHalalas)
+      ? roundHalalas(attendanceMissingHoursForDeduction * hourlyRateHalalas)
       : 0;
   const absenceDeductionHalalas =
     payrollSetup.complete && dailyRateHalalas > 0
