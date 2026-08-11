@@ -88,7 +88,6 @@ export type EmployeeRequest = {
   }>;
 };
 
-
 export type EmployeeRequestAssignee = {
   id: string;
   uid: string;
@@ -103,7 +102,22 @@ const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
   "core_employee_request:invalid_transition": "لا يمكن تنفيذ هذا الإجراء في الحالة الحالية للطلب.",
   "core_employee_request:cannot_cancel_executed":
     "لا يمكن إلغاء الطلب لأن الإدارة بدأت تنفيذه بالفعل. أُغلقت نافذة الإلغاء وتم تحديث حالة الطلب الحالية.",
-  "core_employee_request:version_conflict": "تم تحديث الطلب من مستخدم آخر. حدّث الصفحة ثم أعد المحاولة.",
+  "core_employee_request:version_conflict":
+    "تم تحديث الطلب أثناء فتحه. تم رفض العملية لحماية البيانات من التعارض. حدّث تفاصيل الطلب ثم أعد الإجراء.",
+  "core_employee_request:execute_requires_approval":
+    "لا يمكن بدء تنفيذ الطلب قبل اعتماده. حدّث الطلب وتأكد أن حالته «تمت الموافقة» ثم أعد المحاولة.",
+  "core_employee_request:leave_overlap":
+    "تعذر تنفيذ الإجازة لأن هناك إجازة معتمدة أخرى تتداخل مع نفس الفترة.",
+  "core_employee_request:insufficient_leave_balance":
+    "تعذر تنفيذ الإجازة السنوية لأن رصيد الإجازات المتاح لا يغطي عدد الأيام المطلوبة.",
+  "core_employee_request:execution_not_ready":
+    "الطلب غير جاهز للإكمال لأن أثر التنفيذ لم يُسجل بعد.",
+  "core_employee_request:permission_overlap":
+    "يوجد استئذان معتمد آخر يتداخل مع نفس الفترة.",
+  "core_employee_request:overtime_overlap":
+    "يوجد أوفرتايم مسجل للموظفة يتداخل مع نفس الفترة.",
+  "core_employee_request:invalid_leave_range":
+    "تاريخ نهاية الإجازة يجب ألا يسبق تاريخ البداية.",
   "core_employee_request:employee_link_required": "الحساب غير مربوط بملف موظفة.",
   "core_employee_request:not_found": "الطلب غير موجود أو لا تملك صلاحية عرضه.",
   "core_employee_request:attendance_target_required":
@@ -205,6 +219,11 @@ function makeIdempotencyKey(prefix: string) {
   return `${prefix}:${random}`;
 }
 
+function isSignatureDataUrl(value: unknown) {
+  const text = String(value || "").trim();
+  return text.startsWith("data:image/") && text.includes(";base64,") && text.length > 200;
+}
+
 export async function listMyEmployeeRequests(filters: {
   type?: EmployeeRequestType | "";
   status?: EmployeeRequestStatus | "";
@@ -241,6 +260,10 @@ export async function createEmployeeRequest(input: {
   priority?: "low" | "normal" | "high" | "urgent";
   title?: string;
 }) {
+  if (input.requestType === "leave" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {
+    throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
+  }
+
   return coreApiRequest<EmployeeRequest>("/api/core/hr/employee-requests/mine", {
     method: "POST",
     body: {
@@ -298,7 +321,6 @@ export async function addEmployeeRequestComment(
   );
 }
 
-
 export async function addEmployeeRequestAttachment(
   id: string,
   input: {
@@ -325,7 +347,6 @@ export async function addEmployeeRequestAttachment(
     },
   });
 }
-
 
 export async function listEmployeeRequestAssignees(search = "") {
   return coreApiRequest<EmployeeRequestAssignee[]>(
