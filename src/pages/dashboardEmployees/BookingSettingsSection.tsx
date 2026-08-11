@@ -125,11 +125,6 @@ export default function BookingSettingsSection({
   useEffect(() => {
     if (!isVisible || shiftTemplatesLoading || shiftTemplates.length === 0) return;
 
-    // Legacy employee schedules may contain only start/end snapshots without a
-    // shiftTemplateId. The UI already resolves those snapshots to a template by
-    // matching the time window. Keep the editable parent state in sync with the
-    // exact template shown in the select so save validation and Core schedules
-    // use the same source of truth as the visible UI.
     WEEKDAY_OPTIONS.forEach((day) => {
       const current = resolveWorkingDay(day.key, modalCustomWorkingHours);
       if (current.shiftTemplateId) return;
@@ -163,10 +158,8 @@ export default function BookingSettingsSection({
     if (!root) return;
 
     const syncTarget = () => {
-      setOperationalWeekBody((current) => {
-        const next = findOperationalWeekBody(root);
-        return current === next ? current : next;
-      });
+      const next = findOperationalWeekBody(root);
+      setOperationalWeekBody((current) => current === next ? current : next);
     };
 
     syncTarget();
