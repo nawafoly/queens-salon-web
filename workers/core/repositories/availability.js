@@ -203,6 +203,13 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     }
   }
 
+  const blockedRanges = Array.isArray(bookingDay.blockedRanges) ? bookingDay.blockedRanges : [];
+  for (const range of blockedRanges) {
+    for (const time of expandRange(range.startTime, range.endTime, slotStepMin, 0)) {
+      takenTimes.add(time);
+    }
+  }
+
   let scheduleWindows = [];
   if (bookingDay.available && bookingDay.startTime && bookingDay.endTime) {
     scheduleWindows = [{
@@ -237,6 +244,7 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     unavailableReason: bookingDay.available ? "" : cleanText(bookingDay.reason),
     availabilitySource: cleanText(bookingDay.source),
     scheduleWindows,
+    blockedRanges,
     lockedTimes,
     takenTimes: [...takenTimes].sort(),
     bookedSlots,
