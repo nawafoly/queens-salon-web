@@ -14,6 +14,16 @@ import {
   permissionIntervalsFromAttendanceRecords,
 } from "../helpers/hr/permissionAttendance.ts";
 import {
+  filterPaidPermissionIntervals,
+  fullDayPaidLeaveDates,
+  mergePayrollDayUnits,
+  payrollAbsenceDayUnits,
+  payrollIntervalHours,
+  payrollLeaveDayUnits,
+  totalPayrollDayUnits,
+  unpaidPartialLeaveIntervalsForDate,
+} from "../helpers/hr/payrollLeaveAbsencePolicy.ts";
+import {
   calculateAttendanceDisciplineDay,
   summarizeAttendanceDisciplineMonth,
   type AttendanceDisciplineDaySummary,
@@ -488,6 +498,7 @@ function emptyAttendanceSummary(
     incompleteDays: 0,
     approvedLeaveDays: 0,
     approvedAbsenceDays: 0,
+    absenceDeductionOverlapHours: 0,
     attendanceRecordCount: 0,
     attendanceLinkStatus: status,
     attendanceDeductionEligible: false,
@@ -973,30 +984,36 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
       isDateKeyInRange(record.dateKey, bounds.monthStart, bounds.monthEnd) &&
       attendanceRecordMatchesEmployee(record, input.employee)
   );
-  const approvedLeaveDates = dateSetForApprovedLeaves(
-    input.leaves || [],
-    input.employee,
+  const employeeLeaves = (input.leaves || []).filter(
+    (leave) => text(leave.status).toLowerCase() === "approved" && leaveMatchesEmployee(leave, input.employee)
+  );
+  const employeeAbsences = (input.absences || []).filter(
+    (absence) => absenceMatchesEmployee(absence, input.employee)
+  );
+  const approvedLeaveDates = fullDayPaidLeaveDates(
+    employeeLeaves,
+    bounds.monthStart,
+    bounds.monthEnd
+  );
+  const paidLeaveUnits = payrollLeaveDayUnits(
+    employeeLeaves,
     bounds.monthStart,
     bounds.monthEnd,
     "paid"
   );
-  const unpaidLeaveDates = dateSetForApprovedLeaves(
-    input.leaves || [],
-    input.employee,
+  const unpaidLeaveUnits = payrollLeaveDayUnits(
+    employeeLeaves,
     bounds.monthStart,
     bounds.monthEnd,
     "unpaid"
   );
-  const recordedAbsenceDates = dateSetForAbsences(
-    input.absences || [],
-    input.employee,
+  const recordedAbsenceUnits = payrollAbsenceDayUnits(
+    employeeAbsences,
     bounds.monthStart,
     bounds.monthEnd
   );
-  const deductibleAbsenceDates = new Set([
-    ...recordedAbsenceDates,
-    ...unpaidLeaveDates,
-  ]);
+  const deductibleAbsenceUnits = mergePayrollDayUnits(recordedAbsenceUnits, unpaidLeaveUnits);
+  const paidLeaveDays = totalPayrollDayUnits(paidLeaveUnits);
   const identity = resolvePayrollAttendanceIdentity(input.employee);
   const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
     input.employee,
@@ -1023,8 +1040,8 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
             ? ["إعداد الراتب غير مكتمل؛ لم يتم احتساب خصم حضور تلقائي."]
             : ["لا توجد هوية موظفة معروفة في Core لربط سجلات البصمة."]
         ),
-        approvedLeaveDays: approvedLeaveDates.size,
-        approvedAbsenceDays: deductibleAbsenceDates.size,
+        approvedLeaveDays: paidLeaveDays,
+        approvedAbsenceDays: totalPayrollDayUnits(deductibleAbsenceUnits),
       },
     };
   }
@@ -1035,6 +1052,11 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     recordsByDate.set(record.dateKey, list);
   }
 
+  const eligibleUnpaidLeaveUnits = new Map<string, number>();
+  const eligibleRecordedAbsenceUnits = new Map<string, number>();
+  const eligibleDeductibleAbsenceUnits = new Map<string, number>();
+  let absenceDeductionOverlapHours = 0;
+
   for (const date of dates) {
     const schedule = scheduleForDate(input.employee, date, dailyScheduledHours, input.shiftTemplates || []);
     const records = [...(recordsByDate.get(date) || [])].sort(
@@ -1043,7 +1065,36 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
     const punchRecords = records.filter((record) =>
       record.recordType === "check_in" || record.recordType === "check_out"
     );
-    const permissionIntervals = permissionIntervalsFromAttendanceRecords(records, date);
+    const rawPermissionIntervals = permissionIntervalsFromAttendanceRecords(records, date);
+    const permissionIntervals = filterPaidPermissionIntervals(
+      rawPermissionIntervals,
+      employeeLeaves,
+      date
+    );
+
+    if (schedule.enabled) {
+      const unpaidUnit = unpaidLeaveUnits.get(date) || 0;
+      const absenceUnit = recordedAbsenceUnits.get(date) || 0;
+      const deductibleUnit = deductibleAbsenceUnits.get(date) || 0;
+      if (unpaidUnit > 0) eligibleUnpaidLeaveUnits.set(date, unpaidUnit);
+      if (absenceUnit > 0) eligibleRecordedAbsenceUnits.set(date, absenceUnit);
+      if (deductibleUnit > 0) eligibleDeductibleAbsenceUnits.set(date, deductibleUnit);
+
+      if (deductibleUnit > 0) {
+        const scheduledHours = hoursBetween(schedule.start, schedule.end);
+        const unpaidPartialIntervals = unpaidPartialLeaveIntervalsForDate(employeeLeaves, date);
+        const unpaidPartialHours = unpaidPartialIntervals.reduce(
+          (sum, interval) => sum + payrollIntervalHours(interval.startTime, interval.endTime),
+          0
+        );
+        const recordedOverlapHours = Math.min(scheduledHours, scheduledHours * absenceUnit);
+        const unpaidOverlapHours = unpaidPartialIntervals.length
+          ? Math.min(scheduledHours, unpaidPartialHours)
+          : Math.min(scheduledHours, scheduledHours * unpaidUnit);
+        absenceDeductionOverlapHours += Math.max(recordedOverlapHours, unpaidOverlapHours);
+      }
+    }
+
     if (!schedule.enabled && !punchRecords.length && !permissionIntervals.length) continue;
     const firstCheckIn = punchRecords.find((record) => record.recordType === "check_in");
     const lastCheckOut = [...punchRecords].reverse().find((record) => record.recordType === "check_out");
@@ -1073,20 +1124,24 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
   const punchRecordCount = periodRecords.filter(
     (record) => record.recordType === "check_in" || record.recordType === "check_out"
   ).length;
+  const unpaidLeaveDays = totalPayrollDayUnits(eligibleUnpaidLeaveUnits);
+  const recordedAbsenceDays = totalPayrollDayUnits(eligibleRecordedAbsenceUnits);
+  const deductibleAbsenceDays = totalPayrollDayUnits(eligibleDeductibleAbsenceUnits);
 
   return {
     days,
     summary: {
       ...disciplineSummary,
-      approvedLeaveDays: approvedLeaveDates.size,
-      approvedAbsenceDays: deductibleAbsenceDates.size,
+      approvedLeaveDays: paidLeaveDays,
+      approvedAbsenceDays: deductibleAbsenceDays,
+      absenceDeductionOverlapHours: Math.round(absenceDeductionOverlapHours * 100) / 100,
       attendanceNotes: [
-        ...(approvedLeaveDates.size ? [`${approvedLeaveDates.size} أيام إجازة مدفوعة معتمدة لم تدخل في خصم الحضور.`] : []),
-        ...(unpaidLeaveDates.size ? [`${unpaidLeaveDates.size} أيام إجازة بدون راتب تم احتسابها ضمن الخصم اليومي.`] : []),
-        ...(recordedAbsenceDates.size ? [`${recordedAbsenceDates.size} أيام غياب مسجلة دخلت ضمن الخصم اليومي.`] : []),
+        ...(paidLeaveDays ? [`${paidLeaveDays} يوم/أيام إجازة مدفوعة معتمدة لم تدخل في خصم الحضور.`] : []),
+        ...(unpaidLeaveDays ? [`${unpaidLeaveDays} يوم/أيام إجازة بدون راتب تم احتسابها ضمن الخصم اليومي.`] : []),
+        ...(recordedAbsenceDays ? [`${recordedAbsenceDays} يوم/أيام غياب مسجلة دخلت ضمن الخصم اليومي.`] : []),
         ...(days.some((day) => day.status === "incomplete") ? ["توجد أيام ببصمة خروج ناقصة؛ لم تخصم كيوم كامل تلقائيا."] : []),
         ...(permissionRequestedHours > 0
-          ? [`الاستئذانات المعتمدة: ${permissionRequestedHours} ساعة، والمحتسب لتغطية نقص الدوام: ${permissionCoveredHours} ساعة.`]
+          ? [`الاستئذانات والإجازات الجزئية المدفوعة المعتمدة: ${permissionRequestedHours} ساعة، والمحتسب لتغطية نقص الدوام: ${permissionCoveredHours} ساعة.`]
           : []),
         ...(employeeHasCoreShiftControl(input.employee) ? ["تم احتساب الحضور بناءً على قوالب الشفتات والاستثناءات المنشورة في Core."] : []),
       ],
@@ -1293,7 +1348,7 @@ export function payrollEntryPayload(entry: PayrollEntryView) {
     dailyRateHalalas: entry.dailyRateHalalas,
     hourlyRateHalalas: entry.hourlyRateHalalas,
     absenceDays: entry.attendanceSummary.absentDays,
-    absenceDeductionHalalas: 0,
+    absenceDeductionHalalas: entry.absenceDeductionHalalas,
     expectedWorkHours: entry.attendanceSummary.totalScheduledHours,
     actualWorkedHours: entry.attendanceSummary.totalActualWorkedHours,
     missingHours: entry.attendanceSummary.totalMissingHours,
