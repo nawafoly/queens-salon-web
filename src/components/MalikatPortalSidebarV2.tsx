@@ -5,6 +5,7 @@ import {
   faChevronRight,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
+import "../styles/MalikatPortalSidebarTablet.css";
 
 type PortalSidebarVariant = "dashboard" | "admin" | "employee";
 
