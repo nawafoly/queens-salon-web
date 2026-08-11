@@ -541,7 +541,7 @@ function isWeeklyOffForPayrollDate(dateIso: string, staff: StaffPayrollSource): 
 }
 
 function safeNumber(v: any, fallback: number): number {
-  const n = Number(v || 0);
+  const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
 
