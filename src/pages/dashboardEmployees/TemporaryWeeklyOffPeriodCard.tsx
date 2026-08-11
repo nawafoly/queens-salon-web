@@ -50,6 +50,7 @@ type TemporaryWeeklyOffPeriodCardProps = {
 };
 
 const TEMP_WEEKLY_OFF_PATTERN = /^\[TEMP_WEEKLY_OFF:(sat|sun|mon|tue|wed|thu|fri):(sat|sun|mon|tue|wed|thu|fri):(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\]/;
+const TEMP_WEEKLY_OFF_SYNC_EVENT = "queens:temporary-weekly-off-updated";
 const WEEKDAY_INDEX: Record<WeekdayKey, number> = {
   sun: 0,
   mon: 1,
@@ -87,6 +88,19 @@ function weekdayDatesInRange(fromDate: string, toDate: string, weekday: WeekdayK
     guard += 1;
   }
   return out;
+}
+
+function notifyTemporaryWeeklyOffUpdated(input: {
+  employeeId: string;
+  overrides: StaffWorkingHourOverride[];
+  offDates: string[];
+  workDates: string[];
+}) {
+  window.dispatchEvent(
+    new CustomEvent(TEMP_WEEKLY_OFF_SYNC_EVENT, {
+      detail: input,
+    })
+  );
 }
 
 function temporaryWeeklyOffToken(baseDay: WeekdayKey, temporaryDay: WeekdayKey, fromDate: string, toDate: string) {
@@ -218,6 +232,12 @@ export default function TemporaryWeeklyOffPeriodCard({
         nextOverrides,
       });
       onOverridesChange(nextOverrides as StaffWorkingHourOverride[]);
+      notifyTemporaryWeeklyOffUpdated({
+        employeeId,
+        overrides: nextOverrides as StaffWorkingHourOverride[],
+        offDates: temporaryOffDates,
+        workDates: temporaryWorkDates,
+      });
       setMessage(
         `تم الحفظ. ${weekdayLabel(temporaryDay)} إجازة داخل الفترة، و${baseOffDay.label} يوم عمل بديل. بعد ${toDate} يعود ${baseOffDay.label} إجازة أسبوعية تلقائيًا. تمت مزامنة ${result.createdCoreExceptions} يومًا مع Core.`
       );
@@ -242,6 +262,8 @@ export default function TemporaryWeeklyOffPeriodCard({
     const nextOverrides = (overrides || []).filter((row) =>
       !String(row?.note || "").trim().startsWith(group.token)
     );
+    const restoredWeeklyOffDates = weekdayDatesInRange(group.fromDate, group.toDate, group.baseDay);
+    const restoredWorkDates = weekdayDatesInRange(group.fromDate, group.toDate, group.temporaryDay);
     setSaving(true);
     try {
       await removeTemporaryWeeklyOff({
@@ -250,6 +272,12 @@ export default function TemporaryWeeklyOffPeriodCard({
         nextOverrides,
       });
       onOverridesChange(nextOverrides);
+      notifyTemporaryWeeklyOffUpdated({
+        employeeId,
+        overrides: nextOverrides,
+        offDates: restoredWeeklyOffDates,
+        workDates: restoredWorkDates,
+      });
       setMessage(`تمت إزالة التغيير المؤقت. عاد ${weekdayLabel(group.baseDay)} إلى الجدول الأسبوعي المعتمد.`);
     } catch (removeError) {
       setError(String((removeError as Error)?.message || "تعذر إزالة التغيير المؤقت."));
