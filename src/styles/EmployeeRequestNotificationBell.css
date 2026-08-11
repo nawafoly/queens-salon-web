@@ -1,0 +1,55 @@
+.dashboard-request-notification-shell {
+  display: inline-flex;
+  align-items: center;
+}
+
+.dashboard-request-notification-button {
+  position: relative;
+  display: inline-flex;
+  min-width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid #dce3eb;
+  border-radius: 12px;
+  color: #18223b;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dashboard-request-notification-button:hover,
+.dashboard-request-notification-button.is-open {
+  border-color: rgba(196, 154, 52, 0.58);
+  color: #081432;
+  background: #fff8df;
+}
+
+.dashboard-request-notification-button > span {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 4px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  background: #d52c46;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+@media (max-width: 760px) {
+  .dashboard-request-notification-button {
+    min-width: 38px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+}
