@@ -167,7 +167,7 @@ export function EmployeeAttendanceCalendarAlignedLiveV2(props: EmployeeAttendanc
                 </button>
               </div>
 
-              <div className="dsv2-ew-attendance-month-grid" role="grid">
+              <div className="dsv2-ew-attendance-month-picker-grid" role="grid">
                 {MONTH_NAMES.map((monthName, index) => {
                   const active = viewYear === selectedYear && index + 1 === selectedMonth;
                   return (
