@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { StaffAttendanceWithId } from "../../services/firestoreAttendance";
 import { CoreHrService } from "../../services/CoreHrService";
+import { clearAttendancePunchTimeFromWorker } from "../../services/attendancePunchAdminService";
 import type { CoreResolvedShift } from "../../types/hrCoreApi";
 import {
   computeAttendanceDay,
@@ -652,6 +653,9 @@ export default function AttendanceSection({
   const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
   const [coreShiftError, setCoreShiftError] = useState("");
+  const [clearingPunchType, setClearingPunchType] = useState<"check_in" | "check_out" | "">("");
+  const [punchClearMessage, setPunchClearMessage] = useState("");
+  const [punchClearError, setPunchClearError] = useState("");
   const employeeIdsKey = uniqueCleanTexts([employeeId, ...employeeIds]).join("|");
 
   useEffect(() => {
@@ -696,6 +700,11 @@ export default function AttendanceSection({
       cancelled = true;
     };
   }, [employeeIdsKey, isVisible, monthKey]);
+
+  useEffect(() => {
+    setPunchClearMessage("");
+    setPunchClearError("");
+  }, [selectedDate]);
 
   const liveRows = useMemo(() => rows.map((row) => toLiveAttendanceRow(row, schedule)), [rows, schedule]);
   const rowSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
@@ -773,12 +782,81 @@ export default function AttendanceSection({
     [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, salonBusinessHours, schedule, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
+  const selectedRawRecord = (selectedRawRow || {}) as StaffAttendanceWithId & Record<string, unknown>;
+  const selectedCheckInTime = cleanText(
+    selectedRawRecord.checkInAtClient || selectedRawRecord.checkInAt || selectedRawRecord.checkInTime
+  );
+  const selectedCheckOutTime = cleanText(
+    selectedRawRecord.checkOutAtClient || selectedRawRecord.checkOutAt || selectedRawRecord.checkOutTime
+  );
+
+  const clearSelectedPunchTime = async (type: "check_in" | "check_out") => {
+    const date = cleanText(selectedDate);
+    const currentTime = type === "check_in" ? selectedCheckInTime : selectedCheckOutTime;
+    if (!canDelete) {
+      setPunchClearError("ليست لديك صلاحية لمسح وقت البصمة.");
+      return;
+    }
+    if (!date || !selectedRawRow || !currentTime) {
+      setPunchClearError(type === "check_in" ? "لا يوجد وقت حضور لمسحه في هذا اليوم." : "لا يوجد وقت انصراف لمسحه في هذا اليوم.");
+      return;
+    }
+
+    const label = type === "check_in" ? "الحضور" : "الانصراف";
+    if (!window.confirm(`سيتم مسح وقت ${label} فقط ليوم ${date} مع إبقاء البصمة الأخرى كما هي. هل تريد المتابعة؟`)) {
+      return;
+    }
+
+    const rawRecords = Array.isArray(selectedRawRecord.records)
+      ? (selectedRawRecord.records as Record<string, unknown>[])
+      : [];
+    const matchingRecords = rawRecords.filter((record) => cleanText(record.type).toLowerCase() === type);
+    const recordIds = matchingRecords.map((record) => cleanText(record.id)).filter(Boolean);
+    const serverTimes = matchingRecords.map((record) => cleanText(record.serverTime)).filter(Boolean);
+    if (!recordIds.length && !serverTimes.length) serverTimes.push(currentTime);
+
+    const employeeUid = cleanText(employeeId) || uniqueCleanTexts(employeeIds)[0] || "";
+    const identityCandidates = uniqueCleanTexts([
+      selectedRawRecord.employeeId,
+      selectedRawRecord.employeeDocId,
+      ...employeeIds,
+      employeeUid,
+    ]);
+    const employeeDocId =
+      cleanText(selectedRawRecord.employeeId || selectedRawRecord.employeeDocId) ||
+      identityCandidates.find((value) => value !== employeeUid) ||
+      employeeUid;
+
+    setClearingPunchType(type);
+    setPunchClearMessage("");
+    setPunchClearError("");
+    try {
+      const result = await clearAttendancePunchTimeFromWorker({
+        employeeUid,
+        employeeId: employeeDocId,
+        date,
+        recordIds,
+        serverTimes,
+        note: `مسح وقت ${label} فقط من إدارة الموظفات`,
+      });
+      if (Number(result.clearedRecords || 0) <= 0) {
+        throw new Error(`لم يتم العثور على سجل ${label} قابل للمسح.`);
+      }
+      setPunchClearMessage(`تم مسح وقت ${label} فقط، وبقيت بقية سجلات اليوم كما هي.`);
+      onReload();
+    } catch (clearError) {
+      setPunchClearError(cleanText((clearError as Error)?.message) || `تعذر مسح وقت ${label}.`);
+    } finally {
+      setClearingPunchType("");
+    }
+  };
+
   if (!isVisible) return null;
 
   return (
     <>
       <EmployeeAttendanceTabLiveV2
-        readOnly={loading}
+        readOnly={loading || Boolean(clearingPunchType)}
         loading={loading}
         error={error}
         rows={liveRows}
@@ -799,6 +877,49 @@ export default function AttendanceSection({
         onCreateEmergencyLeave={onCreateEmergencyLeave}
         onCancelLeave={onCancelLeave}
       />
+
+      {selectedRawRow && (selectedCheckInTime || selectedCheckOutTime) ? (
+        <section className="dsv2-card dsv2-card--padded" aria-label="إدارة أوقات بصمة اليوم المحدد">
+          <div className="dsv2-stack dsv2-stack--sm">
+            <div>
+              <h3 className="dsv2-section-title">إدارة أوقات البصمة</h3>
+              <p className="dsv2-section-caption">
+                يمكنك مسح وقت الحضور أو الانصراف بشكل مستقل في أي حالة، بدون حذف الوقت الآخر أو بقية سجلات اليوم.
+              </p>
+            </div>
+
+            <div className="dsv2-cluster">
+              {selectedCheckInTime && canDelete ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
+                  disabled={Boolean(clearingPunchType)}
+                  onClick={() => void clearSelectedPunchTime("check_in")}
+                >
+                  {clearingPunchType === "check_in" ? "جاري مسح الحضور..." : "مسح وقت الحضور"}
+                </button>
+              ) : null}
+              {selectedCheckOutTime && canDelete ? (
+                <button
+                  type="button"
+                  className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
+                  disabled={Boolean(clearingPunchType)}
+                  onClick={() => void clearSelectedPunchTime("check_out")}
+                >
+                  {clearingPunchType === "check_out" ? "جاري مسح الانصراف..." : "مسح وقت الانصراف"}
+                </button>
+              ) : null}
+            </div>
+
+            {punchClearMessage ? (
+              <div className="dsv2-badge dsv2-badge--success" role="status">{punchClearMessage}</div>
+            ) : null}
+            {punchClearError ? (
+              <div className="dsv2-badge dsv2-badge--danger" role="alert">{punchClearError}</div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }
