@@ -1,11 +1,10 @@
-name: Booking Runtime Cutover
+name: Booking Runtime Core HR Guard
 
 on:
   push:
     branches: [main]
     paths:
       - "src/pages/Booking.tsx"
-      - "src/pages/BookingInternal.tsx"
       - "src/pages/Checkout.tsx"
       - "src/features/internal-booking-v2/**"
       - "src/helpers/coreBookingAvailability.ts"
@@ -26,20 +25,21 @@ on:
       - "workers/frontend-core-migration.test.mjs"
       - "scripts/audit-legacy-booking-runtime.mjs"
       - "scripts/check-no-legacy-booking-runtime.mjs"
-      - "scripts/cutover-booking-*.mjs"
       - ".github/workflows/booking-runtime-cutover.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-booking-cutover:
+  verify-booking-core-hr:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -51,152 +51,25 @@ jobs:
         run: npm ci
 
       - name: Repository-wide legacy booking audit
-        run: node scripts/audit-legacy-booking-runtime.mjs | tee legacy-booking-audit.txt
+        run: node scripts/audit-legacy-booking-runtime.mjs --fail-on-high-risk
 
       - name: No-legacy booking architecture guard
-        if: always()
         run: node scripts/check-no-legacy-booking-runtime.mjs
 
+      - name: Internal booking behavior contract
+        run: npm run check:booking-internal-contract
+
       - name: Build
-        if: always()
         run: npm run build
 
       - name: Core worker tests
-        if: always()
         run: npm run test:core:worker
 
       - name: HR schedule and leave worker tests
-        if: always()
         run: npm run test:hr:worker
 
       - name: Frontend Core migration tests
-        if: always()
         run: npm run test:frontend:core
 
       - name: Diff whitespace check
-        if: always()
         run: git diff --check HEAD~1 HEAD
-
-      - name: Upload legacy audit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: legacy-booking-audit
-          path: legacy-booking-audit.txt
-          if-no-files-found: ignore
-
-  validate-internal-v2-patch:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Apply Internal V2 cutover patch in CI workspace
-        run: node scripts/cutover-booking-internal-v2-core-hr.mjs
-
-      - name: Assert Internal V2 legacy helpers are gone
-        run: |
-          ! grep -nE 'filterStaffSlotsByWorkingHours|isStaffAvailableForDate|isStaffOperationallyActiveForDate|filterStaffForInternalBookingTarget|isAvailabilityRangeFree|resolveEmployeeKey|filterSlotsByServiceEnd' src/features/internal-booking-v2/BookingInternalV2.tsx
-
-      - name: Internal V2 patch diff check
-        run: git diff --check
-
-      - name: Build patched workspace
-        run: npm run build
-
-      - name: Commit validated Internal V2 cutover
-        if: success()
-        run: |
-          if git diff --quiet -- src/features/internal-booking-v2/BookingInternalV2.tsx; then
-            echo "Internal V2 already cut over on main."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/features/internal-booking-v2/BookingInternalV2.tsx
-          git commit -m "Cut Internal V2 over to Core HR availability"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
-
-  validate-customer-cutover:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Apply customer Booking Core HR stage 1
-        run: node scripts/cutover-booking-customer-core-hr-stage1.mjs
-
-      - name: Validate stage 1 structure
-        run: |
-          ! grep -nE 'CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(|getAllActiveStaffCached\(' src/pages/Booking.tsx
-          grep -n 'getCoreStaffAvailabilityForDate' src/pages/Booking.tsx
-          grep -n 'getCoreStaffBookableStartSlots' src/pages/Booking.tsx
-          grep -n 'listCoreAssignedStaffForService' src/pages/Booking.tsx
-
-      - name: Repair stage 2 regex counter in CI workspace
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const p = 'scripts/cutover-booking-customer-core-hr-stage2.mjs';
-          let s = fs.readFileSync(p, 'utf8');
-          const before = "  const matches = [...text.matchAll(regex)];";
-          const after = "  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;\n  const matches = [...text.matchAll(new RegExp(regex.source, flags))];";
-          const count = s.split(before).length - 1;
-          if (count !== 1) throw new Error(`stage2 helper patch expected 1 match, got ${count}`);
-          s = s.replace(before, after);
-          fs.writeFileSync(p, s, 'utf8');
-          NODE
-
-      - name: Apply customer Booking Core HR stage 2
-        run: node scripts/cutover-booking-customer-core-hr-stage2.mjs
-
-      - name: Assert all customer Booking legacy decision symbols are gone
-        run: |
-          ! grep -nE 'getStaffLeaveMetaForDate|isStaffAvailableForDate|isStaffBookableForPublicBooking|filterSlotsByServiceEnd|ResolvedStaffWorkingWindowRange|getCoreStaffWindows|filterSlotsToCoreWindows|isTimeInsideWindowRange|ALLOW_OVERTIME_MIN|CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(' src/pages/Booking.tsx
-          grep -n 'listCoreBookableStaffForDate' src/pages/Booking.tsx
-          grep -n 'getCoreStaffScheduleWindows' src/pages/Booking.tsx
-          grep -n 'isCoreStaffStartBookable' src/pages/Booking.tsx
-          grep -n 'authoritativeStaffViolation' src/pages/Booking.tsx
-
-      - name: Customer cutover diff check
-        run: git diff --check
-
-      - name: Build fully cut customer Booking workspace
-        run: npm run build
-
-      - name: Commit validated customer Booking cutover
-        if: success()
-        run: |
-          if git diff --quiet -- src/pages/Booking.tsx; then
-            echo "Customer Booking already cut over on main."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/pages/Booking.tsx
-          git commit -m "Cut customer Booking over to Core HR availability"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main

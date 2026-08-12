@@ -56,4 +56,42 @@ for (const entry of rootEntries) {
   }
 }
 
+
+const retiredMutationWorkflows = [
+  "admin-partial-leave-cutover.yml",
+  "apply-dashboard-v2-style-regression-fix.yml",
+  "finalize-booking-cutover.yml",
+  "partial-leave-attendance-ui.yml",
+  "customer-booking-promotion.yml"
+];
+for (const name of retiredMutationWorkflows) {
+  if (fs.existsSync(path.join(root, ".github", "workflows", name))) failures.push(`retired mutation workflow must not return: ${name}`);
+}
+const retiredOneTimeScripts = [
+  "add-admin-partial-leave.mjs",
+  "fix-admin-partial-leave-employeehub-normalization.mjs",
+  "fix-core-partial-leave-persistence.mjs",
+  "fix-admin-partial-leave-test-harness.mjs",
+  "fix-admin-partial-leave-dashboard-assertion.mjs",
+  "add-partial-leave-attendance-ui.mjs",
+  "repair-frontend-core-migration-test.mjs",
+  "finalize-booking-runtime-cutover.mjs",
+  "fix-internal-v2-client-binding.mjs",
+  "fix-frontend-cutover-test-contracts.mjs",
+  "fix-frontend-permission-context-test.mjs",
+  "fix-hr-test-migration-runner.mjs",
+  "cutover-booking-internal-v2-core-hr.mjs",
+  "cutover-booking-customer-core-hr-stage1.mjs"
+];
+for (const name of retiredOneTimeScripts) {
+  if (fs.existsSync(path.join(root, "scripts", name))) failures.push(`retired one-time mutation script must not return: ${name}`);
+}
+const bookingGuardWorkflowPath = path.join(root, ".github", "workflows", "booking-runtime-cutover.yml");
+if (fs.existsSync(bookingGuardWorkflowPath)) {
+  const bookingGuardWorkflow = fs.readFileSync(bookingGuardWorkflowPath, "utf8");
+  if (/contents:\s*write/.test(bookingGuardWorkflow)) failures.push("booking runtime guard must remain read-only");
+  if (/git\s+push/.test(bookingGuardWorkflow)) failures.push("booking runtime guard must never push code");
+  if (/scripts\/cutover-booking-/.test(bookingGuardWorkflow)) failures.push("booking runtime guard must not apply historical cutover scripts");
+}
+
 console.log("Repository hygiene guard passed. No root patch/apply/hotfix artifacts or backup junk found.");

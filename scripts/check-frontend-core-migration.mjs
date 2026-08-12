@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const forbiddenChecks = [
   {
@@ -27,15 +27,6 @@ const forbiddenChecks = [
       /AppSettingsService/,
       /firestoreOffers/,
       /getDataSourceFlags/,
-    ],
-  },
-  {
-    file: "src/pages/BookingInternal.tsx",
-    forbidden: [
-      /from\s+["']\.\.\/services\/firestoreBookings["']/,
-      /import\s+\*\s+as\s+firestoreBookings/,
-      /collection\([^\n]*["']booking_slots["']/,
-      /doc\([^\n]*["']availability_days["']/,
     ],
   },
   {
@@ -168,10 +159,6 @@ const requiredChecks = [
     ],
   },
   {
-    file: "src/pages/BookingInternal.tsx",
-    required: [/BookingInternalV2/],
-  },
-  {
     file: "src/services/CoreBookingService.ts",
     required: [/async\s+reschedule\s*\(/, /\/reschedule/],
   },
@@ -198,6 +185,9 @@ const requiredChecks = [
 ];
 
 const failures = [];
+if (existsSync("src/pages/BookingInternal.tsx")) {
+  failures.push("src/pages/BookingInternal.tsx: historical BookingInternal wrapper must remain deleted");
+}
 for (const check of forbiddenChecks) {
   const source = readFileSync(check.file, "utf8");
   for (const pattern of check.forbidden) {

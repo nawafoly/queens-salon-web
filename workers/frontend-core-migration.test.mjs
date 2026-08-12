@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
@@ -66,10 +66,7 @@ test("booking pages use one Core availability engine", () => {
     assert.doesNotMatch(source, /doc\([^\n]*["']availability_days["']/);
   }
 
-  const legacyEntry = readFileSync("src/pages/BookingInternal.tsx", "utf8");
-  assert.match(legacyEntry, /BookingInternalV2/);
-  assert.doesNotMatch(legacyEntry, /\bgetStaffAvailability\s*\(/);
-  assert.doesNotMatch(legacyEntry, /from\s+["'][^"']*(staffAvailability|firestoreAvailabilityBackfill)/);
+  assert.equal(existsSync("src/pages/BookingInternal.tsx"), false, "historical BookingInternal wrapper must stay deleted");
 });
 
 test("public booking loads catalog, packages, settings and files from Core-only services", () => {
@@ -142,7 +139,7 @@ test("Phase 5 migration adds admin operations without forcing unique client phon
 
 test("dashboard refund workflows use Core refunds without a Firestore branch", () => {
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
-  const internal = readFileSync("src/pages/BookingInternal.tsx", "utf8");
+  const internalV2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
 
   assert.match(dashboard, /CoreRefundService/);
   assert.doesNotMatch(dashboard, /getDataSourceFlags\(\)\.useCoreD1/);
@@ -151,8 +148,8 @@ test("dashboard refund workflows use Core refunds without a Firestore branch", (
   assert.match(dashboard, /CoreRefundService\.remove/);
   assert.match(dashboard, /idempotencyKey:\s*`dashboard-refund:/);
 
-  assert.match(internal, /BookingInternalV2/);
-  assert.doesNotMatch(internal, /CoreRefundService|getDataSourceFlags/);
+  assert.equal(existsSync("src/pages/BookingInternal.tsx"), false, "legacy internal booking entrypoint must stay deleted");
+  assert.doesNotMatch(internalV2, /CoreRefundService|getDataSourceFlags/);
 });
 
 test("Core migration preserves explicit halala fields", () => {
