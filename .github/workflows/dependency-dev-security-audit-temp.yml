@@ -11,89 +11,23 @@ permissions:
   contents: read
 
 jobs:
-  simulate-targeted-dev-remediation:
+  inspect-patched-wrangler-line:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install exact baseline
-        run: npm ci
-
-      - name: Registry target versions
+      - name: Inspect patched Wrangler releases and Miniflare dependencies
         shell: bash
         run: |
-          echo "wrangler latest=$(npm view wrangler version)"
-          echo "miniflare latest=$(npm view miniflare version)"
-          echo "rolldown-vite latest=$(npm view rolldown-vite version)"
-          echo "@vercel/node latest=$(npm view @vercel/node version)"
-
-      - name: Decouple Vercel request types in ephemeral checkout
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const p = 'api/r2-presign.ts';
-          let s = fs.readFileSync(p, 'utf8');
-          const old = 'import type { VercelRequest, VercelResponse } from "@vercel/node";';
-          if (!s.includes(old)) throw new Error('expected @vercel/node type import missing');
-          const replacement = `type VercelRequest = {\n  method?: string;\n  body?: any;\n};\n\ntype VercelResponse = {\n  setHeader(name: string, value: string): void;\n  status(code: number): VercelResponse;\n  json(body: unknown): VercelResponse;\n  end(): VercelResponse;\n};`;
-          s = s.replace(old, replacement);
-          fs.writeFileSync(p, s);
-          NODE
-
-      - name: Remove Vercel Node type-only dependency
-        run: npm uninstall --save-dev --package-lock-only @vercel/node
-
-      - name: Upgrade Wrangler to current release
-        run: npm install --save-dev --package-lock-only wrangler@latest
-
-      - name: Reinstall proposed lockfile
-        shell: bash
-        run: |
-          rm -rf node_modules
-          npm ci
-
-      - name: Full audit after targeted parent changes
-        shell: bash
-        run: |
-          npm audit --json > dev-targeted.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('dev-targeted.json','utf8'));
-          console.log('=== TARGETED AUDIT ===');
-          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
-          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
-            console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,effects:v.effects || []}));
-          }
-          NODE
-
-      - name: Installed tooling versions
-        run: npm ls wrangler miniflare @vercel/node rolldown-vite vite --depth=4 || true
-
-      - name: Build
-        run: npm run build
-
-      - name: Core worker tests
-        run: npm run test:core:worker
-
-      - name: HR worker tests
-        run: npm run test:hr:worker
-
-      - name: Frontend Core migration tests
-        run: npm run test:frontend:core
-
-      - name: Repository hygiene guard
-        run: npm run check:repo-hygiene
-
-      - name: Diff check
-        run: git diff --check
+          for v in 4.120.0 4.120.1 4.121.0 4.121.1 4.122.0; do
+            echo "=== wrangler@$v ==="
+            npm view "wrangler@$v" version dependencies.miniflare 2>&1 || true
+          done
+          echo "=== miniflare dist-tags ==="
+          npm view miniflare dist-tags --json
+          echo "=== wrangler dist-tags ==="
+          npm view wrangler dist-tags --json
