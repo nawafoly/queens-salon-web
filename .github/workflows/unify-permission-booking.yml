@@ -1,0 +1,126 @@
+name: Unify Permission Booking
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/unify-permission-booking.mjs"
+      - ".github/workflows/unify-permission-booking.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unify-permission-booking-main
+  cancel-in-progress: false
+
+jobs:
+  verify-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Apply permission booking patch
+        run: node scripts/unify-permission-booking.mjs
+
+      - name: Verify permission booking contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const modal = fs.readFileSync('src/components/LeaveRequestModal.tsx', 'utf8');
+          const calendar = fs.readFileSync('src/helpers/hr/attendanceCalendarData.ts', 'utf8');
+          const attendance = fs.readFileSync('src/pages/dashboardEmployees/AttendanceSection.tsx', 'utf8');
+          const live = fs.readFileSync('src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx', 'utf8');
+          const permissions = fs.readFileSync('workers/core/repositories/permissions.js', 'utf8');
+          const requests = fs.readFileSync('workers/core/repositories/employee-requests.js', 'utf8');
+          const dashboard = fs.readFileSync('src/pages/DashboardEmployees.tsx', 'utf8');
+
+          const checks = [
+            [modal.includes('{ value: "partial", label: "استئذان" }'), 'admin modal does not expose استئذان'],
+            [modal.includes('title={isPartialLeave ? "تسجيل استئذان"'), 'admin modal title is not permission-aware'],
+            [calendar.includes('const LABEL_PARTIAL_LEAVE = "\\u0627\\u0633\\u062a\\u0626\\u0630\\u0627\\u0646";'), 'attendance label is not استئذان'],
+            [live.includes('selectedSpecialDay?.kind === "partial_leave" ? "إلغاء الاستئذان"'), 'attendance cancel action is not permission-aware'],
+            [attendance.includes('CoreHrService.listLeaves({ employeeId: id, status: "approved" })'), 'attendance does not read Core permission intervals'],
+            [attendance.includes('label: "استئذان"'), 'Core partial intervals are not labeled استئذان'],
+            [permissions.includes('async function syncPermissionBookingBlock'), 'permission booking sync helper missing'],
+            [permissions.includes("leave_type = 'permission'"), 'permission booking block is not typed permission'],
+            [permissions.includes("duration_kind = 'partial'"), 'permission booking block is not partial'],
+            [permissions.includes('await syncPermissionBookingBlock(db, salonId, updated, actor);'), 'approved permission is not linked to booking'],
+            [permissions.includes('await cancelPermissionBookingBlock'), 'permission cancellation does not remove booking block'],
+            [requests.includes("leave_type, start_date, end_date, days_count"), 'unified employee request does not persist booking leave'],
+            [requests.includes("'approved', 'permission'"), 'unified employee permission booking row missing'],
+            [requests.includes("actionStatus === 'approved' && updated.request_type === 'permission'"), 'unified permission approval is not auto-executed'],
+            [dashboard.includes('reviewPermissionRequest'), 'attendance cannot cancel Core permission'],
+          ];
+          for (const [ok, message] of checks) {
+            if (!ok) throw new Error(message);
+          }
+          console.log('[permission-booking] contract verified');
+          NODE
+
+      - name: Build
+        run: npm run build
+
+      - name: Admin partial/permission policy tests
+        run: node --test workers/admin-partial-leave-policy.test.mjs
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Promote only after green gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/components/LeaveRequestModal.tsx \
+            src/helpers/hr/attendanceCalendarData.ts \
+            src/pages/hr/EmployeeRequests.tsx \
+            src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx \
+            src/pages/dashboardEmployees/AttendanceSection.tsx \
+            src/pages/DashboardEmployees.tsx \
+            workers/core/repositories/permissions.js \
+            workers/core/repositories/employee-requests.js \
+            workers/admin-partial-leave-policy.test.mjs
+          if git diff --cached --quiet; then
+            echo "No production changes to promote."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Unify permission requests with booking availability"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
