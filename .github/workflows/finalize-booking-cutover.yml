@@ -14,6 +14,7 @@ on:
       - "scripts/repair-frontend-core-migration-test.mjs"
       - "scripts/fix-internal-v2-client-binding.mjs"
       - "scripts/fix-frontend-cutover-test-contracts.mjs"
+      - "scripts/fix-frontend-permission-context-test.mjs"
   workflow_dispatch:
 
 permissions:
@@ -46,6 +47,9 @@ jobs:
 
       - name: Align final frontend migration contracts
         run: node scripts/fix-frontend-cutover-test-contracts.mjs
+
+      - name: Align permission context migration contract
+        run: node scripts/fix-frontend-permission-context-test.mjs
 
       - name: Fix HR test migration runner
         run: node scripts/fix-hr-test-migration-runner.mjs
