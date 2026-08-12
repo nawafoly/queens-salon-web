@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-booking-cutover:
@@ -113,3 +113,16 @@ jobs:
 
       - name: Build patched workspace
         run: npm run build
+
+      - name: Commit validated Internal V2 cutover
+        if: success()
+        run: |
+          if git diff --quiet -- src/features/internal-booking-v2/BookingInternalV2.tsx; then
+            echo "Internal V2 already cut over on main."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/internal-booking-v2/BookingInternalV2.tsx
+          git commit -m "Cut Internal V2 over to Core HR availability"
+          git push origin HEAD:main
