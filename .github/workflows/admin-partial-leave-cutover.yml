@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/add-admin-partial-leave.mjs"
+      - "scripts/fix-admin-partial-leave-test-harness.mjs"
       - ".github/workflows/admin-partial-leave-cutover.yml"
   workflow_dispatch:
 
@@ -36,6 +37,9 @@ jobs:
 
       - name: Apply partial-day leave cutover
         run: node scripts/add-admin-partial-leave.mjs
+
+      - name: Install D1-compatible partial leave test harness
+        run: node scripts/fix-admin-partial-leave-test-harness.mjs
 
       - name: Build
         run: npm run build
