@@ -4,10 +4,17 @@ import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+const readCode = (file) => read(file)
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const failures = [];
 const forbid = (file, needle, message) => {
   const text = read(file);
+  if (text.includes(needle)) failures.push(`${file}: ${message} [${needle}]`);
+};
+const forbidCode = (file, needle, message) => {
+  const text = readCode(file);
   if (text.includes(needle)) failures.push(`${file}: ${message} [${needle}]`);
 };
 const forbidRegex = (file, regex, message) => {
@@ -127,26 +134,29 @@ requireText(
   'slot filtering must enforce service duration + buffer against the supplied end boundary'
 );
 
+// Backend guards inspect executable code, not comments. A historical comment
+// naming an old field must not create a false positive, while any executable
+// reference still fails immediately.
 for (const file of [
   'workers/core/repositories/staff.js',
   'workers/core/repositories/availability.js',
   'workers/core/repositories/booking-staff-policy.js',
   'workers/core/repositories/bookings.js',
 ]) {
-  forbid(file, 'staff_schedules', 'Core booking runtime must never fall back to legacy staff_schedules');
+  forbidCode(file, 'staff_schedules', 'Core booking runtime must never fall back to legacy staff_schedules');
 }
 
-forbid(
+forbidCode(
   'workers/core/repositories/booking-staff-policy.js',
   'legacyLeaveActive',
   'booking leave truth must come from employee_leaves / HR sources only'
 );
-forbid(
+forbidCode(
   'workers/core/repositories/booking-staff-policy.js',
   'leave_start_date',
   'booking runtime must not use mirrored legacy leave_start_date'
 );
-forbid(
+forbidCode(
   'workers/core/repositories/booking-staff-policy.js',
   'leave_end_date',
   'booking runtime must not use mirrored legacy leave_end_date'
