@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/unify-permission-booking.mjs"
+      - "scripts/unify-permission-booking-v2.mjs"
       - ".github/workflows/unify-permission-booking.yml"
   workflow_dispatch:
 
@@ -35,7 +36,7 @@ jobs:
         run: npm ci
 
       - name: Apply permission booking patch
-        run: node scripts/unify-permission-booking.mjs
+        run: node scripts/unify-permission-booking-v2.mjs
 
       - name: Verify permission booking contract
         shell: bash
