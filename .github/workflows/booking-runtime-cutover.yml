@@ -1,0 +1,86 @@
+name: Booking Runtime Cutover
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/pages/Booking.tsx"
+      - "src/pages/BookingInternal.tsx"
+      - "src/pages/Checkout.tsx"
+      - "src/features/internal-booking-v2/**"
+      - "src/helpers/coreBookingAvailability.ts"
+      - "src/helpers/staffAvailability.ts"
+      - "src/helpers/timeSlots.ts"
+      - "src/helpers/bookingSharedConstants.ts"
+      - "src/services/bookingDataSource.ts"
+      - "src/services/bookingDataSourceCompat.ts"
+      - "src/services/bookingDataSources/**"
+      - "src/services/coreBookableStaffService.ts"
+      - "src/services/checkoutCoreBookingService.ts"
+      - "src/services/coreBookingMappers.ts"
+      - "src/services/firestoreBookings.ts"
+      - "src/types/coreApi.ts"
+      - "workers/core/**"
+      - "workers/core-worker.test.mjs"
+      - "workers/hr-core-worker.test.mjs"
+      - "workers/frontend-core-migration.test.mjs"
+      - "scripts/audit-legacy-booking-runtime.mjs"
+      - "scripts/check-no-legacy-booking-runtime.mjs"
+      - "scripts/cutover-booking-*.mjs"
+      - ".github/workflows/booking-runtime-cutover.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-booking-cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repository-wide legacy booking audit
+        run: node scripts/audit-legacy-booking-runtime.mjs | tee legacy-booking-audit.txt
+
+      - name: No-legacy booking architecture guard
+        if: always()
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Build
+        if: always()
+        run: npm run build
+
+      - name: Core worker tests
+        if: always()
+        run: npm run test:core:worker
+
+      - name: HR schedule and leave worker tests
+        if: always()
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        if: always()
+        run: npm run test:frontend:core
+
+      - name: Diff whitespace check
+        if: always()
+        run: git diff --check HEAD~1 HEAD
+
+      - name: Upload legacy audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-booking-audit
+          path: legacy-booking-audit.txt
+          if-no-files-found: ignore
