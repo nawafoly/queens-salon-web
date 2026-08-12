@@ -18,6 +18,8 @@ import type {
 import { requireCoreWorkerUrl } from "../config/dataSourceFlags";
 import { coreD1BookingDataSource } from "./bookingDataSources/coreD1BookingDataSource";
 
+export type { BookingStatus } from "./firestoreBookings";
+
 export type BookingClientCandidate = CoreClient & {
   phone?: string;
   mobile?: string;
