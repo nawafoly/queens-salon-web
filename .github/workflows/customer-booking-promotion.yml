@@ -1,0 +1,63 @@
+name: Promote Customer Booking Core HR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/customer-booking-promotion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply validated customer cutover
+        run: |
+          node scripts/cutover-booking-customer-core-hr-stage1.mjs
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'scripts/cutover-booking-customer-core-hr-stage2.mjs';
+          let s = fs.readFileSync(p, 'utf8');
+          const before = "  const matches = [...text.matchAll(regex)];";
+          const after = "  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;\n  const matches = [...text.matchAll(new RegExp(regex.source, flags))];";
+          const count = s.split(before).length - 1;
+          if (count !== 1) throw new Error(`stage2 helper patch expected 1 match, got ${count}`);
+          fs.writeFileSync(p, s.replace(before, after), 'utf8');
+          NODE
+          node scripts/cutover-booking-customer-core-hr-stage2.mjs
+
+      - name: Guard customer runtime
+        run: |
+          ! grep -nE 'getStaffLeaveMetaForDate|isStaffAvailableForDate|isStaffBookableForPublicBooking|filterSlotsByServiceEnd|ResolvedStaffWorkingWindowRange|getCoreStaffWindows|filterSlotsToCoreWindows|isTimeInsideWindowRange|ALLOW_OVERTIME_MIN|CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(' src/pages/Booking.tsx
+          grep -n 'listCoreBookableStaffForDate' src/pages/Booking.tsx
+          grep -n 'getCoreStaffScheduleWindows' src/pages/Booking.tsx
+          grep -n 'isCoreStaffStartBookable' src/pages/Booking.tsx
+          grep -n 'authoritativeStaffViolation' src/pages/Booking.tsx
+          git diff --check
+          npm run build
+
+      - name: Promote Booking only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Booking.tsx
+          git commit -m "Cut customer Booking over to Core HR availability"
+          git restore scripts/cutover-booking-customer-core-hr-stage2.mjs
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
