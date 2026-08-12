@@ -7,6 +7,7 @@ on:
       - ".github/workflows/apply-dashboard-v2-style-regression-fix.yml"
       - "scripts/fix-dashboard-v2-style-regressions.mjs"
       - "scripts/check-booking-internal-contract.mjs"
+      - "scripts/check-dashboard-hr-v2.mjs"
 
 permissions:
   contents: write
