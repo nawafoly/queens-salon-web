@@ -58,6 +58,8 @@ const retiredMutationWorkflows = [
   "repository-hygiene-final-cleanup.yml",
   "dependency-security-remediation-temp.yml",
   "dependency-security-audit-temp.yml",
+  "dependency-dev-security-remediation-temp.yml",
+  "dependency-dev-security-audit-temp.yml",
 ];
 for (const name of retiredMutationWorkflows) {
   if (exists(".github", "workflows", name)) failures.push(`retired mutation workflow must not return: ${name}`);
@@ -132,16 +134,15 @@ assertReadOnlyWorkflow(
 );
 assertReadOnlyWorkflow(
   "dependency-security.yml",
-  "production dependency security gate",
+  "dependency security gate",
 );
 
-const TEMP_DEV_SECURITY_REMEDIATION_WORKFLOW = "dependency-dev-security-remediation-temp.yml";
 const workflowsDir = path.join(root, ".github", "workflows");
 if (fs.existsSync(workflowsDir)) {
   for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
     if (!entry.isFile() || !/\.ya?ml$/i.test(entry.name)) continue;
     const workflow = fs.readFileSync(path.join(workflowsDir, entry.name), "utf8");
-    if (/git\s+(?:commit|push)\b/.test(workflow) && entry.name !== TEMP_DEV_SECURITY_REMEDIATION_WORKFLOW) {
+    if (/git\s+(?:commit|push)\b/.test(workflow)) {
       failures.push(`source-mutating GitHub workflow is forbidden: ${entry.name} contains git commit/push`);
     }
   }
@@ -153,4 +154,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Repository hygiene guard passed. Root artifacts, retired mutation tooling, permanent read-only workflow contracts, and production dependency security gate are clean.");
+console.log("Repository hygiene guard passed. Root artifacts, retired mutation tooling, permanent read-only workflow contracts, and dependency security gate are clean.");
