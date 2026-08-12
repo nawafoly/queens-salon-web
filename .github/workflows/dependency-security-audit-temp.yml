@@ -30,7 +30,8 @@ jobs:
         run: npm ci
 
       - name: Apply non-breaking npm audit fixes in ephemeral checkout
-        run: npm audit fix
+        shell: bash
+        run: npm audit fix || true
 
       - name: Upgrade React Router within v7
         run: npm install --save 'react-router-dom@^7.18.2'
