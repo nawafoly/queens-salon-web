@@ -42,7 +42,7 @@ jobs:
           fs.writeFileSync(p, s.replace(old, replacement));
           NODE
 
-      - name: Adapt account Miniflare harness to explicit worker configuration
+      - name: Adapt account Miniflare harness to v5 worker configuration
         shell: bash
         run: |
           node <<'NODE'
@@ -50,7 +50,7 @@ jobs:
           const p = 'workers/account-permissions-worker.test.mjs';
           let s = fs.readFileSync(p, 'utf8');
           const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: "2026-06-24",\n    d1Databases: { CORE_DB: "core-test" },\n  });`;
-          const next = `  const mf = new Miniflare({\n    workers: [\n      {\n        name: "core-test-worker",\n        modules: true,\n        script: 'export default { fetch(){ return new Response("ok") } }',\n        compatibilityDate: "2026-06-24",\n        d1Databases: { CORE_DB: "core-test" },\n      },\n    ],\n  });`;
+          const next = `  const mf = new Miniflare({\n    workers: [\n      {\n        name: "core-test-worker",\n        config: {},\n        modules: true,\n        script: 'export default { fetch(){ return new Response("ok") } }',\n        compatibilityDate: "2026-06-24",\n        d1Databases: { CORE_DB: "core-test" },\n      },\n    ],\n  });`;
           if (!s.includes(old)) throw new Error('expected Miniflare setup block missing');
           s = s.replace(old, next);
           s = s.replace('const db = await mf.getD1Database("CORE_DB");', 'const db = await mf.getD1Database("CORE_DB", "core-test-worker");');
@@ -72,7 +72,7 @@ jobs:
           npm pkg set 'overrides.vite=npm:rolldown-vite@7.3.1'
           npm install --package-lock-only
 
-      - name: Apply remaining safe audit fixes to lockfile
+      - name: Apply safe audit fixes to lockfile
         shell: bash
         run: npm audit fix --package-lock-only || true
 
@@ -82,25 +82,23 @@ jobs:
           rm -rf node_modules
           npm ci
 
-      - name: Full audit report
+      - name: Apply second-pass low-risk audit fix after clean install
         shell: bash
         run: |
-          npm audit --json > full-after.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('full-after.json','utf8'));
-          console.log('=== FULL AFTER ===');
-          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
-          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
-            console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,effects:v.effects || []}));
-          }
-          NODE
+          npm explain esbuild || true
+          npm explain tsx || true
+          npm audit fix --package-lock-only || true
+          rm -rf node_modules
+          npm ci
+
+      - name: Full audit must be zero
+        run: npm audit --audit-level=low
 
       - name: Production audit must remain zero
         run: npm audit --omit=dev --audit-level=low
 
       - name: Installed key versions
-        run: npm ls wrangler miniflare @vercel/node rolldown-vite vite --depth=4 || true
+        run: npm ls wrangler miniflare @vercel/node rolldown-vite vite esbuild tsx --depth=5 || true
 
       - name: Repository hygiene guard
         run: npm run check:repo-hygiene
