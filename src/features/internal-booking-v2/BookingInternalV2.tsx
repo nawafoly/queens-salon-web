@@ -10,10 +10,9 @@ import { CoreOfferService } from "../../services/CoreOfferService";
 import type { CoreDiscount } from "../../types/coreApi";
 import { normalizeDigits, normalizeSearchText, phone10Digits } from "../../helpers/bookingTextUtils";
 import { extractMinPriceInternal, readDisplayLabel } from "../../helpers/pageSharedUtils";
-import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../../helpers/timeSlots";
 import { formatTime12 } from "../../helpers/timeDisplay";
-import { filterStaffForInternalBookingTarget, isAvailabilityRangeFree, resolveEmployeeKey } from "../../helpers/bookingAvailabilityUtils";
-import { filterStaffSlotsByWorkingHours, isStaffOperationallyActiveForDate, isStaffAvailableForDate } from "../../helpers/staffAvailability";
+import { getCoreStaffBookableStartSlots, isCoreStaffStartBookable } from "../../helpers/coreBookingAvailability";
+import { listCoreBookableStaffForDate } from "../../services/coreBookableStaffService";
 
 import { todayISO } from "../../helpers/bookingDateUtils";
 import {
@@ -394,7 +393,7 @@ export default function BookingInternalV2() {
   const [catalogMessage, setCatalogMessage] = useState("");
   const [cart, setCart] = useState<CatalogService[]>([]);
   const [bookingDate, setBookingDate] = useState(todayISO());
-  const [allStaff, setAllStaff] = useState<StaffRow[]>([]);
+  const [eligibleStaffByService, setEligibleStaffByService] = useState<Record<string, StaffRow[]>>({});
   const [staffLoading, setStaffLoading] = useState(false);
   const [scheduleByService, setScheduleByService] = useState<Record<string, ScheduleSelection>>({});
   const [availableTimes, setAvailableTimes] = useState<Record<string, string[]>>({});
@@ -538,23 +537,6 @@ export default function BookingInternalV2() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadStaff() {
-      setStaffLoading(true);
-      try {
-        const rows = await resolveCoreBookingDataSource().getActiveStaff();
-        if (!cancelled) setAllStaff(Array.isArray(rows) ? (rows as StaffRow[]) : []);
-      } catch (error) {
-        console.error("[BookingInternalV2] staff load failed", error);
-        if (!cancelled) setScheduleMessage("تعذر جلب الموظفات من السيرفر.");
-      } finally {
-        if (!cancelled) setStaffLoading(false);
-      }
-    }
-    void loadStaff();
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -773,22 +755,69 @@ export default function BookingInternalV2() {
     return keys;
   }, [cart, scheduleByService, hasCartScheduleConflict]);
 
-  const eligibleStaffByService = useMemo(() => {
-    const out: Record<string, StaffRow[]> = {};
-    cart.forEach((service) => {
-      out[String(service.id)] = filterStaffForInternalBookingTarget(allStaff, String(service.id), {
-        kind: String(service?.kind || service?.type || "service"),
-        name: serviceTitle(service),
-        sectionId: String(service?.sectionId || service?.section_id || ""),
-        sectionTitle: String(service?.sectionTitle || service?.sectionName || ""),
-        categoryId: String(service?.categoryId || service?.category_id || ""),
-        category: String(service?.category || service?.categoryName || ""),
-      })
-        .filter((staff: any) => isStaffOperationallyActiveForDate(staff, bookingDate))
-        .filter((staff: any) => isStaffAvailableForDate(staff, bookingDate, { requireShowOnBooking: false }));
-    });
-    return out;
-  }, [cart, allStaff, bookingDate]);
+  useEffect(() => {
+    let cancelled = false;
+    const serviceRows = cart.filter((service) => String(service?.id || "").trim());
+
+    setEligibleStaffByService({});
+    setAvailableTimes({});
+
+    if (!serviceRows.length || !bookingDate || !dayHours.enabled) {
+      setStaffLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setStaffLoading(true);
+    async function loadDatedBookableStaff() {
+      try {
+        const resolved = await Promise.all(serviceRows.map(async (service) => {
+          const serviceKey = String(service.id);
+          const rows = await listCoreBookableStaffForDate({
+            serviceId: serviceKey,
+            date: bookingDate,
+            slotStepMin,
+            bufferMin,
+            requireShowOnBooking: false,
+          });
+          return [serviceKey, rows] as const;
+        }));
+        if (cancelled) return;
+
+        const nextStaff: Record<string, StaffRow[]> = {};
+        for (const [serviceKey, rows] of resolved) {
+          nextStaff[serviceKey] = rows.map((row) => row.staff as StaffRow);
+        }
+
+        setEligibleStaffByService(nextStaff);
+        setScheduleByService((current) => {
+          let changed = false;
+          const next = { ...current };
+          for (const service of serviceRows) {
+            const key = String(service.id);
+            const selected = next[key];
+            if (!selected?.staffId) continue;
+            const stillBookable = (nextStaff[key] || []).some((staff) => staffId(staff) === selected.staffId);
+            if (!stillBookable) {
+              next[key] = { staffId: "", staffName: "", time: "" };
+              changed = true;
+            }
+          }
+          return changed ? next : current;
+        });
+      } catch (error) {
+        console.error("[BookingInternalV2] dated Core staff load failed", error);
+        if (!cancelled) {
+          setEligibleStaffByService({});
+          setScheduleMessage("تعذر جلب توفر الموظفات من Core HR. أعيدي المحاولة.");
+        }
+      } finally {
+        if (!cancelled) setStaffLoading(false);
+      }
+    }
+
+    void loadDatedBookableStaff();
+    return () => { cancelled = true; };
+  }, [cart, bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   const loadTimesForService = useCallback(async (service: CatalogService, staff: StaffRow) => {
     const serviceKey = String(service.id);
@@ -800,34 +829,19 @@ export default function BookingInternalV2() {
     setTimesLoading((current) => ({ ...current, [serviceKey]: true }));
     setScheduleMessage("");
     try {
-      const baseSlots = generateSalonTimeSlots(dayHours.start || "12:00", dayHours.end || "22:00", slotStepMin);
-      const staffSlots = filterStaffSlotsByWorkingHours(staff as any, {
-        dateISO: bookingDate,
-        slots: baseSlots,
-        fallbackOpenTime: dayHours.start || "12:00",
-        fallbackCloseTime: dayHours.end || "22:00",
-      });
       const duration = Math.max(1, serviceDuration(service) || 30);
-      const endingOk = filterSlotsByServiceEnd(staffSlots, dayHours.end || "22:00", duration, bufferMin, 0);
       const availability = await resolveCoreBookingDataSource().getStaffAvailability({
         staffId: employeeId,
-        employeeKey: resolveEmployeeKey({ employeeUid: String(staff?.uid || staff?.employeeUid || ""), employeeId: employeeId }),
-        employeeUid: String(staff?.uid || ""),
-        employeeName: staffName(staff),
         date: bookingDate,
         slotStepMin,
         bufferMin,
+        forceFresh: true,
       });
-      const free = endingOk
-        .map((slot: any) => String(slot.value24 || "").trim())
-        .filter(Boolean)
-        .filter((time) => isAvailabilityRangeFree({
-          startTime: time,
-          durationMin: duration,
-          bufferMin,
-          bookings: availability?.bookings || [],
-          lockedTimes: availability?.lockedTimes || availability?.takenTimes || [],
-        }));
+      const free = getCoreStaffBookableStartSlots(availability, {
+        durationMin: duration,
+        bufferMin,
+        slotStepMin,
+      }).map((slot) => slot.value24);
       setAvailableTimes((current) => ({ ...current, [serviceKey]: free }));
     } catch (error) {
       console.error("[BookingInternalV2] availability load failed", error);
@@ -836,7 +850,7 @@ export default function BookingInternalV2() {
     } finally {
       setTimesLoading((current) => ({ ...current, [serviceKey]: false }));
     }
-  }, [bookingDate, dayHours.enabled, dayHours.start, dayHours.end, slotStepMin, bufferMin]);
+  }, [bookingDate, dayHours.enabled, slotStepMin, bufferMin]);
 
   useEffect(() => {
     setScheduleByService({});
@@ -846,7 +860,9 @@ export default function BookingInternalV2() {
   const allScheduled = cart.length > 0 && cart.every((service) => {
     const key = String(service.id);
     const row = scheduleByService[key];
-    return Boolean(row?.staffId && row?.time && !conflictKeys.has(key));
+    const staffStillBookable = Boolean(row?.staffId) &&
+      (eligibleStaffByService[key] || []).some((staff) => staffId(staff) === row.staffId);
+    return Boolean(row?.staffId && row?.time && staffStillBookable && !conflictKeys.has(key));
   });
 
   const finalTotal = halalasToSar(discountResult.totalHalalas);
@@ -928,29 +944,24 @@ export default function BookingInternalV2() {
       for (const service of cart) {
         const serviceKey = String(service.id);
         const selection = scheduleByService[serviceKey];
-        const staff = allStaff.find((row) => staffId(row) === selection?.staffId);
+        const staff = (eligibleStaffByService[serviceKey] || []).find((row) => staffId(row) === selection?.staffId);
         if (!selection?.time || !staff) continue;
 
-        const availability = await resolveCoreBookingDataSource().getStaffAvailability({
-          staffId: selection.staffId,
-          employeeKey: resolveEmployeeKey({
-            employeeUid: String(staff?.uid || staff?.employeeUid || ""),
-            employeeId: selection.staffId,
-          }),
-          employeeUid: String(staff?.uid || staff?.employeeUid || ""),
-          employeeName: staffName(staff),
+        const freshRows = await listCoreBookableStaffForDate({
+          serviceId: serviceKey,
           date: bookingDate,
           slotStepMin,
           bufferMin,
+          requireShowOnBooking: false,
           forceFresh: true,
         });
+        const fresh = freshRows.find((row) => staffId(row.staff as StaffRow) === selection.staffId);
+        const freshAvailability = fresh?.availability;
 
-        if (!isAvailabilityRangeFree({
-          startTime: selection.time,
+        if (!freshAvailability || !isCoreStaffStartBookable(freshAvailability, selection.time, {
           durationMin: serviceDuration(service) || 30,
           bufferMin,
-          bookings: availability?.bookings || [],
-          lockedTimes: availability?.lockedTimes || availability?.takenTimes || [],
+          slotStepMin,
         })) {
           staleSelections.push({ service, staff, serviceKey });
         }
@@ -993,7 +1004,7 @@ export default function BookingInternalV2() {
         const proportionalPaid = total > 0
           ? Math.round((effectivePaidAmount * itemTotal / total) * 100) / 100
           : 0;
-        const selectedStaff = allStaff.find((row) => staffId(row) === schedule.staffId);
+        const selectedStaff = (eligibleStaffByService[key] || []).find((row) => staffId(row) === schedule.staffId);
         return {
           userId,
           createdBy: "staff",
@@ -1151,7 +1162,7 @@ export default function BookingInternalV2() {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, allStaff, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
+  }, [selectedClient, settingsReady, cart, allScheduled, discountMode, discountResult.ok, discountMessage, couponOffer, discountSnapshot, discountAmount, cartTotal, paymentType, paymentMethod, effectivePaidAmount, finalTotal, remainingAmount, mixedTotal, cashAmount, cardAmount, transferAmount, scheduleByService, eligibleStaffByService, bookingDate, bookingNote, slotStepMin, bufferMin, selectedSectionId, loadTimesForService]);
 
   const requestSubmitBooking = useCallback(() => {
     if (submittingRef.current) return;
