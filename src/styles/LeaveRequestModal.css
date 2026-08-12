@@ -28,6 +28,26 @@
   max-width: 100%;
 }
 
+.dashboard-v2 .leave-request-v2__time-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  color: var(--dsv2-text);
+  background: var(--dsv2-surface);
+  font: inherit;
+  font-weight: 800;
+  direction: ltr;
+}
+
+.dashboard-v2 .leave-request-v2__time-input:focus {
+  border-color: var(--dsv2-gold);
+  outline: 2px solid color-mix(in srgb, var(--dsv2-gold) 20%, transparent);
+  outline-offset: 1px;
+}
+
 .dashboard-v2 .leave-request-v2__summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

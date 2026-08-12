@@ -1530,7 +1530,7 @@ export default function DashboardEmployees() {
     selectedEmployeeLeaveRequests,
   ]);
 
-  const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
+  const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; durationKind: "full_day" | "partial"; partialStartTime: string; partialEndTime: string; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
     if (!selectedEmployeeId) {
       setErrorMsg("لم يتم تحديد الموظفة.");
       return;
@@ -1549,7 +1549,14 @@ export default function DashboardEmployees() {
     const employeeUidLocal = attendanceIdentity.employeeUid;
     const employeeIdLocal = attendanceIdentity.employeeDocId || selectedEmployeeId;
     const leaveType = normalizeManagedLeaveType(payload.type);
-    const policy = managedLeavePolicy(leaveType);
+    const durationKind = payload.durationKind === "partial" ? "partial" : "full_day";
+    const isPartialLeave = durationKind === "partial";
+    const partialStartTime = isPartialLeave ? cleanText(payload.partialStartTime) : "";
+    const partialEndTime = isPartialLeave ? cleanText(payload.partialEndTime) : "";
+    const basePolicy = managedLeavePolicy(leaveType);
+    const policy = isPartialLeave
+      ? { deductFromBalance: false, affectsPayroll: false }
+      : basePolicy;
     const fromDate = normalizeLeaveUntil(payload.fromDate);
     const toDate = normalizeLeaveUntil(payload.toDate);
     const days = inclusiveLeaveDays(fromDate, toDate);
@@ -1562,6 +1569,13 @@ export default function DashboardEmployees() {
 
     if (!fromDate || !toDate || days <= 0 || fromDate > toDate) {
       throw new Error("مدى الإجازة غير صحيح.");
+    }
+    if (isPartialLeave) {
+      if (fromDate !== toDate) throw new Error("الإجازة الجزئية يجب أن تكون في يوم واحد.");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) {
+        throw new Error("وقت الإجازة الجزئية غير صحيح.");
+      }
+      if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الإجازة الجزئية يجب أن يكون بعد البداية.");
     }
 
     setSaving(true);
@@ -1580,7 +1594,10 @@ export default function DashboardEmployees() {
         cleanText(request.status).toLowerCase() === "approved" &&
         normalizeLeaveUntil(request.fromDate) === fromDate &&
         normalizeLeaveUntil(request.toDate) === toDate &&
-        normalizeManagedLeaveType(request.type) === leaveType
+        normalizeManagedLeaveType(request.type) === leaveType &&
+        (((request as any).durationKind === "partial" || (request as any).duration_kind === "partial") ? "partial" : "full_day") === durationKind &&
+        (!isPartialLeave || (cleanText((request as any).partialStartTime || (request as any).partial_start_time) === partialStartTime &&
+          cleanText((request as any).partialEndTime || (request as any).partial_end_time) === partialEndTime))
       );
 
       if (matchingRequest) {
@@ -1594,6 +1611,9 @@ export default function DashboardEmployees() {
           fromDate,
           toDate,
           days,
+          durationKind,
+          partialStartTime,
+          partialEndTime,
           note: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
           createdByUid: authUser.uid,
           createdByName: authUser.displayName || authUser.email,
@@ -1628,7 +1648,9 @@ export default function DashboardEmployees() {
         cleanText(leave.status).toLowerCase() === "approved" &&
         normalizeLeaveUntil(leave.startDate) === fromDate &&
         normalizeLeaveUntil(leave.endDate) === toDate &&
-        normalizeManagedLeaveType(leave.leaveType) === leaveType
+        normalizeManagedLeaveType(leave.leaveType) === leaveType &&
+        (cleanText(leave.durationKind).toLowerCase() === "partial" ? "partial" : "full_day") === durationKind &&
+        (!isPartialLeave || (cleanText(leave.partialStartTime) === partialStartTime && cleanText(leave.partialEndTime) === partialEndTime))
       );
 
       if (matchingCoreLeave) {
@@ -1655,6 +1677,9 @@ export default function DashboardEmployees() {
           startDate: fromDate,
           endDate: toDate,
           daysCount: days,
+          durationKind,
+          partialStartTime: isPartialLeave ? partialStartTime : undefined,
+          partialEndTime: isPartialLeave ? partialEndTime : undefined,
           employeeNote: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
           hrNote: policy.affectsPayroll ? "إجازة بدون راتب — تؤثر على الراتب" : "إجازة مدفوعة — لا تخصم من الراتب",
         });
@@ -1667,20 +1692,25 @@ export default function DashboardEmployees() {
         );
       }
 
-      const profilePatch = {
-        onLeave: true,
-        leaveStartDate: fromDate,
-        leaveUntil: toDate,
-        leaveType,
-        leaveNote: cleanText(payload.note),
-        leaveRequestId: requestId,
-        coreLeaveId,
-        updatedAt: serverTimestamp(),
-      };
-      await Promise.all([
-        setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
-        setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
-      ]);
+      // A partial leave is operationally authoritative in employee_leaves only.
+      // Never mirror it to profile/staff full-day leave fields, otherwise the
+      // employee disappears for the entire day instead of only the blocked range.
+      if (!isPartialLeave) {
+        const profilePatch = {
+          onLeave: true,
+          leaveStartDate: fromDate,
+          leaveUntil: toDate,
+          leaveType,
+          leaveNote: cleanText(payload.note),
+          leaveRequestId: requestId,
+          coreLeaveId,
+          updatedAt: serverTimestamp(),
+        };
+        await Promise.all([
+          setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
+          setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
+        ]);
+      }
       if (requestId && coreLeaveId) {
         await updateDoc(doc(db, "salons", SALON_ID, "employee_leave_requests", requestId), {
           coreLeaveId,
@@ -1688,11 +1718,13 @@ export default function DashboardEmployees() {
         } as any).catch(() => {});
       }
 
-      setModalOnLeave(true);
-      setModalLeaveFrom(fromDate);
-      setModalLeaveUntil(toDate);
-      setModalLeaveType(leaveType);
-      setModalLeaveNote(cleanText(payload.note));
+      if (!isPartialLeave) {
+        setModalOnLeave(true);
+        setModalLeaveFrom(fromDate);
+        setModalLeaveUntil(toDate);
+        setModalLeaveType(leaveType);
+        setModalLeaveNote(cleanText(payload.note));
+      }
       await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
       window.dispatchEvent(new Event("queens:staff-updated"));
 
@@ -1709,6 +1741,9 @@ export default function DashboardEmployees() {
           fromDate,
           toDate,
           days,
+          durationKind,
+          partialStartTime: isPartialLeave ? partialStartTime : null,
+          partialEndTime: isPartialLeave ? partialEndTime : null,
           affectsPayroll: policy.affectsPayroll,
           deductFromBalance: policy.deductFromBalance,
           requestId,

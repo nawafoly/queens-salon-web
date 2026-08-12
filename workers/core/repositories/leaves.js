@@ -11,6 +11,7 @@ import {
   optionalText,
   requiredId,
   validDate,
+  validTime,
 } from '../d1.js';
 import { AppError } from '../errors.js';
 
@@ -34,6 +35,11 @@ export async function listLeaves(db, salonId, query = {}) {
 export async function createLeave(db, salonId, data, actor = {}) {
   const startDate = validDate(data.startDate || data.start_date, 'startDate');
   const endDate = validDate(data.endDate || data.end_date, 'endDate');
+  const durationKind = cleanText(data.durationKind || data.duration_kind).toLowerCase() === 'partial' ? 'partial' : 'full_day';
+  if (durationKind === 'partial' && startDate !== endDate) throw new AppError(400, 'core_leave:partial_single_day');
+  const partialStartTime = durationKind === 'partial' ? validTime(data.partialStartTime || data.partial_start_time, 'partialStartTime') : null;
+  const partialEndTime = durationKind === 'partial' ? validTime(data.partialEndTime || data.partial_end_time, 'partialEndTime') : null;
+  if (durationKind === 'partial' && partialStartTime >= partialEndTime) throw new AppError(400, 'core_leave:invalid_partial_range');
   const now = nowIso();
   const row = {
     id: requiredId(data.id || generatedId('leave')),
@@ -47,6 +53,10 @@ export async function createLeave(db, salonId, data, actor = {}) {
     start_date: startDate,
     end_date: endDate,
     days_count: Number(data.daysCount ?? data.days_count ?? daysBetween(startDate, endDate)),
+    duration_kind: durationKind,
+    partial_start_time: partialStartTime,
+    partial_end_time: partialEndTime,
+    request_id: optionalText(data.requestId || data.request_id) || null,
     employee_note: optionalText(data.employeeNote || data.employee_note) || null,
     hr_note: optionalText(data.hrNote || data.hr_note) || null,
     decided_at: null,
@@ -59,10 +69,34 @@ export async function createLeave(db, salonId, data, actor = {}) {
   await dbBatch(db, [{
     sql: `INSERT INTO employee_leaves
       (id, salon_id, employee_id, employee_uid, employee_name, employee_email, status, leave_type,
-       start_date, end_date, days_count, employee_note, hr_note, decided_at, decided_by_uid,
-       decided_by_email, decided_by_name, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    params: Object.values(row),
+       start_date, end_date, days_count, duration_kind, partial_start_time, partial_end_time, request_id,
+       employee_note, hr_note, decided_at, decided_by_uid, decided_by_email, decided_by_name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      row.id,
+      row.salon_id,
+      row.employee_id,
+      row.employee_uid,
+      row.employee_name,
+      row.employee_email,
+      row.status,
+      row.leave_type,
+      row.start_date,
+      row.end_date,
+      row.days_count,
+      row.duration_kind,
+      row.partial_start_time,
+      row.partial_end_time,
+      row.request_id,
+      row.employee_note,
+      row.hr_note,
+      row.decided_at,
+      row.decided_by_uid,
+      row.decided_by_email,
+      row.decided_by_name,
+      row.created_at,
+      row.updated_at,
+    ],
   }]);
   return row;
 }
@@ -82,13 +116,13 @@ export async function decideLeave(db, salonId, idValue, decision, actor = {}) {
       optionalText(actor.uid) || null, optionalText(actor.email) || null, optionalText(actor.name) || null,
       now, salonId, id],
   }];
-  if (status === 'approved') {
+  if (status === 'approved' && cleanText(leave.duration_kind).toLowerCase() !== 'partial') {
     statements.push({
       sql: `UPDATE staff SET leave_start_date = ?, leave_end_date = ?, leave_note = ?, updated_at = ?
              WHERE salon_id = ? AND id = ?`,
       params: [leave.start_date, leave.end_date, optionalText(decision.hrNote || decision.hr_note || leave.employee_note) || null, now, salonId, leave.employee_id],
     });
-  } else if (leave.status === 'approved') {
+  } else if (leave.status === 'approved' && cleanText(leave.duration_kind).toLowerCase() !== 'partial') {
     // Rejecting/cancelling an already-approved leave must release the employee
     // from the Core availability window. Restrict the clear to the same range
     // so a newer approved leave is not removed accidentally.

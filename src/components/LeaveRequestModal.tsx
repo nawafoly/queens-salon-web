@@ -16,6 +16,9 @@ type Props = {
     fromDate: string;
     toDate: string;
     days: number;
+    durationKind: "full_day" | "partial";
+    partialStartTime: string;
+    partialEndTime: string;
     deductFromBalance: boolean;
     affectsPayroll: boolean;
     note: string;
@@ -63,6 +66,9 @@ export default function LeaveRequestModal({
   const [type, setType] = useState(defaultType);
   const [fromDate, setFromDate] = useState(initialDate || "");
   const [toDate, setToDate] = useState(initialDate || "");
+  const [durationKind, setDurationKind] = useState<"full_day" | "partial">("full_day");
+  const [partialStartTime, setPartialStartTime] = useState("18:00");
+  const [partialEndTime, setPartialEndTime] = useState("20:00");
   const [note, setNote] = useState("");
   const [deductFromBalance, setDeductFromBalance] = useState(false);
   const [affectsPayroll, setAffectsPayroll] = useState(false);
@@ -70,6 +76,7 @@ export default function LeaveRequestModal({
   const [submitting, setSubmitting] = useState(false);
 
   const isOtherLeaveType = type === "other";
+  const isPartialLeave = durationKind === "partial";
   const selectedTypeLabel = LEAVE_TYPE_LABELS[type] || "غير محدد";
 
   useEffect(() => {
@@ -80,13 +87,16 @@ export default function LeaveRequestModal({
     if (!open) return;
     setFromDate(initialDate || "");
     setToDate(initialDate || "");
+    setDurationKind("full_day");
+    setPartialStartTime("18:00");
+    setPartialEndTime("20:00");
     setNote("");
     setErrors([]);
     setSubmitting(false);
   }, [initialDate, open]);
 
   useEffect(() => {
-    if (isOtherLeaveType) {
+    if (isPartialLeave || isOtherLeaveType) {
       setDeductFromBalance(false);
       setAffectsPayroll(false);
       return;
@@ -94,9 +104,10 @@ export default function LeaveRequestModal({
     const policy = LEAVE_TYPE_POLICY[type] || { deductFromBalance: false, affectsPayroll: false };
     setDeductFromBalance(policy.deductFromBalance);
     setAffectsPayroll(policy.affectsPayroll);
-  }, [type, isOtherLeaveType]);
+  }, [type, isOtherLeaveType, isPartialLeave]);
 
   const days = useMemo(() => {
+    if (isPartialLeave) return fromDate ? 1 : 0;
     if (!fromDate || !toDate) return 0;
     try {
       const f = new Date(`${fromDate}T00:00:00`);
@@ -106,7 +117,7 @@ export default function LeaveRequestModal({
     } catch {
       return 0;
     }
-  }, [fromDate, toDate]);
+  }, [fromDate, isPartialLeave, toDate]);
 
   const validate = (): string[] => {
     const result: string[] = [];
@@ -114,10 +125,16 @@ export default function LeaveRequestModal({
     if (!fromDate) result.push("اختر تاريخ البداية.");
     if (!toDate) result.push("اختر تاريخ النهاية.");
     if (days <= 0) result.push("المدى الزمني غير صحيح.");
-    if (deductFromBalance && availableBalance != null && availableBalance < days) {
+    if (isPartialLeave) {
+      if (fromDate !== toDate) result.push("الإجازة الجزئية يجب أن تكون في يوم واحد.");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime)) result.push("حدد وقت بداية صحيح للإجازة الجزئية.");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) result.push("حدد وقت نهاية صحيح للإجازة الجزئية.");
+      if (partialStartTime >= partialEndTime) result.push("وقت نهاية الإجازة الجزئية يجب أن يكون بعد وقت البداية.");
+    }
+    if (!isPartialLeave && deductFromBalance && availableBalance != null && availableBalance < days) {
       result.push("الرصيد غير كافٍ لهذه الإجازة.");
     }
-    if (hasAttendanceInRange && hasAttendanceInRange(fromDate, toDate)) {
+    if (!isPartialLeave && hasAttendanceInRange && hasAttendanceInRange(fromDate, toDate)) {
       result.push("يوجد بصمة داخل النطاق المحدد.");
     }
     if (hasOverlappingLeave && hasOverlappingLeave(fromDate, toDate)) {
@@ -128,6 +145,10 @@ export default function LeaveRequestModal({
 
   const handleFromDateChange = (value: string) => {
     setFromDate(value);
+    if (isPartialLeave) {
+      setToDate(value);
+      return;
+    }
     if (value && (!toDate || toDate < value)) {
       setToDate(value);
     }
@@ -145,6 +166,9 @@ export default function LeaveRequestModal({
         fromDate,
         toDate,
         days,
+        durationKind,
+        partialStartTime: isPartialLeave ? partialStartTime : "",
+        partialEndTime: isPartialLeave ? partialEndTime : "",
         deductFromBalance,
         affectsPayroll,
         note,
@@ -204,25 +228,71 @@ export default function LeaveRequestModal({
           />
         </DashboardFieldV2>
 
+        <DashboardFieldV2 id="leave-duration-kind-v2" label="مدة الإجازة" required>
+          <DashboardSelectV2
+            id="leave-duration-kind-v2"
+            value={durationKind}
+            options={[
+              { value: "full_day", label: "يوم كامل" },
+              { value: "partial", label: "جزء من اليوم" },
+            ]}
+            onChange={(value) => {
+              const next = value === "partial" ? "partial" : "full_day";
+              setDurationKind(next);
+              if (next === "partial") {
+                setToDate(fromDate);
+                setDeductFromBalance(false);
+                setAffectsPayroll(false);
+              }
+              setErrors([]);
+            }}
+          />
+        </DashboardFieldV2>
+
         <div className="leave-request-v2__date-grid">
-          <DashboardFieldV2 id="leave-from-date-v2" label="من تاريخ" required>
+          <DashboardFieldV2 id="leave-from-date-v2" label={isPartialLeave ? "التاريخ" : "من تاريخ"} required>
             <DashboardDatePickerV2
               id="leave-from-date-v2"
               value={fromDate}
-              max={toDate || undefined}
+              max={!isPartialLeave ? toDate || undefined : undefined}
               onChange={handleFromDateChange}
             />
           </DashboardFieldV2>
 
-          <DashboardFieldV2 id="leave-to-date-v2" label="إلى تاريخ" required>
-            <DashboardDatePickerV2
-              id="leave-to-date-v2"
-              value={toDate}
-              min={fromDate || undefined}
-              onChange={setToDate}
-            />
-          </DashboardFieldV2>
+          {!isPartialLeave ? (
+            <DashboardFieldV2 id="leave-to-date-v2" label="إلى تاريخ" required>
+              <DashboardDatePickerV2
+                id="leave-to-date-v2"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={setToDate}
+              />
+            </DashboardFieldV2>
+          ) : null}
         </div>
+
+        {isPartialLeave ? (
+          <div className="leave-request-v2__date-grid leave-request-v2__time-grid">
+            <DashboardFieldV2 id="leave-partial-start-v2" label="من الساعة" required>
+              <input
+                id="leave-partial-start-v2"
+                className="leave-request-v2__time-input"
+                type="time"
+                value={partialStartTime}
+                onChange={(event) => { setPartialStartTime(event.target.value); setErrors([]); }}
+              />
+            </DashboardFieldV2>
+            <DashboardFieldV2 id="leave-partial-end-v2" label="إلى الساعة" required>
+              <input
+                id="leave-partial-end-v2"
+                className="leave-request-v2__time-input"
+                type="time"
+                value={partialEndTime}
+                onChange={(event) => { setPartialEndTime(event.target.value); setErrors([]); }}
+              />
+            </DashboardFieldV2>
+          </div>
+        ) : null}
 
         <section className="leave-request-v2__summary" aria-label="ملخص الإجازة">
           <div className="leave-request-v2__summary-item">
@@ -230,8 +300,8 @@ export default function LeaveRequestModal({
             <strong>{selectedTypeLabel}</strong>
           </div>
           <div className="leave-request-v2__summary-item">
-            <span>عدد الأيام</span>
-            <strong>{days > 0 ? `${days} يوم` : "—"}</strong>
+            <span>{isPartialLeave ? "الفترة" : "عدد الأيام"}</span>
+            <strong>{isPartialLeave ? `${partialStartTime} – ${partialEndTime}` : days > 0 ? `${days} يوم` : "—"}</strong>
           </div>
           <div className="leave-request-v2__summary-item">
             <span>الرصيد المتاح</span>
@@ -244,9 +314,11 @@ export default function LeaveRequestModal({
             <div>
               <h3 id="leave-policy-title-v2">سياسة الاحتساب</h3>
               <p>
-                {isOtherLeaveType
-                  ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
-                  : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
+                {isPartialLeave
+                  ? "الإجازة الجزئية تحجب فترة الحجز المحددة فقط، ولا تخصم يومًا كاملًا من الرصيد أو الراتب."
+                  : isOtherLeaveType
+                    ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
+                    : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
               </p>
             </div>
             <span className={`dsv2-badge ${affectsPayroll ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
@@ -258,7 +330,7 @@ export default function LeaveRequestModal({
             <WorkspaceSwitchV2
               checked={deductFromBalance}
               onChange={setDeductFromBalance}
-              disabled={!isOtherLeaveType}
+              disabled={isPartialLeave || !isOtherLeaveType}
               label="خصم من رصيد الإجازات"
               description={
                 deductFromBalance
@@ -269,7 +341,7 @@ export default function LeaveRequestModal({
             <WorkspaceSwitchV2
               checked={affectsPayroll}
               onChange={setAffectsPayroll}
-              disabled={!isOtherLeaveType}
+              disabled={isPartialLeave || !isOtherLeaveType}
               label="تؤثر على الراتب"
               description={
                 affectsPayroll

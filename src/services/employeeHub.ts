@@ -155,6 +155,9 @@ export type EmployeeLeaveRequest = {
   fromDate: string;
   toDate: string;
   days?: number;
+  durationKind?: "full_day" | "partial";
+  partialStartTime?: string;
+  partialEndTime?: string;
   note?: string;
   status?: "pending" | "approved" | "rejected" | "cancelled";
   reviewerUid?: string;
@@ -943,6 +946,9 @@ export async function createLeaveRequest(input: {
   toDate: string;
   note?: string;
   days?: number;
+  durationKind?: "full_day" | "partial";
+  partialStartTime?: string;
+  partialEndTime?: string;
   createdByUid?: string;
   createdByName?: string;
 }) {
@@ -954,6 +960,9 @@ export async function createLeaveRequest(input: {
     fromDate: cleanText(input.fromDate),
     toDate: cleanText(input.toDate),
     days: Number.isFinite(Number(input.days)) ? Number(input.days) : undefined,
+    durationKind: cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",
+    partialStartTime: input.durationKind === "partial" ? cleanText(input.partialStartTime || "") || undefined : undefined,
+    partialEndTime: input.durationKind === "partial" ? cleanText(input.partialEndTime || "") || undefined : undefined,
     note: cleanText(input.note || "") || undefined,
     status: "pending",
     createdByUid: cleanText(input.createdByUid || "") || undefined,
@@ -1335,6 +1344,9 @@ function mapEmployeeLeaveRequestDoc(d: any): EmployeeLeaveRequest {
     fromDate: cleanText(data?.fromDate || normalized.startDate || ""),
     toDate: cleanText(data?.toDate || normalized.endDate || ""),
     days: Number.isFinite(Number(normalized.daysCount)) ? Number(normalized.daysCount) : undefined,
+    durationKind: cleanText(data?.durationKind || data?.duration_kind).toLowerCase() === "partial" ? "partial" : "full_day",
+    partialStartTime: cleanText(data?.partialStartTime || data?.partial_start_time) || undefined,
+    partialEndTime: cleanText(data?.partialEndTime || data?.partial_end_time) || undefined,
     note: cleanText(normalized.employeeNote || data?.note || "") || undefined,
     status: cleanText(normalized.status || data?.status || "pending") as EmployeeLeaveRequest["status"],
     reviewerUid: cleanText(normalized.reviewedBy || data?.reviewerUid || "") || undefined,
