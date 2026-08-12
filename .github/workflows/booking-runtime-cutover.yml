@@ -185,3 +185,18 @@ jobs:
 
       - name: Build fully cut customer Booking workspace
         run: npm run build
+
+      - name: Commit validated customer Booking cutover
+        if: success()
+        run: |
+          if git diff --quiet -- src/pages/Booking.tsx; then
+            echo "Customer Booking already cut over on main."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Booking.tsx
+          git commit -m "Cut customer Booking over to Core HR availability"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
