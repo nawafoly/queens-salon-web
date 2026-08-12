@@ -155,6 +155,20 @@ jobs:
           grep -n 'getCoreStaffBookableStartSlots' src/pages/Booking.tsx
           grep -n 'listCoreAssignedStaffForService' src/pages/Booking.tsx
 
+      - name: Repair stage 2 regex counter in CI workspace
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'scripts/cutover-booking-customer-core-hr-stage2.mjs';
+          let s = fs.readFileSync(p, 'utf8');
+          const before = "  const matches = [...text.matchAll(regex)];";
+          const after = "  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;\n  const matches = [...text.matchAll(new RegExp(regex.source, flags))];";
+          const count = s.split(before).length - 1;
+          if (count !== 1) throw new Error(`stage2 helper patch expected 1 match, got ${count}`);
+          s = s.replace(before, after);
+          fs.writeFileSync(p, s, 'utf8');
+          NODE
+
       - name: Apply customer Booking Core HR stage 2
         run: node scripts/cutover-booking-customer-core-hr-stage2.mjs
 
