@@ -700,11 +700,11 @@
 
 .dashboard-v2 .bk-status-menu summary::after {
   content: "↓";
-  color: #000;
+  color: rgb(0, 0, 0);
   font-size: 1rem;
   font-weight: 900;
   line-height: 1;
-  text-shadow: 0 0 0.5px #000;
+  text-shadow: 0 0 0.5px rgb(0, 0, 0);
 }
 
 .dashboard-v2 .bk-status-menu[open] summary{
@@ -2111,65 +2111,65 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 /* BOOKING_COMMAND_RESULT_REFERENCE_V1_START */
 
 .dashboard-v2 .bookings-v2-command__head .bk-command-result {
-  width: fit-content !important;
-  min-width: 185px !important;
-  min-height: 50px !important;
-  display: inline-grid !important;
-  grid-template-columns: auto auto !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 10px !important;
-  overflow: visible !important;
-  border: 1px solid rgba(var(--dsv2-gold-rgb), 0.32) !important;
-  border-radius: 14px !important;
-  padding: 8px 10px 8px 15px !important;
-  color: var(--dsv2-text) !important;
+  width: fit-content;
+  min-width: 185px;
+  min-height: 50px;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: visible;
+  border: 1px solid rgba(var(--dsv2-gold-rgb), 0.32);
+  border-radius: 14px;
+  padding: 8px 10px 8px 15px;
+  color: var(--dsv2-text);
   background:
     linear-gradient(
       135deg,
       rgba(var(--dsv2-gold-rgb), 0.11),
       rgba(var(--dsv2-gold-rgb), 0.025)
     ),
-    var(--dsv2-surface) !important;
+    var(--dsv2-surface);
   box-shadow:
     0 1px 2px rgba(var(--dsv2-black-rgb), 0.04),
-    0 8px 22px rgba(var(--dsv2-black-rgb), 0.045) !important;
-  direction: ltr !important;
-  white-space: nowrap !important;
+    0 8px 22px rgba(var(--dsv2-black-rgb), 0.045);
+  direction: ltr;
+  white-space: nowrap;
 }
 
 .dashboard-v2 .bookings-v2-command__head .bk-command-result strong {
-  min-width: 36px !important;
-  height: 34px !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  border-radius: 10px !important;
-  padding-inline: 7px !important;
-  color: #0b0d10 !important;
-  background: var(--dsv2-gold) !important;
-  font-size: 0.78rem !important;
-  font-weight: 950 !important;
-  line-height: 1 !important;
-  direction: ltr !important;
+  min-width: 36px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  padding-inline: 7px;
+  color: rgb(11, 13, 16);
+  background: var(--dsv2-gold);
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1;
+  direction: ltr;
 }
 
 .dashboard-v2 .bookings-v2-command__head .bk-command-result span {
-  display: inline-flex !important;
-  align-items: center !important;
-  color: var(--dsv2-text) !important;
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 !important;
-  font-size: 0.84rem !important;
-  font-weight: 900 !important;
-  line-height: 1 !important;
-  direction: rtl !important;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsv2-text);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1;
+  direction: rtl;
 }
 
 @media (max-width: 620px) {
   .dashboard-v2 .bookings-v2-command__head .bk-command-result {
-    width: 100% !important;
-    min-width: 0 !important;
+    width: 100%;
+    min-width: 0;
   }
 }
 
@@ -2181,8 +2181,8 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 /* خدمات الحجز */
 
 .dashboard-v2 .bk-services-list {
-  display: grid !important;
-  gap: 14px !important;
+  display: grid;
+  gap: 14px;
 }
 
 .dashboard-v2 .bk-service-row.bk-service-row--modern {
@@ -2190,14 +2190,14 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   width: 100%;
   min-width: 0;
   min-height: 118px;
-  display: grid !important;
+  display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, auto);
-  align-items: stretch !important;
-  gap: 18px !important;
+  align-items: stretch;
+  gap: 18px;
   overflow: hidden;
-  border: 1px solid rgba(var(--dsv2-black-rgb), 0.09) !important;
-  border-radius: 18px !important;
-  padding: 18px !important;
+  border: 1px solid rgba(var(--dsv2-black-rgb), 0.09);
+  border-radius: 18px;
+  padding: 18px;
   color: var(--dsv2-text);
   background:
     radial-gradient(
@@ -2210,7 +2210,7 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
       rgba(var(--dsv2-gold-rgb), 0.04),
       transparent 48%
     ),
-    var(--dsv2-surface) !important;
+    var(--dsv2-surface);
   box-shadow:
     0 1px 2px rgba(var(--dsv2-black-rgb), 0.03),
     0 12px 30px rgba(var(--dsv2-black-rgb), 0.045);
@@ -2320,17 +2320,17 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .dashboard-v2 .bk-activity-timeline {
-  display: grid !important;
-  gap: 16px !important;
+  display: grid;
+  gap: 16px;
   padding: 2px 0;
 }
 
 .dashboard-v2 .bk-activity-item {
   position: relative;
-  display: grid !important;
-  grid-template-columns: 26px minmax(0, 1fr) !important;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
   align-items: stretch;
-  gap: 12px !important;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -2345,31 +2345,31 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .dashboard-v2 .bk-activity-dot {
   position: relative;
   z-index: 2;
-  width: 12px !important;
-  height: 12px !important;
+  width: 12px;
+  height: 12px;
   flex: 0 0 12px;
   margin-top: 23px;
   border: 3px solid var(--dsv2-surface);
   border-radius: 999px;
-  background: var(--dsv2-gold) !important;
+  background: var(--dsv2-gold);
   box-shadow:
     0 0 0 3px rgba(var(--dsv2-gold-rgb), 0.16),
     0 3px 10px rgba(var(--dsv2-gold-rgb), 0.28);
 }
 
 .dashboard-v2 .bk-activity-line {
-  position: absolute !important;
-  top: 35px !important;
-  bottom: -20px !important;
-  left: 50% !important;
-  width: 2px !important;
+  position: absolute;
+  top: 35px;
+  bottom: -20px;
+  left: 50%;
+  width: 2px;
   transform: translateX(-50%);
   background:
     linear-gradient(
       to bottom,
       rgba(var(--dsv2-gold-rgb), 0.42),
       rgba(var(--dsv2-black-rgb), 0.08)
-    ) !important;
+    );
 }
 
 .dashboard-v2 .bk-activity-item:last-child .bk-activity-line {
@@ -2379,20 +2379,20 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .dashboard-v2 .bk-activity-card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(var(--dsv2-black-rgb), 0.08) !important;
-  border-radius: 18px !important;
-  padding: 17px !important;
-  background: var(--dsv2-surface) !important;
+  border: 1px solid rgba(var(--dsv2-black-rgb), 0.08);
+  border-radius: 18px;
+  padding: 17px;
+  background: var(--dsv2-surface);
   box-shadow:
     0 1px 2px rgba(var(--dsv2-black-rgb), 0.025),
     0 10px 26px rgba(var(--dsv2-black-rgb), 0.04);
 }
 
 .dashboard-v2 .bk-activity-top {
-  display: flex !important;
-  align-items: flex-start !important;
-  justify-content: space-between !important;
-  gap: 14px !important;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
   padding-bottom: 13px;
   border-bottom: 1px solid rgba(var(--dsv2-black-rgb), 0.07);
 }
@@ -2411,10 +2411,10 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .dashboard-v2 .bk-activity-meta {
-  display: flex !important;
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px !important;
+  gap: 8px;
   color: var(--dsv2-muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -2489,13 +2489,13 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .dashboard-v2 .bk-activity-change {
   min-width: 0;
   min-height: 46px;
-  display: grid !important;
+  display: grid;
   grid-template-columns: 27px minmax(0, 1fr);
   align-items: center;
   gap: 9px;
   border: 1px solid rgba(var(--dsv2-black-rgb), 0.065);
   border-radius: 12px;
-  padding: 8px 10px !important;
+  padding: 8px 10px;
   color: var(--dsv2-text);
   background:
     linear-gradient(
@@ -2527,10 +2527,10 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .dashboard-v2 .bk-activity-note {
-  margin-top: 12px !important;
+  margin-top: 12px;
   border: 1px solid rgba(var(--dsv2-burgundy-rgb), 0.12);
   border-radius: 12px;
-  padding: 10px 12px !important;
+  padding: 10px 12px;
   color: var(--dsv2-burgundy);
   background: rgba(var(--dsv2-burgundy-rgb), 0.045);
   font-size: 0.75rem;
@@ -2564,8 +2564,8 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   }
 
   .dashboard-v2 .bk-activity-item {
-    grid-template-columns: 18px minmax(0, 1fr) !important;
-    gap: 8px !important;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 8px;
   }
 
   .dashboard-v2 .bk-activity-rail {
@@ -2573,11 +2573,11 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   }
 
   .dashboard-v2 .bk-activity-card {
-    padding: 14px !important;
+    padding: 14px;
   }
 
   .dashboard-v2 .bk-activity-top {
-    display: grid !important;
+    display: grid;
   }
 
   .dashboard-v2 .bk-activity-time {
@@ -2592,8 +2592,8 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 /* خدمات الحجز */
 
 .bookings-v2-modal-panel .bk-services-list {
-  display: grid !important;
-  gap: 14px !important;
+  display: grid;
+  gap: 14px;
 }
 
 .bookings-v2-modal-panel .bk-service-row.bk-service-row--modern {
@@ -2601,14 +2601,14 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   width: 100%;
   min-width: 0;
   min-height: 118px;
-  display: grid !important;
+  display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, auto);
-  align-items: stretch !important;
-  gap: 18px !important;
+  align-items: stretch;
+  gap: 18px;
   overflow: hidden;
-  border: 1px solid rgba(var(--dsv2-black-rgb), 0.09) !important;
-  border-radius: 18px !important;
-  padding: 18px !important;
+  border: 1px solid rgba(var(--dsv2-black-rgb), 0.09);
+  border-radius: 18px;
+  padding: 18px;
   color: var(--dsv2-text);
   background:
     radial-gradient(
@@ -2621,7 +2621,7 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
       rgba(var(--dsv2-gold-rgb), 0.04),
       transparent 48%
     ),
-    var(--dsv2-surface) !important;
+    var(--dsv2-surface);
   box-shadow:
     0 1px 2px rgba(var(--dsv2-black-rgb), 0.03),
     0 12px 30px rgba(var(--dsv2-black-rgb), 0.045);
@@ -2731,17 +2731,17 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .bookings-v2-modal-panel .bk-activity-timeline {
-  display: grid !important;
-  gap: 16px !important;
+  display: grid;
+  gap: 16px;
   padding: 2px 0;
 }
 
 .bookings-v2-modal-panel .bk-activity-item {
   position: relative;
-  display: grid !important;
-  grid-template-columns: 26px minmax(0, 1fr) !important;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
   align-items: stretch;
-  gap: 12px !important;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -2756,31 +2756,31 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .bookings-v2-modal-panel .bk-activity-dot {
   position: relative;
   z-index: 2;
-  width: 12px !important;
-  height: 12px !important;
+  width: 12px;
+  height: 12px;
   flex: 0 0 12px;
   margin-top: 23px;
   border: 3px solid var(--dsv2-surface);
   border-radius: 999px;
-  background: var(--dsv2-gold) !important;
+  background: var(--dsv2-gold);
   box-shadow:
     0 0 0 3px rgba(var(--dsv2-gold-rgb), 0.16),
     0 3px 10px rgba(var(--dsv2-gold-rgb), 0.28);
 }
 
 .bookings-v2-modal-panel .bk-activity-line {
-  position: absolute !important;
-  top: 35px !important;
-  bottom: -20px !important;
-  left: 50% !important;
-  width: 2px !important;
+  position: absolute;
+  top: 35px;
+  bottom: -20px;
+  left: 50%;
+  width: 2px;
   transform: translateX(-50%);
   background:
     linear-gradient(
       to bottom,
       rgba(var(--dsv2-gold-rgb), 0.42),
       rgba(var(--dsv2-black-rgb), 0.08)
-    ) !important;
+    );
 }
 
 .bookings-v2-modal-panel .bk-activity-item:last-child .bk-activity-line {
@@ -2790,20 +2790,20 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .bookings-v2-modal-panel .bk-activity-card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(var(--dsv2-black-rgb), 0.08) !important;
-  border-radius: 18px !important;
-  padding: 17px !important;
-  background: var(--dsv2-surface) !important;
+  border: 1px solid rgba(var(--dsv2-black-rgb), 0.08);
+  border-radius: 18px;
+  padding: 17px;
+  background: var(--dsv2-surface);
   box-shadow:
     0 1px 2px rgba(var(--dsv2-black-rgb), 0.025),
     0 10px 26px rgba(var(--dsv2-black-rgb), 0.04);
 }
 
 .bookings-v2-modal-panel .bk-activity-top {
-  display: flex !important;
-  align-items: flex-start !important;
-  justify-content: space-between !important;
-  gap: 14px !important;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
   padding-bottom: 13px;
   border-bottom: 1px solid rgba(var(--dsv2-black-rgb), 0.07);
 }
@@ -2822,10 +2822,10 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .bookings-v2-modal-panel .bk-activity-meta {
-  display: flex !important;
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px !important;
+  gap: 8px;
   color: var(--dsv2-muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -2900,13 +2900,13 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .bookings-v2-modal-panel .bk-activity-change {
   min-width: 0;
   min-height: 46px;
-  display: grid !important;
+  display: grid;
   grid-template-columns: 27px minmax(0, 1fr);
   align-items: center;
   gap: 9px;
   border: 1px solid rgba(var(--dsv2-black-rgb), 0.065);
   border-radius: 12px;
-  padding: 8px 10px !important;
+  padding: 8px 10px;
   color: var(--dsv2-text);
   background:
     linear-gradient(
@@ -2938,10 +2938,10 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 }
 
 .bookings-v2-modal-panel .bk-activity-note {
-  margin-top: 12px !important;
+  margin-top: 12px;
   border: 1px solid rgba(var(--dsv2-burgundy-rgb), 0.12);
   border-radius: 12px;
-  padding: 10px 12px !important;
+  padding: 10px 12px;
   color: var(--dsv2-burgundy);
   background: rgba(var(--dsv2-burgundy-rgb), 0.045);
   font-size: 0.75rem;
@@ -2975,8 +2975,8 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   }
 
   .bookings-v2-modal-panel .bk-activity-item {
-    grid-template-columns: 18px minmax(0, 1fr) !important;
-    gap: 8px !important;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 8px;
   }
 
   .bookings-v2-modal-panel .bk-activity-rail {
@@ -2984,11 +2984,11 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   }
 
   .bookings-v2-modal-panel .bk-activity-card {
-    padding: 14px !important;
+    padding: 14px;
   }
 
   .bookings-v2-modal-panel .bk-activity-top {
-    display: grid !important;
+    display: grid;
   }
 
   .bookings-v2-modal-panel .bk-activity-time {
@@ -3040,14 +3040,14 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
   border: 1px solid rgba(181, 135, 42, 0.34);
   border-radius: 15px;
   padding: 0 15px;
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.08),
       transparent 55%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.76),
     0 5px 15px rgba(17, 24, 39, 0.035);
@@ -3070,8 +3070,8 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select.is-open
 .bk-custom-select__trigger {
-  border-color: #b5872a;
-  background: #fffdf8;
+  border-color: rgb(181, 135, 42);
+  background: rgb(255, 253, 248);
   box-shadow:
     0 0 0 4px rgba(213, 170, 85, 0.18),
     0 10px 24px rgba(17, 24, 39, 0.07);
@@ -3089,14 +3089,14 @@ body:has(.dashboard-v2 .bookings-v2-page) .bk-refund-form {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__trigger
 > span.is-placeholder {
-  color: #7b8495;
+  color: rgb(123, 132, 149);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__trigger
 svg {
   flex: 0 0 auto;
-  color: #8f681d;
+  color: rgb(143, 104, 29);
   font-size: 0.8rem;
   transition: transform 150ms ease;
 }
@@ -3122,7 +3122,7 @@ svg {
   border: 1px solid rgba(17, 24, 39, 0.11);
   border-radius: 16px;
   padding: 7px;
-  background: #ffffff;
+  background: rgb(255, 255, 255);
   box-shadow:
     0 20px 45px rgba(17, 24, 39, 0.12),
     0 4px 12px rgba(17, 24, 39, 0.05);
@@ -3160,7 +3160,7 @@ svg {
   border: 0;
   border-radius: 11px;
   padding: 8px 12px;
-  color: #273043;
+  color: rgb(39, 48, 67);
   background: transparent;
   font: inherit;
   font-size: 0.8rem;
@@ -3177,14 +3177,14 @@ svg {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__option:hover:not(:disabled) {
   transform: translateX(-2px);
-  color: #111827;
+  color: rgb(17, 24, 39);
   background: rgba(213, 170, 85, 0.13);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__option.is-active {
-  color: #ffffff;
-  background: #0b0e14;
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
   box-shadow:
     0 7px 18px rgba(11, 14, 20, 0.16);
 }
@@ -3192,12 +3192,12 @@ svg {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__option.is-active
 svg {
-  color: #d5aa55;
+  color: rgb(213, 170, 85);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select__option:disabled {
-  color: #a4aab5;
+  color: rgb(164, 170, 181);
   cursor: not-allowed;
   opacity: 0.72;
 }
@@ -3205,8 +3205,8 @@ svg {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-custom-select.is-disabled
 .bk-custom-select__trigger {
-  color: #9aa1ad;
-  background: #f5f6f8;
+  color: rgb(154, 161, 173);
+  background: rgb(245, 246, 248);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -3226,7 +3226,7 @@ svg {
   top: 50%;
   left: 15px;
   transform: translateY(-50%);
-  color: #8f681d;
+  color: rgb(143, 104, 29);
   font-size: 0.9rem;
   pointer-events: none;
 }
@@ -3241,14 +3241,14 @@ svg {
   border-radius: 15px;
   padding-right: 14px;
   padding-left: 46px;
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.08),
       transparent 55%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
   font-size: 0.84rem;
   font-weight: 900;
   text-align: center;
@@ -3260,7 +3260,7 @@ svg {
 .bk-edit-date-input:focus,
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-time-input:focus {
-  border-color: #b5872a;
+  border-color: rgb(181, 135, 42);
   box-shadow:
     0 0 0 4px rgba(213, 170, 85, 0.18);
 }
@@ -3269,7 +3269,7 @@ svg {
 .bk-edit-date-input::selection,
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-time-input::selection {
-  color: #111827;
+  color: rgb(17, 24, 39);
   background: rgba(213, 170, 85, 0.28);
 }
 
@@ -3298,7 +3298,7 @@ svg {
   .bk-edit-grid--catalog,
   .bookings-v2-modal-panel.bk-edit-modal
   .bk-edit-grid--schedule {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
 
   .bookings-v2-modal-panel.bk-edit-modal
@@ -3323,7 +3323,7 @@ svg {
   border: 1px solid rgba(17, 24, 39, 0.11);
   border-radius: 16px;
   padding: 7px;
-  background: #ffffff;
+  background: rgb(255, 255, 255);
   box-shadow:
     0 24px 55px rgba(17, 24, 39, 0.18),
     0 6px 18px rgba(17, 24, 39, 0.08);
@@ -3360,7 +3360,7 @@ svg {
   border: 0;
   border-radius: 11px;
   padding: 8px 12px;
-  color: #273043;
+  color: rgb(39, 48, 67);
   background: transparent;
   font: inherit;
   font-size: 0.8rem;
@@ -3377,14 +3377,14 @@ svg {
 .bk-custom-select__portal-panel
 .bk-custom-select__option:hover:not(:disabled) {
   transform: translateX(-2px);
-  color: #111827;
+  color: rgb(17, 24, 39);
   background: rgba(213, 170, 85, 0.13);
 }
 
 .bk-custom-select__portal-panel
 .bk-custom-select__option.is-active {
-  color: #ffffff;
-  background: #0b0e14;
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
   box-shadow:
     0 7px 18px rgba(11, 14, 20, 0.16);
 }
@@ -3392,12 +3392,12 @@ svg {
 .bk-custom-select__portal-panel
 .bk-custom-select__option.is-active
 svg {
-  color: #d5aa55;
+  color: rgb(213, 170, 85);
 }
 
 .bk-custom-select__portal-panel
 .bk-custom-select__option:disabled {
-  color: #a4aab5;
+  color: rgb(164, 170, 181);
   cursor: not-allowed;
   opacity: 0.68;
 }
@@ -3436,14 +3436,14 @@ svg {
   border: 1px solid rgba(181, 135, 42, 0.34);
   border-radius: 15px;
   padding: 0 15px;
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.08),
       transparent 55%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.76),
     0 5px 15px rgba(17, 24, 39, 0.035);
@@ -3463,8 +3463,8 @@ svg {
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control:focus-within {
-  border-color: #b5872a;
-  background: #fffdf8;
+  border-color: rgb(181, 135, 42);
+  background: rgb(255, 253, 248);
   box-shadow:
     0 0 0 4px rgba(213, 170, 85, 0.18),
     0 10px 24px rgba(17, 24, 39, 0.07);
@@ -3474,7 +3474,7 @@ svg {
 .bk-edit-picker-control
 > span {
   min-width: 0;
-  color: #111827;
+  color: rgb(17, 24, 39);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3483,14 +3483,14 @@ svg {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control
 > span.is-placeholder {
-  color: #7b8495;
+  color: rgb(123, 132, 149);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control
 > svg {
   flex: 0 0 auto;
-  color: #8f681d;
+  color: rgb(143, 104, 29);
   font-size: 0.9rem;
 }
 
@@ -3511,8 +3511,8 @@ svg {
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control.is-disabled {
-  color: #9aa1ad;
-  background: #f5f6f8;
+  color: rgb(154, 161, 173);
+  background: rgb(245, 246, 248);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -3551,14 +3551,14 @@ button.bk-edit-picker-control {
   border: 1px solid rgba(181, 135, 42, 0.34);
   border-radius: 15px;
   padding: 0 15px;
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.08),
       transparent 55%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.76),
     0 5px 15px rgba(17, 24, 39, 0.035);
@@ -3580,8 +3580,8 @@ button.bk-edit-picker-control:hover:not(:disabled) {
 
 .bookings-v2-modal-panel.bk-edit-modal
 button.bk-edit-picker-control:focus-visible {
-  border-color: #b5872a;
-  background: #fffdf8;
+  border-color: rgb(181, 135, 42);
+  background: rgb(255, 253, 248);
   box-shadow:
     0 0 0 4px rgba(213, 170, 85, 0.18),
     0 10px 24px rgba(17, 24, 39, 0.07);
@@ -3591,7 +3591,7 @@ button.bk-edit-picker-control:focus-visible {
 button.bk-edit-picker-control
 > span {
   min-width: 0;
-  color: #111827;
+  color: rgb(17, 24, 39);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3600,21 +3600,21 @@ button.bk-edit-picker-control
 .bookings-v2-modal-panel.bk-edit-modal
 button.bk-edit-picker-control
 > span.is-placeholder {
-  color: #7b8495;
+  color: rgb(123, 132, 149);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 button.bk-edit-picker-control
 > svg {
   flex: 0 0 auto;
-  color: #8f681d;
+  color: rgb(143, 104, 29);
   font-size: 0.92rem;
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 button.bk-edit-picker-control:disabled {
-  color: #9aa1ad;
-  background: #f5f6f8;
+  color: rgb(154, 161, 173);
+  background: rgb(245, 246, 248);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -3636,8 +3636,8 @@ button.bk-edit-picker-control:disabled {
 /* إلغاء الحقل الشفاف السابق */
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-native {
-  display: none !important;
-  pointer-events: none !important;
+  display: none;
+  pointer-events: none;
 }
 
 /* BOOKING_DATE_PICKER_CLICK_FIX_V1_END */
@@ -3651,28 +3651,28 @@ button.bk-edit-picker-control:disabled {
   width: min(
     920px,
     calc(100vw - 56px)
-  ) !important;
-  max-width: 920px !important;
-  min-width: 0 !important;
+  );
+  max-width: 920px;
+  min-width: 0;
   max-height: min(
     86dvh,
     780px
-  ) !important;
+  );
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-cancel-body {
-  padding: 24px !important;
+  padding: 24px;
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-form {
-  gap: 18px !important;
+  gap: 18px;
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-grid {
-  gap: 16px !important;
+  gap: 16px;
 }
 
 /* حقل التاريخ والوقت */
@@ -3699,14 +3699,14 @@ button.bk-edit-picker-control:disabled {
     rgba(181, 135, 42, 0.34);
   border-radius: 15px;
   padding: 0 15px;
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.08),
       transparent 55%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
   box-shadow:
     inset 0 0 0 1px
       rgba(255, 255, 255, 0.76),
@@ -3729,8 +3729,8 @@ button.bk-edit-picker-control:disabled {
 .bk-edit-picker-control.is-open,
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control:focus-visible {
-  border-color: #b5872a;
-  background: #fffdf8;
+  border-color: rgb(181, 135, 42);
+  background: rgb(255, 253, 248);
   box-shadow:
     0 0 0 4px
       rgba(213, 170, 85, 0.17);
@@ -3739,13 +3739,13 @@ button.bk-edit-picker-control:disabled {
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control
 svg {
-  color: #946d20;
+  color: rgb(148, 109, 32);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
 .bk-edit-picker-control
 .is-placeholder {
-  color: #8a93a4;
+  color: rgb(138, 147, 164);
 }
 
 .bookings-v2-modal-panel.bk-edit-modal
@@ -3768,8 +3768,8 @@ svg {
     rgba(17, 24, 39, 0.11);
   border-radius: 19px;
   padding: 12px;
-  color: #111827;
-  background: #ffffff;
+  color: rgb(17, 24, 39);
+  background: rgb(255, 255, 255);
   box-shadow:
     0 28px 70px
       rgba(17, 24, 39, 0.20),
@@ -3794,7 +3794,7 @@ svg {
 }
 
 .bk-calendar-head strong {
-  color: #111827;
+  color: rgb(17, 24, 39);
   font-size: 0.84rem;
   font-weight: 950;
   text-align: center;
@@ -3807,8 +3807,8 @@ svg {
   place-items: center;
   border: 0;
   border-radius: 10px;
-  color: #7e5d1c;
-  background: #ffffff;
+  color: rgb(126, 93, 28);
+  background: rgb(255, 255, 255);
   font-size: 1.35rem;
   font-weight: 900;
   cursor: pointer;
@@ -3831,7 +3831,7 @@ svg {
   display: grid;
   place-items: center;
   min-height: 27px;
-  color: #8a93a4;
+  color: rgb(138, 147, 164);
   font-size: 0.63rem;
   font-weight: 900;
 }
@@ -3854,7 +3854,7 @@ svg {
   place-items: center;
   border: 1px solid transparent;
   border-radius: 10px;
-  color: #252c3a;
+  color: rgb(37, 44, 58);
   background: transparent;
   font: inherit;
   font-size: 0.74rem;
@@ -3872,13 +3872,13 @@ svg {
 .bk-calendar-day.is-today {
   border-color:
     rgba(181, 135, 42, 0.45);
-  color: #8a6317;
+  color: rgb(138, 99, 23);
 }
 
 .bk-calendar-day.is-selected {
-  border-color: #0b0e14;
-  color: #ffffff;
-  background: #0b0e14;
+  border-color: rgb(11, 14, 20);
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
   box-shadow:
     0 6px 16px
       rgba(11, 14, 20, 0.16);
@@ -3890,7 +3890,7 @@ svg {
   height: 4px;
   margin-top: -5px;
   border-radius: 999px;
-  background: #d5aa55;
+  background: rgb(213, 170, 85);
 }
 
 .bk-calendar-foot {
@@ -3912,8 +3912,8 @@ svg {
     rgba(17, 24, 39, 0.09);
   border-radius: 10px;
   padding: 0 14px;
-  color: #4b5565;
-  background: #ffffff;
+  color: rgb(75, 85, 101);
+  background: rgb(255, 255, 255);
   font: inherit;
   font-size: 0.7rem;
   font-weight: 900;
@@ -3921,24 +3921,24 @@ svg {
 }
 
 .bk-calendar-foot button.is-primary {
-  border-color: #0b0e14;
-  color: #ffffff;
-  background: #0b0e14;
+  border-color: rgb(11, 14, 20);
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
 }
 
 @media (max-width: 760px) {
   .bookings-v2-modal-panel.bk-edit-modal.qs-modal-panel--lg {
     width:
-      calc(100vw - 20px) !important;
+      calc(100vw - 20px);
     max-width:
-      calc(100vw - 20px) !important;
+      calc(100vw - 20px);
     max-height:
-      calc(100dvh - 20px) !important;
+      calc(100dvh - 20px);
   }
 
   .bookings-v2-modal-panel.bk-edit-modal
   .bk-cancel-body {
-    padding: 16px !important;
+    padding: 16px;
   }
 }
 
@@ -3948,14 +3948,14 @@ svg {
 
 .dashboard-v2 .bk-payment-metric-row.paid,
 .bookings-v2-modal-panel .bk-payment-metric-row.paid {
-  border: 1px solid rgba(19, 122, 78, 0.18) !important;
-  color: #0f7a4e !important;
+  border: 1px solid rgba(19, 122, 78, 0.18);
+  color: rgb(15, 122, 78);
   background:
     linear-gradient(
       135deg,
       rgba(19, 122, 78, 0.10),
       rgba(19, 122, 78, 0.035)
-    ) !important;
+    );
 }
 
 .dashboard-v2 .bk-payment-metric-row.paid .bk-payment-metric-label,
@@ -3968,19 +3968,19 @@ svg {
 .bookings-v2-modal-panel .bk-payment-metric-row.paid .bk-money,
 .bookings-v2-modal-panel .bk-payment-metric-row.paid .bk-money-number,
 .bookings-v2-modal-panel .bk-payment-metric-row.paid .bk-money-currency {
-  color: #0f7a4e !important;
+  color: rgb(15, 122, 78);
 }
 
 .dashboard-v2 .bk-payment-metric-row.remaining,
 .bookings-v2-modal-panel .bk-payment-metric-row.remaining {
-  border: 1px solid rgba(123, 18, 48, 0.18) !important;
-  color: #7b1230 !important;
+  border: 1px solid rgba(123, 18, 48, 0.18);
+  color: rgb(123, 18, 48);
   background:
     linear-gradient(
       135deg,
       rgba(123, 18, 48, 0.10),
       rgba(123, 18, 48, 0.035)
-    ) !important;
+    );
 }
 
 .dashboard-v2 .bk-payment-metric-row.remaining .bk-payment-metric-label,
@@ -3993,19 +3993,19 @@ svg {
 .bookings-v2-modal-panel .bk-payment-metric-row.remaining .bk-money,
 .bookings-v2-modal-panel .bk-payment-metric-row.remaining .bk-money-number,
 .bookings-v2-modal-panel .bk-payment-metric-row.remaining .bk-money-currency {
-  color: #7b1230 !important;
+  color: rgb(123, 18, 48);
 }
 
 .dashboard-v2 .bk-payment-metric-row.total,
 .bookings-v2-modal-panel .bk-payment-metric-row.total {
-  border: 1px solid rgba(181, 135, 42, 0.22) !important;
-  color: #8b651e !important;
+  border: 1px solid rgba(181, 135, 42, 0.22);
+  color: rgb(139, 101, 30);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.14),
       rgba(213, 170, 85, 0.045)
-    ) !important;
+    );
 }
 
 /* BOOKING_PAYMENT_METRIC_COLORS_V1_END */
@@ -4017,24 +4017,24 @@ svg {
 
 .dashboard-v2 .bk-payment-tone-paid,
 .bookings-v2-modal-panel .bk-payment-tone-paid {
-  color: #0b7a4b !important;
-  font-weight: 950 !important;
+  color: rgb(11, 122, 75);
+  font-weight: 950;
 }
 
 .dashboard-v2 :is(div, span):has(> .bk-payment-tone-paid),
 .bookings-v2-modal-panel :is(div, span):has(> .bk-payment-tone-paid) {
-  border-color: rgba(11, 122, 75, 0.20) !important;
+  border-color: rgba(11, 122, 75, 0.20);
   background:
     linear-gradient(
       135deg,
       rgba(11, 122, 75, 0.11),
       rgba(11, 122, 75, 0.035)
-    ) !important;
+    );
 }
 
 .dashboard-v2 :is(div, span):has(> .bk-payment-tone-paid) *,
 .bookings-v2-modal-panel :is(div, span):has(> .bk-payment-tone-paid) * {
-  color: #0b7a4b !important;
+  color: rgb(11, 122, 75);
 }
 
 
@@ -4042,47 +4042,47 @@ svg {
 
 .dashboard-v2 .bk-payment-tone-remaining,
 .bookings-v2-modal-panel .bk-payment-tone-remaining {
-  color: #861934 !important;
-  font-weight: 950 !important;
+  color: rgb(134, 25, 52);
+  font-weight: 950;
 }
 
 .dashboard-v2 :is(div, span):has(> .bk-payment-tone-remaining),
 .bookings-v2-modal-panel :is(div, span):has(> .bk-payment-tone-remaining) {
-  border-color: rgba(134, 25, 52, 0.20) !important;
+  border-color: rgba(134, 25, 52, 0.20);
   background:
     linear-gradient(
       135deg,
       rgba(134, 25, 52, 0.11),
       rgba(134, 25, 52, 0.035)
-    ) !important;
+    );
 }
 
 .dashboard-v2 :is(div, span):has(> .bk-payment-tone-remaining) *,
 .bookings-v2-modal-panel :is(div, span):has(> .bk-payment-tone-remaining) * {
-  color: #861934 !important;
+  color: rgb(134, 25, 52);
 }
 
 
 /* دعم العناصر التي تستخدم tone أصلًا */
 
 .dashboard-v2 .bk-payment-metric-row.paid {
-  color: #0b7a4b !important;
-  border-color: rgba(11, 122, 75, 0.20) !important;
-  background: rgba(11, 122, 75, 0.09) !important;
+  color: rgb(11, 122, 75);
+  border-color: rgba(11, 122, 75, 0.20);
+  background: rgba(11, 122, 75, 0.09);
 }
 
 .dashboard-v2 .bk-payment-metric-row.paid * {
-  color: #0b7a4b !important;
+  color: rgb(11, 122, 75);
 }
 
 .dashboard-v2 .bk-payment-metric-row.remaining {
-  color: #861934 !important;
-  border-color: rgba(134, 25, 52, 0.20) !important;
-  background: rgba(134, 25, 52, 0.09) !important;
+  color: rgb(134, 25, 52);
+  border-color: rgba(134, 25, 52, 0.20);
+  background: rgba(134, 25, 52, 0.09);
 }
 
 .dashboard-v2 .bk-payment-metric-row.remaining * {
-  color: #861934 !important;
+  color: rgb(134, 25, 52);
 }
 
 /* BOOKING_DESKTOP_PAYMENT_TONES_V2_END */
@@ -4092,9 +4092,9 @@ svg {
 .dashboard-v2
 .bk-payment-inline-metrics
 .bk-payment-inline-paid {
-  border: 1px solid rgba(18, 132, 82, 0.20) !important;
-  color: #0f7a4e !important;
-  background: rgba(18, 132, 82, 0.10) !important;
+  border: 1px solid rgba(18, 132, 82, 0.20);
+  color: rgb(15, 122, 78);
+  background: rgba(18, 132, 82, 0.10);
 }
 
 .dashboard-v2
@@ -4103,15 +4103,15 @@ svg {
 .dashboard-v2
 .bk-payment-inline-metrics
 .bk-payment-inline-paid b * {
-  color: #0f7a4e !important;
+  color: rgb(15, 122, 78);
 }
 
 .dashboard-v2
 .bk-payment-inline-metrics
 .bk-payment-inline-remaining {
-  border: 1px solid rgba(139, 24, 53, 0.20) !important;
-  color: #861934 !important;
-  background: rgba(139, 24, 53, 0.09) !important;
+  border: 1px solid rgba(139, 24, 53, 0.20);
+  color: rgb(134, 25, 52);
+  background: rgba(139, 24, 53, 0.09);
 }
 
 .dashboard-v2
@@ -4120,7 +4120,7 @@ svg {
 .dashboard-v2
 .bk-payment-inline-metrics
 .bk-payment-inline-remaining b * {
-  color: #861934 !important;
+  color: rgb(134, 25, 52);
 }
 
 /* BOOKING_PAYMENT_INLINE_EXACT_V1_END */
@@ -4128,53 +4128,53 @@ svg {
 /* BOOKING_PAYMENT_INLINE_CLEAN_V3 */
 
 .dashboard-v2 .bk-payment-inline-metrics {
-  gap: 7px !important;
+  gap: 7px;
 }
 
 .dashboard-v2 .bk-payment-inline-metrics > span {
-  min-height: 38px !important;
-  border-radius: 11px !important;
-  padding: 7px 10px !important;
-  gap: 7px !important;
+  min-height: 38px;
+  border-radius: 11px;
+  padding: 7px 10px;
+  gap: 7px;
 }
 
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-paid {
-  border: 1px solid rgba(15, 122, 78, 0.20) !important;
-  color: #0f7a4e !important;
-  background: #eaf7f0 !important;
+  border: 1px solid rgba(15, 122, 78, 0.20);
+  color: rgb(15, 122, 78);
+  background: rgb(234, 247, 240);
 }
 
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-remaining {
-  border: 1px solid rgba(134, 25, 52, 0.18) !important;
-  color: #861934 !important;
-  background: #faedf1 !important;
+  border: 1px solid rgba(134, 25, 52, 0.18);
+  color: rgb(134, 25, 52);
+  background: rgb(250, 237, 241);
 }
 
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-paid b,
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-paid b *,
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-remaining b,
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-remaining b * {
-  display: inline-flex !important;
-  align-items: center !important;
-  width: auto !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-paid b,
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-paid b * {
-  color: #0f7a4e !important;
+  color: rgb(15, 122, 78);
 }
 
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-remaining b,
 .dashboard-v2 .bk-payment-inline-metrics .bk-payment-inline-remaining b * {
-  color: #861934 !important;
+  color: rgb(134, 25, 52);
 }
 
 
@@ -4182,25 +4182,25 @@ svg {
 
 .bk-decision-overlay.qs-modal-overlay {
   background:
-    rgba(15, 18, 24, 0.44) !important;
+    rgba(15, 18, 24, 0.44);
   backdrop-filter: blur(5px);
 }
 
 .bk-decision-modal.qs-modal-panel {
   width:
-    min(470px, calc(100vw - 28px)) !important;
-  max-width: 470px !important;
+    min(470px, calc(100vw - 28px));
+  max-width: 470px;
   overflow: hidden;
   border:
-    1px solid rgba(181, 135, 42, 0.18) !important;
-  border-radius: 22px !important;
-  color: #111827;
-  background: #ffffff !important;
+    1px solid rgba(181, 135, 42, 0.18);
+  border-radius: 22px;
+  color: rgb(17, 24, 39);
+  background: rgb(255, 255, 255);
   box-shadow:
     0 28px 80px
       rgba(15, 18, 24, 0.22),
     0 8px 24px
-      rgba(15, 18, 24, 0.08) !important;
+      rgba(15, 18, 24, 0.08);
   direction: rtl;
 }
 
@@ -4212,9 +4212,9 @@ svg {
   background:
     linear-gradient(
       90deg,
-      #896326,
-      #d5aa55,
-      #e7c783
+      rgb(137, 99, 38),
+      rgb(213, 170, 85),
+      rgb(231, 199, 131)
     );
 }
 
@@ -4239,15 +4239,15 @@ svg {
 .bk-decision-modal__icon.is-success {
   border:
     1px solid rgba(15, 122, 78, 0.16);
-  color: #0f7a4e;
-  background: #eaf7f0;
+  color: rgb(15, 122, 78);
+  background: rgb(234, 247, 240);
 }
 
 .bk-decision-modal__icon.is-warning {
   border:
     1px solid rgba(181, 135, 42, 0.22);
-  color: #8b651e;
-  background: #fff8e8;
+  color: rgb(139, 101, 30);
+  background: rgb(255, 248, 232);
 }
 
 .bk-decision-modal__copy {
@@ -4257,14 +4257,14 @@ svg {
 }
 
 .bk-decision-modal__kicker {
-  color: #9a711f;
+  color: rgb(154, 113, 31);
   font-size: 0.69rem;
   font-weight: 950;
 }
 
 .bk-decision-modal__copy h3 {
   margin: 0;
-  color: #111827;
+  color: rgb(17, 24, 39);
   font-size: 1.05rem;
   font-weight: 950;
   line-height: 1.45;
@@ -4272,7 +4272,7 @@ svg {
 
 .bk-decision-modal__copy p {
   margin: 0;
-  color: #6f7889;
+  color: rgb(111, 120, 137);
   font-size: 0.79rem;
   font-weight: 750;
   line-height: 1.9;
@@ -4287,7 +4287,7 @@ svg {
   border-top:
     1px solid rgba(17, 24, 39, 0.07);
   padding: 16px 24px 22px;
-  background: #fcfcfd;
+  background: rgb(252, 252, 253);
 }
 
 .bk-decision-modal__actions button {
@@ -4305,34 +4305,34 @@ svg {
 }
 
 .bk-decision-modal__confirm {
-  border: 1px solid #0c1016;
-  color: #ffffff;
-  background: #0c1016;
+  border: 1px solid rgb(12, 16, 22);
+  color: rgb(255, 255, 255);
+  background: rgb(12, 16, 22);
   box-shadow:
     0 8px 20px
       rgba(12, 16, 22, 0.14);
 }
 
 .bk-decision-modal__confirm svg {
-  color: #d5aa55;
+  color: rgb(213, 170, 85);
 }
 
 .bk-decision-modal__confirm:hover {
-  background: #171b22;
+  background: rgb(23, 27, 34);
 }
 
 .bk-decision-modal__cancel {
   border:
     1px solid rgba(17, 24, 39, 0.12);
-  color: #394150;
-  background: #ffffff;
+  color: rgb(57, 65, 80);
+  background: rgb(255, 255, 255);
 }
 
 .bk-decision-modal__cancel:hover {
   border-color:
     rgba(181, 135, 42, 0.36);
-  color: #111827;
-  background: #fffaf0;
+  color: rgb(17, 24, 39);
+  background: rgb(255, 250, 240);
 }
 
 @media (max-width: 520px) {
@@ -4395,7 +4395,7 @@ svg {
 .dashboard-v2 .bookings-v2-search > button svg {
   width: 13px;
   height: 13px;
-  color: currentColor !important;
+  color: currentColor;
 }
 
 .dashboard-v2 .bookings-v2-search input[type="search"] {
@@ -4411,9 +4411,9 @@ svg {
 .dashboard-v2 .bookings-v2-search input:-webkit-autofill,
 .dashboard-v2 .bookings-v2-search input:-webkit-autofill:hover,
 .dashboard-v2 .bookings-v2-search input:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--dsv2-text) !important;
-  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
-  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: var(--dsv2-text);
+  -webkit-box-shadow: 0 0 0 1000px rgb(255, 255, 255) inset;
+  box-shadow: 0 0 0 1000px rgb(255, 255, 255) inset;
   transition: background-color 9999s ease-out 0s;
 }
 
@@ -4423,7 +4423,7 @@ svg {
 /* BOOKING_DECISION_CLOSE_X_V2_START */
 
 .bk-decision-modal.qs-modal-panel {
-  position: relative !important;
+  position: relative;
 }
 
 /* X — إغلاق بدون اتخاذ قرار */
@@ -4446,8 +4446,8 @@ svg {
   border: 1px solid rgba(5, 8, 13, 0.10);
   border-radius: 10px;
 
-  color: #6f7784;
-  background: #ffffff;
+  color: rgb(111, 119, 132);
+  background: rgb(255, 255, 255);
 
   box-shadow: none;
   outline: none;
@@ -4462,7 +4462,7 @@ svg {
 }
 
 .bk-decision-modal__close:hover {
-  color: #59041b;
+  color: rgb(89, 4, 27);
   border-color: rgba(89, 4, 27, 0.18);
   background: rgba(89, 4, 27, 0.055);
   transform: translateY(-1px);
@@ -4474,9 +4474,9 @@ svg {
 }
 
 .bk-decision-modal__close svg {
-  width: 14px !important;
-  height: 14px !important;
-  color: currentColor !important;
+  width: 14px;
+  height: 14px;
+  color: currentColor;
 }
 
 /* توفير مساحة للـ X */
@@ -4504,32 +4504,32 @@ svg {
 
 /* الغلاف الخارجي هو المسؤول الوحيد عن الشكل */
 .dashboard-v2 .bookings-v2-search {
-  overflow: hidden !important;
+  overflow: hidden;
 }
 
 /* إزالة أي تصميم مستقل من input */
 .dashboard-v2 .bookings-v2-search > input,
 .dashboard-v2 .bookings-v2-search > input[type="search"] {
-  width: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  height: auto !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
 
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0;
+  padding: 0;
 
-  border: 0 !important;
-  border-radius: 0 !important;
+  border: 0;
+  border-radius: 0;
 
-  outline: 0 !important;
-  box-shadow: none !important;
-  -webkit-box-shadow: none !important;
+  outline: 0;
+  box-shadow: none;
+  -webkit-box-shadow: none;
 
-  background: transparent !important;
-  background-color: transparent !important;
+  background: transparent;
+  background-color: transparent;
 
-  appearance: none !important;
-  -webkit-appearance: none !important;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* منع Chrome من إعادة خلفية داخلية */
@@ -4537,16 +4537,16 @@ svg {
 .dashboard-v2 .bookings-v2-search > input:-webkit-autofill:hover,
 .dashboard-v2 .bookings-v2-search > input:-webkit-autofill:focus,
 .dashboard-v2 .bookings-v2-search > input:-webkit-autofill:active {
-  border: 0 !important;
-  border-radius: 0 !important;
+  border: 0;
+  border-radius: 0;
 
-  -webkit-text-fill-color: var(--dsv2-text) !important;
+  -webkit-text-fill-color: var(--dsv2-text);
 
   -webkit-box-shadow:
-    0 0 0 1000px #ffffff inset !important;
+    0 0 0 1000px rgb(255, 255, 255) inset;
 
   box-shadow:
-    0 0 0 1000px #ffffff inset !important;
+    0 0 0 1000px rgb(255, 255, 255) inset;
 }
 
 /* إلغاء زر X الافتراضي الخاص بـ input type=search */
@@ -4556,9 +4556,9 @@ input[type="search"]::-webkit-search-cancel-button,
 .dashboard-v2
 .bookings-v2-search
 input[type="search"]::-webkit-search-decoration {
-  display: none !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
+  display: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* BOOKING_SEARCH_SINGLE_SHELL_V2_END */
@@ -4582,7 +4582,7 @@ input[type="search"]::-webkit-search-decoration {
 .dashboard-v2 .bookings-v2-command .bk-custom-select-field > .bk-field-label,
 .dashboard-v2 .bookings-v2-command .bk-filter-date-field > .bk-field-label {
   margin: 0;
-  color: #747c8b;
+  color: rgb(116, 124, 139);
   font-size: 0.73rem;
   font-weight: 900;
   line-height: 1.4;
@@ -4608,14 +4608,14 @@ input[type="search"]::-webkit-search-decoration {
 
   padding: 0 14px;
 
-  color: #111827;
+  color: rgb(17, 24, 39);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.055),
       transparent 58%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
 
   box-shadow:
     0 2px 7px rgba(17, 24, 39, 0.025);
@@ -4642,9 +4642,9 @@ input[type="search"]::-webkit-search-decoration {
 .bookings-v2-command
 .bk-custom-select.is-open
 .bk-custom-select__trigger {
-  border-color: #b5872a;
+  border-color: rgb(181, 135, 42);
 
-  background: #fffdf8;
+  background: rgb(255, 253, 248);
 
   box-shadow:
     0 0 0 3px rgba(213, 170, 85, 0.14);
@@ -4665,7 +4665,7 @@ input[type="search"]::-webkit-search-decoration {
 .bk-custom-select__trigger
 svg {
   flex: 0 0 auto;
-  color: #936b1d;
+  color: rgb(147, 107, 29);
   font-size: 0.75rem;
 }
 
@@ -4673,8 +4673,8 @@ svg {
 .bookings-v2-command
 .bk-custom-select.is-disabled
 .bk-custom-select__trigger {
-  color: #9ca3af;
-  background: #f5f5f6;
+  color: rgb(156, 163, 175);
+  background: rgb(245, 245, 246);
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -4685,8 +4685,8 @@ svg {
 
 body .bk-custom-select__portal-panel,
 body .bk-custom-select__panel.bk-custom-select__portal-panel {
-  position: fixed !important;
-  z-index: 100000 !important;
+  position: fixed;
+  z-index: 100000;
 
   display: grid;
   gap: 4px;
@@ -4699,7 +4699,7 @@ body .bk-custom-select__panel.bk-custom-select__portal-panel {
 
   padding: 6px;
 
-  background: #ffffff;
+  background: rgb(255, 255, 255);
 
   box-shadow:
     0 22px 50px rgba(17, 24, 39, 0.16),
@@ -4725,7 +4725,7 @@ body .bk-custom-select__portal-panel .bk-custom-select__option {
 
   padding: 8px 11px;
 
-  color: #283142;
+  color: rgb(40, 49, 66);
   background: transparent;
 
   font: inherit;
@@ -4738,13 +4738,13 @@ body .bk-custom-select__portal-panel .bk-custom-select__option {
 }
 
 body .bk-custom-select__portal-panel .bk-custom-select__option:hover:not(:disabled) {
-  color: #111827;
+  color: rgb(17, 24, 39);
   background: rgba(213, 170, 85, 0.12);
 }
 
 body .bk-custom-select__portal-panel .bk-custom-select__option.is-active {
-  color: #ffffff;
-  background: #0b0e14;
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
 
   box-shadow:
     0 6px 15px rgba(11, 14, 20, 0.13);
@@ -4754,7 +4754,7 @@ body
 .bk-custom-select__portal-panel
 .bk-custom-select__option.is-active
 svg {
-  color: #d5aa55 !important;
+  color: rgb(213, 170, 85);
 }
 
 /* ========================================================
@@ -4780,14 +4780,14 @@ svg {
 
   padding: 0 14px;
 
-  color: #8a93a3;
+  color: rgb(138, 147, 163);
   background:
     linear-gradient(
       135deg,
       rgba(213, 170, 85, 0.055),
       transparent 58%
     ),
-    #ffffff;
+    rgb(255, 255, 255);
 
   font: inherit;
   font-size: 0.8rem;
@@ -4805,7 +4805,7 @@ svg {
 .dashboard-v2
 .bookings-v2-command
 .bk-filter-date-trigger.has-value {
-  color: #111827;
+  color: rgb(17, 24, 39);
 }
 
 .dashboard-v2
@@ -4814,7 +4814,7 @@ svg {
 .dashboard-v2
 .bookings-v2-command
 .bk-filter-date-trigger:focus-visible {
-  border-color: #b5872a;
+  border-color: rgb(181, 135, 42);
 
   box-shadow:
     0 0 0 3px rgba(213, 170, 85, 0.14);
@@ -4824,7 +4824,7 @@ svg {
 .bookings-v2-command
 .bk-filter-date-trigger
 svg {
-  color: #936b1d;
+  color: rgb(147, 107, 29);
 }
 
 .dashboard-v2 .bookings-v2-command .bk-filter-date-clear {
@@ -4847,7 +4847,7 @@ svg {
 
   padding: 0;
 
-  color: #7b8492;
+  color: rgb(123, 132, 146);
   background: rgba(17, 24, 39, 0.045);
 
   cursor: pointer;
@@ -4856,7 +4856,7 @@ svg {
 .dashboard-v2
 .bookings-v2-command
 .bk-filter-date-clear:hover {
-  color: #59041b;
+  color: rgb(89, 4, 27);
   background: rgba(89, 4, 27, 0.08);
 }
 
@@ -4916,8 +4916,8 @@ body .bk-filter-calendar-portal {
 
   padding: 12px;
 
-  color: #111827;
-  background: #ffffff;
+  color: rgb(17, 24, 39);
+  background: rgb(255, 255, 255);
 
   box-shadow:
     0 24px 60px rgba(17, 24, 39, 0.18),
@@ -4945,9 +4945,9 @@ body .bk-filter-calendar-portal::before {
   background:
     linear-gradient(
       90deg,
-      #896326,
-      #d5aa55,
-      #e7c783
+      rgb(137, 99, 38),
+      rgb(213, 170, 85),
+      rgb(231, 199, 131)
     );
 }
 
@@ -4967,7 +4967,7 @@ body .bk-filter-calendar__head {
 }
 
 body .bk-filter-calendar__head strong {
-  color: #111827;
+  color: rgb(17, 24, 39);
 
   font-size: 0.86rem;
   font-weight: 950;
@@ -4989,8 +4989,8 @@ body .bk-filter-calendar__head button {
 
   padding: 0;
 
-  color: #6f7784;
-  background: #ffffff;
+  color: rgb(111, 119, 132);
+  background: rgb(255, 255, 255);
 
   font: inherit;
   font-size: 1.35rem;
@@ -5003,7 +5003,7 @@ body .bk-filter-calendar__head button:hover {
   border-color:
     rgba(181, 135, 42, 0.32);
 
-  color: #8f681d;
+  color: rgb(143, 104, 29);
 
   background:
     rgba(213, 170, 85, 0.08);
@@ -5029,7 +5029,7 @@ body .bk-filter-calendar__weekdays span {
   display: grid;
   place-items: center;
 
-  color: #8b93a1;
+  color: rgb(139, 147, 161);
 
   font-size: 0.67rem;
   font-weight: 900;
@@ -5049,7 +5049,7 @@ body .bk-filter-calendar__days > button {
 
   padding: 0;
 
-  color: #303846;
+  color: rgb(48, 56, 70);
   background: transparent;
 
   font: inherit;
@@ -5075,7 +5075,7 @@ body
   border-color:
     rgba(181, 135, 42, 0.22);
 
-  color: #111827;
+  color: rgb(17, 24, 39);
 
   background:
     rgba(213, 170, 85, 0.11);
@@ -5089,7 +5089,7 @@ body
   border-color:
     rgba(181, 135, 42, 0.52);
 
-  color: #8f681d;
+  color: rgb(143, 104, 29);
 
   background:
     rgba(213, 170, 85, 0.08);
@@ -5098,11 +5098,11 @@ body
 body
 .bk-filter-calendar__days
 > button.is-selected {
-  border-color: #0b0e14;
+  border-color: rgb(11, 14, 20);
 
-  color: #ffffff;
+  color: rgb(255, 255, 255);
 
-  background: #0b0e14;
+  background: rgb(11, 14, 20);
 
   box-shadow:
     0 6px 14px
@@ -5112,10 +5112,10 @@ body
 body
 .bk-filter-calendar__days
 > button.is-selected.is-today {
-  border-color: #d5aa55;
+  border-color: rgb(213, 170, 85);
 
   box-shadow:
-    inset 0 0 0 1px #d5aa55,
+    inset 0 0 0 1px rgb(213, 170, 85),
     0 6px 14px
       rgba(11, 14, 20, 0.16);
 }
@@ -5153,10 +5153,10 @@ body .bk-filter-calendar__footer button {
 body
 .bk-filter-calendar__footer
 .is-today-action {
-  border: 1px solid #0b0e14;
+  border: 1px solid rgb(11, 14, 20);
 
-  color: #ffffff;
-  background: #0b0e14;
+  color: rgb(255, 255, 255);
+  background: rgb(11, 14, 20);
 }
 
 body
@@ -5165,7 +5165,7 @@ body
   border:
     1px solid rgba(89, 4, 27, 0.13);
 
-  color: #59041b;
+  color: rgb(89, 4, 27);
 
   background:
     rgba(89, 4, 27, 0.055);
@@ -5177,13 +5177,13 @@ body
 .bookings-v2-command
 .bk-filter-date-field.is-open
 .bk-filter-date-trigger {
-  border-color: #b5872a;
+  border-color: rgb(181, 135, 42);
 
   box-shadow:
     0 0 0 3px
       rgba(213, 170, 85, 0.14);
 
-  background: #fffdf8;
+  background: rgb(255, 253, 248);
 }
 
 @media (max-width: 520px) {
@@ -5205,61 +5205,61 @@ body
 
 /* BOOKING_ACTIONS_LAYOUT_FIX_V3 */
 .dashboard-v2 .bk-actions-cell {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  padding: 12px !important;
+  min-width: 0;
+  overflow: hidden;
+  padding: 12px;
 }
 
 .dashboard-v2 .bk-actions-row {
-  width: 100% !important;
-  min-width: 0 !important;
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 8px !important;
-  align-items: stretch !important;
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
 }
 
 .dashboard-v2 .bk-actions-row > button,
 .dashboard-v2 .bk-actions-row > details {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  margin: 0 !important;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
 }
 
 .dashboard-v2 .bk-actions-row > button {
-  min-height: 38px !important;
-  padding-inline: 8px !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
+  min-height: 38px;
+  padding-inline: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-v2 .bookings-v2-row-primary,
 .dashboard-v2 .bk-status-menu {
-  grid-column: 1 / -1 !important;
+  grid-column: 1 / -1;
 }
 
 .dashboard-v2 .bk-status-menu > summary {
-  width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .dashboard-v2 .bk-status-menu__panel {
-  width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 @media (max-width: 1280px) {
   .dashboard-v2 .bk-actions-row {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
 
   .dashboard-v2 .bookings-v2-row-primary,
   .dashboard-v2 .bk-status-menu {
-    grid-column: auto !important;
+    grid-column: auto;
   }
 }
 
@@ -5268,11 +5268,11 @@ body
 .dashboard-v2 .bookings-v2-bulk-toolbar {
   width: 100%;
   min-width: 0;
-  display: grid !important;
+  display: grid;
   grid-template-columns: minmax(210px, auto) minmax(0, 1fr);
   align-items: center;
   gap: 14px 20px;
-  padding: 18px 20px !important;
+  padding: 18px 20px;
   overflow: hidden;
 }
 
@@ -5313,11 +5313,11 @@ body
 
 .dashboard-v2 .bk-bulk-actions {
   min-width: 0;
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px !important;
+  gap: 8px;
 }
 
 .dashboard-v2 .bk-bulk-actions .dsv2-btn {
@@ -5355,8 +5355,8 @@ body
 
 @media (max-width: 900px) {
   .dashboard-v2 .bookings-v2-bulk-toolbar {
-    grid-template-columns: 1fr !important;
-    padding: 14px !important;
+    grid-template-columns: 1fr;
+    padding: 14px;
   }
 
   .dashboard-v2 .bk-bulk-actions {

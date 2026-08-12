@@ -7,7 +7,6 @@ import {
 import { createPortal } from "react-dom";
 
 import { EmployeeAttendanceTabLiveV2 as EmployeeAttendanceTabBaseLiveV2 } from "./EmployeeWorkspaceOperationalTabsLiveV2";
-import "../../../../styles/dashboard-v2/pages/employee-attendance-calendar-alignment.css";
 
 const MONTH_NAMES = [
   "يناير",

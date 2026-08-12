@@ -31,6 +31,7 @@
 @import "./pages/overview.css";
 @import "./pages/employees.css";
 @import "./pages/employee-workspace.css";
+@import "./pages/employee-attendance-calendar-alignment.css";
 @import "./pages/payroll.css";
 @import "./pages/reports.css";
 @import "./pages/expenses.css";
@@ -72,6 +73,7 @@
 @import "./pages/employee-portal-profile.css";
 @import "./pages/employee-portal-overview.css";
 @import "./pages/employee-portal-overview-micro-fixes.css";
+@import "./pages/employee-notification-menu.css";
 @import "./pages/dashboard-mobile-more-groups.css";
 
 /* Final dashboard-wide structural contract: one browser vertical scroll. */

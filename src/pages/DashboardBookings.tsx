@@ -1889,6 +1889,16 @@ const BookingSelectField = memo(function BookingSelectField({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    panel.style.top = `${panelStyle.top}px`;
+    panel.style.left = `${panelStyle.left}px`;
+    panel.style.width = `${panelStyle.width}px`;
+    panel.style.maxHeight = `${panelStyle.maxHeight}px`;
+  }, [open, panelStyle.left, panelStyle.maxHeight, panelStyle.top, panelStyle.width]);
+
   const listboxIdRef = useRef(
     "booking_custom_select_" +
       Math.random().toString(36).slice(2, 10)
@@ -2068,12 +2078,6 @@ const BookingSelectField = memo(function BookingSelectField({
             className="bk-custom-select__portal-panel"
             role="listbox"
             aria-label={label}
-            style={{
-              top: panelStyle.top,
-              left: panelStyle.left,
-              width: panelStyle.width,
-              maxHeight: panelStyle.maxHeight,
-            }}
           >
             {options.map((option) => {
               const active =
@@ -2388,6 +2392,15 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
     left: 0,
     width: 330,
   });
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const panel = datePanelRef.current;
+    if (!panel) return;
+    panel.style.top = `${calendarPosition.top}px`;
+    panel.style.left = `${calendarPosition.left}px`;
+    panel.style.width = `${calendarPosition.width}px`;
+  }, [calendarOpen, calendarPosition.left, calendarPosition.top, calendarPosition.width]);
 
   const employeeOptions: BookingSelectOption[] = [
     {
@@ -2750,11 +2763,6 @@ const EditBookingScheduleSection = memo(function EditBookingScheduleSection({
           <div
             ref={datePanelRef}
             className="bk-calendar-popover"
-            style={{
-              top: calendarPosition.top,
-              left: calendarPosition.left,
-              width: calendarPosition.width,
-            }}
           >
             <div className="bk-calendar-head">
               <button

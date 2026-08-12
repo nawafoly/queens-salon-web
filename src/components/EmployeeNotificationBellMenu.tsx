@@ -21,7 +21,6 @@ import {
   notificationTypeLabel,
   toMillis,
 } from "../pages/hr/portalUtils";
-import "../styles/dashboard-v2/pages/employee-notification-menu.css";
 
 type Props = {
   initialUnreadCount?: number;
