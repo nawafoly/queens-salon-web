@@ -11,14 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  simulate-stable-dev-remediation:
+  prove-miniflare-v5-compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,97 +27,45 @@ jobs:
       - name: Install exact baseline
         run: npm ci
 
-      - name: Decouple Vercel request types in ephemeral checkout
+      - name: Convert Account test constructor to Miniflare v5 shape
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const p = 'api/r2-presign.ts';
+          const p = 'workers/account-permissions-worker.test.mjs';
           let s = fs.readFileSync(p, 'utf8');
-          const old = 'import type { VercelRequest, VercelResponse } from "@vercel/node";';
-          if (!s.includes(old)) throw new Error('expected @vercel/node type import missing');
-          const replacement = `type VercelRequest = {\n  method?: string;\n  body?: any;\n};\n\ntype VercelResponse = {\n  setHeader(name: string, value: string): void;\n  status(code: number): VercelResponse;\n  json(body: unknown): VercelResponse;\n  end(): VercelResponse;\n};`;
-          fs.writeFileSync(p, s.replace(old, replacement));
+          const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: "2026-06-24",\n    d1Databases: { CORE_DB: "core-test" },\n  });`;
+          const next = `  const script = 'export default { fetch(){ return new Response("ok") } }';\n  const mf = new Miniflare({\n    workers: [\n      {\n        config: {\n          type: "worker",\n          name: "core-test-worker",\n          compatibilityDate: "2026-06-24",\n          manifest: {\n            mainModule: "script-0.mjs",\n            modulesRoot: process.cwd(),\n            modules: {\n              "script-0.mjs": { type: "esm", contents: script },\n            },\n          },\n          env: {\n            CORE_DB: { type: "d1", id: "core-test" },\n          },\n          exports: {},\n        },\n        dev: { rootPath: process.cwd() },\n      },\n    ],\n  });`;
+          if (!s.includes(old)) throw new Error('expected account Miniflare v4 block missing');
+          fs.writeFileSync(p, s.replace(old, next));
           NODE
 
-      - name: Remove Vercel Node type-only dependency
-        run: npm uninstall --save-dev --package-lock-only @vercel/node
-
-      - name: Upgrade Wrangler while pinning stable Miniflare for direct tests
+      - name: Convert HR test constructor to Miniflare v5 shape
         shell: bash
         run: |
-          npm install --save-dev --package-lock-only wrangler@4.122.0
-          npm install --save-dev --package-lock-only miniflare@4.20260708.1
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'workers/hr-core-worker.test.mjs';
+          let s = fs.readFileSync(p, 'utf8');
+          const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: '2026-06-24',\n    d1Databases: { CORE_DB: 'core-test' },\n    r2Buckets: ['FILES_BUCKET'],\n  });`;
+          const next = `  const script = 'export default { fetch(){ return new Response("ok") } }';\n  const mf = new Miniflare({\n    workers: [\n      {\n        config: {\n          type: "worker",\n          name: "core-test-worker",\n          compatibilityDate: "2026-06-24",\n          manifest: {\n            mainModule: "script-0.mjs",\n            modulesRoot: process.cwd(),\n            modules: {\n              "script-0.mjs": { type: "esm", contents: script },\n            },\n          },\n          env: {\n            CORE_DB: { type: "d1", id: "core-test" },\n            FILES_BUCKET: { type: "r2", name: "FILES_BUCKET" },\n          },\n          exports: {},\n        },\n        dev: { rootPath: process.cwd() },\n      },\n    ],\n  });`;
+          if (!s.includes(old)) throw new Error('expected HR Miniflare v4 block missing');
+          fs.writeFileSync(p, s.replace(old, next));
+          NODE
 
-      - name: Upgrade rolldown-vite migration release
+      - name: Install Miniflare v5 candidate directly
         shell: bash
         run: |
-          npm pkg set 'devDependencies.vite=npm:rolldown-vite@7.3.1'
-          npm pkg set 'overrides.vite=npm:rolldown-vite@7.3.1'
-          npm install --package-lock-only
-
-      - name: Patch only the unused optional tsx esbuild edge
-        shell: bash
-        run: |
-          npm pkg set 'overrides.tsx.esbuild=0.28.1'
-          npm install --package-lock-only
-
-      - name: Apply remaining safe audit fixes to lockfile
-        shell: bash
-        run: npm audit fix --package-lock-only || true
-
-      - name: Reinstall proposed lockfile from scratch
-        shell: bash
-        run: |
+          npm install --save-dev --package-lock-only miniflare@5.20260811.0-alpha
           rm -rf node_modules
           npm ci
+          npm ls miniflare --depth=3 || true
 
-      - name: Full audit must be zero
-        run: npm audit --audit-level=low
-
-      - name: Production audit must remain zero
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Show resolved tooling graph
-        shell: bash
-        run: |
-          npm ls wrangler miniflare vite rolldown-vite tsx esbuild @vercel/node --depth=5 || true
-          npm explain miniflare || true
-          npm explain tsx || true
-          npm explain esbuild || true
-
-      - name: Account permission tests remain on stable Miniflare API
+      - name: Account permission tests on Miniflare v5
         run: node --test workers/account-permissions-worker.test.mjs
 
-      - name: Repository hygiene guard
-        run: npm run check:repo-hygiene
-
-      - name: Dashboard V2 contracts
-        run: npm run check:dashboard-v2
-
-      - name: Internal booking contract
-        run: npm run check:booking-internal-contract
-
-      - name: No legacy booking runtime guard
-        run: node scripts/check-no-legacy-booking-runtime.mjs
-
-      - name: Booking runtime audit
-        run: node scripts/audit-legacy-booking-runtime.mjs
-
-      - name: Build
-        run: npm run build
-
-      - name: Core worker tests
-        run: npm run test:core:worker
-
-      - name: HR worker tests
-        run: npm run test:hr:worker
-
-      - name: Frontend Core migration tests
-        run: npm run test:frontend:core
-
-      - name: Frontend Core migration guard
-        run: npm run check:frontend-core-migration
+      - name: HR Core D1 and R2 tests on Miniflare v5
+        run: node --test workers/hr-core-worker.test.mjs
 
       - name: Diff check
         run: git diff --check
