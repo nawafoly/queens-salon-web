@@ -7,9 +7,11 @@ on:
       - ".github/workflows/dashboard-v2-full-acceptance.yml"
       - "src/pages/**"
       - "src/components/dashboard-v2/**"
+      - "src/components/EmployeeNotificationBellMenu.tsx"
       - "src/styles/dashboard-v2/**"
       - "scripts/check-dashboard-*.mjs"
       - "scripts/check-booking-internal-*.mjs"
+      - "scripts/fix-dashboard-v2-style-regressions.mjs"
   workflow_dispatch:
 
 permissions:
