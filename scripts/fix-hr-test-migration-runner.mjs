@@ -77,7 +77,12 @@ if (!text.includes(assignment)) {
   throw new Error('[hr-test-fixtures] staff_services assignment was not installed');
 }
 
-const scheduleFixture = `  const bookingShift = await saveShiftTemplate(db, 'main', {
+const scheduleFixture = `  await upsertHrEmployee(db, 'main', {
+    id: 'staff-1',
+    name: 'Staff',
+    employment: { employmentStatus: 'active' },
+  }, actor);
+  const bookingShift = await saveShiftTemplate(db, 'main', {
     id: 'shift-booking-test',
     name: 'Booking test shift',
     startTime: '09:00',
@@ -88,21 +93,35 @@ const scheduleFixture = `  const bookingShift = await saveShiftTemplate(db, 'mai
   ]);`;
 
 if (!text.includes(scheduleFixture)) {
-  const bookingMarker = `  \`);\n  const booking = await createBooking(db, 'main', {`;
-  const count = text.split(bookingMarker).length - 1;
-  if (count !== 1) {
-    throw new Error(`[hr-test-fixtures] expected one reschedule booking marker, found ${count}`);
+  const oldScheduleFixture = `  const bookingShift = await saveShiftTemplate(db, 'main', {
+    id: 'shift-booking-test',
+    name: 'Booking test shift',
+    startTime: '09:00',
+    endTime: '18:00',
+  }, actor);
+  await replaceHrSchedules(db, 'main', 'staff-1', [
+    { id: 'sched-booking-test', weekday: 4, shiftTemplateId: bookingShift.id, active: true, effectiveFrom: '2026-08-01' },
+  ]);`;
+
+  if (text.includes(oldScheduleFixture)) {
+    text = text.replace(oldScheduleFixture, scheduleFixture);
+  } else {
+    const bookingMarker = `  \`);\n  const booking = await createBooking(db, 'main', {`;
+    const count = text.split(bookingMarker).length - 1;
+    if (count !== 1) {
+      throw new Error(`[hr-test-fixtures] expected one reschedule booking marker, found ${count}`);
+    }
+    text = text.replace(
+      bookingMarker,
+      `  \`);\n${scheduleFixture}\n  const booking = await createBooking(db, 'main', {`
+    );
   }
-  text = text.replace(
-    bookingMarker,
-    `  \`);\n${scheduleFixture}\n  const booking = await createBooking(db, 'main', {`
-  );
 }
 if (!text.includes(scheduleFixture)) {
-  throw new Error('[hr-test-fixtures] authoritative HR schedule was not installed');
+  throw new Error('[hr-test-fixtures] authoritative HR employee/schedule fixture was not installed');
 }
 
 fs.writeFileSync(file, eol === '\r\n' ? text.replace(/\n/g, '\r\n') : text, 'utf8');
 console.log('[hr-test-migrations] trigger-aware migration runner installed');
 console.log('[hr-test-fixtures] reschedule fixture uses authoritative staff_services assignment');
-console.log('[hr-test-fixtures] reschedule fixture uses authoritative HR weekly schedule');
+console.log('[hr-test-fixtures] reschedule fixture is registered in Core HR and uses an authoritative weekly schedule');
