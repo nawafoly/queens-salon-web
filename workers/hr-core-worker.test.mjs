@@ -18,6 +18,28 @@ import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
 import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
 
+function splitMigrationStatements(sql) {
+  const statements = [];
+  const pushPlainStatements = (chunk) => {
+    for (const statement of chunk.split(';').map((value) => value.trim()).filter(Boolean)) {
+      statements.push(statement);
+    }
+  };
+
+  // Keep CREATE TRIGGER ... BEGIN ... END; intact. A plain semicolon split
+  // corrupts trigger bodies, while D1 exec treats multiline CREATE TABLE
+  // scripts as separate lines in Miniflare. This splitter preserves both.
+  const triggerPattern = /CREATE\s+TRIGGER\b[\s\S]*?^\s*END\s*;/gim;
+  let cursor = 0;
+  for (const match of sql.matchAll(triggerPattern)) {
+    pushPlainStatements(sql.slice(cursor, match.index));
+    statements.push(match[0].trim());
+    cursor = match.index + match[0].length;
+  }
+  pushPlainStatements(sql.slice(cursor));
+  return statements;
+}
+
 async function setup() {
   const mf = new Miniflare({
     modules: true,
@@ -50,7 +72,7 @@ async function setup() {
       .split('\n')
       .filter((line) => !line.trim().startsWith('--'))
       .join('\n');
-    for (const statement of sql.split(';').map((value) => value.trim()).filter(Boolean)) {
+    for (const statement of splitMigrationStatements(sql)) {
       await db.prepare(statement).run();
     }
   }
@@ -202,7 +224,22 @@ test('booking reschedule atomically replaces slot locks', async (t) => {
     INSERT INTO clients (id,salon_id,name,status,created_at,updated_at) VALUES ('client-1','main','Client','active','2026-01-01','2026-01-01');
     INSERT INTO services (id,salon_id,name,duration_minutes,price_halalas,active,sort_order,created_at,updated_at) VALUES ('svc-1','main','Service',30,5000,1,0,'2026-01-01','2026-01-01');
     INSERT INTO staff (id,salon_id,name,active,employment_status,created_at,updated_at) VALUES ('staff-1','main','Staff',1,'active','2026-01-01','2026-01-01');
+    INSERT INTO staff_services (salon_id,staff_id,service_id,active) VALUES ('main','staff-1','svc-1',1);
   `);
+  await upsertHrEmployee(db, 'main', {
+    id: 'staff-1',
+    name: 'Staff',
+    employment: { employmentStatus: 'active' },
+  }, actor);
+  const bookingShift = await saveShiftTemplate(db, 'main', {
+    id: 'shift-booking-test',
+    name: 'Booking test shift',
+    startTime: '09:00',
+    endTime: '18:00',
+  }, actor);
+  await replaceHrSchedules(db, 'main', 'staff-1', [
+    { id: 'sched-booking-test', weekday: 4, shiftTemplateId: bookingShift.id, active: true, effectiveFrom: '2026-08-01' },
+  ]);
   const booking = await createBooking(db, 'main', {
     id: 'booking-1', clientId: 'client-1', staffId: 'staff-1', bookingDate: '2026-08-20', startTime: '10:00',
     slotStepMin: 5, items: [{ id: 'item-1', serviceId: 'svc-1', staffId: 'staff-1' }],

@@ -52,7 +52,6 @@ import { resolveServiceName } from "../services/serviceResolver";
 import { AppSettingsService, type AppSettings } from "../services/AppSettingsService";
 import { SALON_ID } from "../helpers/bookingSharedConstants";
 
-import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 import {
   formatTime12,
   round2,

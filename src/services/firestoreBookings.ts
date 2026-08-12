@@ -221,7 +221,7 @@ const SALON_ID = "main";
 const BOOKINGS_COL = ["salons", SALON_ID, "bookings"] as const;
 const SLOTS_COL = ["salons", SALON_ID, "booking_slots"] as const;
 const TRACKS_COL = ["salons", SALON_ID, "booking_tracks"] as const;
-const ALLOW_OVERTIME_MIN = 15;
+const ALLOW_OVERTIME_MIN = 0;
 
 // ✅ Income collection
 const INCOME_COL = ["salons", SALON_ID, "income"] as const;

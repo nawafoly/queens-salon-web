@@ -50,6 +50,7 @@ class FakeD1 {
       "employee_profiles",
       "employee_employment",
       "attendance_records",
+      "employee_leaves",
       "employee_absences",
       "payroll_periods",
       "payroll_entries",
@@ -2280,6 +2281,7 @@ test("booking creation resolves a legacy Arabic service label to one canonical C
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
   });
+  fake.seed("staff_services", { salon_id: "main", staff_id: "staff-a", service_id: "svc-blowdry-short", active: 1, created_at: "2027-01-01T00:00:00.000Z", updated_at: "2027-01-01T00:00:00.000Z" });
   fake.seed("staff_services", {
     salon_id: "main",
     staff_id: "staff-a",
@@ -2413,6 +2415,7 @@ test("dashboard booking edit updates schedule service client totals and payment 
     created_at: now,
     updated_at: now,
   });
+  fake.seed("staff_services", { salon_id: "main", staff_id: "staff-a", service_id: "svc-b", active: 1, created_at: now, updated_at: now });
   fake.seed("staff_services", {
     salon_id: "main",
     staff_id: "staff-a",
@@ -2599,6 +2602,7 @@ test("booking offer discount applies only to eligible services and rounds alloca
     applies_to: "services",
     service_ids_json: JSON.stringify(["svc-a"]),
   });
+  fake.seed("staff_services", { salon_id: "main", staff_id: "staff-a", service_id: "svc-b", active: 1, created_at: now, updated_at: now });
   fake.seed("staff_services", {
     salon_id: "main",
     staff_id: "staff-a",
@@ -3874,15 +3878,21 @@ test("booking creation rejects starts that are not aligned to the configured slo
   assert.equal(body.error, "core_booking:invalid_slot_alignment");
 });
 
-test("staff leave blocks booking and is exposed by availability", async () => {
+test("approved employee leave blocks booking and is exposed by availability", async () => {
   const fake = new FakeD1();
   seedCore(fake);
-  fake.seed("staff", {
-    ...fake.find("staff", "main", "staff-a"),
-    leave_start_date: "2027-01-09",
-    leave_end_date: "2027-01-11",
-    leave_note: "annual leave",
-    show_on_booking: 1,
+  fake.seed("employee_leaves", {
+    id: "leave-a",
+    salon_id: "main",
+    employee_id: "staff-a",
+    leave_type: "annual",
+    start_date: "2027-01-09",
+    end_date: "2027-01-11",
+    duration_kind: "full",
+    status: "approved",
+    note: "annual leave",
+    created_at: "2027-01-01T00:00:00.000Z",
+    updated_at: "2027-01-01T00:00:00.000Z",
   });
 
   const availability = await worker.fetch(

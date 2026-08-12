@@ -158,7 +158,8 @@ const requiredChecks = [
   {
     file: "src/features/internal-booking-v2/BookingInternalV2.tsx",
     required: [
-      /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/,
+      /listCoreBookableStaffForDate/,
+      /getCoreStaffBookableStartSlots/,
       /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/,
       /resolveCoreBookingDataSource\(\)\.createBookingGroup/,
       /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/,
@@ -168,7 +169,7 @@ const requiredChecks = [
   },
   {
     file: "src/pages/BookingInternal.tsx",
-    required: [/CoreRefundService/, /CoreAuditService/],
+    required: [/BookingInternalV2/],
   },
   {
     file: "src/services/CoreBookingService.ts",

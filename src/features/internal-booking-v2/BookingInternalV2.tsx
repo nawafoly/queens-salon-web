@@ -985,6 +985,26 @@ export default function BookingInternalV2() {
 
       const authUser = getAuth().currentUser;
       const userId = String(authUser?.uid || "internal_staff");
+      const bookingDataSource = resolveCoreBookingDataSource();
+      const selectedClientId = String(selectedClient.id || "").trim();
+      let canonicalClientId = "";
+      if (selectedClientId && !selectedClientId.startsWith("history:")) {
+        try {
+          canonicalClientId = String((await bookingDataSource.getClient(selectedClientId))?.id || "").trim();
+        } catch {
+          canonicalClientId = "";
+        }
+      }
+      if (!canonicalClientId) {
+        const ensuredClient = await bookingDataSource.createClient({
+          name: selectedClient.name,
+          phone: selectedClient.phone,
+        });
+        canonicalClientId = String(ensuredClient?.id || "").trim();
+      }
+      if (!canonicalClientId) {
+        throw new Error("تعذر ربط الحجز بحساب العميلة المحدد.");
+      }
       const status = paymentType === "none" ? "pending" : "confirmed";
       const total = Math.max(0, finalTotal);
       const allocationByItem = new Map(
@@ -1006,8 +1026,10 @@ export default function BookingInternalV2() {
           : 0;
         const selectedStaff = (eligibleStaffByService[key] || []).find((row) => staffId(row) === schedule.staffId);
         return {
-          userId,
+          clientId: canonicalClientId,
+          userId: null,
           createdBy: "staff",
+          createdByUid: userId,
           channel: "internal",
           clientName: selectedClient.name,
           clientPhone: selectedClient.phone,
