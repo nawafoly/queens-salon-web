@@ -35,6 +35,9 @@ jobs:
       - name: Architecture guard after cleanup
         run: node scripts/check-no-legacy-booking-runtime.mjs
 
+      - name: Employee shift-end boundary behavior
+        run: node scripts/check-booking-shift-end-boundary.mjs
+
       - name: Build
         run: npm run build
 
