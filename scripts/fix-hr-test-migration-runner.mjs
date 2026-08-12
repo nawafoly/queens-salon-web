@@ -64,5 +64,19 @@ if (text.includes('await db.exec(sql);')) {
   throw new Error('[hr-test-migrations] multiline D1 exec runner remains');
 }
 
+const assignment = "    INSERT INTO staff_services (salon_id,staff_id,service_id,active) VALUES ('main','staff-1','svc-1',1);";
+if (!text.includes(assignment)) {
+  const staffFixture = "    INSERT INTO staff (id,salon_id,name,active,employment_status,created_at,updated_at) VALUES ('staff-1','main','Staff',1,'active','2026-01-01','2026-01-01');";
+  const count = text.split(staffFixture).length - 1;
+  if (count !== 1) {
+    throw new Error(`[hr-test-fixtures] expected one reschedule staff fixture, found ${count}`);
+  }
+  text = text.replace(staffFixture, `${staffFixture}\n${assignment}`);
+}
+if (!text.includes(assignment)) {
+  throw new Error('[hr-test-fixtures] staff_services assignment was not installed');
+}
+
 fs.writeFileSync(file, eol === '\r\n' ? text.replace(/\n/g, '\r\n') : text, 'utf8');
 console.log('[hr-test-migrations] trigger-aware migration runner installed');
+console.log('[hr-test-fixtures] reschedule fixture uses authoritative staff_services assignment');
