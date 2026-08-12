@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/add-admin-partial-leave.mjs"
+      - "scripts/fix-admin-partial-leave-employeehub-normalization.mjs"
       - "scripts/fix-core-partial-leave-persistence.mjs"
       - "scripts/fix-admin-partial-leave-test-harness.mjs"
       - ".github/workflows/admin-partial-leave-cutover.yml"
@@ -38,6 +39,9 @@ jobs:
 
       - name: Apply partial-day leave cutover
         run: node scripts/add-admin-partial-leave.mjs
+
+      - name: Normalize partial leave duration kind
+        run: node scripts/fix-admin-partial-leave-employeehub-normalization.mjs
 
       - name: Enforce explicit Core leave persistence ordering
         run: node scripts/fix-core-partial-leave-persistence.mjs
