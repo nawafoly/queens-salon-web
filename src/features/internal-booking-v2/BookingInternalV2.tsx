@@ -704,20 +704,41 @@ export default function BookingInternalV2() {
     const currentService = cart.find((item) => String(item.id) === serviceKey);
     const start = timeToMinutes(time);
     if (!currentService || start < 0 || !staffKey) return null;
-    const end = start + Math.max(1, serviceDuration(currentService) || 30) + bufferMin;
+
+    const clientEnd = start + Math.max(1, serviceDuration(currentService) || 30);
+    const staffEnd = clientEnd + bufferMin;
+
     for (const other of cart) {
       const otherKey = String(other.id);
       if (otherKey === serviceKey) continue;
       const selected = scheduleByService[otherKey];
-      if (!selected?.time || selected.staffId !== staffKey) continue;
+      if (!selected?.time) continue;
       const otherStart = timeToMinutes(selected.time);
-      const otherEnd = otherStart + Math.max(1, serviceDuration(other) || 30) + bufferMin;
-      if (start < otherEnd && otherStart < end) {
+      if (otherStart < 0) continue;
+      const otherClientEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
+
+      // Client-level rule: services in one booking cannot overlap even when
+      // they are assigned to different employees.
+      if (start < otherClientEnd && otherStart < clientEnd) {
         return {
+          kind: "client" as const,
           service: other,
           start: selected.time,
-          end: `${String(Math.floor(otherEnd / 60)).padStart(2, "0")}:${String(otherEnd % 60).padStart(2, "0")}`,
+          end: `${String(Math.floor(otherClientEnd / 60)).padStart(2, "0")}:${String(otherClientEnd % 60).padStart(2, "0")}`,
         };
+      }
+
+      // Same staff remains stricter because its turnaround buffer must also be free.
+      if (selected.staffId === staffKey) {
+        const otherStaffEnd = otherClientEnd + bufferMin;
+        if (start < otherStaffEnd && otherStart < staffEnd) {
+          return {
+            kind: "staff" as const,
+            service: other,
+            start: selected.time,
+            end: `${String(Math.floor(otherStaffEnd / 60)).padStart(2, "0")}:${String(otherStaffEnd % 60).padStart(2, "0")}`,
+          };
+        }
       }
     }
     return null;
@@ -733,17 +754,18 @@ export default function BookingInternalV2() {
       const otherKey = String(other.id);
       if (otherKey === serviceKey) return [];
       const selected = scheduleByService[otherKey];
-      if (!selected?.time || selected.staffId !== staffKey) return [];
+      if (!selected?.time) return [];
       const otherStart = timeToMinutes(selected.time);
       if (otherStart < 0) return [];
-      const otherEnd = otherStart + Math.max(1, serviceDuration(other) || 30) + bufferMin;
+      const otherEnd = otherStart + Math.max(1, serviceDuration(other) || 30);
       return [{
+        kind: selected.staffId === staffKey ? "staff" as const : "client" as const,
         serviceTitle: serviceTitle(other),
         start: selected.time,
         end: `${String(Math.floor(otherEnd / 60)).padStart(2, "0")}:${String(otherEnd % 60).padStart(2, "0")}`,
       }];
     }).sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
-  }, [cart, scheduleByService, bufferMin]);
+  }, [cart, scheduleByService]);
 
   const conflictKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -1371,7 +1393,7 @@ export default function BookingInternalV2() {
                             </div>
                             <div className="bk2-time-picker">
                               <span>الأوقات المتاحة</span>
-                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>الموظفة مشغولة من <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong><span>بسبب: {busy.serviceTitle}</span></p>)}</div> : null}
+                              {selection?.staffId && getBusyIntervalsForService(key, selection.staffId).length ? <div className="bk2-busy-intervals">{getBusyIntervalsForService(key, selection.staffId).map((busy) => <p key={`${busy.serviceTitle}-${busy.start}`}>العميلة لديها خدمة من <strong>{formatTime12(busy.start, busy.start)}</strong> إلى <strong>{formatTime12(busy.end, busy.end)}</strong><span>بسبب: {busy.serviceTitle}</span></p>)}</div> : null}
                               {!selection?.staffId ? <p>اختاري الموظفة أولًا.</p> : timesLoading[key] ? <p>جاري فحص المواعيد...</p> : times.length ? (
                                 <div>{times.map((time) => {
                                   const conflict = getCartScheduleConflict(key, selection.staffId, time);
@@ -1382,7 +1404,7 @@ export default function BookingInternalV2() {
                               ) : <p>لا توجد أوقات متاحة لهذه الموظفة في التاريخ المختار.</p>}
                             </div>
                           </div>
-                          {conflictKeys.has(key) ? <p className="bk2-inline-warning">هذا الموعد يتعارض مع خدمة أخرى لنفس الموظفة. اختاري وقتًا مختلفًا.</p> : null}
+                          {conflictKeys.has(key) ? <p className="bk2-inline-warning">هذا الموعد يتعارض مع خدمة أخرى في نفس حجز العميلة. اختاري وقتًا مختلفًا.</p> : null}
                           {!staffRows.length && !staffLoading ? <p className="bk2-inline-warning">لا توجد موظفة مؤهلة ومتاحة لهذه الخدمة في هذا اليوم.</p> : null}
                         </article>
                       );

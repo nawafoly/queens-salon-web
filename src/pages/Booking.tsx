@@ -1883,32 +1883,37 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     const taken = new Set<string>();
     const targetKey = String(employeeKey || "").trim();
     const targetEmployeeId = String(employeeIdFallback || "").trim();
+    const targetDate = String(date || "").trim();
 
     for (const other of items) {
-      if (!other) continue;
-      if (other.id === currentItemId) continue;
-
-      const otherKey = resolveEmployeeKey(other); // ✅ FIX: نفس منطق booking_slots
-      const otherEmployeeId = String(other.employeeId || "").trim();
+      if (!other || other.id === currentItemId) continue;
       const d = String(other.date || "").trim();
       const t = String(other.time || "").trim();
+      if (!d || !t || d !== targetDate) continue;
 
-      if ((!otherKey && !otherEmployeeId) || !d || !t) continue;
+      const dur = Math.max(1, Number(other.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+
+      // Client-level authority: one client cannot receive overlapping services,
+      // even when those services are assigned to different employees.
+      // The employee buffer is not part of the client's occupied service interval.
+      expandBookingOccupiedTimes(t, dur, 0, slotStepMin).forEach((slot) => taken.add(slot));
+
+      // Preserve the stricter same-employee rule, including the configured buffer.
+      const otherKey = resolveEmployeeKey(other);
+      const otherEmployeeId = String(other.employeeId || "").trim();
       const sameByKey = !!targetKey && otherKey === targetKey;
       const sameByEmployeeId = !!targetEmployeeId && otherEmployeeId === targetEmployeeId;
       const crossKeyMatch =
         (!!targetEmployeeId && otherKey === targetEmployeeId) ||
         (!!targetKey && otherEmployeeId === targetKey);
-      if (!sameByKey && !sameByEmployeeId && !crossKeyMatch) continue;
-      if (d !== date) continue;
-
-      const dur = Number(other.durationMin || DEFAULT_SERVICE_DURATION_MIN);
-      const locked = expandBookingOccupiedTimes(t, dur, bufferMin, slotStepMin);
-      locked.forEach((x) => taken.add(x));
+      if (sameByKey || sameByEmployeeId || crossKeyMatch) {
+        expandBookingOccupiedTimes(t, dur, bufferMin, slotStepMin).forEach((slot) => taken.add(slot));
+      }
     }
 
     return taken;
   }
+
   function pickEffectivePrice(args: {
     basePrice: number;
     seasonPrice?: number;
@@ -1927,89 +1932,64 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
   }
 
   function findCartOverlap(items: CartItem[]) {
-    const list = (items || []).map((x) => ({ ...x }));
+    const list = (items || []).map((item) => ({ ...item }));
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const a = list[i];
         const b = list[j];
         if (isSequentialOfferItem(a) || isSequentialOfferItem(b)) continue;
 
-        const empA = resolveEmployeeKey(a); // ✅ FIX
-        const empB = resolveEmployeeKey(b); // ✅ FIX
         const dateA = String(a.date || "").trim();
         const dateB = String(b.date || "").trim();
         const timeA = String(a.time || "").trim();
         const timeB = String(b.time || "").trim();
+        if (!dateA || !dateB || !timeA || !timeB || dateA !== dateB) continue;
 
-        if (!empA || !empB || !dateA || !dateB || !timeA || !timeB) continue;
-        const idA = String(a.employeeId || "").trim();
-        const idB = String(b.employeeId || "").trim();
+        const startA = toMinutes(timeA);
+        const startB = toMinutes(timeB);
+        if (!Number.isFinite(startA) || !Number.isFinite(startB)) continue;
+        const durationA = Math.max(1, Number(a.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+        const durationB = Math.max(1, Number(b.durationMin || DEFAULT_SERVICE_DURATION_MIN));
+        const endA = startA + durationA;
+        const endB = startB + durationB;
 
-        const sameByKey = empA && empB && empA === empB;
-        const sameById = idA && idB && idA === idB;
-        const crossKeyMatch = (idA && empB === idA) || (idB && empA === idB);
-
-        if (!(sameByKey || sameById || crossKeyMatch)) continue;
-        if (dateA !== dateB) continue;
-
-        const aLocked = new Set(
-          expandBookingOccupiedTimes(
-            timeA,
-            Number(a.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            bufferMin,
-            slotStepMin
-          )
-        );
-        const bLocked = new Set(
-          expandBookingOccupiedTimes(
-            timeB,
-            Number(b.durationMin || DEFAULT_SERVICE_DURATION_MIN),
-            bufferMin,
-            slotStepMin
-          )
-        );
-
-        let overlap = false;
-        for (const t of aLocked) {
-          if (bLocked.has(t)) {
-            overlap = true;
-            break;
-          }
+        if (startA < endB && startB < endA) {
+          return { ok: false as const, a, b, reason: "client" as const };
         }
 
-        if (overlap) {
-          return { ok: false as const, a, b };
+        const empA = resolveEmployeeKey(a);
+        const empB = resolveEmployeeKey(b);
+        const idA = String(a.employeeId || "").trim();
+        const idB = String(b.employeeId || "").trim();
+        const sameByKey = !!empA && !!empB && empA === empB;
+        const sameById = !!idA && !!idB && idA === idB;
+        const crossKeyMatch = (!!idA && empB === idA) || (!!idB && empA === idB);
+        if ((sameByKey || sameById || crossKeyMatch) && startA < endB + bufferMin && startB < endA + bufferMin) {
+          return { ok: false as const, a, b, reason: "staff" as const };
         }
       }
     }
-    return { ok: true as const, a: null as any, b: null as any };
+    return { ok: true as const, a: null as any, b: null as any, reason: null as null };
   }
 
   function getLocalExactTakenStartTimesForItem(
     items: CartItem[],
     currentItemId: string,
-    employeeId: string,
+    _employeeId: string,
     date: string
   ) {
     const taken = new Set<string>();
-    const targetEmployeeId = String(employeeId || "").trim();
     const targetDate = String(date || "").trim();
-    if (!targetEmployeeId || !targetDate) return taken;
+    if (!targetDate) return taken;
 
     for (const other of items || []) {
       if (!other || String(other.id || "").trim() === String(currentItemId || "").trim()) continue;
       if (isSequentialOfferItem(other)) continue;
-
-      const otherEmployeeId = String(other.employeeId || "").trim();
       const otherDate = String(other.date || "").trim();
       const otherTime = String(other.time || "").trim();
-
-      if (!otherEmployeeId || !otherDate || !otherTime) continue;
-      if (otherEmployeeId !== targetEmployeeId || otherDate !== targetDate) continue;
-
+      if (!otherDate || !otherTime || otherDate !== targetDate) continue;
       taken.add(otherTime);
     }
-
     return taken;
   }
 
@@ -2018,22 +1998,16 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     currentItemId: string,
     candidate: Partial<CartItem>
   ) {
-    const employeeId = String(candidate.employeeId || "").trim();
     const date = String(candidate.date || "").trim();
     const time = String(candidate.time || "").trim();
-    if (!employeeId || !date || !time) return null;
+    if (!date || !time) return null;
 
     return (
       (items || []).find((other) => {
         if (!other) return false;
         if (String(other.id || "").trim() === String(currentItemId || "").trim()) return false;
         if (isSequentialOfferItem(other)) return false;
-
-        return (
-          String(other.employeeId || "").trim() === employeeId &&
-          String(other.date || "").trim() === date &&
-          String(other.time || "").trim() === time
-        );
+        return String(other.date || "").trim() === date && String(other.time || "").trim() === time;
       }) || null
     );
   }
@@ -4333,7 +4307,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         openModal({
           title: "تعارض داخل السلة",
           message:
-            "هذا الوقت محجوز لنفس الموظفة داخل السلة، اختاري وقت مختلف.",
+            "العميلة لديها خدمة أخرى في هذا الوقت داخل نفس الحجز. اختاري وقتًا مختلفًا.",
           variant: "danger",
           confirmText: "حسنًا",
         });
@@ -6354,7 +6328,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
         String(it.employeeId || "").trim()
       );
       if (timesToCheck.some((t) => localTaken.has(t))) {
-        return { ok: false, msg: "هذا الوقت يتعارض مع خدمة ثانية بنفس الموظفة داخل السلة. اختاري وقتًا آخر." };
+        return { ok: false, msg: "هذا الوقت يتعارض مع خدمة أخرى لنفس العميلة داخل السلة. اختاري وقتًا آخر." };
       }
 
       return { ok: true, msg: "" };
@@ -6647,7 +6621,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
     if (exactConflict) {
       openModal({
         title: "تعارض داخل السلة",
-        message: "هذا الوقت محجوز لنفس الموظفة داخل السلة، اختاري وقت مختلف.",
+        message: "العميلة لديها خدمة أخرى في هذا الوقت داخل نفس الحجز. اختاري وقتًا مختلفًا.",
         variant: "danger",
         confirmText: "حسنًا",
       });
@@ -6659,7 +6633,7 @@ const Booking = ({ internalMode = false }: { internalMode?: boolean }) => {
       openModal({
         title: "تعارض في الأوقات",
         message:
-          `عندك خدمتين متداخلات بنفس الموظفة ونفس اليوم:\n\n` +
+          `عندك خدمتين متداخلات لنفس العميلة في نفس اليوم:\n\n` +
           `- ${String(overlap.a?.serviceName || "-")} (${formatTime12ForClient(String(overlap.a?.time || "-"))})\n` +
           `- ${String(overlap.b?.serviceName || "-")} (${formatTime12ForClient(String(overlap.b?.time || "-"))})\n\n` +
           `عدّلي وقت واحدة منهم.`,

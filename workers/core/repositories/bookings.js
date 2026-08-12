@@ -148,6 +148,91 @@ function conflictError() {
   return error;
 }
 
+export function findClientItemOverlap(rows = []) {
+  const items = Array.isArray(rows) ? rows : [];
+  for (let index = 0; index < items.length; index += 1) {
+    const left = items[index] || {};
+    const leftDate = cleanText(left.booking_date || left.bookingDate);
+    const leftStart = cleanText(left.start_time || left.startTime);
+    const leftEnd = cleanText(left.end_time || left.endTime);
+    if (!leftDate || !leftStart || !leftEnd) continue;
+
+    for (let otherIndex = index + 1; otherIndex < items.length; otherIndex += 1) {
+      const right = items[otherIndex] || {};
+      const rightDate = cleanText(right.booking_date || right.bookingDate);
+      const rightStart = cleanText(right.start_time || right.startTime);
+      const rightEnd = cleanText(right.end_time || right.endTime);
+      if (!rightDate || !rightStart || !rightEnd || rightDate !== leftDate) continue;
+      if (leftStart < rightEnd && rightStart < leftEnd) return { left, right };
+    }
+  }
+  return null;
+}
+
+function clientScheduleConflict(details = {}) {
+  return new AppError(
+    409,
+    "core_booking:client_schedule_conflict",
+    "A client cannot receive overlapping services",
+    details
+  );
+}
+
+export function assertNoClientItemOverlap(rows = []) {
+  const conflict = findClientItemOverlap(rows);
+  if (!conflict) return;
+  throw clientScheduleConflict({
+    leftItemId: cleanText(conflict.left?.id),
+    rightItemId: cleanText(conflict.right?.id),
+    bookingDate: cleanText(conflict.left?.booking_date || conflict.left?.bookingDate),
+  });
+}
+
+export async function existingClientRangeConflict(
+  db,
+  salonId,
+  clientId,
+  bookingDate,
+  startTime,
+  endTime,
+  excludeBookingId = ""
+) {
+  if (!clientId) return null;
+
+  if (db.__fakeD1 && typeof db.rows === "function") {
+    const bookings = db.rows("bookings");
+    const items = db.rows("booking_items");
+    for (const item of items) {
+      const booking = bookings.find(
+        (row) => row.id === item.booking_id && row.salon_id === salonId && row.client_id === clientId
+      );
+      if (!booking || booking.id === excludeBookingId) continue;
+      if (CANCELLED_STATUSES.has(cleanText(booking.status).toLowerCase())) continue;
+      const itemDate = cleanText(item.booking_date || booking.booking_date);
+      const itemStart = cleanText(item.start_time || booking.start_time);
+      const itemEnd = cleanText(item.end_time || booking.end_time);
+      if (itemDate === bookingDate && itemStart < endTime && itemEnd > startTime) return { id: booking.id };
+    }
+    return null;
+  }
+
+  return dbFirst(
+    db,
+    `SELECT b.id
+       FROM booking_items bi
+       INNER JOIN bookings b ON b.id = bi.booking_id AND b.salon_id = bi.salon_id
+      WHERE bi.salon_id = ?
+        AND b.client_id = ?
+        AND COALESCE(bi.booking_date, b.booking_date) = ?
+        AND LOWER(b.status) NOT IN ('cancelled', 'canceled', 'rejected')
+        AND b.id != ?
+        AND COALESCE(bi.start_time, b.start_time) < ?
+        AND COALESCE(bi.end_time, b.end_time) > ?
+      LIMIT 1`,
+    [salonId, clientId, bookingDate, excludeBookingId, endTime, startTime]
+  );
+}
+
 async function existingRangeConflict(
   db,
   salonId,
@@ -568,6 +653,28 @@ export async function createBooking(db, salonId, data, actor = "", options = {})
 
     cursorDate = bookingDate;
     cursorTime = endTime;
+  }
+
+  // One client cannot be in two services at the same time, regardless of staff.
+  assertNoClientItemOverlap(rows);
+  for (const row of rows) {
+    const existingClientConflict = await existingClientRangeConflict(
+      db,
+      salonId,
+      clientId,
+      row.booking_date,
+      row.start_time,
+      row.end_time,
+      requestedBookingId || ""
+    );
+    if (existingClientConflict) {
+      throw clientScheduleConflict({
+        conflictingBookingId: cleanText(existingClientConflict.id),
+        bookingDate: row.booking_date,
+        startTime: row.start_time,
+        endTime: row.end_time,
+      });
+    }
   }
 
   const discountApplication = await resolveBookingDiscount(
