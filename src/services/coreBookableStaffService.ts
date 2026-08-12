@@ -21,8 +21,13 @@ function staffIdOf(staff: StaffPublicWithId): string {
   return String(staff?.id || "").trim();
 }
 
+/**
+ * Static visibility only. The optional date argument is intentionally ignored;
+ * every dated schedule/leave/off decision must come from Core availability.
+ */
 export function isCoreAssignedStaffPubliclyVisible(
-  staff: StaffPublicWithId | null | undefined
+  staff: StaffPublicWithId | null | undefined,
+  _dateIgnored?: string
 ): boolean {
   return Boolean(
     staff &&
