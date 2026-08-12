@@ -1,0 +1,98 @@
+name: Partial Leave Attendance UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/add-partial-leave-attendance-ui.mjs"
+      - ".github/workflows/partial-leave-attendance-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: partial-leave-attendance-ui-main
+  cancel-in-progress: false
+
+jobs:
+  verify-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Apply partial leave attendance UI patch
+        run: node scripts/add-partial-leave-attendance-ui.mjs
+
+      - name: Verify partial leave attendance contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const calendar = fs.readFileSync('src/helpers/hr/attendanceCalendarData.ts', 'utf8');
+          const section = fs.readFileSync('src/pages/dashboardEmployees/AttendanceSection.tsx', 'utf8');
+          const live = fs.readFileSync('src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx', 'utf8');
+          const css = fs.readFileSync('src/styles/dashboard-v2/pages/employee-workspace.css', 'utf8');
+          const checks = [
+            [calendar.includes('"partial_leave"'), 'partial_leave kind missing'],
+            [calendar.includes('.filter((day) => day.kind !== "partial_leave")'), 'partial leave leaked into full-day date keys'],
+            [calendar.includes('partialStartTime: cleanText(request.partialStartTime'), 'partial start time not mapped'],
+            [calendar.includes('partialEndTime: cleanText(request.partialEndTime'), 'partial end time not mapped'],
+            [section.includes('specialDay && specialDay.kind !== "partial_leave"'), 'partial leave still closes the whole selected day'],
+            [live.includes('day.specialDay?.kind === "partial_leave"'), 'partial interval is not rendered in calendar'],
+            [live.includes('إجازة جزئية معتمدة — الفترة فقط محجوبة'), 'partial review copy missing'],
+            [css.includes('data-special="partial_leave"'), 'partial calendar styling missing'],
+          ];
+          for (const [ok, message] of checks) {
+            if (!ok) throw new Error(message);
+          }
+          console.log('[partial-leave-attendance-ui] contract verified');
+          NODE
+
+      - name: Build
+        run: npm run build
+
+      - name: Partial leave policy tests
+        run: node --test workers/admin-partial-leave-policy.test.mjs
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Promote only after green gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/helpers/hr/attendanceCalendarData.ts \
+            src/pages/dashboardEmployees/AttendanceSection.tsx \
+            src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx \
+            src/styles/dashboard-v2/pages/employee-workspace.css
+          if git diff --cached --quiet; then
+            echo "No production changes to promote."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Show partial leave intervals in attendance calendar"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
