@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { transform } from 'esbuild';
+import ts from 'typescript';
 
 const source = fs.readFileSync('src/helpers/timeSlots.ts', 'utf8');
-const compiled = await transform(source, {
-  loader: 'ts',
-  format: 'esm',
-  target: 'es2022',
+const compiled = ts.transpileModule(source, {
+  compilerOptions: {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ES2022,
+  },
+  fileName: 'timeSlots.ts',
 });
-const mod = await import(`data:text/javascript;base64,${Buffer.from(compiled.code).toString('base64')}`);
+const mod = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputText).toString('base64')}`);
 const { generateSalonTimeSlots, filterSlotsByServiceEnd } = mod;
 
 function lastStart({ durationMin, bufferMin = 10, stepMin }) {
@@ -44,17 +46,13 @@ fs.writeFileSync(
 );
 console.log('Booking shift boundary observations:', JSON.stringify(observations));
 
-// 5-minute grid: exact latest starts for a 23:00 employee shift.
 assert.equal(observations.step5.duration15, '22:35');
 assert.equal(observations.step5.duration30, '22:20');
 assert.equal(observations.step5.duration60, '21:50');
-
-// 10-minute grid: 22:35 is not representable, so 15-minute service starts 22:30.
 assert.equal(observations.step10.duration15, '22:30');
 assert.equal(observations.step10.duration30, '22:20');
 assert.equal(observations.step10.duration60, '21:50');
 
-// Explicitly prove that no slot may overrun shift end through service + buffer.
 const timeline = generateSalonTimeSlots('15:00', '23:00', 5);
 for (const durationMin of [15, 30, 60, 95]) {
   const starts = filterSlotsByServiceEnd(timeline, '23:00', durationMin, 10, 0);
