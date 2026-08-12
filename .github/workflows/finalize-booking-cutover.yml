@@ -40,7 +40,13 @@ jobs:
         run: node scripts/check-no-legacy-booking-runtime.mjs
 
       - name: Employee shift-end boundary behavior
-        run: node scripts/check-booking-shift-end-boundary.mjs
+        shell: bash
+        run: |
+          set +e
+          node scripts/check-booking-shift-end-boundary.mjs 2>&1 | tee booking-shift-boundary.log
+          code=${PIPESTATUS[0]}
+          set -e
+          exit "$code"
 
       - name: Build
         run: npm run build
@@ -81,7 +87,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: booking-shift-boundary-results
-          path: booking-shift-boundary-results.json
+          path: |
+            booking-shift-boundary-results.json
+            booking-shift-boundary.log
           if-no-files-found: ignore
 
       - name: Upload final audit
