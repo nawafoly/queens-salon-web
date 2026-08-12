@@ -23,15 +23,36 @@ function lastStart({ durationMin, bufferMin = 10, stepMin }) {
   return starts.at(-1)?.value24 || '';
 }
 
+const observations = {
+  shift: '15:00-23:00',
+  bufferMin: 10,
+  step5: {
+    duration15: lastStart({ durationMin: 15, stepMin: 5 }),
+    duration30: lastStart({ durationMin: 30, stepMin: 5 }),
+    duration60: lastStart({ durationMin: 60, stepMin: 5 }),
+  },
+  step10: {
+    duration15: lastStart({ durationMin: 15, stepMin: 10 }),
+    duration30: lastStart({ durationMin: 30, stepMin: 10 }),
+    duration60: lastStart({ durationMin: 60, stepMin: 10 }),
+  },
+};
+fs.writeFileSync(
+  'booking-shift-boundary-results.json',
+  `${JSON.stringify(observations, null, 2)}\n`,
+  'utf8'
+);
+console.log('Booking shift boundary observations:', JSON.stringify(observations));
+
 // 5-minute grid: exact latest starts for a 23:00 employee shift.
-assert.equal(lastStart({ durationMin: 15, stepMin: 5 }), '22:35');
-assert.equal(lastStart({ durationMin: 30, stepMin: 5 }), '22:20');
-assert.equal(lastStart({ durationMin: 60, stepMin: 5 }), '21:50');
+assert.equal(observations.step5.duration15, '22:35');
+assert.equal(observations.step5.duration30, '22:20');
+assert.equal(observations.step5.duration60, '21:50');
 
 // 10-minute grid: 22:35 is not representable, so 15-minute service starts 22:30.
-assert.equal(lastStart({ durationMin: 15, stepMin: 10 }), '22:30');
-assert.equal(lastStart({ durationMin: 30, stepMin: 10 }), '22:20');
-assert.equal(lastStart({ durationMin: 60, stepMin: 10 }), '21:50');
+assert.equal(observations.step10.duration15, '22:30');
+assert.equal(observations.step10.duration30, '22:20');
+assert.equal(observations.step10.duration60, '21:50');
 
 // Explicitly prove that no slot may overrun shift end through service + buffer.
 const timeline = generateSalonTimeSlots('15:00', '23:00', 5);
