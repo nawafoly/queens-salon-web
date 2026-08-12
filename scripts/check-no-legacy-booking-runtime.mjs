@@ -41,17 +41,13 @@ if (audit.status !== 0) {
   failures.push(`repo-wide booking runtime audit still has high-risk findings (HIGH_RISK_TOTAL=${total})`);
 }
 
-// Customer and V2 own actual scheduling decisions. The historical internal
-// route is intentionally a thin compatibility delegate to V2 so it cannot
-// maintain a second booking policy engine.
+// Customer booking and internal V2 are the only booking-decision UIs.
+// Historical internal-booking wrappers/routes are forbidden entirely.
 const decisionUiFiles = [
   'src/pages/Booking.tsx',
   'src/features/internal-booking-v2/BookingInternalV2.tsx',
 ];
-const bookingUiFiles = [
-  ...decisionUiFiles,
-  'src/pages/BookingInternal.tsx',
-];
+const bookingUiFiles = [...decisionUiFiles];
 
 for (const file of bookingUiFiles) {
   forbid(file, 'resolveStaffWorkingWindowsForDate', 'must not derive dated staff windows from legacy/static staff fields');
@@ -66,21 +62,22 @@ for (const file of bookingUiFiles) {
 for (const file of decisionUiFiles) {
   requireText(file, 'getStaffAvailability', 'booking decision UI must load the authoritative Core staff-day availability');
 }
-requireText(
-  'src/pages/BookingInternal.tsx',
-  'BookingInternalV2',
-  'legacy internal route must delegate to the Core-HR-authoritative V2 runtime'
+forbid(
+  'src/pages/Dashboard.tsx',
+  'booking-internal-legacy',
+  'Dashboard must not expose a legacy internal-booking route'
 );
 forbid(
-  'src/pages/BookingInternal.tsx',
-  'firestoreAvailabilityBackfill',
-  'legacy internal compatibility route must not run Firestore availability backfill'
+  'src/pages/Dashboard.tsx',
+  '../pages/BookingInternal',
+  'Dashboard must not import the historical BookingInternal wrapper'
 );
-forbid(
-  'src/pages/BookingInternal.tsx',
-  'getDataSourceFlags().useCoreD1',
-  'legacy internal compatibility route must not keep a Core-vs-Firestore booking branch'
-);
+if (fs.existsSync(path.join(root, 'src/pages/BookingInternal.tsx'))) {
+  failures.push('src/pages/BookingInternal.tsx: historical internal-booking wrapper must be deleted');
+}
+if (fs.existsSync(path.join(root, 'src/styles/BookingInternalLegacy.css'))) {
+  failures.push('src/styles/BookingInternalLegacy.css: dead legacy stylesheet must be deleted');
+}
 
 forbidRegex(
   'src/pages/Checkout.tsx',

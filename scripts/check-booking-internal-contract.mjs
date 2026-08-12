@@ -19,18 +19,20 @@ function requireText(source, text, message) {
   if (!source.includes(text)) errors.push(message);
 }
 
-// Route safety: the production administrative booking route stays on V2 while
-// the legacy implementation remains available as an explicit fallback/reference.
+// Route safety: administrative booking has exactly one runtime entrypoint: V2.
+// Legacy compatibility routes/wrappers are forbidden so a second implementation
+// cannot silently return later.
 requireMatch(
   dashboard,
   /path=["']booking-internal["'][\s\S]{0,500}<BookingInternalV2\s*\/>/,
   "Dashboard route /dashboard/booking-internal is no longer wired to BookingInternalV2."
 );
-requireMatch(
-  dashboard,
-  /path=["']booking-internal-legacy["'][\s\S]{0,500}<BookingInternal\s+internalMode\s*\/>/,
-  "Legacy internal-booking reference route is missing."
-);
+if (dashboard.includes("booking-internal-legacy")) {
+  errors.push("Legacy /dashboard/booking-internal-legacy route must not exist.");
+}
+if (dashboard.includes("../pages/BookingInternal")) {
+  errors.push("Dashboard must not import the historical BookingInternal compatibility wrapper.");
+}
 requireMatch(
   dashboard,
   /path=["']booking-internal["'][\s\S]{0,250}permission=["']bookings\.create["']/,
