@@ -1,0 +1,85 @@
+name: Dependency Security Audit Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dependency-security-audit-temp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install lockfile exactly
+        run: npm ci
+
+      - name: Full npm audit JSON
+        shell: bash
+        run: |
+          npm audit --json > full-audit.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('full-audit.json','utf8'));
+          console.log('=== FULL AUDIT METADATA ===');
+          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
+          console.log('=== FULL VULNERABILITIES ===');
+          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
+            console.log(JSON.stringify({
+              name,
+              severity:v.severity,
+              isDirect:v.isDirect,
+              range:v.range,
+              fixAvailable:v.fixAvailable,
+              via:(v.via || []).map(x => typeof x === 'string' ? x : ({source:x.source,name:x.name,severity:x.severity,title:x.title,range:x.range,url:x.url})),
+              effects:v.effects || []
+            }));
+          }
+          NODE
+
+      - name: Production-only npm audit JSON
+        shell: bash
+        run: |
+          npm audit --omit=dev --json > prod-audit.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('prod-audit.json','utf8'));
+          console.log('=== PROD AUDIT METADATA ===');
+          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
+          console.log('=== PROD VULNERABILITIES ===');
+          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
+            console.log(JSON.stringify({
+              name,
+              severity:v.severity,
+              isDirect:v.isDirect,
+              range:v.range,
+              fixAvailable:v.fixAvailable,
+              via:(v.via || []).map(x => typeof x === 'string' ? x : ({source:x.source,name:x.name,severity:x.severity,title:x.title,range:x.range,url:x.url})),
+              effects:v.effects || []
+            }));
+          }
+          NODE
+
+      - name: Direct dependency versions
+        shell: bash
+        run: |
+          npm ls --depth=0 --json > direct.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('direct.json','utf8'));
+          console.log('=== DIRECT INSTALLED VERSIONS ===');
+          for (const [name,v] of Object.entries(a.dependencies || {})) console.log(`${name}@${v.version}`);
+          NODE
