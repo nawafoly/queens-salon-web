@@ -8,6 +8,7 @@ on:
       - "scripts/fix-admin-partial-leave-employeehub-normalization.mjs"
       - "scripts/fix-core-partial-leave-persistence.mjs"
       - "scripts/fix-admin-partial-leave-test-harness.mjs"
+      - "scripts/fix-admin-partial-leave-dashboard-assertion.mjs"
       - ".github/workflows/admin-partial-leave-cutover.yml"
   workflow_dispatch:
 
@@ -48,6 +49,9 @@ jobs:
 
       - name: Install D1-compatible partial leave test harness
         run: node scripts/fix-admin-partial-leave-test-harness.mjs
+
+      - name: Fix dashboard guard assertion
+        run: node scripts/fix-admin-partial-leave-dashboard-assertion.mjs
 
       - name: Build
         run: npm run build
