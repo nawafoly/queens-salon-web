@@ -1,0 +1,64 @@
+name: Repository Hygiene Final Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repository-hygiene-final-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Audit mutation tooling and references
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = process.cwd();
+          const ignored = new Set(['.git','node_modules','dist','dist-staff','build','.wrangler']);
+          const textExt = /\.(?:[cm]?[jt]sx?|jsonc?|ya?ml|md|txt|css|scss|html|ps1|sh)$/i;
+          function walk(dir='.') {
+            const out=[];
+            for (const e of fs.readdirSync(dir,{withFileTypes:true})) {
+              if (e.isDirectory() && ignored.has(e.name)) continue;
+              const p=path.join(dir,e.name);
+              if (e.isDirectory()) out.push(...walk(p)); else out.push(p.replaceAll('\\','/').replace(/^\.\//,''));
+            }
+            return out;
+          }
+          const files=walk();
+          const texts=new Map();
+          for (const f of files) {
+            if (!textExt.test(f) && f !== 'package.json') continue;
+            try { texts.set(f,fs.readFileSync(f,'utf8')); } catch {}
+          }
+          console.log('=== WRITE-CAPABLE WORKFLOWS ===');
+          for (const [f,t] of texts) {
+            if (!f.startsWith('.github/workflows/')) continue;
+            if (/contents:\s*write/.test(t) || /git\s+push/.test(t) || /git\s+commit/.test(t)) {
+              console.log(f, 'contentsWrite=',/contents:\s*write/.test(t),'gitPush=',/git\s+push/.test(t),'gitCommit=',/git\s+commit/.test(t));
+            }
+          }
+          console.log('=== SOURCE-MUTATING SCRIPTS ===');
+          const nameRisk=/^(?:apply|fix|cutover|repair|add|refine|unify|promote|finalize)-/i;
+          for (const [f,t] of texts) {
+            if (!f.startsWith('scripts/') || !nameRisk.test(path.basename(f))) continue;
+            if (!/(?:writeFileSync|writeFile\s*\(|rmSync|renameSync|copyFileSync|appendFileSync)/.test(t)) continue;
+            const base=path.basename(f);
+            const refs=[];
+            for (const [other,ot] of texts) {
+              if (other===f || other.startsWith('docs/archive/')) continue;
+              if (ot.includes(f) || ot.includes(base)) refs.push(other);
+            }
+            console.log(f, 'refs=', refs.length ? refs.join(',') : '<none>');
+          }
+          NODE
