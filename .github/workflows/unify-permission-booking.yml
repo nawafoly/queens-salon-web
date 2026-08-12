@@ -1,30 +1,40 @@
-name: Unify Permission Booking
+name: Permission Booking Contract
 
 on:
   push:
     branches: [main]
     paths:
-      - "scripts/unify-permission-booking.mjs"
-      - "scripts/unify-permission-booking-v2.mjs"
+      - "src/components/LeaveRequestModal.tsx"
+      - "src/helpers/hr/attendanceCalendarData.ts"
+      - "src/pages/hr/EmployeeRequests.tsx"
+      - "src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx"
+      - "src/pages/dashboardEmployees/AttendanceSection.tsx"
+      - "src/pages/DashboardEmployees.tsx"
+      - "workers/core/repositories/permissions.js"
+      - "workers/core/repositories/employee-requests.js"
+      - "workers/admin-partial-leave-policy.test.mjs"
+      - "scripts/check-repo-hygiene.mjs"
+      - "scripts/check-no-legacy-booking-runtime.mjs"
+      - "scripts/audit-legacy-booking-runtime.mjs"
       - ".github/workflows/unify-permission-booking.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: unify-permission-booking-main
-  cancel-in-progress: false
+  group: permission-booking-contract-main
+  cancel-in-progress: true
 
 jobs:
-  verify-and-promote:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -35,8 +45,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Apply permission booking patch
-        run: node scripts/unify-permission-booking-v2.mjs
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
 
       - name: Verify permission booking contract
         shell: bash
@@ -96,32 +106,7 @@ jobs:
         run: node scripts/check-no-legacy-booking-runtime.mjs
 
       - name: Booking runtime audit
-        run: node scripts/audit-legacy-booking-runtime.mjs
+        run: node scripts/audit-legacy-booking-runtime.mjs --fail-on-high-risk
 
       - name: Diff check
-        run: git diff --check
-
-      - name: Promote only after green gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add \
-            src/components/LeaveRequestModal.tsx \
-            src/helpers/hr/attendanceCalendarData.ts \
-            src/pages/hr/EmployeeRequests.tsx \
-            src/components/dashboard-v2/employee-workspace/live/EmployeeWorkspaceOperationalTabsLiveV2.tsx \
-            src/pages/dashboardEmployees/AttendanceSection.tsx \
-            src/pages/DashboardEmployees.tsx \
-            workers/core/repositories/permissions.js \
-            workers/core/repositories/employee-requests.js \
-            workers/admin-partial-leave-policy.test.mjs
-          if git diff --cached --quiet; then
-            echo "No production changes to promote."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Unify permission requests with booking availability"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+        run: git diff --check HEAD~1 HEAD
