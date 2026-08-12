@@ -9,6 +9,7 @@ on:
       - "scripts/audit-legacy-booking-runtime.mjs"
       - "scripts/finalize-booking-runtime-cutover.mjs"
       - "scripts/check-booking-shift-end-boundary.mjs"
+      - "scripts/fix-core-worker-authoritative-leave-fixture.mjs"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,9 @@ jobs:
 
       - name: Apply final cleanup
         run: node scripts/finalize-booking-runtime-cutover.mjs
+
+      - name: Update Core leave fixture to employee_leaves authority
+        run: node scripts/fix-core-worker-authoritative-leave-fixture.mjs
 
       - name: Audit after cleanup
         run: node scripts/audit-legacy-booking-runtime.mjs | tee legacy-booking-audit-final.txt
