@@ -52,7 +52,13 @@ jobs:
         run: npm run build
 
       - name: Core worker tests
-        run: npm run test:core:worker
+        shell: bash
+        run: |
+          set +e
+          npm run test:core:worker 2>&1 | tee core-worker-final.log
+          code=${PIPESTATUS[0]}
+          set -e
+          exit "$code"
 
       - name: HR worker tests
         run: npm run test:hr:worker
@@ -81,6 +87,14 @@ jobs:
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
+
+      - name: Upload Core worker test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-worker-final-log
+          path: core-worker-final.log
+          if-no-files-found: ignore
 
       - name: Upload shift boundary observations
         if: always()
