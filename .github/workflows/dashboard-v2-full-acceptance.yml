@@ -11,7 +11,6 @@ on:
       - "src/styles/dashboard-v2/**"
       - "scripts/check-dashboard-*.mjs"
       - "scripts/check-booking-internal-*.mjs"
-      - "scripts/fix-dashboard-v2-style-regressions.mjs"
   workflow_dispatch:
 
 permissions:
