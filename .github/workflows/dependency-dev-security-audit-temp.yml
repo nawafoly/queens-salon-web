@@ -11,14 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  simulate-full-dev-remediation:
+  verify-miniflare-v5-harness:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,20 +27,7 @@ jobs:
       - name: Install exact baseline
         run: npm ci
 
-      - name: Decouple Vercel request types in ephemeral checkout
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const p = 'api/r2-presign.ts';
-          let s = fs.readFileSync(p, 'utf8');
-          const old = 'import type { VercelRequest, VercelResponse } from "@vercel/node";';
-          if (!s.includes(old)) throw new Error('expected @vercel/node type import missing');
-          const replacement = `type VercelRequest = {\n  method?: string;\n  body?: any;\n};\n\ntype VercelResponse = {\n  setHeader(name: string, value: string): void;\n  status(code: number): VercelResponse;\n  json(body: unknown): VercelResponse;\n  end(): VercelResponse;\n};`;
-          fs.writeFileSync(p, s.replace(old, replacement));
-          NODE
-
-      - name: Adapt account Miniflare harness to v5 worker configuration
+      - name: Adapt account harness to Miniflare v5
         shell: bash
         run: |
           node <<'NODE'
@@ -51,84 +36,25 @@ jobs:
           let s = fs.readFileSync(p, 'utf8');
           const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: "2026-06-24",\n    d1Databases: { CORE_DB: "core-test" },\n  });`;
           const next = `  const mf = new Miniflare({\n    workers: [\n      {\n        name: "core-test-worker",\n        config: {},\n        modules: true,\n        script: 'export default { fetch(){ return new Response("ok") } }',\n        compatibilityDate: "2026-06-24",\n        d1Databases: { CORE_DB: "core-test" },\n      },\n    ],\n  });`;
-          if (!s.includes(old)) throw new Error('expected Miniflare setup block missing');
+          if (!s.includes(old)) throw new Error('expected baseline Miniflare setup block missing');
           s = s.replace(old, next);
           s = s.replace('const db = await mf.getD1Database("CORE_DB");', 'const db = await mf.getD1Database("CORE_DB", "core-test-worker");');
           fs.writeFileSync(p, s);
           NODE
 
-      - name: Remove Vercel Node type-only dependency
-        run: npm uninstall --save-dev --package-lock-only @vercel/node
-
-      - name: Upgrade Wrangler and declare Miniflare test dependency explicitly
+      - name: Install candidate Miniflare v5 line
+        shell: bash
         run: |
           npm install --save-dev --package-lock-only wrangler@4.122.0
           npm install --save-dev --package-lock-only miniflare@5.20260811.0-alpha
-
-      - name: Upgrade rolldown-vite migration release
-        shell: bash
-        run: |
-          npm pkg set 'devDependencies.vite=npm:rolldown-vite@7.3.1'
-          npm pkg set 'overrides.vite=npm:rolldown-vite@7.3.1'
-          npm install --package-lock-only
-
-      - name: Apply safe audit fixes to lockfile
-        shell: bash
-        run: npm audit fix --package-lock-only || true
-
-      - name: Reinstall proposed lockfile from scratch
-        shell: bash
-        run: |
           rm -rf node_modules
           npm ci
 
-      - name: Apply second-pass low-risk audit fix after clean install
-        shell: bash
-        run: |
-          npm explain esbuild || true
-          npm explain tsx || true
-          npm audit fix --package-lock-only || true
-          rm -rf node_modules
-          npm ci
+      - name: Show candidate versions
+        run: npm ls wrangler miniflare --depth=3
 
-      - name: Full audit must be zero
-        run: npm audit --audit-level=low
-
-      - name: Production audit must remain zero
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Installed key versions
-        run: npm ls wrangler miniflare @vercel/node rolldown-vite vite esbuild tsx --depth=5 || true
-
-      - name: Repository hygiene guard
-        run: npm run check:repo-hygiene
-
-      - name: Dashboard V2 contracts
-        run: npm run check:dashboard-v2
-
-      - name: Internal booking contract
-        run: npm run check:booking-internal-contract
-
-      - name: No legacy booking runtime guard
-        run: node scripts/check-no-legacy-booking-runtime.mjs
-
-      - name: Booking runtime audit
-        run: node scripts/audit-legacy-booking-runtime.mjs
-
-      - name: Build
-        run: npm run build
-
-      - name: Core worker tests
-        run: npm run test:core:worker
-
-      - name: HR worker tests
-        run: npm run test:hr:worker
-
-      - name: Frontend Core migration tests
-        run: npm run test:frontend:core
-
-      - name: Frontend Core migration guard
-        run: npm run check:frontend-core-migration
+      - name: Account permission tests only
+        run: node --test workers/account-permissions-worker.test.mjs
 
       - name: Diff check
         run: git diff --check
