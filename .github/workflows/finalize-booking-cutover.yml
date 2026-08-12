@@ -12,7 +12,6 @@ on:
       - "scripts/check-booking-shift-end-boundary.mjs"
       - "scripts/fix-hr-test-migration-runner.mjs"
       - "scripts/repair-frontend-core-migration-test.mjs"
-      - "scripts/fix-frontend-service-catalog-test.mjs"
   workflow_dispatch:
 
 permissions:
@@ -39,9 +38,6 @@ jobs:
 
       - name: Apply final cleanup
         run: node scripts/finalize-booking-runtime-cutover.mjs
-
-      - name: Align service catalog migration expectation
-        run: node scripts/fix-frontend-service-catalog-test.mjs
 
       - name: Fix HR test migration runner
         run: node scripts/fix-hr-test-migration-runner.mjs
@@ -83,7 +79,13 @@ jobs:
           exit "$code"
 
       - name: Frontend Core migration tests
-        run: npm run test:frontend:core
+        shell: bash
+        run: |
+          set +e
+          npm run test:frontend:core 2>&1 | tee frontend-core-final.log
+          code=${PIPESTATUS[0]}
+          set -e
+          exit "$code"
 
       - name: Diff check
         run: git diff --check
@@ -122,6 +124,14 @@ jobs:
         with:
           name: hr-worker-final-log
           path: hr-worker-final.log
+          if-no-files-found: ignore
+
+      - name: Upload frontend Core migration log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-core-final-log
+          path: frontend-core-final.log
           if-no-files-found: ignore
 
       - name: Upload shift boundary observations
