@@ -12,6 +12,7 @@ on:
       - "scripts/check-booking-shift-end-boundary.mjs"
       - "scripts/fix-hr-test-migration-runner.mjs"
       - "scripts/repair-frontend-core-migration-test.mjs"
+      - "scripts/fix-frontend-service-catalog-test.mjs"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,9 @@ jobs:
 
       - name: Apply final cleanup
         run: node scripts/finalize-booking-runtime-cutover.mjs
+
+      - name: Align service catalog migration expectation
+        run: node scripts/fix-frontend-service-catalog-test.mjs
 
       - name: Fix HR test migration runner
         run: node scripts/fix-hr-test-migration-runner.mjs
