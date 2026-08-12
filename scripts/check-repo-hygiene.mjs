@@ -38,4 +38,22 @@ if (failures.length) {
   process.exit(1);
 }
 
+
+for (const entry of rootEntries) {
+  if (!entry.isFile()) continue;
+  const name = entry.name;
+  if (/^(?:PHASE|VERIFICATION).*\.(?:md|txt)$/i.test(name)) {
+    failures.push(`root historical phase/verification document is forbidden: ${name}; move history to docs/archive/repository-history/`);
+  }
+  if (/^README[-_].*\.(?:md|txt)$/i.test(name) && !["README-HR-APP.md"].includes(name)) {
+    failures.push(`specialized root README is forbidden: ${name}; use docs/ or docs/archive/`);
+  }
+  if (/^(?:AIDA|ATTENDANCE).*README.*\.(?:md|txt)$/i.test(name)) {
+    failures.push(`historical root fix README is forbidden: ${name}`);
+  }
+  if (["README.txt", "README-APPLY.txt", "README-AR.txt", "todo.md", "DEPLOY_TRIGGER.txt", "DEPLOY-TRIGGER.md", "TODO-CORE-TODAY.md"].includes(name)) {
+    failures.push(`obsolete root instruction/trigger is forbidden: ${name}`);
+  }
+}
+
 console.log("Repository hygiene guard passed. No root patch/apply/hotfix artifacts or backup junk found.");

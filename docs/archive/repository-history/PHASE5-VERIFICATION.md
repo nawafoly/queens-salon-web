@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # Phase 5 verification
 
 ## Delivered

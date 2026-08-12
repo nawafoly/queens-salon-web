@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # إغلاق المرحلة الثالثة — Core D1
 
 هذه الحزمة تنفذ آخر خطوتين في المرحلة الثالثة:

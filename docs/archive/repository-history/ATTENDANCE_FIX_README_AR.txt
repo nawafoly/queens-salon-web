@@ -1,3 +1,5 @@
+ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.
+
 إصلاح تسجيل الحضور:
 1) تم السماح بأصول تطبيق Android/Capacitor وموقع Vercel في CORS.
 2) تم إضافة صلاحيات الموقع الدقيق إلى AndroidManifest.

@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # Phase 3 Verification — Queens Salon
 
 Baseline Git commit: `6d837f0`

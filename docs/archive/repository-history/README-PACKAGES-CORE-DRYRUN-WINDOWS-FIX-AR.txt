@@ -1,3 +1,5 @@
+ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.
+
 إصلاح تشغيل Dry Run لترحيل الباقات إلى Core D1 على Windows
 
 السبب:

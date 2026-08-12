@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # المرحلة 2 و3 — توحيد الباقات والجلسات داخل Core D1
 
 ## الحالة

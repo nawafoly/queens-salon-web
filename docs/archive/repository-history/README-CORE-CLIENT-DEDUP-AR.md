@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # تنظيف جميع سجلات العملاء القديمة دفعة واحدة
 
 هذا التصحيح يوقف معالجة التعارضات رقمًا رقمًا.

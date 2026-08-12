@@ -1,3 +1,5 @@
+> **ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.**
+
 # دمج سجل العميل المكرر — نواف
 
 هذا التحديث يدمج السجل القديم ذي المعرف `966546535404` داخل سجل العميل المرتبط فعليًا بـFirebase:

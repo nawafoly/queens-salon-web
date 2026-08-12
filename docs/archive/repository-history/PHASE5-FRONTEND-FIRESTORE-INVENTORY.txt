@@ -1,4 +1,6 @@
-﻿src/App.tsx:5:import { doc, onSnapshot } from "firebase/firestore";
+ARCHIVED — Historical repository note. This is not an operational instruction or current source of truth.
+
+src/App.tsx:5:import { doc, onSnapshot } from "firebase/firestore";
 src/components/ChatBot.tsx:5:import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 src/components/Testimonials.tsx:18:} from "firebase/firestore";
 src/components/packages/AdminPackageFlow.tsx:12:} from "firebase/firestore";
