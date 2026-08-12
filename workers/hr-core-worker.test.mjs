@@ -41,12 +41,30 @@ function splitMigrationStatements(sql) {
 }
 
 async function setup() {
+  const script = 'export default { fetch(){ return new Response("ok") } }';
   const mf = new Miniflare({
-    modules: true,
-    script: 'export default { fetch(){ return new Response("ok") } }',
-    compatibilityDate: '2026-06-24',
-    d1Databases: { CORE_DB: 'core-test' },
-    r2Buckets: ['FILES_BUCKET'],
+    workers: [
+      {
+        config: {
+          type: "worker",
+          name: "core-test-worker",
+          compatibilityDate: "2026-06-24",
+          manifest: {
+            mainModule: "script-0.mjs",
+            modulesRoot: process.cwd(),
+            modules: {
+              "script-0.mjs": { type: "esm", contents: script },
+            },
+          },
+          env: {
+            CORE_DB: { type: "d1", id: "core-test" },
+            FILES_BUCKET: { type: "r2", name: "FILES_BUCKET" },
+          },
+          exports: {},
+        },
+        dev: { rootPath: process.cwd() },
+      },
+    ],
   });
   const db = await mf.getD1Database('CORE_DB');
   for (const name of [
