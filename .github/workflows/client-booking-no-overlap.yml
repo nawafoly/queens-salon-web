@@ -1,0 +1,111 @@
+name: Client Booking No Overlap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/enforce-client-booking-no-overlap.mjs"
+      - ".github/workflows/client-booking-no-overlap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-booking-no-overlap-main
+  cancel-in-progress: false
+
+jobs:
+  verify-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Apply client overlap cutover
+        run: node scripts/enforce-client-booking-no-overlap.mjs
+
+      - name: Verify overlap contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const customer = fs.readFileSync('src/pages/Booking.tsx', 'utf8');
+          const internal = fs.readFileSync('src/features/internal-booking-v2/BookingInternalV2.tsx', 'utf8');
+          const core = fs.readFileSync('workers/core/repositories/bookings.js', 'utf8');
+
+          const checks = [
+            [customer.includes('reason: "client" as const'), 'customer client overlap guard missing'],
+            [customer.includes('العميلة لديها خدمة أخرى في هذا الوقت داخل نفس الحجز'), 'customer conflict message missing'],
+            [customer.includes('expandBookingOccupiedTimes(t, dur, 0, slotStepMin)'), 'customer cross-staff interval does not ignore staff buffer'],
+            [internal.includes('kind: "client" as const'), 'internal client overlap guard missing'],
+            [internal.includes('they are assigned to different employees'), 'internal cross-staff rule missing'],
+            [internal.includes('العميلة لديها خدمة من'), 'internal client busy interval copy missing'],
+            [core.includes('export function assertNoClientItemOverlap'), 'Core client overlap assertion missing'],
+            [core.includes('core_booking:client_schedule_conflict'), 'Core conflict code missing'],
+            [core.includes('assertNoClientItemOverlap(rows);'), 'Core createBooking does not enforce client overlap'],
+          ];
+          for (const [ok, message] of checks) {
+            if (!ok) throw new Error(message);
+          }
+          console.log('[client-overlap] contract verified');
+          NODE
+
+      - name: Client overlap policy tests
+        run: node --test workers/client-booking-overlap-policy.test.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Promote only after green gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            src/pages/Booking.tsx \
+            src/features/internal-booking-v2/BookingInternalV2.tsx \
+            workers/core/repositories/bookings.js \
+            workers/client-booking-overlap-policy.test.mjs
+          if git diff --cached --quiet; then
+            echo "No production changes to promote."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Prevent overlapping services for the same client"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
