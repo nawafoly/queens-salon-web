@@ -33,7 +33,8 @@ requireText(overview, "DashboardSelectV2", "HR overview employee/type selects mu
 requireText(overview, "DashboardDatePickerV2", "HR overview absence date must use DashboardDatePickerV2.");
 requireText(overview, "DashboardFieldV2", "HR overview forms must use DashboardFieldV2.");
 requireText(overview, "DashboardEmptyStateV2", "HR overview empty states must use DashboardEmptyStateV2.");
-requireText(overview, "dsv2-metric-card", "HR overview KPIs must use Dashboard V2 metric cards.");
+requireText(overview, "<HrMetricCard", "HR overview KPIs must use the shared HrMetricCard component.");
+requireText(page, 'className="dsv2-metric-card hr-overview-v2__metric"', "HrMetricCard must render the canonical Dashboard V2 metric-card primitive.");
 requireText(overview, "dsv2-btn", "HR overview actions must use Dashboard V2 buttons.");
 rejectText(overview, "<select", "Native select remains inside HrOverview.");
 rejectText(overview, 'type="date"', "Native date input remains inside HrOverview.");
