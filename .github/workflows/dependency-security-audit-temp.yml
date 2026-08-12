@@ -11,12 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  simulate-remediation:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -27,27 +29,81 @@ jobs:
       - name: Install lockfile exactly
         run: npm ci
 
-      - name: Trace production vulnerability dependency chains
-        shell: bash
-        run: |
-          for pkg in protobufjs websocket-driver react-router react-router-dom xlsx fast-xml-parser fast-xml-builder @aws-sdk/xml-builder @grpc/grpc-js @protobufjs/utf8; do
-            echo "=== CHAIN: $pkg ==="
-            npm explain "$pkg" || true
-          done
+      - name: Apply non-breaking npm audit fixes in ephemeral checkout
+        run: npm audit fix
 
-      - name: Check safe audit-fix plan without modifying files
+      - name: Upgrade React Router within v7
+        run: npm install --save 'react-router-dom@^7.18.2'
+
+      - name: Upgrade SheetJS from authoritative distribution
+        run: npm install --save 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'
+
+      - name: Report resulting production audit
         shell: bash
         run: |
-          echo "=== AUDIT FIX DRY RUN ==="
-          npm audit fix --dry-run --json > audit-fix-dry.json || true
+          npm audit --omit=dev --json > prod-after.json || true
           node <<'NODE'
           const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('audit-fix-dry.json','utf8'));
-          console.log(JSON.stringify({
-            added:a.added,
-            removed:a.removed,
-            changed:a.changed,
-            audited:a.audited,
-            vulnerabilities:a.audit?.metadata?.vulnerabilities || a.metadata?.vulnerabilities || null
-          }, null, 2));
+          const a = JSON.parse(fs.readFileSync('prod-after.json','utf8'));
+          console.log('=== PROD AFTER ===');
+          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
+          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
+            console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable}));
+          }
           NODE
+
+      - name: Report resulting full audit
+        shell: bash
+        run: |
+          npm audit --json > full-after.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('full-after.json','utf8'));
+          console.log('=== FULL AFTER ===');
+          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
+          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
+            console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable}));
+          }
+          NODE
+
+      - name: Show dependency changes
+        shell: bash
+        run: |
+          git diff --stat
+          echo '=== PACKAGE.JSON DIFF ==='
+          git diff -- package.json
+          echo '=== KEY VERSIONS ==='
+          npm ls react-router-dom react-router firebase protobufjs @grpc/grpc-js websocket-driver @aws-sdk/xml-builder fast-xml-parser fast-xml-builder xlsx --depth=10 || true
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Dashboard V2 contracts
+        run: npm run check:dashboard-v2
+
+      - name: Internal booking contract
+        run: npm run check:booking-internal-contract
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: Diff check
+        run: git diff --check
