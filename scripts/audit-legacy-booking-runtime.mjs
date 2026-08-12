@@ -35,9 +35,33 @@ const alwaysFirestoreFallbackFiles = new Set([
   'src/services/bookingDataSources/firestoreBookingDataSource.ts',
 ]);
 
+// These files intentionally retain migration/DTO/history helpers, but their
+// legacy fields are not imported by the current booking decision surfaces.
+// The no-legacy architecture checker separately forbids the decision symbols
+// in Customer Booking, Internal V2 and the Core booking repositories.
 const compatibilityFiles = new Set([
+  'src/helpers/bookingDateUtils.ts',
+  'src/helpers/hr/staffScheduleHistory.ts',
   'src/services/coreBookingMappers.ts',
   'workers/core/repositories/staff.js',
+]);
+
+const bookingFallbackDecisionFiles = new Set([
+  'src/pages/Booking.tsx',
+  'src/pages/BookingInternal.tsx',
+  'src/features/internal-booking-v2/BookingInternalV2.tsx',
+  'src/pages/Checkout.tsx',
+  'src/services/bookingDataSource.ts',
+  'src/services/bookingDataSourceCompat.ts',
+  'src/services/bookingDataSources/coreD1BookingDataSource.ts',
+  'src/services/checkoutCoreBookingService.ts',
+  'src/services/firestoreBookings.ts',
+  'src/services/firestoreAvailabilityBackfill.ts',
+  'src/services/firestoreAvailabilityDays.ts',
+  'src/services/firestoreBookingSlots.ts',
+  'workers/core/repositories/availability.js',
+  'workers/core/repositories/booking-staff-policy.js',
+  'workers/core/repositories/bookings.js',
 ]);
 
 const rules = [
@@ -166,7 +190,21 @@ function isHistoryOrMigration(file) {
 }
 
 function typeOnlyContext(context) {
-  return /\bimport\s+type\b/.test(context) || /\{\s*type\s+[^}]+\}\s+from/.test(context);
+  return (
+    /\bimport\s+type\b/.test(context) ||
+    /\bexport\s+type\b/.test(context) ||
+    /\{\s*type\s+[^}]+\}\s+from/.test(context)
+  );
+}
+
+function isCommentOnlyMatch(text, index) {
+  const lineStart = text.lastIndexOf('\n', Math.max(0, index - 1)) + 1;
+  const prefix = text.slice(lineStart, index);
+  if (prefix.includes('//')) return true;
+
+  const blockOpen = text.lastIndexOf('/*', index);
+  const blockClose = text.lastIndexOf('*/', index);
+  return blockOpen > blockClose;
 }
 
 function categoryFor(file, label, context) {
@@ -175,21 +213,26 @@ function categoryFor(file, label, context) {
   if (typeOnlyContext(context) || file.startsWith('src/types/') || compatibilityFiles.has(file)) return 3;
   if (!reachable.has(file)) return 0;
 
-  // Firestore can still be used for non-booking compatibility/catalog reads in
-  // a booking screen during the cutover. The high-risk condition is a booking
-  // availability/write fallback, not a generic firebase/firestore import.
+  // Generic Firebase/Firestore imports elsewhere in a reachable dependency
+  // graph are not booking availability fallbacks. Only booking/availability
+  // decision modules can be Category 4.
   if (label === 'Firebase Firestore runtime') {
-    return /(?:^|\/)(?:firestoreBookings|firestoreBookingDataSource)\.[cm]?[jt]sx?$/.test(file) ? 4 : 3;
+    return bookingFallbackDecisionFiles.has(file) ? 4 : 3;
   }
 
-  // General salon business hours may remain for UI/open-day semantics. They
+  // Core/Firestore switches used for logging, uploads, or unrelated settings
+  // are not booking decisions. A booking-runtime switch remains high risk.
+  if (label === 'Core/Firestore runtime flag branch') {
+    return bookingFallbackDecisionFiles.has(file) ? 4 : 3;
+  }
+
+  // General salon business hours may remain for open/closed UI semantics. They
   // become high risk only when they generate/cap an employee slot grid; those
   // decision patterns have dedicated rules below.
   if (label === 'hardcoded 12:00-22:00 booking window') return 3;
 
   if (
     label.startsWith('Firestore ') ||
-    label === 'Core/Firestore runtime flag branch' ||
     label === 'non-zero booking overtime'
   ) {
     return 4;
@@ -204,7 +247,9 @@ for (const file of allFiles) {
   for (const [label, regex] of rules) {
     const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
     for (const match of text.matchAll(re)) {
-      const line = lineForIndex(text, match.index ?? 0);
+      const index = match.index ?? 0;
+      if (sourceFiles.has(file) && isCommentOnlyMatch(text, index)) continue;
+      const line = lineForIndex(text, index);
       const from = Math.max(1, line - 1);
       const to = Math.min(lines.length, line + 1);
       const context = lines.slice(from - 1, to).join(' | ').trim();
