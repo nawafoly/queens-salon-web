@@ -17,5 +17,8 @@ if (!text.includes(newBlock)) {
 }
 
 if (!text.includes(newBlock)) throw new Error('[frontend-permission-test] current permission assertion is missing');
+
+// Keep git diff --check clean: exactly one newline at EOF.
+text = text.replace(/\n+$/, '') + '\n';
 fs.writeFileSync(file, eol === '\r\n' ? text.replace(/\n/g, '\r\n') : text, 'utf8');
 console.log('[frontend-permission-test] effective permission contract installed');
