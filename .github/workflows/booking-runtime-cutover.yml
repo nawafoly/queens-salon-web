@@ -84,3 +84,32 @@ jobs:
           name: legacy-booking-audit
           path: legacy-booking-audit.txt
           if-no-files-found: ignore
+
+  validate-internal-v2-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Internal V2 cutover patch in CI workspace
+        run: node scripts/cutover-booking-internal-v2-core-hr.mjs
+
+      - name: Assert Internal V2 legacy helpers are gone
+        run: |
+          ! grep -nE 'filterStaffSlotsByWorkingHours|isStaffAvailableForDate|isStaffOperationallyActiveForDate|filterStaffForInternalBookingTarget|isAvailabilityRangeFree|resolveEmployeeKey|filterSlotsByServiceEnd' src/features/internal-booking-v2/BookingInternalV2.tsx
+
+      - name: Internal V2 patch diff check
+        run: git diff --check
+
+      - name: Build patched workspace
+        run: npm run build
