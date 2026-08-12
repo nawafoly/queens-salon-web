@@ -27,59 +27,27 @@ jobs:
       - name: Install lockfile exactly
         run: npm ci
 
-      - name: Full npm audit JSON
+      - name: Trace production vulnerability dependency chains
         shell: bash
         run: |
-          npm audit --json > full-audit.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('full-audit.json','utf8'));
-          console.log('=== FULL AUDIT METADATA ===');
-          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
-          console.log('=== FULL VULNERABILITIES ===');
-          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
-            console.log(JSON.stringify({
-              name,
-              severity:v.severity,
-              isDirect:v.isDirect,
-              range:v.range,
-              fixAvailable:v.fixAvailable,
-              via:(v.via || []).map(x => typeof x === 'string' ? x : ({source:x.source,name:x.name,severity:x.severity,title:x.title,range:x.range,url:x.url})),
-              effects:v.effects || []
-            }));
-          }
-          NODE
+          for pkg in protobufjs websocket-driver react-router react-router-dom xlsx fast-xml-parser fast-xml-builder @aws-sdk/xml-builder @grpc/grpc-js @protobufjs/utf8; do
+            echo "=== CHAIN: $pkg ==="
+            npm explain "$pkg" || true
+          done
 
-      - name: Production-only npm audit JSON
+      - name: Check safe audit-fix plan without modifying files
         shell: bash
         run: |
-          npm audit --omit=dev --json > prod-audit.json || true
+          echo "=== AUDIT FIX DRY RUN ==="
+          npm audit fix --dry-run --json > audit-fix-dry.json || true
           node <<'NODE'
           const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('prod-audit.json','utf8'));
-          console.log('=== PROD AUDIT METADATA ===');
-          console.log(JSON.stringify(a.metadata?.vulnerabilities || {}, null, 2));
-          console.log('=== PROD VULNERABILITIES ===');
-          for (const [name,v] of Object.entries(a.vulnerabilities || {})) {
-            console.log(JSON.stringify({
-              name,
-              severity:v.severity,
-              isDirect:v.isDirect,
-              range:v.range,
-              fixAvailable:v.fixAvailable,
-              via:(v.via || []).map(x => typeof x === 'string' ? x : ({source:x.source,name:x.name,severity:x.severity,title:x.title,range:x.range,url:x.url})),
-              effects:v.effects || []
-            }));
-          }
-          NODE
-
-      - name: Direct dependency versions
-        shell: bash
-        run: |
-          npm ls --depth=0 --json > direct.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('direct.json','utf8'));
-          console.log('=== DIRECT INSTALLED VERSIONS ===');
-          for (const [name,v] of Object.entries(a.dependencies || {})) console.log(`${name}@${v.version}`);
+          const a = JSON.parse(fs.readFileSync('audit-fix-dry.json','utf8'));
+          console.log(JSON.stringify({
+            added:a.added,
+            removed:a.removed,
+            changed:a.changed,
+            audited:a.audited,
+            vulnerabilities:a.audit?.metadata?.vulnerabilities || a.metadata?.vulnerabilities || null
+          }, null, 2));
           NODE
