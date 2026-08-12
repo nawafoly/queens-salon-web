@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/finalize-booking-cutover.yml"
+      - "package.json"
       - "scripts/check-no-legacy-booking-runtime.mjs"
       - "scripts/audit-legacy-booking-runtime.mjs"
       - "scripts/finalize-booking-runtime-cutover.mjs"
@@ -61,7 +62,13 @@ jobs:
           exit "$code"
 
       - name: HR worker tests
-        run: npm run test:hr:worker
+        shell: bash
+        run: |
+          set +e
+          npm run test:hr:worker 2>&1 | tee hr-worker-final.log
+          code=${PIPESTATUS[0]}
+          set -e
+          exit "$code"
 
       - name: Frontend Core migration tests
         run: npm run test:frontend:core
@@ -94,6 +101,14 @@ jobs:
         with:
           name: core-worker-final-log
           path: core-worker-final.log
+          if-no-files-found: ignore
+
+      - name: Upload HR worker test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hr-worker-final-log
+          path: hr-worker-final.log
           if-no-files-found: ignore
 
       - name: Upload shift boundary observations
