@@ -12,6 +12,8 @@ on:
       - "scripts/check-booking-shift-end-boundary.mjs"
       - "scripts/fix-hr-test-migration-runner.mjs"
       - "scripts/repair-frontend-core-migration-test.mjs"
+      - "scripts/fix-internal-v2-client-binding.mjs"
+      - "scripts/fix-frontend-cutover-test-contracts.mjs"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +40,12 @@ jobs:
 
       - name: Apply final cleanup
         run: node scripts/finalize-booking-runtime-cutover.mjs
+
+      - name: Bind Internal V2 to selected canonical client
+        run: node scripts/fix-internal-v2-client-binding.mjs
+
+      - name: Align final frontend migration contracts
+        run: node scripts/fix-frontend-cutover-test-contracts.mjs
 
       - name: Fix HR test migration runner
         run: node scripts/fix-hr-test-migration-runner.mjs
@@ -96,6 +104,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             src/pages/DashboardBookings.tsx \
+            src/features/internal-booking-v2/BookingInternalV2.tsx \
             src/services/firestoreBookings.ts \
             workers/core-worker.test.mjs \
             workers/hr-core-worker.test.mjs \
