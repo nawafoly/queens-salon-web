@@ -129,7 +129,7 @@ jobs:
           git rebase origin/main
           git push origin HEAD:main
 
-  validate-customer-stage1:
+  validate-customer-cutover:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -148,15 +148,26 @@ jobs:
       - name: Apply customer Booking Core HR stage 1
         run: node scripts/cutover-booking-customer-core-hr-stage1.mjs
 
-      - name: Assert staff assignment and interval fallbacks are gone
+      - name: Validate stage 1 structure
         run: |
           ! grep -nE 'CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(|getAllActiveStaffCached\(' src/pages/Booking.tsx
           grep -n 'getCoreStaffAvailabilityForDate' src/pages/Booking.tsx
           grep -n 'getCoreStaffBookableStartSlots' src/pages/Booking.tsx
           grep -n 'listCoreAssignedStaffForService' src/pages/Booking.tsx
 
-      - name: Customer stage 1 diff check
+      - name: Apply customer Booking Core HR stage 2
+        run: node scripts/cutover-booking-customer-core-hr-stage2.mjs
+
+      - name: Assert all customer Booking legacy decision symbols are gone
+        run: |
+          ! grep -nE 'getStaffLeaveMetaForDate|isStaffAvailableForDate|isStaffBookableForPublicBooking|filterSlotsByServiceEnd|ResolvedStaffWorkingWindowRange|getCoreStaffWindows|filterSlotsToCoreWindows|isTimeInsideWindowRange|ALLOW_OVERTIME_MIN|CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(' src/pages/Booking.tsx
+          grep -n 'listCoreBookableStaffForDate' src/pages/Booking.tsx
+          grep -n 'getCoreStaffScheduleWindows' src/pages/Booking.tsx
+          grep -n 'isCoreStaffStartBookable' src/pages/Booking.tsx
+          grep -n 'authoritativeStaffViolation' src/pages/Booking.tsx
+
+      - name: Customer cutover diff check
         run: git diff --check
 
-      - name: Build customer stage 1 workspace
+      - name: Build fully cut customer Booking workspace
         run: npm run build
