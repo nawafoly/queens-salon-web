@@ -1,0 +1,64 @@
+name: Full Dashboard V2 Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dashboard-v2-full-acceptance.yml"
+      - "src/pages/**"
+      - "src/components/dashboard-v2/**"
+      - "src/styles/dashboard-v2/**"
+      - "scripts/check-dashboard-*.mjs"
+      - "scripts/check-booking-internal-*.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Core Dashboard V2 style and internal booking contracts
+        run: npm run check:dashboard-v2
+
+      - name: HR overview V2
+        run: npm run check:dashboard-hr-v2
+
+      - name: Employee requests V2
+        run: npm run check:dashboard-requests-v2
+
+      - name: Permission requests V2
+        run: npm run check:dashboard-permissions-v2
+
+      - name: Recruitment V2
+        run: npm run check:dashboard-recruitment-v2
+
+      - name: Messages V2
+        run: npm run check:dashboard-messages-v2
+
+      - name: Files V2
+        run: node scripts/check-dashboard-files-v2.mjs
+
+      - name: Create staff V2
+        run: node scripts/check-dashboard-create-staff-v2.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check HEAD^ HEAD
