@@ -42,7 +42,7 @@ import {
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { CoreHrService } from "../services/CoreHrService";
-import { reviewPermissionRequest } from "../services/employeePermissionRequests";
+import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
@@ -1614,11 +1614,58 @@ export default function DashboardEmployees() {
       throw new Error("مدى الإجازة غير صحيح.");
     }
     if (isPartialLeave) {
-      if (fromDate !== toDate) throw new Error("الاستئذان يجب أن تكون في يوم واحد.");
+      if (fromDate !== toDate) throw new Error("الاستئذان يجب أن يكون في يوم واحد.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) {
         throw new Error("وقت الاستئذان غير صحيح.");
       }
       if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الاستئذان يجب أن يكون بعد البداية.");
+
+      setSaving(true);
+      setErrorMsg("");
+      try {
+        const permission = await createPermissionRequest({
+          employeeUid: employeeUidLocal,
+          employeeId: selectedEmployeeId,
+          employeeName,
+          date: fromDate,
+          startTime: partialStartTime,
+          expectedReturnTime: partialEndTime,
+          reason: cleanText(payload.note) || "استئذان إداري",
+          note: cleanText(payload.note) || undefined,
+          source: "admin_direct",
+          financialEffect: "none",
+          createdByUid: authUser.uid,
+          createdByName: authUser.displayName || authUser.email,
+        });
+
+        await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
+        window.dispatchEvent(new Event("queens:staff-updated"));
+        void writeAuditLog({
+          action: "permission_approved",
+          entityType: "employee_permission_request",
+          entityId: permission.id,
+          source: "dashboard",
+          description: "تسجيل استئذان معتمد وربطه بالحضور والحجز",
+          after: {
+            employeeUid: employeeUidLocal,
+            employeeId: selectedEmployeeId,
+            date: fromDate,
+            startTime: partialStartTime,
+            endTime: partialEndTime,
+            financialEffect: "none",
+          },
+          meta: {
+            staffId: selectedEmployeeId,
+            staffName: employeeName,
+          },
+        });
+        return;
+      } catch (error) {
+        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الاستئذان وربطه بالحضور والحجز."));
+        throw error;
+      } finally {
+        setSaving(false);
+      }
     }
 
     setSaving(true);

@@ -165,7 +165,7 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   if (status === "راحة") return "راحة معتمدة";
   if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
   if (status === "راحة / يوم استثنائي") return "راحة بسبب استثناء اليوم";
-  if (status.startsWith("استئذان")) return "استئذان معتمدة — الفترة فقط محجوبة";
+  if (status.startsWith("استئذان")) return "استئذان معتمد — الفترة فقط محجوبة";
   if (status === "إجازة") return "إجازة معتمدة";
   if (status === "حضور") return "مكتمل ومطابق";
   return "لا توجد بيانات";
@@ -908,7 +908,7 @@ export function EmployeeAttendanceTabLiveV2({
                     </button>
                   ) : (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
-                      تسجيل إجازة
+                      تسجيل إجازة أو استئذان
                     </button>
                   )}
                 </div>

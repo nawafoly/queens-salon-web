@@ -121,14 +121,14 @@ export default function LeaveRequestModal({
 
   const validate = (): string[] => {
     const result: string[] = [];
-    if (!type) result.push("اختر نوع الإجازة.");
+    if (!isPartialLeave && !type) result.push("اختر نوع الإجازة.");
     if (!fromDate) result.push("اختر تاريخ البداية.");
     if (!toDate) result.push("اختر تاريخ النهاية.");
     if (days <= 0) result.push("المدى الزمني غير صحيح.");
     if (isPartialLeave) {
-      if (fromDate !== toDate) result.push("الاستئذان يجب أن تكون في يوم واحد.");
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime)) result.push("حدد وقت بداية صحيح للإجازة الجزئية.");
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) result.push("حدد وقت نهاية صحيح للإجازة الجزئية.");
+      if (fromDate !== toDate) result.push("الاستئذان يجب أن يكون في يوم واحد.");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime)) result.push("حدد وقت بداية صحيح للاستئذان.");
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) result.push("حدد وقت نهاية صحيح للاستئذان.");
       if (partialStartTime >= partialEndTime) result.push("وقت نهاية الاستئذان يجب أن يكون بعد وقت البداية.");
     }
     if (!isPartialLeave && deductFromBalance && availableBalance != null && availableBalance < days) {
@@ -185,9 +185,9 @@ export default function LeaveRequestModal({
     <DashboardModalV2
       open={open}
       onClose={onClose}
-      title={isPartialLeave ? "تسجيل استئذان" : "تسجيل إجازة"}
-      description={isPartialLeave ? "حدّد فترة الاستئذان؛ هذه الفترة فقط ستُحجب من الحجز." : "حدّد نوع الإجازة وفترتها، ثم راجع أثرها على الرصيد والراتب قبل الاعتماد."}
-      eyebrow={isPartialLeave ? "الاستئذانات" : "طلبات الإجازات"}
+      title="تسجيل إجازة أو استئذان"
+      description={isPartialLeave ? "حدّد فترة الاستئذان؛ هذه الفترة فقط ستُحجب من الحجز." : "اختر إجازة أو استئذان، ثم أدخل البيانات المطلوبة للاعتماد."}
+      eyebrow="الحضور والإجازات"
       size="md"
       tone="gold"
       className="leave-request-v2__modal"
@@ -216,24 +216,12 @@ export default function LeaveRequestModal({
       }
     >
       <div className="leave-request-v2__form">
-        <DashboardFieldV2 id="leave-type-v2" label="نوع الإجازة" required>
-          <DashboardSelectV2
-            id="leave-type-v2"
-            value={type}
-            options={LEAVE_TYPE_OPTIONS}
-            onChange={(value) => {
-              setType(value);
-              setErrors([]);
-            }}
-          />
-        </DashboardFieldV2>
-
         <DashboardFieldV2 id="leave-duration-kind-v2" label="نوع التسجيل" required>
           <DashboardSelectV2
             id="leave-duration-kind-v2"
             value={durationKind}
             options={[
-              { value: "full_day", label: "يوم كامل" },
+              { value: "full_day", label: "إجازة" },
               { value: "partial", label: "استئذان" },
             ]}
             onChange={(value) => {
@@ -248,6 +236,20 @@ export default function LeaveRequestModal({
             }}
           />
         </DashboardFieldV2>
+
+        {!isPartialLeave ? (
+          <DashboardFieldV2 id="leave-type-v2" label="نوع الإجازة" required>
+            <DashboardSelectV2
+              id="leave-type-v2"
+              value={type}
+              options={LEAVE_TYPE_OPTIONS}
+              onChange={(value) => {
+                setType(value);
+                setErrors([]);
+              }}
+            />
+          </DashboardFieldV2>
+        ) : null}
 
         <div className="leave-request-v2__date-grid">
           <DashboardFieldV2 id="leave-from-date-v2" label={isPartialLeave ? "التاريخ" : "من تاريخ"} required>
@@ -294,25 +296,31 @@ export default function LeaveRequestModal({
           </div>
         ) : null}
 
-        <section className="leave-request-v2__summary" aria-label="ملخص الإجازة">
+        <section className="leave-request-v2__summary" aria-label="ملخص التسجيل">
           <div className="leave-request-v2__summary-item">
-            <span>النوع</span>
-            <strong>{selectedTypeLabel}</strong>
+            <span>التسجيل</span>
+            <strong>{isPartialLeave ? "استئذان" : "إجازة"}</strong>
+          </div>
+          <div className="leave-request-v2__summary-item">
+            <span>{isPartialLeave ? "التاريخ" : "نوع الإجازة"}</span>
+            <strong>{isPartialLeave ? fromDate || "—" : selectedTypeLabel}</strong>
           </div>
           <div className="leave-request-v2__summary-item">
             <span>{isPartialLeave ? "الفترة" : "عدد الأيام"}</span>
             <strong>{isPartialLeave ? `${partialStartTime} – ${partialEndTime}` : days > 0 ? `${days} يوم` : "—"}</strong>
           </div>
-          <div className="leave-request-v2__summary-item">
-            <span>الرصيد المتاح</span>
-            <strong>{availableBalance == null ? "غير محدد" : `${availableBalance} يوم`}</strong>
-          </div>
+          {!isPartialLeave ? (
+            <div className="leave-request-v2__summary-item">
+              <span>الرصيد المتاح</span>
+              <strong>{availableBalance == null ? "غير محدد" : `${availableBalance} يوم`}</strong>
+            </div>
+          ) : null}
         </section>
 
         <section className="leave-request-v2__policy" aria-labelledby="leave-policy-title-v2">
           <header className="leave-request-v2__section-head">
             <div>
-              <h3 id="leave-policy-title-v2">سياسة الاحتساب</h3>
+              <h3 id="leave-policy-title-v2">{isPartialLeave ? "أثر الاستئذان" : "سياسة الاحتساب"}</h3>
               <p>
                 {isPartialLeave
                   ? "الاستئذان يحجب فترة الحجز المحددة فقط، ولا تخصم يومًا كاملًا من الرصيد أو الراتب."
@@ -322,40 +330,42 @@ export default function LeaveRequestModal({
               </p>
             </div>
             <span className={`dsv2-badge ${affectsPayroll ? "dsv2-badge--danger" : "dsv2-badge--success"}`}>
-              {affectsPayroll ? "تؤثر على الراتب" : "لا تؤثر على الراتب"}
+              {isPartialLeave ? "لا خصم — حجب وقتي" : affectsPayroll ? "تؤثر على الراتب" : "لا تؤثر على الراتب"}
             </span>
           </header>
 
-          <div className="dsv2-ew-switch-list leave-request-v2__switch-list">
-            <WorkspaceSwitchV2
-              checked={deductFromBalance}
-              onChange={setDeductFromBalance}
-              disabled={isPartialLeave || !isOtherLeaveType}
-              label="خصم من رصيد الإجازات"
-              description={
-                deductFromBalance
-                  ? "سيتم خصم عدد الأيام من رصيد الموظفة عند الاعتماد."
-                  : "لن يتم خصم هذه المدة من رصيد الإجازات."
-              }
-            />
-            <WorkspaceSwitchV2
-              checked={affectsPayroll}
-              onChange={setAffectsPayroll}
-              disabled={isPartialLeave || !isOtherLeaveType}
-              label="تؤثر على الراتب"
-              description={
-                affectsPayroll
-                  ? "ستدخل هذه الأيام ضمن الخصم في دورة الرواتب."
-                  : "ستُستبعد هذه الأيام من الغياب والخصم في الراتب."
-              }
-            />
-          </div>
+          {!isPartialLeave ? (
+            <div className="dsv2-ew-switch-list leave-request-v2__switch-list">
+              <WorkspaceSwitchV2
+                checked={deductFromBalance}
+                onChange={setDeductFromBalance}
+                disabled={!isOtherLeaveType}
+                label="خصم من رصيد الإجازات"
+                description={
+                  deductFromBalance
+                    ? "سيتم خصم عدد الأيام من رصيد الموظفة عند الاعتماد."
+                    : "لن يتم خصم هذه المدة من رصيد الإجازات."
+                }
+              />
+              <WorkspaceSwitchV2
+                checked={affectsPayroll}
+                onChange={setAffectsPayroll}
+                disabled={!isOtherLeaveType}
+                label="تؤثر على الراتب"
+                description={
+                  affectsPayroll
+                    ? "ستدخل هذه الأيام ضمن الخصم في دورة الرواتب."
+                    : "ستُستبعد هذه الأيام من الغياب والخصم في الراتب."
+                }
+              />
+            </div>
+          ) : null}
         </section>
 
         <DashboardFieldV2
           id="leave-note-v2"
-          label="ملاحظة"
-          hint="اختياري — تظهر الملاحظة في سجل الإجازة والمراجعة."
+          label={isPartialLeave ? "سبب الاستئذان" : "ملاحظة"}
+          hint={isPartialLeave ? "اختياري — يظهر السبب في سجل الاستئذان." : "اختياري — تظهر الملاحظة في سجل الإجازة والمراجعة."}
         >
           <textarea
             id="leave-note-v2"
