@@ -175,9 +175,20 @@ function categoryFor(file, label, context) {
   if (typeOnlyContext(context) || file.startsWith('src/types/') || compatibilityFiles.has(file)) return 3;
   if (!reachable.has(file)) return 0;
 
+  // Firestore can still be used for non-booking compatibility/catalog reads in
+  // a booking screen during the cutover. The high-risk condition is a booking
+  // availability/write fallback, not a generic firebase/firestore import.
+  if (label === 'Firebase Firestore runtime') {
+    return /(?:^|\/)(?:firestoreBookings|firestoreBookingDataSource)\.[cm]?[jt]sx?$/.test(file) ? 4 : 3;
+  }
+
+  // General salon business hours may remain for UI/open-day semantics. They
+  // become high risk only when they generate/cap an employee slot grid; those
+  // decision patterns have dedicated rules below.
+  if (label === 'hardcoded 12:00-22:00 booking window') return 3;
+
   if (
     label.startsWith('Firestore ') ||
-    label === 'Firebase Firestore runtime' ||
     label === 'Core/Firestore runtime flag branch' ||
     label === 'non-zero booking overtime'
   ) {
