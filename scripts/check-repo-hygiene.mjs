@@ -14,24 +14,19 @@ for (const entry of rootEntries) {
   if (/^apply-.*\.ps1$/i.test(name)) failures.push(`root one-time apply script is forbidden: ${name}`);
   if (/\.patch$/i.test(name)) failures.push(`root patch bundle is forbidden: ${name}`);
   if (/\.css$/i.test(name) && /(hotfix|redesign)/i.test(name)) failures.push(`root hotfix/redesign CSS is forbidden: ${name}`);
-
   if (/^(?:PHASE|VERIFICATION).*\.(?:md|txt)$/i.test(name)) {
     failures.push(`root historical phase/verification document is forbidden: ${name}; move history to docs/archive/repository-history/`);
   }
   if (/^README[-_].*\.(?:md|txt)$/i.test(name) && !["README-HR-APP.md"].includes(name)) {
     failures.push(`specialized root README is forbidden: ${name}; use docs/ or docs/archive/`);
   }
-  if (/^(?:AIDA|ATTENDANCE).*README.*\.(?:md|txt)$/i.test(name)) {
-    failures.push(`historical root fix README is forbidden: ${name}`);
-  }
+  if (/^(?:AIDA|ATTENDANCE).*README.*\.(?:md|txt)$/i.test(name)) failures.push(`historical root fix README is forbidden: ${name}`);
   if (["README.txt", "README-APPLY.txt", "README-AR.txt", "todo.md", "DEPLOY_TRIGGER.txt", "DEPLOY-TRIGGER.md", "TODO-CORE-TODAY.md"].includes(name)) {
     failures.push(`obsolete root instruction/trigger is forbidden: ${name}`);
   }
 }
 
-if (exists("patch-files")) {
-  failures.push("patch-files/ is forbidden; runtime source belongs in src/ and history belongs in docs/archive/");
-}
+if (exists("patch-files")) failures.push("patch-files/ is forbidden; runtime source belongs in src/ and history belongs in docs/archive/");
 
 const ignoredDirs = new Set([".git", "node_modules", "dist", "dist-staff", "build", ".wrangler"]);
 function walk(dir) {
@@ -43,9 +38,7 @@ function walk(dir) {
       continue;
     }
     const rel = path.relative(root, abs).replaceAll("\\", "/");
-    if (/\.(?:bak|old|orig|rej|tmp)$/i.test(entry.name) || entry.name.endsWith("~")) {
-      failures.push(`backup/junk file is forbidden: ${rel}`);
-    }
+    if (/\.(?:bak|old|orig|rej|tmp)$/i.test(entry.name) || entry.name.endsWith("~")) failures.push(`backup/junk file is forbidden: ${rel}`);
   }
 }
 walk(root);
@@ -57,6 +50,12 @@ const retiredMutationWorkflows = [
   "partial-leave-attendance-ui.yml",
   "customer-booking-promotion.yml",
   "refine-leave-permission-ui.yml",
+  "repository-hygiene-wave1.yml",
+  "repository-hygiene-wave2.yml",
+  "repository-hygiene-wave3a.yml",
+  "repository-hygiene-wave3a-retry.yml",
+  "repository-hygiene-final-audit.yml",
+  "repository-hygiene-final-cleanup.yml",
 ];
 for (const name of retiredMutationWorkflows) {
   if (exists(".github", "workflows", name)) failures.push(`retired mutation workflow must not return: ${name}`);
@@ -80,29 +79,65 @@ const retiredOneTimeScripts = [
   "refine-leave-permission-ui.mjs",
   "unify-permission-booking.mjs",
   "unify-permission-booking-v2.mjs",
+  "apply-booking-authoritative-hr-schedule-cutover.mjs",
+  "apply-booking-cutover-callsite-sweep.mjs",
+  "apply-booking-cutover-final-runtime-fixes.mjs",
+  "apply-booking-cutover-followup-fixes.mjs",
+  "apply-booking-cutover-resilient-final-fix.mjs",
+  "apply-booking-staff-availability-no-flash-fix.mjs",
+  "apply-booking-staff-policy-hardening.mjs",
+  "apply-booking-stale-staff-selection-fix.mjs",
+  "apply-temp-weekly-off-return-date-fix.mjs",
+  "cutover-booking-customer-core-hr-stage2.mjs",
+  "fix-booking-core-availability-precheck-race.mjs",
+  "fix-booking-slotcard-type-after-cutover.mjs",
+  "fix-core-worker-authoritative-leave-fixture.mjs",
+  "fix-dashboard-v2-style-regressions.mjs",
+  "fix-frontend-service-catalog-test.mjs",
+  "repair-booking-customer-stage2-regex-helper.mjs",
+  "enforce-client-booking-no-overlap.mjs",
 ];
 for (const name of retiredOneTimeScripts) {
   if (exists("scripts", name)) failures.push(`retired one-time mutation script must not return: ${name}`);
 }
 
-const bookingGuardWorkflowPath = path.join(root, ".github", "workflows", "booking-runtime-cutover.yml");
-if (fs.existsSync(bookingGuardWorkflowPath)) {
-  const workflow = fs.readFileSync(bookingGuardWorkflowPath, "utf8");
-  if (/contents:\s*write/.test(workflow)) failures.push("booking runtime guard must remain read-only");
-  if (/git\s+push/.test(workflow)) failures.push("booking runtime guard must never push code");
-  if (/scripts\/cutover-booking-/.test(workflow)) failures.push("booking runtime guard must not apply historical cutover scripts");
+function assertReadOnlyWorkflow(filename, label, forbiddenScriptPattern = null) {
+  const workflowPath = path.join(root, ".github", "workflows", filename);
+  if (!fs.existsSync(workflowPath)) {
+    failures.push(`permanent ${label} workflow is missing: ${filename}`);
+    return;
+  }
+  const workflow = fs.readFileSync(workflowPath, "utf8");
+  if (/contents:\s*write/.test(workflow)) failures.push(`${label} must remain read-only`);
+  if (/git\s+(?:push|commit)/.test(workflow)) failures.push(`${label} must never commit or push source`);
+  if (forbiddenScriptPattern && forbiddenScriptPattern.test(workflow)) failures.push(`${label} must not apply retired mutation scripts`);
 }
 
-const permissionGuardWorkflowPath = path.join(root, ".github", "workflows", "unify-permission-booking.yml");
-if (fs.existsSync(permissionGuardWorkflowPath)) {
-  const workflow = fs.readFileSync(permissionGuardWorkflowPath, "utf8");
-  if (/contents:\s*write/.test(workflow)) failures.push("permission booking contract must remain read-only");
-  if (/git\s+push/.test(workflow)) failures.push("permission booking contract must never push code");
-  if (/scripts\/(?:refine-leave-permission-ui|unify-permission-booking(?:-v2)?)\.mjs/.test(workflow)) {
-    failures.push("permission booking contract must not apply retired mutation scripts");
+assertReadOnlyWorkflow(
+  "booking-runtime-cutover.yml",
+  "booking runtime guard",
+  /scripts\/(?:apply|cutover|fix|repair)-booking-[^\s"']*\.mjs/,
+);
+assertReadOnlyWorkflow(
+  "unify-permission-booking.yml",
+  "permission booking contract",
+  /scripts\/(?:refine-leave-permission-ui|unify-permission-booking(?:-v2)?)\.mjs/,
+);
+assertReadOnlyWorkflow(
+  "client-booking-no-overlap.yml",
+  "client booking overlap contract",
+  /scripts\/enforce-client-booking-no-overlap\.mjs/,
+);
+
+const workflowsDir = path.join(root, ".github", "workflows");
+if (fs.existsSync(workflowsDir)) {
+  for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !/\.ya?ml$/i.test(entry.name)) continue;
+    const workflow = fs.readFileSync(path.join(workflowsDir, entry.name), "utf8");
+    if (/git\s+(?:commit|push)\b/.test(workflow)) {
+      failures.push(`source-mutating GitHub workflow is forbidden: ${entry.name} contains git commit/push`);
+    }
   }
-} else {
-  failures.push("permanent permission booking contract workflow is missing");
 }
 
 if (failures.length) {
