@@ -1,4 +1,4 @@
-name: Production Dependency Security
+name: Dependency Security
 
 on:
   push:
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-dependency-security-${{ github.ref }}
+  group: dependency-security-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +42,10 @@ jobs:
       - name: Install exact lockfile
         run: npm ci
 
-      - name: Production audit must stay zero
+      - name: Full dependency audit must stay zero
+        run: npm audit --audit-level=low
+
+      - name: Production dependency audit must stay zero
         run: npm audit --omit=dev --audit-level=low
 
       - name: Repository hygiene guard
