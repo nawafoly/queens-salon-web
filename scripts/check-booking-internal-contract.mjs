@@ -54,10 +54,15 @@ requireText(booking, "resolveCoreBookingDataSource().getServiceSections", "Servi
 requireText(booking, "resolveCoreBookingDataSource().getServices", "Services are no longer loaded through the booking data source.");
 requireText(booking, 'CoreSettingsService.get<InternalBookingAppSettings>("app")', "Booking settings are no longer loaded from Core settings.");
 
-// Scheduling safety. These checks intentionally protect the fresh-availability
+// Scheduling safety. These checks protect the canonical Core-HR fresh
 // revalidation performed immediately before write, not only the UI-time lookup.
 requireText(booking, "forceFresh: true", "Final staff availability revalidation is no longer forced fresh.");
-requireText(booking, "isAvailabilityRangeFree({", "Final availability range validation is missing.");
+requireText(booking, "listCoreBookableStaffForDate({", "Final Core bookable-staff revalidation is missing.");
+requireText(
+  booking,
+  "isCoreStaffStartBookable(freshAvailability, selection.time, {",
+  "Final canonical Core availability range validation is missing."
+);
 requireText(booking, "const staleSelections", "Stale schedule selection detection is missing.");
 requireMatch(booking, /staleSelections\.length[\s\S]{0,1200}setStep\(3\)/, "Stale-slot recovery no longer returns the user to scheduling step 3.");
 requireText(booking, "staff_slot_conflict", "Staff slot conflict handling marker is missing.");
