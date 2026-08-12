@@ -24,6 +24,36 @@ export function toMinutes(hhmm: string) {
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
+export function minutesToTime24(totalMin: number) {
+  const normalized = ((Math.floor(Number(totalMin) || 0) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(normalized / 60)).padStart(2, "0");
+  const mm = String(normalized % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/**
+ * Expand one booking interval into the slot-start keys it occupies.
+ *
+ * This is pure time arithmetic. It deliberately does not read salon hours or
+ * employee schedule data, so local cart-overlap checks cannot be truncated by
+ * an unrelated business-hour grid. Schedule authority remains Core HR.
+ */
+export function expandBookingOccupiedTimes(
+  startTimeHHMM: string,
+  durationMin: number,
+  bufferMin: number,
+  slotStepMin: number
+): string[] {
+  const start = safeTimeHHMM(startTimeHHMM, "");
+  if (!start) return [];
+  const step = Math.max(1, Number(slotStepMin || 1));
+  const need = Math.max(0, Number(durationMin || 0)) + Math.max(0, Number(bufferMin || 0));
+  if (!need) return [];
+  const count = Math.max(1, Math.ceil(need / step));
+  const startMin = toMinutes(start);
+  return Array.from({ length: count }, (_, index) => minutesToTime24(startMin + index * step));
+}
+
 function toArabic12hLabel(totalMin: number) {
   const norm = ((Math.floor(totalMin) % 1440) + 1440) % 1440;
   const h24 = Math.floor(norm / 60);
