@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/apply-dashboard-v2-style-regression-fix.yml"
       - "scripts/fix-dashboard-v2-style-regressions.mjs"
+      - "scripts/check-booking-internal-contract.mjs"
 
 permissions:
   contents: write
