@@ -125,4 +125,38 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/features/internal-booking-v2/BookingInternalV2.tsx
           git commit -m "Cut Internal V2 over to Core HR availability"
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
+
+  validate-customer-stage1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply customer Booking Core HR stage 1
+        run: node scripts/cutover-booking-customer-core-hr-stage1.mjs
+
+      - name: Assert staff assignment and interval fallbacks are gone
+        run: |
+          ! grep -nE 'CoreStaffService\.|coreStaffToLegacy\(|listActiveStaffAll\(|getAllActiveStaffCached\(' src/pages/Booking.tsx
+          grep -n 'getCoreStaffAvailabilityForDate' src/pages/Booking.tsx
+          grep -n 'getCoreStaffBookableStartSlots' src/pages/Booking.tsx
+          grep -n 'listCoreAssignedStaffForService' src/pages/Booking.tsx
+
+      - name: Customer stage 1 diff check
+        run: git diff --check
+
+      - name: Build customer stage 1 workspace
+        run: npm run build
