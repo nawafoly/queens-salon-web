@@ -1,0 +1,115 @@
+name: Repository Hygiene Final Cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repository-hygiene-final-cleanup.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Remove proven-unreferenced one-time source mutators
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const files = [
+            'scripts/apply-booking-authoritative-hr-schedule-cutover.mjs',
+            'scripts/apply-booking-cutover-callsite-sweep.mjs',
+            'scripts/apply-booking-cutover-final-runtime-fixes.mjs',
+            'scripts/apply-booking-cutover-followup-fixes.mjs',
+            'scripts/apply-booking-cutover-resilient-final-fix.mjs',
+            'scripts/apply-booking-staff-availability-no-flash-fix.mjs',
+            'scripts/apply-booking-staff-policy-hardening.mjs',
+            'scripts/apply-booking-stale-staff-selection-fix.mjs',
+            'scripts/apply-temp-weekly-off-return-date-fix.mjs',
+            'scripts/cutover-booking-customer-core-hr-stage2.mjs',
+            'scripts/fix-booking-core-availability-precheck-race.mjs',
+            'scripts/fix-booking-slotcard-type-after-cutover.mjs',
+            'scripts/fix-core-worker-authoritative-leave-fixture.mjs',
+            'scripts/fix-dashboard-v2-style-regressions.mjs',
+            'scripts/fix-frontend-service-catalog-test.mjs',
+            'scripts/repair-booking-customer-stage2-regex-helper.mjs',
+            'scripts/enforce-client-booking-no-overlap.mjs',
+          ];
+          for (const file of files) {
+            if (!fs.existsSync(file)) throw new Error(`expected cleanup candidate missing: ${file}`);
+            fs.rmSync(file);
+            console.log(`removed ${file}`);
+          }
+          NODE
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Dashboard V2 contracts
+        run: npm run check:dashboard-v2
+
+      - name: Internal booking contract
+        run: npm run check:booking-internal-contract
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs --fail-on-high-risk
+
+      - name: Client overlap policy
+        run: node --test workers/client-booking-overlap-policy.test.mjs
+
+      - name: Permission policy
+        run: node --test workers/admin-partial-leave-policy.test.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A scripts
+          if git diff --cached --quiet; then
+            echo "No final cleanup changes to commit."
+            exit 0
+          fi
+          git commit -m "Remove obsolete one-time source mutation scripts"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
