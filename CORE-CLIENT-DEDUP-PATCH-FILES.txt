@@ -1,6 +1,0 @@
-package.json
-README-CORE-CLIENT-DEDUP-AR.md
-scripts/dedupe-core-clients.mjs
-scripts/migrate-packages-d1-to-core.mjs
-workers/core-client-dedup.test.mjs
-workers/packages-core-migration.test.mjs

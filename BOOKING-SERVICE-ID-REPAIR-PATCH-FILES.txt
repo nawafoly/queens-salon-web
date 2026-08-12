@@ -1,6 +1,0 @@
-src/pages/Booking.tsx
-workers/core/repositories/services.js
-workers/core-worker.test.mjs
-workers/frontend-core-migration.test.mjs
-README-BOOKING-SERVICE-ID-REPAIR-AR.txt
-BOOKING-SERVICE-ID-REPAIR-PATCH-FILES.txt
