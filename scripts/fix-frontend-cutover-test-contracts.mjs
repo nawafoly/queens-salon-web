@@ -79,7 +79,7 @@ replaceTest('internal booking V2 is direct Core-only and cannot read Firestore o
   assert.match(v2, /CoreSettingsService\\.get<InternalBookingAppSettings>\\("app"\\)/);
   assert.match(v2, /forceFresh:\\s*true/);
   assert.match(v2, /resolveCoreBookingDataSource\\(\\)\\.updateBooking/);
-  assert.match(availabilityHelper, /startTime \\+ serviceDuration \\+ buffer/i);
+  assert.match(availabilityHelper, /start \\+ service duration \\+ buffer/i);
   assert.doesNotMatch(v2, /filterStaffSlotsByWorkingHours|isStaffAvailableForDate|isStaffWorkingAtTime|resolveStaffWorkingWindowsForDate/);
   assert.doesNotMatch(v2, /getDataSourceFlags|bookingDataSourceCompat|AppSettingsService|firestoreOffers/);
   assert.doesNotMatch(v2, /firebase\\/firestore|firebase\\/storage|services\\/firebase/);
