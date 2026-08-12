@@ -1,0 +1,73 @@
+name: Production Dependency Security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/check-repo-hygiene.mjs"
+      - ".github/workflows/dependency-security.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/check-repo-hygiene.mjs"
+      - ".github/workflows/dependency-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact lockfile
+        run: npm ci
+
+      - name: Production audit must stay zero
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Diff check
+        run: git diff --check HEAD^ HEAD
