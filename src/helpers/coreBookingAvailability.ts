@@ -46,6 +46,29 @@ export function isCoreStaffDayBookable(
   );
 }
 
+/**
+ * Full employee timeline from Core HR scheduleWindows. This is the slot grid to
+ * use for overlap/lock calculations. Salon business-hour defaults must never
+ * truncate or extend it.
+ */
+export function getCoreStaffTimelineSlots(
+  availability: CoreStaffAvailability | null | undefined,
+  slotStepMin: number
+): TimeSlot[] {
+  if (!isCoreStaffDayBookable(availability)) return [];
+  const step = Math.max(1, Number(slotStepMin || 1));
+  const output: TimeSlot[] = [];
+  const seen = new Set<string>();
+  for (const window of getCoreStaffScheduleWindows(availability)) {
+    for (const slot of generateSalonTimeSlots(window.startTime, window.endTime, step)) {
+      if (seen.has(slot.value24)) continue;
+      seen.add(slot.value24);
+      output.push(slot);
+    }
+  }
+  return output;
+}
+
 function occupiedCandidateSlots(
   windowSlots: TimeSlot[],
   startIndex: number,
@@ -63,7 +86,7 @@ function occupiedCandidateSlots(
  * Returns employee start times from Core HR scheduleWindows only.
  *
  * Important invariants:
- * - salon/business-hour defaults never create or extend an employee window;
+ * - salon/business-hour defaults never create, truncate or extend an employee window;
  * - start + service duration + buffer must stay inside the Core HR window;
  * - full-day leave/off/rest/no-schedule returns no starts because Core returns
  *   availableForDate=false and/or an empty scheduleWindows array;
