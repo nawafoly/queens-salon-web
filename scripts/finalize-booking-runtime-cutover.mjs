@@ -82,8 +82,8 @@ function ensureServiceAssignment(text, serviceId, seedRegex, label, expectedSeed
   console.log(`[finalize-booking-cutover] firestoreBookings.ts: ${write(src, text) ? 'updated' : 'unchanged'}`);
 }
 
-// 3) Strict staff_services production policy exposed stale test fixtures.
-// Fix only fixtures; never add a production fallback.
+// 3) Strict staff_services and employee_leaves production policy exposed stale
+// test fixtures. Fix only fixtures; never add a production fallback.
 {
   const src = read('workers/core-worker.test.mjs');
   let text = src.text;
@@ -103,6 +103,27 @@ function ensureServiceAssignment(text, serviceId, seedRegex, label, expectedSeed
     'svc-b strict assignment fixtures',
     2
   );
+
+  if (!text.includes('      "employee_leaves",')) {
+    text = replaceExact(
+      text,
+      '      "employee_absences",\n',
+      '      "employee_leaves",\n      "employee_absences",\n',
+      'add employee_leaves to FakeD1 tables'
+    );
+  }
+
+  text = replaceRegex(
+    text,
+    /test\("staff leave blocks booking and is exposed by availability", async \(\) => \{\n  const fake = new FakeD1\(\);\n  seedCore\(fake\);\n  fake\.seed\("staff", \{[\s\S]*?\n  \}\);\n\n  const availability = await worker\.fetch\(/,
+    `test("approved employee leave blocks booking and is exposed by availability", async () => {\n  const fake = new FakeD1();\n  seedCore(fake);\n  fake.seed("employee_leaves", {\n    id: "leave-a",\n    salon_id: "main",\n    employee_id: "staff-a",\n    leave_type: "annual",\n    start_date: "2027-01-09",\n    end_date: "2027-01-11",\n    duration_kind: "full",\n    status: "approved",\n    note: "annual leave",\n    created_at: "2027-01-01T00:00:00.000Z",\n    updated_at: "2027-01-01T00:00:00.000Z",\n  });\n\n  const availability = await worker.fetch(`,
+    'replace mirrored staff leave fixture with employee_leaves authority',
+    { min: 0, max: 1 }
+  );
+
+  if (/test\("staff leave blocks booking and is exposed by availability"/.test(text)) {
+    throw new Error('[finalize-booking-cutover] legacy mirrored leave fixture still present');
+  }
 
   console.log(`[finalize-booking-cutover] core-worker.test.mjs: ${write(src, text) ? 'updated' : 'unchanged'}`);
 }
