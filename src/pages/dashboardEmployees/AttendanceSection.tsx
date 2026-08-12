@@ -673,6 +673,7 @@ export default function AttendanceSection({
   onCancelLeave,
 }: AttendanceSectionProps) {
   const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
+  const [corePermissionSpecialDays, setCorePermissionSpecialDays] = useState<AttendanceSpecialDay[]>([]);
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
   const [coreShiftError, setCoreShiftError] = useState("");
   const [clearingPunchType, setClearingPunchType] = useState<"check_in" | "check_out" | "">("");
@@ -784,6 +785,51 @@ export default function AttendanceSection({
   }, [coreScheduleRefreshVersion, employeeIdsKey, isVisible, monthKey]);
 
   useEffect(() => {
+    const identityIds = employeeIdsKey.split("|").filter(Boolean);
+    if (!isVisible || !identityIds.length || !/^\d{4}-\d{2}$/.test(monthKey)) {
+      setCorePermissionSpecialDays([]);
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      identityIds.map((id) => CoreHrService.listLeaves({ employeeId: id, status: "approved" }).catch(() => []))
+    ).then((groups) => {
+      if (cancelled) return;
+      const monthPrefix = monthKey + "-";
+      const byInterval = new Map<string, AttendanceSpecialDay>();
+      groups.flat().forEach((leave) => {
+        if (cleanText(leave.status).toLowerCase() !== "approved") return;
+        if (cleanText(leave.durationKind).toLowerCase() !== "partial") return;
+        const date = cleanText(leave.startDate);
+        const startTime = cleanText(leave.partialStartTime);
+        const endTime = cleanText(leave.partialEndTime);
+        if (!date.startsWith(monthPrefix)) return;
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) return;
+        byInterval.set([date, startTime, endTime].join("|"), {
+          date,
+          kind: "partial_leave",
+          label: "استئذان",
+          source: "core_employee_leave",
+          sourceId: cleanText(leave.id),
+          type: cleanText(leave.leaveType),
+          partialStartTime: startTime,
+          partialEndTime: endTime,
+        });
+      });
+      setCorePermissionSpecialDays(Array.from(byInterval.values()).sort((a, b) => a.date.localeCompare(b.date)));
+    }).catch((error) => {
+      if (cancelled) return;
+      console.warn("attendance permission intervals load failed", error);
+      setCorePermissionSpecialDays([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeIdsKey, isVisible, monthKey]);
+
+  useEffect(() => {
     setPunchClearMessage("");
     setPunchClearError("");
   }, [selectedDate]);
@@ -828,7 +874,7 @@ export default function AttendanceSection({
 
   const mergedSpecialDays = useMemo(() => {
     const byDate = new Map<string, AttendanceSpecialDay>();
-    [...specialDays, ...rowSpecialDays, ...resolvedCoreSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
+    [...specialDays, ...corePermissionSpecialDays, ...rowSpecialDays, ...resolvedCoreSpecialDays, ...(selectedCoreSpecialDay ? [selectedCoreSpecialDay] : [])].forEach((day) => {
       const date = cleanText(day.date);
       if (!date) return;
       if (
@@ -849,7 +895,7 @@ export default function AttendanceSection({
       }
     });
     return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
-  }, [resolvedCoreSpecialDays, rowSpecialDays, selectedCoreSpecialDay, specialDays, temporaryOffSpecialDays, temporaryWorkDateKeys]);
+  }, [corePermissionSpecialDays, resolvedCoreSpecialDays, rowSpecialDays, selectedCoreSpecialDay, specialDays, temporaryOffSpecialDays, temporaryWorkDateKeys]);
   const selectedSpecialDay = useMemo(
     () => mergedSpecialDays.find((day) => day.date === cleanText(selectedDate)) || null,
     [mergedSpecialDays, selectedDate]

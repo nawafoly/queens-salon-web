@@ -126,10 +126,10 @@ export default function LeaveRequestModal({
     if (!toDate) result.push("اختر تاريخ النهاية.");
     if (days <= 0) result.push("المدى الزمني غير صحيح.");
     if (isPartialLeave) {
-      if (fromDate !== toDate) result.push("الإجازة الجزئية يجب أن تكون في يوم واحد.");
+      if (fromDate !== toDate) result.push("الاستئذان يجب أن تكون في يوم واحد.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime)) result.push("حدد وقت بداية صحيح للإجازة الجزئية.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) result.push("حدد وقت نهاية صحيح للإجازة الجزئية.");
-      if (partialStartTime >= partialEndTime) result.push("وقت نهاية الإجازة الجزئية يجب أن يكون بعد وقت البداية.");
+      if (partialStartTime >= partialEndTime) result.push("وقت نهاية الاستئذان يجب أن يكون بعد وقت البداية.");
     }
     if (!isPartialLeave && deductFromBalance && availableBalance != null && availableBalance < days) {
       result.push("الرصيد غير كافٍ لهذه الإجازة.");
@@ -185,9 +185,9 @@ export default function LeaveRequestModal({
     <DashboardModalV2
       open={open}
       onClose={onClose}
-      title="تسجيل إجازة"
-      description="حدّد نوع الإجازة وفترتها، ثم راجع أثرها على الرصيد والراتب قبل الاعتماد."
-      eyebrow="طلبات الإجازات"
+      title={isPartialLeave ? "تسجيل استئذان" : "تسجيل إجازة"}
+      description={isPartialLeave ? "حدّد فترة الاستئذان؛ هذه الفترة فقط ستُحجب من الحجز." : "حدّد نوع الإجازة وفترتها، ثم راجع أثرها على الرصيد والراتب قبل الاعتماد."}
+      eyebrow={isPartialLeave ? "الاستئذانات" : "طلبات الإجازات"}
       size="md"
       tone="gold"
       className="leave-request-v2__modal"
@@ -202,7 +202,7 @@ export default function LeaveRequestModal({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? "جاري الاعتماد..." : "اعتماد الإجازة"}
+            {submitting ? "جاري الاعتماد..." : isPartialLeave ? "اعتماد الاستئذان" : "اعتماد الإجازة"}
           </button>
           <button
             type="button"
@@ -228,13 +228,13 @@ export default function LeaveRequestModal({
           />
         </DashboardFieldV2>
 
-        <DashboardFieldV2 id="leave-duration-kind-v2" label="مدة الإجازة" required>
+        <DashboardFieldV2 id="leave-duration-kind-v2" label="نوع التسجيل" required>
           <DashboardSelectV2
             id="leave-duration-kind-v2"
             value={durationKind}
             options={[
               { value: "full_day", label: "يوم كامل" },
-              { value: "partial", label: "جزء من اليوم" },
+              { value: "partial", label: "استئذان" },
             ]}
             onChange={(value) => {
               const next = value === "partial" ? "partial" : "full_day";
@@ -315,7 +315,7 @@ export default function LeaveRequestModal({
               <h3 id="leave-policy-title-v2">سياسة الاحتساب</h3>
               <p>
                 {isPartialLeave
-                  ? "الإجازة الجزئية تحجب فترة الحجز المحددة فقط، ولا تخصم يومًا كاملًا من الرصيد أو الراتب."
+                  ? "الاستئذان يحجب فترة الحجز المحددة فقط، ولا تخصم يومًا كاملًا من الرصيد أو الراتب."
                   : isOtherLeaveType
                     ? "نوع «أخرى» يسمح بتحديد السياسة يدويًا."
                     : "تم ضبط السياسة تلقائيًا حسب نوع الإجازة المختار."}
@@ -362,14 +362,14 @@ export default function LeaveRequestModal({
             className="dsv2-textarea"
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="اكتب سبب الإجازة أو أي تفاصيل يحتاجها المسؤول..."
+            placeholder={isPartialLeave ? "اكتب سبب الاستئذان أو أي تفاصيل يحتاجها المسؤول..." : "اكتب سبب الإجازة أو أي تفاصيل يحتاجها المسؤول..."}
             rows={4}
           />
         </DashboardFieldV2>
 
         {errors.length > 0 ? (
           <div className="leave-request-v2__errors" role="alert" aria-live="assertive">
-            <strong>تعذر اعتماد الإجازة</strong>
+            <strong>{isPartialLeave ? "تعذر اعتماد الاستئذان" : "تعذر اعتماد الإجازة"}</strong>
             <ul>
               {errors.map((error, index) => (
                 <li key={`${error}-${index}`}>{error}</li>

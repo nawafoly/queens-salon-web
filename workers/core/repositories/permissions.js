@@ -167,6 +167,76 @@ async function insertAttendanceEvent(db, salonId, row, type, timeValue, actor = 
   await insertEvent(db, salonId, row.id, type, actor, { time: timeValue, idempotencyKey });
 }
 
+function permissionBookingLeaveId(permissionId) {
+  return "permission_leave_" + cleanText(permissionId).replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
+async function syncPermissionBookingBlock(db, salonId, row, actor = {}) {
+  const permissionId = requiredId(row.id, "permissionId");
+  const dateKey = validDate(row.date_key, "date");
+  const startTime = validTime(row.requested_exit_time, "startTime");
+  const endTime = validTime(row.expected_return_time, "expectedReturnTime");
+  const leaveId = permissionBookingLeaveId(permissionId);
+  const now = nowIso();
+  const existing = await dbFirst(
+    db,
+    "SELECT id FROM employee_leaves WHERE salon_id = ? AND (id = ? OR request_id = ?) LIMIT 1",
+    [salonId, leaveId, permissionId]
+  );
+  const hrNote = "استئذان معتمد — يحجب فترة الحجز المحددة فقط";
+
+  if (existing?.id) {
+    await dbRun(
+      db,
+      `UPDATE employee_leaves
+          SET employee_id = ?, employee_uid = ?, employee_name = ?, status = 'approved',
+              leave_type = 'permission', start_date = ?, end_date = ?, days_count = 0,
+              employee_note = ?, hr_note = ?, decided_at = ?, decided_by_uid = ?,
+              decided_by_name = ?, updated_at = ?, duration_kind = 'partial',
+              partial_start_time = ?, partial_end_time = ?, request_id = ?
+        WHERE salon_id = ? AND id = ?`,
+      [
+        row.employee_id, row.employee_uid || null, row.employee_name || null, dateKey, dateKey,
+        row.reason || "استئذان", hrNote, now, optionalText(actor.uid) || null,
+        optionalText(actor.name) || null, now, startTime, endTime, permissionId, salonId, existing.id,
+      ]
+    );
+    return existing.id;
+  }
+
+  await dbRun(
+    db,
+    `INSERT INTO employee_leaves
+      (id, salon_id, employee_id, employee_uid, employee_name, employee_email, status,
+       leave_type, start_date, end_date, days_count, employee_note, hr_note, decided_at,
+       decided_by_uid, decided_by_email, decided_by_name, created_at, updated_at,
+       duration_kind, partial_start_time, partial_end_time, request_id)
+     VALUES (?, ?, ?, ?, ?, NULL, 'approved', 'permission', ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 'partial', ?, ?, ?)`,
+    [
+      leaveId, salonId, row.employee_id, row.employee_uid || null, row.employee_name || null,
+      dateKey, dateKey, row.reason || "استئذان", hrNote, now, optionalText(actor.uid) || null,
+      optionalText(actor.name) || null, now, now, startTime, endTime, permissionId,
+    ]
+  );
+  return leaveId;
+}
+
+async function cancelPermissionBookingBlock(db, salonId, permissionIdValue, actor = {}, reason = "") {
+  const permissionId = requiredId(permissionIdValue, "permissionId");
+  const now = nowIso();
+  await dbRun(
+    db,
+    `UPDATE employee_leaves
+        SET status = 'rejected', hr_note = ?, decided_at = ?, decided_by_uid = ?,
+            decided_by_name = ?, updated_at = ?
+      WHERE salon_id = ? AND request_id = ? AND leave_type = 'permission'`,
+    [
+      cleanText(reason) || "تم إلغاء الاستئذان", now, optionalText(actor.uid) || null,
+      optionalText(actor.name) || null, now, salonId, permissionId,
+    ]
+  );
+}
+
 export async function permissionPayrollSummary(db, salonId, query = {}) {
   const employeeId = requiredId(query.employeeId || query.employee_id, 'employeeId');
   const fromDate = validDate(query.from || query.fromDate || query.from_date, 'from');
@@ -348,6 +418,7 @@ export async function createPermissionRequest(db, salonId, data, actor = {}) {
   } else {
     await insertAttendanceEvent(db, salonId, row, 'permission_out', requestedExitTime, actor);
     await insertAttendanceEvent(db, salonId, row, 'permission_return', expectedReturnTime, actor);
+    await syncPermissionBookingBlock(db, salonId, row, actor);
     await refreshPayrollEntries(db, salonId, row.employee_id, row.date_key);
     await notifyEmployee(
       db,
@@ -421,6 +492,7 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
       durationMinutes: minutes,
     });
     const updated = await getPermission(db, salonId, row.id);
+    await syncPermissionBookingBlock(db, salonId, updated, actor);
     await insertAttendanceEvent(db, salonId, updated, 'permission_out', exitTime, actor);
     await insertAttendanceEvent(db, salonId, updated, 'permission_return', approvedReturnTime, actor);
     await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
@@ -453,6 +525,9 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
   );
   await insertEvent(db, salonId, row.id, status, actor, { financialEffect });
   const updated = await getPermission(db, salonId, row.id);
+  if (status === 'rejected' || status === 'cancelled') {
+    await cancelPermissionBookingBlock(db, salonId, row.id, actor, status === 'cancelled' ? 'تم إلغاء الاستئذان' : 'تم رفض الاستئذان');
+  }
   const title = status === 'rejected'
     ? 'تم رفض طلب الاستئذان'
     : 'تم إلغاء طلب الاستئذان';
@@ -487,6 +562,7 @@ export async function markPermissionOut(db, salonId, idValue, data, actor = {}) 
     ]
   );
   const updated = await getPermission(db, salonId, row.id);
+  if (cleanText(updated.expected_return_time)) await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_out', actualExitTime, actor);
   await notifyEmployee(db, salonId, updated, 'تم تسجيل خروجك للاستئذان', `${updated.date_key} • ${actualExitTime}`);
   return updated;
@@ -520,6 +596,7 @@ export async function markPermissionReturned(db, salonId, idValue, data, actor =
     ]
   );
   const updated = await getPermission(db, salonId, row.id);
+  await syncPermissionBookingBlock(db, salonId, updated, actor);
   await insertAttendanceEvent(db, salonId, updated, 'permission_return', actualReturnTime, actor);
   await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
   await notifyEmployee(

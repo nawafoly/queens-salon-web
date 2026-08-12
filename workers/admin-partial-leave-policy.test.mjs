@@ -154,7 +154,7 @@ test("admin UI and dashboard pass the partial leave contract end to end", () => 
   const dashboard = readFileSync("src/pages/DashboardEmployees.tsx", "utf8");
   const hub = readFileSync("src/services/employeeHub.ts", "utf8");
 
-  assert.match(modal, /جزء من اليوم/);
+  assert.match(modal, /استئذان/);
   assert.match(modal, /partialStartTime/);
   assert.match(modal, /partialEndTime/);
   assert.match(dashboard, /durationKind,/);

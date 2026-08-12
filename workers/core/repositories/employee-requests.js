@@ -616,6 +616,7 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
     throw new AppError(409, 'core_employee_request:permission_overlap');
   }
   const id = generatedId('permission');
+  const bookingLeaveId = "permission_leave_" + id.replace(/[^A-Za-z0-9_-]/g, "_");
   const now = nowIso();
   const minutes = durationMinutes(payload.startTime, payload.endTime);
   await dbBatch(db, [
@@ -654,6 +655,20 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
       params: [generatedId('attendance'), salonId, row.employee_id, row.employee_uid, payload.date,
         riyadhEventIso(payload.date, payload.endTime, timeMinutes(payload.endTime) <= timeMinutes(payload.startTime)), `${payload.reason} • ${id}`,
         `permission:${id}:permission_return`, now],
+    },
+    {
+      sql: `INSERT OR IGNORE INTO employee_leaves
+        (id, salon_id, employee_id, employee_uid, employee_name, employee_email, status,
+         leave_type, start_date, end_date, days_count, employee_note, hr_note, decided_at,
+         decided_by_uid, decided_by_email, decided_by_name, created_at, updated_at,
+         duration_kind, partial_start_time, partial_end_time, request_id)
+       VALUES (?, ?, ?, ?, ?, NULL, 'approved', 'permission', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'partial', ?, ?, ?)`,
+      params: [
+        bookingLeaveId, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot,
+        payload.date, payload.date, payload.reason, 'استئذان معتمد — يحجب فترة الحجز المحددة فقط',
+        now, cleanText(actor.uid) || null, cleanText(actor.email) || null, cleanText(actor.name) || null,
+        now, now, payload.startTime, payload.endTime, id,
+      ],
     },
   ]);
   await refreshPermissionPayrollEntries(db, salonId, row.employee_id, payload.date);
@@ -1144,6 +1159,23 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
       idempotencyKey: input.idempotencyKey || `${actionKey}:${row.version + 1}`,
     }, actor);
     const updated = result.updated;
+    if (actionStatus === 'approved' && updated.request_type === 'permission') {
+      return transitionEmployeeRequest(
+        db,
+        salonId,
+        updated.id,
+        'execute',
+        {
+          ...input,
+          version: updated.version,
+          idempotencyKey: input.idempotencyKey
+            ? input.idempotencyKey + ":permission_auto_execute"
+            : "permission_auto_execute:" + updated.version,
+        },
+        actor,
+        options
+      );
+    }
     if (['request-info', 'request_info'].includes(actionKey) && cleanText(input.note)) {
       await insertConversationMessage(
         db,

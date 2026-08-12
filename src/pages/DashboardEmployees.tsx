@@ -42,6 +42,7 @@ import {
 import { writeAuditLog } from "../services/logService";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { CoreHrService } from "../services/CoreHrService";
+import { reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
@@ -1370,7 +1371,49 @@ export default function DashboardEmployees() {
     });
 
     if (!leaveRequest) {
-      setErrorMsg("لم يتم العثور على طلب إجازة معتمد لهذا اليوم.");
+      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
+      const permissionLeave = coreLeaves.find((leave) => {
+        if (cleanText(leave.status).toLowerCase() !== "approved") return false;
+        if (cleanText(leave.durationKind).toLowerCase() !== "partial") return false;
+        if (cleanText(leave.leaveType).toLowerCase() !== "permission") return false;
+        const leaveFrom = normalizeLeaveUntil(leave.startDate);
+        const leaveTo = normalizeLeaveUntil(leave.endDate) || leaveFrom;
+        return !!leaveFrom && date >= leaveFrom && date <= leaveTo;
+      });
+      const permissionId = cleanText(permissionLeave?.requestId);
+      if (!permissionLeave || !permissionId) {
+        setErrorMsg("لم يتم العثور على إجازة أو استئذان معتمد لهذا اليوم.");
+        return;
+      }
+
+      const ok = confirm("سيتم إلغاء الاستئذان المعتمد ليوم " + date + ". هل تريد المتابعة؟");
+      if (!ok) return;
+
+      setSaving(true);
+      setErrorMsg("");
+      try {
+        await reviewPermissionRequest({
+          requestId: permissionId,
+          status: "cancelled",
+          reviewerUid: authUser.uid,
+          reviewerName: authUser.displayName || authUser.email,
+        });
+        void writeAuditLog({
+          action: "permission_cancelled",
+          entityType: "employee_permission_request",
+          entityId: permissionId,
+          source: "dashboard",
+          description: "إلغاء استئذان معتمد من سجل الحضور",
+          before: { date, status: "approved", coreLeaveId: permissionLeave.id },
+          after: { date, status: "cancelled" },
+          meta: { staffId: selectedEmployeeId },
+        });
+        await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
+      } catch (error) {
+        setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الاستئذان."));
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -1571,11 +1614,11 @@ export default function DashboardEmployees() {
       throw new Error("مدى الإجازة غير صحيح.");
     }
     if (isPartialLeave) {
-      if (fromDate !== toDate) throw new Error("الإجازة الجزئية يجب أن تكون في يوم واحد.");
+      if (fromDate !== toDate) throw new Error("الاستئذان يجب أن تكون في يوم واحد.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) {
-        throw new Error("وقت الإجازة الجزئية غير صحيح.");
+        throw new Error("وقت الاستئذان غير صحيح.");
       }
-      if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الإجازة الجزئية يجب أن يكون بعد البداية.");
+      if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الاستئذان يجب أن يكون بعد البداية.");
     }
 
     setSaving(true);
@@ -1614,7 +1657,7 @@ export default function DashboardEmployees() {
           durationKind,
           partialStartTime,
           partialEndTime,
-          note: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
+          note: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
           createdByUid: authUser.uid,
           createdByName: authUser.displayName || authUser.email,
         });
@@ -1680,7 +1723,7 @@ export default function DashboardEmployees() {
           durationKind,
           partialStartTime: isPartialLeave ? partialStartTime : undefined,
           partialEndTime: isPartialLeave ? partialEndTime : undefined,
-          employeeNote: payload.note || "تسجيل إجازة معتمدة من إدارة الموظفات",
+          employeeNote: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
           hrNote: policy.affectsPayroll ? "إجازة بدون راتب — تؤثر على الراتب" : "إجازة مدفوعة — لا تخصم من الراتب",
         });
         coreLeaveId = coreLeave.id;

@@ -147,7 +147,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
-  if (status.startsWith("إجازة جزئية")) return "gold";
+  if (status.startsWith("استئذان")) return "gold";
   if (status === "تأخير" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
@@ -165,7 +165,7 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   if (status === "راحة") return "راحة معتمدة";
   if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
   if (status === "راحة / يوم استثنائي") return "راحة بسبب استثناء اليوم";
-  if (status.startsWith("إجازة جزئية")) return "إجازة جزئية معتمدة — الفترة فقط محجوبة";
+  if (status.startsWith("استئذان")) return "استئذان معتمدة — الفترة فقط محجوبة";
   if (status === "إجازة") return "إجازة معتمدة";
   if (status === "حضور") return "مكتمل ومطابق";
   return "لا توجد بيانات";
@@ -641,7 +641,7 @@ export function EmployeeAttendanceTabLiveV2({
     : selectedRow
       ? attendanceRowStatus(selectedRow)
       : "لا يوجد";
-  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate) || selectedSpecialDay?.kind === "leave" || selectedSpecialDay?.kind === "rest";
+  const selectedHasApprovedLeave = approvedLeaveDateKeys.includes(activeSelectedDate) || selectedSpecialDay?.kind === "leave" || selectedSpecialDay?.kind === "rest" || selectedSpecialDay?.kind === "partial_leave";
   const selectedHasPunch = Boolean(selectedRow?.checkInAtClient || selectedRow?.checkOutAtClient);
   const effectiveShiftTone: "neutral" | "gold" | "success" | "danger" | "dark" =
     !effectiveShiftInfo?.tone || effectiveShiftInfo.tone === "default" ? "neutral" : effectiveShiftInfo.tone;
@@ -824,7 +824,7 @@ export function EmployeeAttendanceTabLiveV2({
                     <span>{day.status === "—" ? "-" : day.status}</span>
                     {day.specialDay?.kind === "partial_leave" ? (
                       <em className="dsv2-ew-calendar__special">
-                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "جزء من اليوم"}
+                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "فترة الاستئذان"}
                       </em>
                     ) : day.specialDay && day.specialDay.label !== day.status ? (
                       <em className="dsv2-ew-calendar__special">{day.specialDay.label}</em>
@@ -904,7 +904,7 @@ export function EmployeeAttendanceTabLiveV2({
                   </button>
                   {selectedHasApprovedLeave ? (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCancelLeave || !activeSelectedDate} onClick={() => activeSelectedDate && onCancelLeave?.(activeSelectedDate)}>
-                      إلغاء الإجازة
+                      {selectedSpecialDay?.kind === "partial_leave" ? "إلغاء الاستئذان" : "إلغاء الإجازة"}
                     </button>
                   ) : (
                     <button type="button" className="dsv2-btn dsv2-btn--secondary" disabled={readOnly || !canCreateEmergencyLeave || !activeSelectedDate || selectedHasPunch} onClick={() => activeSelectedDate && onCreateEmergencyLeave?.(activeSelectedDate)}>
