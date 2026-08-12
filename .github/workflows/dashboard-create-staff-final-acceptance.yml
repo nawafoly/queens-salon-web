@@ -1,0 +1,44 @@
+name: Dashboard Create Staff Final Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dashboard-create-staff-final-acceptance.yml"
+      - "src/pages/hr/CreateStaffAccount.tsx"
+      - "src/pages/hr/CreateStaffAccountV2.tsx"
+      - "src/pages/hr/CreateStaffAccountLegacy.tsx"
+      - "src/styles/dashboard-v2/pages/admin-create-staff.css"
+      - "src/styles/dashboard-v2/dashboard-v2.css"
+      - "scripts/check-dashboard-create-staff-v2.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Create staff migration guard
+        run: node scripts/check-dashboard-create-staff-v2.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check HEAD^ HEAD
