@@ -1,0 +1,94 @@
+name: Booking Cutover Visual Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/booking-visual-smoke.yml"
+      - "src/pages/Booking.tsx"
+      - "src/pages/BookingInternal.tsx"
+      - "src/features/internal-booking-v2/**"
+      - "src/services/bookingDataSource.ts"
+      - "src/services/bookingDataSources/coreD1BookingDataSource.ts"
+      - "src/helpers/coreBookingAvailability.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build final web app
+        run: npm run build
+
+      - name: Start local production preview
+        shell: bash
+        run: |
+          mkdir -p visual-smoke
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > visual-smoke/preview.log 2>&1 &
+          echo $! > visual-smoke/preview.pid
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 0.5
+          done
+          cat visual-smoke/preview.log
+          exit 1
+
+      - name: Capture booking and reception route
+        shell: bash
+        run: |
+          CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            echo "Chrome/Chromium not found on runner"
+            exit 1
+          fi
+
+          COMMON=(--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=1440,1100 --virtual-time-budget=9000)
+
+          "$CHROME" "${COMMON[@]}" \
+            --screenshot=visual-smoke/client-booking.png \
+            http://127.0.0.1:4173/booking
+          "$CHROME" "${COMMON[@]}" \
+            --dump-dom \
+            http://127.0.0.1:4173/booking > visual-smoke/client-booking.html
+
+          "$CHROME" "${COMMON[@]}" \
+            --screenshot=visual-smoke/reception-route.png \
+            http://127.0.0.1:4173/dashboard/booking-internal
+          "$CHROME" "${COMMON[@]}" \
+            --dump-dom \
+            http://127.0.0.1:4173/dashboard/booking-internal > visual-smoke/reception-route.html
+
+          test -s visual-smoke/client-booking.png
+          test -s visual-smoke/reception-route.png
+          grep -q '<div id="root"' visual-smoke/client-booking.html
+          grep -q '<div id="root"' visual-smoke/reception-route.html
+
+          if grep -Eqi '404|not found|application error|uncaught' visual-smoke/client-booking.html; then
+            echo "Public booking DOM contains a fatal/error marker"
+            exit 1
+          fi
+
+          echo "Visual smoke capture completed."
+
+      - name: Upload visual smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-cutover-visual-smoke
+          path: visual-smoke/
+          if-no-files-found: error
