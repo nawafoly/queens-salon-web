@@ -29,6 +29,92 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Align frontend migration contract with removed legacy entrypoint
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const guardPath = 'scripts/check-frontend-core-migration.mjs';
+          let guard = fs.readFileSync(guardPath, 'utf8');
+          guard = guard.replace(
+            'import { readFileSync } from "node:fs";',
+            'import { existsSync, readFileSync } from "node:fs";'
+          );
+          const forbiddenLegacy = `  {
+            file: "src/pages/BookingInternal.tsx",
+            forbidden: [
+              /from\\s+["']\\.\\.\\/services\\/firestoreBookings["']/,
+              /import\\s+\\*\\s+as\\s+firestoreBookings/,
+              /collection\\([^\\n]*["']booking_slots["']/,
+              /doc\\([^\\n]*["']availability_days["']/,
+            ],
+          },
+          `;
+          if (!guard.includes(forbiddenLegacy)) throw new Error('stale forbidden BookingInternal contract block not found');
+          guard = guard.replace(forbiddenLegacy, '');
+          const requiredLegacy = `  {
+            file: "src/pages/BookingInternal.tsx",
+            required: [/BookingInternalV2/],
+          },
+          `;
+          if (!guard.includes(requiredLegacy)) throw new Error('stale required BookingInternal contract block not found');
+          guard = guard.replace(requiredLegacy, '');
+          const failureMarker = 'const failures = [];';
+          if (!guard.includes('historical BookingInternal wrapper must remain deleted')) {
+            guard = guard.replace(
+              failureMarker,
+              `${failureMarker}\nif (existsSync("src/pages/BookingInternal.tsx")) {\n  failures.push("src/pages/BookingInternal.tsx: historical BookingInternal wrapper must remain deleted");\n}`
+            );
+          }
+          fs.writeFileSync(guardPath, guard, 'utf8');
+
+          const testPath = 'workers/frontend-core-migration.test.mjs';
+          let tests = fs.readFileSync(testPath, 'utf8');
+          tests = tests.replace(
+            'import { readFileSync } from "node:fs";',
+            'import { existsSync, readFileSync } from "node:fs";'
+          );
+          const legacyAvailability = `
+            const legacyEntry = readFileSync("src/pages/BookingInternal.tsx", "utf8");
+            assert.match(legacyEntry, /BookingInternalV2/);
+            assert.doesNotMatch(legacyEntry, /\\bgetStaffAvailability\\s*\\(/);
+            assert.doesNotMatch(legacyEntry, /from\\s+["'][^"']*(staffAvailability|firestoreAvailabilityBackfill)/);
+          `;
+          if (!tests.includes(legacyAvailability)) throw new Error('stale BookingInternal availability assertion not found');
+          tests = tests.replace(
+            legacyAvailability,
+            `
+            assert.equal(existsSync("src/pages/BookingInternal.tsx"), false, "historical BookingInternal wrapper must stay deleted");
+          `
+          );
+          const legacyRefund = `  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+            const internal = readFileSync("src/pages/BookingInternal.tsx", "utf8");
+
+            assert.match(dashboard, /CoreRefundService/);`;
+          if (!tests.includes(legacyRefund)) throw new Error('stale BookingInternal refund assertion setup not found');
+          tests = tests.replace(
+            legacyRefund,
+            `  const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
+            const internalV2 = readFileSync("src/features/internal-booking-v2/BookingInternalV2.tsx", "utf8");
+
+            assert.match(dashboard, /CoreRefundService/);`
+          );
+          const legacyRefundAssertions = `
+            assert.match(internal, /BookingInternalV2/);
+            assert.doesNotMatch(internal, /CoreRefundService|getDataSourceFlags/);
+          `;
+          if (!tests.includes(legacyRefundAssertions)) throw new Error('stale BookingInternal refund assertions not found');
+          tests = tests.replace(
+            legacyRefundAssertions,
+            `
+            assert.equal(existsSync("src/pages/BookingInternal.tsx"), false, "legacy internal booking entrypoint must stay deleted");
+            assert.doesNotMatch(internalV2, /CoreRefundService|getDataSourceFlags/);
+          `
+          );
+          fs.writeFileSync(testPath, tests, 'utf8');
+          console.log('frontend migration contracts aligned with V2-only internal booking');
+          NODE
+
       - name: Retire inspected mutation workflows and unreferenced scripts
         run: node scripts/repository-hygiene-wave3a.mjs
 
