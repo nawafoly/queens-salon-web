@@ -21,6 +21,66 @@ function staffIdOf(staff: StaffPublicWithId): string {
   return String(staff?.id || "").trim();
 }
 
+export function isCoreAssignedStaffPubliclyVisible(
+  staff: StaffPublicWithId | null | undefined
+): boolean {
+  return Boolean(
+    staff &&
+      staffIdOf(staff) &&
+      String(staff.name || "").trim() &&
+      staff.showOnBooking !== false
+  );
+}
+
+/**
+ * Return the active staff assigned to exactly one service by Core D1
+ * staff_services. This is deliberately NOT a dated availability decision.
+ */
+export async function listCoreAssignedStaffForService(
+  serviceId: string,
+  options: { requireShowOnBooking?: boolean } = {}
+): Promise<StaffPublicWithId[]> {
+  const sid = String(serviceId || "").trim();
+  if (!sid) return [];
+  const rows = await resolveBookingDataSource().getActiveStaff(sid);
+  return rows.filter((staff) =>
+    options.requireShowOnBooking === false
+      ? Boolean(staffIdOf(staff) && String(staff.name || "").trim())
+      : isCoreAssignedStaffPubliclyVisible(staff)
+  );
+}
+
+/**
+ * Package/common-staff helper. Every returned employee must have an active
+ * staff_services assignment for every service ID. No specialties fallback.
+ */
+export async function listCoreAssignedStaffForServices(
+  serviceIds: string[],
+  options: { requireShowOnBooking?: boolean } = {}
+): Promise<StaffPublicWithId[]> {
+  const ids = [...new Set(
+    (Array.isArray(serviceIds) ? serviceIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  if (!ids.length) return [];
+
+  const perService = await Promise.all(
+    ids.map((serviceId) => listCoreAssignedStaffForService(serviceId, options))
+  );
+  const first = perService[0] || [];
+  if (perService.length === 1) return first;
+
+  const allowed = new Set(first.map(staffIdOf).filter(Boolean));
+  for (const rows of perService.slice(1)) {
+    const idsForService = new Set(rows.map(staffIdOf).filter(Boolean));
+    for (const id of [...allowed]) {
+      if (!idsForService.has(id)) allowed.delete(id);
+    }
+  }
+  return first.filter((staff) => allowed.has(staffIdOf(staff)));
+}
+
 /**
  * Resolve the dated staff picker entirely from Core.
  *
@@ -42,7 +102,9 @@ export async function listCoreBookableStaffForDate(
 
   // Passing serviceId is mandatory: Core D1 staff_services is the service-to-
   // staff authority. Do not replace this with specialties/profile matching.
-  const staffRows = await dataSource.getActiveStaff(serviceId);
+  const staffRows = await listCoreAssignedStaffForService(serviceId, {
+    requireShowOnBooking: query.requireShowOnBooking,
+  });
 
   const resolved = await Promise.all(
     staffRows.map(async (staff) => {
