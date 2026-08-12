@@ -9,10 +9,14 @@ const staleName = 'service catalog read facades are Firestore-only in Phase 7';
 const currentName = 'service catalog facades expose explicit Core reads without runtime source flags';
 
 if (!text.includes(currentName)) {
-  const pattern = /test\("service catalog read facades are Firestore-only in Phase 7", \(\) => \{[\s\S]*?\n\}\);/;
-  const matches = text.match(new RegExp(pattern.source, 'g')) || [];
+  const escapedName = staleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `test\\(\\s*(["'])${escapedName}\\1\\s*,\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*?\\n\\s*\\}\\);`,
+    'g'
+  );
+  const matches = text.match(pattern) || [];
   if (matches.length !== 1) {
-    throw new Error(`[frontend-catalog-test] expected one stale catalog test, found ${matches.length}`);
+    throw new Error(`[frontend-catalog-test] expected one stale catalog test, found ${matches.length}; namePresent=${text.includes(staleName)}`);
   }
 
   const replacement = `test("${currentName}", () => {
