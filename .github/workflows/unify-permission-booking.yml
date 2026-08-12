@@ -1,3 +1,4 @@
+# Permanent read-only acceptance contract. Do not add patch/apply/commit/push steps.
 name: Permission Booking Contract
 
 on:
