@@ -10,6 +10,7 @@ on:
       - "scripts/audit-legacy-booking-runtime.mjs"
       - "scripts/finalize-booking-runtime-cutover.mjs"
       - "scripts/check-booking-shift-end-boundary.mjs"
+      - "scripts/fix-hr-test-migration-runner.mjs"
   workflow_dispatch:
 
 permissions:
@@ -33,6 +34,9 @@ jobs:
 
       - name: Apply final cleanup
         run: node scripts/finalize-booking-runtime-cutover.mjs
+
+      - name: Fix HR test migration runner
+        run: node scripts/fix-hr-test-migration-runner.mjs
 
       - name: Audit after cleanup
         run: node scripts/audit-legacy-booking-runtime.mjs | tee legacy-booking-audit-final.txt
@@ -84,6 +88,7 @@ jobs:
             src/pages/DashboardBookings.tsx \
             src/services/firestoreBookings.ts \
             workers/core-worker.test.mjs \
+            workers/hr-core-worker.test.mjs \
             scripts/check-frontend-core-migration.mjs \
             workers/frontend-core-migration.test.mjs
           if git diff --cached --quiet; then
