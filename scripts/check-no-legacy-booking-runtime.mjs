@@ -23,9 +23,6 @@ const requireRegex = (file, regex, message) => {
   if (!regex.test(text)) failures.push(`${file}: ${message} [missing ${regex}]`);
 };
 
-// The repository-wide audit is the primary guard. It follows runtime imports
-// from every booking surface, so adding a new reachable legacy helper fails
-// without having to remember to append that file to this checker.
 const audit = spawnSync(
   process.execPath,
   ['scripts/audit-legacy-booking-runtime.mjs', '--fail-on-high-risk'],
@@ -37,10 +34,16 @@ if (audit.status !== 0) {
   failures.push(`repo-wide booking runtime audit still has high-risk findings (HIGH_RISK_TOTAL=${total})`);
 }
 
-const bookingUiFiles = [
+// Customer and V2 own actual scheduling decisions. The historical internal
+// route is intentionally a thin compatibility delegate to V2 so it cannot
+// maintain a second booking policy engine.
+const decisionUiFiles = [
   'src/pages/Booking.tsx',
-  'src/pages/BookingInternal.tsx',
   'src/features/internal-booking-v2/BookingInternalV2.tsx',
+];
+const bookingUiFiles = [
+  ...decisionUiFiles,
+  'src/pages/BookingInternal.tsx',
 ];
 
 for (const file of bookingUiFiles) {
@@ -52,24 +55,26 @@ for (const file of bookingUiFiles) {
   forbid(file, 'staff_schedules', 'must not read legacy staff_schedules in booking UI runtime');
   forbid(file, 'customWorkingHours', 'must not use legacy customWorkingHours for booking decisions');
   forbid(file, 'filterSlotsByServiceEnd', 'must not cap employee starts with a local/salon closing window; use Core scheduleWindows helper');
-  requireText(file, 'getStaffAvailability', 'each booking UI must load the authoritative Core staff-day availability');
 }
-
-// Old internal booking is part of the booking runtime and must not retain a
-// feature-flagged Firestore booking/availability branch.
+for (const file of decisionUiFiles) {
+  requireText(file, 'getStaffAvailability', 'booking decision UI must load the authoritative Core staff-day availability');
+}
+requireText(
+  'src/pages/BookingInternal.tsx',
+  'BookingInternalV2',
+  'legacy internal route must delegate to the Core-HR-authoritative V2 runtime'
+);
 forbid(
   'src/pages/BookingInternal.tsx',
   'firestoreAvailabilityBackfill',
-  'must not run Firestore availability backfill from booking runtime'
+  'legacy internal compatibility route must not run Firestore availability backfill'
 );
 forbid(
   'src/pages/BookingInternal.tsx',
   'getDataSourceFlags().useCoreD1',
-  'must not keep a Core-vs-Firestore booking runtime branch'
+  'legacy internal compatibility route must not keep a Core-vs-Firestore booking branch'
 );
 
-// Checkout is a live public route. It may call a thin Core-only checkout
-// service, but it must never import the legacy Firestore booking module.
 forbidRegex(
   'src/pages/Checkout.tsx',
   /from\s+["'][^"']*firestoreBookings["']/,
@@ -96,7 +101,6 @@ requireText(
   'checkout facade must normalize the service to an authoritative Core catalog id'
 );
 
-// Core-only booking data source selection.
 requireText(
   'src/services/bookingDataSource.ts',
   'return resolveCoreBookingDataSource();',
@@ -108,29 +112,21 @@ forbid(
   'booking data source selector must not import or choose Firestore'
 );
 
-// The legacy Firestore implementation is allowed only for non-booking read/
-// migration compatibility. Even there, no exported legacy booking validator may
-// retain overtime beyond the HR shift boundary.
 const legacyBookings = read('src/services/firestoreBookings.ts');
 if (/\bALLOW_OVERTIME_MIN\s*=\s*(?!0\b)\d+/.test(legacyBookings)) {
   failures.push('src/services/firestoreBookings.ts: legacy booking validator must not retain non-zero overtime');
 }
 
-// No booking overtime beyond the employee HR shift end.
 const constants = read('src/helpers/bookingSharedConstants.ts');
 if (!/export const ALLOW_OVERTIME_MIN\s*=\s*0\s*;/.test(constants)) {
   failures.push('src/helpers/bookingSharedConstants.ts: ALLOW_OVERTIME_MIN must be 0 so duration + buffer cannot exceed the HR shift end');
 }
-
-// The shared primitive must enforce start + duration + buffer <= end when the
-// authoritative Core-window helper delegates to it.
 requireText(
   'src/helpers/timeSlots.ts',
   'return startMin + need <= maxEndMin;',
   'slot filtering must enforce service duration + buffer against the supplied end boundary'
 );
 
-// Backend must use the centralized dated HR booking policy and fail closed.
 for (const file of [
   'workers/core/repositories/staff.js',
   'workers/core/repositories/availability.js',
@@ -204,8 +200,6 @@ requireText(
   'booking create/edit must use central Core HR booking-day truth'
 );
 
-// Every operational create/reschedule/edit range assertion must validate the
-// buffered end, not only the service end.
 const bookings = read('workers/core/repositories/bookings.js');
 const rangeCalls = [...bookings.matchAll(/await\s+assertStaffRangeAvailable\s*\(/g)].length;
 const bufferedRangeCalls = [...bookings.matchAll(/await\s+assertStaffRangeAvailable\s*\([\s\S]{0,320}?addMinutes\(endTime,\s*bufferMin\)/g)].length;
