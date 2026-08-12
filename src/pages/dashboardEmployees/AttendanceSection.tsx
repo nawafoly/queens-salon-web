@@ -282,6 +282,7 @@ function specialDayPriority(day?: AttendanceSpecialDay | null) {
   if (day.kind === "leave" || day.kind === "rest") return 40;
   if (day.kind === "weekly_off") return 35;
   if (day.kind === "exception_off") return 30;
+  if (day.kind === "partial_leave") return 20;
   return 0;
 }
 
@@ -561,7 +562,7 @@ function resolveSelectedShiftInfo(input: {
   coreError: string;
 }): EmployeeAttendanceShiftInfoLiveV2 {
   const { dateKey, row, schedule, salonBusinessHours, approvedLeaveDateKeys, specialDay, coreResolvedShift, coreLoading, coreError } = input;
-  if (specialDay) {
+  if (specialDay && specialDay.kind !== "partial_leave") {
     return {
       sourceLabel: specialDay.label,
       sourceDetail: specialDay.source,

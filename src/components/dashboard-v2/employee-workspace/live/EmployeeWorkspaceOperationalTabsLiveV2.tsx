@@ -147,6 +147,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
+  if (status.startsWith("إجازة جزئية")) return "gold";
   if (status === "تأخير" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
@@ -164,6 +165,7 @@ function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 
   if (status === "راحة") return "راحة معتمدة";
   if (status === "إجازة أسبوعية") return "إجازة أسبوعية حسب الجدول";
   if (status === "راحة / يوم استثنائي") return "راحة بسبب استثناء اليوم";
+  if (status.startsWith("إجازة جزئية")) return "إجازة جزئية معتمدة — الفترة فقط محجوبة";
   if (status === "إجازة") return "إجازة معتمدة";
   if (status === "حضور") return "مكتمل ومطابق";
   return "لا توجد بيانات";
@@ -820,7 +822,11 @@ export function EmployeeAttendanceTabLiveV2({
                   >
                     <strong>{day.dayNumber}</strong>
                     <span>{day.status === "—" ? "-" : day.status}</span>
-                    {day.specialDay && day.specialDay.label !== day.status ? (
+                    {day.specialDay?.kind === "partial_leave" ? (
+                      <em className="dsv2-ew-calendar__special">
+                        {[day.specialDay.partialStartTime, day.specialDay.partialEndTime].filter(Boolean).join(" – ") || "جزء من اليوم"}
+                      </em>
+                    ) : day.specialDay && day.specialDay.label !== day.status ? (
                       <em className="dsv2-ew-calendar__special">{day.specialDay.label}</em>
                     ) : null}
                     <small>{day.timeLabel}</small>

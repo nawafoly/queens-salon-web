@@ -25,10 +25,14 @@ type LeaveRequestLike = {
   days?: unknown;
   durationKind?: unknown;
   duration_kind?: unknown;
+  partialStartTime?: unknown;
+  partialEndTime?: unknown;
+  partial_start_time?: unknown;
+  partial_end_time?: unknown;
   deleted?: unknown;
 };
 
-export type AttendanceSpecialDayKind = "leave" | "rest" | "weekly_off" | "exception_off";
+export type AttendanceSpecialDayKind = "leave" | "partial_leave" | "rest" | "weekly_off" | "exception_off";
 
 export type AttendanceSpecialDay = {
   date: string;
@@ -37,9 +41,12 @@ export type AttendanceSpecialDay = {
   source: string;
   sourceId?: string;
   type?: string;
+  partialStartTime?: string;
+  partialEndTime?: string;
 };
 
 const LABEL_LEAVE = "\u0625\u062c\u0627\u0632\u0629";
+const LABEL_PARTIAL_LEAVE = "\u0625\u062c\u0627\u0632\u0629 \u062c\u0632\u0626\u064a\u0629";
 const LABEL_REST = "\u0631\u0627\u062d\u0629";
 const LABEL_WEEKLY_OFF = "\u0625\u062c\u0627\u0632\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
 const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
@@ -52,6 +59,7 @@ const SPECIAL_DAY_PRIORITY: Record<AttendanceSpecialDayKind, number> = {
   rest: 40,
   exception_off: 30,
   weekly_off: 20,
+  partial_leave: 15,
 };
 
 const LEAVE_TYPE_POLICY: Record<
@@ -288,6 +296,27 @@ export function buildApprovedLeaveSpecialDays(input: {
       });
     });
 
+  // Partial leave is visible in attendance as an informational interval only.
+  // It must never enter approvedLeaveDateKeys or behave like a full-day closure.
+  (input.leaveRequests || [])
+    .filter((request) => isApprovedStatus(request.status ?? request.state, false))
+    .filter((request) => isPartialDay(request.durationKind || request.duration_kind))
+    .filter((request) => leaveRequestMatchesProfile(request, profile, input.extraIds || []))
+    .forEach((request) => {
+      const range = leaveDateRange(request);
+      if (!range.from) return;
+      addSpecialDate(days, {
+        date: range.from,
+        kind: "partial_leave",
+        label: LABEL_PARTIAL_LEAVE,
+        source: "leave_request",
+        sourceId: cleanText(request.id),
+        type: cleanText(request.leaveType || request.leave_type || request.type),
+        partialStartTime: cleanText(request.partialStartTime || request.partial_start_time),
+        partialEndTime: cleanText(request.partialEndTime || request.partial_end_time),
+      });
+    });
+
   // Also accept leave-like entries stored on the staff profile when they
   // represent actual leave (e.g., historical approved leave records).
   // Exclude balance adjustment movements (add/deduct) from creating calendar days.
@@ -322,7 +351,9 @@ export function buildApprovedLeaveDateKeys(input: {
   extraIds?: unknown[];
   todayDateKey?: string;
 }) {
-  return buildApprovedLeaveSpecialDays(input).map((day) => day.date);
+  return buildApprovedLeaveSpecialDays(input)
+    .filter((day) => day.kind !== "partial_leave")
+    .map((day) => day.date);
 }
 
 function getDayOverride(dateKey: string, profile: Record<string, any>) {
