@@ -1,13 +1,11 @@
-
-
 // src/pages/Checkout.tsx
 import { useEffect, useMemo, useState } from "react";
 import "../styles/CheckoutMobile.css";
 import {
   createBooking,
   type BookingStatus,
-  buildBookingSlotId, // ✅ NEW
-} from "../services/firestoreBookings";
+} from "../services/checkoutCoreBookingService";
+import { buildBookingSlotId } from "../helpers/bookingSlotId";
 import { incrementOfferUsage } from "../services/firestoreOffers";
 import { incrementPackageUsage } from "../services/firestorePackages";
 
@@ -32,7 +30,7 @@ import { formatTime12 } from "../helpers/timeDisplay";
 import ConfirmModal from "../components/ConfirmModal";
 import { buildSuccessNavigationPayload } from "../helpers/successNavigation";
 
-// ✅ NEW: same resolver used in Dashboard (serviceId -> serviceName)
+// Same resolver used in Dashboard (serviceId -> serviceName)
 import { resolveServiceName } from "../services/serviceResolver";
 
 type PaymentMethod = "cash" | "pos_card" | "mada_online";
@@ -43,7 +41,6 @@ type BookingData = {
   id?: string;
   trackId?: string;
 
-  // ✅ NEW: Human readable booking number (MK-10234)
   publicId?: string;
 
   name?: string;
@@ -58,7 +55,7 @@ type BookingData = {
   date?: string;
   time?: string;
 
-  // ✅ slotId might exist in LS but is NOT source of truth
+  // Display/debug only. It is never booking authority.
   slotId?: string;
 
   total?: number;
@@ -81,8 +78,6 @@ type BookingData = {
 const BOOKING_KEY = "currentBooking";
 const ALL_BOOKINGS_KEY = "allBookings";
 const SALON_ID = "main";
-
-// ✅ NEW: counter key for human booking numbers
 const BOOKING_PUBLIC_COUNTER_KEY = "booking_public_counter_v1";
 
 function methodLabel(m: PaymentMethod) {
@@ -129,20 +124,17 @@ async function ensureUserUid(): Promise<string | null> {
   }
 }
 
-// ✅ NEW: generate MK-10234 style id (local counter)
 function nextPublicBookingId(prefix = "MK"): string {
   try {
     const raw = localStorage.getItem(BOOKING_PUBLIC_COUNTER_KEY);
-    const current = Number(raw || "10233"); // start so first becomes 10234
+    const current = Number(raw || "10233");
     const next = Number.isFinite(current) ? current + 1 : 10234;
 
     localStorage.setItem(BOOKING_PUBLIC_COUNTER_KEY, String(next));
 
-    // pad to 5 digits (optional) — gives MK-10234 as-is if already 5 digits
     const n = String(next).padStart(5, "0");
     return `${prefix}-${n}`;
   } catch {
-    // fallback random-ish
     const rnd = Math.floor(10000 + Math.random() * 90000);
     return `${prefix}-${rnd}`;
   }
@@ -153,8 +145,6 @@ export default function Checkout() {
   const [booking, setBooking] = useState<BookingData | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // ✅ NEW: label to show real service name even if stored value is serviceId
   const [serviceLabel, setServiceLabel] = useState<string>("");
 
   const [modal, setModal] = useState({
@@ -235,11 +225,9 @@ export default function Checkout() {
     }
   }, []);
 
-  // ✅ NEW: generate preview booking number early (so it shows on Checkout)
   useEffect(() => {
     if (!booking) return;
 
-    // إذا موجود مسبقًا لا تولد مرّة ثانية
     const existing = String(booking.publicId || "").trim();
     if (existing) return;
 
@@ -252,12 +240,10 @@ export default function Checkout() {
 
     setBooking(updated);
 
-    // خزّن نفس الرقم فورًا عشان يطلع مباشرة
     try {
       localStorage.setItem(BOOKING_KEY, JSON.stringify(updated));
     } catch { }
   }, [booking]);
-
 
   const view = useMemo(() => {
     if (!booking) return null;
@@ -274,7 +260,6 @@ export default function Checkout() {
     const employee = String(booking.employee || "").trim();
     const employeeId = String(booking.employeeId || "").trim();
 
-    // ✅ SlotId is DISPLAY/debug only (source of truth will be created in Firestore)
     const employeeKey = employeeId || employee || "unknown_employee";
     const slotIdDisplay = date && time ? buildBookingSlotId(date, time, employeeKey) : "";
 
@@ -312,8 +297,6 @@ export default function Checkout() {
     };
   }, [booking]);
 
-  // ✅ NEW: Convert serviceId -> serviceName (same logic idea as Dashboard)
-  // ✅ المكان: بعد view مباشرة
   useEffect(() => {
     let alive = true;
 
@@ -324,7 +307,6 @@ export default function Checkout() {
         return;
       }
 
-      // إذا كان النص يبدو كـ ID (طويل + بدون مسافات + حروف/أرقام/underscore/dash)
       const looksLikeId =
         raw.length >= 15 && !raw.includes(" ") && /^[A-Za-z0-9_-]+$/.test(raw);
 
@@ -386,14 +368,15 @@ export default function Checkout() {
         return;
       }
 
-      // ✅ IMPORTANT: لا نتحقق من slotId هنا — Firestore هو اللي يبنيه ويقفل المواعيد
+      // The Core endpoint is the booking authority. The display slot id above is
+      // never used as a reservation lock.
       const uid = await ensureUserUid();
       if (!uid) {
         openModal({
           title: "تعذر إكمال الحجز",
           message:
-            "لم نستطع إنشاء جلسة مستخدم للكتابة في Firestore.\n\n" +
-            "إذا تبي الحجز يمشي للزوار بدون حساب، فعّل Anonymous Auth من Firebase Authentication.",
+            "لم نستطع إنشاء جلسة مستخدم لإكمال الحجز.\n\n" +
+            "إذا كان الحجز للزوار بدون حساب، تأكد من تفعيل Anonymous Auth.",
           variant: "danger",
         });
         return;
@@ -417,7 +400,7 @@ export default function Checkout() {
       const totalInt = toInt(view.total || 0);
       const finalInt = toInt(view.total || 0);
 
-      const { id: firestoreId, publicId: fsPublicId } = await createBooking({
+      const { id: bookingId, publicId: corePublicId } = await createBooking({
         userId: uid,
 
         createdBy: "client",
@@ -460,23 +443,20 @@ export default function Checkout() {
         console.warn("usage counter update failed:", e);
       }
 
-      // ✅ NEW: build human readable booking number (MK-10234)
-      const publicId = fsPublicId || booking?.publicId || view.publicId || nextPublicBookingId("MK");
+      const publicId = corePublicId || booking?.publicId || view.publicId || nextPublicBookingId("MK");
 
       const updatedCurrent: BookingData = {
         ...(booking || {}),
 
-        bookingId: firestoreId,
-        id: firestoreId,
-        trackId: firestoreId,
+        bookingId,
+        id: bookingId,
+        trackId: bookingId,
 
-        // ✅ NEW
         publicId,
 
         employeeId: view.employeeId,
         employee: view.employee || booking?.employee || "",
 
-        // ✅ store display slotId for debugging (optional)
         slotId: view.slotIdDisplay,
 
         total: totalInt,
@@ -525,12 +505,9 @@ export default function Checkout() {
       openModal({
         title: "تعذر حفظ الحجز",
         message:
-          `خطأ Firestore:\n` +
+          `خطأ الحجز:\n` +
           `code: ${code || "—"}\n` +
-          `message: ${msg || "—"}\n\n` +
-          `نقاط تحقق سريعة:\n` +
-          `- total و finalPrice لازم تكون أرقام (int).\n` +
-          `- إذا تبي الزوار بدون حساب: فعّل Anonymous Auth.\n`,
+          `message: ${msg || "—"}`,
         variant: "danger",
       });
     } finally {
@@ -592,7 +569,6 @@ export default function Checkout() {
           </div>
         )}
 
-        {/* ✅ NEW: Human booking number */}
         <div className="checkout-item">
           <strong>رقم الحجز:</strong>
           <span style={{ fontWeight: 800 }}>{view.publicId || "—"}</span>
