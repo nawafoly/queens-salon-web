@@ -68,17 +68,32 @@ forbid(
   'must not keep a Core-vs-Firestore booking runtime branch'
 );
 
-// Checkout is a live public route. It must submit through the Core booking
-// datasource so the worker re-validates HR shift, leave, service duration and buffer.
+// Checkout is a live public route. It may call a thin Core-only checkout
+// service, but it must never import the legacy Firestore booking module.
 forbidRegex(
   'src/pages/Checkout.tsx',
   /from\s+["'][^"']*firestoreBookings["']/,
   'live Checkout must not import the legacy Firestore booking module'
 );
-requireText(
+requireRegex(
   'src/pages/Checkout.tsx',
+  /(?:checkoutCoreBookingService|resolveBookingDataSource)/,
+  'live Checkout must submit through a Core-only booking facade'
+);
+requireText(
+  'src/services/checkoutCoreBookingService.ts',
   'resolveBookingDataSource',
-  'live Checkout must submit through the Core-only booking datasource'
+  'checkout facade must resolve the Core-only booking datasource'
+);
+requireText(
+  'src/services/checkoutCoreBookingService.ts',
+  'CoreSettingsService',
+  'checkout facade must re-read authoritative slot step and buffer settings'
+);
+requireText(
+  'src/services/checkoutCoreBookingService.ts',
+  'serviceId',
+  'checkout facade must normalize the service to an authoritative Core catalog id'
 );
 
 // Core-only booking data source selection.
