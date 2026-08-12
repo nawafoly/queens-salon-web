@@ -1,0 +1,126 @@
+name: Dependency Security Remediation Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dependency-security-remediation-temp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-security-remediation-main
+  cancel-in-progress: false
+
+jobs:
+  remediate-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install baseline lockfile exactly
+        run: npm ci
+
+      - name: Update production vulnerability lock entries only
+        shell: bash
+        run: npm audit fix --omit=dev --package-lock-only || true
+
+      - name: Raise React Router security floor within v7
+        run: npm install --save --package-lock-only 'react-router-dom@^7.18.2'
+
+      - name: Upgrade SheetJS from authoritative distribution
+        run: npm install --save --package-lock-only 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'
+
+      - name: Reinstall proposed lockfile from scratch
+        shell: bash
+        run: |
+          rm -rf node_modules
+          npm ci
+
+      - name: Production audit must be zero
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Assert tooling versions remain pinned by this production-only wave
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { execSync } = require('child_process');
+          const tree = JSON.parse(execSync('npm ls wrangler miniflare --json --depth=3', {encoding:'utf8'}));
+          const wrangler = tree.dependencies?.wrangler;
+          const miniflare = wrangler?.dependencies?.miniflare;
+          if (wrangler?.version !== '4.110.0') throw new Error(`wrangler unexpectedly changed to ${wrangler?.version}`);
+          if (miniflare?.version !== '4.20260708.1') throw new Error(`miniflare unexpectedly changed to ${miniflare?.version}`);
+          console.log(`tooling unchanged: wrangler@${wrangler.version}, miniflare@${miniflare.version}`);
+          NODE
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Dashboard V2 contracts
+        run: npm run check:dashboard-v2
+
+      - name: Internal booking contract
+        run: npm run check:booking-internal-contract
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Verify dependency-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --short | awk '{print $2}' | sort -u)"
+          echo "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(package.json|package-lock.json)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files changed:"
+            echo "$unexpected"
+            exit 1
+          fi
+          test -n "$changed"
+
+      - name: Promote dependency security update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package.json package-lock.json
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden production dependency security"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
