@@ -1,0 +1,174 @@
+name: Dev Dependency Security Remediation Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dependency-dev-security-remediation-temp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-dependency-security-remediation-main
+  cancel-in-progress: false
+
+jobs:
+  remediate-and-promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact baseline
+        run: npm ci
+
+      - name: Convert Account test constructor to Miniflare v5 shape
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'workers/account-permissions-worker.test.mjs';
+          let s = fs.readFileSync(p, 'utf8');
+          const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: "2026-06-24",\n    d1Databases: { CORE_DB: "core-test" },\n  });`;
+          const next = `  const script = 'export default { fetch(){ return new Response("ok") } }';\n  const mf = new Miniflare({\n    workers: [\n      {\n        config: {\n          type: "worker",\n          name: "core-test-worker",\n          compatibilityDate: "2026-06-24",\n          manifest: {\n            mainModule: "script-0.mjs",\n            modulesRoot: process.cwd(),\n            modules: {\n              "script-0.mjs": { type: "esm", contents: script },\n            },\n          },\n          env: {\n            CORE_DB: { type: "d1", id: "core-test" },\n          },\n          exports: {},\n        },\n        dev: { rootPath: process.cwd() },\n      },\n    ],\n  });`;
+          if (!s.includes(old)) throw new Error('expected account Miniflare v4 block missing');
+          fs.writeFileSync(p, s.replace(old, next));
+          NODE
+
+      - name: Convert HR test constructor to Miniflare v5 shape
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'workers/hr-core-worker.test.mjs';
+          let s = fs.readFileSync(p, 'utf8');
+          const old = `  const mf = new Miniflare({\n    modules: true,\n    script: 'export default { fetch(){ return new Response("ok") } }',\n    compatibilityDate: '2026-06-24',\n    d1Databases: { CORE_DB: 'core-test' },\n    r2Buckets: ['FILES_BUCKET'],\n  });`;
+          const next = `  const script = 'export default { fetch(){ return new Response("ok") } }';\n  const mf = new Miniflare({\n    workers: [\n      {\n        config: {\n          type: "worker",\n          name: "core-test-worker",\n          compatibilityDate: "2026-06-24",\n          manifest: {\n            mainModule: "script-0.mjs",\n            modulesRoot: process.cwd(),\n            modules: {\n              "script-0.mjs": { type: "esm", contents: script },\n            },\n          },\n          env: {\n            CORE_DB: { type: "d1", id: "core-test" },\n            FILES_BUCKET: { type: "r2", name: "FILES_BUCKET" },\n          },\n          exports: {},\n        },\n        dev: { rootPath: process.cwd() },\n      },\n    ],\n  });`;
+          if (!s.includes(old)) throw new Error('expected HR Miniflare v4 block missing');
+          fs.writeFileSync(p, s.replace(old, next));
+          NODE
+
+      - name: Decouple Vercel request types
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const p = 'api/r2-presign.ts';
+          let s = fs.readFileSync(p, 'utf8');
+          const old = 'import type { VercelRequest, VercelResponse } from "@vercel/node";';
+          if (!s.includes(old)) throw new Error('expected @vercel/node type import missing');
+          const replacement = `type VercelRequest = {\n  method?: string;\n  body?: any;\n};\n\ntype VercelResponse = {\n  setHeader(name: string, value: string): void;\n  status(code: number): VercelResponse;\n  json(body: unknown): VercelResponse;\n  end(): VercelResponse;\n};`;
+          fs.writeFileSync(p, s.replace(old, replacement));
+          NODE
+
+      - name: Update dev dependency parents
+        shell: bash
+        run: |
+          npm uninstall --save-dev --package-lock-only @vercel/node
+          npm install --save-dev --package-lock-only wrangler@4.122.0
+          npm install --save-dev --save-exact --package-lock-only miniflare@5.20260811.0-alpha
+          npm install --save-dev --package-lock-only tsx@4.23.1
+          npm pkg set 'devDependencies.vite=npm:rolldown-vite@7.3.1'
+          npm pkg set 'overrides.vite=npm:rolldown-vite@7.3.1'
+          npm install --package-lock-only
+          npm audit fix --package-lock-only || true
+
+      - name: Reinstall proposed lockfile from scratch
+        shell: bash
+        run: |
+          rm -rf node_modules
+          npm ci
+
+      - name: Full audit must be zero
+        run: npm audit --audit-level=low
+
+      - name: Production audit must remain zero
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Account permission Miniflare v5 proof
+        run: node --test workers/account-permissions-worker.test.mjs
+
+      - name: HR D1 and R2 Miniflare v5 proof
+        run: node --test workers/hr-core-worker.test.mjs
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Dashboard V2 contracts
+        run: npm run check:dashboard-v2
+
+      - name: Internal booking contract
+        run: npm run check:booking-internal-contract
+
+      - name: No legacy booking runtime guard
+        run: node scripts/check-no-legacy-booking-runtime.mjs
+
+      - name: Booking runtime audit
+        run: node scripts/audit-legacy-booking-runtime.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Core worker tests
+        run: npm run test:core:worker
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Frontend Core migration tests
+        run: npm run test:frontend:core
+
+      - name: Frontend Core migration guard
+        run: npm run check:frontend-core-migration
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Verify exact allowed diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='^(api/r2-presign\.ts|package\.json|package-lock\.json|workers/account-permissions-worker\.test\.mjs|workers/hr-core-worker\.test\.mjs)$'
+          changed="$(git status --short | awk '{print $2}' | sort -u)"
+          echo "$changed"
+          test -n "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files changed:"
+            echo "$unexpected"
+            exit 1
+          fi
+          count="$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$count" -ne 5 ]; then
+            echo "Expected exactly 5 changed files, found $count"
+            exit 1
+          fi
+
+      - name: Promote zero-vulnerability dependency update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            api/r2-presign.ts \
+            package.json \
+            package-lock.json \
+            workers/account-permissions-worker.test.mjs \
+            workers/hr-core-worker.test.mjs
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Eliminate remaining dev dependency vulnerabilities"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
