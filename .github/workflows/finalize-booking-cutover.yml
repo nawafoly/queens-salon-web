@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/finalize-booking-cutover.yml"
+      - "scripts/check-no-legacy-booking-runtime.mjs"
+      - "scripts/audit-legacy-booking-runtime.mjs"
+      - "scripts/finalize-booking-runtime-cutover.mjs"
+      - "scripts/check-booking-shift-end-boundary.mjs"
   workflow_dispatch:
 
 permissions:
