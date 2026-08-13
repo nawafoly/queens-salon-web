@@ -7,6 +7,10 @@ import {
   documentDocxSettingsXml,
   documentDocxStylesXml,
 } from "../core/documentDocxPrimitives";
+import {
+  documentDocxWatermarkHeaderXml,
+  documentDocxWatermarkRelationship,
+} from "../core/documentDocxWatermark";
 import { zipStore, xmlEscape } from "../core/officeZip";
 import { buildLeaveRequestDocumentData } from "./leaveRequestModel";
 import { LEAVE_DOCUMENT_TEXT } from "./leaveRequestDocumentSpec";
@@ -32,4 +36,8 @@ function documentXml(body: string, hasLogo: boolean) {
 
 function footerXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr>${docxRun(LEAVE_DOCUMENT_TEXT.copyNote, { size: 15, color: "777777" })}</w:p></w:ftr>`;
+}
+
+function contentTypes(hasImages: boolean, hasHeader: boolean) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${hasImages ? '<Default Extension="png" ContentType="image/png"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${hasHeader ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ""}<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
 }
