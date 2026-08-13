@@ -772,7 +772,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const quickActions = [
     { label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint },
     { label: "طلب إجازة", href: "/employee/leave", icon: faCalendarDays },
-    { label: "طلب استئذان", href: "/employee/messages", icon: faPaperPlane },
+    { label: "طلب استئذان", href: "/employee/permission", icon: faPaperPlane },
   ];
 
   const hrInfoItems = [

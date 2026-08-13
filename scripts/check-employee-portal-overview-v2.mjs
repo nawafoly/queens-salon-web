@@ -5,11 +5,16 @@ const root = resolve(process.cwd());
 const portalPath = resolve(root, "src/pages/EmployeePortal.tsx");
 const overviewPath = resolve(root, "src/pages/hr/EmployeeOverview.tsx");
 const cssPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview.css");
+const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const errors = [];
 
 for (const path of [portalPath, overviewPath, cssPath, entryPath]) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);
+}
+
+if (existsSync(microFixPath)) {
+  errors.push("Employee overview must not use a parallel micro-fix stylesheet; fold final rules into employee-portal-overview.css.");
 }
 
 if (!errors.length) {
@@ -71,6 +76,12 @@ if (!errors.length) {
   }
   if (!entry.includes('@import "./pages/employee-portal-overview.css";')) {
     errors.push("Dashboard V2 entry does not import employee-portal-overview.css.");
+  }
+  if (entry.includes('\@import "./pages/employee-portal-overview-micro-fixes.css";'.slice(1))) {
+    errors.push("Dashboard V2 entry still imports the retired employee overview micro-fix stylesheet.");
+  }
+  if (!css.includes("Final integrated refinements: punch contrast + avatar framing.")) {
+    errors.push("Canonical employee overview stylesheet is missing the integrated final refinements.");
   }
 }
 
