@@ -9,9 +9,11 @@ const attendanceCssPath = resolve(root, "src/styles/dashboard-v2/components/empl
 const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const mobilePath = resolve(root, "src/styles/EmployeePortalMobileNav.css");
+const madanThemePath = resolve(root, "src/styles/MadanAdminTheme.css");
+const dashboardSkinPath = resolve(root, "src/styles/DashboardSkin.css");
 const errors = [];
 
-for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath, mobilePath]) {
+for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath, mobilePath, madanThemePath, dashboardSkinPath]) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);
 }
 
@@ -26,6 +28,8 @@ if (!errors.length) {
   const attendanceCss = readFileSync(attendanceCssPath, "utf8");
   const entry = readFileSync(entryPath, "utf8");
   const mobile = readFileSync(mobilePath, "utf8");
+  const madanTheme = readFileSync(madanThemePath, "utf8");
+  const dashboardSkin = readFileSync(dashboardSkinPath, "utf8");
 
   if (!/employee-portal madan-employee-portal dashboard-v2/.test(portal)) {
     errors.push("EmployeePortal.tsx is not rooted in Dashboard V2 tokens.");
@@ -45,6 +49,13 @@ if (!errors.length) {
   }
   if (/className="employee-panel employee-overview/.test(overview)) {
     errors.push("EmployeeOverview.tsx has regressed to the legacy overview root.");
+  }
+
+  const kpiIndex = overview.indexOf('className="employee-overview-kpis"');
+  const attendanceCardIndex = overview.indexOf("employee-attendance-card employee-attendance-card--");
+  const targetCardIndex = overview.indexOf("employee-target-home-card employee-target-home-card--");
+  if (!(kpiIndex >= 0 && attendanceCardIndex > kpiIndex && targetCardIndex > attendanceCardIndex)) {
+    errors.push("Employee overview DOM order must be KPI summary, attendance card, then target card.");
   }
 
   const behaviorMarkers = [
@@ -110,8 +121,18 @@ if (!errors.length) {
     if (!overview.includes(marker)) errors.push(`Employee attendance compact markup missing: ${marker}`);
   }
 
-  if (mobile.includes("EMPLOYEE OVERVIEW APP UI START") || mobile.includes("EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START")) {
-    errors.push("EmployeePortalMobileNav.css still contains legacy employee overview/attendance presentation.");
+  const forbiddenMobileMarkers = [
+    "EMPLOYEE OVERVIEW APP UI START",
+    "EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START",
+    "EMPLOYEE ATTENDANCE RECORDS TWO COLUMN FIX",
+    "EMPLOYEE OVERVIEW KPI",
+    "EMPLOYEE INTRO NAME FORCE WHITE",
+    "employee-panel.employee-overview",
+  ];
+  for (const marker of forbiddenMobileMarkers) {
+    if (mobile.includes(marker)) {
+      errors.push(`EmployeePortalMobileNav.css still contains legacy employee overview/attendance marker: ${marker}`);
+    }
   }
 
   const referenceAttendanceCssMarkers = [
@@ -130,6 +151,9 @@ if (!errors.length) {
   }
   if (/!important\b/i.test(css)) {
     errors.push("employee-portal-overview.css contains !important.");
+  }
+  if (/(^|[{\s;])order\s*:/im.test(css)) {
+    errors.push("employee-portal-overview.css must not reorder overview sections with CSS order.");
   }
   if (/#[0-9a-f]{3,8}\b/i.test(attendanceCss)) {
     errors.push("employee-attendance-card.css contains a raw hex color.");
@@ -167,6 +191,42 @@ if (!errors.length) {
   ];
   for (const marker of attendanceCssMarkers) {
     if (!attendanceCss.includes(marker)) errors.push(`Canonical employee attendance stylesheet is missing rule: ${marker}`);
+  }
+
+  const forbiddenMadanOverviewSelectors = [
+    ".employee-portal.madan-employee-portal .employee-app-intro",
+    ".employee-portal.madan-employee-portal .employee-status-pill",
+    ".employee-portal.madan-employee-portal .employee-overview-block",
+    ".employee-portal.madan-employee-portal .employee-shortcut-card",
+    ".employee-portal.madan-employee-portal .employee-hr-info-row",
+    ".employee-portal.madan-employee-portal .employee-request-row",
+    ".employee-portal.madan-employee-portal .employee-balance-card",
+    ".employee-portal.madan-employee-portal .employee-attendance-records",
+  ];
+  for (const selector of forbiddenMadanOverviewSelectors) {
+    if (madanTheme.includes(selector)) {
+      errors.push(`MadanAdminTheme.css still targets employee overview V2 directly: ${selector}`);
+    }
+  }
+
+  const employeePortalWhereBlocks = [...dashboardSkin.matchAll(/\.employee-portal\s*:where\(([\s\S]*?)\)\s*\{/g)]
+    .map((match) => match[1]);
+  const forbiddenDashboardSkinWhereSelectors = [
+    ".employee-app-intro",
+    ".employee-section-title",
+    ".employee-block-head",
+    ".employee-attendance-side",
+    ".employee-attendance-status",
+    ".employee-attendance-records",
+    ".employee-attendance-note",
+    ".employee-empty-box",
+    ".employee-request-row",
+    ".employee-balance-card",
+  ];
+  for (const selector of forbiddenDashboardSkinWhereSelectors) {
+    if (employeePortalWhereBlocks.some((block) => block.includes(selector))) {
+      errors.push(`DashboardSkin.css still force-colors employee overview V2 via .employee-portal :where(): ${selector}`);
+    }
   }
 }
 

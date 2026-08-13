@@ -1110,63 +1110,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </Link>
       </section>
 
-      {canViewOwnTarget ? (
-      <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label="تارقتي">
-        <div className="employee-target-home-card__head">
-          <span><FontAwesomeIcon icon={faChartLine} /></span>
-          <div>
-            <small>تارقتي</small>
-            <h2>تقدم المبيعات والبونص</h2>
-          </div>
-          <Link to="/employee/targets">عرض التفاصيل</Link>
-        </div>
-
-        {employeeTargetLoading ? (
-          <p className="employee-target-home-card__message">جاري تحميل تارقتك...</p>
-        ) : employeeTargetError ? (
-          <p className="employee-target-home-card__message">{employeeTargetError}</p>
-        ) : !targetHasPlan ? (
-          <p className="employee-target-home-card__message">لا توجد خطة تارقت مخصصة لهذه الدورة حتى الآن.</p>
-        ) : (
-          <>
-            <div className="employee-target-home-card__numbers">
-              <div>
-                <span>المبيعات المحصلة</span>
-                <strong>{formatTargetMoney(targetSales)}</strong>
-              </div>
-              <div>
-                <span>التارقت</span>
-                <strong>{formatTargetMoney(targetAmount)}</strong>
-              </div>
-              <div>
-                <span>البونص الحالي</span>
-                <strong>{formatTargetMoney(targetSummary?.earnedBonusAmount)}</strong>
-              </div>
-            </div>
-
-            <div className="employee-target-home-progress">
-              <span style={{ width: `${Math.min(100, targetProgress * 100)}%` }} />
-            </div>
-
-            <div className="employee-target-home-card__foot">
-              <strong>{formatTargetPercent(targetProgress)}</strong>
-              <span>{targetAchievedTier?.tierName || "لم تتحقق شريحة بعد"}</span>
-              <small>
-                {targetNextTier
-                  ? `متبقي ${formatTargetMoney(targetRemaining)} للحصول على بونص ${formatTargetMoney(targetNextTier.bonusAmount)}`
-                  : "تم تحقيق أعلى شريحة في الخطة الحالية."}
-              </small>
-            </div>
-
-            <div className="employee-target-home-card__updated">
-              <span>{targetClosed ? "دورة الراتب مغلقة" : "دورة الراتب الحالية"}</span>
-              <span>آخر تحديث: {formatTargetUpdatedAt(employeeTarget?.lastUpdatedAt || targetSummary?.lastUpdatedAt)}</span>
-            </div>
-          </>
-        )}
-      </section>
-      ) : null}
-
       {canViewAttendance ? (
       <section className={`employee-attendance-card employee-attendance-card--${attendanceStatus}`} data-status={attendanceStatus}>
         <div className="employee-section-title">
@@ -1242,6 +1185,63 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             </div>
           </div>
         ) : null}
+      </section>
+      ) : null}
+
+      {canViewOwnTarget ? (
+      <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label="تارقتي">
+        <div className="employee-target-home-card__head">
+          <span><FontAwesomeIcon icon={faChartLine} /></span>
+          <div>
+            <small>تارقتي</small>
+            <h2>تقدم المبيعات والبونص</h2>
+          </div>
+          <Link to="/employee/targets">عرض التفاصيل</Link>
+        </div>
+
+        {employeeTargetLoading ? (
+          <p className="employee-target-home-card__message">جاري تحميل تارقتك...</p>
+        ) : employeeTargetError ? (
+          <p className="employee-target-home-card__message">{employeeTargetError}</p>
+        ) : !targetHasPlan ? (
+          <p className="employee-target-home-card__message">لا توجد خطة تارقت مخصصة لهذه الدورة حتى الآن.</p>
+        ) : (
+          <>
+            <div className="employee-target-home-card__numbers">
+              <div>
+                <span>المبيعات المحصلة</span>
+                <strong>{formatTargetMoney(targetSales)}</strong>
+              </div>
+              <div>
+                <span>التارقت</span>
+                <strong>{formatTargetMoney(targetAmount)}</strong>
+              </div>
+              <div>
+                <span>البونص الحالي</span>
+                <strong>{formatTargetMoney(targetSummary?.earnedBonusAmount)}</strong>
+              </div>
+            </div>
+
+            <div className="employee-target-home-progress">
+              <span style={{ width: `${Math.min(100, targetProgress * 100)}%` }} />
+            </div>
+
+            <div className="employee-target-home-card__foot">
+              <strong>{formatTargetPercent(targetProgress)}</strong>
+              <span>{targetAchievedTier?.tierName || "لم تتحقق شريحة بعد"}</span>
+              <small>
+                {targetNextTier
+                  ? `متبقي ${formatTargetMoney(targetRemaining)} للحصول على بونص ${formatTargetMoney(targetNextTier.bonusAmount)}`
+                  : "تم تحقيق أعلى شريحة في الخطة الحالية."}
+              </small>
+            </div>
+
+            <div className="employee-target-home-card__updated">
+              <span>{targetClosed ? "دورة الراتب مغلقة" : "دورة الراتب الحالية"}</span>
+              <span>آخر تحديث: {formatTargetUpdatedAt(employeeTarget?.lastUpdatedAt || targetSummary?.lastUpdatedAt)}</span>
+            </div>
+          </>
+        )}
       </section>
       ) : null}
 

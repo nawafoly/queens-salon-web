@@ -20,34 +20,6 @@
   margin-inline: auto;
 }
 
-.dashboard-v2 .employee-overview-v2-page > .employee-app-intro {
-  order: 1;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-overview-runtime-alert {
-  order: 2;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-overview-kpis {
-  order: 3;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-attendance-card {
-  order: 4;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-target-home-card {
-  order: 5;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-overview-block {
-  order: 6;
-}
-
-.dashboard-v2 .employee-overview-v2-page > .employee-overview-bottom-grid {
-  order: 7;
-}
-
 .dashboard-v2 .employee-overview-v2-page .employee-overview-runtime-alert {
   display: grid;
   gap: var(--dsv2-space-1);
