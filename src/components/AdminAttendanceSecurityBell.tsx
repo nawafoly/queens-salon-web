@@ -10,7 +10,6 @@ import {
   type AttendanceSecurityEvent,
   type AttendanceWorkerRecord,
 } from "../services/attendanceWorkerService";
-import "../styles/AdminAttendanceSecurityBell.css";
 
 const POLL_INTERVAL_MS = 15_000;
 const OUTSIDE_ZONE_BURST_WINDOW_MS = 10 * 60_000;
@@ -76,8 +75,6 @@ function collapseDirectSecurityEvents(
       actionable = true;
     } else if (event.eventType === "device_changed") {
       const record = event.recordId ? recordsById.get(event.recordId) : undefined;
-      // لا نزعج الإدارة بتغيير جهاز ناتج عن محاولة مرفوضة متكررة.
-      // نرفع التحذير هنا فقط إذا نجحت البصمة فعليًا من الجهاز المختلف.
       actionable = record?.result === "allowed";
     }
 
@@ -289,33 +286,42 @@ export default function AdminAttendanceSecurityBell() {
           title="تنبيهات أمان البصمة"
         >
           <FontAwesomeIcon icon={faBell} />
-          <span className="admin-attendance-security-bell__label">أمان</span>
-          {notifications.length ? (
-            <em className="admin-attendance-security-bell__badge">
-              {notifications.length > 99 ? "99+" : notifications.length}
-            </em>
-          ) : null}
+          <span>أمان{notifications.length ? ` (${notifications.length})` : ""}</span>
         </button>
       </div>
 
       {open && typeof document !== "undefined" ? createPortal(
-        <section className="admin-attendance-security-popover" aria-label="تنبيهات أمان البصمة">
-          <header>
+        <section
+          className="admin-attendance-security-popover"
+          aria-label="تنبيهات أمان البصمة"
+          dir="rtl"
+          style={{
+            position: "fixed",
+            zIndex: 10050,
+            top: 72,
+            right: 18,
+            width: "min(410px, calc(100vw - 24px))",
+            maxHeight: "calc(100vh - 96px)",
+            overflow: "auto",
+            border: "1px solid rgba(15,23,42,.12)",
+            borderRadius: 18,
+            background: "#fff",
+            color: "#111827",
+            boxShadow: "0 24px 70px rgba(15,23,42,.22)",
+            padding: 14,
+          }}
+        >
+          <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
             <div>
-              <small>إشعارات الإدارة</small>
-              <strong>أمان البصمة</strong>
+              <small style={{ display: "block", color: "#7b8496" }}>إشعارات الإدارة</small>
+              <strong>أمان البصمة · {notifications.length} مفتوحة · {criticalCount} حرجة</strong>
             </div>
             <button type="button" onClick={() => void refresh()} disabled={loading}>
               {loading ? "جاري التحديث..." : "تحديث"}
             </button>
           </header>
 
-          <div className="admin-attendance-security-popover__summary">
-            <span>الحالات المفتوحة <strong>{notifications.length}</strong></span>
-            <span>حرجة <strong>{criticalCount}</strong></span>
-          </div>
-
-          <div className="admin-attendance-security-popover__list">
+          <div style={{ display: "grid", gap: 8 }}>
             {loadError && !notifications.length ? (
               <p>تعذر تحديث تنبيهات أمان البصمة الآن.</p>
             ) : notifications.length ? (
@@ -323,16 +329,25 @@ export default function AdminAttendanceSecurityBell() {
                 <button
                   type="button"
                   key={item.id}
-                  className={`admin-attendance-security-popover__item is-${item.severity}`}
                   onClick={() => openSecurityCenter(item.eventIds[0])}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    width: "100%",
+                    padding: 12,
+                    border: `1px solid ${item.severity === "critical" ? "rgba(180,35,66,.24)" : "rgba(183,121,31,.24)"}`,
+                    borderRadius: 12,
+                    background: item.severity === "critical" ? "#fff5f7" : "#fffaf0",
+                    color: "#172033",
+                    fontFamily: "inherit",
+                    textAlign: "right",
+                    cursor: "pointer",
+                  }}
                 >
-                  <span className="admin-attendance-security-popover__dot" />
-                  <span className="admin-attendance-security-popover__copy">
-                    <strong>{item.title}</strong>
-                    <b>{item.employeeName}</b>
-                    <small>{item.body}</small>
-                    <time>{formatNotificationTime(item.createdAt)}</time>
-                  </span>
+                  <strong>{item.title}</strong>
+                  <b>{item.employeeName}</b>
+                  <small style={{ color: "#667085", lineHeight: 1.6 }}>{item.body}</small>
+                  <time style={{ color: "#98a2b3", fontSize: ".68rem" }}>{formatNotificationTime(item.createdAt)}</time>
                 </button>
               ))
             ) : (
@@ -340,11 +355,13 @@ export default function AdminAttendanceSecurityBell() {
             )}
           </div>
 
-          <footer>
+          <footer style={{ display: "grid", gap: 6, marginTop: 12 }}>
             <button type="button" onClick={() => openSecurityCenter()}>
               فتح مركز حماية البصمة
             </button>
-            <small>يبقى التنبيه مفتوحًا حتى تتم معالجته أو تجاهله من مركز الحماية.</small>
+            <small style={{ color: "#8b93a3", textAlign: "center" }}>
+              يبقى التنبيه مفتوحًا حتى تتم معالجته أو تجاهله من مركز الحماية.
+            </small>
           </footer>
         </section>,
         document.body
