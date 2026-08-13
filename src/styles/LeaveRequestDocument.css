@@ -265,11 +265,41 @@
 
 .leave-request-form-shell {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 14px;
+  overflow-x: hidden;
 }
 
 .leave-request-form-shell .employee-request-field--wide {
   margin: 0;
+}
+
+/* Editable request forms are responsive UI, not literal A4 sheets.
+   The real 210mm × 297mm dimensions remain enforced only by @media print. */
+.leave-request-form-shell .document-a4-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: clamp(20px, 3vw, 38px);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.employee-request-modal__panel:has(.leave-request-form-shell) form {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+@media (min-width: 821px) {
+  .employee-request-modal__panel:has(.leave-request-form-shell) {
+    width: min(1040px, calc(100vw - 48px));
+    max-height: 92vh;
+    overflow-x: hidden;
+  }
 }
 
 @media (max-width: 760px) {
@@ -297,5 +327,9 @@
 
   .leave-doc-checkbox {
     justify-content: flex-start;
+  }
+
+  .leave-request-form-shell .document-a4-page {
+    padding: 16px 12px;
   }
 }
