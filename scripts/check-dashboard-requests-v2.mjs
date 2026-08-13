@@ -30,8 +30,9 @@ requireText(page, "DashboardEmptyStateV2", "Admin request empty states must use 
 requireText(page, "DashboardSkeletonV2", "Admin request loading states must use DashboardSkeletonV2.");
 requireText(page, 'className="employee-request-action-modal dashboard-v2"', "Portal action modal must carry dashboard-v2 scope.");
 
-const listStart = page.lastIndexOf("return (\n    <div className=\"dsv2-page admin-employee-requests-page");
-const listSection = listStart >= 0 ? page.slice(listStart) : "";
+const normalizedPage = page.replace(/\r\n/g, "\n");
+const listStart = normalizedPage.lastIndexOf("return (\n    <div className=\"dsv2-page admin-employee-requests-page");
+const listSection = listStart >= 0 ? normalizedPage.slice(listStart) : "";
 if (!listSection) failures.push("Could not isolate the admin requests list branch.");
 rejectText(listSection, "<select", "Native select remains in the admin requests list branch.");
 rejectText(listSection, 'type="date"', "Native date input remains in the admin requests list branch.");

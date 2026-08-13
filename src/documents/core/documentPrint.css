@@ -1,0 +1,122 @@
+.document-a4-page {
+  position: relative;
+  width: 210mm;
+  min-height: 297mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 13mm 12mm 11mm;
+  box-sizing: border-box;
+  direction: rtl;
+  color: #111;
+  background: #fff;
+  border: 1px solid #111;
+  font-family: Tahoma, Arial, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.58;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.document-a4-page *,
+.document-a4-page *::before,
+.document-a4-page *::after {
+  box-sizing: border-box;
+}
+
+.document-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.document-section h3 {
+  margin: 0 0 3mm;
+  color: #111;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.document-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3mm 6mm;
+  margin: 5mm 0;
+}
+
+.document-field,
+.document-long-text {
+  display: grid;
+  gap: 1.5mm;
+}
+
+.document-field {
+  min-height: 13mm;
+  padding: 1mm 1mm 2mm;
+  border-bottom: 1px solid #222;
+}
+
+.document-field span,
+.document-long-text span {
+  color: #444;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.document-field strong {
+  color: #111;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.document-long-text {
+  margin: 4mm 0;
+}
+
+.document-long-text p {
+  min-height: 10mm;
+  margin: 0;
+  padding: 1.5mm 1mm;
+  border-bottom: 1px solid #222;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .document-a4-page {
+    width: 100%;
+    min-height: 0;
+    padding: 18px 14px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .document-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .document-a4-page {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 13mm 12mm 11mm !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+}

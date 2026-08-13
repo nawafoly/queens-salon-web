@@ -1,63 +1,41 @@
+import malikatLogo from "../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "./employeeRequests";
-import {
-  EMPLOYEE_REQUEST_STATUS_LABELS,
-} from "./employeeRequests";
 import { exportReportToExcelV2 } from "./exports-v2/excel";
-import type { ExportV2Report } from "./exports-v2/types";
-import { LEAVE_REQUEST_ADDRESSEE, leaveDays, leaveTypeLabel } from "../components/hr/LeaveRequestDocument";
+import { buildPdfFromJpegPages } from "./exports-v2/pdf";
+import type { ExportV2Report, ExportV2Value } from "./exports-v2/types";
+import { downloadExportV2Blob } from "./exports-v2/download";
+import { zipStore, xmlEscape } from "../documents/core/officeZip";
+import {
+  buildLeaveRequestDocumentData,
+  formatDocumentDateTime,
+  safeDocumentText,
+} from "../documents/leave/leaveRequestModel";
+import type { LeaveRequestDocumentData, LeaveRequestDocumentSignature } from "../documents/leave/leaveRequestModel";
+
+type LeaveExcelRow = Record<string, ExportV2Value> & {
+  section: string;
+  field: string;
+  value: string | number;
+};
+
+type DocxImage = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  bytes: Uint8Array;
+};
+
+const A4_PORTRAIT_POINTS = { width: 595.28, height: 841.89 };
+const PDF_CANVAS = { width: 1131, height: 1600, margin: 68 };
+const FONT_FAMILY = 'Tahoma, Arial, "Segoe UI", sans-serif';
 
 function sanitizeFilePart(value: unknown) {
   return String(value || "")
     .trim()
     .replace(/[\\/:*?"<>|]+/g, "-")
     .replace(/\s+/g, "-")
-    .slice(0, 80) || "طلب-اجازة";
+    .slice(0, 80) || "leave-request";
 }
-
-function formatDate(value: unknown) {
-  const text = String(value || "");
-  if (!text) return "";
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00`) : new Date(text);
-  if (!Number.isFinite(date.getTime())) return text;
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
-    timeZone: "Asia/Riyadh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function formatDateTime(value: unknown) {
-  const date = new Date(String(value || ""));
-  if (!Number.isFinite(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
-    timeZone: "Asia/Riyadh",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function decisionData(request: EmployeeRequest) {
-  const event = [...(request.events || [])]
-    .reverse()
-    .find((item) => ["approve", "approved", "reject", "rejected"].includes(String(item.event_type || "").toLowerCase()));
-  const approved = ["approved", "executing", "completed"].includes(request.status) ||
-    ["approve", "approved"].includes(String(event?.event_type || "").toLowerCase());
-  const rejected = request.status === "rejected" ||
-    ["reject", "rejected"].includes(String(event?.event_type || "").toLowerCase());
-  return {
-    decision: approved ? "مع الموافقة" : rejected ? "أخرى / مرفوض" : "قيد المراجعة",
-    actor: event?.actor_name || request.assigned_to_name || "لم يحدد بعد",
-    note: request.rejection_reason || request.decision_note || event?.note || "—",
-    date: event?.created_at || request.approved_at || request.rejected_at || "",
-  };
-}
-
-type LeaveExcelRow = {
-  section: string;
-  field: string;
-  value: string | number;
-};
 
 function leaveDocumentRoot() {
   return document.querySelector<HTMLElement>(".leave-request-print-root");
@@ -80,13 +58,13 @@ function waitForImages(doc: Document) {
   }));
 }
 
-const ISOLATED_PRINT_CSS = `
-@page { size: A4 portrait; margin: 5mm; }
+const PRINT_ISOLATION_CSS = `
+@page { size: A4 portrait; margin: 0; }
 html, body {
   margin: 0 !important;
   padding: 0 !important;
-  width: 100% !important;
-  min-height: 0 !important;
+  width: 210mm !important;
+  min-height: 297mm !important;
   background: #fff !important;
   overflow: visible !important;
 }
@@ -94,62 +72,29 @@ body {
   direction: rtl !important;
   display: block !important;
 }
-.leave-request-print-root {
-  position: static !important;
-  display: block !important;
-  width: 198mm !important;
-  min-height: 0 !important;
-  height: auto !important;
-  margin: 0 auto !important;
-  padding: 6mm 8mm 5mm !important;
-  border: 1px solid #111 !important;
+.leave-request-print-root,
+.document-a4-page {
+  width: 210mm !important;
+  min-height: 297mm !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 13mm 12mm 11mm !important;
+  border: 0 !important;
   box-shadow: none !important;
   background: #fff !important;
   color: #000 !important;
   overflow: visible !important;
+  transform: none !important;
   page-break-inside: avoid !important;
   break-inside: avoid-page !important;
-  font-size: 9.5px !important;
-  line-height: 1.35 !important;
 }
-.leave-request-print-root .leave-doc-word-export { display: none !important; }
-.leave-request-print-root .leave-doc-header { min-height: 18mm !important; margin-bottom: 2.5mm !important; padding-bottom: 1.5mm !important; }
-.leave-request-print-root .leave-doc-header h2 { margin-top: 1mm !important; font-size: 16px !important; }
-.leave-request-print-root .leave-doc-brand { min-width: 31mm !important; padding-top: 0 !important; }
-.leave-request-print-root .leave-doc-brand img { width: 31mm !important; max-height: 15mm !important; }
-.leave-request-print-root .leave-doc-number { margin: -1mm 0 1.5mm !important; font-size: 8.5px !important; }
-.leave-request-print-root .leave-doc-type-row { gap: 2px !important; margin-bottom: 2mm !important; }
-.leave-request-print-root .leave-doc-checkbox { padding: 1px !important; gap: 4px !important; }
-.leave-request-print-root .leave-doc-checkbox > span { width: 14px !important; height: 14px !important; flex-basis: 14px !important; border-width: 1.2px !important; font-size: 9px !important; }
-.leave-request-print-root .leave-doc-checkbox strong { font-size: 9.5px !important; }
-.leave-request-print-root .leave-doc-letter { margin-bottom: 1.5mm !important; font-size: 9.5px !important; }
-.leave-request-print-root .leave-doc-letter p { margin: 0 !important; }
-.leave-request-print-root .leave-doc-greeting { margin-top: 1.2mm !important; margin-bottom: 1mm !important; }
-.leave-request-print-root .leave-doc-inline-value { min-width: 16mm !important; }
-.leave-request-print-root .leave-doc-fields-grid { gap: 3px 8px !important; margin: 2mm 0 !important; }
-.leave-request-print-root .leave-doc-static-field { min-height: 8mm !important; padding: 0 1px 2px !important; }
-.leave-request-print-root .leave-doc-static-field > span,
-.leave-request-print-root .leave-doc-print-text > span,
-.leave-request-print-root .leave-doc-signature-row span { font-size: 7.5px !important; }
-.leave-request-print-root .leave-doc-static-field strong,
-.leave-request-print-root .leave-doc-signature-row strong { font-size: 9.5px !important; }
-.leave-request-print-root .leave-doc-print-text { margin: 1.5mm 0 !important; }
-.leave-request-print-root .leave-doc-print-text p { min-height: 5mm !important; padding: 1px !important; font-size: 9px !important; }
-.leave-request-print-root .leave-doc-signature-row { gap: 7mm !important; margin-top: 2mm !important; }
-.leave-request-print-root .leave-doc-signature-row > div,
-.leave-request-print-root .signature-capture-field { min-height: 8mm !important; gap: 0 !important; }
-.leave-request-print-root .leave-doc-signature-image { max-width: 48mm !important; max-height: 13mm !important; object-fit: contain !important; }
-.leave-request-print-root .leave-doc-signature-row small { font-size: 7px !important; }
-.leave-request-print-root .leave-doc-manager-opinion { margin-top: 2.5mm !important; padding-top: 2mm !important; }
-.leave-request-print-root .leave-doc-manager-opinion h3,
-.leave-request-print-root .leave-doc-admin-block h3 { margin-bottom: 1mm !important; font-size: 10.5px !important; }
-.leave-request-print-root .leave-doc-manager-opinion p { margin: 0 !important; font-size: 8.5px !important; }
-.leave-request-print-root .leave-doc-admin-block { margin-top: 2mm !important; padding-top: 1.5mm !important; }
-.leave-request-print-root .leave-doc-admin-options { gap: 4px !important; margin: .5mm 0 1mm !important; }
-.leave-request-print-root .leave-doc-admin-footer { gap: 8mm !important; margin-top: 2mm !important; font-size: 8px !important; }
-.leave-request-print-root .leave-doc-admin-footer span { min-height: 5mm !important; padding-top: 1px !important; }
-.leave-request-print-root .leave-doc-copy-note { margin-top: 2mm !important; font-size: 6.5px !important; }
-`;
+.leave-request-export-toolbar,
+.employee-request-action-modal,
+.dashboard-sidebar,
+.navbar,
+.bottom-nav {
+  display: none !important;
+}`;
 
 export async function printLeaveRequestDocument() {
   const source = leaveDocumentRoot();
@@ -172,24 +117,13 @@ export async function printLeaveRequestDocument() {
   }
 
   const clone = source.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(".leave-doc-word-export").forEach((node) => node.remove());
   printDoc.open();
-  printDoc.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><base href="${document.baseURI}">${currentStyleNodes()}<style>${ISOLATED_PRINT_CSS}</style></head><body>${clone.outerHTML}</body></html>`);
+  printDoc.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><base href="${document.baseURI}">${currentStyleNodes()}<style>${PRINT_ISOLATION_CSS}</style></head><body>${clone.outerHTML}</body></html>`);
   printDoc.close();
 
   await waitForImages(printDoc);
   if ("fonts" in printDoc) {
-    try { await printDoc.fonts.ready; } catch { /* continue with available fonts */ }
-  }
-
-  const printable = printDoc.querySelector<HTMLElement>(".leave-request-print-root");
-  if (printable) {
-    const a4ContentHeightPx = (287 / 25.4) * 96;
-    const renderedHeight = printable.scrollHeight;
-    if (renderedHeight > a4ContentHeightPx) {
-      const scale = Math.max(0.72, Math.min(1, a4ContentHeightPx / renderedHeight));
-      printable.style.setProperty("zoom", String(scale));
-    }
+    try { await printDoc.fonts.ready; } catch { /* keep printing with available fonts */ }
   }
 
   const printWindow = frame.contentWindow;
@@ -202,144 +136,59 @@ export async function printLeaveRequestDocument() {
   window.setTimeout(() => frame.remove(), 1800);
 }
 
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("تعذر قراءة الصورة."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function inlineImages(root: HTMLElement) {
-  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
-  await Promise.all(images.map(async (image) => {
-    const src = image.src || image.getAttribute("src") || "";
-    if (!src || src.startsWith("data:")) return;
-    try {
-      const response = await fetch(src);
-      if (!response.ok) return;
-      image.src = await blobToDataUrl(await response.blob());
-    } catch {
-      try { image.src = new URL(src, document.baseURI).href; } catch { /* keep original */ }
-    }
-  }));
-}
-
-const WORD_DOCUMENT_CSS = `
-@page Section1 { size: 595.3pt 841.9pt; margin: 22pt 26pt 22pt 26pt; }
-div.Section1 { page: Section1; }
-body { direction: rtl; font-family: Tahoma, Arial, sans-serif; color: #111; font-size: 9pt; line-height: 1.35; }
-.leave-request-print-root { width: 100%; border: 1pt solid #111; padding: 14pt 18pt; box-sizing: border-box; }
-.leave-doc-word-export { display: none; }
-.leave-doc-header { width: 100%; border-bottom: 1pt solid #222; padding-bottom: 7pt; margin-bottom: 8pt; }
-.leave-doc-header h2 { text-align: center; margin: 0; font-size: 16pt; }
-.leave-doc-brand img { width: 95pt; height: auto; filter: grayscale(100%); }
-.leave-doc-number { margin: 4pt 0; font-size: 8pt; }
-.leave-doc-type-row { width: 100%; margin: 5pt 0 8pt; text-align: center; }
-.leave-doc-checkbox { display: inline-block; width: 31%; text-align: center; border: 0; background: transparent; }
-.leave-doc-checkbox > span { display: inline-block; width: 12pt; height: 12pt; border: 1pt solid #222; text-align: center; line-height: 11pt; margin-left: 4pt; }
-.leave-doc-letter { margin: 6pt 0; }
-.leave-doc-letter p { margin: 2pt 0; }
-.leave-doc-addressee { font-weight: 700; }
-.leave-doc-fields-grid, .leave-doc-signature-row { width: 100%; }
-.leave-doc-static-field, .leave-doc-signature-row > div { display: inline-block; vertical-align: top; width: 47%; margin: 3pt 1%; padding-bottom: 3pt; border-bottom: 1pt solid #222; }
-.leave-doc-static-field span, .leave-doc-print-text span, .leave-doc-signature-row span { display: block; font-size: 7pt; color: #444; font-weight: 700; }
-.leave-doc-print-text { margin: 5pt 0; }
-.leave-doc-print-text p { margin: 1pt 0; padding: 3pt 0; border-bottom: 1pt solid #222; min-height: 14pt; white-space: pre-wrap; }
-.leave-doc-signature-image { display: block; max-width: 120pt; max-height: 38pt; object-fit: contain; }
-.leave-doc-manager-opinion, .leave-doc-admin-block { margin-top: 8pt; padding-top: 6pt; border-top: 1pt solid #222; }
-.leave-doc-manager-opinion h3, .leave-doc-admin-block h3 { margin: 0 0 4pt; font-size: 10pt; text-decoration: underline; }
-.leave-doc-manager-opinion p { margin: 1pt 0; font-size: 8pt; }
-.leave-doc-admin-options { margin: 4pt 0; }
-.leave-doc-admin-footer { width: 100%; margin-top: 8pt; text-align: center; }
-.leave-doc-admin-footer span { display: inline-block; width: 45%; border-top: 1pt solid #222; padding-top: 3pt; }
-.leave-doc-copy-note { margin-top: 7pt; font-size: 6.5pt; color: #666; }
-`;
-
-export async function exportLeaveRequestToWord(request: EmployeeRequest) {
-  const source = leaveDocumentRoot();
-  if (!source) throw new Error("لم يتم العثور على نموذج الإجازة للتصدير.");
-  const clone = source.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(".leave-doc-word-export").forEach((node) => node.remove());
-  clone.querySelectorAll<HTMLButtonElement>("button.leave-doc-checkbox").forEach((button) => {
-    const replacement = document.createElement("span");
-    replacement.className = button.className;
-    replacement.innerHTML = button.innerHTML;
-    button.replaceWith(replacement);
-  });
-  await inlineImages(clone);
-
-  const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
-  const html = `<!doctype html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40" dir="rtl">
-<head><meta charset="utf-8"><title>طلب إجازة ${request.request_number}</title><style>${WORD_DOCUMENT_CSS}</style></head>
-<body><div class="Section1">${clone.outerHTML}</div></body></html>`;
-  const blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `طلب-اجازة-${sanitizeFilePart(employeeName)}-${sanitizeFilePart(request.request_number)}.doc`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export function exportLeaveRequestToExcel(request: EmployeeRequest) {
-  const payload = request.payload || {};
-  const decision = decisionData(request);
-  const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
-  const days = leaveDays(payload.startDate, payload.endDate);
-  const statusLabel = EMPLOYEE_REQUEST_STATUS_LABELS[request.status] || request.status;
-
-  const rows: LeaveExcelRow[] = [
-    { section: "بيانات الخطاب", field: "الجهة", value: LEAVE_REQUEST_ADDRESSEE },
-    { section: "بيانات الخطاب", field: "رقم الطلب", value: request.request_number },
-    { section: "بيانات الموظفة", field: "اسم الموظفة", value: employeeName },
-    { section: "بيانات الموظفة", field: "رقم الموظفة", value: request.employee_id },
-    { section: "بيانات الإجازة", field: "نوع الإجازة", value: leaveTypeLabel(payload.leaveType) },
-    { section: "بيانات الإجازة", field: "من تاريخ", value: formatDate(payload.startDate) },
-    { section: "بيانات الإجازة", field: "إلى تاريخ", value: formatDate(payload.endDate) },
-    { section: "بيانات الإجازة", field: "عدد الأيام", value: days },
-    { section: "بيانات الإجازة", field: "سبب الإجازة", value: String(payload.reason || "—") },
-    { section: "بيانات الإجازة", field: "ملاحظات الموظفة", value: String(payload.notes || "—") },
-    { section: "التوقيع الإلكتروني", field: "تاريخ تقديم الطلب", value: formatDateTime(request.submitted_at) },
-    { section: "التوقيع الإلكتروني", field: "توقيع الموظفة", value: `توقيع بخط اليد محفوظ إلكترونيًا - ${formatDateTime(request.submitted_at)}` },
-    { section: "رأي المدير الإداري", field: "اسم المسؤول", value: decision.actor },
-    { section: "رأي المدير الإداري", field: "القرار", value: decision.decision },
-    { section: "رأي المدير الإداري", field: "ملاحظات / القرار", value: decision.note },
-    { section: "رأي المدير الإداري", field: "تاريخ القرار", value: decision.date ? formatDateTime(decision.date) : "—" },
-    { section: "رأي المدير الإداري", field: "التوقيع الإداري", value: decision.date ? `توقيع بخط اليد محفوظ إلكترونيًا - ${formatDateTime(decision.date)}` : "—" },
-    { section: "حالة الطلب", field: "الحالة", value: statusLabel },
+function leaveRows(data: LeaveRequestDocumentData): LeaveExcelRow[] {
+  return [
+    { section: "بيانات الخطاب", field: "الجهة", value: data.addressee },
+    { section: "بيانات الخطاب", field: "رقم الطلب", value: data.requestNumber },
+    { section: "بيانات الموظفة", field: "اسم الموظفة", value: data.employeeName },
+    { section: "بيانات الموظفة", field: "رقم الموظفة", value: data.employeeId },
+    { section: "بيانات الإجازة", field: "نوع الإجازة", value: data.leaveTypeLabel },
+    { section: "بيانات الإجازة", field: "من تاريخ", value: String(data.fields[0]?.value || "") },
+    { section: "بيانات الإجازة", field: "إلى تاريخ", value: String(data.fields[1]?.value || "") },
+    { section: "بيانات الإجازة", field: "عدد الأيام", value: data.leaveDays },
+    { section: "بيانات الإجازة", field: "سبب الإجازة", value: data.reason },
+    { section: "بيانات الإجازة", field: "ملاحظات الموظفة", value: data.notes },
+    { section: "التوقيع الإلكتروني", field: "تاريخ تقديم الطلب", value: data.submittedAtLabel },
+    { section: "التوقيع الإلكتروني", field: "توقيع الموظفة", value: data.employeeSignature.imageDataUrl ? `توقيع بخط اليد محفوظ إلكترونيًا - ${data.submittedAtLabel}` : data.employeeSignature.fallback },
+    { section: "رأي المدير الإداري", field: "اسم المسؤول", value: data.managerName },
+    { section: "رأي المدير الإداري", field: "الدور", value: data.managerRole },
+    { section: "رأي المدير الإداري", field: "القرار", value: data.managerDecisionLabel },
+    { section: "رأي المدير الإداري", field: "ملاحظات / القرار", value: data.managerDecisionNote },
+    { section: "رأي المدير الإداري", field: "تاريخ القرار", value: data.managerDecidedAtLabel },
+    { section: "رأي المدير الإداري", field: "التوقيع الإداري", value: data.managerSignature.imageDataUrl ? `توقيع بخط اليد محفوظ إلكترونيًا - ${data.managerDecidedAtLabel}` : data.managerSignature.fallback },
+    { section: "حالة الطلب", field: "الحالة", value: data.statusLabel },
   ];
+}
 
-  const report: ExportV2Report<LeaveExcelRow> = {
-    slug: `طلب-اجازة-${sanitizeFilePart(employeeName)}`,
-    reportCode: request.request_number,
-    title: "طلب إجازة",
-    subtitle: LEAVE_REQUEST_ADDRESSEE,
+function buildLeaveExportReport(data: LeaveRequestDocumentData): ExportV2Report<LeaveExcelRow> {
+  const rows = leaveRows(data);
+  return {
+    slug: `leave-request-${sanitizeFilePart(data.employeeName)}`,
+    reportCode: data.requestNumber,
+    title: data.title,
+    subtitle: data.addressee,
     summarySheetName: "نموذج الإجازة",
     detailsSheetName: "بيانات الطلب",
-    period: `${formatDate(payload.startDate)} - ${formatDate(payload.endDate)}`,
+    period: data.periodLabel,
     generatedAt: new Date().toISOString(),
-    generatedBy: employeeName,
+    generatedBy: data.employeeName,
     branding: {
       salonName: "ملكات",
       brandName: "Malikat",
+      logoUrl: malikatLogo,
     },
     filters: [
-      { label: "رقم الطلب", value: request.request_number },
-      { label: "الموظفة", value: employeeName },
-      { label: "الحالة", value: statusLabel },
+      { label: "رقم الطلب", value: data.requestNumber },
+      { label: "الموظفة", value: data.employeeName },
+      { label: "الحالة", value: data.statusLabel },
     ],
     summary: [
-      { label: "رقم الطلب", value: request.request_number, tone: "gold" },
-      { label: "الموظفة", value: employeeName, tone: "dark" },
-      { label: "نوع الإجازة", value: leaveTypeLabel(payload.leaveType), tone: "neutral" },
-      { label: "عدد الأيام", value: days, type: "number", tone: "gold" },
-      { label: "القرار", value: decision.decision, tone: decision.decision === "مع الموافقة" ? "success" : decision.decision.includes("مرفوض") ? "danger" : "neutral" },
-      { label: "الحالة", value: statusLabel, tone: "neutral" },
+      { label: "رقم الطلب", value: data.requestNumber, tone: "gold" },
+      { label: "الموظفة", value: data.employeeName, tone: "dark" },
+      { label: "نوع الإجازة", value: data.leaveTypeLabel, tone: "neutral" },
+      { label: "عدد الأيام", value: data.leaveDays, type: "number", tone: "gold" },
+      { label: "القرار", value: data.managerDecisionLabel, tone: data.managerDecisionLabel === "مع الموافقة" ? "success" : data.managerDecisionLabel.includes("مرفوض") ? "danger" : "neutral" },
+      { label: "الحالة", value: data.statusLabel, tone: "neutral" },
     ],
     columns: [
       { key: "section", header: "القسم", width: 22 },
@@ -353,6 +202,417 @@ export function exportLeaveRequestToExcel(request: EmployeeRequest) {
     ],
     pdfOrientation: "portrait",
   };
+}
 
-  exportReportToExcelV2(report);
+export function exportLeaveRequestToExcel(request: EmployeeRequest) {
+  exportReportToExcelV2(buildLeaveExportReport(buildLeaveRequestDocumentData(request)));
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement) {
+  return new Promise<Uint8Array>((resolve, reject) => {
+    canvas.toBlob(async (result) => {
+      if (!result) {
+        reject(new Error("تعذر تحويل صفحة PDF إلى صورة داخلية."));
+        return;
+      }
+      resolve(new Uint8Array(await result.arrayBuffer()));
+    }, "image/jpeg", 0.94);
+  });
+}
+
+function loadImage(src?: string) {
+  const source = String(src || "").trim();
+  if (!source) return Promise.resolve<HTMLImageElement | null>(null);
+  return new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    const timer = window.setTimeout(() => resolve(null), 5000);
+    image.onload = () => {
+      window.clearTimeout(timer);
+      resolve(image);
+    };
+    image.onerror = () => {
+      window.clearTimeout(timer);
+      resolve(null);
+    };
+    image.src = source;
+  });
+}
+
+function setFont(context: CanvasRenderingContext2D, size: number, weight = 500) {
+  context.font = `${weight} ${size}px ${FONT_FAMILY}`;
+}
+
+function drawText(context: CanvasRenderingContext2D, value: unknown, x: number, y: number, maxWidth: number, size: number, weight = 500, color = "#111", align: CanvasTextAlign = "right") {
+  context.save();
+  context.direction = "rtl";
+  context.textAlign = align;
+  context.textBaseline = "top";
+  context.fillStyle = color;
+  setFont(context, size, weight);
+  context.fillText(String(value ?? "—"), x, y, maxWidth);
+  context.restore();
+}
+
+function wrapText(context: CanvasRenderingContext2D, value: unknown, maxWidth: number, maxLines = 4) {
+  const words = safeDocumentText(value).replace(/\s+/g, " ").split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (context.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = word;
+    if (lines.length >= maxLines - 1) break;
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines;
+}
+
+function drawWrappedText(context: CanvasRenderingContext2D, value: unknown, x: number, y: number, maxWidth: number, size: number, weight = 500, maxLines = 4, lineHeight = Math.round(size * 1.45)) {
+  context.save();
+  context.direction = "rtl";
+  context.textAlign = "right";
+  context.textBaseline = "top";
+  context.fillStyle = "#111";
+  setFont(context, size, weight);
+  wrapText(context, value, maxWidth, maxLines).forEach((line, index) => {
+    context.fillText(line, x, y + index * lineHeight, maxWidth);
+  });
+  context.restore();
+}
+
+function strokeBox(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  context.strokeStyle = "#222";
+  context.lineWidth = 1.5;
+  context.strokeRect(x, y, width, height);
+}
+
+function drawField(context: CanvasRenderingContext2D, label: string, value: unknown, x: number, y: number, width: number) {
+  drawText(context, label, x + width - 8, y + 6, width - 16, 15, 700, "#444");
+  drawText(context, value, x + width - 8, y + 32, width - 16, 18, 800);
+  context.beginPath();
+  context.moveTo(x, y + 66);
+  context.lineTo(x + width, y + 66);
+  context.strokeStyle = "#222";
+  context.stroke();
+}
+
+function drawSignature(context: CanvasRenderingContext2D, signature: LeaveRequestDocumentSignature, image: HTMLImageElement | null, x: number, y: number, width: number) {
+  drawText(context, signature.label, x + width - 8, y, width - 16, 15, 700, "#444");
+  if (image) {
+    const maxWidth = Math.min(width - 16, 260);
+    const maxHeight = 76;
+    const ratio = Math.min(maxWidth / image.width, maxHeight / image.height);
+    const drawWidth = image.width * ratio;
+    const drawHeight = image.height * ratio;
+    context.drawImage(image, x + width - 8 - drawWidth, y + 24, drawWidth, drawHeight);
+  } else {
+    drawText(context, signature.fallback, x + width - 8, y + 28, width - 16, 18, 800);
+  }
+  if (signature.signedAt) drawText(context, signature.signedAt, x + width - 8, y + 104, width - 16, 13, 500, "#555");
+  context.beginPath();
+  context.moveTo(x, y + 126);
+  context.lineTo(x + width, y + 126);
+  context.strokeStyle = "#222";
+  context.stroke();
+}
+
+export async function buildLeaveRequestPdfBytes(request: EmployeeRequest) {
+  if (typeof document === "undefined") throw new Error("تصدير PDF يتطلب تشغيل الصفحة داخل المتصفح.");
+  if (document.fonts?.ready) await document.fonts.ready;
+
+  const data = buildLeaveRequestDocumentData(request);
+  const [logo, employeeSignature, managerSignature] = await Promise.all([
+    loadImage(malikatLogo),
+    loadImage(data.employeeSignature.imageDataUrl),
+    loadImage(data.managerSignature.imageDataUrl),
+  ]);
+  const canvas = document.createElement("canvas");
+  canvas.width = PDF_CANVAS.width;
+  canvas.height = PDF_CANVAS.height;
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("تعذر إنشاء لوحة PDF في المتصفح.");
+
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.direction = "rtl";
+  strokeBox(context, PDF_CANVAS.margin, 48, canvas.width - PDF_CANVAS.margin * 2, canvas.height - 96);
+
+  const right = canvas.width - PDF_CANVAS.margin - 42;
+  if (logo) {
+    const watermarkWidth = 620;
+    const watermarkHeight = 310;
+    const ratio = Math.min(watermarkWidth / logo.width, watermarkHeight / logo.height);
+    const drawWidth = logo.width * ratio;
+    const drawHeight = logo.height * ratio;
+    context.save();
+    context.globalAlpha = 0.055;
+    context.filter = "grayscale(100%)";
+    context.drawImage(logo, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+    context.restore();
+  }
+  if (logo) {
+    const maxWidth = 220;
+    const maxHeight = 120;
+    const ratio = Math.min(maxWidth / logo.width, maxHeight / logo.height);
+    const drawWidth = logo.width * ratio;
+    const drawHeight = logo.height * ratio;
+    context.drawImage(logo, PDF_CANVAS.margin + 42, 78, drawWidth, drawHeight);
+  }
+  drawText(context, data.title, canvas.width / 2, 94, 260, 34, 900, "#111", "center");
+  context.beginPath();
+  context.moveTo(PDF_CANVAS.margin + 34, 190);
+  context.lineTo(canvas.width - PDF_CANVAS.margin - 34, 190);
+  context.strokeStyle = "#222";
+  context.stroke();
+  drawText(context, `رقم الطلب: ${data.requestNumber}`, right, 212, 360, 17, 800, "#444");
+
+  let y = 258;
+  const optionWidth = 260;
+  data.leaveTypeOptions.forEach((option, index) => {
+    const x = right - optionWidth - index * (optionWidth + 16);
+    strokeBox(context, x + optionWidth - 28, y + 4, 24, 24);
+    if (option.checked) drawText(context, "✓", x + optionWidth - 12, y + 2, 20, 21, 900, "#111", "center");
+    drawText(context, option.label, x + optionWidth - 40, y + 3, optionWidth - 44, 17, 800);
+  });
+
+  y += 62;
+  drawText(context, data.addressee, right, y, canvas.width - PDF_CANVAS.margin * 2 - 84, 19, 900);
+  y += 36;
+  drawText(context, "الموقرين", right, y, 280, 18, 700);
+  y += 34;
+  drawText(context, "السلام عليكم ورحمة الله وبركاته،،", right, y, 420, 18, 700);
+  y += 42;
+  drawWrappedText(context, `أتقدم لكم بطلبي هذا راجية الموافقة على منحي إجازة لمدة ${data.leaveDays || "___"} ${data.leaveDays === 1 ? "يوم" : "أيام"}، اعتبارًا من يوم ${data.fields[0]?.value} وحتى يوم ${data.fields[1]?.value}.`, right, y, canvas.width - PDF_CANVAS.margin * 2 - 84, 19, 600, 3, 30);
+  y += 112;
+
+  const fieldWidth = 460;
+  drawField(context, data.fields[0]?.label || "", data.fields[0]?.value || "", right - fieldWidth, y, fieldWidth);
+  drawField(context, data.fields[1]?.label || "", data.fields[1]?.value || "", right - fieldWidth * 2 - 24, y, fieldWidth);
+  y += 88;
+  drawField(context, data.fields[2]?.label || "", data.fields[2]?.value || "", right - fieldWidth, y, fieldWidth);
+  drawField(context, data.fields[3]?.label || "", data.fields[3]?.value || "", right - fieldWidth * 2 - 24, y, fieldWidth);
+  y += 96;
+
+  drawText(context, "سبب الإجازة", right, y, 260, 15, 700, "#444");
+  context.beginPath();
+  context.moveTo(PDF_CANVAS.margin + 42, y + 76);
+  context.lineTo(right, y + 76);
+  context.stroke();
+  drawWrappedText(context, data.reason, right, y + 24, canvas.width - PDF_CANVAS.margin * 2 - 84, 17, 600, 2, 26);
+  y += 104;
+  if (data.notes !== "—") {
+    drawText(context, "ملاحظات", right, y, 260, 15, 700, "#444");
+    context.beginPath();
+    context.moveTo(PDF_CANVAS.margin + 42, y + 70);
+    context.lineTo(right, y + 70);
+    context.stroke();
+    drawWrappedText(context, data.notes, right, y + 24, canvas.width - PDF_CANVAS.margin * 2 - 84, 17, 600, 2, 25);
+    y += 94;
+  }
+
+  drawSignature(context, { ...data.employeeSignature, label: "الاسم: " + data.employeeName }, employeeSignature, right - fieldWidth, y, fieldWidth);
+  drawSignature(context, data.employeeSignature, employeeSignature, right - fieldWidth * 2 - 24, y, fieldWidth);
+  y += 166;
+
+  context.beginPath();
+  context.moveTo(PDF_CANVAS.margin + 42, y);
+  context.lineTo(right, y);
+  context.stroke();
+  y += 26;
+  drawText(context, "رأي المدير الإداري", right, y, 360, 20, 900);
+  y += 34;
+  drawWrappedText(context, "تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.", right, y, canvas.width - PDF_CANVAS.margin * 2 - 84, 17, 600, 2, 26);
+  y += 72;
+  drawSignature(context, { ...data.managerSignature, label: "الاسم: " + data.managerName }, managerSignature, right - fieldWidth, y, fieldWidth);
+  drawSignature(context, data.managerSignature, managerSignature, right - fieldWidth * 2 - 24, y, fieldWidth);
+  y += 152;
+  data.managerDecisionOptions.forEach((option, index) => {
+    const x = right - 300 - index * 330;
+    strokeBox(context, x + 272, y + 2, 24, 24);
+    if (option.checked) drawText(context, "✓", x + 284, y, 20, 21, 900, "#111", "center");
+    drawText(context, option.label, x + 260, y + 2, 230, 17, 800);
+  });
+  y += 50;
+  drawText(context, "الملاحظات / القرار", right, y, 280, 15, 700, "#444");
+  drawWrappedText(context, data.managerDecisionNote, right, y + 24, canvas.width - PDF_CANVAS.margin * 2 - 84, 16, 600, 2, 24);
+
+  drawText(context, "نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات", right, canvas.height - 86, 520, 12, 500, "#666");
+  const bytes = await canvasToJpeg(canvas);
+  return buildPdfFromJpegPages([{ bytes, width: canvas.width, height: canvas.height }], A4_PORTRAIT_POINTS.width, A4_PORTRAIT_POINTS.height);
+}
+
+export async function exportLeaveRequestToPdf(request: EmployeeRequest) {
+  const data = buildLeaveRequestDocumentData(request);
+  const bytes = await buildLeaveRequestPdfBytes(request);
+  downloadExportV2Blob(
+    new Blob([bytes], { type: "application/pdf" }),
+    `malikat-leave-request-${sanitizeFilePart(data.employeeName)}-${sanitizeFilePart(data.requestNumber)}.pdf`
+  );
+}
+
+function dataUrlToImage(value: string, id: string): DocxImage | null {
+  const match = /^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/i.exec(String(value || "").trim());
+  if (!match) return null;
+  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return {
+    id,
+    fileName: `${id}.${contentType === "image/png" ? "png" : "jpg"}`,
+    contentType,
+    bytes,
+  };
+}
+
+function p(text: unknown, options: { bold?: boolean; size?: number; center?: boolean } = {}) {
+  const size = options.size || 22;
+  return `<w:p><w:pPr><w:bidi/><w:jc w:val="${options.center ? "center" : "right"}"/></w:pPr><w:r><w:rPr><w:rtl/>${options.bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+}
+
+function checkboxText(label: string, checked: boolean) {
+  return `${checked ? "☑" : "☐"} ${label}`;
+}
+
+function docxImage(image: DocxImage | null, relId: string, fallback: string) {
+  if (!image) return p(fallback, { bold: true });
+  const cx = 1428750;
+  const cy = 457200;
+  return `<w:p><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${relId.replace(/\D/g, "") || "1"}" name="${xmlEscape(image.fileName)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="${xmlEscape(image.fileName)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+function table(rows: Array<[string, string | number]>) {
+  return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="6"/><w:left w:val="single" w:sz="6"/><w:bottom w:val="single" w:sz="6"/><w:right w:val="single" w:sz="6"/><w:insideH w:val="single" w:sz="6"/><w:insideV w:val="single" w:sz="6"/></w:tblBorders></w:tblPr>${rows.map(([label, value]) => `<w:tr><w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${p(label, { bold: true })}</w:tc><w:tc><w:tcPr><w:tcW w:w="6200" w:type="dxa"/></w:tcPr>${p(value)}</w:tc></w:tr>`).join("")}</w:tbl>`;
+}
+
+function documentXml(data: LeaveRequestDocumentData, images: { employee: DocxImage | null; manager: DocxImage | null }) {
+  const checkboxLine = data.leaveTypeOptions.map((option) => checkboxText(option.label, option.checked)).join("    ");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    ${p(data.title, { bold: true, size: 34, center: true })}
+    ${p(`رقم الطلب: ${data.requestNumber}`, { bold: true })}
+    ${p(checkboxLine)}
+    ${p(data.addressee, { bold: true })}
+    ${p("الموقرين")}
+    ${p("السلام عليكم ورحمة الله وبركاته،،")}
+    ${p(`أتقدم لكم بطلبي هذا راجية الموافقة على منحي إجازة لمدة ${data.leaveDays || "___"} ${data.leaveDays === 1 ? "يوم" : "أيام"}، اعتبارًا من يوم ${data.fields[0]?.value} وحتى يوم ${data.fields[1]?.value}.`)}
+    ${table(data.fields.map((field) => [field.label, field.value]))}
+    ${p("سبب الإجازة", { bold: true })}
+    ${p(data.reason)}
+    ${data.notes !== "—" ? `${p("ملاحظات", { bold: true })}${p(data.notes)}` : ""}
+    ${table([["الاسم", data.employeeName], ["تاريخ التقديم", data.submittedAtLabel]])}
+    ${p(data.employeeSignature.label, { bold: true })}
+    ${docxImage(images.employee, "rIdEmployeeSignature", data.employeeSignature.fallback)}
+    ${p("رأي المدير الإداري", { bold: true })}
+    ${p("تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.")}
+    ${table([["اسم المسؤول", data.managerName], ["الدور", data.managerRole], ["القرار", data.managerDecisionLabel], ["تاريخ القرار", data.managerDecidedAtLabel]])}
+    ${p(data.managerSignature.label, { bold: true })}
+    ${docxImage(images.manager, "rIdManagerSignature", data.managerSignature.fallback)}
+    ${p("الملاحظات / القرار", { bold: true })}
+    ${p(data.managerDecisionNote)}
+    ${p("نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات", { size: 18 })}
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
+      <w:bidi/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+}
+
+function docxContentTypes(images: DocxImage[]) {
+  const imageDefaults = Array.from(new Set(images.map((image) => image.contentType === "image/png" ? "png" : "jpg")))
+    .map((extension) => `<Default Extension="${extension}" ContentType="${extension === "png" ? "image/png" : "image/jpeg"}"/>`)
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  ${imageDefaults}
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+}
+
+function docxRelationships(images: DocxImage[]) {
+  const imageRels = images.map((image) => {
+    const id = image.id === "employee" ? "rIdEmployeeSignature" : "rIdManagerSignature";
+    return `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${imageRels}</Relationships>`;
+}
+
+function rootRelationshipsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function docProps(data: LeaveRequestDocumentData) {
+  const timestamp = new Date().toISOString();
+  return {
+    core: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${xmlEscape(`${data.title} ${data.requestNumber}`)}</dc:title>
+  <dc:creator>Malikat Document Export</dc:creator>
+  <cp:lastModifiedBy>Malikat Document Export</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:modified>
+</cp:coreProperties>`,
+    app: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Malikat Document Export</Application><Company>Malikat Salon</Company></Properties>`,
+  };
+}
+
+export function buildLeaveRequestDocxBytes(request: EmployeeRequest) {
+  const data = buildLeaveRequestDocumentData(request);
+  const employeeImage = dataUrlToImage(data.employeeSignature.imageDataUrl || "", "employee");
+  const managerImage = dataUrlToImage(data.managerSignature.imageDataUrl || "", "manager");
+  const images = [employeeImage, managerImage].filter((image): image is DocxImage => Boolean(image));
+  const props = docProps(data);
+  return zipStore([
+    { name: "[Content_Types].xml", content: docxContentTypes(images) },
+    { name: "_rels/.rels", content: rootRelationshipsXml() },
+    { name: "docProps/core.xml", content: props.core },
+    { name: "docProps/app.xml", content: props.app },
+    { name: "word/document.xml", content: documentXml(data, { employee: employeeImage, manager: managerImage }) },
+    { name: "word/_rels/document.xml.rels", content: docxRelationships(images) },
+    ...images.map((image) => ({ name: `word/media/${image.fileName}`, content: image.bytes })),
+  ]);
+}
+
+export async function exportLeaveRequestToWord(request: EmployeeRequest) {
+  const data = buildLeaveRequestDocumentData(request);
+  const bytes = buildLeaveRequestDocxBytes(request);
+  downloadExportV2Blob(
+    new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+    `malikat-leave-request-${sanitizeFilePart(data.employeeName)}-${sanitizeFilePart(data.requestNumber)}.docx`
+  );
+}
+
+export function auditLeaveRequestExportSurface(request: EmployeeRequest) {
+  const data = buildLeaveRequestDocumentData(request);
+  return {
+    route: ["/dashboard/requests", "/employee/requests/:requestId"],
+    page: ["src/pages/hr/AdminEmployeeRequests.tsx", "src/pages/hr/EmployeeRequests.tsx"],
+    component: "src/components/hr/LeaveRequestDocument.tsx",
+    css: ["src/documents/core/documentPrint.css", "src/styles/LeaveRequestDocument.css"],
+    dataSource: "EmployeeRequest payload/events from src/services/employeeRequests.ts",
+    printPath: "printLeaveRequestDocument() -> isolated iframe -> .leave-request-print-root at 210mm x 297mm",
+    pdfPath: "exportLeaveRequestToPdf() -> canonical view model -> A4 PDF bytes",
+    docxPath: "exportLeaveRequestToWord() -> canonical view model -> Office Open XML .docx",
+    xlsxPath: "exportLeaveRequestToExcel() -> canonical view model -> Export V2 XLSX",
+    data,
+    generatedAt: formatDocumentDateTime(new Date().toISOString()),
+  };
 }

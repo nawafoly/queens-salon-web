@@ -21,7 +21,12 @@ import type { HrSession } from "./shared";
 import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
-import { exportLeaveRequestToExcel, printLeaveRequestDocument } from "../../services/leaveRequestExport";
+import {
+  exportLeaveRequestToExcel,
+  exportLeaveRequestToPdf,
+  exportLeaveRequestToWord,
+  printLeaveRequestDocument,
+} from "../../services/leaveRequestExport";
 import { usePermissions } from "../../security/PermissionContext";
 import {
   DashboardDatePickerV2,
@@ -753,7 +758,9 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
         {selected.request_type === "leave" ? (
           <section className="admin-leave-request-document-shell">
             <div className="leave-request-export-toolbar">
-              <button type="button" className="is-primary" onClick={printLeaveRequestDocument}>طباعة / حفظ PDF</button>
+              <button type="button" className="is-primary" onClick={printLeaveRequestDocument}>طباعة</button>
+              <button type="button" onClick={() => void exportLeaveRequestToPdf(selected)}>تصدير PDF</button>
+              <button type="button" onClick={() => void exportLeaveRequestToWord(selected)}>تصدير Word</button>
               <button type="button" onClick={() => exportLeaveRequestToExcel(selected)}>تصدير Excel</button>
             </div>
             <LeaveRequestDocument request={selected} />
