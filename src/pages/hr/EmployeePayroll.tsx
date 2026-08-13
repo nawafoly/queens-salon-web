@@ -48,7 +48,7 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("all");
-  const [requestImpact, setRequestImpact] = useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [] });
+  const [requestImpact, setRequestImpact] = useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [], financialPayments: [] });
 
   const profile = session.employeeDoc || session.staffDoc || session.userDoc || {};
   const currentBaseSalary = Number(profile.baseSalary || profile.salary || 0);
@@ -60,7 +60,7 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
     try {
       const [rows, impact] = await Promise.all([
         listPayrollRecordsByEmployee(session.uid),
-        getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [] })),
+        getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [], financialPayments: [] })),
       ]);
       setRecords(rows);
       setRequestImpact(impact);

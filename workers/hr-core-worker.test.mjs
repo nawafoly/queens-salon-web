@@ -17,6 +17,7 @@ import {
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
 import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
+import { createEmployeeRequest, getEmployeeRequestPayrollImpact, transitionEmployeeRequest } from './core/repositories/employee-requests.js';
 
 function splitMigrationStatements(sql) {
   const statements = [];
@@ -84,6 +85,7 @@ async function setup() {
     '0018_employee_payroll_settings.sql',
     '0020_employee_requests.sql',
     '0022_shift_attendance_policy.sql',
+    '0023_exceptional_financial_payment_requests.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -214,6 +216,126 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(approvedPayroll.status, 'approved');
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
   assert.equal(paidPayroll.status, 'paid');
+});
+
+
+test('exceptional financial payment snapshots salary, adds payroll money, and never deducts annual leave', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, phone_normalized, active, employment_status, created_at, updated_at)
+    VALUES ('emp-fin','main','uid-fin','Financial Employee','0500000099',1,'active','2026-01-01','2026-01-01')`).run();
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-fin', name: 'Financial Employee', firebaseUid: 'uid-fin', phone: '0500000099',
+    employment: { title: 'Stylist', baseSalaryHalalas: 450000, leaveBalance: 21 },
+  }, actor);
+
+  const period = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-fin-2026-08', payrollMonth: '2026-08', monthStart: '2026-08-01', monthEnd: '2026-08-31',
+  }, actor);
+  await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-fin-1', periodId: period.id, employeeId: 'emp-fin', payrollMonth: '2026-08',
+    baseSalaryHalalas: 450000, allowancesHalalas: 0, workDays: 30, monthlyHours: 240,
+    dailyRateHalalas: 15000, hourlyRateHalalas: 1875,
+    grossSalaryHalalas: 450000, netSalaryHalalas: 450000, finalSalaryHalalas: 450000,
+    scheduleSnapshot: { workDays: 30, monthlyHours: 240, dailyScheduledHours: 8, payrollSetupComplete: true, payrollSetupMissing: [] },
+  }, actor);
+
+  const employeeActor = { uid: 'uid-fin', employeeId: 'emp-fin', email: 'fin@example.com', name: 'Financial Employee', role: 'employee' };
+  let request = await createEmployeeRequest(db, 'main', {
+    requestType: 'exceptional_financial_payment',
+    payload: {
+      requestedDays: 3,
+      reason: 'احتياج مالي استثنائي',
+      notes: 'اختبار تكامل',
+      acknowledgement: true,
+      employeeSignatureDataUrl: `data:image/png;base64,${'a'.repeat(300)}`,
+    },
+    idempotencyKey: 'financial-payment-test-1',
+  }, employeeActor);
+
+  assert.equal(request.payload.baseSalaryHalalas, 450000);
+  assert.equal(request.payload.dayRateHalalas, 15000);
+  assert.equal(request.payload.calculatedAmountHalalas, 45000);
+  assert.equal(request.payload.balanceDeductionDays, 0);
+  assert.equal(request.payload.leaveBalanceTreatment, 'not_deducted');
+
+  const before = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
+  assert.equal(before.leave_balance, 21);
+
+  const adminActor = { ...actor, role: 'admin' };
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', {
+    version: request.version,
+    note: 'مع الموافقة',
+    payload: { reviewerSignatureDataUrl: `data:image/png;base64,${'b'.repeat(300)}` },
+  }, adminActor);
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'execute', {
+    version: request.version,
+    payrollMonth: '2026-08',
+    financialReference: 'PAY-TEST-001',
+  }, adminActor);
+
+  assert.equal(request.status, 'completed');
+  assert.equal(request.source_reference_type, 'employee_financial_payment');
+  assert.equal(request.external_reference, 'PAY-TEST-001');
+
+  const after = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
+  assert.equal(after.leave_balance, 21);
+
+  const payment = await db.prepare("SELECT * FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
+  assert.equal(payment.amount_halalas, 45000);
+  assert.equal(payment.requested_days, 3);
+  assert.equal(payment.leave_balance_deducted, 0);
+  assert.equal(payment.payroll_month, '2026-08');
+  assert.equal(payment.financial_reference, 'PAY-TEST-001');
+
+  const payroll = await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-fin-1'").first();
+  assert.equal(payroll.manual_additions_halalas, 45000);
+  assert.equal(payroll.gross_salary_halalas, 495000);
+  assert.equal(payroll.net_salary_halalas, 495000);
+  assert.equal(payroll.final_salary_halalas, 495000);
+  const additions = JSON.parse(payroll.additions_json || '[]');
+  assert.equal(additions.filter((item) => item.requestId === request.id).length, 1);
+
+  const impact = await getEmployeeRequestPayrollImpact(db, 'main', employeeActor);
+  assert.equal(impact.financialPayments.length, 1);
+  assert.equal(impact.financialPayments[0].amount_halalas, 45000);
+});
+
+test('exceptional financial payment execution fails closed when payroll entry is missing', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-no-payroll','main','uid-no-payroll','No Payroll',1,'active','2026-01-01','2026-01-01')`).run();
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-no-payroll', name: 'No Payroll', firebaseUid: 'uid-no-payroll',
+    employment: { baseSalaryHalalas: 300000, leaveBalance: 15 },
+  }, actor);
+  const employeeActor = { uid: 'uid-no-payroll', employeeId: 'emp-no-payroll', name: 'No Payroll', role: 'employee' };
+  let request = await createEmployeeRequest(db, 'main', {
+    requestType: 'exceptional_financial_payment',
+    payload: {
+      requestedDays: 1,
+      reason: 'اختبار عدم وجود مسير',
+      acknowledgement: true,
+      employeeSignatureDataUrl: `data:image/png;base64,${'c'.repeat(300)}`,
+    },
+    idempotencyKey: 'financial-payment-test-no-payroll',
+  }, employeeActor);
+  const adminActor = { ...actor, role: 'admin' };
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
+  request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', { version: request.version }, adminActor);
+  await assert.rejects(
+    () => transitionEmployeeRequest(db, 'main', request.id, 'execute', { version: request.version, payrollMonth: '2026-08', financialReference: 'PAY-MISSING' }, adminActor),
+    { code: 'core_employee_request:payroll_entry_required' }
+  );
+  const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-no-payroll'").first();
+  assert.equal(balance.leave_balance, 15);
 });
 
 test('Phase 6 settings and protected R2 file flow work without Firestore', async (t) => {

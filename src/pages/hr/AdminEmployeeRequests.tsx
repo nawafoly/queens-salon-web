@@ -19,6 +19,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import type { HrSession } from "./shared";
 import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";
+import ExceptionalFinancialPaymentRequestDocument from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";
+import { printExceptionalFinancialPaymentRequestDocument } from "../../services/exceptionalFinancialPaymentRequestExport";
 import SignatureCaptureField from "../../components/hr/SignatureCaptureField";
 import { CoreFilesService } from "../../services/CoreFilesService";
 import {
@@ -74,6 +76,7 @@ type DialogState = {
   approvedAmount: string;
   financialReference: string;
   firstDeductionMonth: string;
+  payrollMonth: string;
   approvedMinutes: string;
   finalWorkingDay: string;
   confirmClearance: boolean;
@@ -109,6 +112,16 @@ const FIELD_LABELS: Record<string, string> = {
   location: "الموقع",
   managerName: "المدير",
   amountHalalas: "المبلغ",
+  requestedDays: "عدد الأيام المرجعية",
+  baseSalaryHalalas: "الراتب الأساسي وقت الطلب",
+  dayRateHalalas: "قيمة اليوم",
+  calculatedAmountHalalas: "إجمالي الصرف",
+  annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",
+  balanceDeductionDays: "الأيام المخصومة",
+  calculationBasis: "أساس الحساب",
+  payrollTreatment: "معالجة الرواتب",
+  leaveBalanceTreatment: "معالجة رصيد الإجازة",
+  legalTreatment: "نوع المعالجة",
   repaymentMethod: "طريقة الاستقطاع",
   installmentCount: "عدد الأقساط",
   neededByDate: "تاريخ الحاجة",
@@ -198,7 +211,10 @@ function roleLabel(role: EmployeeRequestAssignee["role"]) {
 
 function formatPayloadValue(key: string, value: unknown) {
   if (typeof value === "boolean") return value ? "نعم" : "لا";
-  if (key === "amountHalalas") return `${(Number(value || 0) / 100).toLocaleString("ar-SA")} ريال`;
+  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  if (key === "leaveBalanceTreatment" && value === "not_deducted") return "لا يتم الخصم";
+  if (key === "payrollTreatment" && value === "manual_addition") return "إضافة مالية في مسير الراتب";
+  if (key === "calculationBasis" && value === "base_salary_divided_by_30") return "الراتب الأساسي ÷ 30 × عدد الأيام";
   if (value === null || value === undefined || value === "") return "—";
   return String(value);
 }
@@ -217,6 +233,7 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
     approvedAmount: "",
     financialReference: "",
     firstDeductionMonth: new Date().toISOString().slice(0, 7),
+    payrollMonth: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7),
     approvedMinutes: "",
     finalWorkingDay: "",
     confirmClearance: false,
@@ -348,10 +365,10 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
     if (!dialog || !selected || busy) return;
     let action: Parameters<typeof employeeRequestAction>[1];
     const body: Record<string, unknown> = {};
-    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);
+    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
 
-    if (leaveDecisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
-      setDialogError("يجب توقيع قرار طلب الإجازة بخط اليد قبل اعتماده.");
+    if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {
+      setDialogError("يجب توقيع القرار بخط اليد قبل اعتماده.");
       return;
     }
 
@@ -377,7 +394,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
     } else if (dialog.kind === "approve") {
       action = "approve";
       body.note = dialog.note.trim();
-      if (selected.request_type === "leave") {
+      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {
         body.payload = {
           reviewerSignatureDataUrl: dialog.signatureDataUrl,
           reviewerSignatureCapturedAt: new Date().toISOString(),
@@ -390,7 +407,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
       }
       action = "reject";
       body.reason = dialog.note.trim();
-      if (selected.request_type === "leave") {
+      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {
         body.payload = {
           reviewerSignatureDataUrl: dialog.signatureDataUrl,
           reviewerSignatureCapturedAt: new Date().toISOString(),
@@ -427,6 +444,20 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
           approvedAmount: amount,
           financialReference: dialog.financialReference.trim(),
           firstDeductionMonth: dialog.firstDeductionMonth,
+        });
+      }
+      if (selected.request_type === "exceptional_financial_payment") {
+        if (!dialog.financialReference.trim()) {
+          setDialogError("مرجع عملية الصرف مطلوب.");
+          return;
+        }
+        if (!/^\d{4}-\d{2}$/.test(dialog.payrollMonth)) {
+          setDialogError("حدد شهر المسير الذي سيضاف إليه المبلغ.");
+          return;
+        }
+        Object.assign(body, {
+          financialReference: dialog.financialReference.trim(),
+          payrollMonth: dialog.payrollMonth,
         });
       }
       if (selected.request_type === "overtime") {
@@ -525,7 +556,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
   const renderDialog = () => {
     if (!dialog || !selected) return null;
     const copy = ACTION_DIALOG_COPY[dialog.kind];
-    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);
+    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);
     return createPortal(
       <div className="employee-request-action-modal dashboard-v2" role="dialog" aria-modal="true" aria-labelledby="employee-request-action-title">
         <button type="button" className="employee-request-action-modal__backdrop" aria-label="إغلاق" onClick={closeDialog} />
@@ -619,7 +650,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
               </label>
             ) : null}
 
-            {leaveDecisionNeedsSignature ? (
+            {decisionNeedsSignature ? (
               <SignatureCaptureField
                 required
                 label="توقيع المراجع / المسؤول"
@@ -645,6 +676,23 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
                       <span>أول شهر استقطاع</span>
                       <input type="month" value={dialog.firstDeductionMonth} onChange={(event) => setDialog({ ...dialog, firstDeductionMonth: event.target.value })} />
                     </label>
+                  </>
+                ) : null}
+                {selected.request_type === "exceptional_financial_payment" ? (
+                  <>
+                    <label className="employee-request-action-field">
+                      <span>المبلغ المحسوب</span>
+                      <input readOnly value={`${(Number(selected.payload.calculatedAmountHalalas || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`} />
+                    </label>
+                    <label className="employee-request-action-field">
+                      <span>شهر المسير</span>
+                      <input type="month" value={dialog.payrollMonth} onChange={(event) => setDialog({ ...dialog, payrollMonth: event.target.value })} />
+                    </label>
+                    <label className="employee-request-action-field">
+                      <span>مرجع عملية الصرف</span>
+                      <input value={dialog.financialReference} onChange={(event) => setDialog({ ...dialog, financialReference: event.target.value })} />
+                    </label>
+                    <div className="employee-request-action-confirmation"><span><FontAwesomeIcon icon={faLock} /> التنفيذ يضيف المبلغ إلى Payroll فقط، ولا يخصم أي يوم من رصيد الإجازة السنوية.</span></div>
                   </>
                 ) : null}
                 {selected.request_type === "overtime" ? (
@@ -685,7 +733,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
 
           <footer>
             <button type="button" className="is-secondary" onClick={closeDialog} disabled={busy}>إلغاء</button>
-            <button type="button" className={`is-${copy.tone}`} onClick={() => void submitDialog()} disabled={busy || assigneesLoading || (leaveDecisionNeedsSignature && !dialog.signatureDataUrl)}>
+            <button type="button" className={`is-${copy.tone}`} onClick={() => void submitDialog()} disabled={busy || assigneesLoading || (decisionNeedsSignature && !dialog.signatureDataUrl)}>
               {busy ? "جارٍ التنفيذ..." : copy.confirm}
             </button>
           </footer>
@@ -753,6 +801,15 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
               <time>{formatDateTime(selected.cancelled_at || closureEvent?.created_at || selected.updated_at)}</time>
             </div>
           </div>
+        ) : null}
+
+        {selected.request_type === "exceptional_financial_payment" ? (
+          <section className="admin-leave-request-document-shell">
+            <div className="leave-request-export-toolbar">
+              <button type="button" className="is-primary" onClick={() => void printExceptionalFinancialPaymentRequestDocument()}>طباعة / حفظ PDF</button>
+            </div>
+            <ExceptionalFinancialPaymentRequestDocument request={selected} />
+          </section>
         ) : null}
 
         {selected.request_type === "leave" ? (
