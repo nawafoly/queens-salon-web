@@ -27,17 +27,40 @@ jobs:
       - name: Install exact lockfile
         run: npm ci
 
-      - name: Repair regex replacement helper
+      - name: Repair finalizer helpers and anchors
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path("scripts/employee-overview-runtime-finalize-temp.py")
           text = path.read_text(encoding="utf-8")
+
           old = "result, count = re.subn(pattern, replacement, text, count=1, flags=flags)"
           new = "result, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=flags)"
           if text.count(old) != 1:
               raise SystemExit("regex helper repair anchor missing")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          text = text.replace(old, new, 1)
+
+          label = "'make Core leave failure explicit'"
+          label_pos = text.find(label)
+          if label_pos < 0:
+              raise SystemExit("Core leave replacement label missing")
+          call_start = text.rfind("overview = regex_once(", 0, label_pos)
+          call_end = text.find("\n)\n", label_pos)
+          if call_start < 0 or call_end < 0:
+              raise SystemExit("Core leave regex call boundaries missing")
+          call_end += 3
+
+          replacement = r'''leave_effect_start_marker = ''' + repr('''  useEffect(() => {\n    if (!session.uid) {\n      setEmployeeLeaveRequests([]);\n      return;\n    }\n\n    let alive = true;\n\n    async function loadEmployeeLeaveRequests() {''') + r'''
+          leave_effect_end_marker = ''' + repr('''\n\n  useEffect(() => {\n    let alive = true;\n\n    async function loadEmployeeTarget() {''') + r'''
+          leave_effect_start = overview.find(leave_effect_start_marker)
+          leave_effect_end = overview.find(leave_effect_end_marker, leave_effect_start)
+          if leave_effect_start < 0 or leave_effect_end < 0:
+              raise SystemExit('Core leave effect boundaries missing')
+          canonical_leave_effect = ''' + repr('''  useEffect(() => {\n    if (!session.uid || !attendanceEmployeeId) {\n      setEmployeeLeaveRequests([]);\n      setEmployeeLeaveLoading(false);\n      setEmployeeLeaveError("");\n      return;\n    }\n\n    let alive = true;\n\n    async function loadEmployeeLeaveRequests() {\n      setEmployeeLeaveLoading(true);\n      setEmployeeLeaveError("");\n      try {\n        const rows = await CoreHrService.listLeaves({ employeeId: attendanceEmployeeId });\n        if (alive) setEmployeeLeaveRequests(rows.map((row) => ({\n          id: row.id,\n          employeeUid: String(row.employeeUid || session.uid),\n          employeeId: row.employeeId,\n          type: row.leaveType as EmployeeLeaveRequest["type"],\n          fromDate: row.startDate,\n          toDate: row.endDate,\n          days: row.daysCount,\n          note: row.employeeNote || undefined,\n          status: row.status as EmployeeLeaveRequest["status"],\n          createdAt: row.createdAt,\n          updatedAt: row.updatedAt,\n          durationKind: row.durationKind,\n        } as EmployeeLeaveRequest & { durationKind?: string })));\n      } catch (error) {\n        if (alive) {\n          setEmployeeLeaveRequests([]);\n          setEmployeeLeaveError(\n            cleanText((error as any)?.message || "تعذر تحميل الإجازات المعتمدة من النظام المركزي.")\n          );\n        }\n      } finally {\n        if (alive) setEmployeeLeaveLoading(false);\n      }\n    }\n\n    void loadEmployeeLeaveRequests();\n\n    return () => {\n      alive = false;\n    };\n  }, [attendanceEmployeeId, session.uid]);''') + r'''
+          overview = overview[:leave_effect_start] + canonical_leave_effect + overview[leave_effect_end:]
+'''
+          text = text[:call_start] + replacement + text[call_end:]
+          path.write_text(text, encoding="utf-8")
           PY
 
       - name: Apply employee overview runtime finalization
