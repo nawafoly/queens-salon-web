@@ -1,0 +1,58 @@
+/* =========================================================
+   Malikat Dashboard V2 — Employee attendance month statuses
+   Canonical status palette for calendar cells + legend.
+   Keep explicit selectors here: :where() would lower specificity and let
+   the generic legend rule overwrite the semantic status variables.
+========================================================= */
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-complete,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-complete {
+  --employee-attendance-day-accent: var(--dsv2-green);
+  --employee-attendance-day-bg: var(--dsv2-green-soft);
+  --employee-attendance-day-border: var(--dsv2-green-border);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-late,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-late {
+  --employee-attendance-day-accent: var(--dsv2-warning);
+  --employee-attendance-day-bg: var(--dsv2-gold-soft);
+  --employee-attendance-day-border: var(--dsv2-border-gold);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-partial,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-partial {
+  --employee-attendance-day-accent: var(--dsv2-info);
+  --employee-attendance-day-bg: color-mix(in srgb, var(--dsv2-info) 10%, var(--dsv2-surface));
+  --employee-attendance-day-border: color-mix(in srgb, var(--dsv2-info) 30%, var(--dsv2-border));
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-absent,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-absent {
+  --employee-attendance-day-accent: var(--dsv2-burgundy);
+  --employee-attendance-day-bg: var(--dsv2-burgundy-soft);
+  --employee-attendance-day-border: var(--dsv2-burgundy-border);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-leave,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-leave {
+  --employee-attendance-day-accent: var(--dsv2-gold);
+  --employee-attendance-day-bg: color-mix(in srgb, var(--dsv2-gold) 15%, var(--dsv2-surface));
+  --employee-attendance-day-border: var(--dsv2-border-gold);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__day.is-off-day,
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span.is-off-day {
+  --employee-attendance-day-accent: var(--dsv2-muted);
+  --employee-attendance-day-bg: var(--dsv2-surface-soft);
+  --employee-attendance-day-border: var(--dsv2-border);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span {
+  border-color: var(--employee-attendance-day-border);
+  background: var(--employee-attendance-day-bg);
+  color: var(--employee-attendance-day-accent);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page.employee-attendance-month-page .attendance-month--employee-portal-v2 .attendance-month__legend span::before {
+  background: var(--employee-attendance-day-accent);
+}
