@@ -6,6 +6,7 @@ import {
   faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 
+import AdminAttendanceSecurityBell from "./AdminAttendanceSecurityBell";
 import "../styles/InternalPortalSwitcher.css";
 
 const DASHBOARD_HR_SECTIONS = [
@@ -54,6 +55,8 @@ export default function InternalPortalSwitcher({
       className={joinClassNames("internal-portal-switcher", className)}
       aria-label="التنقل بين الأنظمة الداخلية"
     >
+      <AdminAttendanceSecurityBell />
+
       {showPortalLinks && canOpenDashboard && !isDashboardArea ? (
         <NavLink
           to="/dashboard/overview"
