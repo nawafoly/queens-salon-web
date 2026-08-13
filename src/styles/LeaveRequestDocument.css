@@ -2,25 +2,6 @@
   color: #111;
 }
 
-.leave-doc > :not(.leave-doc-watermark) {
-  position: relative;
-  z-index: 1;
-}
-
-.leave-doc-watermark {
-  position: absolute;
-  z-index: 0;
-  top: 92mm;
-  right: 0;
-  left: 0;
-  width: 116mm;
-  height: auto;
-  margin-inline: auto;
-  opacity: 0.055;
-  pointer-events: none;
-  filter: grayscale(100%);
-}
-
 .leave-doc-header {
   position: relative;
   display: grid;
@@ -316,15 +297,5 @@
 
   .leave-doc-checkbox {
     justify-content: flex-start;
-  }
-}
-
-@media print {
-  .leave-request-export-toolbar {
-    display: none !important;
-  }
-
-  .leave-request-print-root {
-    transform: none !important;
   }
 }
