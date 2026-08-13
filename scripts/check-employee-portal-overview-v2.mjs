@@ -62,6 +62,16 @@ if (!errors.length) {
     if (!overview.includes(marker)) errors.push(`Employee overview behavior marker missing: ${marker}`);
   }
 
+  const attendanceMarkupMarkers = [
+    'className="employee-attendance-side employee-attendance-side--in"',
+    'className="employee-punch-control"',
+    'employee-attendance-status--${attendanceStatus}',
+    'className="employee-attendance-hint"',
+  ];
+  for (const marker of attendanceMarkupMarkers) {
+    if (!overview.includes(marker)) errors.push(`Employee attendance compact markup missing: ${marker}`);
+  }
+
   if (/#[0-9a-f]{3,8}\b/i.test(css)) {
     errors.push("employee-portal-overview.css contains a raw hex color.");
   }
@@ -80,8 +90,15 @@ if (!errors.length) {
   if (entry.includes('\@import "./pages/employee-portal-overview-micro-fixes.css";'.slice(1))) {
     errors.push("Dashboard V2 entry still imports the retired employee overview micro-fix stylesheet.");
   }
-  if (!css.includes("Final integrated refinements: punch contrast + avatar framing.")) {
-    errors.push("Canonical employee overview stylesheet is missing the integrated final refinements.");
+
+  const attendanceCssMarkers = [
+    ".employee-attendance-side",
+    ".employee-punch-control",
+    ".employee-attendance-status",
+    ".employee-attendance-hint",
+  ];
+  for (const marker of attendanceCssMarkers) {
+    if (!css.includes(marker)) errors.push(`Canonical employee overview stylesheet is missing compact attendance rule: ${marker}`);
   }
 }
 
