@@ -5,11 +5,12 @@ const root = resolve(process.cwd());
 const portalPath = resolve(root, "src/pages/EmployeePortal.tsx");
 const overviewPath = resolve(root, "src/pages/hr/EmployeeOverview.tsx");
 const cssPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview.css");
+const attendanceCssPath = resolve(root, "src/styles/dashboard-v2/components/employee-attendance-card.css");
 const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const errors = [];
 
-for (const path of [portalPath, overviewPath, cssPath, entryPath]) {
+for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath]) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);
 }
 
@@ -21,6 +22,7 @@ if (!errors.length) {
   const portal = readFileSync(portalPath, "utf8");
   const overview = readFileSync(overviewPath, "utf8");
   const css = readFileSync(cssPath, "utf8");
+  const attendanceCss = readFileSync(attendanceCssPath, "utf8");
   const entry = readFileSync(entryPath, "utf8");
 
   if (!/employee-portal madan-employee-portal dashboard-v2/.test(portal)) {
@@ -112,28 +114,42 @@ if (!errors.length) {
   if (/!important\b/i.test(css)) {
     errors.push("employee-portal-overview.css contains !important.");
   }
+  if (/#[0-9a-f]{3,8}\b/i.test(attendanceCss)) {
+    errors.push("employee-attendance-card.css contains a raw hex color.");
+  }
+  if (/!important\b/i.test(attendanceCss)) {
+    errors.push("employee-attendance-card.css contains !important.");
+  }
   if (!css.includes(".dashboard-v2 .employee-overview-v2-page")) {
     errors.push("employee-portal-overview.css is not isolated under Dashboard V2.");
   }
-  if (!css.includes("var(--dsv2-")) {
-    errors.push("employee-portal-overview.css is not consuming Dashboard V2 tokens.");
+  if (!attendanceCss.includes(".dashboard-v2.employee-portal .employee-overview-v2-page")) {
+    errors.push("employee-attendance-card.css is not isolated under Employee Portal Dashboard V2.");
+  }
+  if (!css.includes("var(--dsv2-") || !attendanceCss.includes("var(--dsv2-")) {
+    errors.push("Employee overview styles are not consuming Dashboard V2 tokens.");
   }
   if (!entry.includes('@import "./pages/employee-portal-overview.css";')) {
     errors.push("Dashboard V2 entry does not import employee-portal-overview.css.");
+  }
+  if (!entry.includes('@import "./components/employee-attendance-card.css";')) {
+    errors.push("Dashboard V2 entry does not import employee-attendance-card.css.");
   }
   if (entry.includes('\@import "./pages/employee-portal-overview-micro-fixes.css";'.slice(1))) {
     errors.push("Dashboard V2 entry still imports the retired employee overview micro-fix stylesheet.");
   }
 
   const attendanceCssMarkers = [
-    ".employee-overview-runtime-alert",
+    ".employee-attendance-card",
+    ".employee-attendance-console",
     ".employee-attendance-side",
     ".employee-punch-control",
+    ".employee-punch-button",
     ".employee-attendance-status",
     ".employee-attendance-hint",
   ];
   for (const marker of attendanceCssMarkers) {
-    if (!css.includes(marker)) errors.push(`Canonical employee overview stylesheet is missing compact attendance rule: ${marker}`);
+    if (!attendanceCss.includes(marker)) errors.push(`Canonical employee attendance stylesheet is missing rule: ${marker}`);
   }
 }
 
