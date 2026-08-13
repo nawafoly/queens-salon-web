@@ -1,0 +1,42 @@
+name: Run leave cash compensation fix
+
+on:
+  push:
+    branches:
+      - fix/annual-leave-cash-compensation
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply source patch
+        run: python scripts/apply-leave-cash-compensation-core-fix.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Core tests
+        run: node --test workers/hr-core-worker.test.mjs
+      - name: Dashboard requests acceptance
+        run: npm run check:dashboard-requests-v2
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
+      - name: Commit validated fix
+        run: |
+          git config user.name "nawafoly"
+          git config user.email "114729674+nawafoly@users.noreply.github.com"
+          git rm scripts/apply-leave-cash-compensation-core-fix.py .github/workflows/run-leave-cash-compensation-fix.yml
+          git add workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/pages/EmployeePortal.tsx src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx
+          git commit -m "Make financial compensation deduct annual leave"
+          git push origin HEAD:fix/annual-leave-cash-compensation
