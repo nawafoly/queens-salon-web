@@ -19,6 +19,27 @@ test("leave request print stays true A4 without preview scale leakage", () => {
   assert.doesNotMatch(`${coreCss}\n${leaveCss}\n${printAdapter}`, /zoom\s*:/);
 });
 
+test("formal leave text is black and field rules do not stretch across the row", () => {
+  const formalCss = read("src/styles/LeaveRequestDocumentFormal.css");
+  const dateCss = read("src/styles/LeaveRequestDatePicker.css");
+  const coreCss = read("src/documents/core/documentPrint.css");
+  const pdfDrawing = read("src/documents/leave/leaveRequestPdfDrawing.ts");
+  const docxPrimitives = read("src/documents/core/documentDocxPrimitives.ts");
+  const docxLayout = read("src/documents/leave/leaveRequestDocxLayout.ts");
+
+  assert.match(dateCss, /@import\s+["']\.\/LeaveRequestDocumentFormal\.css["']/);
+  assert.match(formalCss, /color:\s*#000\s*!important/);
+  assert.match(formalCss, /border-bottom:\s*0\s*!important/);
+  assert.match(formalCss, /width:\s*min\(46mm,\s*100%\)/);
+  assert.match(coreCss, /\.document-field strong[\s\S]*width:\s*fit-content/);
+  assert.match(coreCss, /\.document-long-text p[\s\S]*width:\s*fit-content/);
+  assert.match(pdfDrawing, /textColor\s*=\s*"#000"/);
+  assert.match(pdfDrawing, /measuredRuleWidth/);
+  assert.match(docxPrimitives, /<w:color w:val="000000"\/>/);
+  assert.match(docxPrimitives, /underline:\s*true/);
+  assert.doesNotMatch(docxLayout, /docxField\([^\n]+\),\s*4500,\s*true/);
+});
+
 test("leave request uses one view model and one document structure across adapters", () => {
   const entry = read("src/services/leaveRequestExport.ts");
   const facade = read("src/services/leaveRequestExportFacade.ts");
