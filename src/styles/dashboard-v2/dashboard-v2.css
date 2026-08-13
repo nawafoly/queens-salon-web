@@ -79,6 +79,25 @@
 /* Final dashboard-wide structural contract: one browser vertical scroll. */
 @import "../DashboardScrollContract.css";
 
+/* Employee attendance: expose only employee-facing shift information. */
+.dashboard-v2.employee-portal
+  .attendance-month--employee-portal-v2
+  .attendance-month__shift-debug {
+  display: none !important;
+}
+
+.dashboard-v2.employee-portal
+  .attendance-month--employee-portal-v2
+  .attendance-month__shift-chip > span:first-child {
+  display: none !important;
+}
+
+.dashboard-v2.employee-portal
+  .attendance-month--employee-portal-v2
+  .attendance-month__selected-overview > small + small {
+  display: none !important;
+}
+
 /* Employee attendance mobile: remove only the route-level side gutters. */
 @media (max-width: 820px) {
   .dashboard-v2.employee-portal
