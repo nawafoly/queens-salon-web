@@ -308,7 +308,7 @@ function isApprovedFullDayLeaveForDate(
 
 function formatAttendanceTime(value: unknown) {
   const raw = cleanText(value);
-  if (!raw) return "—";
+  if (!raw) return "--:--";
   const parsed = Date.parse(raw);
   if (!Number.isFinite(parsed)) return raw;
   return new Intl.DateTimeFormat("ar-SA", {
@@ -828,12 +828,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       const location: AttendanceLocation =
         await getBrowserPosition({
           enableHighAccuracy: true,
-          maximumAge: 10000,
+          maximumAge: 8000,
           timeout: 12000,
           targetAccuracyMeters: 50,
           acceptableAccuracyMeters: 150,
           acceptableReadingDelayMs: 400,
           acceptFirstUsableReading: true,
+          freshCacheMaxAgeMs: 8000,
         });
 
       setLastLocation(location);

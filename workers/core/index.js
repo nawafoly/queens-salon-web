@@ -1068,9 +1068,29 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
-    case "hr-shift:resolve":
-      requireAnyPermission(ctx, ["employees.schedule.manage", "attendance.view", "payroll.view", "payroll.manage"]);
-      return resolveEmployeeShift(db, ctx.salonId, route.id, query.date);
+    case "hr-shift:resolve": {
+      const actorEmployeeId = cleanText(ctx.employeeId);
+      const requestedEmployeeId = cleanText(route.id);
+      const isOwnEmployee =
+        Boolean(actorEmployeeId) &&
+        actorEmployeeId === requestedEmployeeId;
+
+      if (!isOwnEmployee) {
+        requireAnyPermission(ctx, [
+          "employees.schedule.manage",
+          "attendance.view",
+          "payroll.view",
+          "payroll.manage",
+        ]);
+      }
+
+      return resolveEmployeeShift(
+        db,
+        ctx.salonId,
+        requestedEmployeeId,
+        query.date
+      );
+    }
 
     case "attendance":
       requirePermission(ctx, "attendance.view");

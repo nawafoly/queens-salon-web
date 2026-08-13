@@ -461,12 +461,13 @@ export async function submitAttendanceToWorker(input: {
     input.location ||
       (await getBrowserPosition({
         enableHighAccuracy: true,
-        maximumAge: 10000,
+        maximumAge: 8000,
         timeout: 12000,
         targetAccuracyMeters: 50,
         acceptableAccuracyMeters: 150,
         acceptableReadingDelayMs: 400,
         acceptFirstUsableReading: true,
+        freshCacheMaxAgeMs: 8000,
       }))
   );
 

@@ -8,12 +8,20 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { SALON_ID, hrCollection } from "./hrCollections";
-
-export type AttendanceLocation = {
-  lat: number;
-  lng: number;
-  accuracy?: number;
-};
+import {
+  getBrowserPosition,
+  type AttendanceLocation,
+} from "./attendanceBrowserPosition";
+export {
+  clearAttendanceLocationCache,
+  getBrowserPosition,
+  readFreshAttendanceLocationCache,
+  rememberAttendanceLocation,
+} from "./attendanceBrowserPosition";
+export type {
+  AttendanceLocation,
+  AttendancePositionOptions,
+} from "./attendanceBrowserPosition";
 
 export type WorkZone = {
   id: string;
@@ -37,13 +45,6 @@ export type AttendanceZoneVerification = WorkZoneMatch & {
   location: AttendanceLocation;
   accuracyMeters?: number;
   maxAllowedAccuracyMeters: number;
-};
-
-export type AttendancePositionOptions = PositionOptions & {
-  targetAccuracyMeters?: number;
-  acceptableAccuracyMeters?: number;
-  acceptableReadingDelayMs?: number;
-  acceptFirstUsableReading?: boolean;
 };
 
 function cleanText(v: any) {
@@ -361,204 +362,5 @@ export async function verifyEmployeeWorkZone(args: {
     assignedZoneId,
     location,
     maxAllowedAccuracyMeters: args.maxAllowedAccuracyMeters,
-  });
-}
-
-export function getBrowserPosition(options?: AttendancePositionOptions): Promise<AttendanceLocation> {
-  if (typeof navigator === "undefined" || !navigator.geolocation) {
-    return Promise.reject(new Error("الموقع غير مدعوم في هذا المتصفح."));
-  }
-
-  const requestedTimeout = Number(options?.timeout);
-  const timeoutMs =
-    Number.isFinite(requestedTimeout) && requestedTimeout > 0
-      ? Math.min(
-          30000,
-          Math.max(5000, Math.round(requestedTimeout))
-        )
-      : 20000;
-
-  const requestedMaximumAge = Number(
-    options?.maximumAge
-  );
-
-  const maximumAgeMs =
-    Number.isFinite(requestedMaximumAge) &&
-    requestedMaximumAge >= 0
-      ? Math.min(
-          10000,
-          Math.round(requestedMaximumAge)
-        )
-      : 0;
-
-  const positionOptions: PositionOptions = {
-    ...(options || {}),
-    enableHighAccuracy:
-      options?.enableHighAccuracy !== false,
-    timeout: timeoutMs,
-    maximumAge: maximumAgeMs,
-  };
-
-  const targetAccuracyMeters = Math.max(
-    10,
-    Math.round(safeNumber(options?.targetAccuracyMeters, 50))
-  );
-  const acceptableAccuracyMeters = Math.max(
-    targetAccuracyMeters,
-    Math.round(safeNumber(options?.acceptableAccuracyMeters, 150))
-  );
-  const acceptableReadingDelayMs = Math.min(
-    3500,
-    Math.max(400, Math.round(safeNumber(options?.acceptableReadingDelayMs, 1200)))
-  );
-  const acceptFirstUsableReading = options?.acceptFirstUsableReading === true;
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let watchId = -1;
-    let readingCount = 0;
-    let bestLocation: AttendanceLocation | null = null;
-    let acceptableReadingTimer: number | null = null;
-
-    const cleanup = () => {
-      window.clearTimeout(stopTimer);
-
-      if (acceptableReadingTimer !== null) {
-        window.clearTimeout(acceptableReadingTimer);
-        acceptableReadingTimer = null;
-      }
-
-      if (watchId >= 0) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-    };
-
-    const finishSuccess = () => {
-      if (settled || !bestLocation) return;
-
-      settled = true;
-      cleanup();
-      resolve(bestLocation);
-    };
-
-    const finishError = (message: string) => {
-      if (settled) return;
-
-      settled = true;
-      cleanup();
-      reject(new Error(message));
-    };
-
-    const stopTimer = window.setTimeout(() => {
-      if (bestLocation) {
-        finishSuccess();
-        return;
-      }
-
-      finishError(
-        "تعذر الحصول على قراءة دقيقة للموقع. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
-      );
-    }, timeoutMs + 1500);
-
-    const handlePosition = (position: GeolocationPosition) => {
-      const accuracy = Math.max(
-        0,
-        Math.round(Number(position.coords.accuracy) || 0)
-      );
-
-      const nextLocation: AttendanceLocation = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy,
-      };
-
-      readingCount += 1;
-
-      const nextAccuracy =
-        nextLocation.accuracy ?? Number.MAX_SAFE_INTEGER;
-
-      const bestAccuracy =
-        bestLocation?.accuracy ?? Number.MAX_SAFE_INTEGER;
-
-      if (!bestLocation || nextAccuracy < bestAccuracy) {
-        bestLocation = nextLocation;
-      }
-
-      console.info("[attendance_location_sample]", {
-        readingCount,
-        lat: nextLocation.lat,
-        lng: nextLocation.lng,
-        accuracy: nextLocation.accuracy,
-        bestAccuracy: bestLocation.accuracy,
-      });
-
-      if (
-        accuracy > 0 &&
-        accuracy <= targetAccuracyMeters
-      ) {
-        finishSuccess();
-        return;
-      }
-
-      if (
-        accuracy > 0 &&
-        accuracy <= acceptableAccuracyMeters
-      ) {
-        if (acceptFirstUsableReading) {
-          finishSuccess();
-          return;
-        }
-
-        if (acceptableReadingTimer === null) {
-          acceptableReadingTimer = window.setTimeout(
-            finishSuccess,
-            acceptableReadingDelayMs
-          );
-        }
-      }
-    };
-
-    try {
-      navigator.geolocation.getCurrentPosition(
-        handlePosition,
-        () => undefined,
-        {
-          ...positionOptions,
-          timeout: Math.min(1200, timeoutMs),
-          maximumAge: maximumAgeMs,
-        }
-      );
-
-      watchId = navigator.geolocation.watchPosition(
-        handlePosition,
-        (error) => {
-          if (error.code === error.PERMISSION_DENIED) {
-            finishError(
-              "اسمح بالوصول إلى الموقع حتى يتم تسجيل الحضور."
-            );
-            return;
-          }
-
-          if (bestLocation) {
-            finishSuccess();
-            return;
-          }
-
-          if (error.code === error.TIMEOUT) {
-            finishError(
-              "انتهت مهلة تحديد الموقع. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
-            );
-            return;
-          }
-
-          finishError(
-            "تعذر قراءة موقعك الحالي. فعّل GPS وWi-Fi ثم حاول مرة أخرى."
-          );
-        },
-        positionOptions
-      );
-    } catch {
-      finishError("تعذر تشغيل خدمة الموقع في هذا الجهاز.");
-    }
   });
 }
