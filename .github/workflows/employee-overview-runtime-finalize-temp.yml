@@ -27,6 +27,19 @@ jobs:
       - name: Install exact lockfile
         run: npm ci
 
+      - name: Repair regex replacement helper
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/employee-overview-runtime-finalize-temp.py")
+          text = path.read_text(encoding="utf-8")
+          old = "result, count = re.subn(pattern, replacement, text, count=1, flags=flags)"
+          new = "result, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=flags)"
+          if text.count(old) != 1:
+              raise SystemExit("regex helper repair anchor missing")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Apply employee overview runtime finalization
         run: python scripts/employee-overview-runtime-finalize-temp.py
 
