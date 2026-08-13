@@ -13,6 +13,11 @@ type DocumentSectionProps = {
   className?: string;
 };
 
+type DocumentWatermarkProps = {
+  src: string;
+  className?: string;
+};
+
 export function DocumentPage({ children, className = "", labelledBy }: DocumentPageProps) {
   return (
     <section
@@ -23,6 +28,17 @@ export function DocumentPage({ children, className = "", labelledBy }: DocumentP
     >
       {children}
     </section>
+  );
+}
+
+export function DocumentWatermark({ src, className = "" }: DocumentWatermarkProps) {
+  return (
+    <img
+      className={`document-watermark ${className}`.trim()}
+      src={src}
+      alt=""
+      aria-hidden="true"
+    />
   );
 }
 
