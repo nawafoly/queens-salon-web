@@ -1,0 +1,85 @@
+.leave-doc,
+.leave-doc p,
+.leave-doc strong,
+.leave-doc span,
+.leave-doc small,
+.leave-doc h2,
+.leave-doc h3 {
+  color: #000 !important;
+}
+
+.leave-doc-header,
+.leave-doc-manager-opinion,
+.leave-doc-admin-block {
+  border-color: #000 !important;
+}
+
+.leave-doc-number,
+.leave-doc-checkbox strong,
+.leave-doc-wide-field > span,
+.leave-doc-signature-cell strong,
+.leave-doc-signature-row strong {
+  color: #000 !important;
+  font-weight: 800;
+}
+
+.leave-doc-checkbox > span {
+  color: #000 !important;
+  border-color: #000 !important;
+}
+
+.leave-doc-letter,
+.leave-doc-manager-opinion p,
+.leave-doc-admin-block.is-preview p,
+.leave-doc-copy-note {
+  color: #000 !important;
+  opacity: 1 !important;
+}
+
+.leave-doc-admin-block.is-preview {
+  opacity: 1 !important;
+}
+
+.leave-doc-inline-value {
+  min-width: 18mm;
+  max-width: 38mm;
+  color: #000 !important;
+  border-bottom-color: #000 !important;
+}
+
+.leave-doc-wide-field {
+  justify-items: start;
+}
+
+.leave-doc-wide-field textarea {
+  width: min(100%, 150mm);
+  color: #000 !important;
+  border-color: #000 !important;
+}
+
+.leave-doc-signature-cell,
+.leave-doc-signature-row > .signature-capture-field {
+  justify-items: start;
+  border-bottom: 0 !important;
+}
+
+.leave-doc-signature-cell::after,
+.leave-doc-signature-row > .signature-capture-field::after {
+  content: "";
+  display: block;
+  width: min(46mm, 100%);
+  margin-top: 1mm;
+  border-bottom: 1px solid #000;
+}
+
+.leave-doc-admin-footer span {
+  justify-self: center;
+  width: min(46mm, 100%);
+  border-top-color: #000 !important;
+}
+
+@media (max-width: 760px) {
+  .leave-doc-wide-field textarea {
+    width: 100%;
+  }
+}
