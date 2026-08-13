@@ -8,9 +8,10 @@ const cssPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-ove
 const attendanceCssPath = resolve(root, "src/styles/dashboard-v2/components/employee-attendance-card.css");
 const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");
 const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");
+const mobilePath = resolve(root, "src/styles/EmployeePortalMobileNav.css");
 const errors = [];
 
-for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath]) {
+for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath, mobilePath]) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);
 }
 
@@ -24,6 +25,7 @@ if (!errors.length) {
   const css = readFileSync(cssPath, "utf8");
   const attendanceCss = readFileSync(attendanceCssPath, "utf8");
   const entry = readFileSync(entryPath, "utf8");
+  const mobile = readFileSync(mobilePath, "utf8");
 
   if (!/employee-portal madan-employee-portal dashboard-v2/.test(portal)) {
     errors.push("EmployeePortal.tsx is not rooted in Dashboard V2 tokens.");
@@ -106,6 +108,21 @@ if (!errors.length) {
   ];
   for (const marker of attendanceMarkupMarkers) {
     if (!overview.includes(marker)) errors.push(`Employee attendance compact markup missing: ${marker}`);
+  }
+
+  if (mobile.includes("EMPLOYEE OVERVIEW APP UI START") || mobile.includes("EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START")) {
+    errors.push("EmployeePortalMobileNav.css still contains legacy employee overview/attendance presentation.");
+  }
+
+  const referenceAttendanceCssMarkers = [
+    "grid-template-columns: minmax(0, 1fr) 108px minmax(0, 1fr);",
+    "min-height: 170px;",
+    "width: 98px;",
+    "height: 98px;",
+    "min-height: 92px;",
+  ];
+  for (const marker of referenceAttendanceCssMarkers) {
+    if (!attendanceCss.includes(marker)) errors.push(`Employee attendance reference layout marker missing: ${marker}`);
   }
 
   if (/#[0-9a-f]{3,8}\b/i.test(css)) {

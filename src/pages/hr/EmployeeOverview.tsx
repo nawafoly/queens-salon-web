@@ -1172,7 +1172,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <div>
             <small><FontAwesomeIcon icon={faClock} /> الحضور والانصراف</small>
             <h2>تسجيل الدوام</h2>
-            <p>{attendanceDateLabel}</p>
           </div>
           <span className="employee-gps-chip"><i aria-hidden="true" /> GPS + تصوير حسب الفرع</span>
         </div>
