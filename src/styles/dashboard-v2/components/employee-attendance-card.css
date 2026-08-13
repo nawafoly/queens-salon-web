@@ -1,0 +1,379 @@
+/* =========================================================
+   Dashboard V2 — Employee attendance card
+   Canonical visual layer for /employee/overview attendance.
+========================================================= */
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card {
+  display: grid;
+  gap: var(--dsv2-space-3);
+  padding: var(--dsv2-panel-padding);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--dsv2-space-3);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title > div {
+  min-width: 0;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title small {
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title h2 {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-text);
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title p {
+  margin: var(--dsv2-space-1) 0 0;
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  align-self: start;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+  padding-inline: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text-soft);
+  font-size: 0.54rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsv2-green);
+  box-shadow: 0 0 0 3px var(--dsv2-green-soft);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  align-content: center;
+  justify-items: center;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > span {
+  color: var(--dsv2-muted);
+  font-size: 0.6rem;
+  font-weight: 850;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > strong {
+  color: var(--dsv2-text);
+  font-size: 1rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side--in > strong {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsv2-muted-soft);
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em.is-done {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control {
+  display: grid;
+  justify-items: center;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control > strong {
+  max-width: 84px;
+  color: var(--dsv2-text-soft);
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+  display: grid;
+  width: 70px;
+  height: 70px;
+  min-width: 70px;
+  min-height: 70px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: 50%;
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-gold);
+  box-shadow: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--dsv2-transition-fast), border-color var(--dsv2-transition-fast), background-color var(--dsv2-transition-fast);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:hover:not(:disabled) {
+  border-color: var(--dsv2-gold);
+  background: var(--dsv2-gold-soft);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:focus-visible {
+  outline: 3px solid var(--dsv2-gold-soft);
+  outline-offset: 3px;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:disabled {
+  border-color: var(--dsv2-border);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted-soft);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button--out {
+  border-color: var(--dsv2-burgundy-border);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button--done {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: inherit;
+  font-size: 1.5rem;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 27px;
+  align-items: center;
+  justify-content: flex-start;
+  justify-self: start;
+  padding-inline: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-text-soft);
+  text-align: start;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status > span {
+  font-size: 0.56rem;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status--checked_in,
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status--checked_out {
+  border-color: var(--dsv2-green-border);
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-hint {
+  display: flex;
+  min-height: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsv2-muted);
+  font-size: 0.58rem;
+  font-weight: 750;
+  line-height: 1.55;
+  text-align: start;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note small {
+  display: inline-flex;
+  padding: var(--dsv2-space-1) var(--dsv2-space-2);
+  border-radius: var(--dsv2-radius-xs);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
+  font-size: 0.5rem;
+  font-weight: 800;
+}
+
+@media (max-width: 560px) {
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card {
+    gap: var(--dsv2-space-3);
+    padding: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--dsv2-space-2);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title h2 {
+    font-size: 0.98rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip {
+    min-height: 25px;
+    padding-inline: var(--dsv2-space-2);
+    font-size: 0.48rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+    gap: var(--dsv2-space-2);
+    padding: var(--dsv2-space-3) var(--dsv2-space-2);
+    border-radius: var(--dsv2-radius-md);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side {
+    gap: 3px;
+    padding: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > span {
+    font-size: 0.52rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > strong {
+    font-size: 0.84rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em {
+    font-size: 0.45rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button > span {
+    width: 28px;
+    height: 28px;
+    font-size: 1.22rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control > strong {
+    max-width: 64px;
+    font-size: 0.48rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status {
+    min-height: 25px;
+    padding-inline: var(--dsv2-space-2);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status > span,
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-hint {
+    font-size: 0.52rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
+    gap: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    min-height: 50px;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > strong {
+    font-size: 0.76rem;
+  }
+}
