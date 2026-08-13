@@ -17,7 +17,7 @@ export function drawLeavePdfText(
   maxWidth: number,
   size: number,
   weight = 500,
-  textColor = "#111",
+  textColor = "#000",
   align: CanvasTextAlign = "right"
 ) {
   context.save();
@@ -68,7 +68,7 @@ export function drawLeavePdfWrappedText(
   context.direction = "rtl";
   context.textAlign = "right";
   context.textBaseline = "top";
-  context.fillStyle = "#111";
+  context.fillStyle = "#000";
   setFont(context, size, weight);
   wrapText(context, value, maxWidth, maxLines).forEach((line, index) => {
     context.fillText(line, x, y + index * lineHeight, maxWidth);
@@ -83,9 +83,21 @@ export function strokeLeavePdfBox(
   width: number,
   height: number
 ) {
-  context.strokeStyle = "#222";
+  context.strokeStyle = "#000";
   context.lineWidth = 1.5;
   context.strokeRect(x, y, width, height);
+}
+
+function measuredRuleWidth(
+  context: CanvasRenderingContext2D,
+  value: unknown,
+  maxWidth: number,
+  minWidth = 140,
+  padding = 28
+) {
+  const text = String(value ?? "—");
+  const measured = context.measureText(text).width + padding;
+  return Math.min(maxWidth, Math.max(minWidth, measured));
 }
 
 export function drawLeavePdfField(
@@ -96,12 +108,16 @@ export function drawLeavePdfField(
   y: number,
   width: number
 ) {
-  drawLeavePdfText(context, label, x + width - 8, y + 6, width - 16, 15, 700, "#444");
-  drawLeavePdfText(context, value, x + width - 8, y + 32, width - 16, 18, 800);
+  const right = x + width - 8;
+  drawLeavePdfText(context, label, right, y + 6, width - 16, 15, 800, "#000");
+  setFont(context, 18, 800);
+  const ruleWidth = measuredRuleWidth(context, value, width - 16);
+  drawLeavePdfText(context, value, right, y + 32, ruleWidth, 18, 800, "#000");
   context.beginPath();
-  context.moveTo(x, y + 66);
-  context.lineTo(x + width, y + 66);
-  context.strokeStyle = "#222";
+  context.moveTo(right - ruleWidth, y + 66);
+  context.lineTo(right, y + 66);
+  context.strokeStyle = "#000";
+  context.lineWidth = 1.2;
   context.stroke();
 }
 
@@ -113,23 +129,29 @@ export function drawLeavePdfSignature(
   y: number,
   width: number
 ) {
-  drawLeavePdfText(context, signature.label, x + width - 8, y, width - 16, 15, 700, "#444");
+  const right = x + width - 8;
+  drawLeavePdfText(context, signature.label, right, y, width - 16, 15, 800, "#000");
+  let ruleWidth = 220;
   if (image) {
     const maxWidth = Math.min(width - 16, 260);
     const maxHeight = 76;
     const ratio = Math.min(maxWidth / image.width, maxHeight / image.height);
     const drawWidth = image.width * ratio;
     const drawHeight = image.height * ratio;
-    context.drawImage(image, x + width - 8 - drawWidth, y + 24, drawWidth, drawHeight);
+    ruleWidth = Math.max(180, Math.min(width - 16, drawWidth + 24));
+    context.drawImage(image, right - drawWidth, y + 24, drawWidth, drawHeight);
   } else {
-    drawLeavePdfText(context, signature.fallback, x + width - 8, y + 28, width - 16, 18, 800);
+    setFont(context, 18, 800);
+    ruleWidth = measuredRuleWidth(context, signature.fallback, width - 16, 180);
+    drawLeavePdfText(context, signature.fallback, right, y + 28, ruleWidth, 18, 800, "#000");
   }
   if (signature.signedAt) {
-    drawLeavePdfText(context, signature.signedAt, x + width - 8, y + 104, width - 16, 13, 500, "#555");
+    drawLeavePdfText(context, signature.signedAt, right, y + 104, ruleWidth, 13, 600, "#000");
   }
   context.beginPath();
-  context.moveTo(x, y + 126);
-  context.lineTo(x + width, y + 126);
-  context.strokeStyle = "#222";
+  context.moveTo(right - ruleWidth, y + 126);
+  context.lineTo(right, y + 126);
+  context.strokeStyle = "#000";
+  context.lineWidth = 1.2;
   context.stroke();
 }
