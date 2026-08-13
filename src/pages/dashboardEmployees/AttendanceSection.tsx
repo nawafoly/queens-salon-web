@@ -9,6 +9,12 @@ import {
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
+import {
+  computeAttendanceEarlyLeaveMinutes,
+  computeResolvedAttendanceDay,
+  recordsFromAttendanceRow,
+  resolveAttendanceShiftForDate,
+} from "../../helpers/hr/attendanceShiftResolver";
 import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
 import type { AttendanceSpecialDay } from "../../helpers/hr/attendanceCalendarData";
 import {
@@ -330,7 +336,11 @@ function resolveEffectiveAttendanceSchedule(
   row: Record<string, unknown>,
   schedule?: Record<string, unknown> | null
 ) {
-  return resolveRecordShiftSchedule(row) || resolveAttendanceSchedule(dateKey, schedule);
+  return resolveAttendanceShiftForDate({
+    dateKey,
+    row,
+    schedule: schedule as any,
+  }).schedule;
 }
 
 function riyadhIsoFromDateAndTime(dateKey: string, value: string) {
@@ -358,11 +368,10 @@ function scheduleDateTimeMs(dateKey: string, value: unknown) {
 
 function computeLateMinutes(row: Record<string, unknown>, date: string, schedule?: Record<string, unknown> | null) {
   const explicitLate = Number(row.lateMinutes || 0);
-  if (Number.isFinite(explicitLate) && explicitLate > 0) return Math.round(explicitLate);
 
   const checkInAt = attendanceServerTime(date, row.checkInAtClient || row.checkInAt || row.checkInTime);
   const checkOutAt = attendanceServerTime(date, row.checkOutAtClient || row.checkOutAt || row.checkOutTime);
-  if (!checkInAt) return 0;
+  if (!checkInAt) return Number.isFinite(explicitLate) && explicitLate > 0 ? Math.round(explicitLate) : 0;
 
   const records: AttendanceRecord[] = [
     { id: `${date}-in`, type: "check_in", serverTime: checkInAt },
@@ -374,10 +383,9 @@ function computeLateMinutes(row: Record<string, unknown>, date: string, schedule
 
 function computeEarlyLeaveMinutes(row: Record<string, unknown>, date: string, schedule?: Record<string, unknown> | null) {
   const explicitEarlyLeave = Number(row.earlyLeaveMinutes || 0);
-  if (Number.isFinite(explicitEarlyLeave) && explicitEarlyLeave > 0) return Math.round(explicitEarlyLeave);
 
   const checkOutAt = attendanceServerTime(date, row.checkOutAtClient || row.checkOutAt || row.checkOutTime);
-  if (!checkOutAt) return 0;
+  if (!checkOutAt) return Number.isFinite(explicitEarlyLeave) && explicitEarlyLeave > 0 ? Math.round(explicitEarlyLeave) : 0;
 
   const resolvedSchedule = resolveEffectiveAttendanceSchedule(date, row, schedule);
   const scheduleStartMs = scheduleDateTimeMs(date, resolvedSchedule.startTime);
@@ -619,16 +627,33 @@ function toLiveAttendanceRow(
     ? (record.records as Record<string, unknown>[])
     : [];
   const date = cleanText(record.date || record.dateKey || record.dayKey);
-  const resolvedSchedule = date ? resolveEffectiveAttendanceSchedule(date, record, schedule) : null;
-  const sourceInfo = date ? recordShiftInfo(date, row) || fallbackShiftInfo({ dateKey: date, schedule }) : null;
+  const dayRecords = recordsFromAttendanceRow(record);
+  const resolvedDay = date
+    ? computeResolvedAttendanceDay({
+        dateKey: date,
+        row: record,
+        records: dayRecords,
+        schedule: schedule as any,
+      })
+    : null;
+  const resolvedSchedule = resolvedDay?.schedule || (date ? resolveEffectiveAttendanceSchedule(date, record, schedule) : null);
+  const sourceInfo = resolvedDay
+    ? {
+        sourceLabel: resolvedDay.shiftResolution.sourceLabel,
+        sourceDetail: resolvedDay.shiftResolution.sourceDetail,
+        statusLabel: resolvedDay.shiftResolution.isOff ? "يوم راحة" : "نشط",
+      }
+    : date
+      ? recordShiftInfo(date, row) || fallbackShiftInfo({ dateKey: date, schedule })
+      : null;
   return {
     date,
     status: cleanText(record.status || record.attendanceStatus || record.state),
     checkInAtClient: cleanText(record.checkInAtClient || record.checkInAt || record.checkInTime),
     checkOutAtClient: cleanText(record.checkOutAtClient || record.checkOutAt || record.checkOutTime),
-    lateMinutes: date ? computeLateMinutes(record, date, schedule) : Number(record.lateMinutes || 0),
-    earlyLeaveMinutes: date ? computeEarlyLeaveMinutes(record, date, schedule) : Number(record.earlyLeaveMinutes || 0),
-    shiftName: cleanText(record.shiftName || (record.resolvedShift as Record<string, unknown> | undefined)?.shiftName || (record.resolvedShift as Record<string, unknown> | undefined)?.shift_name || sourceInfo?.sourceDetail),
+    lateMinutes: resolvedDay ? Math.max(0, Math.round(resolvedDay.computation.lateHours * 60)) : date ? computeLateMinutes(record, date, schedule) : Number(record.lateMinutes || 0),
+    earlyLeaveMinutes: resolvedDay ? computeAttendanceEarlyLeaveMinutes({ dateKey: date, records: dayRecords, schedule: resolvedDay.schedule }) : date ? computeEarlyLeaveMinutes(record, date, schedule) : Number(record.earlyLeaveMinutes || 0),
+    shiftName: cleanText(record.shiftName || (record.resolvedShift as Record<string, unknown> | undefined)?.shiftName || (record.resolvedShift as Record<string, unknown> | undefined)?.shift_name || resolvedDay?.shiftResolution.shiftName || sourceInfo?.sourceDetail),
     shiftSourceLabel: sourceInfo?.sourceLabel,
     shiftStatusLabel: sourceInfo?.statusLabel,
     scheduledStartTime: cleanText(resolvedSchedule?.startTime),
@@ -638,7 +663,7 @@ function toLiveAttendanceRow(
     notes: cleanText(record.notes || record.note),
     type: cleanText(record.type),
     absentFullDay: record.absentFullDay === true,
-    recordCount: records.length,
+    recordCount: dayRecords.length || records.length,
     workZoneName: cleanText(
       checkInVerification.workZoneName ||
         checkOutVerification.workZoneName ||

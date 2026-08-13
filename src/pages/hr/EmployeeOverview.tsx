@@ -56,6 +56,7 @@ import {
 import { getWeekdayKeyForDateKey } from "../../helpers/hr/workSchedule";
 import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
+import { attendanceMonthDateKeys } from "../../helpers/hr/attendanceShiftResolver";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
 import { formatNotificationTime, notificationTone, notificationTypeLabel, toMillis } from "./portalUtils";
 import AttendanceMonthView from "../../components/AttendanceMonthView";
@@ -389,6 +390,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [todayResolvedShift, setTodayResolvedShift] = useState<CoreResolvedShift | null>(null);
   const [todayResolvedShiftLoading, setTodayResolvedShiftLoading] = useState(false);
   const [todayResolvedShiftError, setTodayResolvedShiftError] = useState("");
+  const [attendanceMonthResolvedShifts, setAttendanceMonthResolvedShifts] = useState<Record<string, CoreResolvedShift | null>>({});
+  const [attendanceMonthResolvedShiftsLoading, setAttendanceMonthResolvedShiftsLoading] = useState(false);
+  const [attendanceMonthResolvedShiftsError, setAttendanceMonthResolvedShiftsError] = useState("");
+  const [attendanceMonthResolvedShiftsReloadKey, setAttendanceMonthResolvedShiftsReloadKey] = useState(0);
   const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
@@ -598,6 +603,54 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       alive = false;
     };
   }, [attendanceEmployeeId, attendanceDate, canViewAttendance]);
+
+  useEffect(() => {
+    if (!attendanceOnly || !canViewAttendance || !attendanceEmployeeId) {
+      setAttendanceMonthResolvedShifts({});
+      setAttendanceMonthResolvedShiftsLoading(false);
+      setAttendanceMonthResolvedShiftsError("");
+      return;
+    }
+
+    const monthKey = /^\d{4}-\d{2}$/.test(attendanceMonth)
+      ? attendanceMonth
+      : getTodayAttendanceDateKey().slice(0, 7);
+    const dateKeys = attendanceMonthDateKeys(monthKey);
+    if (!dateKeys.length) {
+      setAttendanceMonthResolvedShifts({});
+      return;
+    }
+
+    let alive = true;
+
+    async function loadMonthResolvedShifts() {
+      setAttendanceMonthResolvedShiftsLoading(true);
+      setAttendanceMonthResolvedShiftsError("");
+      let hadError = false;
+      const pairs = await Promise.all(
+        dateKeys.map(async (date) => {
+          try {
+            const row = await CoreHrService.resolveEmployeeShift(attendanceEmployeeId, date);
+            return [date, row] as const;
+          } catch (error) {
+            hadError = true;
+            console.warn("employee attendance month shift resolve failed", { employeeId: attendanceEmployeeId, date, error });
+            return [date, null] as const;
+          }
+        })
+      );
+      if (!alive) return;
+      setAttendanceMonthResolvedShifts(Object.fromEntries(pairs));
+      setAttendanceMonthResolvedShiftsError(hadError ? "تعذر تحميل بعض شفتات الشهر من Core." : "");
+      setAttendanceMonthResolvedShiftsLoading(false);
+    }
+
+    void loadMonthResolvedShifts();
+
+    return () => {
+      alive = false;
+    };
+  }, [attendanceEmployeeId, attendanceMonth, attendanceMonthResolvedShiftsReloadKey, attendanceOnly, canViewAttendance]);
 
   useEffect(() => {
     if (!attendanceEmployeeId) {
@@ -1023,13 +1076,16 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         <AttendanceMonthView
           className="attendance-month--employee-portal-v2"
           rows={attendanceMonthRows}
-          loading={attendanceMonthLoading || attendanceLoading}
+          loading={attendanceMonthLoading || attendanceLoading || attendanceMonthResolvedShiftsLoading}
           monthKey={attendanceMonth}
           selectedDate={attendanceSelectedDate}
           title="سجل حضور الموظفة"
           subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
           viewerMode="employee"
           schedule={profile}
+          coreResolvedShifts={attendanceMonthResolvedShifts}
+          coreResolvedShiftsLoading={attendanceMonthResolvedShiftsLoading}
+          coreResolvedShiftsError={attendanceMonthResolvedShiftsError}
           approvedLeaveDateKeys={approvedLeaveDateKeys}
           permissionEntries={attendancePermissionEntries}
           onMonthChange={(monthKey) => {
@@ -1040,6 +1096,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           }}
           onSelectedDateChange={setAttendanceSelectedDate}
           onGenerateSummary={() => {
+            setAttendanceMonthResolvedShiftsReloadKey((value) => value + 1);
             void Promise.all([
               loadAttendanceMonth(),
               loadAttendancePermissions(),

@@ -26,6 +26,11 @@ import {
 } from "../helpers/hr/attendanceCalculations";
 import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../helpers/hr/staffScheduleHistory";
 import { permissionIntervalsFromRequests } from "../helpers/hr/permissionAttendance";
+import {
+  attendanceResolvedShiftSourceLabel,
+  computeResolvedAttendanceDay,
+  recordsFromAttendanceRow,
+} from "../helpers/hr/attendanceShiftResolver";
 import type { EmployeePermissionRequest } from "../services/employeePermissionRequests";
 import type { CoreResolvedShift } from "../types/hrCoreApi";
 import "../styles/AttendanceMonthView.css";
@@ -73,6 +78,8 @@ type AttendanceMonthViewProps = {
   showSummaryTools?: boolean;
   schedule?: AttendanceScheduleInput | null;
   coreResolvedShifts?: Record<string, CoreResolvedShift | null> | null;
+  coreResolvedShiftsLoading?: boolean;
+  coreResolvedShiftsError?: string;
   approvedLeaveDateKeys?: Iterable<string>;
   permissionEntries?: EmployeePermissionRequest[];
   onMonthChange: (monthKey: string) => void;
@@ -370,35 +377,7 @@ function cleanText(value: unknown) {
 }
 
 function recordsFromRow(row: StaffAttendanceWithId | null): AttendanceRecord[] {
-  const rawRecords = Array.isArray(row?.records) ? row.records : [];
-  if (rawRecords.length) {
-    return rawRecords
-      .map((record, index) => ({
-        id: cleanText(record.id) || `${row?.id || "record"}-${index}`,
-        type: cleanText(record.type) || "record",
-        serverTime: cleanText(record.serverTime || record.clientTime),
-        location: record.location,
-        result: record.result,
-        zoneName: record.zoneName,
-        zoneId: record.zoneId,
-        distanceMeters: record.distanceMeters,
-      }))
-      .filter((record) => record.serverTime)
-      .sort(
-        (left, right) =>
-          Date.parse(left.serverTime || "") -
-          Date.parse(right.serverTime || "")
-      );
-  }
-
-  const records: AttendanceRecord[] = [];
-  if (row?.checkInAtClient) {
-    records.push({ id: `${row.id}-in`, type: "check_in", serverTime: row.checkInAtClient });
-  }
-  if (row?.checkOutAtClient) {
-    records.push({ id: `${row.id}-out`, type: "check_out", serverTime: row.checkOutAtClient });
-  }
-  return records;
+  return recordsFromAttendanceRow(row as (StaffAttendanceWithId & Record<string, unknown>) | null);
 }
 
 function selectedEventCount(row: StaffAttendanceWithId | null) {
@@ -492,6 +471,8 @@ export default function AttendanceMonthView({
   showSummaryTools = true,
   schedule,
   coreResolvedShifts,
+  coreResolvedShiftsLoading = false,
+  coreResolvedShiftsError = "",
   approvedLeaveDateKeys,
   permissionEntries,
   onMonthChange,
@@ -516,25 +497,41 @@ export default function AttendanceMonthView({
   const selectedRow = rowsByDate.get(safeSelectedDate) || null;
   const selectedDayRecords = recordsFromRow(selectedRow);
   const selectedCoreShift = coreResolvedShifts?.[safeSelectedDate] || null;
-  const selectedSchedule = scheduleForDate(safeSelectedDate, schedule, selectedCoreShift);
-  const selectedComputation = computeAttendanceDay(
-    safeSelectedDate,
-    selectedDayRecords,
-    selectedSchedule,
-    permissionIntervalsFromRequests(permissionEntries, safeSelectedDate)
-  );
-  const selectedStatus = getAttendanceDayStatus({
-    date: safeSelectedDate,
-    hasAttendance: selectedDayRecords.length > 0,
-    checkOut: selectedComputation.checkOut,
-    computation: selectedComputation,
+  const selectedResolvedDay = computeResolvedAttendanceDay({
+    dateKey: safeSelectedDate,
+    row: selectedRow as (StaffAttendanceWithId & Record<string, unknown>) | null,
+    records: selectedDayRecords,
+    schedule,
+    coreResolvedShift: selectedCoreShift,
+    permissionEntries,
     todayDateKey: todayKey,
-    weeklyOffDays: selectedSchedule.weeklyOffDays,
     approvedLeaveDateKeys: leaveDateKeys,
-    holidayDateKeys: isDateSpecificOff(safeSelectedDate, schedule) || isCoreResolvedOff(selectedCoreShift) ? [safeSelectedDate] : [],
   });
+  const selectedSchedule = selectedResolvedDay.schedule;
+  const selectedComputation = selectedResolvedDay.computation;
+  const selectedStatus = selectedResolvedDay.status;
+  const selectedShiftResolution = selectedResolvedDay.shiftResolution;
   const selectedTone = displayStatusTone(selectedStatus, viewerMode);
   const selectedCount = selectedEventCount(selectedRow);
+  const selectedShiftDebugRows: Array<[string, string]> = [
+    ["التاريخ", selectedShiftResolution.dateKey],
+    ["وقت البداية", selectedShiftResolution.startTime || "غير محدد"],
+    ["وقت النهاية", selectedShiftResolution.endTime || "غير محدد"],
+    ["سماح التأخير", `${selectedShiftResolution.lateGraceMinutes || 0} دقيقة`],
+    ["اسم الشفت", selectedShiftResolution.shiftName || "غير محدد"],
+    ["المصدر", selectedShiftResolution.sourceLabel || "غير محدد"],
+    ["نوع المصدر", selectedShiftResolution.sourceType || "غير محدد"],
+    ["مستند المصدر", selectedShiftResolution.sourceDoc || "غير موجود"],
+    ["Core resolved shift", selectedCoreShift ? attendanceResolvedShiftSourceLabel(selectedCoreShift) : coreResolvedShiftsLoading ? "جاري التحميل" : "غير موجود"],
+    ["نوع الاستثناء", selectedShiftResolution.exceptionType || "لا يوجد"],
+    ["نشط", selectedShiftResolution.active === null ? "غير محدد" : selectedShiftResolution.active ? "نعم" : "لا"],
+    ["من سجل البصمة", selectedShiftResolution.recordResolvedShiftPresent ? "نعم" : "لا"],
+    ["من Core", selectedShiftResolution.coreResolvedShiftPresent ? "نعم" : "لا"],
+    ["Fallback used", selectedShiftResolution.fallbackUsed ? "نعم" : "لا"],
+    ["Fallback source", selectedShiftResolution.fallbackSource || "لا يوجد"],
+    ["وقت الحساب", selectedShiftResolution.calculationTime],
+    ...(coreResolvedShiftsError ? [["خطأ Core", coreResolvedShiftsError] as [string, string]] : []),
+  ];
   const dayCount = daysInMonth(safeMonthKey);
   const blanks = firstWeekday(safeMonthKey);
   const calendarCells = [
@@ -544,24 +541,18 @@ export default function AttendanceMonthView({
       const dateKey = `${safeMonthKey}-${pad2(day)}`;
       const row = rowsByDate.get(dateKey) || null;
       const dayCoreShift = coreResolvedShifts?.[dateKey] || null;
-      const daySchedule = scheduleForDate(dateKey, schedule, dayCoreShift);
       const dayRecords = recordsFromRow(row);
-      const computation = computeAttendanceDay(
+      const resolvedDay = computeResolvedAttendanceDay({
         dateKey,
-        dayRecords,
-        daySchedule,
-        permissionIntervalsFromRequests(permissionEntries, dateKey)
-      );
-      const status = getAttendanceDayStatus({
-        date: dateKey,
-        hasAttendance: dayRecords.length > 0,
-        checkOut: computation.checkOut,
-        computation,
+        row: row as (StaffAttendanceWithId & Record<string, unknown>) | null,
+        records: dayRecords,
+        schedule,
+        coreResolvedShift: dayCoreShift,
+        permissionEntries,
         todayDateKey: todayKey,
-        weeklyOffDays: daySchedule.weeklyOffDays,
         approvedLeaveDateKeys: leaveDateKeys,
-        holidayDateKeys: isDateSpecificOff(dateKey, schedule) || isCoreResolvedOff(dayCoreShift) ? [dateKey] : [],
       });
+      const status = resolvedDay.status;
       return {
         key: dateKey,
         blank: false as const,
@@ -710,9 +701,9 @@ export default function AttendanceMonthView({
             </div>
             <strong>{fullDateLabel(safeSelectedDate)}</strong>
             <small>{emptySummaryText}</small>
-            {selectedCoreShift && cleanShiftText((selectedCoreShift as any).source) !== "none" ? (
+            {selectedShiftResolution ? (
               <small>
-                الشفت المستخدم للحساب: {resolvedShiftName(selectedCoreShift)} — {resolvedShiftSourceLabel(selectedCoreShift)}
+                الشفت المستخدم للحساب: {selectedShiftResolution.shiftName} — {selectedShiftResolution.sourceLabel}
               </small>
             ) : null}
           </div>
@@ -840,11 +831,11 @@ export default function AttendanceMonthView({
         </div>
 
         <div className="attendance-month__records-meta">
-          {selectedCoreShift && cleanShiftText((selectedCoreShift as any).source) !== "none" ? (
+          {selectedShiftResolution ? (
             <div className="attendance-month__shift-chip">
-              <span>{resolvedShiftSourceLabel(selectedCoreShift)}</span>
-              <strong>{resolvedShiftName(selectedCoreShift)}</strong>
-              <small>{isCoreResolvedOff(selectedCoreShift) ? "راحة" : `${selectedSchedule.startTime} — ${selectedSchedule.endTime}`}</small>
+              <span>{selectedShiftResolution.sourceLabel}</span>
+              <strong>{selectedShiftResolution.shiftName}</strong>
+              <small>{selectedShiftResolution.isOff ? "راحة" : `${selectedSchedule.startTime || "-"} — ${selectedSchedule.endTime || "-"}`}</small>
             </div>
           ) : null}
           {canShowAdminControls &&
@@ -901,6 +892,23 @@ export default function AttendanceMonthView({
             </div>
           ) : null}
         </div>
+
+        {viewerMode === "employee" ? (
+          <div className="attendance-month__shift-debug" aria-label="الشفت المستخدم للحساب">
+            <div className="attendance-month__shift-debug-head">
+              <strong>الشفت المستخدم للحساب</strong>
+              <span>{selectedShiftResolution.fallbackUsed ? "Fallback" : "Canonical"}</span>
+            </div>
+            <dl>
+              {selectedShiftDebugRows.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value || "غير محدد"}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
 
         {isRestDay ? (
           <div className={`attendance-month__state-card is-${selectedTone}`}>
