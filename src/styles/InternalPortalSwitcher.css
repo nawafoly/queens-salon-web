@@ -199,6 +199,12 @@
     flex: 0 0 auto;
   }
 
+  .employee-portal.madan-employee-portal
+    .employee-app-topbar__actions
+    .internal-portal-switcher__item span {
+    display: none;
+  }
+
   .dashboard-skin .dash-topbar-actions.internal-portal-switcher {
     flex: 0 0 auto;
   }

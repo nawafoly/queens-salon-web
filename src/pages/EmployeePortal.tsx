@@ -621,6 +621,8 @@ export default function EmployeePortal() {
           type="button"
           className="employee-floating-request"
           onClick={() => setRequestSheetOpen(true)}
+          aria-label="إنشاء طلب جديد"
+          title="طلب جديد"
         >
           <FontAwesomeIcon icon={faPlus} />
           <span>طلب جديد</span>

@@ -596,24 +596,24 @@
     z-index: 310;
 
     right: auto !important;
-    left: 17px !important;
+    left: 14px !important;
     bottom:
       calc(
-        85px +
+        84px +
         env(safe-area-inset-bottom, 0px)
       ) !important;
 
-    display: flex !important;
+    display: grid !important;
+    width: 50px !important;
+    min-width: 50px !important;
+    height: 50px !important;
+    min-height: 50px !important;
+    place-items: center;
 
-    min-height: 48px;
-
-    align-items: center;
-    gap: 8px;
-
-    padding: 0 15px !important;
+    padding: 0 !important;
 
     border: 1px solid #081432 !important;
-    border-radius: 15px !important;
+    border-radius: 50% !important;
 
     color: #ffffff !important;
     background:
@@ -624,7 +624,17 @@
       ) !important;
 
     box-shadow:
-      0 15px 32px rgba(7, 17, 50, 0.24) !important;
+      0 13px 28px rgba(7, 17, 50, 0.22) !important;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-floating-request svg {
+    font-size: 1rem;
+  }
+
+  .employee-portal.madan-employee-portal
+    .employee-floating-request span {
+    display: none;
   }
 }
 
@@ -958,7 +968,7 @@
     padding:
       0
       0
-      26px !important;
+      92px !important;
 
     overflow-x: hidden !important;
     overflow-y: auto !important;
