@@ -196,3 +196,12 @@ text, count = pattern.subn(new_function + "\n\nasync function executeSalaryAdvan
 if count != 1:
     raise SystemExit(f"Expected one execution function, replaced {count}")
 path.write_text(text, encoding="utf-8")
+
+# The verification workflow removes one obsolete assertion with sed before running the patch.
+# Restore that exact line so the temporary patch file is clean and can be removed normally.
+patch_path = Path("scripts/apply-leave-cash-compensation-core-fix.py")
+patch_text = patch_path.read_text(encoding="utf-8")
+needle = 'assert "leave_balance = leave_balance - ?" in read(worker)\nassert "balanceDeductionDays: Number(payload.requestedDays)" in read(worker)'
+restored = 'assert "leave_balance = leave_balance - ?" in read(worker)\nassert "leaveBalanceDeducted: requestedDays" in read(worker)\nassert "balanceDeductionDays: Number(payload.requestedDays)" in read(worker)'
+if needle in patch_text:
+    patch_path.write_text(patch_text.replace(needle, restored, 1), encoding="utf-8")
