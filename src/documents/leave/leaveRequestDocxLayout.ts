@@ -32,7 +32,6 @@ function signatureBlock(
   return `${docxParagraph(signature.label, {
     size: 17,
     bold: true,
-    color: "555555",
     after: 15,
   })}${docxImage(asset, relId, signature.fallback, {
     maxWidth: 1500000,
@@ -40,7 +39,6 @@ function signatureBlock(
     id,
   })}${signature.signedAt ? docxParagraph(signature.signedAt, {
     size: 15,
-    color: "666666",
     after: 0,
   }) : ""}`;
 }
@@ -76,8 +74,8 @@ function leaveTypeBlock(data: LeaveRequestDocumentData) {
 function fieldGrid(data: LeaveRequestDocumentData) {
   const fields = data.fields;
   return docxTable([
-    `<w:tr>${docxCell(docxField(fields[1]?.label || "", fields[1]?.value || ""), 4500, true)}${docxCell(docxField(fields[0]?.label || "", fields[0]?.value || ""), 4500, true)}</w:tr>`,
-    `<w:tr>${docxCell(docxField(fields[3]?.label || "", fields[3]?.value || ""), 4500, true)}${docxCell(docxField(fields[2]?.label || "", fields[2]?.value || ""), 4500, true)}</w:tr>`,
+    `<w:tr>${docxCell(docxField(fields[1]?.label || "", fields[1]?.value || ""), 4500)}${docxCell(docxField(fields[0]?.label || "", fields[0]?.value || ""), 4500)}</w:tr>`,
+    `<w:tr>${docxCell(docxField(fields[3]?.label || "", fields[3]?.value || ""), 4500)}${docxCell(docxField(fields[2]?.label || "", fields[2]?.value || ""), 4500)}</w:tr>`,
   ], [4500, 4500], 65);
 }
 
@@ -86,7 +84,7 @@ function employeeSignatureRow(
   asset: DocumentExportImage | null
 ) {
   return docxTable([
-    `<w:tr>${docxCell(signatureBlock(data.employeeSignature, asset, "rIdEmployeeSignature", 20), 4500, true)}${docxCell(docxField("الاسم", data.employeeName), 4500, true)}</w:tr>`,
+    `<w:tr>${docxCell(signatureBlock(data.employeeSignature, asset, "rIdEmployeeSignature", 20), 4500)}${docxCell(docxField("الاسم", data.employeeName), 4500)}</w:tr>`,
   ], [4500, 4500], 85);
 }
 
@@ -95,12 +93,11 @@ function managerGrid(
   asset: DocumentExportImage | null
 ) {
   return docxTable([
-    `<w:tr>${docxCell(docxField("الدور", data.managerRole), 4500, true)}${docxCell(docxField("اسم المسؤول", data.managerName), 4500, true)}</w:tr>`,
-    `<w:tr>${docxCell(signatureBlock(data.managerSignature, asset, "rIdManagerSignature", 30), 4500, true)}${docxCell(`${docxField("القرار", data.managerDecisionLabel)}${docxParagraph(`تاريخ القرار: ${data.managerDecidedAtLabel}`, {
+    `<w:tr>${docxCell(docxField("الدور", data.managerRole), 4500)}${docxCell(docxField("اسم المسؤول", data.managerName), 4500)}</w:tr>`,
+    `<w:tr>${docxCell(signatureBlock(data.managerSignature, asset, "rIdManagerSignature", 30), 4500)}${docxCell(`${docxField("القرار", data.managerDecisionLabel)}${docxParagraph(`تاريخ القرار: ${data.managerDecidedAtLabel}`, {
       size: 15,
-      color: "666666",
       after: 0,
-    })}`, 4500, true)}</w:tr>`,
+    })}`, 4500)}</w:tr>`,
   ], [4500, 4500], 60);
 }
 
@@ -132,17 +129,17 @@ export function leaveRequestDocxBody(data: LeaveRequestDocumentData, assets: Lea
     docxParagraph(LEAVE_DOCUMENT_TEXT.greeting, { bold: true, size: 20, after: 35 }),
     docxParagraph(leaveRequestLetterText(data), { size: 21, after: 70 }),
     fieldGrid(data),
-    docxParagraph("سبب الإجازة", { bold: true, size: 17, color: "555555", after: 15 }),
-    docxParagraph(data.reason, { size: 20, after: 25 }),
+    docxParagraph("سبب الإجازة", { bold: true, size: 17, after: 15 }),
+    docxParagraph(data.reason, { size: 20, after: 25, underline: true }),
     data.notes !== "—"
-      ? `${docxParagraph("ملاحظات", { bold: true, size: 17, color: "555555", after: 15 })}${docxParagraph(data.notes, { size: 20, after: 25 })}`
+      ? `${docxParagraph("ملاحظات", { bold: true, size: 17, after: 15 })}${docxParagraph(data.notes, { size: 20, after: 25, underline: true })}`
       : "",
     employeeSignatureRow(data, assets.employee),
     docxParagraph(LEAVE_DOCUMENT_TEXT.managerTitle, { bold: true, size: 25, after: 25 }),
     docxParagraph(LEAVE_DOCUMENT_TEXT.managerReview, { bold: true, size: 19, after: 55 }),
     managerGrid(data, assets.manager),
     decisionBlock(data),
-    docxParagraph(LEAVE_DOCUMENT_TEXT.decisionNote, { bold: true, size: 17, color: "555555", after: 15 }),
-    docxParagraph(data.managerDecisionNote, { size: 20, after: 10 }),
+    docxParagraph(LEAVE_DOCUMENT_TEXT.decisionNote, { bold: true, size: 17, after: 15 }),
+    docxParagraph(data.managerDecisionNote, { size: 20, after: 10, underline: true }),
   ].join("");
 }
