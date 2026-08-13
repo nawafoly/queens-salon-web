@@ -44,17 +44,14 @@ function firestoreLikeTimestampMs(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isExplicitRemovedStatus(value: unknown) {
-  const status = cleanText(value).toLowerCase();
-  return status === "deleted" || status === "archived";
-}
-
 /**
- * Legacy staff rows can retain removedFromStaff/archived/deleted flags after an
- * administrator saves the canonical employee again. A fresh active canonical
- * write restores that employee unless the current record still carries an
- * explicit deleted/archived status. This keeps old removal metadata from
- * excluding the correct staff_public row during DashboardEmployees reload.
+ * A current active save is an explicit lifecycle restoration. Legacy employee
+ * rows may still carry removedFromStaff/archived/deleted/employmentStatus flags
+ * that were written by an older flow and never cleared. DashboardEmployees
+ * writes active + updatedAt on every successful save, while the real archive
+ * flow writes active=false. Therefore a newer active write must keep the
+ * canonical staff_public row in reload even when stale removal metadata is
+ * still present.
  */
 export function isRemovedFromStaffRecord(data: unknown): boolean {
   const row = (data || {}) as Record<string, unknown>;
@@ -63,14 +60,12 @@ export function isRemovedFromStaffRecord(data: unknown): boolean {
   const deletedAtMs = firestoreLikeTimestampMs(row.deletedAt);
   const updatedAtMs = firestoreLikeTimestampMs(row.updatedAt);
   const active = row.active === true || row.isActive === true;
-  const explicitlyRemovedStatus =
-    isExplicitRemovedStatus(row.employmentStatus) ||
-    isExplicitRemovedStatus(row.status);
-  const hasFreshCanonicalWrite =
+  const hasFreshActiveWrite =
+    active &&
     updatedAtMs > 0 &&
     (deletedAtMs <= 0 || updatedAtMs > deletedAtMs);
 
-  if (hasFreshCanonicalWrite && active && !explicitlyRemovedStatus) {
+  if (hasFreshActiveWrite) {
     return false;
   }
 
