@@ -384,16 +384,16 @@
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-section-title small {
-  color: var(--dsv2-gold);
+  color: var(--dsv2-muted);
   font-size: 0.65rem;
   font-weight: 900;
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-section-title h2,
 .dashboard-v2 .employee-overview-v2-page .employee-block-head h2 {
-  margin: var(--dsv2-space-1) 0 0;
+  margin: var(--dsv2-space-2) 0 0;
   color: var(--dsv2-text);
-  font-size: 0.95rem;
+  font-size: 1.15rem;
   font-weight: 950;
 }
 
@@ -410,14 +410,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--dsv2-space-2);
-  min-height: 32px;
+  min-height: 30px;
   padding-inline: var(--dsv2-space-3);
-  border: 1px solid var(--dsv2-green-border);
+  border: 1px solid var(--dsv2-border-gold);
   border-radius: var(--dsv2-radius-pill);
-  background: var(--dsv2-green-soft);
-  color: var(--dsv2-green);
-  font-size: 0.6rem;
-  font-weight: 850;
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-warning);
+  font-size: 0.58rem;
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -431,41 +431,116 @@
 
 .dashboard-v2 .employee-overview-v2-page .employee-attendance-console {
   display: grid;
-  grid-template-columns: minmax(230px, 360px);
+  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+  padding: var(--dsv2-space-5) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: var(--dsv2-space-2);
+  text-align: center;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side > span {
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side > strong {
+  color: var(--dsv2-text);
+  font-size: 1.16rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side--in > strong {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side > em {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
   justify-content: center;
+  padding-inline: var(--dsv2-space-3);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-side > em.is-done {
+  background: var(--dsv2-green-soft);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-control {
+  display: grid;
+  justify-items: center;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-control > strong {
+  color: var(--dsv2-text);
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-align: center;
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-punch-button {
   display: grid;
-  width: 100%;
-  min-height: 124px;
+  width: 96px;
+  height: 96px;
+  min-width: 96px;
+  min-height: 96px;
   place-items: center;
-  align-content: center;
-  gap: var(--dsv2-space-2);
-  padding: var(--dsv2-space-5);
-  border: 1px solid var(--dsv2-border-gold);
-  border-radius: var(--dsv2-radius-lg);
-  background: linear-gradient(135deg, var(--dsv2-gold-soft), var(--dsv2-surface));
-  color: var(--dsv2-text);
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: 50%;
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  box-shadow: var(--dsv2-shadow-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: transform var(--dsv2-transition-fast), box-shadow var(--dsv2-transition-fast), border-color var(--dsv2-transition-fast);
+  transition: transform var(--dsv2-transition-fast), border-color var(--dsv2-transition-fast), box-shadow var(--dsv2-transition-fast);
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-punch-button:hover:not(:disabled) {
-  border-color: var(--dsv2-gold);
-  box-shadow: var(--dsv2-shadow-sm);
+  border-color: var(--dsv2-border-gold);
+  box-shadow: var(--dsv2-shadow-md);
   transform: translateY(-1px);
 }
 
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-punch-button:focus-visible {
+  outline: 3px solid var(--dsv2-gold-soft);
+  outline-offset: 3px;
+}
+
 .dashboard-v2 .employee-overview-v2-page .employee-punch-button:disabled {
-  opacity: 0.58;
   cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-punch-button--out {
   border-color: var(--dsv2-burgundy-border);
-  background: var(--dsv2-burgundy-soft);
   color: var(--dsv2-burgundy);
 }
 
@@ -477,124 +552,163 @@
 
 .dashboard-v2 .employee-overview-v2-page .employee-punch-button > span {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   place-items: center;
-  border-radius: var(--dsv2-radius-md);
-  background: var(--dsv2-surface);
-  box-shadow: var(--dsv2-shadow-xs);
-  font-size: 1.05rem;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button strong {
+  border-radius: 50%;
   color: inherit;
-  font-size: 0.78rem;
-  font-weight: 950;
+  font-size: 2rem;
 }
 
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button small {
-  max-width: 250px;
-  color: inherit;
-  opacity: 0.75;
-  font-size: 0.56rem;
-  font-weight: 750;
-  line-height: 1.6;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--dsv2-grid-gap);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records > div {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-status {
+  display: flex;
+  min-height: 44px;
   align-items: center;
-  gap: var(--dsv2-space-3);
-  min-width: 0;
-  padding: var(--dsv2-space-4);
+  justify-content: center;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
   border: 1px solid var(--dsv2-border);
-  border-radius: var(--dsv2-radius-md);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  text-align: center;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-status > span {
+  font-size: 0.66rem;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-status--checked_in,
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-status--checked_out {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-attendance-hint {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--dsv2-space-4) var(--dsv2-space-5);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
   background: var(--dsv2-surface-soft);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records__icon {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: var(--dsv2-radius-sm);
-  background: var(--dsv2-gold-soft);
-  color: var(--dsv2-gold);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records > div > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--dsv2-space-1);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records strong {
-  color: var(--dsv2-text);
-  font-size: 0.68rem;
-  font-weight: 950;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records small {
   color: var(--dsv2-muted);
-  font-size: 0.58rem;
-  font-weight: 700;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-records b {
-  color: var(--dsv2-text);
-  font-size: 0.82rem;
-  font-weight: 950;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.8;
+  text-align: center;
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-attendance-note {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--dsv2-space-3);
-  min-height: 44px;
-  padding: var(--dsv2-space-3) var(--dsv2-space-4);
-  border: 1px solid var(--dsv2-border-gold);
-  border-radius: var(--dsv2-radius-md);
-  background: var(--dsv2-gold-softer);
-  color: var(--dsv2-warning);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-note.is-done {
-  border-color: var(--dsv2-green-border);
-  background: var(--dsv2-green-soft);
-  color: var(--dsv2-green);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-attendance-note > span {
-  min-width: 0;
-  font-size: 0.62rem;
-  font-weight: 850;
-  line-height: 1.6;
+  justify-content: center;
+  min-height: 38px;
+  padding: var(--dsv2-space-2) var(--dsv2-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--dsv2-muted);
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-attendance-note > div {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--dsv2-space-1);
+  justify-content: center;
+  gap: var(--dsv2-space-2);
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-attendance-note small {
   display: inline-flex;
   padding: var(--dsv2-space-1) var(--dsv2-space-2);
   border-radius: var(--dsv2-radius-xs);
-  background: var(--dsv2-surface);
-  color: inherit;
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
   font-size: 0.54rem;
-  font-weight: 850;
+  font-weight: 800;
+}
+
+@media (max-width: 560px) {
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-card {
+    gap: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-section-title {
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-section-title h2 {
+    font-size: 1.08rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-gps-chip {
+    min-height: 28px;
+    padding-inline: var(--dsv2-space-2);
+    font-size: 0.53rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+    gap: var(--dsv2-space-2);
+    padding: var(--dsv2-space-4) var(--dsv2-space-2);
+    border-radius: var(--dsv2-radius-lg);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-punch-button {
+    width: 82px;
+    height: 82px;
+    min-width: 82px;
+    min-height: 82px;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-punch-button > span {
+    width: 48px;
+    height: 48px;
+    font-size: 1.72rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-punch-control > strong {
+    font-size: 0.62rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-side > span {
+    font-size: 0.6rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-side > strong {
+    font-size: 0.95rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-side > em {
+    min-height: 26px;
+    padding-inline: var(--dsv2-space-2);
+    font-size: 0.52rem;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-hint {
+    min-height: 68px;
+    padding: var(--dsv2-space-3);
+    font-size: 0.62rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 78px minmax(0, 1fr);
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-punch-button {
+    width: 72px;
+    height: 72px;
+    min-width: 72px;
+    min-height: 72px;
+  }
+
+  .dashboard-v2 .employee-overview-v2-page .employee-attendance-side > strong {
+    font-size: 0.82rem;
+  }
 }
 
 /* Shared overview panels */
@@ -969,40 +1083,7 @@
   }
 }
 
-/* Final integrated refinements: punch contrast + avatar framing. */
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in {
-  border-color: var(--dsv2-border-gold);
-  background: linear-gradient(135deg, var(--dsv2-gold), var(--dsv2-gold-soft));
-  color: var(--dsv2-black);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in strong,
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in small {
-  color: var(--dsv2-black);
-  opacity: 1;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in > span {
-  border: 1px solid var(--dsv2-border-gold);
-  background: var(--dsv2-surface);
-  color: var(--dsv2-gold);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button:disabled {
-  opacity: 1;
-  cursor: not-allowed;
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in:disabled {
-  background: linear-gradient(135deg, var(--dsv2-gold-soft), var(--dsv2-surface-soft));
-  color: var(--dsv2-text);
-}
-
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in:disabled strong,
-.dashboard-v2 .employee-overview-v2-page .employee-punch-button--in:disabled small {
-  color: var(--dsv2-text);
-}
+/* Final integrated refinements: avatar framing. */
 
 .dashboard-v2 .employee-overview-v2-page .employee-app-intro__avatar.employee-avatar {
   position: relative;

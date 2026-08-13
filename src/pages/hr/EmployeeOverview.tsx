@@ -1135,56 +1135,72 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             <h2>تسجيل الدوام</h2>
             <p>{attendanceDateLabel}</p>
           </div>
-          <span className="employee-gps-chip"><i aria-hidden="true" /> يعتمد على GPS</span>
+          <span className="employee-gps-chip"><i aria-hidden="true" /> GPS + تصوير حسب الفرع</span>
         </div>
 
         <div className="employee-attendance-console">
-          <button
-            type="button"
-            className={`employee-punch-button employee-punch-button--${punchTone}`}
-            onClick={() => void handleAttendancePunch(punchAction)}
-            disabled={punchDisabled}
-            aria-describedby={punchHint ? "employee-punch-hint" : undefined}
-          >
-            <span><FontAwesomeIcon icon={faFingerprint} /></span>
+          <div className="employee-attendance-side employee-attendance-side--in">
+            <span>الحضور</span>
+            <strong>{checkInTime}</strong>
+            <em className={attendance?.checkInAtClient ? "is-done" : ""}>
+              {attendance?.checkInAtClient ? "تم الحضور" : "لم يتم الحضور"}
+            </em>
+          </div>
+
+          <div className="employee-punch-control">
+            <button
+              type="button"
+              className={`employee-punch-button employee-punch-button--${punchTone}`}
+              onClick={() => void handleAttendancePunch(punchAction)}
+              disabled={punchDisabled}
+              aria-label={attendanceBusy ? "جاري التسجيل" : punchLabel}
+              aria-describedby="employee-punch-hint"
+            >
+              <span><FontAwesomeIcon icon={faFingerprint} /></span>
+            </button>
             <strong>{attendanceBusy ? "جاري التسجيل..." : punchLabel}</strong>
-            {punchHint ? <small id="employee-punch-hint">{punchHint}</small> : null}
-          </button>
-        </div>
-
-        <div className="employee-attendance-records">
-          <div className={attendance?.checkInAtClient ? "is-in" : ""}>
-            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faFingerprint} /></span>
-            <div>
-              <strong>سجل الحضور</strong>
-              <small>{attendance?.checkInAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل حضور"}</small>
-            </div>
-            <b>{checkInTime}</b>
           </div>
-          <div className={attendance?.checkOutAtClient ? "is-out" : ""}>
-            <span className="employee-attendance-records__icon"><FontAwesomeIcon icon={faClock} /></span>
-            <div>
-              <strong>سجل الانصراف</strong>
-              <small>{attendance?.checkOutAtClient ? "موجود في سجلات اليوم" : "لا يوجد سجل انصراف"}</small>
-            </div>
-            <b>{checkOutTime}</b>
+
+          <div className="employee-attendance-side employee-attendance-side--out">
+            <span>الانصراف</span>
+            <strong>{checkOutTime}</strong>
+            <em className={attendance?.checkOutAtClient ? "is-done" : ""}>
+              {attendance?.checkOutAtClient ? "تم الانصراف" : "لم يتم الانصراف"}
+            </em>
           </div>
         </div>
 
-        {shouldShowAttendanceNote ? (
-          <div
-            className={`employee-attendance-note ${attendanceStatus === "not_started" ? "" : "is-done"} ${attendanceMessage ? "has-message" : "is-meta-only"}`}
-            role="status"
-            aria-live="polite"
-          >
-            {attendanceMessage ? <span>{attendanceMessage}</span> : null}
-            {hasAttendanceVerificationMeta ? (
-              <div>
-                {visibleZoneName ? <small>{visibleZoneName}</small> : null}
-                {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
-                {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
-              </div>
-            ) : null}
+        <div className={`employee-attendance-status employee-attendance-status--${attendanceStatus}`} role="status" aria-live="polite">
+          <span>
+            {attendanceMessage || (
+              attendanceLoading
+                ? "جاري تحديث حالة اليوم..."
+                : attendanceStatus === "checked_out"
+                  ? "تم تسجيل الحضور والانصراف"
+                  : attendanceStatus === "checked_in"
+                    ? "تم تسجيل الحضور"
+                    : "لم يتم تسجيل الحضور"
+            )}
+          </span>
+        </div>
+
+        <div className="employee-attendance-hint" id="employee-punch-hint">
+          {punchHint || (
+            attendanceStatus === "checked_in"
+              ? "اضغط البصمة لتسجيل الانصراف وإكمال دوام اليوم."
+              : attendanceStatus === "checked_out"
+                ? "تم اكتمال دوام اليوم وحفظ الحضور والانصراف."
+                : "اضغط البصمة لتسجيل الحضور، والضغطة التالية في نفس اليوم تسجل الانصراف تلقائيًا."
+          )}
+        </div>
+
+        {shouldShowAttendanceNote && hasAttendanceVerificationMeta ? (
+          <div className="employee-attendance-note is-meta-only" aria-label="بيانات التحقق من الحضور">
+            <div>
+              {visibleZoneName ? <small>{visibleZoneName}</small> : null}
+              {visibleAccuracyLabel ? <small>{visibleAccuracyLabel}</small> : null}
+              {visibleDistance !== null ? <small>المسافة: {visibleDistance} م</small> : null}
+            </div>
           </div>
         ) : null}
       </section>
