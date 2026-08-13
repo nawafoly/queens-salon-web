@@ -1021,6 +1021,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return (
       <div className="employee-overview-v2-page employee-attendance-month-page">
         <AttendanceMonthView
+          className="attendance-month--employee-portal-v2"
           rows={attendanceMonthRows}
           loading={attendanceMonthLoading || attendanceLoading}
           monthKey={attendanceMonth}

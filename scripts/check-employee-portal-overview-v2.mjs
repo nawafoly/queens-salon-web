@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 const root = resolve(process.cwd());
 const portalPath = resolve(root, "src/pages/EmployeePortal.tsx");
 const overviewPath = resolve(root, "src/pages/hr/EmployeeOverview.tsx");
+const attendanceMonthViewPath = resolve(root, "src/components/AttendanceMonthView.tsx");
+const attendanceMonthViewCssPath = resolve(root, "src/styles/AttendanceMonthView.css");
 const cssPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview.css");
 const attendanceCssPath = resolve(root, "src/styles/dashboard-v2/components/employee-attendance-card.css");
 const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");
@@ -13,7 +15,18 @@ const madanThemePath = resolve(root, "src/styles/MadanAdminTheme.css");
 const dashboardSkinPath = resolve(root, "src/styles/DashboardSkin.css");
 const errors = [];
 
-for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath, mobilePath, madanThemePath, dashboardSkinPath]) {
+for (const path of [
+  portalPath,
+  overviewPath,
+  attendanceMonthViewPath,
+  attendanceMonthViewCssPath,
+  cssPath,
+  attendanceCssPath,
+  entryPath,
+  mobilePath,
+  madanThemePath,
+  dashboardSkinPath,
+]) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);
 }
 
@@ -24,6 +37,8 @@ if (existsSync(microFixPath)) {
 if (!errors.length) {
   const portal = readFileSync(portalPath, "utf8");
   const overview = readFileSync(overviewPath, "utf8");
+  const attendanceMonthView = readFileSync(attendanceMonthViewPath, "utf8");
+  const attendanceMonthViewCss = readFileSync(attendanceMonthViewCssPath, "utf8");
   const css = readFileSync(cssPath, "utf8");
   const attendanceCss = readFileSync(attendanceCssPath, "utf8");
   const entry = readFileSync(entryPath, "utf8");
@@ -46,6 +61,9 @@ if (!errors.length) {
   }
   if (!overview.includes('className="employee-overview-v2-page employee-attendance-month-page"')) {
     errors.push("Employee attendance-only view is missing the isolated V2 page root.");
+  }
+  if (!overview.includes('className="attendance-month--employee-portal-v2"')) {
+    errors.push("Employee attendance month view is not using the scoped Employee Portal V2 modifier.");
   }
   if (/className="employee-panel employee-overview/.test(overview)) {
     errors.push("EmployeeOverview.tsx has regressed to the legacy overview root.");
@@ -121,6 +139,19 @@ if (!errors.length) {
     if (!overview.includes(marker)) errors.push(`Employee attendance compact markup missing: ${marker}`);
   }
 
+  if (attendanceMonthView.includes("<select")) {
+    errors.push("AttendanceMonthView.tsx must not use native select controls for the employee month picker.");
+  }
+  if (attendanceMonthView.includes('type="month"') || attendanceMonthView.includes("showPicker")) {
+    errors.push("AttendanceMonthView.tsx must not use browser-native month picker controls.");
+  }
+  if (attendanceMonthView.includes("attendance-month__native-month-input") || attendanceMonthViewCss.includes("attendance-month__native-month-input")) {
+    errors.push("AttendanceMonthView still contains the retired hidden native month input.");
+  }
+  if (!attendanceMonthView.includes("attendance-month__year-switcher") || !attendanceMonthView.includes("attendance-month__year-button")) {
+    errors.push("AttendanceMonthView is missing the V2-style year switcher controls.");
+  }
+
   const forbiddenMobileMarkers = [
     "EMPLOYEE OVERVIEW APP UI START",
     "EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START",
@@ -133,6 +164,25 @@ if (!errors.length) {
     if (mobile.includes(marker)) {
       errors.push(`EmployeePortalMobileNav.css still contains legacy employee overview/attendance marker: ${marker}`);
     }
+  }
+
+  const forbiddenMobileAttendanceMarkers = [
+    "EMPLOYEE ATTENDANCE MONTH APP UI",
+    "EMPLOYEE ATTENDANCE DETAIL COMPACT",
+    "EMPLOYEE ATTENDANCE DESKTOP WIDTH + LEGEND",
+    "EMPLOYEE ATTENDANCE COMMAND CENTER MOBILE",
+    "employee portal shells",
+  ];
+  for (const marker of forbiddenMobileAttendanceMarkers) {
+    if (mobile.includes(marker)) {
+      errors.push(`EmployeePortalMobileNav.css still contains legacy employee attendance marker: ${marker}`);
+    }
+  }
+  if (/\.employee-portal\.madan-employee-portal[\s\S]{0,160}\.employee-attendance-month-page/.test(mobile)) {
+    errors.push("EmployeePortalMobileNav.css still targets the employee attendance month page directly.");
+  }
+  if (/\.employee-portal\.madan-employee-portal[\s\S]{0,160}\.attendance-month__/.test(mobile)) {
+    errors.push("EmployeePortalMobileNav.css still targets employee attendance month internals directly.");
   }
 
   const referenceAttendanceCssMarkers = [
@@ -193,6 +243,19 @@ if (!errors.length) {
     if (!attendanceCss.includes(marker)) errors.push(`Canonical employee attendance stylesheet is missing rule: ${marker}`);
   }
 
+  const attendanceMonthV2Markers = [
+    ".attendance-month--employee-portal-v2",
+    ".attendance-month__command-center",
+    ".attendance-month__month-menu",
+    ".attendance-month__year-switcher",
+    ".attendance-month__grid",
+    ".attendance-month__state-card",
+    ".attendance-month__worked-metrics",
+  ];
+  for (const marker of attendanceMonthV2Markers) {
+    if (!css.includes(marker)) errors.push(`Canonical employee attendance month stylesheet is missing rule: ${marker}`);
+  }
+
   const forbiddenMadanOverviewSelectors = [
     ".employee-portal.madan-employee-portal .employee-app-intro",
     ".employee-portal.madan-employee-portal .employee-status-pill",
@@ -206,6 +269,18 @@ if (!errors.length) {
   for (const selector of forbiddenMadanOverviewSelectors) {
     if (madanTheme.includes(selector)) {
       errors.push(`MadanAdminTheme.css still targets employee overview V2 directly: ${selector}`);
+    }
+  }
+  const forbiddenMadanAttendanceSelectors = [
+    ".employee-portal.madan-employee-portal .employee-attendance-month-page",
+    ".employee-portal.madan-employee-portal .attendance-month__summary",
+    ".employee-portal.madan-employee-portal .attendance-month__calendar-shell",
+    ".employee-portal.madan-employee-portal .attendance-month__detail",
+    ".employee-portal.madan-employee-portal .attendance-month__empty",
+  ];
+  for (const selector of forbiddenMadanAttendanceSelectors) {
+    if (madanTheme.includes(selector)) {
+      errors.push(`MadanAdminTheme.css still targets employee attendance month V2 directly: ${selector}`);
     }
   }
 
@@ -226,6 +301,24 @@ if (!errors.length) {
   for (const selector of forbiddenDashboardSkinWhereSelectors) {
     if (employeePortalWhereBlocks.some((block) => block.includes(selector))) {
       errors.push(`DashboardSkin.css still force-colors employee overview V2 via .employee-portal :where(): ${selector}`);
+    }
+  }
+  const forbiddenDashboardSkinAttendanceSelectors = [
+    ".employee-attendance-month-page",
+    ".employee-attendance-month-message",
+    ".employee-portal .attendance-month__summary",
+    ".employee-portal .attendance-month__calendar-shell",
+    ".employee-portal .attendance-month__detail",
+    ".employee-portal .attendance-month__empty",
+    ".employee-portal .attendance-month__metrics",
+    ".employee-portal .attendance-month__wide-metrics",
+    ".employee-portal .attendance-month__weekdays",
+    ".employee-portal .attendance-month__grid",
+    ".employee-portal .attendance-month__primary",
+  ];
+  for (const selector of forbiddenDashboardSkinAttendanceSelectors) {
+    if (dashboardSkin.includes(selector)) {
+      errors.push(`DashboardSkin.css still targets employee attendance month V2 directly: ${selector}`);
     }
   }
 }

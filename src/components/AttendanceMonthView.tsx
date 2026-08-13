@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarDay,
   faCheck,
+  faChevronLeft,
+  faChevronRight,
   faClock,
   faEllipsisVertical,
   faFingerprint,
@@ -618,6 +620,9 @@ export default function AttendanceMonthView({
   )
     .filter((year) => Number.isFinite(year) && year <= currentYear)
     .sort((left, right) => right - left);
+  const newestPickerYear = pickerYears[0] ?? currentYear;
+  const oldestPickerYear = pickerYears[pickerYears.length - 1] ?? selectedYear;
+  const pickerYearLabel = new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(pickerYear);
   const pickerMonths = Array.from({ length: 12 }, (_, index) => {
     const month = index + 1;
     const key = `${pickerYear}-${pad2(month)}`;
@@ -725,17 +730,27 @@ export default function AttendanceMonthView({
               <div className="attendance-month__month-menu" role="dialog" aria-label="اختيار الشهر">
                 <div className="attendance-month__month-menu-head">
                   <span>السنة</span>
-                  <select
-                    value={pickerYear}
-                    onChange={(event) => setPickerYear(Number(event.target.value))}
-                    aria-label="اختيار السنة"
-                  >
-                    {pickerYears.map((year) => (
-                      <option key={year} value={year}>
-                        {new Intl.NumberFormat("ar-SA", { useGrouping: false }).format(year)}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="attendance-month__year-switcher" aria-label="اختيار السنة">
+                    <button
+                      type="button"
+                      className="attendance-month__year-button"
+                      onClick={() => setPickerYear((year) => Math.max(oldestPickerYear, year - 1))}
+                      disabled={pickerYear <= oldestPickerYear}
+                      aria-label="السنة السابقة"
+                    >
+                      <FontAwesomeIcon icon={faChevronRight} />
+                    </button>
+                    <strong className="attendance-month__year-value">{pickerYearLabel}</strong>
+                    <button
+                      type="button"
+                      className="attendance-month__year-button"
+                      onClick={() => setPickerYear((year) => Math.min(newestPickerYear, year + 1))}
+                      disabled={pickerYear >= newestPickerYear}
+                      aria-label="السنة التالية"
+                    >
+                      <FontAwesomeIcon icon={faChevronLeft} />
+                    </button>
+                  </div>
                 </div>
                 <div className="attendance-month__month-options">
                   {pickerMonths.map((item) => (

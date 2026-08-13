@@ -16273,26 +16273,6 @@ color: var(--employee-navy) !important;
 color: #64748b !important;
 }
 
-.employee-portal.madan-employee-portal .employee-attendance-month-page {
-width: 100%;
-max-width: 1180px;
-min-height: auto;
-padding: 0;
-border: 0;
-background: transparent;
-box-shadow: none;
-}
-
-.employee-portal.madan-employee-portal .attendance-month__summary,
-.employee-portal.madan-employee-portal .attendance-month__calendar-shell,
-.employee-portal.madan-employee-portal .attendance-month__detail,
-.employee-portal.madan-employee-portal .attendance-month__empty {
-border: 1px solid rgba(15, 23, 42, 0.09) !important;
-border-radius: 22px !important;
-background: #ffffff !important;
-box-shadow: var(--employee-shadow-soft) !important;
-}
-
 @media (max-width: 1180px) {
 .employee-portal.madan-employee-portal .employee-portal-layout--app {
   grid-template-columns: 254px minmax(0, 1fr);

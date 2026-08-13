@@ -14139,30 +14139,6 @@ body:has(.dashboard-skin) .modal-box .exp-btn,
   padding: 7px 12px;
 }
 
-.employee-attendance-month-page {
-    gap: 26px;
-    min-height: calc(100vh - 140px);
-    padding: 18px 16px 28px;
-    border: 1px solid rgba(226, 232, 240, 0.86);
-    border-radius: 22px;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 58%, rgba(248, 250, 252, 0.92) 100%);
-    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.06);
-  }
-
-.employee-attendance-month-message {
-  min-height: 48px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(245, 183, 0, 0.32);
-  border-radius: 16px;
-  background: rgba(255, 251, 235, 0.86);
-  color: #92400e;
-  font-weight: 900;
-  text-align: center;
-  padding: 12px 16px;
-}
-
 .employee-overview-block {
   padding: 24px;
 }
@@ -29706,8 +29682,6 @@ body:has(.dashboard-skin) .modal-box .dash-select,
 .employee-portal .employee-floating-request,
 .employee-portal .employee-punch-button--out,
 .employee-portal .employee-request-option:active,
-.employee-portal .attendance-month__primary,
-.employee-portal .attendance-month__day.is-selected strong,
 .employee-portal .employee-attendance-note.is-done,
 .hr-shell .employee-button--accent,
 .hr-shell .hr-primary-action,
@@ -29727,33 +29701,16 @@ body:has(.dashboard-skin) .modal-box .dash-select,
 .employee-portal .employee-card,
 .employee-portal .employee-portal-card,
 .employee-portal .employee-attendance-card,
-.employee-portal .employee-overview-block,
-.employee-portal .attendance-month__summary,
-.employee-portal .attendance-month__calendar-shell,
-.employee-portal .attendance-month__detail,
-.employee-portal .attendance-month__empty,
-.employee-portal .attendance-month__metrics > div,
-.employee-portal .attendance-month__wide-metrics > div {
+.employee-portal .employee-overview-block {
   background-color: #ffffff;
   border-color: rgba(15, 23, 42, 0.1);
 }
 
 .employee-portal .employee-attendance-console,
 .employee-portal .employee-attendance-records > div,
-.employee-portal .employee-empty-box,
-.employee-portal .attendance-month__summary-empty {
+.employee-portal .employee-empty-box {
   background: #f8fafc;
   border-color: rgba(148, 163, 184, 0.24);
-}
-
-.employee-portal .attendance-month__calendar-shell {
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-.employee-portal .attendance-month__weekdays,
-.employee-portal .attendance-month__grid {
-  min-width: min(100%, 720px);
 }
 
 .employee-portal .employee-bottom-nav__item {
