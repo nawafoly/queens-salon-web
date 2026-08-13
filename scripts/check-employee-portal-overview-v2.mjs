@@ -44,6 +44,9 @@ if (!errors.length) {
   }
 
   const behaviorMarkers = [
+    "usePermissions",
+    "canViewAttendance",
+    "canViewOwnTarget",
     "getBrowserPosition",
     "requestAttendanceBiometric",
     "submitAttendanceToWorker",
@@ -52,6 +55,8 @@ if (!errors.length) {
     "resolveAssignedAttendanceZoneId",
     "isCheckInWindowClosed",
     "CoreHrService.resolveEmployeeShift",
+    "CoreHrService.listLeaves",
+    "profile: {}",
     "buildApprovedLeaveDateKeys",
     "listPermissionRequestsByEmployee",
     "CoreEmployeeTargetService.mine",
@@ -60,6 +65,34 @@ if (!errors.length) {
   ];
   for (const marker of behaviorMarkers) {
     if (!overview.includes(marker)) errors.push(`Employee overview behavior marker missing: ${marker}`);
+  }
+
+  const forbiddenRuntimeMarkers = [
+    "workingScheduleVersions",
+    "customWorkingHourOverrides",
+    "exceptionalLeaveWeekdays",
+    "profile.onLeave",
+    "profile.leaveStartDate",
+    "profile.leaveFromDate",
+    "scheduleForEmployeeDate",
+  ];
+  for (const marker of forbiddenRuntimeMarkers) {
+    if (overview.includes(marker)) {
+      errors.push(`Employee overview still contains legacy runtime marker: ${marker}`);
+    }
+  }
+
+  if (!overview.includes('hasPermission("attendance.own.view")')) {
+    errors.push("Employee overview attendance runtime is not permission-gated.");
+  }
+  if (!overview.includes('hasPermission("targets.view_own")')) {
+    errors.push("Employee overview target runtime is not permission-gated.");
+  }
+  if (!overview.includes('hasPermission("messages.view")')) {
+    errors.push("Employee overview messages KPI is not permission-gated.");
+  }
+  if (!overview.includes("لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل")) {
+    errors.push("Employee overview is missing its explicit partial-runtime failure state.");
   }
 
   const attendanceMarkupMarkers = [
@@ -92,6 +125,7 @@ if (!errors.length) {
   }
 
   const attendanceCssMarkers = [
+    ".employee-overview-runtime-alert",
     ".employee-attendance-side",
     ".employee-punch-control",
     ".employee-attendance-status",

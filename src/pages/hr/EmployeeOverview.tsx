@@ -54,7 +54,7 @@ import {
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
-import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "../../helpers/hr/staffScheduleHistory";
+import { getWeekdayKeyForDateKey } from "../../helpers/hr/workSchedule";
 import { payrollMonthBounds } from "../../helpers/hr/payrollCalculations";
 import { buildApprovedLeaveDateKeys } from "../../helpers/hr/attendanceCalendarData";
 import { cleanText, formatShortDate, type HrSession } from "./shared";
@@ -70,6 +70,7 @@ import {
   CoreEmployeeTargetService,
   type EmployeeTargetMine,
 } from "../../services/CoreEmployeeTargetService";
+import { usePermissions } from "../../security/PermissionContext";
 
 type Props = {
   session: HrSession;
@@ -165,34 +166,9 @@ function resolveOverviewAvatarUrl(session: HrSession) {
   return cleanText(session.user?.photoURL);
 }
 
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
-  sun: "sunday",
-  mon: "monday",
-  tue: "tuesday",
-  wed: "wednesday",
-  thu: "thursday",
-  fri: "friday",
-  sat: "saturday",
-};
-
 function cleanTime(value: unknown) {
   const raw = cleanText(value);
   return /^\d{1,2}:\d{2}$/.test(raw) ? raw : "";
-}
-
-function weekdayKeyForDate(dateKey: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) return "sun";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
-}
-
-function getDayOverride(dateKey: string, input: Record<string, any>) {
-  const overrides = Array.isArray(input.customWorkingHourOverrides)
-    ? input.customWorkingHourOverrides
-    : [];
-  return overrides.find((override: Record<string, unknown>) => cleanText(override.date) === dateKey) || null;
 }
 
 function readPolicyMinutes(...values: unknown[]) {
@@ -284,9 +260,8 @@ function resolvedShiftWindow(row?: CoreResolvedShift | null) {
   };
 }
 
-function scheduleForEmployeeDate(
+function scheduleForResolvedEmployeeDate(
   dateKey: string,
-  profile: Record<string, any>,
   resolvedShift?: CoreResolvedShift | null
 ): ShiftSchedule {
   const coreWindow = resolvedShiftWindow(resolvedShift);
@@ -302,66 +277,34 @@ function scheduleForEmployeeDate(
     };
   }
 
-  const historicalVersion = resolveStaffScheduleVersionForDate(profile.workingScheduleVersions, dateKey);
-  const effectiveSource = historicalVersion
-    ? {
-        ...profile,
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      }
-    : profile;
-  const weekdayKey = weekdayKeyForDate(dateKey);
-  const useCustomWorkingHours = historicalVersion
-    ? historicalVersion.useCustomWorkingHours
-    : effectiveSource.useCustomWorkingHours === true;
-  const customDay = useCustomWorkingHours ? effectiveSource.customWorkingHours?.[weekdayKey] : undefined;
-  const override = getDayOverride(dateKey, profile);
-  const customHours = (effectiveSource.customWorkingHours || {}) as Record<
-    string,
-    { enabled?: boolean; start?: string; end?: string }
-  >;
-  const customOffDays = useCustomWorkingHours
-    ? Object.entries(customHours)
-        .filter(([, day]) => day?.enabled === false)
-        .map(([key]) => WEEKDAY_TO_OFF_KEY[key as keyof typeof WEEKDAY_TO_OFF_KEY])
-        .filter(Boolean)
-    : [];
-  const explicitOffDays = historicalVersion
-    ? weeklyOffDaysFromScheduleSnapshot({
-        useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-        customWorkingHours: historicalVersion.customWorkingHours,
-      })
-    : [
-        ...(Array.isArray(effectiveSource.weeklyOffDays) ? effectiveSource.weeklyOffDays : []),
-        ...(Array.isArray(effectiveSource.offDays) ? effectiveSource.offDays : []),
-        ...(Array.isArray(effectiveSource.exceptionalLeaveWeekdays) ? effectiveSource.exceptionalLeaveWeekdays : []),
-        ...(effectiveSource.weeklyOffDay ? [effectiveSource.weeklyOffDay] : []),
-      ];
+  const source = cleanText((resolvedShift as any)?.source);
+  const exceptionType = cleanText(
+    (resolvedShift as any)?.exceptionType || (resolvedShift as any)?.exception_type
+  );
+  const noScheduledWork = Boolean(resolvedShift) && (source === "none" || exceptionType === "off");
+  const weekday = noScheduledWork ? getWeekdayKeyForDateKey(dateKey) : null;
 
   return {
-    startTime:
-      cleanTime(override?.start) ||
-      cleanTime(customDay?.start) ||
-      cleanTime(effectiveSource.startTime) ||
-      cleanTime(effectiveSource.start) ||
-      cleanTime(effectiveSource.workStartTime) ||
-      cleanTime(effectiveSource.shiftStartTime) ||
-      "09:00",
-    endTime:
-      cleanTime(override?.end) ||
-      cleanTime(customDay?.end) ||
-      cleanTime(effectiveSource.endTime) ||
-      cleanTime(effectiveSource.end) ||
-      cleanTime(effectiveSource.workEndTime) ||
-      cleanTime(effectiveSource.shiftEndTime) ||
-      "17:00",
-    lateGraceMinutes: readPolicyMinutes(
-      effectiveSource.lateGraceMinutes,
-      effectiveSource.late_grace_minutes
-    ),
+    startTime: null,
+    endTime: null,
+    lateGraceMinutes: 0,
     earlyLeaveGraceMinutes: 0,
-    weeklyOffDays: [...explicitOffDays, ...customOffDays],
+    attendanceLockEnabled: false,
+    attendanceLockAfterMinutes: 0,
+    weeklyOffDays: weekday ? [weekday] : [],
   };
+}
+
+function isApprovedFullDayLeaveForDate(
+  row: EmployeeLeaveRequest & { durationKind?: string },
+  dateKey: string
+) {
+  if (cleanText(row.status).toLowerCase() !== "approved") return false;
+  const durationKind = cleanText(row.durationKind).toLowerCase();
+  if (durationKind === "partial" || durationKind === "half_day" || durationKind === "halfday") return false;
+  const fromDate = cleanText(row.fromDate);
+  const toDate = cleanText(row.toDate || row.fromDate);
+  return Boolean(fromDate && fromDate <= dateKey && toDate && toDate >= dateKey);
 }
 
 function formatAttendanceTime(value: unknown) {
@@ -440,19 +383,12 @@ function getBookingStatusLabel(status: string | undefined) {
 
 export default function EmployeeOverviewPage({ session, notifications, onRefresh, attendanceOnly = false }: Props) {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const profile = getProfileSource(session);
   const displayName = cleanText(profile.displayName || profile.name || session.displayName || session.email || "Employee");
   const department = cleanText(profile.department || "");
   const title = cleanText(profile.title || "");
   const avatarUrl = resolveOverviewAvatarUrl(session);
-  const today = new Date().toISOString().slice(0, 10);
-  const leaveFrom = cleanText(profile.leaveStartDate || profile.leaveFrom || profile.leaveFromDate || "");
-  const leaveUntil = cleanText(profile.leaveUntil || "");
-  const onLeave =
-    !!profile.onLeave &&
-    (!leaveFrom || leaveFrom <= today) &&
-    (!leaveUntil || leaveUntil >= today);
-  const active = profile.active !== false;
   const [attendance, setAttendance] = useState<StaffAttendanceToday | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
@@ -466,15 +402,22 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const [attendancePermissionEntries, setAttendancePermissionEntries] = useState<EmployeePermissionRequest[]>([]);
   const [todayResolvedShift, setTodayResolvedShift] = useState<CoreResolvedShift | null>(null);
+  const [todayResolvedShiftLoading, setTodayResolvedShiftLoading] = useState(false);
+  const [todayResolvedShiftError, setTodayResolvedShiftError] = useState("");
   const [employeeBookings, setEmployeeBookings] = useState<BookingDocWithId[]>([]);
   const [employeeBookingsLoading, setEmployeeBookingsLoading] = useState(false);
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
+  const [employeeLeaveLoading, setEmployeeLeaveLoading] = useState(false);
+  const [employeeLeaveError, setEmployeeLeaveError] = useState("");
   const [employeeTarget, setEmployeeTarget] = useState<EmployeeTargetMine | null>(null);
   const [employeeTargetLoading, setEmployeeTargetLoading] = useState(false);
   const [employeeTargetError, setEmployeeTargetError] = useState("");
   const attendanceEmployeeId = cleanText(session.employeeId || session.uid);
   const assignedAttendanceZoneId = resolveAssignedAttendanceZoneId(profile);
   const attendanceDate = getTodayAttendanceDateKey();
+  const canViewAttendance = hasPermission("attendance.own.view");
+  const canViewOwnTarget = hasPermission("targets.view_own");
+  const canViewMessages = hasPermission("messages.view");
   const currentTargetPeriod = useMemo(() => {
     const today = new Date();
     return payrollMonthBounds(today.getFullYear(), today.getMonth() + 1);
@@ -509,18 +452,32 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const approvedLeaveDateKeys = useMemo(
     () =>
       buildApprovedLeaveDateKeys({
-        profile,
+        profile: {},
         leaveRequests: employeeLeaveRequests,
         extraIds: [session.uid, session.employeeId],
         todayDateKey: attendanceDate,
       }),
-    [attendanceDate, employeeLeaveRequests, profile, session.employeeId, session.uid]
+    [attendanceDate, employeeLeaveRequests, session.employeeId, session.uid]
   );
 
-  const todayAttendanceSchedule = useMemo(
-    () => scheduleForEmployeeDate(attendanceDate, profile, todayResolvedShift),
-    [attendanceDate, profile, todayResolvedShift]
+  const currentApprovedLeave = useMemo(
+    () =>
+      employeeLeaveRequests.find((row) =>
+        isApprovedFullDayLeaveForDate(
+          row as EmployeeLeaveRequest & { durationKind?: string },
+          attendanceDate
+        )
+      ) || null,
+    [attendanceDate, employeeLeaveRequests]
   );
+  const onLeave = Boolean(currentApprovedLeave);
+  const leaveUntil = cleanText(currentApprovedLeave?.toDate || currentApprovedLeave?.fromDate);
+
+  const todayAttendanceSchedule = useMemo(
+    () => scheduleForResolvedEmployeeDate(attendanceDate, todayResolvedShift),
+    [attendanceDate, todayResolvedShift]
+  );
+  const hasResolvedWorkShift = Boolean(resolvedShiftWindow(todayResolvedShift));
 
   const attendanceComputation = useMemo(() => {
     const records: AttendanceRecord[] = [];
@@ -544,7 +501,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   });
 
   const loadAttendance = async () => {
-    if (!attendanceEmployeeId || !session.uid) return;
+    if (!canViewAttendance || !attendanceEmployeeId || !session.uid) {
+      setAttendance(null);
+      return;
+    }
 
     setAttendanceLoading(true);
     setAttendanceMessage("");
@@ -570,7 +530,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   };
 
   const loadAttendanceMonth = useCallback(async () => {
-    if (!attendanceEmployeeId || !session.uid) {
+    if (!canViewAttendance || !attendanceEmployeeId || !session.uid) {
       setAttendanceMonthRows([]);
       return;
     }
@@ -612,27 +572,38 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     } finally {
       setAttendanceMonthLoading(false);
     }
-  }, [attendanceEmployeeId, attendanceMonth, session.uid]);
+  }, [attendanceEmployeeId, attendanceMonth, canViewAttendance, session.uid]);
 
   useEffect(() => {
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attendanceEmployeeId, attendanceDate]);
+  }, [canViewAttendance, attendanceEmployeeId, attendanceDate]);
 
   useEffect(() => {
-    if (!attendanceEmployeeId) {
+    if (!canViewAttendance || !attendanceEmployeeId) {
       setTodayResolvedShift(null);
+      setTodayResolvedShiftLoading(false);
+      setTodayResolvedShiftError("");
       return;
     }
 
     let alive = true;
 
     async function loadTodayResolvedShift() {
+      setTodayResolvedShiftLoading(true);
+      setTodayResolvedShiftError("");
       try {
         const row = await CoreHrService.resolveEmployeeShift(attendanceEmployeeId, attendanceDate);
         if (alive) setTodayResolvedShift(row);
-      } catch {
-        if (alive) setTodayResolvedShift(null);
+      } catch (error) {
+        if (alive) {
+          setTodayResolvedShift(null);
+          setTodayResolvedShiftError(
+            cleanText((error as any)?.message || "تعذر تحميل جدول الدوام المعتمد من النظام المركزي.")
+          );
+        }
+      } finally {
+        if (alive) setTodayResolvedShiftLoading(false);
       }
     }
 
@@ -641,7 +612,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [attendanceEmployeeId, attendanceDate]);
+  }, [attendanceEmployeeId, attendanceDate, canViewAttendance]);
 
   useEffect(() => {
     if (!attendanceEmployeeId) {
@@ -671,14 +642,18 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceEmployeeId, displayName]);
 
   useEffect(() => {
-    if (!session.uid) {
+    if (!session.uid || !attendanceEmployeeId) {
       setEmployeeLeaveRequests([]);
+      setEmployeeLeaveLoading(false);
+      setEmployeeLeaveError("");
       return;
     }
 
     let alive = true;
 
     async function loadEmployeeLeaveRequests() {
+      setEmployeeLeaveLoading(true);
+      setEmployeeLeaveError("");
       try {
         const rows = await CoreHrService.listLeaves({ employeeId: attendanceEmployeeId });
         if (alive) setEmployeeLeaveRequests(rows.map((row) => ({
@@ -695,8 +670,15 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           updatedAt: row.updatedAt,
           durationKind: row.durationKind,
         } as EmployeeLeaveRequest & { durationKind?: string })));
-      } catch {
-        if (alive) setEmployeeLeaveRequests([]);
+      } catch (error) {
+        if (alive) {
+          setEmployeeLeaveRequests([]);
+          setEmployeeLeaveError(
+            cleanText((error as any)?.message || "تعذر تحميل الإجازات المعتمدة من النظام المركزي.")
+          );
+        }
+      } finally {
+        if (alive) setEmployeeLeaveLoading(false);
       }
     }
 
@@ -708,6 +690,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceEmployeeId, session.uid]);
 
   useEffect(() => {
+    if (!canViewOwnTarget) {
+      setEmployeeTarget(null);
+      setEmployeeTargetLoading(false);
+      setEmployeeTargetError("");
+      return;
+    }
+
     let alive = true;
 
     async function loadEmployeeTarget() {
@@ -731,7 +720,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return () => {
       alive = false;
     };
-  }, [currentTargetPeriod.payrollMonth]);
+  }, [canViewOwnTarget, currentTargetPeriod.payrollMonth]);
 
   const loadAttendancePermissions = useCallback(async () => {
     if (!session.uid) {
@@ -760,6 +749,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceOnly, loadAttendanceMonth, loadAttendancePermissions]);
 
   useEffect(() => {
+    if (!canViewAttendance) return;
+
     AppSettingsService.fetchRemote()
       .then((remote) => setAttendanceSettings(remote.attendance))
       .catch(() => {});
@@ -767,10 +758,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     return AppSettingsService.subscribe((remote) => {
       setAttendanceSettings(remote.attendance);
     });
-  }, []);
+  }, [canViewAttendance]);
 
   const quickActions = [
-    { label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint },
+    ...(canViewAttendance
+      ? [{ label: "تصحيح البصمة", href: "/employee/attendance", icon: faFingerprint }]
+      : []),
     { label: "طلب إجازة", href: "/employee/leave", icon: faCalendarDays },
     { label: "طلب استئذان", href: "/employee/permission", icon: faPaperPlane },
   ];
@@ -778,7 +771,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const hrInfoItems = [
     { label: "شخصي", description: "المعلومات الشخصية، الهوية، العنوان", href: "/employee/profile", icon: faUser },
     { label: "البيانات الوظيفية", description: "تاريخ الالتحاق، المسمى الوظيفي، نوع التوظيف", href: "/employee/profile", icon: faBriefcase },
-    { label: "جدول الدوام", description: "بداية ونهاية الدوام، أيام الراحة، ونطاق الحضور", href: "/employee/attendance", icon: faClock },
+    ...(canViewAttendance
+      ? [{ label: "جدول الدوام", description: "بداية ونهاية الدوام، أيام الراحة، ونطاق الحضور", href: "/employee/attendance", icon: faClock }]
+      : []),
     { label: "بيانات الراتب", description: "الراتب الأساسي، التأمينات، البدلات، والخصومات الثابتة", href: "/employee/payroll", icon: faMoneyBillWave },
     { label: "الراتب والتفاصيل المالية", description: "سجل رواتب نهاية الشهر والراتب النهائي المقفل", href: "/employee/payroll", icon: faMoneyBillWave },
     { label: "العقود", description: "العقود الحالية والمنتهية", href: "/employee/files", icon: faFileLines },
@@ -800,7 +795,24 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const handleAttendancePunch = async (
     type: "check_in" | "check_out"
   ) => {
-    if (!attendanceEmployeeId || !session.uid || attendanceBusy) {
+    if (!canViewAttendance || !attendanceEmployeeId || !session.uid || attendanceBusy) {
+      return;
+    }
+    if (type === "check_in" && (todayResolvedShiftLoading || todayResolvedShiftError || !hasResolvedWorkShift)) {
+      setAttendanceMessage(
+        todayResolvedShiftError ||
+          (todayResolvedShiftLoading
+            ? "جاري تحميل جدول الدوام المعتمد."
+            : "لا يوجد شفت عمل معتمد لهذا اليوم.")
+      );
+      return;
+    }
+    if (type === "check_in" && (attendanceDayStatus === "leave" || attendanceDayStatus === "off_day")) {
+      setAttendanceMessage(
+        attendanceDayStatus === "leave"
+          ? "اليوم مسجل كإجازة معتمدة، لذلك لا يمكن تسجيل حضور جديد."
+          : "اليوم مسجل كيوم راحة، لذلك لا يمكن تسجيل حضور جديد."
+      );
       return;
     }
     if (type === "check_in" && isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule)) {
@@ -821,12 +833,6 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       if (effectiveAttendanceSettings.enabled === false) {
         throw new Error(
           "تسجيل الحضور متوقف من إعدادات الإدارة."
-        );
-      }
-
-      if (!active) {
-        throw new Error(
-          "لا يمكن تسجيل الحضور لموظفة غير نشطة."
         );
       }
 
@@ -916,23 +922,48 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     ? leaveUntil
       ? `في إجازة حتى ${formatShortDate(leaveUntil)}`
       : "في إجازة"
-    : active
-      ? "نشط"
-      : "غير نشط";
+    : employeeLeaveLoading
+      ? "جاري التحقق من الإجازات"
+      : employeeLeaveError
+        ? "حالة الإجازة غير متاحة"
+        : "نشط";
   const attendanceStatus = attendance?.status || "not_started";
-  const attendanceDayStatusLabel = getAttendanceDayStatusLabel(attendanceDayStatus);
   const checkInWindowClosed = isCheckInWindowClosed(attendanceDate, todayAttendanceSchedule);
-  const canCheckIn = !attendanceBusy && !attendanceLoading && attendanceStatus === "not_started" && !checkInWindowClosed;
-  const canCheckOut = !attendanceBusy && !attendanceLoading && attendanceStatus === "checked_in";
+  const canCheckIn =
+    canViewAttendance &&
+    !attendanceBusy &&
+    !attendanceLoading &&
+    !todayResolvedShiftLoading &&
+    !todayResolvedShiftError &&
+    hasResolvedWorkShift &&
+    attendanceDayStatus !== "leave" &&
+    attendanceDayStatus !== "off_day" &&
+    attendanceStatus === "not_started" &&
+    !checkInWindowClosed;
+  const canCheckOut =
+    canViewAttendance &&
+    !attendanceBusy &&
+    !attendanceLoading &&
+    attendanceStatus === "checked_in";
   const punchAction = canCheckOut ? "check_out" : "check_in";
   const punchDisabled = !canCheckIn && !canCheckOut;
   const punchLabel = attendanceStatus === "checked_out"
     ? "تم اكتمال الدوام"
     : canCheckOut
       ? "تسجيل انصراف"
-      : checkInWindowClosed
-        ? "انتهت مهلة الحضور"
-        : "تسجيل حضور";
+      : todayResolvedShiftLoading
+        ? "جاري تحميل الشفت"
+        : todayResolvedShiftError
+          ? "تعذر تحميل الشفت"
+          : attendanceDayStatus === "leave"
+            ? "إجازة معتمدة"
+            : attendanceDayStatus === "off_day"
+              ? "يوم راحة"
+              : !hasResolvedWorkShift
+                ? "لا يوجد شفت اليوم"
+                : checkInWindowClosed
+                  ? "انتهت مهلة الحضور"
+                  : "تسجيل حضور";
   const punchTone = attendanceStatus === "checked_out" ? "done" : canCheckOut ? "out" : "in";
   const checkInTime = formatAttendanceTime(attendance?.checkInAtClient);
   const checkOutTime = formatAttendanceTime(attendance?.checkOutAtClient);
@@ -966,11 +997,21 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
   const punchHint = attendanceStatus === "checked_out"
     ? "تم حفظ الحضور والانصراف لهذا اليوم"
-    : checkInWindowClosed && attendanceStatus === "not_started"
-      ? "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر."
-      : attendanceBusy
-        ? "لا تغلق الصفحة أثناء التحقق"
-        : "";
+    : todayResolvedShiftLoading
+      ? "جاري قراءة الشفت المنشور من النظام المركزي."
+      : todayResolvedShiftError
+        ? "تعذر التحقق من الشفت، لذلك تم تعطيل تسجيل حضور جديد بدل استخدام جدول قديم."
+        : attendanceDayStatus === "leave"
+          ? "هذا اليوم مغطى بإجازة معتمدة في نظام الموارد البشرية."
+          : attendanceDayStatus === "off_day"
+            ? "لا يوجد دوام مطلوب لهذا اليوم حسب الشفت المنشور."
+            : !hasResolvedWorkShift
+              ? "لا يوجد شفت منشور لهذا اليوم. راجعي الإدارة إذا كان يفترض وجود دوام."
+              : checkInWindowClosed && attendanceStatus === "not_started"
+                ? "تم إغلاق بصمة الحضور، وسيتم تسجيل الغياب تلقائيًا. راجعي الإدارة عند وجود عذر."
+                : attendanceBusy
+                  ? "لا تغلق الصفحة أثناء التحقق"
+                  : "";
   const targetSummary = employeeTarget?.summary;
   const targetAmount = Number(targetSummary?.currentTargetAmount || employeeTarget?.targetCalculation?.targetAmount || 0);
   const targetSales = Number(targetSummary?.netTargetAmount || 0);
@@ -1044,11 +1085,19 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           </div>
         </div>
         <div className="employee-app-intro__meta">
-          <span className={`employee-status-pill ${onLeave ? "is-leave" : active ? "is-active" : "is-inactive"}`}>{statusLabel}</span>
+          <span className={`employee-status-pill ${onLeave ? "is-leave" : employeeLeaveError ? "is-inactive" : "is-active"}`}>{statusLabel}</span>
           <span>{roleLabel(session.role)}</span>
           <span>{attendanceDateLabel}</span>
         </div>
       </section>
+
+      {employeeLeaveError || (canViewAttendance && todayResolvedShiftError) ? (
+        <div className="employee-overview-runtime-alert" role="status" aria-live="polite">
+          <strong>بعض البيانات التشغيلية غير متاحة الآن.</strong>
+          <span>{employeeLeaveError || todayResolvedShiftError}</span>
+          <small>لم يتم استخدام أي جدول دوام أو حالة إجازة Legacy كبديل.</small>
+        </div>
+      ) : null}
 
       <section className="employee-overview-kpis" aria-label="ملخص التنبيهات">
         <Link to="/employee/notifications" className="employee-overview-kpi">
@@ -1056,11 +1105,13 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <span>التنبيهات غير المقروءة</span>
           <strong>{summary.all}</strong>
         </Link>
-        <Link to="/employee/messages" className="employee-overview-kpi">
-          <FontAwesomeIcon icon={faPaperPlane} />
-          <span>الرسائل</span>
-          <strong>{summary.message}</strong>
-        </Link>
+        {canViewMessages ? (
+          <Link to="/employee/messages" className="employee-overview-kpi">
+            <FontAwesomeIcon icon={faPaperPlane} />
+            <span>الرسائل</span>
+            <strong>{summary.message}</strong>
+          </Link>
+        ) : null}
         <Link to="/employee/files" className="employee-overview-kpi">
           <FontAwesomeIcon icon={faFileLines} />
           <span>تحديثات الملفات</span>
@@ -1073,6 +1124,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         </Link>
       </section>
 
+      {canViewOwnTarget ? (
       <section className={`employee-target-home-card employee-target-home-card--${targetCardStatus}`} aria-label="تارقتي">
         <div className="employee-target-home-card__head">
           <span><FontAwesomeIcon icon={faChartLine} /></span>
@@ -1127,7 +1179,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           </>
         )}
       </section>
+      ) : null}
 
+      {canViewAttendance ? (
       <section className={`employee-attendance-card employee-attendance-card--${attendanceStatus}`} data-status={attendanceStatus}>
         <div className="employee-section-title">
           <div>
@@ -1204,6 +1258,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           </div>
         ) : null}
       </section>
+      ) : null}
 
       <section className="employee-overview-block">
         <div className="employee-block-head">
@@ -1299,7 +1354,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
             <p>يعرض الرصيد الحالي من بيانات الموظف الموجودة</p>
           </div>
           <div className="employee-balance-card">
-            <span>رصيد الإجازات</span>
+            <div>
+              <span>رصيد الإجازات</span>
+              <small>نفس الرصيد التشغيلي المستخدم حاليًا في إدارة الموظفات</small>
+            </div>
             <strong>{leaveBalanceValue === "—" ? "—" : `${leaveBalanceValue} يوم`}</strong>
           </div>
         </div>

@@ -20,6 +20,28 @@
   margin-inline: auto;
 }
 
+.dashboard-v2 .employee-overview-v2-page .employee-overview-runtime-alert {
+  display: grid;
+  gap: var(--dsv2-space-1);
+  padding: var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-burgundy-border);
+  border-radius: var(--dsv2-radius-md);
+  background: var(--dsv2-burgundy-soft);
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-runtime-alert strong {
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-overview-runtime-alert span,
+.dashboard-v2 .employee-overview-v2-page .employee-overview-runtime-alert small {
+  font-size: 0.62rem;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
 /* Hero */
 .dashboard-v2 .employee-overview-v2-page .employee-app-intro {
   position: relative;
@@ -935,6 +957,19 @@
   border: 1px solid var(--dsv2-border-gold);
   border-radius: var(--dsv2-radius-md);
   background: var(--dsv2-gold-softer);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-balance-card > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-1);
+}
+
+.dashboard-v2 .employee-overview-v2-page .employee-balance-card small {
+  color: var(--dsv2-muted);
+  font-size: 0.56rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .dashboard-v2 .employee-overview-v2-page .employee-balance-card span {
