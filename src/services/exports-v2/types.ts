@@ -42,6 +42,15 @@ export type ExportV2DateRange = {
   to?: string | null;
 };
 
+export type ExportV2ExtraTable = {
+  name: string;
+  sheetName?: string;
+  columns: ExportV2Column<Record<string, ExportV2Value>>[];
+  rows: Record<string, ExportV2Value>[];
+  emptyMessage?: string;
+  hideInPdf?: boolean;
+};
+
 export type ExportV2Report<Row extends Record<string, ExportV2Value>> = {
   slug: string;
   reportCode?: string;
@@ -59,6 +68,7 @@ export type ExportV2Report<Row extends Record<string, ExportV2Value>> = {
   columns: ExportV2Column<Row>[];
   rows: Row[];
   totals?: Partial<Record<keyof Row & string, number>>;
+  extraTables?: ExportV2ExtraTable[];
   emptyMessage?: string;
   notes?: string[];
   pdfOrientation?: "portrait" | "landscape";

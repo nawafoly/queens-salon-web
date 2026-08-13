@@ -1,9 +1,9 @@
-import malikatLogo from "../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "./employeeRequests";
 import { exportReportToExcelV2 } from "./exports-v2/excel";
 import { buildPdfFromJpegPages } from "./exports-v2/pdf";
 import type { ExportV2Report, ExportV2Value } from "./exports-v2/types";
 import { downloadExportV2Blob } from "./exports-v2/download";
+import { DOCUMENT_BRANDING } from "../documents/core/documentBranding";
 import { zipStore, xmlEscape } from "../documents/core/officeZip";
 import {
   buildLeaveRequestDocumentData,
@@ -19,10 +19,17 @@ type LeaveExcelRow = Record<string, ExportV2Value> & {
 };
 
 type DocxImage = {
-  id: string;
+  id: "logo" | "employee" | "manager";
   fileName: string;
   contentType: string;
   bytes: Uint8Array;
+};
+
+type DocxImageOptions = {
+  align?: "left" | "center" | "right";
+  widthEmu?: number;
+  heightEmu?: number;
+  docPrId?: number;
 };
 
 const A4_PORTRAIT_POINTS = { width: 595.28, height: 841.89 };
@@ -87,6 +94,13 @@ body {
   transform: none !important;
   page-break-inside: avoid !important;
   break-inside: avoid-page !important;
+}
+.document-watermark {
+  filter: brightness(0) contrast(100%) !important;
+  opacity: ${DOCUMENT_BRANDING.watermarkOpacity} !important;
+}
+.leave-doc-brand img {
+  filter: brightness(0) contrast(100%) !important;
 }
 .leave-request-export-toolbar,
 .employee-request-action-modal,
@@ -173,9 +187,9 @@ function buildLeaveExportReport(data: LeaveRequestDocumentData): ExportV2Report<
     generatedAt: new Date().toISOString(),
     generatedBy: data.employeeName,
     branding: {
-      salonName: "ملكات",
-      brandName: "Malikat",
-      logoUrl: malikatLogo,
+      salonName: DOCUMENT_BRANDING.salonName,
+      brandName: DOCUMENT_BRANDING.brandName,
+      logoUrl: DOCUMENT_BRANDING.printLogoSource,
     },
     filters: [
       { label: "رقم الطلب", value: data.requestNumber },
@@ -199,6 +213,7 @@ function buildLeaveExportReport(data: LeaveRequestDocumentData): ExportV2Report<
     notes: [
       "نسخة إلكترونية كاملة من طلب الإجازة.",
       "التوقيعات محفوظة بخط اليد داخل سجل الطلب الإلكتروني.",
+      "تم إعداد التقرير للطباعة على A4 بوضع عمودي.",
     ],
     pdfOrientation: "portrait",
   };
@@ -237,6 +252,26 @@ function loadImage(src?: string) {
     };
     image.src = source;
   });
+}
+
+function blackLogoCanvas(image: HTMLImageElement) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, image.naturalWidth || image.width);
+  canvas.height = Math.max(1, image.naturalHeight || image.height);
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.globalCompositeOperation = "source-in";
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.globalCompositeOperation = "source-over";
+  return canvas;
+}
+
+function blackLogoPngDataUrl(image: HTMLImageElement) {
+  const canvas = blackLogoCanvas(image);
+  return canvas ? canvas.toDataURL("image/png") : "";
 }
 
 function setFont(context: CanvasRenderingContext2D, size: number, weight = 500) {
@@ -326,11 +361,12 @@ export async function buildLeaveRequestPdfBytes(request: EmployeeRequest) {
   if (document.fonts?.ready) await document.fonts.ready;
 
   const data = buildLeaveRequestDocumentData(request);
-  const [logo, employeeSignature, managerSignature] = await Promise.all([
-    loadImage(malikatLogo),
+  const [logoSource, employeeSignature, managerSignature] = await Promise.all([
+    loadImage(DOCUMENT_BRANDING.printLogoSource),
     loadImage(data.employeeSignature.imageDataUrl),
     loadImage(data.managerSignature.imageDataUrl),
   ]);
+  const logo = logoSource ? blackLogoCanvas(logoSource) : null;
   const canvas = document.createElement("canvas");
   canvas.width = PDF_CANVAS.width;
   canvas.height = PDF_CANVAS.height;
@@ -350,8 +386,7 @@ export async function buildLeaveRequestPdfBytes(request: EmployeeRequest) {
     const drawWidth = logo.width * ratio;
     const drawHeight = logo.height * ratio;
     context.save();
-    context.globalAlpha = 0.055;
-    context.filter = "grayscale(100%)";
+    context.globalAlpha = DOCUMENT_BRANDING.watermarkOpacity;
     context.drawImage(logo, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
     context.restore();
   }
@@ -415,7 +450,7 @@ export async function buildLeaveRequestPdfBytes(request: EmployeeRequest) {
     y += 94;
   }
 
-  drawSignature(context, { ...data.employeeSignature, label: "الاسم: " + data.employeeName }, employeeSignature, right - fieldWidth, y, fieldWidth);
+  drawField(context, "الاسم", data.employeeName, right - fieldWidth, y, fieldWidth);
   drawSignature(context, data.employeeSignature, employeeSignature, right - fieldWidth * 2 - 24, y, fieldWidth);
   y += 166;
 
@@ -428,7 +463,7 @@ export async function buildLeaveRequestPdfBytes(request: EmployeeRequest) {
   y += 34;
   drawWrappedText(context, "تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.", right, y, canvas.width - PDF_CANVAS.margin * 2 - 84, 17, 600, 2, 26);
   y += 72;
-  drawSignature(context, { ...data.managerSignature, label: "الاسم: " + data.managerName }, managerSignature, right - fieldWidth, y, fieldWidth);
+  drawField(context, "اسم المسؤول", `${data.managerName} — ${data.managerRole}`, right - fieldWidth, y, fieldWidth);
   drawSignature(context, data.managerSignature, managerSignature, right - fieldWidth * 2 - 24, y, fieldWidth);
   y += 152;
   data.managerDecisionOptions.forEach((option, index) => {
@@ -455,7 +490,7 @@ export async function exportLeaveRequestToPdf(request: EmployeeRequest) {
   );
 }
 
-function dataUrlToImage(value: string, id: string): DocxImage | null {
+function dataUrlToImage(value: string, id: DocxImage["id"]): DocxImage | null {
   const match = /^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/i.exec(String(value || "").trim());
   if (!match) return null;
   const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
@@ -472,29 +507,32 @@ function dataUrlToImage(value: string, id: string): DocxImage | null {
 
 function p(text: unknown, options: { bold?: boolean; size?: number; center?: boolean } = {}) {
   const size = options.size || 22;
-  return `<w:p><w:pPr><w:bidi/><w:jc w:val="${options.center ? "center" : "right"}"/></w:pPr><w:r><w:rPr><w:rtl/>${options.bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+  return `<w:p><w:pPr><w:bidi/><w:jc w:val="${options.center ? "center" : "right"}"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:rtl/><w:lang w:val="ar-SA" w:bidi="ar-SA"/>${options.bold ? "<w:b/><w:bCs/>" : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
 }
 
 function checkboxText(label: string, checked: boolean) {
   return `${checked ? "☑" : "☐"} ${label}`;
 }
 
-function docxImage(image: DocxImage | null, relId: string, fallback: string) {
-  if (!image) return p(fallback, { bold: true });
-  const cx = 1428750;
-  const cy = 457200;
-  return `<w:p><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${relId.replace(/\D/g, "") || "1"}" name="${xmlEscape(image.fileName)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="${xmlEscape(image.fileName)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+function docxImage(image: DocxImage | null, relId: string, fallback: string, options: DocxImageOptions = {}) {
+  if (!image) return fallback ? p(fallback, { bold: true }) : "";
+  const cx = options.widthEmu || 1428750;
+  const cy = options.heightEmu || 457200;
+  const align = options.align || "right";
+  const docPrId = options.docPrId || 1;
+  return `<w:p><w:pPr><w:bidi/><w:jc w:val="${align}"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${xmlEscape(image.fileName)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${xmlEscape(image.fileName)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
 function table(rows: Array<[string, string | number]>) {
   return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="6"/><w:left w:val="single" w:sz="6"/><w:bottom w:val="single" w:sz="6"/><w:right w:val="single" w:sz="6"/><w:insideH w:val="single" w:sz="6"/><w:insideV w:val="single" w:sz="6"/></w:tblBorders></w:tblPr>${rows.map(([label, value]) => `<w:tr><w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${p(label, { bold: true })}</w:tc><w:tc><w:tcPr><w:tcW w:w="6200" w:type="dxa"/></w:tcPr>${p(value)}</w:tc></w:tr>`).join("")}</w:tbl>`;
 }
 
-function documentXml(data: LeaveRequestDocumentData, images: { employee: DocxImage | null; manager: DocxImage | null }) {
+function documentXml(data: LeaveRequestDocumentData, images: { logo: DocxImage | null; employee: DocxImage | null; manager: DocxImage | null }) {
   const checkboxLine = data.leaveTypeOptions.map((option) => checkboxText(option.label, option.checked)).join("    ");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
+    ${docxImage(images.logo, "rIdLogo", "", { align: "left", widthEmu: 1750000, heightEmu: 700000, docPrId: 10 })}
     ${p(data.title, { bold: true, size: 34, center: true })}
     ${p(`رقم الطلب: ${data.requestNumber}`, { bold: true })}
     ${p(checkboxLine)}
@@ -508,16 +546,17 @@ function documentXml(data: LeaveRequestDocumentData, images: { employee: DocxIma
     ${data.notes !== "—" ? `${p("ملاحظات", { bold: true })}${p(data.notes)}` : ""}
     ${table([["الاسم", data.employeeName], ["تاريخ التقديم", data.submittedAtLabel]])}
     ${p(data.employeeSignature.label, { bold: true })}
-    ${docxImage(images.employee, "rIdEmployeeSignature", data.employeeSignature.fallback)}
+    ${docxImage(images.employee, "rIdEmployeeSignature", data.employeeSignature.fallback, { align: "right", docPrId: 20 })}
     ${p("رأي المدير الإداري", { bold: true })}
     ${p("تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.")}
     ${table([["اسم المسؤول", data.managerName], ["الدور", data.managerRole], ["القرار", data.managerDecisionLabel], ["تاريخ القرار", data.managerDecidedAtLabel]])}
     ${p(data.managerSignature.label, { bold: true })}
-    ${docxImage(images.manager, "rIdManagerSignature", data.managerSignature.fallback)}
+    ${docxImage(images.manager, "rIdManagerSignature", data.managerSignature.fallback, { align: "right", docPrId: 30 })}
     ${p("الملاحظات / القرار", { bold: true })}
     ${p(data.managerDecisionNote)}
     ${p("نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات", { size: 18 })}
     <w:sectPr>
+      ${images.logo ? '<w:headerReference w:type="default" r:id="rIdHeader1"/>' : ""}
       <w:pgSz w:w="11906" w:h="16838"/>
       <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
       <w:bidi/>
@@ -526,78 +565,89 @@ function documentXml(data: LeaveRequestDocumentData, images: { employee: DocxIma
 </w:document>`;
 }
 
-function docxContentTypes(images: DocxImage[]) {
-  const imageDefaults = Array.from(new Set(images.map((image) => image.contentType === "image/png" ? "png" : "jpg")))
-    .map((extension) => `<Default Extension="${extension}" ContentType="${extension === "png" ? "image/png" : "image/jpeg"}"/>`)
-    .join("");
+function docxHeaderXml(hasLogo: boolean) {
+  if (!hasLogo) return "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  ${imageDefaults}
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>`;
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>
+    <wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1">
+      <wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH><wp:positionV relativeFrom="page"><wp:align>center</wp:align></wp:positionV>
+      <wp:extent cx="5200000" cy="2100000"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="99" name="Malikat Watermark"/><wp:cNvGraphicFramePr/>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="99" name="Malikat Watermark"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdWatermark"><a:alphaModFix amt="5500"/></a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="5200000" cy="2100000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>
+    </wp:anchor>
+  </w:drawing></w:r></w:p>
+</w:hdr>`;
 }
 
-function docxRelationships(images: DocxImage[]) {
-  const imageRels = images.map((image) => {
-    const id = image.id === "employee" ? "rIdEmployeeSignature" : "rIdManagerSignature";
-    return `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`;
-  }).join("");
+function docxStylesXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${imageRels}</Relationships>`;
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:lang w:val="ar-SA" w:bidi="ar-SA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault></w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:bidi/></w:pPr><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:lang w:val="ar-SA" w:bidi="ar-SA"/></w:rPr></w:style>
+</w:styles>`;
+}
+
+function docxSettingsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="720"/><w:displayBackgroundShape/><w:compat/></w:settings>`;
+}
+
+function docxContentTypes(images: DocxImage[], hasHeader: boolean) {
+  const imageDefaults = Array.from(new Set(images.map((image) => image.contentType === "image/png" ? "png" : "jpg"))).map((extension) => `<Default Extension="${extension}" ContentType="${extension === "png" ? "image/png" : "image/jpeg"}"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageDefaults}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${hasHeader ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ""}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+}
+
+function docxRelationships(images: DocxImage[], hasHeader: boolean) {
+  const ids: Record<DocxImage["id"], string> = { logo: "rIdLogo", employee: "rIdEmployeeSignature", manager: "rIdManagerSignature" };
+  const imageRels = images.map((image) => `<Relationship Id="${ids[image.id]}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${hasHeader ? '<Relationship Id="rIdHeader1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' : ""}${imageRels}</Relationships>`;
+}
+
+function docxHeaderRelationships(logo: DocxImage | null) {
+  if (!logo) return "";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdWatermark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${logo.fileName}"/></Relationships>`;
 }
 
 function rootRelationshipsXml() {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`;
 }
 
 function docProps(data: LeaveRequestDocumentData) {
   const timestamp = new Date().toISOString();
   return {
-    core: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>${xmlEscape(`${data.title} ${data.requestNumber}`)}</dc:title>
-  <dc:creator>Malikat Document Export</dc:creator>
-  <cp:lastModifiedBy>Malikat Document Export</cp:lastModifiedBy>
-  <dcterms:created xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:created>
-  <dcterms:modified xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:modified>
-</cp:coreProperties>`,
+    core: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(`${data.title} ${data.requestNumber}`)}</dc:title><dc:creator>Malikat Document Export</dc:creator><cp:lastModifiedBy>Malikat Document Export</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:modified></cp:coreProperties>`,
     app: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Malikat Document Export</Application><Company>Malikat Salon</Company></Properties>`,
   };
 }
 
-export function buildLeaveRequestDocxBytes(request: EmployeeRequest) {
+export async function buildLeaveRequestDocxBytes(request: EmployeeRequest) {
+  if (typeof document === "undefined") throw new Error("تصدير Word يتطلب تشغيل الصفحة داخل المتصفح.");
   const data = buildLeaveRequestDocumentData(request);
+  const logoSource = await loadImage(DOCUMENT_BRANDING.printLogoSource);
+  const logoImage = logoSource ? dataUrlToImage(blackLogoPngDataUrl(logoSource), "logo") : null;
   const employeeImage = dataUrlToImage(data.employeeSignature.imageDataUrl || "", "employee");
   const managerImage = dataUrlToImage(data.managerSignature.imageDataUrl || "", "manager");
-  const images = [employeeImage, managerImage].filter((image): image is DocxImage => Boolean(image));
+  const images = [logoImage, employeeImage, managerImage].filter((image): image is DocxImage => Boolean(image));
   const props = docProps(data);
+  const hasHeader = Boolean(logoImage);
   return zipStore([
-    { name: "[Content_Types].xml", content: docxContentTypes(images) },
+    { name: "[Content_Types].xml", content: docxContentTypes(images, hasHeader) },
     { name: "_rels/.rels", content: rootRelationshipsXml() },
     { name: "docProps/core.xml", content: props.core },
     { name: "docProps/app.xml", content: props.app },
-    { name: "word/document.xml", content: documentXml(data, { employee: employeeImage, manager: managerImage }) },
-    { name: "word/_rels/document.xml.rels", content: docxRelationships(images) },
+    { name: "word/document.xml", content: documentXml(data, { logo: logoImage, employee: employeeImage, manager: managerImage }) },
+    { name: "word/styles.xml", content: docxStylesXml() },
+    { name: "word/settings.xml", content: docxSettingsXml() },
+    { name: "word/_rels/document.xml.rels", content: docxRelationships(images, hasHeader) },
+    ...(logoImage ? [{ name: "word/header1.xml", content: docxHeaderXml(true) }, { name: "word/_rels/header1.xml.rels", content: docxHeaderRelationships(logoImage) }] : []),
     ...images.map((image) => ({ name: `word/media/${image.fileName}`, content: image.bytes })),
   ]);
 }
 
 export async function exportLeaveRequestToWord(request: EmployeeRequest) {
   const data = buildLeaveRequestDocumentData(request);
-  const bytes = buildLeaveRequestDocxBytes(request);
-  downloadExportV2Blob(
-    new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
-    `malikat-leave-request-${sanitizeFilePart(data.employeeName)}-${sanitizeFilePart(data.requestNumber)}.docx`
-  );
+  const bytes = await buildLeaveRequestDocxBytes(request);
+  downloadExportV2Blob(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), `malikat-leave-request-${sanitizeFilePart(data.employeeName)}-${sanitizeFilePart(data.requestNumber)}.docx`);
 }
 
 export function auditLeaveRequestExportSurface(request: EmployeeRequest) {
@@ -608,9 +658,10 @@ export function auditLeaveRequestExportSurface(request: EmployeeRequest) {
     component: "src/components/hr/LeaveRequestDocument.tsx",
     css: ["src/documents/core/documentPrint.css", "src/styles/LeaveRequestDocument.css"],
     dataSource: "EmployeeRequest payload/events from src/services/employeeRequests.ts",
-    printPath: "printLeaveRequestDocument() -> isolated iframe -> .leave-request-print-root at 210mm x 297mm",
-    pdfPath: "exportLeaveRequestToPdf() -> canonical view model -> A4 PDF bytes",
-    docxPath: "exportLeaveRequestToWord() -> canonical view model -> Office Open XML .docx",
+    branding: "src/documents/core/documentBranding.ts",
+    printPath: "printLeaveRequestDocument() -> isolated iframe -> canonical A4 document",
+    pdfPath: "exportLeaveRequestToPdf() -> canonical view model -> black branded A4 PDF bytes with watermark",
+    docxPath: "exportLeaveRequestToWord() -> canonical view model -> Office Open XML .docx with RTL, logo, watermark and signatures",
     xlsxPath: "exportLeaveRequestToExcel() -> canonical view model -> Export V2 XLSX",
     data,
     generatedAt: formatDocumentDateTime(new Date().toISOString()),

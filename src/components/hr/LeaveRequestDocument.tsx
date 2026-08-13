@@ -1,5 +1,5 @@
-import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "../../services/employeeRequests";
+import { DOCUMENT_BRANDING } from "../../documents/core/documentBranding";
 import {
   buildLeaveRequestDocumentData,
   formatDocumentDate,
@@ -15,6 +15,7 @@ import {
   DocumentLongText,
   DocumentPage,
   DocumentSection,
+  DocumentWatermark,
 } from "../../documents/core/DocumentPage";
 import DashboardDatePickerV2 from "../dashboard-v2/DashboardDatePickerV2";
 import SignatureCaptureField from "./SignatureCaptureField";
@@ -52,7 +53,7 @@ function CheckBox({ checked, label, onClick }: { checked: boolean; label: string
 function MalikatDocumentLogo() {
   return (
     <div className="leave-doc-brand" aria-label="شعار ملكات">
-      <img src={malikatLogo} alt="شعار ملكات" />
+      <img src={DOCUMENT_BRANDING.printLogoSource} alt="شعار ملكات" />
     </div>
   );
 }
@@ -95,7 +96,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 
   return (
     <DocumentPage className="leave-doc leave-doc--editable" labelledBy="leave-request-draft-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+      <DocumentWatermark src={DOCUMENT_BRANDING.watermarkSource} />
       <header className="leave-doc-header">
         <MalikatDocumentLogo />
         <h2 id="leave-request-draft-title">طلب إجازة</h2>
@@ -183,7 +184,7 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 function LeaveRequestDocumentView({ data }: { data: LeaveRequestDocumentData }) {
   return (
     <DocumentPage className="leave-doc leave-request-print-root" labelledBy="leave-request-document-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+      <DocumentWatermark src={DOCUMENT_BRANDING.watermarkSource} />
       <header className="leave-doc-header">
         <MalikatDocumentLogo />
         <h2 id="leave-request-document-title">{data.title}</h2>

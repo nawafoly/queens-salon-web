@@ -1,0 +1,76 @@
+name: Document Export Acceptance
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/document-export-acceptance.yml"
+      - "src/documents/**"
+      - "src/components/hr/LeaveRequestDocument.tsx"
+      - "src/services/leaveRequestExport.ts"
+      - "src/services/exports-v2/**"
+      - "src/helpers/reports/**"
+      - "src/styles/LeaveRequestDocument.css"
+      - "src/pages/hr/AdminEmployeeRequests.tsx"
+      - "src/pages/hr/EmployeeRequests.tsx"
+      - "src/pages/DashboardAttendanceSecurity.tsx"
+      - "src/pages/DashboardPayroll.tsx"
+      - "src/pages/DashboardStaffPerformance.tsx"
+      - "scripts/check-dashboard-requests-v2.mjs"
+      - "workers/document-export-contract.test.mjs"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/document-export-acceptance.yml"
+      - "src/documents/**"
+      - "src/components/hr/LeaveRequestDocument.tsx"
+      - "src/services/leaveRequestExport.ts"
+      - "src/services/exports-v2/**"
+      - "src/helpers/reports/**"
+      - "src/styles/LeaveRequestDocument.css"
+      - "src/pages/hr/AdminEmployeeRequests.tsx"
+      - "src/pages/hr/EmployeeRequests.tsx"
+      - "src/pages/DashboardAttendanceSecurity.tsx"
+      - "src/pages/DashboardPayroll.tsx"
+      - "src/pages/DashboardStaffPerformance.tsx"
+      - "scripts/check-dashboard-requests-v2.mjs"
+      - "workers/document-export-contract.test.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Document export contracts
+        run: node --test workers/document-export-contract.test.mjs
+
+      - name: Employee requests V2
+        run: npm run check:dashboard-requests-v2
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          else
+            git diff --check HEAD^ HEAD
+          fi

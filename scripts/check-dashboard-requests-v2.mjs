@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -7,11 +8,13 @@ const pagePath = path.join(root, "src/pages/hr/AdminEmployeeRequests.tsx");
 const stylePath = path.join(root, "src/styles/dashboard-v2/pages/admin-employee-requests.css");
 const entryPath = path.join(root, "src/styles/dashboard-v2/dashboard-v2.css");
 const sharedLegacyPath = path.join(root, "src/styles/EmployeeRequests.css");
+const attendanceExportPath = path.join(root, "src/helpers/reports/exportAttendanceReport.ts");
 
 const page = fs.readFileSync(pagePath, "utf8");
 const style = fs.readFileSync(stylePath, "utf8");
 const entry = fs.readFileSync(entryPath, "utf8");
 const sharedLegacy = fs.readFileSync(sharedLegacyPath, "utf8");
+const attendanceExport = fs.readFileSync(attendanceExportPath, "utf8");
 
 const failures = [];
 const requireText = (content, needle, message) => {
@@ -61,10 +64,33 @@ requireText(entry, '@import "./pages/admin-employee-requests.css";', "dashboard-
 // The employee-facing stylesheet remains intentionally shared and untouched by this migration.
 requireText(sharedLegacy, ".employee-requests-page", "Shared EmployeeRequests.css no longer contains the employee portal scope.");
 
+// Active attendance exports must use the same Export V2 pipeline rather than the legacy HTML/print helper.
+requireText(attendanceExport, "exportReportToPdfV2", "Attendance PDF export must use Export V2.");
+requireText(attendanceExport, "exportReportToExcelV2", "Attendance Excel export must use Export V2.");
+requireText(attendanceExport, "DOCUMENT_BRANDING", "Attendance export must use central document branding.");
+rejectText(attendanceExport, 'from "./common.ts"', "Attendance export still depends on the legacy report common helper.");
+rejectText(attendanceExport, "window.print", "Attendance export must not use browser-print PDF generation.");
+rejectText(attendanceExport, "exportReportToPdf(", "Attendance export still calls the legacy PDF renderer.");
+rejectText(attendanceExport, "exportReportToExcel(", "Attendance export still calls the legacy Excel renderer.");
+
 if (failures.length) {
   console.error("Dashboard requests V2 migration guard failed:\n");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log("Dashboard requests V2 migration guard passed.");
+const documentContract = spawnSync(
+  process.execPath,
+  ["--test", "workers/document-export-contract.test.mjs"],
+  { cwd: root, stdio: "inherit" }
+);
+if (documentContract.error) {
+  console.error("Document export contract could not start:", documentContract.error);
+  process.exit(1);
+}
+if (documentContract.status !== 0) {
+  console.error("Document export contract failed.");
+  process.exit(documentContract.status || 1);
+}
+
+console.log("Dashboard requests V2 migration guard passed with document export contract.");

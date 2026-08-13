@@ -25,6 +25,28 @@
   box-sizing: border-box;
 }
 
+.document-a4-page > :not(.document-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.document-watermark {
+  position: absolute;
+  z-index: 0;
+  top: 92mm;
+  right: 0;
+  left: 0;
+  width: 116mm;
+  max-width: 72%;
+  height: auto;
+  margin-inline: auto;
+  opacity: 0.055;
+  pointer-events: none;
+  object-fit: contain;
+  filter: brightness(0) contrast(100%);
+  user-select: none;
+}
+
 .document-section {
   break-inside: avoid;
   page-break-inside: avoid;
@@ -90,6 +112,11 @@
     box-shadow: none;
   }
 
+  .document-watermark {
+    top: 34%;
+    width: min(76%, 420px);
+  }
+
   .document-field-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -118,5 +145,10 @@
     box-shadow: none !important;
     transform: none !important;
     overflow: visible !important;
+  }
+
+  .document-watermark {
+    filter: brightness(0) contrast(100%) !important;
+    opacity: 0.055 !important;
   }
 }
