@@ -1,0 +1,77 @@
+name: Employee Overview Runtime Finalize Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/employee-overview-runtime-finalize-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact lockfile
+        run: npm ci
+
+      - name: Apply employee overview runtime finalization
+        run: python scripts/employee-overview-runtime-finalize-temp.py
+
+      - name: Remove temporary execution files
+        run: |
+          rm .github/workflows/employee-overview-runtime-finalize-temp.yml
+          rm scripts/employee-overview-runtime-finalize-temp.py
+
+      - name: Employee overview V2 contract
+        run: npm run check:employee-portal-overview-v2
+
+      - name: Dashboard V2 contract
+        run: npm run check:dashboard-v2
+
+      - name: HR D1-only guard
+        run: npm run check:hr:d1-only
+
+      - name: HR worker tests
+        run: npm run test:hr:worker
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Verify scoped diff
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only HEAD)
+          printf '%s\n' "${changed[@]}"
+          allowed='^(src/pages/hr/EmployeeOverview\.tsx|src/styles/dashboard-v2/pages/employee-portal-overview\.css|scripts/check-employee-portal-overview-v2\.mjs|scripts/employee-overview-runtime-finalize-temp\.py|\.github/workflows/employee-overview-runtime-finalize-temp\.yml)$'
+          for file in "${changed[@]}"; do
+            [[ "$file" =~ $allowed ]] || { echo "Unexpected changed file: $file"; exit 1; }
+          done
+          [[ ${#changed[@]} -eq 5 ]] || { echo "Expected exactly 5 scoped changes"; exit 1; }
+
+      - name: Promote finalized employee overview
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/hr/EmployeeOverview.tsx src/styles/dashboard-v2/pages/employee-portal-overview.css scripts/check-employee-portal-overview-v2.mjs scripts/employee-overview-runtime-finalize-temp.py .github/workflows/employee-overview-runtime-finalize-temp.yml
+          git commit -m "Finalize employee overview V2 runtime"
+          git push origin HEAD:main
