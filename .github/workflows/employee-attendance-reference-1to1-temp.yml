@@ -63,10 +63,10 @@ jobs:
               raise SystemExit("contract entry path anchor missing")
           contract = contract.replace(entry_path_anchor, entry_path_anchor + 'const mobilePath = resolve(root, "src/styles/EmployeePortalMobileNav.css");\n', 1)
 
-          required_anchor = 'for (const path of [portalPath, overviewPath, cssPath, entryPath]) {'
+          required_anchor = 'for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath]) {'
           if required_anchor not in contract:
               raise SystemExit("contract required paths anchor missing")
-          contract = contract.replace(required_anchor, 'for (const path of [portalPath, overviewPath, cssPath, entryPath, mobilePath]) {', 1)
+          contract = contract.replace(required_anchor, 'for (const path of [portalPath, overviewPath, cssPath, attendanceCssPath, entryPath, mobilePath]) {', 1)
 
           read_anchor = '  const entry = readFileSync(entryPath, "utf8");\n'
           if read_anchor not in contract:
@@ -88,7 +88,7 @@ jobs:
               '    "min-height: 92px;",\n'
               '  ];\n'
               '  for (const marker of referenceAttendanceCssMarkers) {\n'
-              '    if (!css.includes(marker)) errors.push(`Employee attendance reference layout marker missing: ${marker}`);\n'
+              '    if (!attendanceCss.includes(marker)) errors.push(`Employee attendance reference layout marker missing: ${marker}`);\n'
               '  }\n\n'
           )
           contract = contract.replace(css_guard_anchor, legacy_guard + css_guard_anchor, 1)
