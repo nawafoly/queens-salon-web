@@ -1,0 +1,143 @@
+name: Employee Overview V2 Finalize Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/employee-overview-v2-finalize-temp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: employee-overview-v2-finalize-main
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact lockfile
+        run: npm ci
+
+      - name: Finalize employee overview V2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+
+          // 1) Fix the overview quick-action navigation bug only.
+          {
+            const p = 'src/pages/hr/EmployeeOverview.tsx';
+            let s = fs.readFileSync(p, 'utf8');
+            const from = '{ label: "طلب استئذان", href: "/employee/messages", icon: faPaperPlane }';
+            const to = '{ label: "طلب استئذان", href: "/employee/permission", icon: faPaperPlane }';
+            if (!s.includes(from)) throw new Error('Expected permission quick-action marker not found');
+            s = s.replace(from, to);
+            fs.writeFileSync(p, s);
+          }
+
+          // 2) Fold the previously approved micro fixes into the canonical page stylesheet.
+          {
+            const canonical = 'src/styles/dashboard-v2/pages/employee-portal-overview.css';
+            const micro = 'src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css';
+            let base = fs.readFileSync(canonical, 'utf8').trimEnd();
+            const patch = fs.readFileSync(micro, 'utf8')
+              .replace(/\/\*[\s\S]*?\*\//, '/* Final integrated refinements: punch contrast + avatar framing. */')
+              .trim();
+            if (!patch.includes('.employee-punch-button--in') || !patch.includes('.employee-app-intro__avatar.employee-avatar')) {
+              throw new Error('Micro-fix stylesheet does not contain expected overview refinements');
+            }
+            if (base.includes('Final integrated refinements: punch contrast + avatar framing.')) {
+              throw new Error('Overview micro fixes appear to be integrated already');
+            }
+            fs.writeFileSync(canonical, `${base}\n\n${patch}\n`);
+          }
+
+          // 3) Remove the parallel stylesheet import from the single V2 entrypoint.
+          {
+            const p = 'src/styles/dashboard-v2/dashboard-v2.css';
+            let s = fs.readFileSync(p, 'utf8');
+            const line = '@import "./pages/employee-portal-overview-micro-fixes.css";\n';
+            if (!s.includes(line)) throw new Error('Expected employee overview micro-fix import not found');
+            s = s.replace(line, '');
+            fs.writeFileSync(p, s);
+          }
+
+          // 4) Harden the page contract: one canonical stylesheet only.
+          {
+            const p = 'scripts/check-employee-portal-overview-v2.mjs';
+            let s = fs.readFileSync(p, 'utf8');
+            const anchor1 = 'const cssPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview.css");\n';
+            if (!s.includes(anchor1)) throw new Error('Overview checker cssPath anchor missing');
+            s = s.replace(anchor1, `${anchor1}const microFixPath = resolve(root, "src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css");\n`);
+
+            const anchor2 = 'for (const path of [portalPath, overviewPath, cssPath, entryPath]) {\n  if (!existsSync(path)) errors.push(`Missing required file: ${path}`);\n}\n';
+            if (!s.includes(anchor2)) throw new Error('Overview checker required-files anchor missing');
+            s = s.replace(anchor2, `${anchor2}\nif (existsSync(microFixPath)) {\n  errors.push("Employee overview must not use a parallel micro-fix stylesheet; fold final rules into employee-portal-overview.css.");\n}\n`);
+
+            const anchor3 = '  if (!entry.includes(\'@import "./pages/employee-portal-overview.css";\')) {\n    errors.push("Dashboard V2 entry does not import employee-portal-overview.css.");\n  }\n';
+            if (!s.includes(anchor3)) throw new Error('Overview checker entry import anchor missing');
+            s = s.replace(anchor3, `${anchor3}  if (entry.includes('\\@import "./pages/employee-portal-overview-micro-fixes.css";'.slice(1))) {\n    errors.push("Dashboard V2 entry still imports the retired employee overview micro-fix stylesheet.");\n  }\n  if (!css.includes("Final integrated refinements: punch contrast + avatar framing.")) {\n    errors.push("Canonical employee overview stylesheet is missing the integrated final refinements.");\n  }\n`);
+            fs.writeFileSync(p, s);
+          }
+          NODE
+
+          rm src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes.css
+          git rm .github/workflows/employee-overview-v2-finalize-temp.yml
+
+      - name: Employee overview V2 contract
+        run: npm run check:employee-portal-overview-v2
+
+      - name: Dashboard V2 contract
+        run: npm run check:dashboard-v2
+
+      - name: Repository hygiene guard
+        run: npm run check:repo-hygiene
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Verify scoped diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --short | awk '{print $2}' | sort -u)"
+          echo "$changed"
+          allowed='^(src/pages/hr/EmployeeOverview\.tsx|src/styles/dashboard-v2/pages/employee-portal-overview\.css|src/styles/dashboard-v2/pages/employee-portal-overview-micro-fixes\.css|src/styles/dashboard-v2/dashboard-v2\.css|scripts/check-employee-portal-overview-v2\.mjs|\.github/workflows/employee-overview-v2-finalize-temp\.yml)$'
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files changed:"
+            echo "$unexpected"
+            exit 1
+          fi
+
+      - name: Promote employee overview V2 finalize
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Finalize employee overview Dashboard V2"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
