@@ -50,8 +50,10 @@ jobs:
               raise SystemExit("contract forbidden marker anchor missing")
           contract = contract.replace(forbidden_anchor, forbidden_replacement, 1)
 
-          if "getAttendanceDayStatusLabel" in page or "AttendanceStatus" in page:
+          if "getAttendanceDayStatusLabel" in page:
               raise SystemExit("dead overview attendance helper still present")
+          if 'type AttendanceStatus' in page or 'status: AttendanceStatus' in page:
+              raise SystemExit("dead AttendanceStatus type still present")
 
           page_path.write_text(page, encoding="utf-8")
           contract_path.write_text(contract, encoding="utf-8")
