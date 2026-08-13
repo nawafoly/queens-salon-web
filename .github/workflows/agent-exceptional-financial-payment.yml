@@ -1,39 +1,36 @@
-name: Exceptional financial payment implementation
+name: Validate exceptional financial payment implementation
 
 on:
   push:
     branches:
       - agent/exceptional-financial-payment
 
-permissions:
-  contents: write
-
 jobs:
-  implement:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/exceptional-financial-payment
-          fetch-depth: 2
+          fetch-depth: 3
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Recover and run implementation script
+      - name: Apply implementation in runner
         shell: bash
         run: |
-          git show HEAD^:.github/workflows/agent-exceptional-financial-payment.yml > /tmp/previous-workflow.yml
+          git show 0c755c48e9d57894a50fc6acd3a9d26d6be2b109:.github/workflows/agent-exceptional-financial-payment.yml > /tmp/original-workflow.yml
           python - <<'PY'
           from pathlib import Path
-          import textwrap
-          source = Path('/tmp/previous-workflow.yml').read_text(encoding='utf-8')
+          source = Path('/tmp/original-workflow.yml').read_text(encoding='utf-8')
           marker = "          python - <<'PY'\n"
           start = source.index(marker) + len(marker)
           end = source.index("\n          PY\n", start)
-          script = textwrap.dedent(source[start:end])
+          block = source[start:end]
+          script = "\n".join(line[10:] if line.startswith("          ") else line for line in block.splitlines()) + "\n"
           Path('/tmp/apply-exceptional-payment.py').write_text(script, encoding='utf-8')
           PY
           python /tmp/apply-exceptional-payment.py
@@ -47,12 +44,14 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Commit implementation
+      - name: Collect validated files
         shell: bash
         run: |
-          git rm .github/workflows/agent-exceptional-financial-payment.yml
-          git add workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Add exceptional financial payment requests"
-          git push origin HEAD:agent/exceptional-financial-payment
+          mkdir -p /tmp/validated
+          cp --parents workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql /tmp/validated/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exceptional-financial-payment-validated
+          path: /tmp/validated
+          if-no-files-found: error
