@@ -5,4 +5,5 @@ export * from "./file-name";
 export * from "./excel";
 export * from "./excel-multisheet";
 export * from "./pdf";
+export * from "./pdf-multitable";
 export * from "./normalizers";
