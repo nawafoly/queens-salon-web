@@ -57,3 +57,50 @@ function documentRelationships(images: NamedImage[], hasHeader: boolean) {
 function rootRelationships() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`;
 }
+
+function docProps(title: string) {
+  const timestamp = new Date().toISOString();
+  return {
+    core: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(title)}</dc:title><dc:creator>Malikat Document Export</dc:creator><cp:lastModifiedBy>Malikat Document Export</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${timestamp}</dcterms:modified></cp:coreProperties>`,
+    app: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Malikat Document Export</Application><Company>Malikat Salon</Company></Properties>`,
+  };
+}
+
+export async function buildLeaveRequestDocxBytes(request: EmployeeRequest) {
+  if (typeof document === "undefined") {
+    throw new Error("تصدير Word يتطلب تشغيل الصفحة داخل المتصفح.");
+  }
+  const data = buildLeaveRequestDocumentData(request);
+  const [logo, employee, manager] = await Promise.all([
+    buildDocumentExportPng(DOCUMENT_BRANDING.printLogoSource, { black: true }),
+    buildDocumentExportPng(data.employeeSignature.imageDataUrl),
+    buildDocumentExportPng(data.managerSignature.imageDataUrl),
+  ]);
+  const named = {
+    logo: namedImage(logo, "logo"),
+    employee: namedImage(employee, "employee"),
+    manager: namedImage(manager, "manager"),
+  };
+  const images = Object.values(named).filter((image): image is NamedImage => Boolean(image));
+  const hasLogo = Boolean(named.logo);
+  const props = docProps(`${data.title} ${data.requestNumber}`);
+  const files = [
+    { name: "[Content_Types].xml", content: contentTypes(images.length > 0, hasLogo) },
+    { name: "_rels/.rels", content: rootRelationships() },
+    { name: "docProps/core.xml", content: props.core },
+    { name: "docProps/app.xml", content: props.app },
+    { name: "word/document.xml", content: documentXml(leaveRequestDocxBody(data, named), hasLogo) },
+    { name: "word/_rels/document.xml.rels", content: documentRelationships(images, hasLogo) },
+    { name: "word/styles.xml", content: documentDocxStylesXml() },
+    { name: "word/settings.xml", content: documentDocxSettingsXml() },
+    { name: "word/footer1.xml", content: footerXml() },
+    ...(hasLogo
+      ? [
+          { name: "word/header1.xml", content: documentDocxWatermarkHeaderXml(DOCUMENT_BRANDING.watermarkOpacity) },
+          { name: "word/_rels/header1.xml.rels", content: documentDocxWatermarkRelationship(named.logo?.fileName) },
+        ]
+      : []),
+    ...images.map((image) => ({ name: `word/media/${image.fileName}`, content: image.bytes })),
+  ];
+  return zipStore(files);
+}
