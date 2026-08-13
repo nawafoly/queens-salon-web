@@ -1,0 +1,555 @@
+name: Employee Attendance Reference 1to1 Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/employee-attendance-reference-1to1-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Remove legacy employee overview CSS and apply reference attendance layout
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          mobile_path = Path("src/styles/EmployeePortalMobileNav.css")
+          page_path = Path("src/pages/hr/EmployeeOverview.tsx")
+          card_path = Path("src/styles/dashboard-v2/components/employee-attendance-card.css")
+          contract_path = Path("scripts/check-employee-portal-overview-v2.mjs")
+
+          mobile = mobile_path.read_text(encoding="utf-8")
+          page = page_path.read_text(encoding="utf-8")
+          contract = contract_path.read_text(encoding="utf-8")
+
+          def remove_marked_block(text, start_marker, end_marker):
+              start = text.find(start_marker)
+              if start < 0:
+                  raise SystemExit(f"missing legacy start marker: {start_marker}")
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f"missing legacy end marker: {end_marker}")
+              end += len(end_marker)
+              while end < len(text) and text[end] in "\r\n":
+                  end += 1
+              return text[:start] + text[end:]
+
+          mobile = remove_marked_block(
+              mobile,
+              "/* EMPLOYEE OVERVIEW APP UI START */",
+              "/* EMPLOYEE OVERVIEW APP UI END */",
+          )
+          mobile = remove_marked_block(
+              mobile,
+              "/* EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START */",
+              "/* EMPLOYEE ATTENDANCE DUPLICATION CLEANUP END */",
+          )
+
+          date_anchor = '''            <h2>تسجيل الدوام</h2>\n            <p>{attendanceDateLabel}</p>'''
+          if page.count(date_anchor) != 1:
+              raise SystemExit("attendance header date anchor missing")
+          page = page.replace(date_anchor, '            <h2>تسجيل الدوام</h2>', 1)
+
+          card_css = r'''/* =========================================================
+   Dashboard V2 — Employee attendance card
+   Exact reference layout for /employee/overview attendance.
+   Runtime stays in EmployeeOverview.tsx; this file owns presentation only.
+========================================================= */
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card {
+  display: grid;
+  gap: var(--dsv2-space-4);
+  width: 100%;
+  min-width: 0;
+  padding: var(--dsv2-space-6);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-2xl);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--dsv2-space-4);
+  margin: 0;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--dsv2-space-2);
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title h2 {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: 1.38rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title p {
+  display: none;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  align-self: start;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+  padding-inline: var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border-gold);
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-gold-softer);
+  color: var(--dsv2-warning);
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsv2-green);
+  box-shadow: 0 0 0 3px var(--dsv2-green-soft);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dsv2-space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 170px;
+  margin: 0;
+  padding: var(--dsv2-space-5) var(--dsv2-space-3);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side {
+  display: grid;
+  min-width: 0;
+  min-height: 122px;
+  align-content: center;
+  justify-items: center;
+  gap: var(--dsv2-space-3);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > span {
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > strong {
+  color: var(--dsv2-text);
+  font-size: 1.28rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side--in > strong {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em {
+  display: inline-flex;
+  min-width: 108px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--dsv2-space-3);
+  border: 0;
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-muted-soft);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em.is-done {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--dsv2-space-3);
+  min-width: 0;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control > strong {
+  max-width: 108px;
+  color: var(--dsv2-text-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+  display: grid;
+  width: 98px;
+  height: 98px;
+  min-width: 98px;
+  min-height: 98px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dsv2-border);
+  border-radius: 50%;
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  box-shadow: var(--dsv2-shadow-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform var(--dsv2-transition-fast), border-color var(--dsv2-transition-fast), box-shadow var(--dsv2-transition-fast);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:hover:not(:disabled) {
+  border-color: var(--dsv2-border-gold);
+  box-shadow: var(--dsv2-shadow-md);
+  transform: translateY(-1px);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:focus-visible {
+  outline: 3px solid var(--dsv2-gold-soft);
+  outline-offset: 3px;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button:disabled {
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button--out {
+  border-color: var(--dsv2-burgundy-border);
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button--done {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button > span {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  color: inherit;
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--dsv2-space-3) var(--dsv2-space-4);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface);
+  color: var(--dsv2-text-soft);
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status > span {
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status--checked_in,
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status--checked_out {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-hint {
+  display: flex;
+  width: 100%;
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--dsv2-space-4) var(--dsv2-space-5);
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-lg);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.8;
+  text-align: center;
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsv2-muted);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--dsv2-space-2);
+}
+
+.dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-note small {
+  display: inline-flex;
+  padding: var(--dsv2-space-1) var(--dsv2-space-2);
+  border-radius: var(--dsv2-radius-xs);
+  background: var(--dsv2-surface-soft);
+  color: var(--dsv2-muted);
+  font-size: 0.5rem;
+  font-weight: 800;
+}
+
+@media (max-width: 560px) {
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card {
+    gap: var(--dsv2-space-4);
+    padding: var(--dsv2-space-5);
+    border-radius: var(--dsv2-radius-2xl);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card .employee-section-title h2 {
+    font-size: 1.28rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-gps-chip {
+    min-height: 28px;
+    padding-inline: var(--dsv2-space-3);
+    font-size: 0.55rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr);
+    gap: var(--dsv2-space-2);
+    min-height: 170px;
+    padding: var(--dsv2-space-5) var(--dsv2-space-2);
+    border-radius: var(--dsv2-radius-xl);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side {
+    min-height: 120px;
+    gap: var(--dsv2-space-3);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > span {
+    font-size: 0.68rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > strong {
+    font-size: 1.14rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em {
+    min-width: 96px;
+    min-height: 34px;
+    padding-inline: var(--dsv2-space-2);
+    font-size: 0.54rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+    width: 92px;
+    height: 92px;
+    min-width: 92px;
+    min-height: 92px;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button > span {
+    width: 52px;
+    height: 52px;
+    font-size: 2rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-control > strong {
+    max-width: 100px;
+    font-size: 0.68rem;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-status {
+    min-height: 48px;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-hint {
+    min-height: 92px;
+    padding: var(--dsv2-space-4);
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-card {
+    padding: var(--dsv2-space-4);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-console {
+    grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr);
+    gap: var(--dsv2-space-1);
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-punch-button {
+    width: 82px;
+    height: 82px;
+    min-width: 82px;
+    min-height: 82px;
+  }
+
+  .dashboard-v2.employee-portal .employee-overview-v2-page .employee-attendance-side > em {
+    min-width: 84px;
+    font-size: 0.5rem;
+  }
+}
+'''
+          card_path.write_text(card_css, encoding="utf-8")
+
+          mobile_path.write_text(mobile, encoding="utf-8")
+          page_path.write_text(page, encoding="utf-8")
+
+          mobile_path_anchor = 'const entryPath = resolve(root, "src/styles/dashboard-v2/dashboard-v2.css");\n'
+          if mobile_path_anchor not in contract:
+              raise SystemExit("contract entry path anchor missing")
+          contract = contract.replace(
+              mobile_path_anchor,
+              mobile_path_anchor + 'const mobilePath = resolve(root, "src/styles/EmployeePortalMobileNav.css");\n',
+              1,
+          )
+
+          required_list_anchor = 'for (const path of [portalPath, overviewPath, cssPath, entryPath]) {'
+          if required_list_anchor not in contract:
+              raise SystemExit("contract required path list anchor missing")
+          contract = contract.replace(
+              required_list_anchor,
+              'for (const path of [portalPath, overviewPath, cssPath, entryPath, mobilePath]) {',
+              1,
+          )
+
+          entry_read_anchor = '  const entry = readFileSync(entryPath, "utf8");\n'
+          if entry_read_anchor not in contract:
+              raise SystemExit("contract entry read anchor missing")
+          contract = contract.replace(
+              entry_read_anchor,
+              entry_read_anchor + '  const mobile = readFileSync(mobilePath, "utf8");\n',
+              1,
+          )
+
+          legacy_guard_anchor = '  if (/#[0-9a-f]{3,8}\\b/i.test(css)) {'
+          legacy_guard = '''  if (mobile.includes("EMPLOYEE OVERVIEW APP UI START") || mobile.includes("EMPLOYEE ATTENDANCE DUPLICATION CLEANUP START")) {\n    errors.push("EmployeePortalMobileNav.css still contains legacy employee overview/attendance presentation.");\n  }\n\n  const referenceAttendanceCssMarkers = [\n    "grid-template-columns: minmax(0, 1fr) 108px minmax(0, 1fr);",\n    "min-height: 170px;",\n    "width: 98px;",\n    "height: 98px;",\n    "min-height: 92px;",\n  ];\n  for (const marker of referenceAttendanceCssMarkers) {\n    if (!css.includes(marker)) errors.push(`Employee attendance reference layout marker missing: ${marker}`);\n  }\n\n'''
+          if legacy_guard_anchor not in contract:
+              raise SystemExit("contract CSS guard anchor missing")
+          contract = contract.replace(legacy_guard_anchor, legacy_guard + legacy_guard_anchor, 1)
+          contract_path.write_text(contract, encoding="utf-8")
+          PY
+
+      - name: Remove temporary workflow
+        run: rm .github/workflows/employee-attendance-reference-1to1-temp.yml
+
+      - name: Install exact lockfile
+        run: npm ci
+
+      - name: Employee overview V2 contract
+        run: npm run check:employee-portal-overview-v2
+
+      - name: Dashboard V2 contract
+        run: npm run check:dashboard-v2
+
+      - name: Repository hygiene
+        run: npm run check:repo-hygiene
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Verify scope
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only HEAD)
+          printf '%s\n' "${changed[@]}"
+          allowed='^(src/pages/hr/EmployeeOverview\.tsx|src/styles/EmployeePortalMobileNav\.css|src/styles/dashboard-v2/components/employee-attendance-card\.css|scripts/check-employee-portal-overview-v2\.mjs|\.github/workflows/employee-attendance-reference-1to1-temp\.yml)$'
+          for file in "${changed[@]}"; do
+            [[ "$file" =~ $allowed ]] || { echo "Unexpected changed file: $file"; exit 1; }
+          done
+          [[ ${#changed[@]} -eq 5 ]] || { echo "Expected exactly 5 scoped changes"; exit 1; }
+
+      - name: Commit exact reference layout to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- src/pages/hr/EmployeeOverview.tsx src/styles/EmployeePortalMobileNav.css src/styles/dashboard-v2/components/employee-attendance-card.css scripts/check-employee-portal-overview-v2.mjs .github/workflows/employee-attendance-reference-1to1-temp.yml
+          git commit -m "Match employee attendance reference layout"
+          git push origin HEAD:main
