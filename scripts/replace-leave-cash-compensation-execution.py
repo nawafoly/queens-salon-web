@@ -92,7 +92,7 @@ new_function = r'''async function executeExceptionalFinancialPayment(db, salonId
          payroll_month, payroll_entry_id, financial_reference, payment_status,
          leave_balance_deducted, approved_by_uid, approved_at, executed_by_uid,
          executed_at, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', ?, ?, ?, ?, ?, ?, ?, ?
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', ?, ?, ?, ?, ?, ?, ?
          FROM employee_employment
         WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?`,
       params: [
