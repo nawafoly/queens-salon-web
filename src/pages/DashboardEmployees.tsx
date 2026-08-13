@@ -384,25 +384,60 @@ type EmployeeIdentity = {
   name: string;
 };
 
+function employeeLinkedUidValues(staff: Partial<StaffPublicUi> | Record<string, unknown>) {
+  return uniqueCleanTexts([
+    (staff as any)?.linkedUid,
+    (staff as any)?.employeeUid,
+    (staff as any)?.authUid,
+    (staff as any)?.uid,
+    (staff as any)?.userId,
+    (staff as any)?.linkedUserId,
+  ]);
+}
+
+function employeeExplicitDocIdValues(staff: Partial<StaffPublicUi> | Record<string, unknown>) {
+  return uniqueCleanTexts([
+    (staff as any)?.staffPublicDocId,
+    (staff as any)?.employeeDocId,
+    (staff as any)?.linkedEmployeeDocId,
+    (staff as any)?.employeeId,
+  ]);
+}
+
+function employeeSourceDocIdOf(staff: Partial<StaffPublicUi>, rawDocId = "") {
+  return cleanText(rawDocId || (staff as any)?.sourceDocId || staff?.id);
+}
+
+function employeeCanonicalDocIdOf(staff: Partial<StaffPublicUi> | Record<string, unknown>, rawDocId = "") {
+  const sourceDocId = cleanText(rawDocId || (staff as any)?.sourceDocId || (staff as any)?.id);
+  const linkedUidSet = new Set(employeeLinkedUidValues(staff));
+  const explicitDocIds = employeeExplicitDocIdValues(staff);
+  const explicitCanonicalDocId =
+    explicitDocIds.find((value) => !linkedUidSet.has(value)) ||
+    explicitDocIds[0] ||
+    "";
+  const source = cleanText((staff as any)?.source);
+  const sourceDocIsLinkedUid = !!sourceDocId && linkedUidSet.has(sourceDocId);
+
+  if (source === "staff_public" || cleanText((staff as any)?.staffPublicDocId)) {
+    return sourceDocId && !sourceDocIsLinkedUid
+      ? sourceDocId
+      : explicitCanonicalDocId || sourceDocId || cleanText((staff as any)?.id);
+  }
+
+  return (
+    explicitCanonicalDocId ||
+    (sourceDocId && !sourceDocIsLinkedUid ? sourceDocId : "") ||
+    cleanText((staff as any)?.id || sourceDocId)
+  );
+}
+
 function employeeIdentityOf(staff?: Partial<StaffPublicUi> | null): EmployeeIdentity {
+  const canonicalDocId = employeeCanonicalDocIdOf(staff || {});
   return {
-    id: cleanText((staff as any)?.staffPublicDocId || staff?.id),
-    linkedUid: cleanText(
-      (staff as any)?.linkedUid ||
-        (staff as any)?.employeeUid ||
-        (staff as any)?.authUid ||
-        (staff as any)?.uid ||
-        (staff as any)?.userId ||
-        (staff as any)?.linkedUserId
-    ),
-    employeeId: cleanText(
-      (staff as any)?.staffPublicDocId ||
-        (staff as any)?.employeeDocId ||
-        (staff as any)?.linkedEmployeeDocId ||
-        (staff as any)?.employeeId ||
-        (staff as any)?.sourceDocId ||
-        staff?.id
-    ),
+    id: canonicalDocId,
+    linkedUid: employeeLinkedUidValues(staff || {})[0] || "",
+    employeeId: canonicalDocId,
     email: cleanText((staff as any)?.email).toLowerCase(),
     name: cleanText(
       (staff as any)?.name ||
@@ -504,25 +539,36 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
 
 function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): StaffPublicUi {
   const primaryIsStaffPublic = primary.source === "staff_public";
-  const pickEditableText = (field: keyof StaffPublicDoc) =>
-    primaryIsStaffPublic
-      ? cleanText((primary as any)?.[field])
-      : cleanText((primary as any)?.[field] || (fallback as any)?.[field]);
+  const hasPrimaryField = (field: keyof StaffPublicDoc) =>
+    Object.prototype.hasOwnProperty.call(primary as any, field) &&
+    (primary as any)?.[field] !== undefined &&
+    (primary as any)?.[field] !== null;
+  const pickEditableText = (field: keyof StaffPublicDoc) => {
+    const value = primaryIsStaffPublic && hasPrimaryField(field)
+      ? (primary as any)?.[field]
+      : (primary as any)?.[field] ?? (fallback as any)?.[field];
+    return cleanText(value);
+  };
   const pickEditableBoolean = (field: keyof StaffPublicDoc, defaultValue: boolean) => {
-    const value = primaryIsStaffPublic
+    const value = primaryIsStaffPublic && hasPrimaryField(field)
       ? (primary as any)?.[field]
       : (primary as any)?.[field] ?? (fallback as any)?.[field];
     if (value === undefined || value === null || value === "") return defaultValue;
     return !(value === false || value === 0 || value === "false" || value === "0");
   };
-  const pickEditableNumber = (field: keyof StaffPublicDoc) =>
-    primaryIsStaffPublic
-      ? safeNonNegativeNumber((primary as any)?.[field], 0)
-      : safeNonNegativeNumber((primary as any)?.[field] ?? (fallback as any)?.[field], 0);
+  const pickEditableNumber = (field: keyof StaffPublicDoc) => {
+    const value = primaryIsStaffPublic && hasPrimaryField(field)
+      ? (primary as any)?.[field]
+      : (primary as any)?.[field] ?? (fallback as any)?.[field];
+    return safeNonNegativeNumber(value, 0);
+  };
   const pickEditableArray = <T,>(
     field: keyof StaffPublicDoc,
     normalize: (value: unknown) => T[]
   ): T[] => {
+    if (primaryIsStaffPublic && !hasPrimaryField(field)) {
+      return normalize((fallback as any)?.[field]);
+    }
     const primaryValue = normalize((primary as any)?.[field]);
     if (primaryIsStaffPublic) return primaryValue;
     return primaryValue.length > 0 ? primaryValue : normalize((fallback as any)?.[field]);
@@ -541,7 +587,14 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
       (fallback as any)?.userId ||
       (fallback as any)?.linkedUserId
   );
-  const staffPublicDocId = cleanText((primary as any)?.staffPublicDocId || (fallback as any)?.staffPublicDocId);
+  const primaryCanonicalDocId = employeeCanonicalDocIdOf(primary);
+  const fallbackCanonicalDocId = employeeCanonicalDocIdOf(fallback);
+  const staffPublicDocId = cleanText(
+    primaryCanonicalDocId ||
+      fallbackCanonicalDocId ||
+      (primary as any)?.staffPublicDocId ||
+      (fallback as any)?.staffPublicDocId
+  );
   const sourceDocId = cleanText((primary as any)?.sourceDocId || (fallback as any)?.sourceDocId);
   const canonicalEmployeeId = cleanText(staffPublicDocId || primary.id || fallback.id);
 
@@ -588,30 +641,15 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
         (fallback as any)?.employeeUid
     ),
     employeeDocId: cleanText(
-      staffPublicDocId ||
-        (primary as any)?.employeeDocId ||
-        (primary as any)?.linkedEmployeeDocId ||
-        (primary as any)?.employeeId ||
-        (fallback as any)?.employeeDocId ||
-        (fallback as any)?.linkedEmployeeDocId ||
-        (fallback as any)?.employeeId ||
-        primary.id ||
-        fallback.id
+      canonicalEmployeeId
     ),
     linkedEmployeeDocId: cleanText(
-      (primary as any)?.linkedEmployeeDocId ||
+      canonicalEmployeeId ||
+        (primary as any)?.linkedEmployeeDocId ||
         (fallback as any)?.linkedEmployeeDocId
     ),
     employeeId: cleanText(
-      staffPublicDocId ||
-        (primary as any)?.employeeDocId ||
-        (primary as any)?.linkedEmployeeDocId ||
-        (primary as any)?.employeeId ||
-        (fallback as any)?.employeeDocId ||
-        (fallback as any)?.linkedEmployeeDocId ||
-        (fallback as any)?.employeeId ||
-        primary.id ||
-        fallback.id
+      canonicalEmployeeId
     ),
     name: pickEditableText("name") || cleanText(fallback.name),
     email: cleanText(primary.email || fallback.email),
@@ -651,6 +689,18 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     allowedZoneIds: pickEditableArray("allowedZoneIds", (value) =>
       Array.isArray(value) ? value.map(cleanText).filter(Boolean) : []
     ),
+    monthlySalary: pickEditableNumber("monthlySalary"),
+    payrollMonthlyHours: pickEditableNumber("payrollMonthlyHours"),
+    payrollOvertimeEnabled: pickEditableBoolean("payrollOvertimeEnabled", false),
+    payrollOvertimeMultiplier: pickEditableNumber("payrollOvertimeMultiplier") || 1.5,
+    payrollDeductionMethod: pickEditableText("payrollDeductionMethod"),
+    overtimeMethod: pickEditableText("overtimeMethod") as StaffPayrollMethod,
+    overtimeDaysPerMonth: pickEditableNumber("overtimeDaysPerMonth"),
+    overtimeBaseHoursPerDay: pickEditableNumber("overtimeBaseHoursPerDay"),
+    overtimeSeasonBaseHoursPerDay: pickEditableNumber("overtimeSeasonBaseHoursPerDay"),
+    overtimeHoursBasis: pickEditableText("overtimeHoursBasis") as StaffOvertimeHoursBasis,
+    overtimePercent: pickEditableNumber("overtimePercent"),
+    overtimeInvoicePercent: pickEditableNumber("overtimeInvoicePercent"),
     profileIncomplete:
       primary.source !== "staff_public" && fallback.source !== "staff_public",
   };
@@ -677,35 +727,21 @@ function employeeRowUpdatedAtMs(row: Partial<StaffPublicUi>) {
 }
 
 function employeeCanonicalDocScore(row: Partial<StaffPublicUi>) {
-  const docId = cleanText((row as any)?.staffPublicDocId || (row as any)?.sourceDocId || row.id);
-  const employeeIds = new Set(
-    uniqueCleanTexts([
-      row.id,
-      (row as any)?.employeeId,
-      (row as any)?.employeeDocId,
-      (row as any)?.linkedEmployeeDocId,
-      ...((Array.isArray((row as any)?.legacyEmployeeIds)
-        ? (row as any).legacyEmployeeIds
-        : []) as unknown[]),
-    ])
-  );
-  const linkedUidValues = new Set(
-    uniqueCleanTexts([
-      (row as any)?.linkedUid,
-      (row as any)?.employeeUid,
-      (row as any)?.authUid,
-      (row as any)?.uid,
-      (row as any)?.userId,
-      (row as any)?.linkedUserId,
-    ])
-  );
+  const canonicalDocId = employeeCanonicalDocIdOf(row);
+  const sourceDocId = employeeSourceDocIdOf(row);
+  const employeeIds = new Set(employeeExplicitDocIdValues(row));
+  const linkedUidValues = new Set(employeeLinkedUidValues(row));
 
-  const docMatchesLinkedUid = !!docId && linkedUidValues.has(docId);
+  const docMatchesLinkedUid = !!sourceDocId && linkedUidValues.has(sourceDocId);
+  const canonicalMatchesLinkedUid = !!canonicalDocId && linkedUidValues.has(canonicalDocId);
   let score = 0;
+  if (canonicalDocId) score += 4;
   if (cleanText((row as any)?.staffPublicDocId)) score += 4;
-  if (docId && cleanText(row.id) === docId) score += 3;
-  if (docId && employeeIds.has(docId)) score += docMatchesLinkedUid ? 2 : 8;
-  if (docMatchesLinkedUid) score -= 6;
+  if (sourceDocId && canonicalDocId && sourceDocId === canonicalDocId) score += 40;
+  if (canonicalDocId && cleanText(row.id) === canonicalDocId) score += 12;
+  if (canonicalDocId && employeeIds.has(canonicalDocId)) score += canonicalMatchesLinkedUid ? 2 : 10;
+  if (docMatchesLinkedUid) score -= 30;
+  if (canonicalMatchesLinkedUid) score -= 10;
   return score;
 }
 
@@ -740,10 +776,15 @@ function pickEmployeeMergeRows(existing: StaffPublicUi, incoming: StaffPublicUi)
 function savedEmployeeReloadScore(row: StaffPublicUi, targetEmployeeId: string) {
   const target = cleanText(targetEmployeeId);
   let score = employeeSourcePriority(row.source);
-  if (row.source === "staff_public") score += 100;
-  if (target && cleanText((row as any).staffPublicDocId) === target) score += 50;
-  if (target && cleanText(row.id) === target) score += 25;
-  if (target && cleanText((row as any).employeeId) === target) score += 15;
+  const sourceDocId = employeeSourceDocIdOf(row);
+  const canonicalDocId = employeeCanonicalDocIdOf(row);
+  if (target && sourceDocId === target && row.source === "staff_public") score += 1000;
+  if (target && canonicalDocId === target) score += 600;
+  if (target && cleanText((row as any).staffPublicDocId) === target) score += 400;
+  if (target && cleanText(row.id) === target) score += 250;
+  if (target && cleanText((row as any).employeeDocId) === target) score += 150;
+  if (target && cleanText((row as any).employeeId) === target) score += 100;
+  if (row.source === "staff_public") score += 50;
   score += employeeCanonicalDocScore(row);
   score += Math.min(employeeRowUpdatedAtMs(row) / 10000000000000, 1);
   return score;
@@ -2689,12 +2730,19 @@ export default function DashboardEmployees() {
           const role = cleanText(combined?.role).toLowerCase();
           if (["client", "pending", "guest"].includes(role)) return;
 
-          const employeeId = cleanText(
-            source === "staff_public"
-              ? rawDocId || combined?.employeeDocId || combined?.linkedEmployeeDocId || combined?.employeeId || linkedUid
-              : combined?.employeeDocId || combined?.linkedEmployeeDocId || combined?.employeeId || rawDocId || linkedUid
+          const canonicalEmployeeId = employeeCanonicalDocIdOf(
+            {
+              ...combined,
+              source,
+              sourceDocId: rawDocId,
+              id: rawDocId,
+              staffPublicDocId: source === "staff_public" ? rawDocId : combined?.staffPublicDocId,
+            },
+            rawDocId
           );
+          const employeeId = cleanText(canonicalEmployeeId);
           const legacyEmployeeIds = uniqueCleanTexts([
+            combined?.staffPublicDocId,
             combined?.employeeDocId,
             combined?.linkedEmployeeDocId,
             combined?.employeeId,
@@ -2727,7 +2775,7 @@ export default function DashboardEmployees() {
           const row: StaffPublicUi = {
             id: employeeId,
             sourceDocId: rawDocId,
-            staffPublicDocId: source === "staff_public" ? rawDocId : cleanText(combined?.staffPublicDocId),
+            staffPublicDocId: source === "staff_public" ? employeeId : cleanText(combined?.staffPublicDocId),
             legacyEmployeeIds,
             uid: cleanText(
               combined?.uid ||
@@ -2751,13 +2799,9 @@ export default function DashboardEmployees() {
                 linkedUid
             ),
             employeeDocId: cleanText(
-              (source === "staff_public" ? employeeId : "") ||
-                combined?.employeeDocId ||
-                combined?.linkedEmployeeDocId ||
-                combined?.employeeId ||
-                employeeId
+              employeeId
             ),
-            linkedEmployeeDocId: cleanText(combined?.linkedEmployeeDocId || (source === "staff_public" ? employeeId : "")),
+            linkedEmployeeDocId: cleanText(employeeId || combined?.linkedEmployeeDocId),
             employeeId,
             email: cleanText(combined?.email || combined?.userEmail),
             phone: cleanText(combined?.phone),
@@ -2934,7 +2978,11 @@ export default function DashboardEmployees() {
 
         const selectedIdentity = selectedEmployeeIdentityRef.current;
         if (selectedIdentity) {
-          const matched = rows.find((row) => employeeMatchesIdentity(row, selectedIdentity));
+          const matched = findSavedEmployeeReloadRow(
+            rows,
+            selectedIdentity.employeeId || selectedIdentity.id,
+            selectedIdentity
+          );
           if (matched) {
             setSelectedEmployeeId(matched.id);
             setEditId((current) => (current ? matched.id : current));
