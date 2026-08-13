@@ -23,6 +23,7 @@ export const EMPLOYEE_REQUEST_TYPES = new Set([
   'permission',
   'overtime',
   'salary_advance',
+  'exceptional_financial_payment',
   'leave',
   'exit_return',
   'resignation',
@@ -45,6 +46,7 @@ const TYPE_PREFIX = {
   permission: 'PER',
   overtime: 'OT',
   salary_advance: 'ADV',
+  exceptional_financial_payment: 'EFP',
   leave: 'LEV',
   exit_return: 'EXIT',
   resignation: 'RES',
@@ -55,6 +57,7 @@ const TYPE_TITLE = {
   permission: 'طلب استئذان',
   overtime: 'طلب أوفرتايم',
   salary_advance: 'صرف معجل للراتب',
+  exceptional_financial_payment: 'طلب صرف مالي استثنائي',
   leave: 'طلب إجازة',
   exit_return: 'طلب خروج وعودة',
   resignation: 'طلب استقالة',
@@ -215,6 +218,29 @@ function validatePayload(type, rawPayload) {
         reason: requiredReason(payload.reason), acknowledgement: payload.acknowledgement === true,
       };
     }
+    case 'exceptional_financial_payment': {
+    const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
+    if (Math.round(requestedDays * 2) !== requestedDays * 2) {
+      throw new AppError(400, 'core_employee_request:invalid_requested_days');
+    }
+    if (payload.acknowledgement !== true) {
+      throw new AppError(400, 'core_employee_request:financial_payment_acknowledgement_required');
+    }
+    const signature = cleanText(payload.employeeSignatureDataUrl);
+    if (!signature.startsWith('data:image/') || !signature.includes(';base64,') || signature.length < 200) {
+      throw new AppError(400, 'core_employee_request:financial_payment_signature_required');
+    }
+    return {
+      ...payload,
+      requestedDays,
+      reason: requiredReason(payload.reason),
+      notes: cleanText(payload.notes),
+      acknowledgement: true,
+      employeeSignatureDataUrl: signature,
+      balanceType: 'none',
+      deductAnnualLeave: false,
+    };
+  }
     case 'leave': {
       const startDate = validDate(payload.startDate, 'startDate');
       const endDate = validDate(payload.endDate, 'endDate');
@@ -468,7 +494,34 @@ export async function createEmployeeRequest(db, salonId, data, actor = {}) {
   const type = cleanText(data.requestType || data.request_type).toLowerCase();
   if (!EMPLOYEE_REQUEST_TYPES.has(type)) throw new AppError(400, 'core_employee_request:invalid_type');
   const identity = await resolveEmployee(db, salonId, actor, data);
-  const payload = validatePayload(type, data.payload || data.payload_json || data);
+  let payload = validatePayload(type, data.payload || data.payload_json || data);
+  if (type === 'exceptional_financial_payment') {
+    const employment = await dbFirst(
+      db,
+      `SELECT base_salary_halalas, leave_balance, employment_status FROM employee_employment
+        WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+      [salonId, identity.employeeId]
+    );
+    const baseSalaryHalalas = Math.max(0, Math.round(Number(employment?.base_salary_halalas || 0)));
+    if (!employment || baseSalaryHalalas <= 0) {
+      throw new AppError(409, 'core_employee_request:employee_salary_required');
+    }
+    const dayRateHalalas = Math.max(1, Math.round(baseSalaryHalalas / 30));
+    const calculatedAmountHalalas = Math.max(1, Math.round((baseSalaryHalalas * Number(payload.requestedDays)) / 30));
+    const annualLeaveBalanceSnapshot = Math.max(0, Number(employment.leave_balance || 0));
+    payload = {
+      ...payload,
+      baseSalaryHalalas,
+      dayRateHalalas,
+      calculatedAmountHalalas,
+      annualLeaveBalanceSnapshot,
+      balanceDeductionDays: 0,
+      calculationBasis: 'base_salary_divided_by_30',
+      payrollTreatment: 'manual_addition',
+      leaveBalanceTreatment: 'not_deducted',
+      legalTreatment: 'exceptional_payment_no_annual_leave_deduction',
+    };
+  }
   const idempotencyKey = cleanText(data.idempotencyKey || data.idempotency_key);
   if (!idempotencyKey || idempotencyKey.length > 160) throw new AppError(400, 'core_employee_request:idempotency_required');
   const existing = await dbFirst(db, 'SELECT * FROM employee_requests WHERE salon_id = ? AND idempotency_key = ? LIMIT 1', [salonId, idempotencyKey]);
@@ -1029,6 +1082,102 @@ async function executeOvertime(db, salonId, row, payload, actor, input) {
   return { sourceType: 'overtime', sourceId: id, before: null, after: { approvedMinutes, payrollMonth, payrollEntryId } };
 }
 
+
+async function executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input) {
+  const payrollMonth = cleanText(input.payrollMonth) || riyadhDateKey().slice(0, 7);
+  addMonths(payrollMonth, 0);
+  const existing = await dbFirst(
+    db,
+    `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
+    [salonId, row.id]
+  );
+  if (existing) {
+    await refreshPayrollFinancials(db, salonId, row.employee_id, existing.payroll_month);
+    return { sourceType: 'employee_financial_payment', sourceId: existing.id, before: null, after: existing };
+  }
+
+  const payrollEntry = await dbFirst(
+    db,
+    `SELECT * FROM payroll_entries
+      WHERE salon_id = ? AND employee_id = ? AND payroll_month = ?
+        AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')
+      LIMIT 1`,
+    [salonId, row.employee_id, payrollMonth]
+  );
+  if (!payrollEntry) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+
+  const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
+  const baseSalaryHalalas = positiveInteger(payload.baseSalaryHalalas, 'base_salary', 100_000_000);
+  const dayRateHalalas = positiveInteger(payload.dayRateHalalas, 'day_rate', 10_000_000);
+  const amountHalalas = positiveInteger(payload.calculatedAmountHalalas, 'calculated_amount', 100_000_000);
+  const financialReference = cleanText(input.financialReference) || `EFP-${row.request_number}`;
+  const now = nowIso();
+  const paymentId = generatedId('financial_payment');
+
+  const parsedAdditions = parseJson(payrollEntry.additions_json, []);
+  const additions = Array.isArray(parsedAdditions) ? parsedAdditions : [];
+  const alreadyIncluded = additions.some((item) =>
+    cleanText(item?.requestId || item?.request_id) === cleanText(row.id)
+  );
+  const nextAdditions = alreadyIncluded ? additions : [
+    ...additions,
+    {
+      id: `employee_financial_payment:${row.id}`,
+      type: 'exceptional_financial_payment',
+      label: 'صرف مالي استثنائي',
+      requestId: row.id,
+      requestNumber: row.request_number,
+      amountHalalas,
+      requestedDays,
+      financialReference,
+    },
+  ];
+  const nextManualAdditions = Number(payrollEntry.manual_additions_halalas || 0) + (alreadyIncluded ? 0 : amountHalalas);
+
+  await dbBatch(db, [
+    {
+      sql: `INSERT OR IGNORE INTO employee_financial_payments
+        (id, salon_id, request_id, request_number, employee_id, employee_uid,
+         requested_days, base_salary_halalas, day_rate_halalas, amount_halalas,
+         payroll_month, payroll_entry_id, financial_reference, payment_status,
+         leave_balance_deducted, approved_by_uid, approved_at, executed_by_uid,
+         executed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', 0, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        paymentId, salonId, row.id, row.request_number, row.employee_id, row.employee_uid,
+        requestedDays, baseSalaryHalalas, dayRateHalalas, amountHalalas,
+        payrollMonth, payrollEntry.id, financialReference, cleanText(row.decided_by_uid) || null,
+        row.approved_at || now, cleanText(actor.uid) || null, now, now, now,
+      ],
+    },
+    {
+      sql: `UPDATE payroll_entries
+              SET manual_additions_halalas = ?, additions_json = ?, updated_at = ?
+            WHERE salon_id = ? AND id = ?
+              AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')`,
+      params: [nextManualAdditions, json(nextAdditions), now, salonId, payrollEntry.id],
+    },
+  ]);
+
+  const payrollEntryId = await refreshPayrollFinancials(db, salonId, row.employee_id, payrollMonth);
+  if (!payrollEntryId) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+  const stored = await dbFirst(
+    db,
+    `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
+    [salonId, row.id]
+  );
+  return {
+    sourceType: 'employee_financial_payment',
+    sourceId: stored?.id || paymentId,
+    before: null,
+    after: {
+      ...(stored || {}),
+      payrollEntryId,
+      leaveBalanceDeducted: false,
+    },
+  };
+}
+
 async function executeSalaryAdvance(db, salonId, row, payload, actor, input) {
   const existing = await dbFirst(db, `SELECT * FROM salary_advances WHERE salon_id = ? AND request_id = ? LIMIT 1`, [salonId, row.id]);
   if (existing) return { sourceType: 'salary_advance', sourceId: existing.id, before: null, after: existing };
@@ -1104,6 +1253,7 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
     }
     case 'overtime': return executeOvertime(db, salonId, row, payload, actor, input);
     case 'salary_advance': return executeSalaryAdvance(db, salonId, row, payload, actor, input);
+    case 'exceptional_financial_payment': return executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input);
     case 'resignation': return executeResignation(db, salonId, row, payload, actor, input);
     case 'exit_return': return { sourceType: 'exit_return', sourceId: row.id, before: null, after: { status: 'awaiting_exit' }, deferCompletion: true };
     default: throw new AppError(400, 'core_employee_request:unsupported_execution');
@@ -1491,7 +1641,7 @@ export async function markAllEmployeeRequestNotificationsRead(db, salonId, actor
 
 export async function getEmployeeRequestPayrollImpact(db, salonId, actor = {}) {
   const employeeId = requiredId(actor.employeeId, 'employeeId');
-  const [overtime, advances, installments] = await Promise.all([
+  const [overtime, advances, installments, financialPayments] = await Promise.all([
     dbAll(
       db,
       `SELECT * FROM employee_overtime_records
@@ -1514,6 +1664,13 @@ export async function getEmployeeRequestPayrollImpact(db, salonId, actor = {}) {
        ORDER BY sai.payroll_month, sai.installment_number`,
       [salonId, employeeId]
     ),
+    dbAll(
+      db,
+      `SELECT * FROM employee_financial_payments
+        WHERE salon_id = ? AND employee_id = ?
+        ORDER BY executed_at DESC, created_at DESC LIMIT 100`,
+      [salonId, employeeId]
+    ),
   ]);
-  return { overtime, advances, installments };
+  return { overtime, advances, installments, financialPayments };
 }

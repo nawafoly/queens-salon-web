@@ -1,10 +1,11 @@
-﻿import { CoreApiError, coreApiRequest } from "./coreApiClient";
+import { CoreApiError, coreApiRequest } from "./coreApiClient";
 
 export type EmployeeRequestType =
   | "attendance_correction"
   | "permission"
   | "overtime"
   | "salary_advance"
+  | "exceptional_financial_payment"
   | "leave"
   | "exit_return"
   | "resignation";
@@ -23,6 +24,8 @@ export type EmployeeRequestStatus =
 export type EmployeeRequestEvent = {
   id: string;
   event_type: string;
+  before_json?: string | null;
+  after_json?: string | null;
   from_status?: string | null;
   to_status?: string | null;
   actor_name?: string | null;
@@ -122,6 +125,11 @@ const EMPLOYEE_REQUEST_ERROR_LABELS: Record<string, string> = {
   "core_employee_request:not_found": "الطلب غير موجود أو لا تملك صلاحية عرضه.",
   "core_employee_request:attendance_target_required":
     "حدد البصمة المطلوب تعديلها بإدخال الوقت الحالي الصحيح أو استخدم نوع إضافة بصمة.",
+  "core_employee_request:invalid_requested_days": "عدد الأيام المرجعية يجب أن يكون بين نصف يوم و60 يومًا وبزيادات نصف يوم.",
+  "core_employee_request:employee_salary_required": "لا يمكن حساب الصرف لأن الراتب الأساسي غير مسجل في ملف الموظفة داخل Core.",
+  "core_employee_request:payroll_entry_required": "لا يوجد مسير راتب مفتوح وقابل للتعديل للشهر المحدد. أنشئ أو افتح المسير أولًا ثم أعد التنفيذ.",
+  "core_employee_request:financial_payment_acknowledgement_required": "يجب الموافقة على الإقرار قبل إرسال طلب الصرف المالي.",
+  "core_employee_request:financial_payment_signature_required": "يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.",
 };
 
 export function employeeRequestErrorMessage(cause: unknown, fallback = "تعذر تنفيذ العملية.") {
@@ -147,6 +155,7 @@ export const EMPLOYEE_REQUEST_TYPE_LABELS: Record<EmployeeRequestType, string> =
   permission: "طلب استئذان",
   overtime: "طلب أوفرتايم",
   salary_advance: "صرف معجل للراتب",
+  exceptional_financial_payment: "طلب صرف مالي استثنائي",
   leave: "طلب إجازة",
   exit_return: "طلب خروج وعودة",
   resignation: "طلب استقالة",
@@ -262,6 +271,9 @@ export async function createEmployeeRequest(input: {
 }) {
   if (input.requestType === "leave" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {
     throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
+  }
+  if (input.requestType === "exceptional_financial_payment" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {
+    throw new Error("يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.");
   }
 
   return coreApiRequest<EmployeeRequest>("/api/core/hr/employee-requests/mine", {
@@ -424,6 +436,19 @@ export type EmployeeRequestPayrollImpact = {
     payroll_month: string;
     amount_halalas: number;
     status: string;
+  }>;
+  financialPayments: Array<{
+    id: string;
+    request_id: string;
+    request_number: string;
+    requested_days: number;
+    amount_halalas: number;
+    payroll_month: string;
+    payroll_entry_id: string;
+    financial_reference: string;
+    payment_status: string;
+    leave_balance_deducted: number;
+    executed_at: string;
   }>;
 };
 

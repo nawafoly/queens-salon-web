@@ -19,6 +19,7 @@ import {
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { HrSession } from "./shared";
 import LeaveRequestDocument, { LeaveRequestFormFields } from "../../components/hr/LeaveRequestDocument";
+import ExceptionalFinancialPaymentRequestDocument, { ExceptionalFinancialPaymentRequestFormFields } from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";
 import {
   addEmployeeRequestAttachment,
   addEmployeeRequestComment,
@@ -76,6 +77,7 @@ function initialForm(type: EmployeeRequestType): FormState {
   if (type === "permission") return { ...common, date: today, startTime: "12:00", endTime: "13:00" };
   if (type === "overtime") return { ...common, date: today, startTime: "23:00", endTime: "00:00", taskSummary: "", location: "", requestedByManager: "" };
   if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };
+  if (type === "exceptional_financial_payment") return { ...common, requestedDays: "", acknowledgement: false, employeeSignatureDataUrl: "" };
   if (type === "leave") return { ...common, leaveType: "annual", startDate: "", endDate: "", durationKind: "full_day", partialStartTime: "09:00", partialEndTime: "13:00", contactDuringLeave: "", employeeSignatureDataUrl: "" };
   if (type === "exit_return") return { ...common, expectedExitAt: localDateTimeValue(1), expectedReturnAt: localDateTimeValue(3), destination: "", contactMethod: "" };
   return { ...common, submissionDate: today, proposedLastWorkingDay: today, noticeDays: "30", hasAssetsToReturn: false, acknowledgement: false };
@@ -104,6 +106,15 @@ function readablePayload(payload: Record<string, unknown>) {
   return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);
 }
 
+function formatPayloadValue(key: string, value: unknown) {
+  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  if (typeof value === "boolean") return value ? "نعم" : "لا";
+  if (key === "leaveBalanceTreatment") return value === "not_deducted" ? "لا يتم الخصم" : String(value);
+  if (key === "payrollTreatment") return value === "manual_addition" ? "إضافة مالية في مسير الراتب" : String(value);
+  if (key === "calculationBasis") return value === "base_salary_divided_by_30" ? "الراتب الأساسي ÷ 30 × عدد الأيام" : String(value);
+  return String(value);
+}
+
 const FIELD_LABELS: Record<string, string> = {
   date: "التاريخ",
   correctionType: "نوع التصحيح",
@@ -117,6 +128,16 @@ const FIELD_LABELS: Record<string, string> = {
   requestedByManager: "المدير الذي طلب العمل",
   amount: "المبلغ المطلوب",
   amountHalalas: "المبلغ بالهللات",
+  requestedDays: "عدد الأيام المرجعية",
+  baseSalaryHalalas: "الراتب الأساسي وقت الطلب",
+  dayRateHalalas: "قيمة اليوم",
+  calculatedAmountHalalas: "إجمالي الصرف",
+  annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",
+  balanceDeductionDays: "الأيام المخصومة من الرصيد",
+  calculationBasis: "أساس الحساب",
+  payrollTreatment: "المعالجة في الرواتب",
+  leaveBalanceTreatment: "معالجة رصيد الإجازة",
+  legalTreatment: "نوع المعالجة",
   neededDate: "تاريخ الحاجة",
   repaymentMethod: "طريقة الاستقطاع",
   installmentCount: "عدد الأقساط",
@@ -180,6 +201,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
   useEffect(() => { setForm(initialForm(type)); setAttachment(null); }, [type]);
   const update = (name: string, value: string | boolean) => setForm((current) => ({ ...current, [name]: value }));
   const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
+  const financialSignatureMissing = type === "exceptional_financial_payment" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -193,6 +215,12 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
         if (!startDate || !endDate) throw new Error("حدد تاريخ بداية الإجازة وتاريخ العودة قبل الإرسال.");
         if (endDate <= startDate) throw new Error("يجب أن يكون تاريخ العودة بعد تاريخ بداية الإجازة.");
         if (leaveSignatureMissing) throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");
+      }
+      if (type === "exceptional_financial_payment") {
+        const days = Number(form.requestedDays);
+        if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد الأيام المرجعية من 0.5 إلى 60 وبزيادات نصف يوم.");
+        if (!form.acknowledgement) throw new Error("يجب الموافقة على الإقرار قبل إرسال الطلب.");
+        if (financialSignatureMissing) throw new Error("يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.");
       }
       if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error("حجم المرفق يتجاوز 10 ميجابايت.");
       const request = await createEmployeeRequest({ requestType: type, payload: form });
@@ -245,6 +273,10 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
           {type === "leave" ? (
             <div className="leave-request-form-shell">
               <LeaveRequestFormFields employeeName={employeeName} form={form} update={update} />
+            </div>
+          ) : type === "exceptional_financial_payment" ? (
+            <div className="leave-request-form-shell">
+              <ExceptionalFinancialPaymentRequestFormFields employeeName={employeeName} form={form} update={update} />
             </div>
           ) : (
             <>
@@ -299,8 +331,9 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
           <label className="employee-request-field employee-request-field--wide"><span>مرفق اختياري</span><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /><small>يُحفظ الملف بشكل خاص وآمن، وبحد أقصى 10 ميجابايت.</small></label>
           {type === "salary_advance" || type === "resignation" ? <label className="employee-request-check employee-request-check--ack"><input type="checkbox" required checked={Boolean(form.acknowledgement)} onChange={(event) => update("acknowledgement", event.target.checked)} /><span>أقر بصحة البيانات وأفهم أن الطلب يخضع للمراجعة والاعتماد.</span></label> : null}
           {type === "leave" && leaveSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الإجازة.</div> : null}
+          {type === "exceptional_financial_payment" && financialSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الصرف المالي.</div> : null}
           {error ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> {error}</div> : null}
-          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy || leaveSignatureMissing}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>
+          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy || leaveSignatureMissing || financialSignatureMissing}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>
         </form>
       </div>
     </div>
@@ -425,8 +458,9 @@ function RequestDetail({ requestId, onBack, onChanged }: { requestId: string; on
         </div>
       ) : null}
       {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}
+      {request.request_type === "exceptional_financial_payment" ? <ExceptionalFinancialPaymentRequestDocument request={request} /> : null}
       <div className="employee-request-detail__grid">
-        <article><h3>بيانات الطلب</h3><dl>{readablePayload(request.payload).map(([key, value]) => <div key={key}><dt>{FIELD_LABELS[key] || key}</dt><dd>{typeof value === "boolean" ? (value ? "نعم" : "لا") : String(value)}</dd></div>)}</dl></article>
+        <article><h3>بيانات الطلب</h3><dl>{readablePayload(request.payload).map(([key, value]) => <div key={key}><dt>{FIELD_LABELS[key] || key}</dt><dd>{formatPayloadValue(key, value)}</dd></div>)}</dl></article>
         <article><h3>متابعة الطلب</h3><dl><div><dt>الحالة</dt><dd>{EMPLOYEE_REQUEST_STATUS_LABELS[request.status]}</dd></div><div><dt>تاريخ الإرسال</dt><dd>{formatDateTime(request.submitted_at)}</dd></div><div><dt>آخر تحديث</dt><dd>{formatDateTime(request.updated_at)}</dd></div>{request.status === "cancelled" ? <div><dt>وقت الإغلاق</dt><dd>{formatDateTime(request.cancelled_at || closureEvent?.created_at || request.updated_at)}</dd></div> : null}<div><dt>المسؤول</dt><dd>{request.assigned_to_name || "لم يعيّن بعد"}</dd></div><div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[request.execution_status] || request.execution_status}</dd></div></dl></article>
       </div>
       <article className="employee-request-attachments"><h3>المرفقات</h3>{(request.attachments || []).length ? <div className="employee-request-attachments__list">{(request.attachments || []).map((item) => <button type="button" key={item.id} disabled={busy || !item.file_metadata_id} onClick={() => void downloadAttachment(item.file_metadata_id || "", item.file_name)}><FontAwesomeIcon icon={faFileCircleCheck} /><span><strong>{item.file_name}</strong><small>{item.file_type || "ملف"}</small></span></button>)}</div> : <p className="employee-requests-empty-text">لا توجد مرفقات.</p>}</article>
