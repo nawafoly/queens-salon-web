@@ -490,6 +490,74 @@ export async function getEmployeeRequest(db, salonId, idValue, actor = {}, optio
   return { ...requestSummary(row), events, comments, attachments };
 }
 
+export async function getExceptionalFinancialPaymentPreview(
+  db,
+  salonId,
+  employeeId,
+  requestedDaysInput
+) {
+  const requestedDays = numberInRange(
+    requestedDaysInput,
+    'requested_days',
+    0.5,
+    60
+  );
+
+  if (Math.round(requestedDays * 2) !== requestedDays * 2) {
+    throw new AppError(
+      400,
+      'core_employee_request:invalid_requested_days'
+    );
+  }
+
+  const employment = await dbFirst(
+    db,
+    `SELECT base_salary_halalas, leave_balance
+       FROM employee_employment
+      WHERE salon_id = ?
+        AND employee_id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+
+  const baseSalaryHalalas = Number(
+    employment?.base_salary_halalas || 0
+  );
+
+  if (
+    !Number.isFinite(baseSalaryHalalas) ||
+    baseSalaryHalalas <= 0
+  ) {
+    throw new AppError(
+      409,
+      'core_employee_request:employee_salary_required'
+    );
+  }
+
+  const annualLeaveBalance = Math.max(
+    0,
+    Number(employment?.leave_balance || 0)
+  );
+
+  const dayRateHalalas = Math.round(
+    baseSalaryHalalas / 30
+  );
+
+  const calculatedAmountHalalas = Math.round(
+    (baseSalaryHalalas * requestedDays) / 30
+  );
+
+  return {
+    requestedDays,
+    baseSalaryHalalas,
+    dayRateHalalas,
+    calculatedAmountHalalas,
+    annualLeaveBalance,
+    enoughLeaveBalance:
+      annualLeaveBalance >= requestedDays,
+  };
+}
+
 export async function createEmployeeRequest(db, salonId, data, actor = {}) {
   const type = cleanText(data.requestType || data.request_type).toLowerCase();
   if (!EMPLOYEE_REQUEST_TYPES.has(type)) throw new AppError(400, 'core_employee_request:invalid_type');

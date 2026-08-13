@@ -1,4 +1,8 @@
-import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/employeeRequests";
+import type {
+  EmployeeRequest,
+  EmployeeRequestEvent,
+  ExceptionalFinancialPaymentPreview,
+} from "../../services/employeeRequests";
 import { EMPLOYEE_REQUEST_STATUS_LABELS } from "../../services/employeeRequests";
 import { DOCUMENT_BRANDING } from "../../documents/core/documentBranding";
 import { DocumentField, DocumentFieldGrid, DocumentLongText, DocumentPage, DocumentSection } from "../../documents/core/DocumentPage";
@@ -11,6 +15,8 @@ type FormProps = {
   employeeName: string;
   form: ExceptionalFinancialPaymentFormState;
   update: (name: string, value: string | boolean) => void;
+  preview: ExceptionalFinancialPaymentPreview | null;
+  previewLoading: boolean;
 };
 
 function formatMoneyHalalas(value: unknown) {
@@ -64,7 +70,13 @@ function executionEvent(request: EmployeeRequest) {
   return [...(request.events || [])].reverse().find((event) => event.event_type === "execution_completed");
 }
 
-export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, form, update }: FormProps) {
+export function ExceptionalFinancialPaymentRequestFormFields({
+  employeeName,
+  form,
+  update,
+  preview,
+  previewLoading,
+}: FormProps) {
   return (
     <DocumentPage className="leave-doc leave-doc--editable" labelledBy="financial-payment-request-draft-title">
       <header className="leave-doc-header">
@@ -92,8 +104,31 @@ export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, for
             onChange={(event) => update("requestedDays", event.target.value)}
           />
         </label>
-        <DocumentField label="الحسبة" value="الراتب الأساسي ÷ 30 × عدد الأيام" />
+        <DocumentField
+          label="قيمة التعويض"
+          value={
+            previewLoading
+              ? "جاري الحساب..."
+              : preview
+                ? formatMoneyHalalas(preview.calculatedAmountHalalas)
+                : "أدخل عدد الأيام"
+          }
+        />
       </DocumentFieldGrid>
+
+      {preview ? (
+        <small>
+          قيمة اليوم: {formatMoneyHalalas(preview.dayRateHalalas)}
+          {" • "}
+          رصيد الإجازة: {formatNumber(preview.annualLeaveBalance)} يوم
+          {" • "}
+          {preview.enoughLeaveBalance
+            ? `الرصيد بعد التعويض: ${formatNumber(
+                preview.annualLeaveBalance - preview.requestedDays
+              )} يوم`
+            : "الرصيد الحالي لا يكفي لهذا العدد من الأيام"}
+        </small>
+      ) : null}
 
       <label className="leave-doc-wide-field">
         <span>سبب الطلب</span>

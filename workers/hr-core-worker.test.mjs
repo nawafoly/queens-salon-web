@@ -17,7 +17,7 @@ import {
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
 import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
-import { createEmployeeRequest, getEmployeeRequestPayrollImpact, transitionEmployeeRequest } from './core/repositories/employee-requests.js';
+import { createEmployeeRequest, getEmployeeRequestPayrollImpact, getExceptionalFinancialPaymentPreview, transitionEmployeeRequest } from './core/repositories/employee-requests.js';
 
 function splitMigrationStatements(sql) {
   const statements = [];
@@ -218,6 +218,40 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(paidPayroll.status, 'paid');
 });
 
+
+test('annual leave cash compensation preview calculates from Core salary and leave balance', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, phone_normalized, active, employment_status, created_at, updated_at)
+    VALUES ('emp-preview','main','uid-preview','Preview Employee','0500000088',1,'active','2026-01-01','2026-01-01')`).run();
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-preview',
+    name: 'Preview Employee',
+    firebaseUid: 'uid-preview',
+    phone: '0500000088',
+    employment: {
+      baseSalaryHalalas: 450000,
+      leaveBalance: 21,
+    },
+  }, actor);
+
+  const preview = await getExceptionalFinancialPaymentPreview(
+    db,
+    'main',
+    'emp-preview',
+    3
+  );
+
+  assert.equal(preview.requestedDays, 3);
+  assert.equal(preview.baseSalaryHalalas, 450000);
+  assert.equal(preview.dayRateHalalas, 15000);
+  assert.equal(preview.calculatedAmountHalalas, 45000);
+  assert.equal(preview.annualLeaveBalance, 21);
+  assert.equal(preview.enoughLeaveBalance, true);
+});
 
 test('annual leave cash compensation pays daily value and deducts the same leave days', async (t) => {
   const { mf, db } = await setup();

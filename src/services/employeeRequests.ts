@@ -234,6 +234,28 @@ function isSignatureDataUrl(value: unknown) {
   return text.startsWith("data:image/") && text.includes(";base64,") && text.length > 200;
 }
 
+export type ExceptionalFinancialPaymentPreview = {
+  requestedDays: number;
+  baseSalaryHalalas: number;
+  dayRateHalalas: number;
+  calculatedAmountHalalas: number;
+  annualLeaveBalance: number;
+  enoughLeaveBalance: boolean;
+};
+
+export async function getExceptionalFinancialPaymentPreview(
+  requestedDays: number
+) {
+  return coreApiRequest<ExceptionalFinancialPaymentPreview>(
+    "/api/core/hr/employee-requests/exceptional-financial-payment-preview",
+    {
+      query: {
+        requestedDays: String(requestedDays),
+      },
+    }
+  );
+}
+
 export async function listMyEmployeeRequests(filters: {
   type?: EmployeeRequestType | "";
   status?: EmployeeRequestStatus | "";

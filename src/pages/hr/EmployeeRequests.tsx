@@ -32,7 +32,9 @@ import {
   EMPLOYEE_REQUEST_STATUS_LABELS,
   EMPLOYEE_REQUEST_TYPE_LABELS,
   getEmployeeRequest,
+  getExceptionalFinancialPaymentPreview,
   listMyEmployeeRequests,
+  type ExceptionalFinancialPaymentPreview,
   type EmployeeRequest,
   type EmployeeRequestStatus,
   type EmployeeRequestType,
@@ -197,8 +199,61 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [financialPreview, setFinancialPreview] =
+    useState<ExceptionalFinancialPaymentPreview | null>(null);
+  const [financialPreviewLoading, setFinancialPreviewLoading] =
+    useState(false);
 
   useEffect(() => { setForm(initialForm(type)); setAttachment(null); }, [type]);
+
+  useEffect(() => {
+    if (type !== "exceptional_financial_payment") {
+      setFinancialPreview(null);
+      setFinancialPreviewLoading(false);
+      return;
+    }
+
+    const days = Number(form.requestedDays || 0);
+
+    if (
+      !Number.isFinite(days) ||
+      days < 0.5 ||
+      days > 60 ||
+      Math.round(days * 2) !== days * 2
+    ) {
+      setFinancialPreview(null);
+      setFinancialPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    setFinancialPreviewLoading(true);
+
+    const timer = window.setTimeout(() => {
+      getExceptionalFinancialPaymentPreview(days)
+        .then((preview) => {
+          if (!cancelled) {
+            setFinancialPreview(preview);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFinancialPreview(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setFinancialPreviewLoading(false);
+          }
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [type, form.requestedDays]);
   const update = (name: string, value: string | boolean) => setForm((current) => ({ ...current, [name]: value }));
   const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
   const financialSignatureMissing = type === "exceptional_financial_payment" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");
@@ -276,7 +331,13 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
             </div>
           ) : type === "exceptional_financial_payment" ? (
             <div className="leave-request-form-shell">
-              <ExceptionalFinancialPaymentRequestFormFields employeeName={employeeName} form={form} update={update} />
+              <ExceptionalFinancialPaymentRequestFormFields
+                employeeName={employeeName}
+                form={form}
+                update={update}
+                preview={financialPreview}
+                previewLoading={financialPreviewLoading}
+              />
             </div>
           ) : (
             <>

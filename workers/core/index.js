@@ -184,6 +184,7 @@ import {
   employeeRequestStats,
   getEmployeeRequest,
   getEmployeeRequestPayrollImpact,
+  getExceptionalFinancialPaymentPreview,
   listEmployeeRequests,
   listEmployeeRequestNotifications,
   listEmployeeRequestAssignees,
@@ -381,6 +382,15 @@ function match(url, method) {
   if (path === "/api/core/hr/employee-request-assignees" && method === "GET") return { name: "employee-request-assignees" };
   if (path === "/api/core/hr/employee-requests/mine") return { name: "employee-request:mine" };
   if (path === "/api/core/hr/employee-requests/stats") return { name: "employee-request:stats" };
+
+  if (
+    path === "/api/core/hr/employee-requests/exceptional-financial-payment-preview" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-request:exceptional-financial-payment-preview",
+    };
+  }
   const employeeRequestSubresource = /^\/api\/core\/hr\/employee-requests\/([^/]+)\/(comments|attachments)$/.exec(path);
   if (employeeRequestSubresource) {
     return { name: `employee-request:${employeeRequestSubresource[2]}`, id: employeeRequestSubresource[1] };
@@ -907,6 +917,26 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "employee-request-notification:read-all":
       requireAnyPermission(ctx, ["employee_requests.own.view", "employee_requests.view"]);
       return markAllEmployeeRequestNotificationsRead(db, ctx.salonId, actorInfo);
+
+    case "employee-request:exceptional-financial-payment-preview":
+      requireAnyPermission(ctx, [
+        "employee_requests.own.view",
+        "workspace.employee_portal.view",
+      ]);
+
+      if (!ctx.employeeId) {
+        throw new AppError(
+          409,
+          "core_employee_request:employee_link_required"
+        );
+      }
+
+      return getExceptionalFinancialPaymentPreview(
+        db,
+        ctx.salonId,
+        ctx.employeeId,
+        query.requestedDays
+      );
 
     case "employee-request:mine":
       requireAnyPermission(ctx, ["employee_requests.own.view", "workspace.employee_portal.view"]);
