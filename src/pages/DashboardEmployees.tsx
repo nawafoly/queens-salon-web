@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   collection,
-  getDoc,
   getDocs,
+  getDocFromServer,
+  getDocsFromServer,
   doc,
   setDoc,
   updateDoc,
@@ -653,6 +654,211 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     profileIncomplete:
       primary.source !== "staff_public" && fallback.source !== "staff_public",
   };
+}
+
+type EmployeeLoadOptions = {
+  fromServer?: boolean;
+  strict?: boolean;
+};
+
+const EMPLOYEE_SOURCE_PRIORITY: Record<string, number> = {
+  core_accounts: 1,
+  users: 2,
+  employees: 3,
+  staff_public: 4,
+};
+
+function employeeSourcePriority(source: unknown) {
+  return EMPLOYEE_SOURCE_PRIORITY[cleanText(source) || "users"] || 0;
+}
+
+function employeeRowUpdatedAtMs(row: Partial<StaffPublicUi>) {
+  return toComparableTimestamp((row as any)?.updatedAt);
+}
+
+function employeeCanonicalDocScore(row: Partial<StaffPublicUi>) {
+  const docId = cleanText((row as any)?.staffPublicDocId || (row as any)?.sourceDocId || row.id);
+  const employeeIds = new Set(
+    uniqueCleanTexts([
+      row.id,
+      (row as any)?.employeeId,
+      (row as any)?.employeeDocId,
+      (row as any)?.linkedEmployeeDocId,
+      ...((Array.isArray((row as any)?.legacyEmployeeIds)
+        ? (row as any).legacyEmployeeIds
+        : []) as unknown[]),
+    ])
+  );
+  const linkedUidValues = new Set(
+    uniqueCleanTexts([
+      (row as any)?.linkedUid,
+      (row as any)?.employeeUid,
+      (row as any)?.authUid,
+      (row as any)?.uid,
+      (row as any)?.userId,
+      (row as any)?.linkedUserId,
+    ])
+  );
+
+  const docMatchesLinkedUid = !!docId && linkedUidValues.has(docId);
+  let score = 0;
+  if (cleanText((row as any)?.staffPublicDocId)) score += 4;
+  if (docId && cleanText(row.id) === docId) score += 3;
+  if (docId && employeeIds.has(docId)) score += docMatchesLinkedUid ? 2 : 8;
+  if (docMatchesLinkedUid) score -= 6;
+  return score;
+}
+
+function pickEmployeeMergeRows(existing: StaffPublicUi, incoming: StaffPublicUi) {
+  const existingPriority = employeeSourcePriority(existing.source);
+  const incomingPriority = employeeSourcePriority(incoming.source);
+  if (incomingPriority !== existingPriority) {
+    return incomingPriority > existingPriority
+      ? { primary: incoming, fallback: existing }
+      : { primary: existing, fallback: incoming };
+  }
+
+  const existingUpdatedAt = employeeRowUpdatedAtMs(existing);
+  const incomingUpdatedAt = employeeRowUpdatedAtMs(incoming);
+  if (incomingUpdatedAt !== existingUpdatedAt) {
+    return incomingUpdatedAt > existingUpdatedAt
+      ? { primary: incoming, fallback: existing }
+      : { primary: existing, fallback: incoming };
+  }
+
+  const existingCanonicalScore = employeeCanonicalDocScore(existing);
+  const incomingCanonicalScore = employeeCanonicalDocScore(incoming);
+  if (incomingCanonicalScore !== existingCanonicalScore) {
+    return incomingCanonicalScore > existingCanonicalScore
+      ? { primary: incoming, fallback: existing }
+      : { primary: existing, fallback: incoming };
+  }
+
+  return { primary: existing, fallback: incoming };
+}
+
+function employeeVerificationAttendanceZoneId(staffLike: any): string {
+  const employment = staffLike?.employeeProfile?.employment || staffLike?.employment || {};
+  const allowedZoneIds = Array.isArray(employment?.allowedZoneIds)
+    ? employment.allowedZoneIds
+    : Array.isArray(staffLike?.allowedZoneIds)
+      ? staffLike.allowedZoneIds
+      : [];
+  return cleanText(
+    staffLike?.allowedAttendanceZoneId ||
+      staffLike?.attendanceZoneId ||
+      staffLike?.assignedAttendanceZoneId ||
+      staffLike?.attendanceScopeId ||
+      employment?.allowedAttendanceZoneId ||
+      employment?.attendanceZoneId ||
+      employment?.assignedAttendanceZoneId ||
+      employment?.attendanceScopeId ||
+      allowedZoneIds[0]
+  );
+}
+
+function employeeVerificationAllowedZoneIds(staffLike: any) {
+  const employment = staffLike?.employeeProfile?.employment || staffLike?.employment || {};
+  const values = [
+    ...(Array.isArray(staffLike?.allowedZoneIds) ? staffLike.allowedZoneIds : []),
+    ...(Array.isArray(employment?.allowedZoneIds) ? employment.allowedZoneIds : []),
+    employeeVerificationAttendanceZoneId(staffLike),
+  ];
+  return uniqueCleanTexts(values).sort((a, b) => a.localeCompare(b));
+}
+
+function employeeVerificationSpecialties(value: unknown, options: ServiceOption[]) {
+  return canonicalizeSpecialties(value, options).slice().sort((a, b) => a.localeCompare(b));
+}
+
+function sortedWeekdayKeys(value: unknown) {
+  return normalizeExceptionalLeaveWeekdays(value).slice().sort((a, b) => a.localeCompare(b));
+}
+
+type EmployeeSaveVerificationSnapshot = Record<string, unknown>;
+
+function buildEmployeeSaveVerificationSnapshot(
+  staffLike: Partial<StaffPublicDoc> | Partial<StaffPublicUi>,
+  serviceOptions: ServiceOption[]
+): EmployeeSaveVerificationSnapshot {
+  const staff = staffLike as any;
+  return {
+    name: cleanText(staff.name),
+    active: staff.active === true,
+    showOnAbout: staff.showOnAbout === true,
+    showOnBooking: staff.showOnBooking === true,
+    includeInEmployeeManagement: staff.includeInEmployeeManagement === true,
+    avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(staff)),
+    bio: cleanText(staff.bio),
+    cvUrl: cleanText(staff.cvUrl),
+    rating: Math.min(5, safeNonNegativeNumber(staff.rating, 0)),
+    reviewsCount: Math.floor(safeNonNegativeNumber(staff.reviewsCount || staff.reviewCount, 0)),
+    specialties: employeeVerificationSpecialties(staff.specialties, serviceOptions),
+    employmentEndDate: normalizeLeaveUntil(staff.employmentEndDate),
+    onLeave: staff.onLeave === true,
+    leaveStartDate: normalizeLeaveUntil(staff.leaveStartDate),
+    leaveUntil: normalizeLeaveUntil(staff.leaveUntil),
+    leaveType: normalizeManagedLeaveType(staff.leaveType),
+    leaveNote: cleanText(staff.leaveNote),
+    exceptionalLeaveDates: normalizeExceptionalLeaveDates(staff.exceptionalLeaveDates),
+    exceptionalLeaveWeekdays: sortedWeekdayKeys(staff.exceptionalLeaveWeekdays),
+    attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
+    allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
+    useCustomWorkingHours: staff.useCustomWorkingHours === true,
+    customWorkingHours: normalizeWorkingHours(staff.customWorkingHours),
+    workingScheduleVersions: normalizeStaffScheduleVersions(staff.workingScheduleVersions),
+    customWorkingHourOverrides: normalizeWorkingHourOverrides(staff.customWorkingHourOverrides),
+    monthlySalary: safeNonNegativeNumber(staff.monthlySalary, 0),
+    payrollMonthlyHours: safeNonNegativeNumber(staff.payrollMonthlyHours, 0),
+    payrollOvertimeEnabled: staff.payrollOvertimeEnabled === true,
+    payrollOvertimeMultiplier: safeNonNegativeNumber(staff.payrollOvertimeMultiplier, 0),
+    payrollDeductionMethod: cleanText(staff.payrollDeductionMethod),
+    overtimeMethod: cleanText(staff.overtimeMethod),
+    overtimeDaysPerMonth: safeNonNegativeNumber(staff.overtimeDaysPerMonth, 0),
+    overtimeBaseHoursPerDay: safeNonNegativeNumber(staff.overtimeBaseHoursPerDay, 0),
+    overtimeSeasonBaseHoursPerDay: safeNonNegativeNumber(staff.overtimeSeasonBaseHoursPerDay, 0),
+    overtimeHoursBasis: cleanText(staff.overtimeHoursBasis),
+    overtimePercent: safeNonNegativeNumber(staff.overtimePercent, 0),
+    overtimeInvoicePercent: safeNonNegativeNumber(staff.overtimeInvoicePercent, 0),
+  };
+}
+
+function stableEmployeeSaveValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableEmployeeSaveValue);
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>)
+      .sort((a, b) => a.localeCompare(b))
+      .reduce<Record<string, unknown>>((out, key) => {
+        const normalized = stableEmployeeSaveValue((value as Record<string, unknown>)[key]);
+        if (normalized !== undefined) out[key] = normalized;
+        return out;
+      }, {});
+  }
+  return value;
+}
+
+function stableEmployeeSaveJson(value: unknown) {
+  return JSON.stringify(stableEmployeeSaveValue(value));
+}
+
+function employeeSaveSnapshotMismatches(
+  expected: EmployeeSaveVerificationSnapshot,
+  actual: EmployeeSaveVerificationSnapshot
+) {
+  return Object.keys(expected).filter(
+    (key) => stableEmployeeSaveJson(expected[key]) !== stableEmployeeSaveJson(actual[key])
+  );
+}
+
+function verifyEmployeeSaveSnapshot(
+  stage: string,
+  expected: EmployeeSaveVerificationSnapshot,
+  actual: EmployeeSaveVerificationSnapshot
+) {
+  const mismatches = employeeSaveSnapshotMismatches(expected, actual);
+  if (mismatches.length) {
+    throw new Error(`تعذر تأكيد حفظ بيانات الموظفة (${stage}): ${mismatches.join(", ")}`);
+  }
 }
 
 export default function DashboardEmployees() {
@@ -2394,15 +2600,16 @@ export default function DashboardEmployees() {
   }, []);
 
   const load = useCallback(
-    async (optionsOverride?: ServiceOption[]) => {
+    async (optionsOverride?: ServiceOption[], loadOptions: EmployeeLoadOptions = {}) => {
       setLoading(true);
       setErrorMsg("");
       try {
         const linkedUserRoleByUid = new Map<string, string>();
+        const readDocs = loadOptions.fromServer ? getDocsFromServer : getDocs;
         const [userSnap, staffSnap, employeeSnap, coreAccounts] = await Promise.all([
-          getDocs(usersCol()).catch(() => null),
-          getDocs(staffPublicCol()),
-          getDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
+          readDocs(usersCol()).catch(() => null),
+          readDocs(staffPublicCol()),
+          readDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
           CoreAccountService.list(false, "internal").catch(() => []),
         ]);
 
@@ -2420,12 +2627,6 @@ export default function DashboardEmployees() {
         const serviceLookup = optionsOverride ?? serviceOptionsRef.current;
         const deduped = new Map<string, StaffPublicUi>();
         const keyAliases = new Map<string, string>();
-        const sourcePriority: Record<string, number> = {
-          core_accounts: 1,
-          users: 2,
-          employees: 3,
-          staff_public: 4,
-        };
 
         const upsertEmployeeRecord = (
           rawDocId: string,
@@ -2626,10 +2827,7 @@ export default function DashboardEmployees() {
             return;
           }
 
-          const existingPriority = sourcePriority[String(existing.source || "users")] || 0;
-          const incomingPriority = sourcePriority[source] || 0;
-          const primary = incomingPriority >= existingPriority ? row : existing;
-          const fallback = incomingPriority >= existingPriority ? existing : row;
+          const { primary, fallback } = pickEmployeeMergeRows(existing, row);
           const merged = mergeEmployeeRows(primary, fallback);
           deduped.set(dedupeKey, merged);
           [...employeeIdentityKeys(existing), ...rowKeys].forEach((key) => keyAliases.set(key, dedupeKey));
@@ -2716,6 +2914,7 @@ export default function DashboardEmployees() {
         return rows;
       } catch (e) {
         setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الموظفات."));
+        if (loadOptions.strict) throw e;
         // لا نمسح القائمة الحالية عند فشل التحديث حتى لا تُغلق الموظفة المحددة.
         return [];
       } finally {
@@ -3368,6 +3567,13 @@ export default function DashboardEmployees() {
       reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
       updatedAt: serverTimestamp(),
     };
+    const saveVerificationServiceOptions = serviceOptionsRef.current.length
+      ? serviceOptionsRef.current
+      : serviceOptions;
+    const expectedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
+      payload,
+      saveVerificationServiceOptions
+    );
     const attendanceZoneProfilePatch = {
       allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -3556,32 +3762,56 @@ export default function DashboardEmployees() {
         }
       }
 
-      const savedStaffSnap = await getDoc(staffPublicDoc(targetEmployeeId));
-      employeeSaveDebug("reload result", {
+      const savedStaffSnap = await getDocFromServer(staffPublicDoc(targetEmployeeId));
+      employeeSaveDebug("firestore verify", {
         employeeId: targetEmployeeId,
+        fromServer: true,
         staffPublicExists: savedStaffSnap.exists(),
       });
       if (!savedStaffSnap.exists()) {
         throw new Error("تعذر قراءة ملف الموظفة من staff_public بعد الحفظ.");
       }
+      const persistedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
+        savedStaffSnap.data() as Partial<StaffPublicDoc>,
+        saveVerificationServiceOptions
+      );
+      verifyEmployeeSaveSnapshot(
+        "staff_public",
+        expectedSaveSnapshot,
+        persistedSaveSnapshot
+      );
       const activeTabBeforeReload = activeTab;
       const modalTabBeforeReload = modalTab;
-      const reloadedRows = await load();
+      const reloadedRows = await load(saveVerificationServiceOptions, {
+        fromServer: true,
+        strict: true,
+      });
       const reloadedEmployee = reloadedRows.find(
         (row) =>
           row.id === targetEmployeeId ||
+          employeeMatchesRouteId(row, targetEmployeeId) ||
           employeeMatchesIdentity(row, selectedEmployeeIdentityRef.current)
       );
-      if (reloadedEmployee) {
-        openEdit(reloadedEmployee, false);
-        setActiveTab(activeTabBeforeReload);
-        setModalTab(
-          ["basic", "profile", "services", "booking"].includes(activeTabBeforeReload)
-            ? (activeTabBeforeReload as EmployeeModalTab)
-            : modalTabBeforeReload
-        );
-        selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
+      if (!reloadedEmployee) {
+        throw new Error("تعذر إعادة تحميل الموظفة من السيرفر بعد الحفظ.");
       }
+      const rehydratedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
+        reloadedEmployee,
+        saveVerificationServiceOptions
+      );
+      verifyEmployeeSaveSnapshot(
+        "reload",
+        expectedSaveSnapshot,
+        rehydratedSaveSnapshot
+      );
+      openEdit(reloadedEmployee, false);
+      setActiveTab(activeTabBeforeReload);
+      setModalTab(
+        ["basic", "profile", "services", "booking"].includes(activeTabBeforeReload)
+          ? (activeTabBeforeReload as EmployeeModalTab)
+          : modalTabBeforeReload
+      );
+      selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
       window.dispatchEvent(new Event("queens:staff-updated"));
       setSaveMessage(
         coreSyncWarning
