@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -67,4 +68,18 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Dashboard requests V2 migration guard passed.");
+const documentContract = spawnSync(
+  process.execPath,
+  ["--test", "workers/document-export-contract.test.mjs"],
+  { cwd: root, stdio: "inherit" }
+);
+if (documentContract.error) {
+  console.error("Document export contract could not start:", documentContract.error);
+  process.exit(1);
+}
+if (documentContract.status !== 0) {
+  console.error("Document export contract failed.");
+  process.exit(documentContract.status || 1);
+}
+
+console.log("Dashboard requests V2 migration guard passed with document export contract.");
