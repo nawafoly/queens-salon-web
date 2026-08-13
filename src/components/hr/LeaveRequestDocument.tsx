@@ -1,4 +1,3 @@
-import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest } from "../../services/employeeRequests";
 import {
   buildLeaveRequestDocumentData,
@@ -9,7 +8,9 @@ import {
   todayDocumentDateKey,
 } from "../../documents/leave/leaveRequestModel";
 import type { LeaveRequestDocumentData, LeaveRequestDocumentOption } from "../../documents/leave/leaveRequestModel";
+import { DOCUMENT_BRANDING } from "../../documents/core/documentBranding";
 import {
+  DocumentBrandLogo,
   DocumentField,
   DocumentFieldGrid,
   DocumentLongText,
@@ -29,9 +30,7 @@ type FormProps = {
   update: (name: string, value: string | boolean) => void;
 };
 
-type DocumentProps = {
-  request: EmployeeRequest;
-};
+type DocumentProps = { request: EmployeeRequest };
 
 function CheckBox({ checked, label, onClick }: { checked: boolean; label: string; onClick?: () => void }) {
   const interactive = typeof onClick === "function";
@@ -52,7 +51,7 @@ function CheckBox({ checked, label, onClick }: { checked: boolean; label: string
 function MalikatDocumentLogo() {
   return (
     <div className="leave-doc-brand" aria-label="شعار ملكات">
-      <img src={malikatLogo} alt="شعار ملكات" />
+      <DocumentBrandLogo src={DOCUMENT_BRANDING.logoUrl} alt="شعار ملكات" />
     </div>
   );
 }
@@ -60,9 +59,7 @@ function MalikatDocumentLogo() {
 function LeaveTypeRow({ options }: { options: LeaveRequestDocumentOption[] }) {
   return (
     <div className="leave-doc-type-row" role="group" aria-label="نوع الإجازة">
-      {options.map((item) => (
-        <CheckBox key={item.value} checked={item.checked} label={item.label} />
-      ))}
+      {options.map((item) => <CheckBox key={item.value} checked={item.checked} label={item.label} />)}
     </div>
   );
 }
@@ -73,9 +70,7 @@ function SignatureBlock({ signature }: { signature: LeaveRequestDocumentData["em
       <span>{signature.label}</span>
       {signature.imageDataUrl ? (
         <img className="leave-doc-signature-image" src={signature.imageDataUrl} alt={`توقيع ${signature.signerName}`} />
-      ) : (
-        <strong>{signature.fallback}</strong>
-      )}
+      ) : <strong>{signature.fallback}</strong>}
       {signature.signedAt ? <small>{signature.signedAt}</small> : null}
     </div>
   );
@@ -87,27 +82,18 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
   const days = leaveDays(startDate, endDate);
   const requestDate = todayDocumentDateKey();
   const employeeSignature = String(form.employeeSignatureDataUrl || "");
-
   const updateStartDate = (value: string) => {
     update("startDate", value);
     if (value && endDate && endDate <= value) update("endDate", "");
   };
 
   return (
-    <DocumentPage className="leave-doc leave-doc--editable" labelledBy="leave-request-draft-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+    <DocumentPage className="leave-doc leave-doc--editable" labelledBy="leave-request-draft-title" watermarkSrc={DOCUMENT_BRANDING.logoUrl}>
       <header className="leave-doc-header">
         <MalikatDocumentLogo />
         <h2 id="leave-request-draft-title">طلب إجازة</h2>
       </header>
-
-      <LeaveTypeRow
-        options={LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({
-          ...item,
-          checked: String(form.leaveType || "") === item.value,
-        }))}
-      />
-
+      <LeaveTypeRow options={LEAVE_TYPE_OPTIONS.slice(0, 3).map((item) => ({ ...item, checked: String(form.leaveType || "") === item.value }))} />
       <div className="leave-doc-letter">
         <p className="leave-doc-addressee">{LEAVE_REQUEST_ADDRESSEE}</p>
         <p>الموقرين</p>
@@ -118,33 +104,18 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
           {days === 1 ? "يوم" : "أيام"}، اعتبارًا من التاريخ الموضح أدناه.
         </p>
       </div>
-
       <DocumentFieldGrid>
         <div className="leave-doc-date-field dashboard-v2">
           <span>من تاريخ</span>
-          <DashboardDatePickerV2
-            value={startDate}
-            required
-            clearable
-            placeholder="اختر تاريخ البداية"
-            onChange={updateStartDate}
-          />
+          <DashboardDatePickerV2 value={startDate} required clearable placeholder="اختر تاريخ البداية" onChange={updateStartDate} />
         </div>
         <div className="leave-doc-date-field dashboard-v2">
           <span>إلى تاريخ</span>
-          <DashboardDatePickerV2
-            value={endDate}
-            min={startDate || undefined}
-            required
-            clearable
-            placeholder="اختر تاريخ النهاية"
-            onChange={(value) => update("endDate", value)}
-          />
+          <DashboardDatePickerV2 value={endDate} min={startDate || undefined} required clearable placeholder="اختر تاريخ النهاية" onChange={(value) => update("endDate", value)} />
         </div>
         <DocumentField label="عدد الأيام" value={days || "—"} />
         <DocumentField label="تاريخ الطلب" value={formatDocumentDate(requestDate)} />
       </DocumentFieldGrid>
-
       <label className="leave-doc-wide-field">
         <span>سبب الإجازة</span>
         <textarea required value={String(form.reason || "")} onChange={(event) => update("reason", event.target.value)} />
@@ -153,28 +124,13 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
         <span>ملاحظات إضافية</span>
         <textarea value={String(form.notes || "")} onChange={(event) => update("notes", event.target.value)} />
       </label>
-
       <div className="leave-doc-signature-row">
-        <div className="leave-doc-signature-cell">
-          <span>الاسم</span>
-          <strong>{employeeName || "الموظفة"}</strong>
-        </div>
-        <SignatureCaptureField
-          compact
-          required
-          label="توقيع الموظفة"
-          signerName={employeeName || "الموظفة"}
-          value={employeeSignature}
-          onChange={(signature) => update("employeeSignatureDataUrl", signature)}
-        />
+        <div className="leave-doc-signature-cell"><span>الاسم</span><strong>{employeeName || "الموظفة"}</strong></div>
+        <SignatureCaptureField compact required label="توقيع الموظفة" signerName={employeeName || "الموظفة"} value={employeeSignature} onChange={(signature) => update("employeeSignatureDataUrl", signature)} />
       </div>
-
       <DocumentSection title="رأي المدير الإداري" className="leave-doc-admin-block is-preview">
         <p>يُستكمل هذا القسم من الإدارة بعد وصول الطلب، ولا يعتمد القرار بدون توقيع المراجع أو المسؤول.</p>
-        <div className="leave-doc-admin-options">
-          <CheckBox checked={false} label="مع الموافقة" />
-          <CheckBox checked={false} label="أخرى" />
-        </div>
+        <div className="leave-doc-admin-options"><CheckBox checked={false} label="مع الموافقة" /><CheckBox checked={false} label="أخرى" /></div>
       </DocumentSection>
     </DocumentPage>
   );
@@ -182,16 +138,13 @@ export function LeaveRequestFormFields({ employeeName, form, update }: FormProps
 
 function LeaveRequestDocumentView({ data }: { data: LeaveRequestDocumentData }) {
   return (
-    <DocumentPage className="leave-doc leave-request-print-root" labelledBy="leave-request-document-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+    <DocumentPage className="leave-doc leave-request-print-root" labelledBy="leave-request-document-title" watermarkSrc={DOCUMENT_BRANDING.logoUrl}>
       <header className="leave-doc-header">
         <MalikatDocumentLogo />
         <h2 id="leave-request-document-title">{data.title}</h2>
       </header>
-
       <div className="leave-doc-number">رقم الطلب: <strong>{data.requestNumber}</strong></div>
       <LeaveTypeRow options={data.leaveTypeOptions} />
-
       <div className="leave-doc-letter">
         <p className="leave-doc-addressee">{data.addressee}</p>
         <p>الموقرين</p>
@@ -201,50 +154,29 @@ function LeaveRequestDocumentView({ data }: { data: LeaveRequestDocumentData }) 
           <strong className="leave-doc-inline-value"> {data.leaveDays || "___"} </strong>
           {data.leaveDays === 1 ? "يوم" : "أيام"}، اعتبارًا من يوم
           <strong className="leave-doc-inline-value"> {data.fields[0]?.value} </strong>
-          وحتى يوم
-          <strong className="leave-doc-inline-value"> {data.fields[1]?.value} </strong>.
+          وحتى يوم <strong className="leave-doc-inline-value"> {data.fields[1]?.value} </strong>.
         </p>
       </div>
-
-      <DocumentFieldGrid>
-        {data.fields.map((field) => <DocumentField key={field.label} label={field.label} value={field.value} />)}
-      </DocumentFieldGrid>
-
+      <DocumentFieldGrid>{data.fields.map((field) => <DocumentField key={field.label} label={field.label} value={field.value} />)}</DocumentFieldGrid>
       <DocumentLongText label="سبب الإجازة" value={data.reason} />
       {data.notes !== "—" ? <DocumentLongText label="ملاحظات" value={data.notes} /> : null}
-
       <div className="leave-doc-signature-row">
-        <div className="leave-doc-signature-cell">
-          <span>الاسم</span>
-          <strong>{data.employeeName}</strong>
-        </div>
+        <div className="leave-doc-signature-cell"><span>الاسم</span><strong>{data.employeeName}</strong></div>
         <SignatureBlock signature={data.employeeSignature} />
       </div>
-
       <DocumentSection title="رأي المدير الإداري" className="leave-doc-manager-opinion">
         <p>مع التحية والتقدير لإدارة مؤسسة صالون أحمد العليان (ملكات)</p>
         <p>تمت مراجعة الطلب واتخاذ القرار الموضح أدناه وفق ظروف العمل والأنظمة المعتمدة.</p>
         <div className="leave-doc-signature-row">
-          <div className="leave-doc-signature-cell">
-            <span>الاسم</span>
-            <strong>{data.managerName}</strong>
-            {data.managerRole ? <small>{data.managerRole}</small> : null}
-          </div>
+          <div className="leave-doc-signature-cell"><span>الاسم</span><strong>{data.managerName}</strong>{data.managerRole ? <small>{data.managerRole}</small> : null}</div>
           <SignatureBlock signature={data.managerSignature} />
         </div>
       </DocumentSection>
-
       <DocumentSection title="مرئيات الإدارة" className="leave-doc-admin-block">
-        <div className="leave-doc-admin-options">
-          {data.managerDecisionOptions.map((option) => <CheckBox key={option.value} checked={option.checked} label={option.label} />)}
-        </div>
+        <div className="leave-doc-admin-options">{data.managerDecisionOptions.map((option) => <CheckBox key={option.value} checked={option.checked} label={option.label} />)}</div>
         <DocumentLongText label="الملاحظات / القرار" value={data.managerDecisionNote} />
-        <div className="leave-doc-admin-footer">
-          <span>التوقيع أعلاه معتمد إلكترونيًا</span>
-          <span>الختم</span>
-        </div>
+        <div className="leave-doc-admin-footer"><span>التوقيع أعلاه معتمد إلكترونيًا</span><span>الختم</span></div>
       </DocumentSection>
-
       <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات</footer>
     </DocumentPage>
   );
