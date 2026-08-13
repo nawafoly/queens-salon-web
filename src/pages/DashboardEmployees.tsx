@@ -718,14 +718,6 @@ function pickEmployeeMergeRows(existing: StaffPublicUi, incoming: StaffPublicUi)
       : { primary: existing, fallback: incoming };
   }
 
-  const existingUpdatedAt = employeeRowUpdatedAtMs(existing);
-  const incomingUpdatedAt = employeeRowUpdatedAtMs(incoming);
-  if (incomingUpdatedAt !== existingUpdatedAt) {
-    return incomingUpdatedAt > existingUpdatedAt
-      ? { primary: incoming, fallback: existing }
-      : { primary: existing, fallback: incoming };
-  }
-
   const existingCanonicalScore = employeeCanonicalDocScore(existing);
   const incomingCanonicalScore = employeeCanonicalDocScore(incoming);
   if (incomingCanonicalScore !== existingCanonicalScore) {
@@ -734,7 +726,47 @@ function pickEmployeeMergeRows(existing: StaffPublicUi, incoming: StaffPublicUi)
       : { primary: existing, fallback: incoming };
   }
 
+  const existingUpdatedAt = employeeRowUpdatedAtMs(existing);
+  const incomingUpdatedAt = employeeRowUpdatedAtMs(incoming);
+  if (incomingUpdatedAt !== existingUpdatedAt) {
+    return incomingUpdatedAt > existingUpdatedAt
+      ? { primary: incoming, fallback: existing }
+      : { primary: existing, fallback: incoming };
+  }
+
   return { primary: existing, fallback: incoming };
+}
+
+function savedEmployeeReloadScore(row: StaffPublicUi, targetEmployeeId: string) {
+  const target = cleanText(targetEmployeeId);
+  let score = employeeSourcePriority(row.source);
+  if (row.source === "staff_public") score += 100;
+  if (target && cleanText((row as any).staffPublicDocId) === target) score += 50;
+  if (target && cleanText(row.id) === target) score += 25;
+  if (target && cleanText((row as any).employeeId) === target) score += 15;
+  score += employeeCanonicalDocScore(row);
+  score += Math.min(employeeRowUpdatedAtMs(row) / 10000000000000, 1);
+  return score;
+}
+
+function findSavedEmployeeReloadRow(
+  rows: StaffPublicUi[],
+  targetEmployeeId: string,
+  identity: EmployeeIdentity | null
+) {
+  const target = cleanText(targetEmployeeId);
+  const matches = rows.filter(
+    (row) =>
+      (!!target && (row.id === target || employeeMatchesRouteId(row, target))) ||
+      employeeMatchesIdentity(row, identity)
+  );
+  return (
+    matches.sort(
+      (left, right) =>
+        savedEmployeeReloadScore(right, target) -
+        savedEmployeeReloadScore(left, target)
+    )[0] || null
+  );
 }
 
 function employeeVerificationAttendanceZoneId(staffLike: any): string {
@@ -3601,12 +3633,22 @@ export default function DashboardEmployees() {
           employeeId: targetEmployeeId,
           name: cleanName,
           active: !!active,
+          employeeProfileEnabled: payload.employeeProfileEnabled,
+          includeInEmployeeManagement,
+          showOnAbout: !!showOnAbout,
+          showOnBooking: effectiveShowOnBooking,
+          employmentEndDate: normalizedEmploymentEndDate,
           allowedAttendanceZoneId: normalizedAttendanceZoneId,
           attendanceZoneId: normalizedAttendanceZoneId,
           assignedAttendanceZoneId: normalizedAttendanceZoneId,
           attendanceScopeId: normalizedAttendanceZoneId,
           employment: attendanceZoneProfilePatch,
           employeeProfile: employeeProfilePatch,
+          monthlySalary: payload.monthlySalary,
+          payrollMonthlyHours: payload.payrollMonthlyHours,
+          payrollOvertimeEnabled: payload.payrollOvertimeEnabled,
+          payrollOvertimeMultiplier: payload.payrollOvertimeMultiplier,
+          payrollDeductionMethod: payload.payrollDeductionMethod,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
@@ -3631,12 +3673,24 @@ export default function DashboardEmployees() {
         employeeSaveDebug("firestore staff_public success", { employeeId: targetEmployeeId });
         await setDoc(doc(db, "salons", SALON_ID, "employees", targetEmployeeId), {
           employeeId: targetEmployeeId,
+          name: cleanName,
+          active: !!active,
+          employeeProfileEnabled: payload.employeeProfileEnabled,
+          includeInEmployeeManagement,
+          showOnAbout: !!showOnAbout,
+          showOnBooking: effectiveShowOnBooking,
+          employmentEndDate: normalizedEmploymentEndDate,
           allowedAttendanceZoneId: normalizedAttendanceZoneId,
           attendanceZoneId: normalizedAttendanceZoneId,
           assignedAttendanceZoneId: normalizedAttendanceZoneId,
           attendanceScopeId: normalizedAttendanceZoneId,
           employment: attendanceZoneProfilePatch,
           employeeProfile: employeeProfilePatch,
+          monthlySalary: payload.monthlySalary,
+          payrollMonthlyHours: payload.payrollMonthlyHours,
+          payrollOvertimeEnabled: payload.payrollOvertimeEnabled,
+          payrollOvertimeMultiplier: payload.payrollOvertimeMultiplier,
+          payrollDeductionMethod: payload.payrollDeductionMethod,
           updatedAt: serverTimestamp(),
         }, { merge: true });
         employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
@@ -3786,11 +3840,10 @@ export default function DashboardEmployees() {
         fromServer: true,
         strict: true,
       });
-      const reloadedEmployee = reloadedRows.find(
-        (row) =>
-          row.id === targetEmployeeId ||
-          employeeMatchesRouteId(row, targetEmployeeId) ||
-          employeeMatchesIdentity(row, selectedEmployeeIdentityRef.current)
+      const reloadedEmployee = findSavedEmployeeReloadRow(
+        reloadedRows,
+        targetEmployeeId,
+        selectedEmployeeIdentityRef.current
       );
       if (!reloadedEmployee) {
         throw new Error("تعذر إعادة تحميل الموظفة من السيرفر بعد الحفظ.");

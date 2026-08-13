@@ -104,8 +104,18 @@ if (!errors.length) {
   );
   requireIncludes(
     source,
-    "employeeMatchesRouteId(row, targetEmployeeId)",
+    "function findSavedEmployeeReloadRow",
+    "Post-save reload must use a canonical row picker instead of first matching row."
+  );
+  requireIncludes(
+    source,
+    "employeeMatchesRouteId(row, target)",
     "Post-save reload lookup must handle canonical staff_public ids that differ from Firebase uid."
+  );
+  requireIncludes(
+    source,
+    'row.source === "staff_public"',
+    "Post-save reload picker must prefer canonical staff_public rows over lower-priority duplicates."
   );
 
   requireAbsent(
@@ -158,6 +168,11 @@ if (!errors.length) {
     source,
     "if (docMatchesLinkedUid) score -= 6;",
     "Uid-shaped legacy staff_public docs must be penalized on final ties."
+  );
+  requireRegex(
+    source,
+    /const existingCanonicalScore = employeeCanonicalDocScore\(existing\);[\s\S]*const existingUpdatedAt = employeeRowUpdatedAtMs\(existing\);/,
+    "Canonical staff_public tie-breaker must run before updatedAt so uid-shaped legacy docs cannot override canonical records."
   );
 
   requireOrder(source, [
