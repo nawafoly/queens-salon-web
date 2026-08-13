@@ -5,6 +5,7 @@ type DocumentPageProps = {
   children: ReactNode;
   className?: string;
   labelledBy?: string;
+  watermarkSrc?: string;
 };
 
 type DocumentSectionProps = {
@@ -13,7 +14,13 @@ type DocumentSectionProps = {
   className?: string;
 };
 
-export function DocumentPage({ children, className = "", labelledBy }: DocumentPageProps) {
+type DocumentBrandLogoProps = {
+  src: string;
+  alt?: string;
+  className?: string;
+};
+
+export function DocumentPage({ children, className = "", labelledBy, watermarkSrc }: DocumentPageProps) {
   return (
     <section
       className={`document-a4-page ${className}`.trim()}
@@ -21,8 +28,26 @@ export function DocumentPage({ children, className = "", labelledBy }: DocumentP
       aria-labelledby={labelledBy}
       data-document-page="a4"
     >
+      {watermarkSrc ? (
+        <img
+          className="document-page-watermark"
+          src={watermarkSrc}
+          alt=""
+          aria-hidden="true"
+        />
+      ) : null}
       {children}
     </section>
+  );
+}
+
+export function DocumentBrandLogo({ src, alt = "شعار ملكات", className = "" }: DocumentBrandLogoProps) {
+  return (
+    <img
+      className={`document-brand-logo ${className}`.trim()}
+      src={src}
+      alt={alt}
+    />
   );
 }
 
