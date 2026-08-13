@@ -7,9 +7,9 @@
   padding: 13mm 12mm 11mm;
   box-sizing: border-box;
   direction: rtl;
-  color: #111;
+  color: #000;
   background: #fff;
-  border: 1px solid #111;
+  border: 1px solid #000;
   font-family: Tahoma, Arial, "Segoe UI", sans-serif;
   font-size: 12px;
   line-height: 1.58;
@@ -54,41 +54,53 @@
 
 .document-section h3 {
   margin: 0 0 3mm;
-  color: #111;
+  color: #000;
   font-size: 14px;
+  font-weight: 800;
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 1.5px;
 }
 
 .document-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3mm 6mm;
+  gap: 4mm 8mm;
   margin: 5mm 0;
 }
 
 .document-field,
 .document-long-text {
   display: grid;
+  align-content: start;
+  justify-items: start;
   gap: 1.5mm;
+  color: #000;
 }
 
 .document-field {
   min-height: 13mm;
   padding: 1mm 1mm 2mm;
-  border-bottom: 1px solid #222;
 }
 
 .document-field span,
 .document-long-text span {
-  color: #444;
+  color: #000;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .document-field strong {
-  color: #111;
+  display: inline-block;
+  width: fit-content;
+  min-width: 26mm;
+  max-width: 100%;
+  padding: 0 0.5mm 1mm;
+  border-bottom: 1px solid #000;
+  color: #000;
   font-size: 12px;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .document-long-text {
@@ -96,11 +108,111 @@
 }
 
 .document-long-text p {
-  min-height: 10mm;
+  display: inline-block;
+  width: fit-content;
+  min-width: 42mm;
+  max-width: 100%;
+  min-height: 7mm;
   margin: 0;
-  padding: 1.5mm 1mm;
-  border-bottom: 1px solid #222;
+  padding: 1.5mm 1mm 1mm;
+  border-bottom: 1px solid #000;
+  color: #000;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Formal leave-document overrides: keep every official text black and keep field rules local. */
+.leave-doc,
+.leave-doc p,
+.leave-doc strong,
+.leave-doc span,
+.leave-doc small,
+.leave-doc h2,
+.leave-doc h3 {
+  color: #000;
+}
+
+.leave-doc-header,
+.leave-doc-manager-opinion,
+.leave-doc-admin-block {
+  border-color: #000;
+}
+
+.leave-doc-number,
+.leave-doc-letter,
+.leave-doc-wide-field > span,
+.leave-doc-signature-cell span,
+.leave-doc-signature-row span,
+.leave-doc-signature-cell small,
+.leave-doc-signature-row small,
+.leave-doc-manager-opinion p,
+.leave-doc-admin-block.is-preview p,
+.leave-doc-copy-note {
+  color: #000;
+}
+
+.leave-doc-number,
+.leave-doc-greeting,
+.leave-doc-wide-field > span,
+.leave-doc-signature-cell strong,
+.leave-doc-signature-row strong {
+  font-weight: 700;
+}
+
+.leave-doc-checkbox,
+.leave-doc-checkbox strong,
+.leave-doc-checkbox > span {
+  color: #000;
+}
+
+.leave-doc-checkbox > span {
+  border-color: #000;
+}
+
+.leave-doc-inline-value {
+  min-width: 18mm;
+  max-width: 38mm;
+  border-bottom-color: #000;
+  color: #000;
+}
+
+.leave-doc-wide-field {
+  justify-items: start;
+}
+
+.leave-doc-wide-field textarea {
+  width: min(100%, 150mm);
+  border-color: #000;
+  color: #000;
+}
+
+.leave-doc-signature-cell,
+.leave-doc-signature-row > .signature-capture-field {
+  justify-items: start;
+  border-bottom: 0;
+}
+
+.leave-doc-signature-cell::after,
+.leave-doc-signature-row > .signature-capture-field::after {
+  content: "";
+  display: block;
+  width: min(46mm, 100%);
+  margin-top: 1mm;
+  border-bottom: 1px solid #000;
+}
+
+.leave-doc-admin-block.is-preview {
+  opacity: 1;
+}
+
+.leave-doc-admin-footer {
+  color: #000;
+}
+
+.leave-doc-admin-footer span {
+  justify-self: center;
+  width: min(46mm, 100%);
+  border-top-color: #000;
 }
 
 @media (max-width: 760px) {
@@ -119,6 +231,10 @@
 
   .document-field-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .leave-doc-wide-field textarea {
+    width: 100%;
   }
 }
 
@@ -145,6 +261,7 @@
     box-shadow: none !important;
     transform: none !important;
     overflow: visible !important;
+    color: #000 !important;
   }
 
   .document-watermark {
