@@ -12,11 +12,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/exceptional-financial-payment
-          fetch-depth: 3
+          fetch-depth: 4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Apply implementation in runner
@@ -34,6 +34,22 @@ jobs:
           Path('/tmp/apply-exceptional-payment.py').write_text(script, encoding='utf-8')
           PY
           python /tmp/apply-exceptional-payment.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/pages/hr/EmployeePayroll.tsx')
+          text = p.read_text(encoding='utf-8-sig')
+          text = text.replace(
+              'useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [] })',
+              'useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [], financialPayments: [] })',
+              1,
+          )
+          text = text.replace(
+              'getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [] }))',
+              'getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [], financialPayments: [] }))',
+              1,
+          )
+          p.write_text(text, encoding='utf-8')
+          PY
 
       - name: Install dependencies
         run: npm ci
@@ -48,7 +64,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p /tmp/validated
-          cp --parents workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql /tmp/validated/
+          cp --parents workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/pages/hr/EmployeePayroll.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql /tmp/validated/
 
       - uses: actions/upload-artifact@v4
         with:
