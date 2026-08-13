@@ -1,6 +1,6 @@
-import malikatLogo from "../../assets/images/ssunnamed.png";
 import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/employeeRequests";
 import { EMPLOYEE_REQUEST_STATUS_LABELS } from "../../services/employeeRequests";
+import { DOCUMENT_BRANDING } from "../../documents/core/documentBranding";
 import { DocumentField, DocumentFieldGrid, DocumentLongText, DocumentPage, DocumentSection } from "../../documents/core/DocumentPage";
 import SignatureCaptureField from "./SignatureCaptureField";
 import "../../styles/LeaveRequestDocument.css";
@@ -16,6 +16,11 @@ type FormProps = {
 function formatMoneyHalalas(value: unknown) {
   const amount = Number(value || 0) / 100;
   return `${amount.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+}
+
+function formatNumber(value: unknown) {
+  const number = Number(value || 0);
+  return number.toLocaleString("ar-SA", { maximumFractionDigits: 2 });
 }
 
 function formatDateTime(value: unknown) {
@@ -62,23 +67,32 @@ function executionEvent(request: EmployeeRequest) {
 export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, form, update }: FormProps) {
   return (
     <DocumentPage className="leave-doc leave-doc--editable" labelledBy="financial-payment-request-draft-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
       <header className="leave-doc-header">
-        <div className="leave-doc-brand" aria-label="شعار ملكات"><img src={malikatLogo} alt="شعار ملكات" /></div>
-        <h2 id="financial-payment-request-draft-title">طلب صرف مالي استثنائي</h2>
+        <div className="leave-doc-brand" aria-label="شعار ملكات">
+          <img src={DOCUMENT_BRANDING.logoSource} alt="شعار ملكات" />
+        </div>
+        <h2 id="financial-payment-request-draft-title">طلب تعويض مالي بدل إجازة</h2>
       </header>
 
       <div className="employee-request-decision">
-        <strong>تنبيه مهم</strong>
-        <p>هذا الطلب مالي مستقل. عدد الأيام هنا مرجع للحساب فقط، ولا يخصم النظام أي يوم من رصيد الإجازة السنوية.</p>
+        <strong>طريقة الاحتساب</strong>
+        <p>يتم تعويض قيمة الأيام المطلوبة ماليًا، ويُخصم نفس عدد الأيام من رصيد الإجازة السنوية عند تنفيذ الطلب.</p>
       </div>
 
       <DocumentFieldGrid>
         <label className="employee-request-field">
-          <span>عدد الأيام المرجعية *</span>
-          <input type="number" min="0.5" max="60" step="0.5" required value={String(form.requestedDays || "")} onChange={(event) => update("requestedDays", event.target.value)} />
+          <span>عدد أيام الإجازة المطلوب تعويضها *</span>
+          <input
+            type="number"
+            min="0.5"
+            max="60"
+            step="0.5"
+            required
+            value={String(form.requestedDays || "")}
+            onChange={(event) => update("requestedDays", event.target.value)}
+          />
         </label>
-        <DocumentField label="أساس الحساب" value="الراتب الأساسي ÷ 30 × عدد الأيام" />
+        <DocumentField label="الحسبة" value="الراتب الأساسي ÷ 30 × عدد الأيام" />
       </DocumentFieldGrid>
 
       <label className="leave-doc-wide-field">
@@ -91,8 +105,13 @@ export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, for
       </label>
 
       <label className="employee-request-check employee-request-check--ack">
-        <input type="checkbox" required checked={Boolean(form.acknowledgement)} onChange={(event) => update("acknowledgement", event.target.checked)} />
-        <span>أقر بصحة البيانات وأفهم أن هذا الطلب صرف مالي مستقل ولا يخصم رصيدي السنوي.</span>
+        <input
+          type="checkbox"
+          required
+          checked={Boolean(form.acknowledgement)}
+          onChange={(event) => update("acknowledgement", event.target.checked)}
+        />
+        <span>أوافق على خصم عدد الأيام المعتمدة من رصيد إجازتي السنوية مقابل صرف قيمتها المالية.</span>
       </label>
 
       <div className="leave-doc-signature-row">
@@ -106,7 +125,7 @@ export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, for
           onChange={(signature) => update("employeeSignatureDataUrl", signature)}
         />
       </div>
-      <small>تُحسب القيمة النهائية من الراتب الأساسي المسجل في Core عند إرسال الطلب، وتُحفظ كـSnapshot داخل الطلب.</small>
+      <small>تُثبت قيمة اليوم من الراتب الأساسي المسجل في Core عند إرسال الطلب، ويعاد التحقق من رصيد الإجازة قبل التنفيذ.</small>
     </DocumentPage>
   );
 }
@@ -120,41 +139,49 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request }: 
   const approved = ["approved", "executing", "completed"].includes(request.status) || ["approve", "approved"].includes(String(decision?.event_type || ""));
   const rejected = request.status === "rejected" || ["reject", "rejected"].includes(String(decision?.event_type || ""));
   const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
-  const beforeBalance = Number(payload.annualLeaveBalanceSnapshot || 0);
-  const afterBalance = beforeBalance;
+  const requestedDays = Number(payload.requestedDays || 0);
+  const snapshotBalance = Number(payload.annualLeaveBalanceSnapshot || 0);
+  const actualBefore = Number(effect.leaveBalanceBefore ?? effect.leave_balance_before);
+  const actualAfter = Number(effect.leaveBalanceAfter ?? effect.leave_balance_after);
+  const actualDeducted = Number(effect.leaveBalanceDeducted ?? effect.leave_balance_deducted);
+  const beforeBalance = Number.isFinite(actualBefore) && execution ? actualBefore : snapshotBalance;
+  const deductedDays = Number.isFinite(actualDeducted) && execution ? actualDeducted : requestedDays;
+  const plannedAfter = Math.max(0, beforeBalance - deductedDays);
+  const afterBalance = Number.isFinite(actualAfter) && execution ? actualAfter : plannedAfter;
   const managerSignature = String(decisionPayload.reviewerSignatureDataUrl || "");
   const employeeSignature = String(payload.employeeSignatureDataUrl || "");
   const amount = formatMoneyHalalas(payload.calculatedAmountHalalas);
 
   return (
     <DocumentPage className="leave-doc financial-payment-request-print-root" labelledBy="financial-payment-request-document-title">
-      <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
       <header className="leave-doc-header">
-        <div className="leave-doc-brand" aria-label="شعار ملكات"><img src={malikatLogo} alt="شعار ملكات" /></div>
-        <h2 id="financial-payment-request-document-title">طلب صرف مالي استثنائي</h2>
+        <div className="leave-doc-brand" aria-label="شعار ملكات">
+          <img src={DOCUMENT_BRANDING.printLogoSource} alt="شعار ملكات" />
+        </div>
+        <h2 id="financial-payment-request-document-title">طلب تعويض مالي بدل إجازة</h2>
       </header>
       <div className="leave-doc-number">رقم الطلب: <strong>{request.request_number}</strong></div>
 
       <DocumentFieldGrid>
         <DocumentField label="الموظفة" value={employeeName} />
         <DocumentField label="رقم الموظفة" value={request.employee_id} />
-        <DocumentField label="عدد الأيام المرجعية" value={String(payload.requestedDays || "—")} />
+        <DocumentField label="عدد أيام الإجازة المطلوب تعويضها" value={`${formatNumber(requestedDays)} يوم`} />
         <DocumentField label="تاريخ الطلب" value={formatDateTime(request.submitted_at)} />
         <DocumentField label="الراتب الأساسي وقت الطلب" value={formatMoneyHalalas(payload.baseSalaryHalalas)} />
         <DocumentField label="قيمة اليوم" value={formatMoneyHalalas(payload.dayRateHalalas)} />
-        <DocumentField label="إجمالي الصرف" value={amount} />
+        <DocumentField label="إجمالي التعويض" value={amount} />
         <DocumentField label="حالة الطلب" value={EMPLOYEE_REQUEST_STATUS_LABELS[request.status] || request.status} />
       </DocumentFieldGrid>
 
       <DocumentLongText label="سبب الطلب" value={String(payload.reason || "—")} />
       {payload.notes ? <DocumentLongText label="ملاحظات" value={String(payload.notes)} /> : null}
 
-      <DocumentSection title="أثر الرصيد">
+      <DocumentSection title="أثر رصيد الإجازة">
         <DocumentFieldGrid>
-          <DocumentField label="الرصيد السنوي قبل العملية" value={`${beforeBalance} يوم`} />
-          <DocumentField label="الأيام المخصومة" value="0 يوم" />
-          <DocumentField label="الرصيد السنوي بعد العملية" value={`${afterBalance} يوم`} />
-          <DocumentField label="المعالجة" value="صرف مالي مستقل — لا خصم من الإجازة السنوية" />
+          <DocumentField label="رصيد الإجازة قبل الخصم" value={`${formatNumber(beforeBalance)} يوم`} />
+          <DocumentField label="الأيام المخصومة" value={`${formatNumber(deductedDays)} يوم`} />
+          <DocumentField label={execution ? "رصيد الإجازة بعد الخصم" : "الرصيد المتوقع بعد التنفيذ"} value={`${formatNumber(afterBalance)} يوم`} />
+          <DocumentField label="المعالجة" value="تعويض مالي مقابل خصم رصيد إجازة سنوية" />
         </DocumentFieldGrid>
       </DocumentSection>
 
@@ -172,7 +199,7 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request }: 
           <DocumentField label="القرار" value={approved ? "مع الموافقة" : rejected ? "مرفوض" : "قيد المراجعة"} />
           <DocumentField label="المسؤول" value={decision?.actor_name || request.assigned_to_name || "—"} />
           <DocumentField label="تاريخ القرار" value={decision ? formatDateTime(decision.created_at) : "—"} />
-          <DocumentField label="حالة الصرف" value={request.status === "completed" ? "تم إدراجه في المسير" : "لم يكتمل"} />
+          <DocumentField label="حالة الصرف" value={request.status === "completed" ? "تم إدراجه في المسير وخصم الرصيد" : "لم يكتمل"} />
         </DocumentFieldGrid>
         <DocumentLongText label="ملاحظات / القرار" value={request.rejection_reason || request.decision_note || decision?.note || "—"} />
         <div className="leave-doc-signature-row">
@@ -184,7 +211,7 @@ export default function ExceptionalFinancialPaymentRequestDocument({ request }: 
         </div>
       </DocumentSection>
 
-      <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات — الأثر المالي مرتبط بالـPayroll ولا يغيّر رصيد الإجازة السنوية.</footer>
+      <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات — قيمة التعويض مرتبطة بالـPayroll، ويُخصم مقابلها نفس عدد الأيام من رصيد الإجازة السنوية عند التنفيذ.</footer>
     </DocumentPage>
   );
 }

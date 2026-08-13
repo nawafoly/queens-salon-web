@@ -57,7 +57,7 @@ const TYPE_TITLE = {
   permission: 'طلب استئذان',
   overtime: 'طلب أوفرتايم',
   salary_advance: 'صرف معجل للراتب',
-  exceptional_financial_payment: 'طلب صرف مالي استثنائي',
+  exceptional_financial_payment: 'طلب تعويض مالي بدل إجازة',
   leave: 'طلب إجازة',
   exit_return: 'طلب خروج وعودة',
   resignation: 'طلب استقالة',
@@ -237,8 +237,8 @@ function validatePayload(type, rawPayload) {
       notes: cleanText(payload.notes),
       acknowledgement: true,
       employeeSignatureDataUrl: signature,
-      balanceType: 'none',
-      deductAnnualLeave: false,
+      balanceType: 'annual_leave',
+      deductAnnualLeave: true,
     };
   }
     case 'leave': {
@@ -509,17 +509,19 @@ export async function createEmployeeRequest(db, salonId, data, actor = {}) {
     const dayRateHalalas = Math.max(1, Math.round(baseSalaryHalalas / 30));
     const calculatedAmountHalalas = Math.max(1, Math.round((baseSalaryHalalas * Number(payload.requestedDays)) / 30));
     const annualLeaveBalanceSnapshot = Math.max(0, Number(employment.leave_balance || 0));
+    if (annualLeaveBalanceSnapshot < Number(payload.requestedDays)) {
+      throw new AppError(409, 'core_employee_request:insufficient_annual_leave_balance');
+    }
     payload = {
       ...payload,
       baseSalaryHalalas,
       dayRateHalalas,
       calculatedAmountHalalas,
       annualLeaveBalanceSnapshot,
-      balanceDeductionDays: 0,
+      balanceDeductionDays: Number(payload.requestedDays),
       calculationBasis: 'base_salary_divided_by_30',
       payrollTreatment: 'manual_addition',
-      leaveBalanceTreatment: 'not_deducted',
-      legalTreatment: 'exceptional_payment_no_annual_leave_deduction',
+      leaveBalanceTreatment: 'deduct_on_execution',
     };
   }
   const idempotencyKey = cleanText(data.idempotencyKey || data.idempotency_key);
@@ -1086,6 +1088,7 @@ async function executeOvertime(db, salonId, row, payload, actor, input) {
 async function executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input) {
   const payrollMonth = cleanText(input.payrollMonth) || riyadhDateKey().slice(0, 7);
   addMonths(payrollMonth, 0);
+
   const existing = await dbFirst(
     db,
     `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
@@ -1093,7 +1096,21 @@ async function executeExceptionalFinancialPayment(db, salonId, row, payload, act
   );
   if (existing) {
     await refreshPayrollFinancials(db, salonId, row.employee_id, existing.payroll_month);
-    return { sourceType: 'employee_financial_payment', sourceId: existing.id, before: null, after: existing };
+    const currentEmployment = await dbFirst(
+      db,
+      `SELECT leave_balance FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+      [salonId, row.employee_id]
+    );
+    return {
+      sourceType: 'employee_financial_payment',
+      sourceId: existing.id,
+      before: null,
+      after: {
+        ...existing,
+        leaveBalanceAfter: Number(currentEmployment?.leave_balance || 0),
+        leaveBalanceDeducted: Number(existing.leave_balance_deducted || 0),
+      },
+    };
   }
 
   const payrollEntry = await dbFirst(
@@ -1107,12 +1124,24 @@ async function executeExceptionalFinancialPayment(db, salonId, row, payload, act
   if (!payrollEntry) throw new AppError(409, 'core_employee_request:payroll_entry_required');
 
   const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
+  if (Math.round(requestedDays * 2) !== requestedDays * 2) {
+    throw new AppError(400, 'core_employee_request:invalid_requested_days');
+  }
   const baseSalaryHalalas = positiveInteger(payload.baseSalaryHalalas, 'base_salary', 100_000_000);
   const dayRateHalalas = positiveInteger(payload.dayRateHalalas, 'day_rate', 10_000_000);
   const amountHalalas = positiveInteger(payload.calculatedAmountHalalas, 'calculated_amount', 100_000_000);
   const financialReference = cleanText(input.financialReference) || `EFP-${row.request_number}`;
-  const now = nowIso();
-  const paymentId = generatedId('financial_payment');
+
+  const employment = await dbFirst(
+    db,
+    `SELECT leave_balance FROM employee_employment
+      WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, row.employee_id]
+  );
+  const leaveBalanceBefore = Number(employment?.leave_balance);
+  if (!employment || !Number.isFinite(leaveBalanceBefore) || leaveBalanceBefore < requestedDays) {
+    throw new AppError(409, 'core_employee_request:insufficient_annual_leave_balance');
+  }
 
   const parsedAdditions = parseJson(payrollEntry.additions_json, []);
   const additions = Array.isArray(parsedAdditions) ? parsedAdditions : [];
@@ -1124,7 +1153,7 @@ async function executeExceptionalFinancialPayment(db, salonId, row, payload, act
     {
       id: `employee_financial_payment:${row.id}`,
       type: 'exceptional_financial_payment',
-      label: 'صرف مالي استثنائي',
+      label: 'تعويض مالي بدل إجازة',
       requestId: row.id,
       requestNumber: row.request_number,
       amountHalalas,
@@ -1133,6 +1162,8 @@ async function executeExceptionalFinancialPayment(db, salonId, row, payload, act
     },
   ];
   const nextManualAdditions = Number(payrollEntry.manual_additions_halalas || 0) + (alreadyIncluded ? 0 : amountHalalas);
+  const now = nowIso();
+  const paymentId = generatedId('financial_payment');
 
   await dbBatch(db, [
     {
@@ -1142,38 +1173,99 @@ async function executeExceptionalFinancialPayment(db, salonId, row, payload, act
          payroll_month, payroll_entry_id, financial_reference, payment_status,
          leave_balance_deducted, approved_by_uid, approved_at, executed_by_uid,
          executed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', 0, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', ?, ?, ?, ?, ?, ?, ?
+         FROM employee_employment
+        WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?`,
       params: [
-        paymentId, salonId, row.id, row.request_number, row.employee_id, row.employee_uid,
-        requestedDays, baseSalaryHalalas, dayRateHalalas, amountHalalas,
-        payrollMonth, payrollEntry.id, financialReference, cleanText(row.decided_by_uid) || null,
-        row.approved_at || now, cleanText(actor.uid) || null, now, now, now,
+        paymentId,
+        salonId,
+        row.id,
+        row.request_number,
+        row.employee_id,
+        row.employee_uid,
+        requestedDays,
+        baseSalaryHalalas,
+        dayRateHalalas,
+        amountHalalas,
+        payrollMonth,
+        payrollEntry.id,
+        financialReference,
+        requestedDays,
+        cleanText(row.decided_by_uid) || null,
+        row.approved_at || now,
+        cleanText(actor.uid) || null,
+        now,
+        now,
+        now,
+        salonId,
+        row.employee_id,
+        requestedDays,
       ],
     },
     {
       sql: `UPDATE payroll_entries
               SET manual_additions_halalas = ?, additions_json = ?, updated_at = ?
             WHERE salon_id = ? AND id = ?
-              AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')`,
-      params: [nextManualAdditions, json(nextAdditions), now, salonId, payrollEntry.id],
+              AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')
+              AND EXISTS (
+                SELECT 1 FROM employee_financial_payments
+                 WHERE salon_id = ? AND request_id = ?
+              )`,
+      params: [nextManualAdditions, json(nextAdditions), now, salonId, payrollEntry.id, salonId, row.id],
+    },
+    {
+      sql: `UPDATE employee_employment
+              SET leave_balance = leave_balance - ?, updated_at = ?,
+                  updated_by_uid = ?, updated_by_email = ?
+            WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?
+              AND EXISTS (
+                SELECT 1 FROM employee_financial_payments
+                 WHERE salon_id = ? AND request_id = ?
+              )`,
+      params: [
+        requestedDays,
+        now,
+        cleanText(actor.uid) || null,
+        cleanText(actor.email) || null,
+        salonId,
+        row.employee_id,
+        requestedDays,
+        salonId,
+        row.id,
+      ],
     },
   ]);
 
-  const payrollEntryId = await refreshPayrollFinancials(db, salonId, row.employee_id, payrollMonth);
-  if (!payrollEntryId) throw new AppError(409, 'core_employee_request:payroll_entry_required');
   const stored = await dbFirst(
     db,
     `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
     [salonId, row.id]
   );
+  if (!stored) throw new AppError(409, 'core_employee_request:insufficient_annual_leave_balance');
+
+  const employmentAfter = await dbFirst(
+    db,
+    `SELECT leave_balance FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
+    [salonId, row.employee_id]
+  );
+  const leaveBalanceAfter = Number(employmentAfter?.leave_balance);
+  if (!Number.isFinite(leaveBalanceAfter) || Math.abs(leaveBalanceAfter - (leaveBalanceBefore - requestedDays)) > 0.000001) {
+    throw new AppError(500, 'core_employee_request:leave_balance_deduction_failed');
+  }
+
+  const payrollEntryId = await refreshPayrollFinancials(db, salonId, row.employee_id, payrollMonth);
+  if (!payrollEntryId) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+
   return {
     sourceType: 'employee_financial_payment',
-    sourceId: stored?.id || paymentId,
-    before: null,
+    sourceId: stored.id,
+    before: { leaveBalance: leaveBalanceBefore },
     after: {
-      ...(stored || {}),
+      ...stored,
       payrollEntryId,
-      leaveBalanceDeducted: false,
+      leaveBalanceBefore,
+      leaveBalanceAfter,
+      leaveBalanceDeducted: requestedDays,
     },
   };
 }

@@ -1,5 +1,5 @@
--- Exceptional financial payment requests.
--- This is a payroll addition workflow. It never mutates employee_employment.leave_balance.
+-- Annual leave cash compensation requests.
+-- Payroll addition + deduction of the same approved number of days from annual leave balance.
 
 CREATE TABLE employee_requests_v2 (
   id TEXT PRIMARY KEY,
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS employee_financial_payments (
   payroll_entry_id TEXT NOT NULL,
   financial_reference TEXT NOT NULL,
   payment_status TEXT NOT NULL DEFAULT 'included' CHECK (payment_status IN ('included', 'paid', 'cancelled')),
-  leave_balance_deducted INTEGER NOT NULL DEFAULT 0 CHECK (leave_balance_deducted = 0),
+  leave_balance_deducted REAL NOT NULL DEFAULT 0 CHECK (leave_balance_deducted >= 0),
   approved_by_uid TEXT,
   approved_at TEXT,
   executed_by_uid TEXT,
