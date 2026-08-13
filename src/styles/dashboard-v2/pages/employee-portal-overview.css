@@ -211,6 +211,7 @@
   min-height: 44px;
   aspect-ratio: 1;
   padding: 0;
+  overflow: hidden;
   border: 1px solid var(--dsv2-border);
   border-radius: var(--dsv2-radius-md);
   background: var(--dsv2-surface);
@@ -251,19 +252,19 @@
 
 .dashboard-v2 .employee-overview-v2-page .employee-overview-kpi > strong {
   position: absolute;
-  inset-block-start: 4px;
-  inset-inline-start: 4px;
+  inset: 5px 5px auto auto;
+  z-index: 1;
   display: inline-flex;
-  min-width: 16px;
-  height: 16px;
+  min-width: 15px;
+  height: 15px;
   align-items: center;
   justify-content: center;
-  padding-inline: 4px;
+  padding-inline: 3px;
   border: 1px solid var(--dsv2-border);
   border-radius: var(--dsv2-radius-pill);
   background: var(--dsv2-surface);
   color: var(--dsv2-text);
-  font-size: 0.6rem;
+  font-size: 0.56rem;
   font-weight: 950;
   line-height: 1;
 }
@@ -781,9 +782,10 @@
   }
 
   .dashboard-v2 .employee-overview-v2-page .employee-overview-kpi > strong {
-    min-width: 15px;
-    height: 15px;
-    font-size: 0.56rem;
+    inset: 4px 4px auto auto;
+    min-width: 14px;
+    height: 14px;
+    font-size: 0.52rem;
   }
 
   .dashboard-v2 .employee-overview-v2-page .employee-app-intro__avatar {
