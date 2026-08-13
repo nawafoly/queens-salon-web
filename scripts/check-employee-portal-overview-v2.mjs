@@ -75,6 +75,7 @@ if (!errors.length) {
     "profile.leaveStartDate",
     "profile.leaveFromDate",
     "scheduleForEmployeeDate",
+    "getAttendanceDayStatusLabel",
   ];
   for (const marker of forbiddenRuntimeMarkers) {
     if (overview.includes(marker)) {

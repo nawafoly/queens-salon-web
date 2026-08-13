@@ -50,7 +50,6 @@ import { requestAttendanceBiometric } from "../../helpers/attendanceBiometric";
 import {
   computeAttendanceDay,
   getAttendanceDayStatus,
-  type AttendanceStatus,
   type AttendanceRecord,
   type ShiftSchedule,
 } from "../../helpers/hr/attendanceCalculations";
@@ -357,20 +356,6 @@ function getAttendanceStatusLabel(status: StaffAttendanceToday["status"]) {
   if (status === "checked_out") return "انصرف";
   if (status === "checked_in") return "حاضر";
   return "لم يسجل حضور";
-}
-
-function getAttendanceDayStatusLabel(status: AttendanceStatus) {
-  if (status === "present") return "حضور مكتمل";
-  if (status === "late") return "متأخر";
-  if (status === "missing_hours") return "ناقص ساعات";
-  if (status === "in_progress") return "بانتظار تسجيل الانصراف";
-  if (status === "partial") return "حضور يحتاج مراجعة";
-  if (status === "absent") return "غياب";
-  if (status === "leave") return "إجازة";
-  if (status === "off_day") return "يوم راحة";
-  if (status === "future") return "يوم قادم";
-  if (status === "today_pending") return "بانتظار تسجيل الحضور اليوم";
-  return "بانتظار تسجيل الحضور اليوم";
 }
 
 function getBookingStatusLabel(status: string | undefined) {
