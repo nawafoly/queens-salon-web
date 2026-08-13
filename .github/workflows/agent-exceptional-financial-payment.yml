@@ -1,0 +1,856 @@
+name: Apply exceptional financial payment implementation
+
+on:
+  push:
+    branches:
+      - agent/exceptional-financial-payment
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/exceptional-financial-payment
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8-sig')
+              if old not in text:
+                  raise SystemExit(f'Anchor not found in {path}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+              p.write_text(text, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Core request runtime
+          # ------------------------------------------------------------------
+          worker = 'workers/core/repositories/employee-requests.js'
+          replace_once(worker,
+          "  'salary_advance',\n  'leave',",
+          "  'salary_advance',\n  'exceptional_financial_payment',\n  'leave',")
+          replace_once(worker,
+          "  salary_advance: 'ADV',\n  leave: 'LEV',",
+          "  salary_advance: 'ADV',\n  exceptional_financial_payment: 'EFP',\n  leave: 'LEV',")
+          replace_once(worker,
+          "  salary_advance: 'صرف معجل للراتب',\n  leave: 'طلب إجازة',",
+          "  salary_advance: 'صرف معجل للراتب',\n  exceptional_financial_payment: 'طلب صرف مالي استثنائي',\n  leave: 'طلب إجازة',")
+
+          financial_validation = r'''    case 'exceptional_financial_payment': {
+              const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
+              if (Math.round(requestedDays * 2) !== requestedDays * 2) {
+                throw new AppError(400, 'core_employee_request:invalid_requested_days');
+              }
+              if (payload.acknowledgement !== true) {
+                throw new AppError(400, 'core_employee_request:financial_payment_acknowledgement_required');
+              }
+              const signature = cleanText(payload.employeeSignatureDataUrl);
+              if (!signature.startsWith('data:image/') || !signature.includes(';base64,') || signature.length < 200) {
+                throw new AppError(400, 'core_employee_request:financial_payment_signature_required');
+              }
+              return {
+                ...payload,
+                requestedDays,
+                reason: requiredReason(payload.reason),
+                notes: cleanText(payload.notes),
+                acknowledgement: true,
+                employeeSignatureDataUrl: signature,
+                balanceType: 'none',
+                deductAnnualLeave: false,
+              };
+            }
+'''
+          replace_once(worker, "    case 'leave': {", financial_validation + "    case 'leave': {")
+
+          replace_once(worker,
+          "  const payload = validatePayload(type, data.payload || data.payload_json || data);\n  const idempotencyKey = cleanText(data.idempotencyKey || data.idempotency_key);",
+          "  let payload = validatePayload(type, data.payload || data.payload_json || data);\n"
+          "  if (type === 'exceptional_financial_payment') {\n"
+          "    const employment = await dbFirst(\n"
+          "      db,\n"
+          "      `SELECT base_salary_halalas, leave_balance, employment_status FROM employee_employment\n"
+          "        WHERE salon_id = ? AND employee_id = ? LIMIT 1`,\n"
+          "      [salonId, identity.employeeId]\n"
+          "    );\n"
+          "    const baseSalaryHalalas = Math.max(0, Math.round(Number(employment?.base_salary_halalas || 0)));\n"
+          "    if (!employment || baseSalaryHalalas <= 0) {\n"
+          "      throw new AppError(409, 'core_employee_request:employee_salary_required');\n"
+          "    }\n"
+          "    const dayRateHalalas = Math.max(1, Math.round(baseSalaryHalalas / 30));\n"
+          "    const calculatedAmountHalalas = Math.max(1, Math.round((baseSalaryHalalas * Number(payload.requestedDays)) / 30));\n"
+          "    const annualLeaveBalanceSnapshot = Math.max(0, Number(employment.leave_balance || 0));\n"
+          "    payload = {\n"
+          "      ...payload,\n"
+          "      baseSalaryHalalas,\n"
+          "      dayRateHalalas,\n"
+          "      calculatedAmountHalalas,\n"
+          "      annualLeaveBalanceSnapshot,\n"
+          "      balanceDeductionDays: 0,\n"
+          "      calculationBasis: 'base_salary_divided_by_30',\n"
+          "      payrollTreatment: 'manual_addition',\n"
+          "      leaveBalanceTreatment: 'not_deducted',\n"
+          "      legalTreatment: 'exceptional_payment_no_annual_leave_deduction',\n"
+          "    };\n"
+          "  }\n"
+          "  const idempotencyKey = cleanText(data.idempotencyKey || data.idempotency_key);")
+
+          exceptional_execute = r'''
+          async function executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input) {
+            const payrollMonth = cleanText(input.payrollMonth) || riyadhDateKey().slice(0, 7);
+            addMonths(payrollMonth, 0);
+            const existing = await dbFirst(
+              db,
+              `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
+              [salonId, row.id]
+            );
+            if (existing) {
+              await refreshPayrollFinancials(db, salonId, row.employee_id, existing.payroll_month);
+              return { sourceType: 'employee_financial_payment', sourceId: existing.id, before: null, after: existing };
+            }
+
+            const payrollEntry = await dbFirst(
+              db,
+              `SELECT * FROM payroll_entries
+                WHERE salon_id = ? AND employee_id = ? AND payroll_month = ?
+                  AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')
+                LIMIT 1`,
+              [salonId, row.employee_id, payrollMonth]
+            );
+            if (!payrollEntry) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+
+            const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
+            const baseSalaryHalalas = positiveInteger(payload.baseSalaryHalalas, 'base_salary', 100_000_000);
+            const dayRateHalalas = positiveInteger(payload.dayRateHalalas, 'day_rate', 10_000_000);
+            const amountHalalas = positiveInteger(payload.calculatedAmountHalalas, 'calculated_amount', 100_000_000);
+            const financialReference = cleanText(input.financialReference) || `EFP-${row.request_number}`;
+            const now = nowIso();
+            const paymentId = generatedId('financial_payment');
+
+            const parsedAdditions = parseJson(payrollEntry.additions_json, []);
+            const additions = Array.isArray(parsedAdditions) ? parsedAdditions : [];
+            const alreadyIncluded = additions.some((item) =>
+              cleanText(item?.requestId || item?.request_id) === cleanText(row.id)
+            );
+            const nextAdditions = alreadyIncluded ? additions : [
+              ...additions,
+              {
+                id: `employee_financial_payment:${row.id}`,
+                type: 'exceptional_financial_payment',
+                label: 'صرف مالي استثنائي',
+                requestId: row.id,
+                requestNumber: row.request_number,
+                amountHalalas,
+                requestedDays,
+                financialReference,
+              },
+            ];
+            const nextManualAdditions = Number(payrollEntry.manual_additions_halalas || 0) + (alreadyIncluded ? 0 : amountHalalas);
+
+            await dbBatch(db, [
+              {
+                sql: `INSERT OR IGNORE INTO employee_financial_payments
+                  (id, salon_id, request_id, request_number, employee_id, employee_uid,
+                   requested_days, base_salary_halalas, day_rate_halalas, amount_halalas,
+                   payroll_month, payroll_entry_id, financial_reference, payment_status,
+                   leave_balance_deducted, approved_by_uid, approved_at, executed_by_uid,
+                   executed_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', 0, ?, ?, ?, ?, ?, ?)`,
+                params: [
+                  paymentId, salonId, row.id, row.request_number, row.employee_id, row.employee_uid,
+                  requestedDays, baseSalaryHalalas, dayRateHalalas, amountHalalas,
+                  payrollMonth, payrollEntry.id, financialReference, cleanText(row.decided_by_uid) || null,
+                  row.approved_at || now, cleanText(actor.uid) || null, now, now, now,
+                ],
+              },
+              {
+                sql: `UPDATE payroll_entries
+                        SET manual_additions_halalas = ?, additions_json = ?, updated_at = ?
+                      WHERE salon_id = ? AND id = ?
+                        AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')`,
+                params: [nextManualAdditions, json(nextAdditions), now, salonId, payrollEntry.id],
+              },
+            ]);
+
+            const payrollEntryId = await refreshPayrollFinancials(db, salonId, row.employee_id, payrollMonth);
+            if (!payrollEntryId) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+            const stored = await dbFirst(
+              db,
+              `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
+              [salonId, row.id]
+            );
+            return {
+              sourceType: 'employee_financial_payment',
+              sourceId: stored?.id || paymentId,
+              before: null,
+              after: {
+                ...(stored || {}),
+                payrollEntryId,
+                leaveBalanceDeducted: false,
+              },
+            };
+          }
+
+'''
+          replace_once(worker, "async function executeSalaryAdvance(db, salonId, row, payload, actor, input) {", exceptional_execute + "async function executeSalaryAdvance(db, salonId, row, payload, actor, input) {")
+          replace_once(worker,
+          "    case 'salary_advance': return executeSalaryAdvance(db, salonId, row, payload, actor, input);",
+          "    case 'salary_advance': return executeSalaryAdvance(db, salonId, row, payload, actor, input);\n    case 'exceptional_financial_payment': return executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input);")
+          replace_once(worker,
+          "  const [overtime, advances, installments] = await Promise.all([",
+          "  const [overtime, advances, installments, financialPayments] = await Promise.all([")
+          replace_once(worker,
+          "    dbAll(\n      db,\n      `SELECT sai.* FROM salary_advance_installments sai\n        JOIN salary_advances sa ON sa.salon_id = sai.salon_id AND sa.id = sai.advance_id\n       WHERE sai.salon_id = ? AND sa.employee_id = ?\n       ORDER BY sai.payroll_month, sai.installment_number`,\n      [salonId, employeeId]\n    ),\n  ]);\n  return { overtime, advances, installments };",
+          "    dbAll(\n      db,\n      `SELECT sai.* FROM salary_advance_installments sai\n        JOIN salary_advances sa ON sa.salon_id = sai.salon_id AND sa.id = sai.advance_id\n       WHERE sai.salon_id = ? AND sa.employee_id = ?\n       ORDER BY sai.payroll_month, sai.installment_number`,\n      [salonId, employeeId]\n    ),\n    dbAll(\n      db,\n      `SELECT * FROM employee_financial_payments\n        WHERE salon_id = ? AND employee_id = ?\n        ORDER BY executed_at DESC, created_at DESC LIMIT 100`,\n      [salonId, employeeId]\n    ),\n  ]);\n  return { overtime, advances, installments, financialPayments };")
+
+          # ------------------------------------------------------------------
+          # Frontend service contract
+          # ------------------------------------------------------------------
+          service = 'src/services/employeeRequests.ts'
+          replace_once(service,
+          '  | "salary_advance"\n  | "leave"',
+          '  | "salary_advance"\n  | "exceptional_financial_payment"\n  | "leave"')
+          replace_once(service,
+          '  "core_employee_request:attendance_target_required":\n    "حدد البصمة المطلوب تعديلها بإدخال الوقت الحالي الصحيح أو استخدم نوع إضافة بصمة.",',
+          '  "core_employee_request:attendance_target_required":\n    "حدد البصمة المطلوب تعديلها بإدخال الوقت الحالي الصحيح أو استخدم نوع إضافة بصمة.",\n  "core_employee_request:invalid_requested_days": "عدد الأيام المرجعية يجب أن يكون بين نصف يوم و60 يومًا وبزيادات نصف يوم.",\n  "core_employee_request:employee_salary_required": "لا يمكن حساب الصرف لأن الراتب الأساسي غير مسجل في ملف الموظفة داخل Core.",\n  "core_employee_request:payroll_entry_required": "لا يوجد مسير راتب مفتوح وقابل للتعديل للشهر المحدد. أنشئ أو افتح المسير أولًا ثم أعد التنفيذ.",\n  "core_employee_request:financial_payment_acknowledgement_required": "يجب الموافقة على الإقرار قبل إرسال طلب الصرف المالي.",\n  "core_employee_request:financial_payment_signature_required": "يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.",')
+          replace_once(service,
+          '  salary_advance: "صرف معجل للراتب",\n  leave: "طلب إجازة",',
+          '  salary_advance: "صرف معجل للراتب",\n  exceptional_financial_payment: "طلب صرف مالي استثنائي",\n  leave: "طلب إجازة",')
+          replace_once(service,
+          '  if (input.requestType === "leave" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {\n    throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");\n  }',
+          '  if (input.requestType === "leave" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {\n    throw new Error("يجب توقيع طلب الإجازة بخط اليد قبل الإرسال.");\n  }\n  if (input.requestType === "exceptional_financial_payment" && !isSignatureDataUrl(input.payload.employeeSignatureDataUrl)) {\n    throw new Error("يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.");\n  }')
+          replace_once(service,
+          'export type EmployeeRequestEvent = {\n  id: string;\n  event_type: string;',
+          'export type EmployeeRequestEvent = {\n  id: string;\n  event_type: string;\n  before_json?: string | null;\n  after_json?: string | null;')
+          replace_once(service,
+          '  installments: Array<{\n    id: string;\n    advance_id: string;\n    installment_number: number;\n    payroll_month: string;\n    amount_halalas: number;\n    status: string;\n  }>;\n};',
+          '  installments: Array<{\n    id: string;\n    advance_id: string;\n    installment_number: number;\n    payroll_month: string;\n    amount_halalas: number;\n    status: string;\n  }>;\n  financialPayments: Array<{\n    id: string;\n    request_id: string;\n    request_number: string;\n    requested_days: number;\n    amount_halalas: number;\n    payroll_month: string;\n    payroll_entry_id: string;\n    financial_reference: string;\n    payment_status: string;\n    leave_balance_deducted: number;\n    executed_at: string;\n  }>;\n};')
+
+          # ------------------------------------------------------------------
+          # Formal request document + form
+          # ------------------------------------------------------------------
+          Path('src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx').write_text(r'''import malikatLogo from "../../assets/images/ssunnamed.png";
+          import type { EmployeeRequest, EmployeeRequestEvent } from "../../services/employeeRequests";
+          import { EMPLOYEE_REQUEST_STATUS_LABELS } from "../../services/employeeRequests";
+          import { DocumentField, DocumentFieldGrid, DocumentLongText, DocumentPage, DocumentSection } from "../../documents/core/DocumentPage";
+          import SignatureCaptureField from "./SignatureCaptureField";
+          import "../../styles/LeaveRequestDocument.css";
+
+          export type ExceptionalFinancialPaymentFormState = Record<string, string | boolean>;
+
+          type FormProps = {
+            employeeName: string;
+            form: ExceptionalFinancialPaymentFormState;
+            update: (name: string, value: string | boolean) => void;
+          };
+
+          function formatMoneyHalalas(value: unknown) {
+            const amount = Number(value || 0) / 100;
+            return `${amount.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+          }
+
+          function formatDateTime(value: unknown) {
+            const parsed = Date.parse(String(value || ""));
+            if (!Number.isFinite(parsed)) return "—";
+            return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
+              timeZone: "Asia/Riyadh",
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date(parsed));
+          }
+
+          function parseEventPayload(event?: EmployeeRequestEvent | null) {
+            if (!event?.payload_json) return {} as Record<string, unknown>;
+            try {
+              const parsed = JSON.parse(event.payload_json);
+              return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+            } catch {
+              return {} as Record<string, unknown>;
+            }
+          }
+
+          function parseAfter(event?: EmployeeRequestEvent | null) {
+            if (!event?.after_json) return {} as Record<string, unknown>;
+            try {
+              const parsed = JSON.parse(event.after_json);
+              const after = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).after : null;
+              return after && typeof after === "object" ? after as Record<string, unknown> : {};
+            } catch {
+              return {} as Record<string, unknown>;
+            }
+          }
+
+          function decisionEvent(request: EmployeeRequest) {
+            return [...(request.events || [])].reverse().find((event) =>
+              ["approve", "approved", "reject", "rejected"].includes(String(event.event_type || "").toLowerCase())
+            );
+          }
+
+          function executionEvent(request: EmployeeRequest) {
+            return [...(request.events || [])].reverse().find((event) => event.event_type === "execution_completed");
+          }
+
+          export function ExceptionalFinancialPaymentRequestFormFields({ employeeName, form, update }: FormProps) {
+            return (
+              <DocumentPage className="leave-doc leave-doc--editable" labelledBy="financial-payment-request-draft-title">
+                <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+                <header className="leave-doc-header">
+                  <div className="leave-doc-brand" aria-label="شعار ملكات"><img src={malikatLogo} alt="شعار ملكات" /></div>
+                  <h2 id="financial-payment-request-draft-title">طلب صرف مالي استثنائي</h2>
+                </header>
+
+                <div className="employee-request-decision">
+                  <strong>تنبيه مهم</strong>
+                  <p>هذا الطلب مالي مستقل. عدد الأيام هنا مرجع للحساب فقط، ولا يخصم النظام أي يوم من رصيد الإجازة السنوية.</p>
+                </div>
+
+                <DocumentFieldGrid>
+                  <label className="employee-request-field">
+                    <span>عدد الأيام المرجعية *</span>
+                    <input type="number" min="0.5" max="60" step="0.5" required value={String(form.requestedDays || "")} onChange={(event) => update("requestedDays", event.target.value)} />
+                  </label>
+                  <DocumentField label="أساس الحساب" value="الراتب الأساسي ÷ 30 × عدد الأيام" />
+                </DocumentFieldGrid>
+
+                <label className="leave-doc-wide-field">
+                  <span>سبب الطلب</span>
+                  <textarea required value={String(form.reason || "")} onChange={(event) => update("reason", event.target.value)} />
+                </label>
+                <label className="leave-doc-wide-field">
+                  <span>ملاحظات إضافية</span>
+                  <textarea value={String(form.notes || "")} onChange={(event) => update("notes", event.target.value)} />
+                </label>
+
+                <label className="employee-request-check employee-request-check--ack">
+                  <input type="checkbox" required checked={Boolean(form.acknowledgement)} onChange={(event) => update("acknowledgement", event.target.checked)} />
+                  <span>أقر بصحة البيانات وأفهم أن هذا الطلب صرف مالي مستقل ولا يخصم رصيدي السنوي.</span>
+                </label>
+
+                <div className="leave-doc-signature-row">
+                  <div className="leave-doc-signature-cell"><span>الاسم</span><strong>{employeeName || "الموظفة"}</strong></div>
+                  <SignatureCaptureField
+                    compact
+                    required
+                    label="توقيع الموظفة"
+                    signerName={employeeName || "الموظفة"}
+                    value={String(form.employeeSignatureDataUrl || "")}
+                    onChange={(signature) => update("employeeSignatureDataUrl", signature)}
+                  />
+                </div>
+                <small>تُحسب القيمة النهائية من الراتب الأساسي المسجل في Core عند إرسال الطلب، وتُحفظ كـSnapshot داخل الطلب.</small>
+              </DocumentPage>
+            );
+          }
+
+          export default function ExceptionalFinancialPaymentRequestDocument({ request }: { request: EmployeeRequest }) {
+            const payload = request.payload || {};
+            const decision = decisionEvent(request);
+            const decisionPayload = parseEventPayload(decision);
+            const execution = executionEvent(request);
+            const effect = parseAfter(execution);
+            const approved = ["approved", "executing", "completed"].includes(request.status) || ["approve", "approved"].includes(String(decision?.event_type || ""));
+            const rejected = request.status === "rejected" || ["reject", "rejected"].includes(String(decision?.event_type || ""));
+            const employeeName = request.employee_name_snapshot || request.employee_id || "الموظفة";
+            const beforeBalance = Number(payload.annualLeaveBalanceSnapshot || 0);
+            const afterBalance = beforeBalance;
+            const managerSignature = String(decisionPayload.reviewerSignatureDataUrl || "");
+            const employeeSignature = String(payload.employeeSignatureDataUrl || "");
+            const amount = formatMoneyHalalas(payload.calculatedAmountHalalas);
+
+            return (
+              <DocumentPage className="leave-doc financial-payment-request-print-root" labelledBy="financial-payment-request-document-title">
+                <img className="leave-doc-watermark" src={malikatLogo} alt="" aria-hidden="true" />
+                <header className="leave-doc-header">
+                  <div className="leave-doc-brand" aria-label="شعار ملكات"><img src={malikatLogo} alt="شعار ملكات" /></div>
+                  <h2 id="financial-payment-request-document-title">طلب صرف مالي استثنائي</h2>
+                </header>
+                <div className="leave-doc-number">رقم الطلب: <strong>{request.request_number}</strong></div>
+
+                <DocumentFieldGrid>
+                  <DocumentField label="الموظفة" value={employeeName} />
+                  <DocumentField label="رقم الموظفة" value={request.employee_id} />
+                  <DocumentField label="عدد الأيام المرجعية" value={String(payload.requestedDays || "—")} />
+                  <DocumentField label="تاريخ الطلب" value={formatDateTime(request.submitted_at)} />
+                  <DocumentField label="الراتب الأساسي وقت الطلب" value={formatMoneyHalalas(payload.baseSalaryHalalas)} />
+                  <DocumentField label="قيمة اليوم" value={formatMoneyHalalas(payload.dayRateHalalas)} />
+                  <DocumentField label="إجمالي الصرف" value={amount} />
+                  <DocumentField label="حالة الطلب" value={EMPLOYEE_REQUEST_STATUS_LABELS[request.status] || request.status} />
+                </DocumentFieldGrid>
+
+                <DocumentLongText label="سبب الطلب" value={String(payload.reason || "—")} />
+                {payload.notes ? <DocumentLongText label="ملاحظات" value={String(payload.notes)} /> : null}
+
+                <DocumentSection title="أثر الرصيد">
+                  <DocumentFieldGrid>
+                    <DocumentField label="الرصيد السنوي قبل العملية" value={`${beforeBalance} يوم`} />
+                    <DocumentField label="الأيام المخصومة" value="0 يوم" />
+                    <DocumentField label="الرصيد السنوي بعد العملية" value={`${afterBalance} يوم`} />
+                    <DocumentField label="المعالجة" value="صرف مالي مستقل — لا خصم من الإجازة السنوية" />
+                  </DocumentFieldGrid>
+                </DocumentSection>
+
+                <div className="leave-doc-signature-row">
+                  <div className="leave-doc-signature-cell"><span>اسم الموظفة</span><strong>{employeeName}</strong></div>
+                  <div className="leave-doc-signature-cell">
+                    <span>توقيع الموظفة</span>
+                    {employeeSignature ? <img className="leave-doc-signature-image" src={employeeSignature} alt={`توقيع ${employeeName}`} /> : <strong>غير موقع</strong>}
+                    <small>{formatDateTime(request.submitted_at)}</small>
+                  </div>
+                </div>
+
+                <DocumentSection title="اعتماد الإدارة" className="leave-doc-manager-opinion">
+                  <DocumentFieldGrid>
+                    <DocumentField label="القرار" value={approved ? "مع الموافقة" : rejected ? "مرفوض" : "قيد المراجعة"} />
+                    <DocumentField label="المسؤول" value={decision?.actor_name || request.assigned_to_name || "—"} />
+                    <DocumentField label="تاريخ القرار" value={decision ? formatDateTime(decision.created_at) : "—"} />
+                    <DocumentField label="حالة الصرف" value={request.status === "completed" ? "تم إدراجه في المسير" : "لم يكتمل"} />
+                  </DocumentFieldGrid>
+                  <DocumentLongText label="ملاحظات / القرار" value={request.rejection_reason || request.decision_note || decision?.note || "—"} />
+                  <div className="leave-doc-signature-row">
+                    <div className="leave-doc-signature-cell"><span>مرجع الصرف</span><strong>{request.external_reference || String(effect.financial_reference || effect.financialReference || "—")}</strong></div>
+                    <div className="leave-doc-signature-cell">
+                      <span>توقيع المراجع / المسؤول</span>
+                      {managerSignature ? <img className="leave-doc-signature-image" src={managerSignature} alt="توقيع المراجع" /> : <strong>—</strong>}
+                    </div>
+                  </div>
+                </DocumentSection>
+
+                <footer className="leave-doc-copy-note">نسخة محفوظة إلكترونيًا ضمن نظام طلبات الموظفات — الأثر المالي مرتبط بالـPayroll ولا يغيّر رصيد الإجازة السنوية.</footer>
+              </DocumentPage>
+            );
+          }
+          ''', encoding='utf-8')
+
+          Path('src/services/exceptionalFinancialPaymentRequestExport.ts').write_text(r'''function currentStyleNodes() {
+            return Array.from(document.head.querySelectorAll("link[rel='stylesheet'], style"))
+              .map((node) => node.outerHTML)
+              .join("\n");
+          }
+
+          function waitForImages(doc: Document) {
+            return Promise.all(Array.from(doc.images).map((image) => {
+              if (image.complete) return Promise.resolve();
+              return new Promise<void>((resolve) => {
+                image.addEventListener("load", () => resolve(), { once: true });
+                image.addEventListener("error", () => resolve(), { once: true });
+              });
+            }));
+          }
+
+          const PRINT_CSS = `
+          @page { size: A4 portrait; margin: 0; }
+          html, body { margin: 0 !important; padding: 0 !important; width: 210mm !important; min-height: 297mm !important; background: #fff !important; overflow: visible !important; }
+          body { direction: rtl !important; display: block !important; }
+          .financial-payment-request-print-root, .document-a4-page { width: 210mm !important; min-height: 297mm !important; max-width: none !important; margin: 0 !important; padding: 13mm 12mm 11mm !important; border: 0 !important; box-shadow: none !important; background: #fff !important; color: #000 !important; overflow: visible !important; transform: none !important; page-break-inside: avoid !important; break-inside: avoid-page !important; }
+          .leave-request-export-toolbar, .employee-request-action-modal, .dashboard-sidebar, .navbar, .bottom-nav { display: none !important; }
+          `;
+
+          export async function printExceptionalFinancialPaymentRequestDocument() {
+            const source = document.querySelector<HTMLElement>(".financial-payment-request-print-root");
+            if (!source) throw new Error("لم يتم العثور على نموذج الصرف المالي للطباعة.");
+            const frame = document.createElement("iframe");
+            frame.setAttribute("title", "طباعة طلب الصرف المالي");
+            frame.style.position = "fixed";
+            frame.style.width = "1px";
+            frame.style.height = "1px";
+            frame.style.right = "-10000px";
+            frame.style.bottom = "0";
+            frame.style.border = "0";
+            document.body.appendChild(frame);
+            const printDoc = frame.contentDocument;
+            if (!printDoc) { frame.remove(); throw new Error("تعذر تجهيز نافذة الطباعة."); }
+            const clone = source.cloneNode(true) as HTMLElement;
+            printDoc.open();
+            printDoc.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><base href="${document.baseURI}">${currentStyleNodes()}<style>${PRINT_CSS}</style></head><body>${clone.outerHTML}</body></html>`);
+            printDoc.close();
+            await waitForImages(printDoc);
+            if ("fonts" in printDoc) { try { await printDoc.fonts.ready; } catch { /* use available fonts */ } }
+            const printWindow = frame.contentWindow;
+            if (!printWindow) { frame.remove(); throw new Error("تعذر فتح نافذة الطباعة."); }
+            printWindow.focus();
+            printWindow.print();
+            window.setTimeout(() => frame.remove(), 1800);
+          }
+          ''', encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Employee request page
+          # ------------------------------------------------------------------
+          employee_page = 'src/pages/hr/EmployeeRequests.tsx'
+          replace_once(employee_page,
+          'import LeaveRequestDocument, { LeaveRequestFormFields } from "../../components/hr/LeaveRequestDocument";',
+          'import LeaveRequestDocument, { LeaveRequestFormFields } from "../../components/hr/LeaveRequestDocument";\nimport ExceptionalFinancialPaymentRequestDocument, { ExceptionalFinancialPaymentRequestFormFields } from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";')
+          replace_once(employee_page,
+          '  if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };\n  if (type === "leave")',
+          '  if (type === "salary_advance") return { ...common, amount: "", neededDate: today, repaymentMethod: "single", installmentCount: "1", acknowledgement: false };\n  if (type === "exceptional_financial_payment") return { ...common, requestedDays: "", acknowledgement: false, employeeSignatureDataUrl: "" };\n  if (type === "leave")')
+          replace_once(employee_page,
+          '  amountHalalas: "المبلغ بالهللات",\n  neededDate: "تاريخ الحاجة",',
+          '  amountHalalas: "المبلغ بالهللات",\n  requestedDays: "عدد الأيام المرجعية",\n  baseSalaryHalalas: "الراتب الأساسي وقت الطلب",\n  dayRateHalalas: "قيمة اليوم",\n  calculatedAmountHalalas: "إجمالي الصرف",\n  annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",\n  balanceDeductionDays: "الأيام المخصومة من الرصيد",\n  calculationBasis: "أساس الحساب",\n  payrollTreatment: "المعالجة في الرواتب",\n  leaveBalanceTreatment: "معالجة رصيد الإجازة",\n  legalTreatment: "نوع المعالجة",\n  neededDate: "تاريخ الحاجة",')
+          replace_once(employee_page,
+          'function readablePayload(payload: Record<string, unknown>) {\n  const hidden = new Set(["acknowledgement", "employeeSignatureDataUrl"]);\n  return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);\n}',
+          'function readablePayload(payload: Record<string, unknown>) {\n  const hidden = new Set(["acknowledgement", "employeeSignatureDataUrl"]);\n  return Object.entries(payload || {}).filter(([key, value]) => !hidden.has(key) && value !== "" && value !== null && value !== undefined);\n}\n\nfunction formatPayloadValue(key: string, value: unknown) {\n  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;\n  if (typeof value === "boolean") return value ? "نعم" : "لا";\n  if (key === "leaveBalanceTreatment") return value === "not_deducted" ? "لا يتم الخصم" : String(value);\n  if (key === "payrollTreatment") return value === "manual_addition" ? "إضافة مالية في مسير الراتب" : String(value);\n  if (key === "calculationBasis") return value === "base_salary_divided_by_30" ? "الراتب الأساسي ÷ 30 × عدد الأيام" : String(value);\n  return String(value);\n}')
+          replace_once(employee_page,
+          '  const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");',
+          '  const leaveSignatureMissing = type === "leave" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");\n  const financialSignatureMissing = type === "exceptional_financial_payment" && !String(form.employeeSignatureDataUrl || "").startsWith("data:image/");')
+          replace_once(employee_page,
+          '      if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error("حجم المرفق يتجاوز 10 ميجابايت.");',
+          '      if (type === "exceptional_financial_payment") {\n        const days = Number(form.requestedDays);\n        if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد الأيام المرجعية من 0.5 إلى 60 وبزيادات نصف يوم.");\n        if (!form.acknowledgement) throw new Error("يجب الموافقة على الإقرار قبل إرسال الطلب.");\n        if (financialSignatureMissing) throw new Error("يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.");\n      }\n      if (attachment && attachment.size > 10 * 1024 * 1024) throw new Error("حجم المرفق يتجاوز 10 ميجابايت.");')
+          replace_once(employee_page,
+          '          {type === "leave" ? (\n            <div className="leave-request-form-shell">\n              <LeaveRequestFormFields employeeName={employeeName} form={form} update={update} />\n            </div>\n          ) : (',
+          '          {type === "leave" ? (\n            <div className="leave-request-form-shell">\n              <LeaveRequestFormFields employeeName={employeeName} form={form} update={update} />\n            </div>\n          ) : type === "exceptional_financial_payment" ? (\n            <div className="leave-request-form-shell">\n              <ExceptionalFinancialPaymentRequestFormFields employeeName={employeeName} form={form} update={update} />\n            </div>\n          ) : (')
+          replace_once(employee_page,
+          '          {type === "leave" && leaveSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الإجازة.</div> : null}\n          {error ?',
+          '          {type === "leave" && leaveSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الإجازة.</div> : null}\n          {type === "exceptional_financial_payment" && financialSignatureMissing ? <div className="employee-request-error"><FontAwesomeIcon icon={faTriangleExclamation} /> التوقيع بخط اليد مطلوب قبل إرسال طلب الصرف المالي.</div> : null}\n          {error ?')
+          replace_once(employee_page,
+          '          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy || leaveSignatureMissing}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>',
+          '          <footer><button type="button" className="is-secondary" onClick={onClose}>إلغاء</button><button type="submit" disabled={busy || leaveSignatureMissing || financialSignatureMissing}><FontAwesomeIcon icon={faPaperPlane} /> {busy ? "جارٍ الإرسال..." : "إرسال الطلب"}</button></footer>')
+          replace_once(employee_page,
+          '      {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}\n      <div className="employee-request-detail__grid">',
+          '      {request.request_type === "leave" ? <LeaveRequestDocument request={request} /> : null}\n      {request.request_type === "exceptional_financial_payment" ? <ExceptionalFinancialPaymentRequestDocument request={request} /> : null}\n      <div className="employee-request-detail__grid">')
+          replace_once(employee_page,
+          '<dd>{typeof value === "boolean" ? (value ? "نعم" : "لا") : String(value)}</dd>',
+          '<dd>{formatPayloadValue(key, value)}</dd>')
+
+          # ------------------------------------------------------------------
+          # Admin request center
+          # ------------------------------------------------------------------
+          admin_page = 'src/pages/hr/AdminEmployeeRequests.tsx'
+          replace_once(admin_page,
+          'import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";',
+          'import LeaveRequestDocument from "../../components/hr/LeaveRequestDocument";\nimport ExceptionalFinancialPaymentRequestDocument from "../../components/hr/ExceptionalFinancialPaymentRequestDocument";\nimport { printExceptionalFinancialPaymentRequestDocument } from "../../services/exceptionalFinancialPaymentRequestExport";')
+          replace_once(admin_page,
+          '  firstDeductionMonth: string;\n  approvedMinutes: string;',
+          '  firstDeductionMonth: string;\n  payrollMonth: string;\n  approvedMinutes: string;')
+          replace_once(admin_page,
+          '  amountHalalas: "المبلغ",\n  repaymentMethod: "طريقة الاستقطاع",',
+          '  amountHalalas: "المبلغ",\n  requestedDays: "عدد الأيام المرجعية",\n  baseSalaryHalalas: "الراتب الأساسي وقت الطلب",\n  dayRateHalalas: "قيمة اليوم",\n  calculatedAmountHalalas: "إجمالي الصرف",\n  annualLeaveBalanceSnapshot: "الرصيد السنوي وقت الطلب",\n  balanceDeductionDays: "الأيام المخصومة",\n  calculationBasis: "أساس الحساب",\n  payrollTreatment: "معالجة الرواتب",\n  leaveBalanceTreatment: "معالجة رصيد الإجازة",\n  legalTreatment: "نوع المعالجة",\n  repaymentMethod: "طريقة الاستقطاع",')
+          replace_once(admin_page,
+          '  if (key === "amountHalalas") return `${(Number(value || 0) / 100).toLocaleString("ar-SA")} ريال`;',
+          '  if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;\n  if (key === "leaveBalanceTreatment" && value === "not_deducted") return "لا يتم الخصم";\n  if (key === "payrollTreatment" && value === "manual_addition") return "إضافة مالية في مسير الراتب";\n  if (key === "calculationBasis" && value === "base_salary_divided_by_30") return "الراتب الأساسي ÷ 30 × عدد الأيام";')
+          replace_once(admin_page,
+          '    firstDeductionMonth: new Date().toISOString().slice(0, 7),\n    approvedMinutes: "",',
+          '    firstDeductionMonth: new Date().toISOString().slice(0, 7),\n    payrollMonth: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7),\n    approvedMinutes: "",')
+          replace_once(admin_page,
+          '    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);',
+          '    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);')
+          replace_once(admin_page,
+          '    if (leaveDecisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {\n      setDialogError("يجب توقيع قرار طلب الإجازة بخط اليد قبل اعتماده.");',
+          '    if (decisionNeedsSignature && !dialog.signatureDataUrl.startsWith("data:image/")) {\n      setDialogError("يجب توقيع القرار بخط اليد قبل اعتماده.");')
+          replace_once(admin_page,
+          '      if (selected.request_type === "leave") {\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }',
+          '      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }')
+          replace_once(admin_page,
+          '      if (selected.request_type === "leave") {\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }',
+          '      if (["leave", "exceptional_financial_payment"].includes(selected.request_type)) {\n        body.payload = {\n          reviewerSignatureDataUrl: dialog.signatureDataUrl,\n          reviewerSignatureCapturedAt: new Date().toISOString(),\n        };\n      }')
+          replace_once(admin_page,
+          '      if (selected.request_type === "overtime") {',
+          '      if (selected.request_type === "exceptional_financial_payment") {\n        if (!dialog.financialReference.trim()) {\n          setDialogError("مرجع عملية الصرف مطلوب.");\n          return;\n        }\n        if (!/^\\d{4}-\\d{2}$/.test(dialog.payrollMonth)) {\n          setDialogError("حدد شهر المسير الذي سيضاف إليه المبلغ.");\n          return;\n        }\n        Object.assign(body, {\n          financialReference: dialog.financialReference.trim(),\n          payrollMonth: dialog.payrollMonth,\n        });\n      }\n      if (selected.request_type === "overtime") {')
+          replace_once(admin_page,
+          '    const leaveDecisionNeedsSignature = selected.request_type === "leave" && ["approve", "reject"].includes(dialog.kind);',
+          '    const decisionNeedsSignature = ["leave", "exceptional_financial_payment"].includes(selected.request_type) && ["approve", "reject"].includes(dialog.kind);')
+          replace_once(admin_page,
+          '            {leaveDecisionNeedsSignature ? (',
+          '            {decisionNeedsSignature ? (')
+          replace_once(admin_page,
+          '                {selected.request_type === "overtime" ? (',
+          '                {selected.request_type === "exceptional_financial_payment" ? (\n                  <>\n                    <label className="employee-request-action-field">\n                      <span>المبلغ المحسوب</span>\n                      <input readOnly value={`${(Number(selected.payload.calculatedAmountHalalas || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`} />\n                    </label>\n                    <label className="employee-request-action-field">\n                      <span>شهر المسير</span>\n                      <input type="month" value={dialog.payrollMonth} onChange={(event) => setDialog({ ...dialog, payrollMonth: event.target.value })} />\n                    </label>\n                    <label className="employee-request-action-field">\n                      <span>مرجع عملية الصرف</span>\n                      <input value={dialog.financialReference} onChange={(event) => setDialog({ ...dialog, financialReference: event.target.value })} />\n                    </label>\n                    <div className="employee-request-action-confirmation"><span><FontAwesomeIcon icon={faLock} /> التنفيذ يضيف المبلغ إلى Payroll فقط، ولا يخصم أي يوم من رصيد الإجازة السنوية.</span></div>\n                  </>\n                ) : null}\n                {selected.request_type === "overtime" ? (')
+          replace_once(admin_page,
+          'disabled={busy || assigneesLoading || (leaveDecisionNeedsSignature && !dialog.signatureDataUrl)}',
+          'disabled={busy || assigneesLoading || (decisionNeedsSignature && !dialog.signatureDataUrl)}')
+          replace_once(admin_page,
+          '        {selected.request_type === "leave" ? (\n          <section className="admin-leave-request-document-shell">',
+          '        {selected.request_type === "exceptional_financial_payment" ? (\n          <section className="admin-leave-request-document-shell">\n            <div className="leave-request-export-toolbar">\n              <button type="button" className="is-primary" onClick={() => void printExceptionalFinancialPaymentRequestDocument()}>طباعة / حفظ PDF</button>\n            </div>\n            <ExceptionalFinancialPaymentRequestDocument request={selected} />\n          </section>\n        ) : null}\n\n        {selected.request_type === "leave" ? (\n          <section className="admin-leave-request-document-shell">')
+
+          # ------------------------------------------------------------------
+          # Migration
+          # ------------------------------------------------------------------
+          Path('migrations/core/0023_exceptional_financial_payment_requests.sql').write_text(r'''-- Exceptional financial payment requests.
+          -- This is a payroll addition workflow. It never mutates employee_employment.leave_balance.
+
+          CREATE TABLE employee_requests_v2 (
+            id TEXT PRIMARY KEY,
+            request_number TEXT NOT NULL UNIQUE,
+            salon_id TEXT NOT NULL,
+            employee_id TEXT NOT NULL,
+            employee_uid TEXT,
+            employee_name_snapshot TEXT,
+            request_type TEXT NOT NULL CHECK (request_type IN (
+              'attendance_correction', 'permission', 'overtime', 'salary_advance',
+              'exceptional_financial_payment', 'leave', 'exit_return', 'resignation'
+            )),
+            status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN (
+              'submitted', 'received', 'under_review', 'needs_info', 'approved',
+              'rejected', 'executing', 'completed', 'cancelled'
+            )),
+            priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+            title TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            decision_note TEXT,
+            rejection_reason TEXT,
+            assigned_to_uid TEXT,
+            assigned_to_name TEXT,
+            source_reference_type TEXT,
+            source_reference_id TEXT,
+            execution_status TEXT NOT NULL DEFAULT 'not_started' CHECK (execution_status IN (
+              'not_started', 'pending', 'running', 'completed', 'failed', 'cancelled'
+            )),
+            execution_attempts INTEGER NOT NULL DEFAULT 0,
+            execution_started_at TEXT,
+            execution_completed_at TEXT,
+            execution_error TEXT,
+            external_reference TEXT,
+            idempotency_key TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            submitted_at TEXT NOT NULL,
+            received_at TEXT,
+            reviewed_at TEXT,
+            approved_at TEXT,
+            rejected_at TEXT,
+            executing_at TEXT,
+            completed_at TEXT,
+            cancelled_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by_uid TEXT,
+            updated_by_uid TEXT,
+            received_by_uid TEXT,
+            reviewed_by_uid TEXT,
+            decided_by_uid TEXT,
+            cancelled_by_uid TEXT,
+            actual_exit_at TEXT,
+            actual_return_at TEXT,
+            expected_return_at TEXT,
+            final_working_day TEXT,
+            UNIQUE (salon_id, idempotency_key)
+          );
+
+          INSERT INTO employee_requests_v2 (
+            id, request_number, salon_id, employee_id, employee_uid, employee_name_snapshot,
+            request_type, status, priority, title, payload_json, decision_note, rejection_reason,
+            assigned_to_uid, assigned_to_name, source_reference_type, source_reference_id,
+            execution_status, execution_attempts, execution_started_at, execution_completed_at,
+            execution_error, external_reference, idempotency_key, version, submitted_at,
+            received_at, reviewed_at, approved_at, rejected_at, executing_at, completed_at,
+            cancelled_at, created_at, updated_at, created_by_uid, updated_by_uid, received_by_uid,
+            reviewed_by_uid, decided_by_uid, cancelled_by_uid, actual_exit_at, actual_return_at,
+            expected_return_at, final_working_day
+          )
+          SELECT
+            id, request_number, salon_id, employee_id, employee_uid, employee_name_snapshot,
+            request_type, status, priority, title, payload_json, decision_note, rejection_reason,
+            assigned_to_uid, assigned_to_name, source_reference_type, source_reference_id,
+            execution_status, execution_attempts, execution_started_at, execution_completed_at,
+            execution_error, external_reference, idempotency_key, version, submitted_at,
+            received_at, reviewed_at, approved_at, rejected_at, executing_at, completed_at,
+            cancelled_at, created_at, updated_at, created_by_uid, updated_by_uid, received_by_uid,
+            reviewed_by_uid, decided_by_uid, cancelled_by_uid, actual_exit_at, actual_return_at,
+            expected_return_at, final_working_day
+          FROM employee_requests;
+
+          DROP TABLE employee_requests;
+          ALTER TABLE employee_requests_v2 RENAME TO employee_requests;
+
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_employee ON employee_requests(salon_id, employee_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_uid ON employee_requests(salon_id, employee_uid, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_type ON employee_requests(salon_id, request_type, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_status ON employee_requests(salon_id, status, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_assignee ON employee_requests(salon_id, assigned_to_uid, status, updated_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_requests_number ON employee_requests(salon_id, request_number);
+
+          CREATE TABLE IF NOT EXISTS employee_financial_payments (
+            id TEXT PRIMARY KEY,
+            salon_id TEXT NOT NULL,
+            request_id TEXT NOT NULL,
+            request_number TEXT NOT NULL,
+            employee_id TEXT NOT NULL,
+            employee_uid TEXT,
+            requested_days REAL NOT NULL,
+            base_salary_halalas INTEGER NOT NULL,
+            day_rate_halalas INTEGER NOT NULL,
+            amount_halalas INTEGER NOT NULL,
+            payroll_month TEXT NOT NULL,
+            payroll_entry_id TEXT NOT NULL,
+            financial_reference TEXT NOT NULL,
+            payment_status TEXT NOT NULL DEFAULT 'included' CHECK (payment_status IN ('included', 'paid', 'cancelled')),
+            leave_balance_deducted INTEGER NOT NULL DEFAULT 0 CHECK (leave_balance_deducted = 0),
+            approved_by_uid TEXT,
+            approved_at TEXT,
+            executed_by_uid TEXT,
+            executed_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (salon_id, request_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_employee_financial_payments_employee ON employee_financial_payments(salon_id, employee_id, executed_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_employee_financial_payments_payroll ON employee_financial_payments(salon_id, payroll_month, payroll_entry_id);
+          ''', encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Worker integration test
+          # ------------------------------------------------------------------
+          test_file = 'workers/hr-core-worker.test.mjs'
+          replace_once(test_file,
+          "import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';",
+          "import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';\nimport { createEmployeeRequest, getEmployeeRequestPayrollImpact, transitionEmployeeRequest } from './core/repositories/employee-requests.js';")
+          replace_once(test_file,
+          "    '0022_shift_attendance_policy.sql',\n  ]) {",
+          "    '0022_shift_attendance_policy.sql',\n    '0023_exceptional_financial_payment_requests.sql',\n  ]) {")
+
+          financial_test = r'''
+          test('exceptional financial payment snapshots salary, adds payroll money, and never deducts annual leave', async (t) => {
+            const { mf, db } = await setup();
+            t.after(() => mf.dispose());
+
+            await db.prepare(`INSERT INTO staff
+              (id, salon_id, firebase_uid, name, phone_normalized, active, employment_status, created_at, updated_at)
+              VALUES ('emp-fin','main','uid-fin','Financial Employee','0500000099',1,'active','2026-01-01','2026-01-01')`).run();
+            await upsertHrEmployee(db, 'main', {
+              id: 'emp-fin', name: 'Financial Employee', firebaseUid: 'uid-fin', phone: '0500000099',
+              employment: { title: 'Stylist', baseSalaryHalalas: 450000, leaveBalance: 21 },
+            }, actor);
+
+            const period = await upsertPayrollPeriod(db, 'main', {
+              id: 'period-fin-2026-08', payrollMonth: '2026-08', monthStart: '2026-08-01', monthEnd: '2026-08-31',
+            }, actor);
+            await upsertPayrollEntry(db, 'main', {
+              id: 'payroll-fin-1', periodId: period.id, employeeId: 'emp-fin', payrollMonth: '2026-08',
+              baseSalaryHalalas: 450000, allowancesHalalas: 0, workDays: 30, monthlyHours: 240,
+              dailyRateHalalas: 15000, hourlyRateHalalas: 1875,
+              grossSalaryHalalas: 450000, netSalaryHalalas: 450000, finalSalaryHalalas: 450000,
+              scheduleSnapshot: { workDays: 30, monthlyHours: 240, dailyScheduledHours: 8, payrollSetupComplete: true, payrollSetupMissing: [] },
+            }, actor);
+
+            const employeeActor = { uid: 'uid-fin', employeeId: 'emp-fin', email: 'fin@example.com', name: 'Financial Employee', role: 'employee' };
+            let request = await createEmployeeRequest(db, 'main', {
+              requestType: 'exceptional_financial_payment',
+              payload: {
+                requestedDays: 3,
+                reason: 'احتياج مالي استثنائي',
+                notes: 'اختبار تكامل',
+                acknowledgement: true,
+                employeeSignatureDataUrl: `data:image/png;base64,${'a'.repeat(300)}`,
+              },
+              idempotencyKey: 'financial-payment-test-1',
+            }, employeeActor);
+
+            assert.equal(request.payload.baseSalaryHalalas, 450000);
+            assert.equal(request.payload.dayRateHalalas, 15000);
+            assert.equal(request.payload.calculatedAmountHalalas, 45000);
+            assert.equal(request.payload.balanceDeductionDays, 0);
+            assert.equal(request.payload.leaveBalanceTreatment, 'not_deducted');
+
+            const before = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
+            assert.equal(before.leave_balance, 21);
+
+            const adminActor = { ...actor, role: 'admin' };
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', {
+              version: request.version,
+              note: 'مع الموافقة',
+              payload: { reviewerSignatureDataUrl: `data:image/png;base64,${'b'.repeat(300)}` },
+            }, adminActor);
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'execute', {
+              version: request.version,
+              payrollMonth: '2026-08',
+              financialReference: 'PAY-TEST-001',
+            }, adminActor);
+
+            assert.equal(request.status, 'completed');
+            assert.equal(request.source_reference_type, 'employee_financial_payment');
+            assert.equal(request.external_reference, 'PAY-TEST-001');
+
+            const after = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
+            assert.equal(after.leave_balance, 21);
+
+            const payment = await db.prepare("SELECT * FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
+            assert.equal(payment.amount_halalas, 45000);
+            assert.equal(payment.requested_days, 3);
+            assert.equal(payment.leave_balance_deducted, 0);
+            assert.equal(payment.payroll_month, '2026-08');
+            assert.equal(payment.financial_reference, 'PAY-TEST-001');
+
+            const payroll = await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-fin-1'").first();
+            assert.equal(payroll.manual_additions_halalas, 45000);
+            assert.equal(payroll.gross_salary_halalas, 495000);
+            assert.equal(payroll.net_salary_halalas, 495000);
+            assert.equal(payroll.final_salary_halalas, 495000);
+            const additions = JSON.parse(payroll.additions_json || '[]');
+            assert.equal(additions.filter((item) => item.requestId === request.id).length, 1);
+
+            const impact = await getEmployeeRequestPayrollImpact(db, 'main', employeeActor);
+            assert.equal(impact.financialPayments.length, 1);
+            assert.equal(impact.financialPayments[0].amount_halalas, 45000);
+          });
+
+          test('exceptional financial payment execution fails closed when payroll entry is missing', async (t) => {
+            const { mf, db } = await setup();
+            t.after(() => mf.dispose());
+            await db.prepare(`INSERT INTO staff
+              (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+              VALUES ('emp-no-payroll','main','uid-no-payroll','No Payroll',1,'active','2026-01-01','2026-01-01')`).run();
+            await upsertHrEmployee(db, 'main', {
+              id: 'emp-no-payroll', name: 'No Payroll', firebaseUid: 'uid-no-payroll',
+              employment: { baseSalaryHalalas: 300000, leaveBalance: 15 },
+            }, actor);
+            const employeeActor = { uid: 'uid-no-payroll', employeeId: 'emp-no-payroll', name: 'No Payroll', role: 'employee' };
+            let request = await createEmployeeRequest(db, 'main', {
+              requestType: 'exceptional_financial_payment',
+              payload: {
+                requestedDays: 1,
+                reason: 'اختبار عدم وجود مسير',
+                acknowledgement: true,
+                employeeSignatureDataUrl: `data:image/png;base64,${'c'.repeat(300)}`,
+              },
+              idempotencyKey: 'financial-payment-test-no-payroll',
+            }, employeeActor);
+            const adminActor = { ...actor, role: 'admin' };
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'receive', { version: request.version }, adminActor);
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'start-review', { version: request.version }, adminActor);
+            request = await transitionEmployeeRequest(db, 'main', request.id, 'approve', { version: request.version }, adminActor);
+            await assert.rejects(
+              () => transitionEmployeeRequest(db, 'main', request.id, 'execute', { version: request.version, payrollMonth: '2026-08', financialReference: 'PAY-MISSING' }, adminActor),
+              { code: 'core_employee_request:payroll_entry_required' }
+            );
+            const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-no-payroll'").first();
+            assert.equal(balance.leave_balance, 15);
+          });
+
+'''
+          replace_once(test_file,
+          "test('Phase 6 settings and protected R2 file flow work without Firestore', async (t) => {",
+          financial_test + "test('Phase 6 settings and protected R2 file flow work without Firestore', async (t) => {")
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Core worker tests
+        run: node --test workers/hr-core-worker.test.mjs
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Commit implementation and remove helper workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/agent-exceptional-financial-payment.yml
+          git add workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add exceptional financial payment requests"
+          git push origin HEAD:agent/exceptional-financial-payment
