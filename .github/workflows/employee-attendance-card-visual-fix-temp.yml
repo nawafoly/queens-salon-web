@@ -68,3 +68,5 @@ jobs:
           git add src/pages/hr/EmployeeOverview.tsx src/styles/dashboard-v2/pages/employee-portal-overview.css scripts/employee-attendance-card-visual-fix-temp.py .github/workflows/employee-attendance-card-visual-fix-temp.yml
           git commit -m "Restore compact employee attendance card"
           git push origin HEAD:main
+
+# retry after aligning the permanent V2 contract with the compact attendance composition
