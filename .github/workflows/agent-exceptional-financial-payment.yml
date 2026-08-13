@@ -1,25 +1,28 @@
-name: Validate exceptional financial payment implementation
+name: Finalize exceptional financial payment implementation
 
 on:
   push:
     branches:
       - agent/exceptional-financial-payment
 
+permissions:
+  contents: write
+
 jobs:
-  validate:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/exceptional-financial-payment
-          fetch-depth: 4
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - name: Apply implementation in runner
+      - name: Apply previously validated implementation
         shell: bash
         run: |
           git show 0c755c48e9d57894a50fc6acd3a9d26d6be2b109:.github/workflows/agent-exceptional-financial-payment.yml > /tmp/original-workflow.yml
@@ -54,20 +57,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Core worker tests
+      - name: Test Core
         run: node --test workers/hr-core-worker.test.mjs
 
-      - name: Build web app
+      - name: Build
         run: npm run build
 
-      - name: Collect validated files
+      - name: Commit validated implementation and remove temporary workflow
         shell: bash
         run: |
-          mkdir -p /tmp/validated
-          cp --parents workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts src/pages/hr/EmployeeRequests.tsx src/pages/hr/AdminEmployeeRequests.tsx src/pages/hr/EmployeePayroll.tsx src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx migrations/core/0023_exceptional_financial_payment_requests.sql /tmp/validated/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: exceptional-financial-payment-validated
-          path: /tmp/validated
-          if-no-files-found: error
+          git rm .github/workflows/agent-exceptional-financial-payment.yml
+          git add migrations/core/0023_exceptional_financial_payment_requests.sql src/components/hr/ExceptionalFinancialPaymentRequestDocument.tsx src/pages/hr/AdminEmployeeRequests.tsx src/pages/hr/EmployeePayroll.tsx src/pages/hr/EmployeeRequests.tsx src/services/employeeRequests.ts src/services/exceptionalFinancialPaymentRequestExport.ts workers/core/repositories/employee-requests.js workers/hr-core-worker.test.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add exceptional financial payment requests"
+          git push origin HEAD:agent/exceptional-financial-payment
