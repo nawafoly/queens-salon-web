@@ -8,4 +8,5 @@ export const DOCUMENT_BRANDING = {
   printLogoSource: malikatLogoSource,
   watermarkSource: malikatLogoSource,
   watermarkOpacity: 0.055,
+  lightSurfaceLogoFilter: "brightness(0) contrast(100%)",
 } as const;
