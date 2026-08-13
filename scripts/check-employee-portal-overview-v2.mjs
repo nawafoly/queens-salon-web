@@ -151,6 +151,12 @@ if (!errors.length) {
   if (!attendanceMonthView.includes("attendance-month__year-switcher") || !attendanceMonthView.includes("attendance-month__year-button")) {
     errors.push("AttendanceMonthView is missing the V2-style year switcher controls.");
   }
+  if (!attendanceMonthView.includes('const WEEK_LABELS = ["سبت"')) {
+    errors.push("AttendanceMonthView must render the employee calendar with a Saturday-first week to avoid an isolated first day row.");
+  }
+  if (!attendanceMonthView.includes("displayStatusLabel") || !attendanceMonthView.includes("displayStatusTone")) {
+    errors.push("AttendanceMonthView is missing employee-facing attendance status display mapping.");
+  }
 
   const forbiddenMobileMarkers = [
     "EMPLOYEE OVERVIEW APP UI START",
@@ -249,8 +255,11 @@ if (!errors.length) {
     ".attendance-month__month-menu",
     ".attendance-month__year-switcher",
     ".attendance-month__grid",
+    "--employee-attendance-day-bg",
+    ".attendance-month__day.is-selected strong",
     ".attendance-month__state-card",
     ".attendance-month__worked-metrics",
+    "grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));",
   ];
   for (const marker of attendanceMonthV2Markers) {
     if (!css.includes(marker)) errors.push(`Canonical employee attendance month stylesheet is missing rule: ${marker}`);

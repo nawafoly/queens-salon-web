@@ -85,7 +85,7 @@ type AttendanceMonthViewProps = {
   onCancelLeave?: (dateKey: string) => void;
 };
 
-const WEEK_LABELS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+const WEEK_LABELS = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
   sun: "sunday",
@@ -131,7 +131,7 @@ function daysInMonth(monthKey: string) {
 
 function firstWeekday(monthKey: string) {
   const [year, month] = normalizeMonthKey(monthKey).split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  return (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 1) % 7;
 }
 
 function weekdayKeyForDate(dateKey: string) {
@@ -462,6 +462,16 @@ function statusLabel(status: AttendanceStatus) {
   return "يوم قادم";
 }
 
+function displayStatusLabel(status: AttendanceStatus, viewerMode: AttendanceViewerMode) {
+  if (viewerMode === "employee" && status === "off_day") return "إجازة";
+  return statusLabel(status);
+}
+
+function displayStatusTone(status: AttendanceStatus, viewerMode: AttendanceViewerMode) {
+  if (viewerMode === "employee" && status === "off_day") return "leave";
+  return statusTone(status);
+}
+
 
 export default function AttendanceMonthView({
   rows,
@@ -523,7 +533,7 @@ export default function AttendanceMonthView({
     approvedLeaveDateKeys: leaveDateKeys,
     holidayDateKeys: isDateSpecificOff(safeSelectedDate, schedule) || isCoreResolvedOff(selectedCoreShift) ? [safeSelectedDate] : [],
   });
-  const selectedTone = statusTone(selectedStatus);
+  const selectedTone = displayStatusTone(selectedStatus, viewerMode);
   const selectedCount = selectedEventCount(selectedRow);
   const dayCount = daysInMonth(safeMonthKey);
   const blanks = firstWeekday(safeMonthKey);
@@ -558,7 +568,7 @@ export default function AttendanceMonthView({
         day,
         dateKey,
         status,
-        tone: statusTone(status),
+        tone: displayStatusTone(status, viewerMode),
       };
     }),
   ];
@@ -695,7 +705,7 @@ export default function AttendanceMonthView({
             <div className="attendance-month__selected-overview-head">
               <span>اليوم المحدد</span>
               <span className={`attendance-month__selected-status is-${selectedTone}`}>
-                {loading ? "تحميل" : statusLabel(selectedStatus)}
+                {loading ? "تحميل" : displayStatusLabel(selectedStatus, viewerMode)}
               </span>
             </div>
             <strong>{fullDateLabel(safeSelectedDate)}</strong>
@@ -797,7 +807,7 @@ export default function AttendanceMonthView({
                   safeSelectedDate === cell.dateKey ? "is-selected" : ""
                 } ${todayKey === cell.dateKey ? "is-today" : ""}`}
                 onClick={() => onSelectedDateChange(cell.dateKey)}
-                title={`${cell.dateKey} - ${statusLabel(cell.status)}`}
+                title={`${cell.dateKey} - ${displayStatusLabel(cell.status, viewerMode)}`}
                 aria-current={todayKey === cell.dateKey ? "date" : undefined}
                 aria-selected={safeSelectedDate === cell.dateKey}
               >
@@ -814,7 +824,7 @@ export default function AttendanceMonthView({
           <span className="is-partial">يحتاج مراجعة</span>
           <span className="is-absent">غياب</span>
           <span className="is-leave">إجازة</span>
-          <span className="is-off-day">يوم راحة</span>
+          {viewerMode === "admin" ? <span className="is-off-day">يوم راحة</span> : null}
         </div>
       </div>
 
@@ -878,7 +888,7 @@ export default function AttendanceMonthView({
               <span
                 className={`attendance-month__badge is-${selectedTone}`}
               >
-                {statusLabel(selectedStatus)}
+                {displayStatusLabel(selectedStatus, viewerMode)}
               </span>
 
               <span className="attendance-month__record-count">
@@ -893,12 +903,12 @@ export default function AttendanceMonthView({
         </div>
 
         {isRestDay ? (
-          <div className="attendance-month__state-card is-off-day">
+          <div className={`attendance-month__state-card is-${selectedTone}`}>
             <div className="attendance-month__state-icon">
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>يوم راحة</strong>
+            <strong>{displayStatusLabel(selectedStatus, viewerMode)}</strong>
           </div>
         ) : isLeaveDay ? (
           <div className="attendance-month__state-card is-leave">
@@ -931,7 +941,7 @@ export default function AttendanceMonthView({
               <FontAwesomeIcon icon={faCalendarDay} />
             </div>
 
-            <strong>{statusLabel(selectedStatus)}</strong>
+            <strong>{displayStatusLabel(selectedStatus, viewerMode)}</strong>
           </div>
         ) : (
           <div className="attendance-month__worked-day">
@@ -975,7 +985,7 @@ export default function AttendanceMonthView({
             <div className="attendance-month__worked-metrics">
               <div className="attendance-month__worked-metric">
                 <span>الحالة</span>
-                <b>{statusLabel(selectedStatus)}</b>
+                <b>{displayStatusLabel(selectedStatus, viewerMode)}</b>
               </div>
 
               <div className="attendance-month__worked-metric">
