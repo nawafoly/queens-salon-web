@@ -22,10 +22,10 @@ export function docxImageExtent(
 
 export function docxRun(
   value: unknown,
-  options: { bold?: boolean; size?: number; color?: string } = {}
+  options: { bold?: boolean; size?: number; color?: string; underline?: boolean } = {}
 ) {
   const size = options.size || 22;
-  return `<w:r><w:rPr><w:rFonts w:ascii="${DOCUMENT_DOCX_FONT}" w:hAnsi="${DOCUMENT_DOCX_FONT}" w:cs="${DOCUMENT_DOCX_FONT}"/><w:rtl/><w:lang w:val="${DOCUMENT_DOCX_LOCALE}" w:bidi="${DOCUMENT_DOCX_LOCALE}"/>${options.bold ? "<w:b/><w:bCs/>" : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>${options.color ? `<w:color w:val="${options.color}"/>` : ""}</w:rPr><w:t xml:space="preserve">${docxText(value)}</w:t></w:r>`;
+  return `<w:r><w:rPr><w:rFonts w:ascii="${DOCUMENT_DOCX_FONT}" w:hAnsi="${DOCUMENT_DOCX_FONT}" w:cs="${DOCUMENT_DOCX_FONT}"/><w:rtl/><w:lang w:val="${DOCUMENT_DOCX_LOCALE}" w:bidi="${DOCUMENT_DOCX_LOCALE}"/>${options.bold ? "<w:b/><w:bCs/>" : ""}${options.underline ? '<w:u w:val="single"/>' : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/><w:color w:val="000000"/></w:rPr><w:t xml:space="preserve">${docxText(value)}</w:t></w:r>`;
 }
 
 export function docxParagraph(
@@ -37,6 +37,7 @@ export function docxParagraph(
     after?: number;
     before?: number;
     color?: string;
+    underline?: boolean;
   } = {}
 ) {
   return `<w:p><w:pPr><w:bidi/><w:jc w:val="${options.align || "right"}"/><w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 70}" w:line="275" w:lineRule="auto"/></w:pPr>${docxRun(value, options)}</w:p>`;
@@ -61,6 +62,7 @@ export function docxImage(
     return docxParagraph(fallback || "—", {
       align: options.align || "right",
       after: 0,
+      underline: true,
     });
   }
   const { cx, cy } = docxImageExtent(
@@ -74,7 +76,7 @@ export function docxImage(
 
 export function docxCell(content: string, width: number, bottom = false) {
   const border = bottom
-    ? '<w:tcBorders><w:bottom w:val="single" w:sz="7" w:color="333333"/></w:tcBorders>'
+    ? '<w:tcBorders><w:bottom w:val="single" w:sz="7" w:color="000000"/></w:tcBorders>'
     : "";
   return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:vAlign w:val="top"/>${border}<w:tcMar><w:top w:w="55" w:type="dxa"/><w:right w:w="75" w:type="dxa"/><w:bottom w:w="55" w:type="dxa"/><w:left w:w="75" w:type="dxa"/></w:tcMar></w:tcPr>${content}</w:tc>`;
 }
@@ -92,13 +94,12 @@ export function docxField(label: string, value: unknown) {
   return `${docxParagraph(label, {
     size: 17,
     bold: true,
-    color: "555555",
     after: 20,
-  })}${docxParagraph(value, { size: 21, bold: true, after: 0 })}`;
+  })}${docxParagraph(value, { size: 21, bold: true, after: 0, underline: true })}`;
 }
 
 export function documentDocxStylesXml() {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:rtl/><w:lang w:val="ar-SA" w:bidi="ar-SA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:rtl/><w:lang w:val="ar-SA" w:bidi="ar-SA"/></w:rPr></w:style></w:styles>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:rtl/><w:lang w:val="ar-SA" w:bidi="ar-SA"/><w:color w:val="000000"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr><w:rPr><w:rFonts w:ascii="Tahoma" w:hAnsi="Tahoma" w:cs="Tahoma"/><w:rtl/><w:lang w:val="ar-SA" w:bidi="ar-SA"/><w:color w:val="000000"/></w:rPr></w:style></w:styles>`;
 }
 
 export function documentDocxSettingsXml() {
