@@ -18,7 +18,7 @@
   margin-inline: auto;
   opacity: 0.055;
   pointer-events: none;
-  filter: grayscale(100%);
+  filter: brightness(0) contrast(100%);
 }
 
 .leave-doc-header {
@@ -316,15 +316,5 @@
 
   .leave-doc-checkbox {
     justify-content: flex-start;
-  }
-}
-
-@media print {
-  .leave-request-export-toolbar {
-    display: none !important;
-  }
-
-  .leave-request-print-root {
-    transform: none !important;
   }
 }
