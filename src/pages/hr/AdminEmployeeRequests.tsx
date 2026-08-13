@@ -112,7 +112,7 @@ const FIELD_LABELS: Record<string, string> = {
   location: "الموقع",
   managerName: "المدير",
   amountHalalas: "المبلغ",
-  requestedDays: "عدد الأيام المرجعية",
+  requestedDays: "عدد أيام الإجازة المطلوب تعويضها",
   baseSalaryHalalas: "الراتب الأساسي وقت الطلب",
   dayRateHalalas: "قيمة اليوم",
   calculatedAmountHalalas: "إجمالي الصرف",

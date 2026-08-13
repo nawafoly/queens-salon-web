@@ -218,7 +218,7 @@ function RequestForm({ type, employeeId, employeeName, onCreated, onClose }: {
       }
       if (type === "exceptional_financial_payment") {
         const days = Number(form.requestedDays);
-        if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد الأيام المرجعية من 0.5 إلى 60 وبزيادات نصف يوم.");
+        if (!Number.isFinite(days) || days < 0.5 || days > 60 || Math.round(days * 2) !== days * 2) throw new Error("حدد عدد أيام الإجازة المطلوب تعويضها من 0.5 إلى 60 وبزيادات نصف يوم.");
         if (!form.acknowledgement) throw new Error("يجب الموافقة على الإقرار قبل إرسال الطلب.");
         if (financialSignatureMissing) throw new Error("يجب توقيع طلب الصرف المالي بخط اليد قبل الإرسال.");
       }

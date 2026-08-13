@@ -219,7 +219,7 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
 });
 
 
-test('exceptional financial payment snapshots salary, adds payroll money, and never deducts annual leave', async (t) => {
+test('annual leave cash compensation pays daily value and deducts the same leave days', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
@@ -258,8 +258,8 @@ test('exceptional financial payment snapshots salary, adds payroll money, and ne
   assert.equal(request.payload.baseSalaryHalalas, 450000);
   assert.equal(request.payload.dayRateHalalas, 15000);
   assert.equal(request.payload.calculatedAmountHalalas, 45000);
-  assert.equal(request.payload.balanceDeductionDays, 0);
-  assert.equal(request.payload.leaveBalanceTreatment, 'not_deducted');
+  assert.equal(request.payload.balanceDeductionDays, 3);
+  assert.equal(request.payload.leaveBalanceTreatment, 'deduct_on_execution');
 
   const before = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
   assert.equal(before.leave_balance, 21);
@@ -283,12 +283,12 @@ test('exceptional financial payment snapshots salary, adds payroll money, and ne
   assert.equal(request.external_reference, 'PAY-TEST-001');
 
   const after = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
-  assert.equal(after.leave_balance, 21);
+  assert.equal(after.leave_balance, 18);
 
   const payment = await db.prepare("SELECT * FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
   assert.equal(payment.amount_halalas, 45000);
   assert.equal(payment.requested_days, 3);
-  assert.equal(payment.leave_balance_deducted, 0);
+  assert.equal(payment.leave_balance_deducted, 3);
   assert.equal(payment.payroll_month, '2026-08');
   assert.equal(payment.financial_reference, 'PAY-TEST-001');
 
@@ -303,6 +303,37 @@ test('exceptional financial payment snapshots salary, adds payroll money, and ne
   const impact = await getEmployeeRequestPayrollImpact(db, 'main', employeeActor);
   assert.equal(impact.financialPayments.length, 1);
   assert.equal(impact.financialPayments[0].amount_halalas, 45000);
+});
+
+
+test('annual leave cash compensation rejects days above available annual leave balance', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-low-balance','main','uid-low-balance','Low Balance',1,'active','2026-01-01','2026-01-01')`).run();
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-low-balance', name: 'Low Balance', firebaseUid: 'uid-low-balance',
+    employment: { baseSalaryHalalas: 300000, leaveBalance: 2 },
+  }, actor);
+  const employeeActor = { uid: 'uid-low-balance', employeeId: 'emp-low-balance', name: 'Low Balance', role: 'employee' };
+  await assert.rejects(
+    () => createEmployeeRequest(db, 'main', {
+      requestType: 'exceptional_financial_payment',
+      payload: {
+        requestedDays: 3,
+        reason: 'اختبار رصيد غير كاف',
+        acknowledgement: true,
+        employeeSignatureDataUrl: `data:image/png;base64,${'d'.repeat(300)}`,
+      },
+      idempotencyKey: 'financial-payment-low-balance',
+    }, employeeActor),
+    { code: 'core_employee_request:insufficient_annual_leave_balance' }
+  );
+  const balance = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-low-balance'").first();
+  assert.equal(balance.leave_balance, 2);
+  const payments = await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND employee_id='emp-low-balance'").first();
+  assert.equal(payments.count, 0);
 });
 
 test('exceptional financial payment execution fails closed when payroll entry is missing', async (t) => {
