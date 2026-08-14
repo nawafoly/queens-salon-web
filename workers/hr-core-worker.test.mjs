@@ -7,6 +7,11 @@ import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-emp
 import { saveShiftTemplate, resolveEmployeeShift } from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
+import {
+  adjustLeaveBalance,
+  getLeaveBalanceState,
+  reverseLeaveBalanceAdjustment,
+} from './core/repositories/leave-balance.js';
 import { createAbsence } from './core/repositories/absences.js';
 import {
   approvePayrollEntry,
@@ -86,6 +91,7 @@ async function setup() {
     '0020_employee_requests.sql',
     '0022_shift_attendance_policy.sql',
     '0023_exceptional_financial_payment_requests.sql',
+    '0024_employee_leave_balance_ledger.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -119,7 +125,10 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   const partialUpdate = await upsertHrEmployee(db, 'main', {
     id: 'emp-1',
     name: 'Employee 1 Updated',
-    employment: { employmentStatus: 'active' },
+    employment: {
+      employmentStatus: 'active',
+      leaveBalance: 999,
+    },
   }, actor);
   assert.equal(partialUpdate.name, 'Employee 1 Updated');
   assert.equal(partialUpdate.employment.title, 'Stylist');
@@ -218,6 +227,893 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(paidPayroll.status, 'paid');
 });
 
+
+
+test('canonical leave balance ledger is atomic and idempotent', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`
+    INSERT INTO staff
+      (
+        id,
+        salon_id,
+        firebase_uid,
+        name,
+        phone_normalized,
+        active,
+        employment_status,
+        created_at,
+        updated_at
+      )
+    VALUES
+      (
+        'emp-leave-ledger',
+        'main',
+        'uid-leave-ledger',
+        'Leave Ledger Employee',
+        '0500000099',
+        1,
+        'active',
+        '2026-01-01',
+        '2026-01-01'
+      )
+  `).run();
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-leave-ledger',
+      name: 'Leave Ledger Employee',
+      firebaseUid: 'uid-leave-ledger',
+      phone: '0500000099',
+      employment: {
+        baseSalaryHalalas: 450000,
+        leaveBalance: 5,
+      },
+    },
+    actor
+  );
+
+  // 5 + 2 = 7
+  const added = await adjustLeaveBalance(
+    db,
+    'main',
+    'emp-leave-ledger',
+    {
+      id: 'ledger-add-1',
+      actionType: 'add',
+      days: 2,
+      operationDate: '2026-08-14',
+      note: 'Test add',
+      sourceType: 'manual_adjustment',
+      sourceId: 'test-add-source-1',
+    },
+    actor
+  );
+
+  assert.equal(added.previousBalance, 5);
+  assert.equal(added.leaveBalanceDays, 7);
+  assert.equal(added.createdEntry.balanceBefore, 5);
+  assert.equal(added.createdEntry.balanceAfter, 7);
+  assert.equal(added.createdEntry.changeAmount, 2);
+  assert.equal(added.idempotent, false);
+
+  // Repeating the same source must not change balance twice.
+  const repeatedAdd = await adjustLeaveBalance(
+    db,
+    'main',
+    'emp-leave-ledger',
+    {
+      actionType: 'add',
+      days: 2,
+      operationDate: '2026-08-14',
+      sourceType: 'manual_adjustment',
+      sourceId: 'test-add-source-1',
+    },
+    actor
+  );
+
+  assert.equal(repeatedAdd.idempotent, true);
+  assert.equal(repeatedAdd.leaveBalanceDays, 7);
+  assert.equal(repeatedAdd.createdEntry.id, 'ledger-add-1');
+
+  // 7 - 1.5 = 5.5
+  const deducted = await adjustLeaveBalance(
+    db,
+    'main',
+    'emp-leave-ledger',
+    {
+      id: 'ledger-deduct-1',
+      actionType: 'deduct',
+      days: 1.5,
+      operationDate: '2026-08-14',
+      note: 'Test deduct',
+      sourceType: 'manual_adjustment',
+      sourceId: 'test-deduct-source-1',
+    },
+    actor
+  );
+
+  assert.equal(deducted.previousBalance, 7);
+  assert.equal(deducted.leaveBalanceDays, 5.5);
+  assert.equal(deducted.createdEntry.balanceBefore, 7);
+  assert.equal(deducted.createdEntry.balanceAfter, 5.5);
+  assert.equal(deducted.createdEntry.changeAmount, -1.5);
+
+  // Reverse the deduction: 5.5 + 1.5 = 7.
+  const reversed = await reverseLeaveBalanceAdjustment(
+    db,
+    'main',
+    deducted.createdEntry.id,
+    {
+      operationDate: '2026-08-14',
+      reason: 'Test reversal',
+    },
+    actor,
+    {
+      allowedSourceTypes: ['manual_adjustment'],
+      expectedEmployeeId: 'emp-leave-ledger',
+    }
+  );
+
+  assert.equal(reversed.idempotent, false);
+  assert.equal(reversed.previousBalance, 5.5);
+  assert.equal(reversed.leaveBalanceDays, 7);
+  assert.equal(reversed.reversedChangeAmount, 1.5);
+  assert.equal(reversed.reversalEntry.changeAmount, 1.5);
+  assert.equal(reversed.deletedEntry.deleted, true);
+
+  // Reversing again is idempotent and must not add another 1.5.
+  const repeatedReverse =
+    await reverseLeaveBalanceAdjustment(
+      db,
+      'main',
+      deducted.createdEntry.id,
+      {
+        operationDate: '2026-08-14',
+        reason: 'Repeated test reversal',
+      },
+      actor,
+      {
+        allowedSourceTypes: ['manual_adjustment'],
+        expectedEmployeeId: 'emp-leave-ledger',
+      }
+    );
+
+  assert.equal(repeatedReverse.idempotent, true);
+  assert.equal(repeatedReverse.leaveBalanceDays, 7);
+
+  const state = await getLeaveBalanceState(
+    db,
+    'main',
+    'emp-leave-ledger',
+    {
+      includeDeleted: true,
+      includeReversals: true,
+      limit: 50,
+    }
+  );
+
+  assert.equal(state.leaveBalance, 7);
+
+  const ledgerRows = await db.prepare(`
+    SELECT *
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND employee_id = 'emp-leave-ledger'
+     ORDER BY created_at, id
+  `).all();
+
+  assert.equal(ledgerRows.results.length, 3);
+
+  const originalDeduct = ledgerRows.results.find(
+    (row) => row.id === 'ledger-deduct-1'
+  );
+
+  const reversal = ledgerRows.results.find(
+    (row) =>
+      row.source_type === 'reversal' &&
+      row.source_id === 'ledger-deduct-1'
+  );
+
+  assert.ok(originalDeduct.deleted_at);
+  assert.ok(reversal);
+  assert.equal(Number(reversal.change_amount), 1.5);
+
+  const employment = await db.prepare(`
+    SELECT
+      leave_balance,
+      leave_balance_last_entry_id
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'emp-leave-ledger'
+    LIMIT 1
+  `).first();
+
+  assert.equal(Number(employment.leave_balance), 7);
+  assert.equal(
+    employment.leave_balance_last_entry_id,
+    reversal.id
+  );
+
+  // Insufficient balance must not create a ledger row
+  // and must not mutate the employee balance.
+  await assert.rejects(
+    () =>
+      adjustLeaveBalance(
+        db,
+        'main',
+        'emp-leave-ledger',
+        {
+          id: 'ledger-too-large',
+          actionType: 'deduct',
+          days: 100,
+          operationDate: '2026-08-14',
+          sourceType: 'manual_adjustment',
+          sourceId: 'test-too-large-source',
+        },
+        actor
+      ),
+    {
+      code: 'core_leave_balance:insufficient_balance',
+    }
+  );
+
+  const afterFailure = await db.prepare(`
+    SELECT leave_balance
+      FROM employee_employment
+     WHERE salon_id = 'main'
+       AND employee_id = 'emp-leave-ledger'
+     LIMIT 1
+  `).first();
+
+  const failedLedger = await db.prepare(`
+    SELECT id
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND id = 'ledger-too-large'
+     LIMIT 1
+  `).first();
+
+  assert.equal(Number(afterFailure.leave_balance), 7);
+  assert.equal(failedLedger, null);
+});
+
+test('approved Core leave deducts and restores canonical balance exactly once', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`
+    INSERT INTO staff (
+      id,
+      salon_id,
+      firebase_uid,
+      name,
+      active,
+      employment_status,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      'emp-leave-flow',
+      'main',
+      'uid-leave-flow',
+      'Leave Flow Employee',
+      1,
+      'active',
+      '2026-01-01',
+      '2026-01-01'
+    )
+  `).run();
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-leave-flow',
+      name: 'Leave Flow Employee',
+      firebaseUid: 'uid-leave-flow',
+      employment: {
+        baseSalaryHalalas: 450000,
+        leaveBalance: 5,
+      },
+    },
+    actor
+  );
+
+  const leave = await createLeave(
+    db,
+    'main',
+    {
+      id: 'leave-flow-1',
+      employeeId: 'emp-leave-flow',
+      employeeUid: 'uid-leave-flow',
+      leaveType: 'annual',
+      startDate: '2026-08-20',
+      endDate: '2026-08-21',
+      daysCount: 2,
+      deductFromBalance: true,
+      affectsPayroll: false,
+      employeeNote: 'Annual leave test',
+    },
+    actor
+  );
+
+  assert.equal(leave.status, 'pending');
+  assert.equal(leave.deduct_from_balance, 1);
+
+  const before = await db.prepare(`
+    SELECT leave_balance
+      FROM employee_employment
+     WHERE salon_id = 'main'
+       AND employee_id = 'emp-leave-flow'
+  `).first();
+
+  assert.equal(Number(before.leave_balance), 5);
+
+  const approved = await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'approved',
+      hrNote: 'Approved with deduction',
+    },
+    actor
+  );
+
+  assert.equal(approved.status, 'approved');
+  assert.ok(approved.balance_adjustment_id);
+
+  const afterApproval = await db.prepare(`
+    SELECT
+      leave_balance,
+      leave_balance_last_entry_id
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'emp-leave-flow'
+  `).first();
+
+  assert.equal(
+    Number(afterApproval.leave_balance),
+    3
+  );
+
+  assert.equal(
+    afterApproval.leave_balance_last_entry_id,
+    approved.balance_adjustment_id
+  );
+
+  const originalLedger = await db.prepare(`
+    SELECT *
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND source_type = 'leave_request'
+       AND source_id = 'leave-flow-1'
+     LIMIT 1
+  `).first();
+
+  assert.ok(originalLedger);
+  assert.equal(
+    Number(originalLedger.change_amount),
+    -2
+  );
+  assert.equal(
+    Number(originalLedger.balance_before),
+    5
+  );
+  assert.equal(
+    Number(originalLedger.balance_after),
+    3
+  );
+
+  // Double approval cannot double-deduct.
+  const approvedAgain = await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'approved',
+      hrNote: 'Repeated approval',
+    },
+    actor
+  );
+
+  assert.equal(
+    approvedAgain.idempotent,
+    true
+  );
+
+  const afterRepeatedApproval =
+    await db.prepare(`
+      SELECT leave_balance
+        FROM employee_employment
+       WHERE salon_id = 'main'
+         AND employee_id = 'emp-leave-flow'
+    `).first();
+
+  assert.equal(
+    Number(
+      afterRepeatedApproval.leave_balance
+    ),
+    3
+  );
+
+  // Rejecting an approved leave is cancellation.
+  // It must restore exactly the same 2 days.
+  const rejected = await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'rejected',
+      hrNote: 'Cancelled after approval',
+    },
+    actor
+  );
+
+  assert.equal(
+    rejected.status,
+    'rejected'
+  );
+
+  const afterCancellation =
+    await db.prepare(`
+      SELECT
+        leave_balance,
+        leave_balance_last_entry_id
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id = 'emp-leave-flow'
+    `).first();
+
+  assert.equal(
+    Number(afterCancellation.leave_balance),
+    5
+  );
+
+  const reversal = await db.prepare(`
+    SELECT *
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND source_type = 'reversal'
+       AND source_id = ?
+     LIMIT 1
+  `).bind(
+    originalLedger.id
+  ).first();
+
+  assert.ok(reversal);
+  assert.equal(
+    Number(reversal.change_amount),
+    2
+  );
+
+  const originalAfterCancellation =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND id = ?
+    `).bind(
+      originalLedger.id
+    ).first();
+
+  assert.ok(
+    originalAfterCancellation.deleted_at
+  );
+
+  // Double cancellation cannot restore twice.
+  const rejectedAgain = await decideLeave(
+    db,
+    'main',
+    leave.id,
+    {
+      status: 'rejected',
+      hrNote: 'Repeated cancellation',
+    },
+    actor
+  );
+
+  assert.equal(
+    rejectedAgain.idempotent,
+    true
+  );
+
+  const finalEmployment =
+    await db.prepare(`
+      SELECT leave_balance
+        FROM employee_employment
+       WHERE salon_id = 'main'
+         AND employee_id = 'emp-leave-flow'
+    `).first();
+
+  assert.equal(
+    Number(finalEmployment.leave_balance),
+    5
+  );
+
+  const ledgerCount =
+    await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND employee_id = 'emp-leave-flow'
+    `).first();
+
+  assert.equal(
+    Number(ledgerCount.count),
+    2
+  );
+});
+
+
+test('Core leave approval fails closed when canonical leave balance is insufficient', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`
+    INSERT INTO staff (
+      id,
+      salon_id,
+      firebase_uid,
+      name,
+      active,
+      employment_status,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      'emp-leave-low',
+      'main',
+      'uid-leave-low',
+      'Low Leave Balance',
+      1,
+      'active',
+      '2026-01-01',
+      '2026-01-01'
+    )
+  `).run();
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-leave-low',
+      name: 'Low Leave Balance',
+      firebaseUid: 'uid-leave-low',
+      employment: {
+        leaveBalance: 1,
+      },
+    },
+    actor
+  );
+
+  const leave = await createLeave(
+    db,
+    'main',
+    {
+      id: 'leave-low-1',
+      employeeId: 'emp-leave-low',
+      employeeUid: 'uid-leave-low',
+      leaveType: 'annual',
+      startDate: '2026-08-25',
+      endDate: '2026-08-26',
+      daysCount: 2,
+      deductFromBalance: true,
+    },
+    actor
+  );
+
+  await assert.rejects(
+    () =>
+      decideLeave(
+        db,
+        'main',
+        leave.id,
+        {
+          status: 'approved',
+          hrNote: 'Should fail',
+        },
+        actor
+      ),
+    {
+      code:
+        'core_leave:insufficient_balance',
+    }
+  );
+
+  const latestLeave =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leaves
+       WHERE salon_id = 'main'
+         AND id = 'leave-low-1'
+    `).first();
+
+  assert.equal(
+    latestLeave.status,
+    'pending'
+  );
+
+  assert.equal(
+    latestLeave.balance_adjustment_id,
+    null
+  );
+
+  const employment =
+    await db.prepare(`
+      SELECT leave_balance
+        FROM employee_employment
+       WHERE salon_id = 'main'
+         AND employee_id = 'emp-leave-low'
+    `).first();
+
+  assert.equal(
+    Number(employment.leave_balance),
+    1
+  );
+
+  const ledger =
+    await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'leave_request'
+         AND source_id = 'leave-low-1'
+    `).first();
+
+  assert.equal(
+    Number(ledger.count),
+    0
+  );
+});
+
+test('Core employee leave request execution uses canonical leave ledger', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`
+    INSERT INTO staff (
+      id,
+      salon_id,
+      firebase_uid,
+      name,
+      active,
+      employment_status,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      'emp-request-leave',
+      'main',
+      'uid-request-leave',
+      'Request Leave Employee',
+      1,
+      'active',
+      '2026-01-01',
+      '2026-01-01'
+    )
+  `).run();
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-request-leave',
+      name: 'Request Leave Employee',
+      firebaseUid: 'uid-request-leave',
+      employment: {
+        baseSalaryHalalas: 450000,
+        leaveBalance: 5,
+      },
+    },
+    actor
+  );
+
+  const employeeActor = {
+    uid: 'uid-request-leave',
+    employeeId: 'emp-request-leave',
+    email: 'leave-request@example.com',
+    name: 'Request Leave Employee',
+    role: 'employee',
+  };
+
+  const adminActor = {
+    ...actor,
+    role: 'admin',
+  };
+
+  let request =
+    await createEmployeeRequest(
+      db,
+      'main',
+      {
+        requestType: 'leave',
+        payload: {
+          leaveType: 'annual',
+          startDate: '2026-09-10',
+          endDate: '2026-09-11',
+          durationKind: 'full_day',
+          reason: 'Canonical employee request leave test',
+        },
+        idempotencyKey:
+          'canonical-request-leave-1',
+      },
+      employeeActor
+    );
+
+  request =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'receive',
+      {
+        version: request.version,
+      },
+      adminActor
+    );
+
+  request =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'start-review',
+      {
+        version: request.version,
+      },
+      adminActor
+    );
+
+  request =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'approve',
+      {
+        version: request.version,
+        note: 'Approved',
+      },
+      adminActor
+    );
+
+  request =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'execute',
+      {
+        version: request.version,
+      },
+      adminActor
+    );
+
+  assert.equal(
+    request.status,
+    'completed'
+  );
+
+  assert.equal(
+    request.source_reference_type,
+    'employee_leave'
+  );
+
+  const leave =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leaves
+       WHERE salon_id = 'main'
+         AND request_id = ?
+       LIMIT 1
+    `)
+      .bind(request.id)
+      .first();
+
+  assert.ok(leave);
+
+  assert.equal(
+    leave.status,
+    'approved'
+  );
+
+  assert.equal(
+    Number(
+      leave.deduct_from_balance
+    ),
+    1
+  );
+
+  assert.equal(
+    Number(
+      leave.affects_payroll
+    ),
+    0
+  );
+
+  assert.ok(
+    leave.balance_adjustment_id
+  );
+
+  const employment =
+    await db.prepare(`
+      SELECT
+        leave_balance,
+        leave_balance_last_entry_id
+      FROM employee_employment
+      WHERE salon_id = 'main'
+        AND employee_id =
+              'emp-request-leave'
+    `).first();
+
+  assert.equal(
+    Number(
+      employment.leave_balance
+    ),
+    3
+  );
+
+  assert.equal(
+    employment.leave_balance_last_entry_id,
+    leave.balance_adjustment_id
+  );
+
+  const ledger =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'leave_request'
+         AND source_id = ?
+       LIMIT 1
+    `)
+      .bind(leave.id)
+      .first();
+
+  assert.ok(ledger);
+
+  assert.equal(
+    Number(
+      ledger.change_amount
+    ),
+    -2
+  );
+
+  assert.equal(
+    Number(
+      ledger.balance_before
+    ),
+    5
+  );
+
+  assert.equal(
+    Number(
+      ledger.balance_after
+    ),
+    3
+  );
+
+  const count =
+    await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'leave_request'
+         AND source_id = ?
+    `)
+      .bind(leave.id)
+      .first();
+
+  assert.equal(
+    Number(count.count),
+    1
+  );
+});
 
 test('annual leave cash compensation preview calculates from Core salary and leave balance', async (t) => {
   const { mf, db } = await setup();
@@ -318,6 +1214,75 @@ test('annual leave cash compensation pays daily value and deducts the same leave
 
   const after = await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-fin'").first();
   assert.equal(after.leave_balance, 18);
+  const compensationLedger = await db.prepare(`
+    SELECT *
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND source_type =
+             'exceptional_financial_payment'
+       AND source_id = ?
+     LIMIT 1
+  `)
+    .bind(request.id)
+    .first();
+
+  assert.ok(compensationLedger);
+
+  assert.equal(
+    Number(compensationLedger.days),
+    3
+  );
+
+  assert.equal(
+    Number(compensationLedger.change_amount),
+    -3
+  );
+
+  assert.equal(
+    Number(compensationLedger.balance_before),
+    21
+  );
+
+  assert.equal(
+    Number(compensationLedger.balance_after),
+    18
+  );
+
+  const compensationEmployment = await db.prepare(`
+    SELECT
+      leave_balance,
+      leave_balance_last_entry_id
+    FROM employee_employment
+    WHERE salon_id = 'main'
+      AND employee_id = 'emp-fin'
+    LIMIT 1
+  `).first();
+
+  assert.equal(
+    Number(compensationEmployment.leave_balance),
+    18
+  );
+
+  assert.equal(
+    compensationEmployment.leave_balance_last_entry_id,
+    compensationLedger.id
+  );
+
+  const compensationLedgerCount = await db.prepare(`
+    SELECT COUNT(*) AS count
+      FROM employee_leave_balance_ledger
+     WHERE salon_id = 'main'
+       AND source_type =
+             'exceptional_financial_payment'
+       AND source_id = ?
+  `)
+    .bind(request.id)
+    .first();
+
+  assert.equal(
+    Number(compensationLedgerCount.count),
+    1
+  );
 
   const payment = await db.prepare("SELECT * FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
   assert.equal(payment.amount_halalas, 45000);
@@ -456,4 +1421,89 @@ test('booking reschedule atomically replaces slot locks', async (t) => {
   const newLocks = await db.prepare("SELECT COUNT(*) AS count FROM booking_slot_locks WHERE booking_id='booking-1' AND slot_time='11:00'").first();
   assert.equal(oldLocks.count, 0);
   assert.equal(newLocks.count, 1);
+});
+
+test('Core leave API separates manager routes from employee self scope', async () => {
+  const source = await readFile(
+    new URL(
+      './core/index.js',
+      import.meta.url
+    ),
+    'utf8'
+  );
+
+  const genericStart =
+    source.indexOf(
+      '    case "leaves":'
+    );
+
+  const genericEnd =
+    source.indexOf(
+      '    case "leave:approve":',
+      genericStart
+    );
+
+  assert.ok(
+    genericStart >= 0 &&
+      genericEnd > genericStart
+  );
+
+  const genericBlock =
+    source.slice(
+      genericStart,
+      genericEnd
+    );
+
+  assert.match(
+    genericBlock,
+    /requireAnyPermission\(ctx,[\s\S]*"attendance\.view"[\s\S]*"attendance\.leaves\.manage"[\s\S]*"payroll\.view"[\s\S]*"payroll\.manage"/
+  );
+
+  assert.match(
+    genericBlock,
+    /requirePermission\([\s\S]*ctx,[\s\S]*"attendance\.leaves\.manage"[\s\S]*\)/
+  );
+
+
+  const selfStart =
+    source.indexOf(
+      '    case "employee-portal:leaves":'
+    );
+
+  const selfEnd =
+    source.indexOf(
+      '    case "hr-employee:leave-balance":',
+      selfStart
+    );
+
+  assert.ok(
+    selfStart >= 0 &&
+      selfEnd > selfStart
+  );
+
+  const selfBlock =
+    source.slice(
+      selfStart,
+      selfEnd
+    );
+
+  assert.match(
+    selfBlock,
+    /employeeId:\s*ctx\.employeeId/
+  );
+
+  assert.doesNotMatch(
+    selfBlock,
+    /query\.employeeId/
+  );
+
+  assert.doesNotMatch(
+    selfBlock,
+    /body\.employeeId/
+  );
+
+  assert.match(
+    source,
+    /\/api\/core\/hr\/employee-portal\/leaves/
+  );
 });

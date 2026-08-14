@@ -26,7 +26,7 @@ import {
   getLeaveEntryChangeAmount,
   getLeaveEntryCreatedAt,
   isDeletedLeaveEntry,
-} from "../../services/firestoreLeaveBalance";
+} from "../../helpers/hr/leaveBalanceEntry";
 import type { StaffOvertimeHoursBasis } from "../../helpers/staffPayroll";
 
 type PayrollSummary = {

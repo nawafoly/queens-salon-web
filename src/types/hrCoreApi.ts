@@ -78,12 +78,63 @@ export type CoreLeave = {
   partialStartTime?: string | null;
   partialEndTime?: string | null;
   requestId?: string | null;
+  deductFromBalance?: boolean | number;
+  affectsPayroll?: boolean | number;
+  balanceAdjustmentId?: string | null;
   employeeNote?: string | null;
   hrNote?: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
+export type CoreLeaveBalanceEntry = {
+  id: string;
+  employeeId: string;
+  actionType: "add" | "deduct" | string;
+  type?: "add" | "deduct" | string;
+  days: number;
+  changeAmount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  date: string;
+  operationDate: string;
+  note?: string;
+  sourceType: string;
+  sourceId?: string | null;
+  createdByUid?: string | null;
+  createdByEmail?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  deleted?: boolean;
+  deletedAt?: string | null;
+  deletedByUid?: string | null;
+  deletedByEmail?: string | null;
+  deletedByName?: string | null;
+  deleteReason?: string | null;
+};
+
+export type CoreLeaveBalanceState = {
+  employeeId: string;
+  leaveBalance: number;
+  leaveEntitlementDate?: string | null;
+  entries: CoreLeaveBalanceEntry[];
+};
+
+export type CoreMyLeaveBalanceState = {
+  employeeId: string;
+  leaveBalance: number;
+  leaveEntitlementDate?: string | null;
+};
+export type CoreLeaveBalanceMutationResult = {
+  previousBalance: number;
+  leaveBalanceDays: number;
+  leaveEntries: CoreLeaveBalanceEntry[];
+  createdEntry?: CoreLeaveBalanceEntry | null;
+  deletedEntry?: CoreLeaveBalanceEntry | null;
+  reversalEntry?: CoreLeaveBalanceEntry | null;
+  reversedChangeAmount?: number;
+  idempotent?: boolean;
+};
 export type CoreAbsence = {
   id: string;
   salonId: string;

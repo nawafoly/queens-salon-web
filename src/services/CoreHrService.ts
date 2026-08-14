@@ -12,8 +12,11 @@ import type {
   CoreShiftChangePreview,
   CoreShiftPayrollAdjustment,
   CoreShiftPayrollPeriodLock,
-  CoreShiftTemplate,
-  CoreLeave,
+  CoreShiftTemplate,  CoreLeave,
+  CoreLeaveBalanceEntry,
+  CoreLeaveBalanceMutationResult,
+  CoreLeaveBalanceState,
+  CoreMyLeaveBalanceState,
   CorePayrollEntry,
   CorePayrollPeriod,
 } from "../types/hrCoreApi";
@@ -139,6 +142,26 @@ export const CoreHrService = {
   async checkOut(input: Record<string, unknown>) {
     return camel<CoreAttendanceRecord>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/attendance/check-out", { method: "POST", body: input }));
   },
+  async listMyLeaves(
+    query: {
+      status?: string;
+    } = {}
+  ) {
+    const rows =
+      await coreApiRequest<
+        Record<string, unknown>[]
+      >(
+        "/api/core/hr/employee-portal/leaves",
+        {
+          query,
+        }
+      );
+
+    return rows.map(
+      (row) =>
+        camel<CoreLeave>(row)
+    );
+  },
   async listLeaves(query: { employeeId?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/leaves", { query });
     return rows.map((row) => camel<CoreLeave>(row));
@@ -149,6 +172,70 @@ export const CoreHrService = {
   async decideLeave(id: string, status: "approved" | "rejected", hrNote?: string) {
     const action = status === "approved" ? "approve" : "reject";
     return camel<CoreLeave>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/leaves/${encodeURIComponent(id)}/${action}`, { method: "POST", body: { hrNote } }));
+  },
+  async getMyLeaveBalance() {
+    return coreApiRequest<CoreMyLeaveBalanceState>(
+      "/api/core/hr/employee-portal/leave-balance"
+    );
+  },
+  async getLeaveBalance(
+    employeeId: string,
+    query: {
+      includeDeleted?: boolean | string;
+      includeReversals?: boolean | string;
+      limit?: number;
+    } = {}
+  ) {
+    return coreApiRequest<CoreLeaveBalanceState>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-balance`,
+      { query }
+    );
+  },
+
+  async adjustLeaveBalance(
+    employeeId: string,
+    input: {
+      actionType: "add" | "deduct";
+      operationId: string;
+      days: number;
+      operationDate: string;
+      note?: string;
+    }
+  ) {
+    return coreApiRequest<CoreLeaveBalanceMutationResult>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-balance/adjustments`,
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+  },
+
+  async deleteLeaveBalanceEntry(
+    employeeId: string,
+    entryId: string
+  ) {
+    return coreApiRequest<CoreLeaveBalanceMutationResult>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-balance/entries/${encodeURIComponent(entryId)}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
+  async setLeaveEntitlementDate(
+    employeeId: string,
+    leaveEntitlementDate: string
+  ) {
+    return coreApiRequest<CoreLeaveBalanceState>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/leave-balance/entitlement-date`,
+      {
+        method: "PATCH",
+        body: {
+          leaveEntitlementDate,
+        },
+      }
+    );
   },
   async listAbsences(query: { employeeId?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/absences", { query });

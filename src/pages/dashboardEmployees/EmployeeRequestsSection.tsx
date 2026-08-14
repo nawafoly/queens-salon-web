@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   listEmployeeLeaveRequests,
-  approveEmployeeLeaveRequest,
-  reviewLeaveRequest,
   type EmployeeLeaveRequest,
 } from "../../services/employeeHub";
+import {
+  decideCanonicalEmployeeLeaveRequest,
+} from "../../services/canonicalEmployeeLeaveRequests";
 import {
   DashboardFieldV2,
   DashboardSelectV2,
@@ -199,20 +200,16 @@ export default function EmployeeRequestsSection({
     setError("");
     setMessage("");
     try {
-      if (nextStatus === "approved") {
-        await approveEmployeeLeaveRequest({
-          requestId: request.id,
+      await decideCanonicalEmployeeLeaveRequest(
+        request,
+        nextStatus,
+        {
           reviewerUid: uid,
-          reviewerName: reviewerName || "الإدارة",
-        });
-      } else {
-        await reviewLeaveRequest({
-          requestId: request.id,
-          status: nextStatus,
-          reviewerUid: uid,
-          reviewerName: reviewerName || "الإدارة",
-        });
-      }
+          reviewerName:
+            reviewerName || "الإدارة",
+          hrNote: adminNote,
+        }
+      );
       setMessage(nextStatus === "approved" ? "تم قبول الطلب." : nextStatus === "rejected" ? "تم رفض الطلب." : "تم إلغاء الطلب.");
       await load();
     } catch (err) {

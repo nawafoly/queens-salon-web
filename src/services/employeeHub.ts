@@ -24,13 +24,7 @@ import {
 import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
 import { normalizeEmployeePayrollRecord } from "../helpers/hr/employeePayroll";
 import { CoreHrService } from "./CoreHrService";
-import { applyStaffLeaveEntryWithBalanceAdjustment, deleteStaffLeaveEntryWithBalanceAdjustment } from "./firestoreLeaveBalance";
 
-// exportable indirections to allow tests to inject mocks
-export let __applyStaffLeaveEntryWithBalanceAdjustment = applyStaffLeaveEntryWithBalanceAdjustment;
-export let __deleteStaffLeaveEntryWithBalanceAdjustment = deleteStaffLeaveEntryWithBalanceAdjustment;
-
-import { applyBalanceAdjustmentForRequest, restoreBalanceForRequest } from "./employeeHub.helpers";
 import {
   HR_COLLECTIONS,
   SALON_ID,
@@ -977,7 +971,6 @@ export async function reviewLeaveRequest(args: {
   status: "approved" | "rejected" | "cancelled";
   reviewerUid: string;
   reviewerName?: string;
-  adjustActor?: { uid: string; role?: string; displayName?: string; email?: string };
 }) {
   const ref = hrDoc("employeeLeaveRequests", cleanText(args.requestId));
   const snap = await getDoc(ref);
@@ -1006,46 +999,6 @@ export async function reviewLeaveRequest(args: {
       body: `${cleanText(data?.fromDate || "")} → ${cleanText(data?.toDate || "")}`,
       route: "/employee/leave",
     }).catch(() => {});
-  }
-  // If the request was cancelled and it had an associated balance entry,
-  // create a reversal ledger entry (idempotent) using the same apply helper.
-  try {
-    if (args.status === "cancelled" && data?.balanceAdjustmentEntryId && args.adjustActor) {
-      // Avoid double restoration
-      if (!data.balanceRestored) {
-        const actor = args.adjustActor as { uid: string; role?: string; displayName?: string; email?: string };
-        const result = await restoreBalanceForRequest(
-          {
-            id: cleanText(args.requestId),
-            employeeId: cleanText(data?.employeeId || "") || undefined,
-            days: Number.isFinite(Number(data?.days)) ? Number(data.days) : undefined,
-            type: cleanText(data?.type || data?.leaveType || "") || undefined,
-            balanceAdjustmentEntryId: cleanText(data?.balanceAdjustmentEntryId || "") || undefined,
-            balanceAdjustmentChangeAmount: Number.isFinite(Number(data?.balanceAdjustmentChangeAmount)) ? Number(data.balanceAdjustmentChangeAmount) : undefined,
-            balanceAdjusted: !!data?.balanceAdjusted,
-            balanceRestored: !!data?.balanceRestored,
-          },
-          actor,
-          __applyStaffLeaveEntryWithBalanceAdjustment,
-          cleanText(args.requestId)
-        );
-
-        if (result && result.createdEntry) {
-          try {
-            await updateDoc(ref, {
-              balanceRestored: true,
-              balanceRestorationEntryId: result.createdEntry.id || undefined,
-              balanceRestoredAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            } as any);
-          } catch (e) {
-            console.warn("failed to record balance restoration for leave request", e);
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("failed to reverse leave balance after cancellation", e);
   }
 }
 
@@ -1381,8 +1334,6 @@ export async function approveEmployeeLeaveRequest(args: {
   requestId: string;
   reviewerUid: string;
   reviewerName?: string;
-  adjustLeaveBalance?: boolean;
-  adjustActor?: { uid: string; role?: string; displayName?: string; email?: string };
 }) {
   const requestId = cleanText(args.requestId);
   const reviewerUid = cleanText(args.reviewerUid);
@@ -1399,8 +1350,6 @@ export async function approveEmployeeLeaveRequest(args: {
   // We'll capture minimal request data inside the transaction to optionally
   // apply a balance adjustment after the request is approved. We avoid
   // performing ledger operations inside the same transaction because
-  // `applyStaffLeaveEntryWithBalanceAdjustment` uses its own transaction.
-  let leaveForBalance: { staffId?: string; days?: number; type?: string } | null = null;
   await runTransaction(db, async (tx) => {
     const reqRef = hrDoc("employeeLeaveRequests", requestId);
     const reqSnap = await tx.get(reqRef);
@@ -1423,11 +1372,6 @@ export async function approveEmployeeLeaveRequest(args: {
       route: "/employee/leave",
     };
 
-    leaveForBalance = {
-      staffId: cleanText(data?.employeeId || "") || undefined,
-      days: Number.isFinite(Number(data?.days)) ? Number(data.days) : undefined,
-      type: cleanText(data?.type || data?.leaveType || "") || undefined,
-    };
   });
 
   const notificationData = leaveNotification as
@@ -1448,43 +1392,5 @@ export async function approveEmployeeLeaveRequest(args: {
       body: notificationData.body,
       route: notificationData.route,
     }).catch(() => {});
-  }
-  // Optionally apply a leave balance adjustment linked to this approved request.
-  // This requires the caller to provide `adjustLeaveBalance: true` and an
-  // `adjustActor` object with managing role (owner/admin/hr). We do this
-  // outside the transaction above to avoid nested transactions. Use the
-  // testable helper `applyBalanceAdjustmentForRequest` which accepts an
-  // apply function (overridable via __applyStaffLeaveEntryWithBalanceAdjustment).
-  try {
-    if ((args as any).adjustLeaveBalance && (args as any).adjustActor && leaveForBalance && (leaveForBalance as any).staffId && (leaveForBalance as any).days && (leaveForBalance as any).days > 0) {
-      const actor = (args as any).adjustActor as { uid: string; role?: string; displayName?: string; email?: string };
-      const result = await applyBalanceAdjustmentForRequest(
-        {
-          id: requestId,
-          employeeId: (leaveForBalance as any).staffId,
-          days: (leaveForBalance as any).days,
-          type: (leaveForBalance as any).type,
-        },
-        actor,
-        __applyStaffLeaveEntryWithBalanceAdjustment,
-        requestId
-      );
-
-      if (result && result.createdEntry) {
-        try {
-          await updateDoc(hrDoc("employeeLeaveRequests", requestId), {
-            balanceAdjusted: true,
-            balanceAdjustmentEntryId: result.createdEntry.id || undefined,
-            balanceAdjustmentChangeAmount: result.createdEntry.changeAmount || undefined,
-            balanceAdjustedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          } as any);
-        } catch (e) {
-          console.warn("failed to record balance linkage for leave request", e);
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("leave balance adjustment failed after approval", e);
   }
 }

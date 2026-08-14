@@ -331,7 +331,7 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         title = excluded.title, job_title = excluded.job_title, department = excluded.department,
         employment_source = excluded.employment_source, partner_id = excluded.partner_id,
         partner_member_id = excluded.partner_member_id, contract_id = excluded.contract_id,
-        start_date = excluded.start_date, leave_balance = excluded.leave_balance,
+        start_date = excluded.start_date,
         base_salary_halalas = excluded.base_salary_halalas,
         housing_allowance_halalas = excluded.housing_allowance_halalas,
         transportation_allowance_halalas = excluded.transportation_allowance_halalas,

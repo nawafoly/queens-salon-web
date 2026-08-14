@@ -399,6 +399,9 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [employeeLeaveRequests, setEmployeeLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [employeeLeaveLoading, setEmployeeLeaveLoading] = useState(false);
   const [employeeLeaveError, setEmployeeLeaveError] = useState("");
+  const [employeeLeaveBalance, setEmployeeLeaveBalance] = useState<number | null>(null);
+  const [employeeLeaveBalanceLoading, setEmployeeLeaveBalanceLoading] = useState(false);
+  const [employeeLeaveBalanceError, setEmployeeLeaveBalanceError] = useState("");
   const [employeeTarget, setEmployeeTarget] = useState<EmployeeTargetMine | null>(null);
   const [employeeTargetLoading, setEmployeeTargetLoading] = useState(false);
   const [employeeTargetError, setEmployeeTargetError] = useState("");
@@ -680,6 +683,59 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   }, [attendanceEmployeeId, displayName]);
 
   useEffect(() => {
+    if (!session.uid) {
+      setEmployeeLeaveBalance(null);
+      setEmployeeLeaveBalanceError("");
+      setEmployeeLeaveBalanceLoading(false);
+      return;
+    }
+
+    let alive = true;
+
+    async function loadCanonicalLeaveBalance() {
+      setEmployeeLeaveBalanceLoading(true);
+      setEmployeeLeaveBalanceError("");
+
+      try {
+        const state =
+          await CoreHrService.getMyLeaveBalance();
+
+        const value = Number(
+          state.leaveBalance
+        );
+
+        if (alive) {
+          setEmployeeLeaveBalance(
+            Number.isFinite(value)
+              ? value
+              : null
+          );
+        }
+      } catch (error) {
+        if (alive) {
+          setEmployeeLeaveBalance(null);
+          setEmployeeLeaveBalanceError(
+            cleanText(
+              (error as any)?.message ||
+                "تعذر تحميل رصيد الإجازة من النظام المركزي."
+            )
+          );
+        }
+      } finally {
+        if (alive) {
+          setEmployeeLeaveBalanceLoading(false);
+        }
+      }
+    }
+
+    void loadCanonicalLeaveBalance();
+
+    return () => {
+      alive = false;
+    };
+  }, [session.uid]);
+
+  useEffect(() => {
     if (!session.uid || !attendanceEmployeeId) {
       setEmployeeLeaveRequests([]);
       setEmployeeLeaveLoading(false);
@@ -693,7 +749,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       setEmployeeLeaveLoading(true);
       setEmployeeLeaveError("");
       try {
-        const rows = await CoreHrService.listLeaves({ employeeId: attendanceEmployeeId });
+        const rows = await CoreHrService.listMyLeaves();
         if (alive) setEmployeeLeaveRequests(rows.map((row) => ({
           id: row.id,
           employeeUid: String(row.employeeUid || session.uid),
@@ -1032,7 +1088,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const shouldShowAttendanceNote =
     Boolean(attendanceMessage) ||
     hasAttendanceVerificationMeta;
-  const leaveBalanceValue = cleanText(profile.leaveBalanceDays ?? profile.leaveBalance ?? "") || "—";
+  const leaveBalanceValue =
+    employeeLeaveBalanceLoading
+      ? "جاري..."
+      : employeeLeaveBalance === null
+        ? "—"
+        : `${employeeLeaveBalance} يوم`;
   const attendanceDateLabel = formatAttendanceDateLabel(attendanceDate);
   const punchHint = attendanceStatus === "checked_out"
     ? "تم حفظ الحضور والانصراف لهذا اليوم"
@@ -1399,9 +1460,12 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           <div className="employee-balance-card">
             <div>
               <span>رصيد الإجازات</span>
-              <small>نفس الرصيد التشغيلي المستخدم حاليًا في إدارة الموظفات</small>
+              <small>
+                {employeeLeaveBalanceError ||
+                  "الرصيد التشغيلي المعتمد من Core"}
+              </small>
             </div>
-            <strong>{leaveBalanceValue === "—" ? "—" : `${leaveBalanceValue} يوم`}</strong>
+            <strong>{leaveBalanceValue}</strong>
           </div>
         </div>
 

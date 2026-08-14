@@ -17,6 +17,7 @@ import {
 } from '../d1.js';
 import { AppError } from '../errors.js';
 import { permissionPayrollSummary } from './permissions.js';
+import { createLeave, decideLeave } from './leaves.js';
 
 export const EMPLOYEE_REQUEST_TYPES = new Set([
   'attendance_correction',
@@ -798,68 +799,303 @@ async function createPermissionEffect(db, salonId, row, payload, actor) {
   return id;
 }
 
-async function createLeaveEffect(db, salonId, row, payload, actor) {
-  const existingLeave = await dbFirst(db, `SELECT * FROM employee_leaves WHERE salon_id = ? AND request_id = ? LIMIT 1`, [salonId, row.id]);
-  if (existingLeave) return { leaveId: existingLeave.id, permissionId: null, days: Number(existingLeave.days_count || 0) };
+function employeeRequestLeavePolicy(payload) {
+  const leaveType = cleanText(
+    payload.leaveType
+  ).toLowerCase();
+
+  const partial =
+    cleanText(
+      payload.durationKind
+    ).toLowerCase() === 'partial';
+
+  return {
+    deductFromBalance:
+      !partial &&
+      (
+        leaveType === 'annual' ||
+        leaveType === 'sick' ||
+        leaveType === 'emergency'
+      ),
+
+    affectsPayroll:
+      !partial &&
+      leaveType === 'unpaid',
+  };
+}
+
+
+async function createLeaveEffect(
+  db,
+  salonId,
+  row,
+  payload,
+  actor
+) {
+  let leave = await dbFirst(
+    db,
+    `SELECT *
+       FROM employee_leaves
+      WHERE salon_id = ?
+        AND request_id = ?
+      LIMIT 1`,
+    [salonId, row.id]
+  );
+
+  if (leave) {
+    const status = cleanText(
+      leave.status
+    ).toLowerCase();
+
+    if (status === 'approved') {
+      return {
+        leaveId: leave.id,
+        permissionId: null,
+        days: Number(
+          leave.days_count || 0
+        ),
+      };
+    }
+
+    if (status !== 'pending') {
+      throw new AppError(
+        409,
+        'core_employee_request:leave_effect_invalid_status'
+      );
+    }
+  }
+
+
   const overlap = await dbFirst(
     db,
-    `SELECT id FROM employee_leaves WHERE salon_id = ? AND employee_id = ? AND status = 'approved'
-      AND NOT (end_date < ? OR start_date > ?) LIMIT 1`,
-    [salonId, row.employee_id, payload.startDate, payload.endDate]
+    `SELECT id
+       FROM employee_leaves
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND status = 'approved'
+        AND NOT (
+          end_date < ?
+          OR start_date > ?
+        )
+      LIMIT 1`,
+    [
+      salonId,
+      row.employee_id,
+      payload.startDate,
+      payload.endDate,
+    ]
   );
-  if (overlap) throw new AppError(409, 'core_employee_request:leave_overlap');
-  const id = generatedId('leave');
-  const start = new Date(`${payload.startDate}T12:00:00Z`);
-  const end = new Date(`${payload.endDate}T12:00:00Z`);
-  const fullDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-  const partialMinutes = payload.durationKind === 'partial'
-    ? durationMinutes(payload.partialStartTime, payload.partialEndTime)
-    : 0;
-  const days = payload.durationKind === 'partial'
-    ? Math.max(0.125, Math.round((partialMinutes / (8 * 60)) * 1000) / 1000)
-    : fullDays;
-  const employment = await dbFirst(
-    db,
-    `SELECT leave_balance FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
-    [salonId, row.employee_id]
+
+  if (overlap) {
+    throw new AppError(
+      409,
+      'core_employee_request:leave_overlap'
+    );
+  }
+
+
+  const startDate = new Date(
+    `${payload.startDate}T12:00:00Z`
   );
-  if (payload.leaveType === 'annual' && Number(employment?.leave_balance || 0) + 0.0001 < days) {
-    throw new AppError(409, 'core_employee_request:insufficient_leave_balance');
+
+  const endDate = new Date(
+    `${payload.endDate}T12:00:00Z`
+  );
+
+  const fullDays =
+    Math.floor(
+      (
+        endDate.getTime() -
+        startDate.getTime()
+      ) / 86400000
+    ) + 1;
+
+  const partial =
+    cleanText(
+      payload.durationKind
+    ).toLowerCase() === 'partial';
+
+  const partialMinutes =
+    partial
+      ? durationMinutes(
+          payload.partialStartTime,
+          payload.partialEndTime
+        )
+      : 0;
+
+  const days =
+    partial
+      ? Math.max(
+          0.125,
+          Math.round(
+            (
+              partialMinutes /
+              (8 * 60)
+            ) * 1000
+          ) / 1000
+        )
+      : fullDays;
+
+  const policy =
+    employeeRequestLeavePolicy(
+      payload
+    );
+
+  let createdHere = false;
+
+  if (!leave) {
+    leave = await createLeave(
+      db,
+      salonId,
+      {
+        id: generatedId('leave'),
+
+        employeeId:
+          row.employee_id,
+
+        employeeUid:
+          row.employee_uid,
+
+        employeeName:
+          row.employee_name_snapshot,
+
+        status: 'pending',
+
+        leaveType:
+          cleanText(
+            payload.leaveType
+          ) || 'annual',
+
+        startDate:
+          payload.startDate,
+
+        endDate:
+          payload.endDate,
+
+        daysCount: days,
+
+        durationKind:
+          partial
+            ? 'partial'
+            : 'full_day',
+
+        partialStartTime:
+          partial
+            ? payload.partialStartTime
+            : null,
+
+        partialEndTime:
+          partial
+            ? payload.partialEndTime
+            : null,
+
+        requestId:
+          row.id,
+
+        deductFromBalance:
+          policy.deductFromBalance,
+
+        affectsPayroll:
+          policy.affectsPayroll,
+
+        employeeNote:
+          payload.reason,
+
+        hrNote:
+          optionalText(
+            payload.hrNote
+          ) || null,
+      },
+      actor
+    );
+
+    createdHere = true;
   }
-  const now = nowIso();
-  const statements = [{
-    sql: `INSERT INTO employee_leaves
-      (id, salon_id, employee_id, employee_uid, employee_name, employee_email, status,
-       leave_type, start_date, end_date, days_count, employee_note, hr_note, decided_at,
-       decided_by_uid, decided_by_email, decided_by_name, created_at, updated_at,
-       duration_kind, partial_start_time, partial_end_time, request_id)
-     VALUES (?, ?, ?, ?, ?, NULL, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    params: [id, salonId, row.employee_id, row.employee_uid, row.employee_name_snapshot,
-      payload.leaveType, payload.startDate, payload.endDate, days, payload.reason,
-      optionalText(payload.hrNote) || null, now, cleanText(actor.uid) || null,
-      cleanText(actor.email) || null, cleanText(actor.name) || null, now, now,
-      payload.durationKind, payload.partialStartTime || null, payload.partialEndTime || null, row.id],
-  }];
-  if (payload.leaveType === 'annual') {
-    statements.push({
-      sql: `UPDATE employee_employment SET leave_balance = leave_balance - ?, updated_at = ?, updated_by_uid = ?, updated_by_email = ?
-             WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?`,
-      params: [days, now, cleanText(actor.uid) || null, cleanText(actor.email) || null,
-        salonId, row.employee_id, days],
-    });
+
+
+  try {
+    if (
+      cleanText(
+        leave.status
+      ).toLowerCase() === 'pending'
+    ) {
+      leave = await decideLeave(
+        db,
+        salonId,
+        leave.id,
+        {
+          status: 'approved',
+          hrNote:
+            optionalText(
+              payload.hrNote
+            ) ||
+            'اعتماد طلب الإجازة من نظام الطلبات',
+        },
+        actor
+      );
+    }
+  } catch (error) {
+    // If this execution created the pending row and
+    // canonical approval failed (for example insufficient
+    // balance), remove only that untouched pending row.
+    //
+    // decideLeave owns balance atomicity, so no balance
+    // mutation exists when approval fails.
+    if (createdHere) {
+      await dbRun(
+        db,
+        `DELETE FROM employee_leaves
+          WHERE salon_id = ?
+            AND id = ?
+            AND request_id = ?
+            AND status = 'pending'
+            AND balance_adjustment_id IS NULL`,
+        [
+          salonId,
+          leave.id,
+          row.id,
+        ]
+      );
+    }
+
+    throw error;
   }
-  await dbBatch(db, statements);
+
+
   let permissionId = null;
-  if (payload.durationKind === 'partial') {
-    permissionId = await createPermissionEffect(db, salonId, row, {
-      date: payload.startDate,
-      startTime: payload.partialStartTime,
-      endTime: payload.partialEndTime,
-      reason: `إجازة جزئية: ${payload.reason}`,
-      notes: payload.notes || '',
-    }, actor);
+
+  if (partial) {
+    permissionId =
+      await createPermissionEffect(
+        db,
+        salonId,
+        row,
+        {
+          date:
+            payload.startDate,
+
+          startTime:
+            payload.partialStartTime,
+
+          endTime:
+            payload.partialEndTime,
+
+          reason:
+            `إجازة جزئية: ${payload.reason}`,
+
+          notes:
+            payload.notes || '',
+        },
+        actor
+      );
   }
-  return { leaveId: id, permissionId, days };
+
+
+  return {
+    leaveId: leave.id,
+    permissionId,
+    days,
+  };
 }
 
 function externalAttendanceRecordId(value) {
@@ -1153,187 +1389,864 @@ async function executeOvertime(db, salonId, row, payload, actor, input) {
 }
 
 
-async function executeExceptionalFinancialPayment(db, salonId, row, payload, actor, input) {
-  const payrollMonth = cleanText(input.payrollMonth) || riyadhDateKey().slice(0, 7);
+async function executeExceptionalFinancialPayment(
+  db,
+  salonId,
+  row,
+  payload,
+  actor,
+  input
+) {
+  const payrollMonth =
+    cleanText(input.payrollMonth) ||
+    riyadhDateKey().slice(0, 7);
+
   addMonths(payrollMonth, 0);
+
+
+  // =====================================================
+  // Idempotent existing execution
+  // =====================================================
 
   const existing = await dbFirst(
     db,
-    `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
-    [salonId, row.id]
+    `SELECT *
+       FROM employee_financial_payments
+      WHERE salon_id = ?
+        AND request_id = ?
+      LIMIT 1`,
+    [
+      salonId,
+      row.id,
+    ]
   );
+
   if (existing) {
-    await refreshPayrollFinancials(db, salonId, row.employee_id, existing.payroll_month);
-    const currentEmployment = await dbFirst(
+    const existingLedger =
+      await dbFirst(
+        db,
+        `SELECT *
+           FROM employee_leave_balance_ledger
+          WHERE salon_id = ?
+            AND source_type =
+                  'exceptional_financial_payment'
+            AND source_id = ?
+          LIMIT 1`,
+        [
+          salonId,
+          row.id,
+        ]
+      );
+
+    // New canonical runtime must never accept a financial
+    // payment that deducted leave without its ledger row.
+    if (
+      Number(
+        existing.leave_balance_deducted || 0
+      ) > 0 &&
+      !existingLedger
+    ) {
+      throw new AppError(
+        409,
+        'core_employee_request:financial_payment_balance_ledger_missing'
+      );
+    }
+
+    await refreshPayrollFinancials(
       db,
-      `SELECT leave_balance FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
-      [salonId, row.employee_id]
+      salonId,
+      row.employee_id,
+      existing.payroll_month
     );
+
+    const currentEmployment =
+      await dbFirst(
+        db,
+        `SELECT leave_balance
+           FROM employee_employment
+          WHERE salon_id = ?
+            AND employee_id = ?
+          LIMIT 1`,
+        [
+          salonId,
+          row.employee_id,
+        ]
+      );
+
     return {
-      sourceType: 'employee_financial_payment',
-      sourceId: existing.id,
-      before: null,
+      sourceType:
+        'employee_financial_payment',
+
+      sourceId:
+        existing.id,
+
+      before:
+        existingLedger
+          ? {
+              leaveBalance:
+                Number(
+                  existingLedger.balance_before
+                ),
+            }
+          : null,
+
       after: {
         ...existing,
-        leaveBalanceAfter: Number(currentEmployment?.leave_balance || 0),
-        leaveBalanceDeducted: Number(existing.leave_balance_deducted || 0),
+
+        leaveBalanceAfter:
+          Number(
+            currentEmployment?.leave_balance ||
+              0
+          ),
+
+        leaveBalanceDeducted:
+          Number(
+            existing.leave_balance_deducted ||
+              0
+          ),
       },
     };
   }
 
-  const payrollEntry = await dbFirst(
-    db,
-    `SELECT * FROM payroll_entries
-      WHERE salon_id = ? AND employee_id = ? AND payroll_month = ?
-        AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')
-      LIMIT 1`,
-    [salonId, row.employee_id, payrollMonth]
-  );
-  if (!payrollEntry) throw new AppError(409, 'core_employee_request:payroll_entry_required');
 
-  const requestedDays = numberInRange(payload.requestedDays, 'requested_days', 0.5, 60);
-  if (Math.round(requestedDays * 2) !== requestedDays * 2) {
-    throw new AppError(400, 'core_employee_request:invalid_requested_days');
-  }
-  const baseSalaryHalalas = positiveInteger(payload.baseSalaryHalalas, 'base_salary', 100_000_000);
-  const dayRateHalalas = positiveInteger(payload.dayRateHalalas, 'day_rate', 10_000_000);
-  const amountHalalas = positiveInteger(payload.calculatedAmountHalalas, 'calculated_amount', 100_000_000);
-  const financialReference = cleanText(input.financialReference) || `EFP-${row.request_number}`;
+  // =====================================================
+  // Payroll must exist and still be editable
+  // =====================================================
 
-  const employment = await dbFirst(
-    db,
-    `SELECT leave_balance FROM employee_employment
-      WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
-    [salonId, row.employee_id]
-  );
-  const leaveBalanceBefore = Number(employment?.leave_balance);
-  if (!employment || !Number.isFinite(leaveBalanceBefore) || leaveBalanceBefore < requestedDays) {
-    throw new AppError(409, 'core_employee_request:insufficient_annual_leave_balance');
-  }
-
-  const parsedAdditions = parseJson(payrollEntry.additions_json, []);
-  const additions = Array.isArray(parsedAdditions) ? parsedAdditions : [];
-  const alreadyIncluded = additions.some((item) =>
-    cleanText(item?.requestId || item?.request_id) === cleanText(row.id)
-  );
-  const nextAdditions = alreadyIncluded ? additions : [
-    ...additions,
-    {
-      id: `employee_financial_payment:${row.id}`,
-      type: 'exceptional_financial_payment',
-      label: 'تعويض مالي بدل إجازة',
-      requestId: row.id,
-      requestNumber: row.request_number,
-      amountHalalas,
-      requestedDays,
-      financialReference,
-    },
-  ];
-  const nextManualAdditions = Number(payrollEntry.manual_additions_halalas || 0) + (alreadyIncluded ? 0 : amountHalalas);
-  const now = nowIso();
-  const paymentId = generatedId('financial_payment');
-
-  await dbBatch(db, [
-    {
-      sql: `INSERT OR IGNORE INTO employee_financial_payments
-        (id, salon_id, request_id, request_number, employee_id, employee_uid,
-         requested_days, base_salary_halalas, day_rate_halalas, amount_halalas,
-         payroll_month, payroll_entry_id, financial_reference, payment_status,
-         leave_balance_deducted, approved_by_uid, approved_at, executed_by_uid,
-         executed_at, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'included', ?, ?, ?, ?, ?, ?, ?
-         FROM employee_employment
-        WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?`,
-      params: [
-        paymentId,
+  const payrollEntry =
+    await dbFirst(
+      db,
+      `SELECT *
+         FROM payroll_entries
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND payroll_month = ?
+          AND COALESCE(status, 'draft')
+                NOT IN ('approved', 'paid')
+        LIMIT 1`,
+      [
         salonId,
-        row.id,
-        row.request_number,
         row.employee_id,
-        row.employee_uid,
-        requestedDays,
-        baseSalaryHalalas,
-        dayRateHalalas,
-        amountHalalas,
         payrollMonth,
-        payrollEntry.id,
-        financialReference,
-        requestedDays,
-        cleanText(row.decided_by_uid) || null,
-        row.approved_at || now,
-        cleanText(actor.uid) || null,
-        now,
-        now,
-        now,
-        salonId,
-        row.employee_id,
-        requestedDays,
-      ],
-    },
-    {
-      sql: `UPDATE payroll_entries
-              SET manual_additions_halalas = ?, additions_json = ?, updated_at = ?
-            WHERE salon_id = ? AND id = ?
-              AND COALESCE(status, 'draft') NOT IN ('approved', 'paid')
-              AND EXISTS (
-                SELECT 1 FROM employee_financial_payments
-                 WHERE salon_id = ? AND request_id = ?
-              )`,
-      params: [nextManualAdditions, json(nextAdditions), now, salonId, payrollEntry.id, salonId, row.id],
-    },
-    {
-      sql: `UPDATE employee_employment
-              SET leave_balance = leave_balance - ?, updated_at = ?,
-                  updated_by_uid = ?, updated_by_email = ?
-            WHERE salon_id = ? AND employee_id = ? AND leave_balance >= ?
-              AND EXISTS (
-                SELECT 1 FROM employee_financial_payments
-                 WHERE salon_id = ? AND request_id = ?
-              )`,
-      params: [
-        requestedDays,
-        now,
-        cleanText(actor.uid) || null,
-        cleanText(actor.email) || null,
-        salonId,
-        row.employee_id,
-        requestedDays,
-        salonId,
-        row.id,
-      ],
-    },
-  ]);
+      ]
+    );
 
-  const stored = await dbFirst(
-    db,
-    `SELECT * FROM employee_financial_payments WHERE salon_id = ? AND request_id = ? LIMIT 1`,
-    [salonId, row.id]
-  );
-  if (!stored) throw new AppError(409, 'core_employee_request:insufficient_annual_leave_balance');
-
-  const employmentAfter = await dbFirst(
-    db,
-    `SELECT leave_balance FROM employee_employment WHERE salon_id = ? AND employee_id = ? LIMIT 1`,
-    [salonId, row.employee_id]
-  );
-  const leaveBalanceAfter = Number(employmentAfter?.leave_balance);
-  if (!Number.isFinite(leaveBalanceAfter) || Math.abs(leaveBalanceAfter - (leaveBalanceBefore - requestedDays)) > 0.000001) {
-    throw new AppError(500, 'core_employee_request:leave_balance_deduction_failed');
+  if (!payrollEntry) {
+    throw new AppError(
+      409,
+      'core_employee_request:payroll_entry_required'
+    );
   }
 
-  const payrollEntryId = await refreshPayrollFinancials(db, salonId, row.employee_id, payrollMonth);
-  if (!payrollEntryId) throw new AppError(409, 'core_employee_request:payroll_entry_required');
+
+  // =====================================================
+  // Validate compensation
+  // =====================================================
+
+  const requestedDays =
+    numberInRange(
+      payload.requestedDays,
+      'requested_days',
+      0.5,
+      60
+    );
+
+  if (
+    Math.round(requestedDays * 2) !==
+    requestedDays * 2
+  ) {
+    throw new AppError(
+      400,
+      'core_employee_request:invalid_requested_days'
+    );
+  }
+
+  const baseSalaryHalalas =
+    positiveInteger(
+      payload.baseSalaryHalalas,
+      'base_salary',
+      100_000_000
+    );
+
+  const dayRateHalalas =
+    positiveInteger(
+      payload.dayRateHalalas,
+      'day_rate',
+      10_000_000
+    );
+
+  const amountHalalas =
+    positiveInteger(
+      payload.calculatedAmountHalalas,
+      'calculated_amount',
+      100_000_000
+    );
+
+  const financialReference =
+    cleanText(input.financialReference) ||
+    `EFP-${row.request_number}`;
+
+
+  // =====================================================
+  // Pre-check canonical balance
+  // Batch below checks it again atomically.
+  // =====================================================
+
+  const employment =
+    await dbFirst(
+      db,
+      `SELECT leave_balance
+         FROM employee_employment
+        WHERE salon_id = ?
+          AND employee_id = ?
+        LIMIT 1`,
+      [
+        salonId,
+        row.employee_id,
+      ]
+    );
+
+  const currentBalance =
+    Number(
+      employment?.leave_balance
+    );
+
+  if (
+    !employment ||
+    !Number.isFinite(currentBalance) ||
+    currentBalance < requestedDays
+  ) {
+    throw new AppError(
+      409,
+      'core_employee_request:insufficient_annual_leave_balance'
+    );
+  }
+
+
+  // =====================================================
+  // Payroll addition snapshot
+  // =====================================================
+
+  const parsedAdditions =
+    parseJson(
+      payrollEntry.additions_json,
+      []
+    );
+
+  const additions =
+    Array.isArray(parsedAdditions)
+      ? parsedAdditions
+      : [];
+
+  const alreadyIncluded =
+    additions.some(
+      (item) =>
+        cleanText(
+          item?.requestId ||
+            item?.request_id
+        ) === cleanText(row.id)
+    );
+
+  const nextAdditions =
+    alreadyIncluded
+      ? additions
+      : [
+          ...additions,
+          {
+            id:
+              `employee_financial_payment:${row.id}`,
+
+            type:
+              'exceptional_financial_payment',
+
+            label:
+              'تعويض مالي بدل إجازة',
+
+            requestId:
+              row.id,
+
+            requestNumber:
+              row.request_number,
+
+            amountHalalas,
+            requestedDays,
+            financialReference,
+          },
+        ];
+
+  const nextManualAdditions =
+    Number(
+      payrollEntry.manual_additions_halalas ||
+        0
+    ) +
+    (
+      alreadyIncluded
+        ? 0
+        : amountHalalas
+    );
+
+
+  // =====================================================
+  // Canonical IDs
+  // =====================================================
+
+  const now = nowIso();
+
+  const paymentId =
+    generatedId(
+      'financial_payment'
+    );
+
+  const ledgerId =
+    `leave_balance_efp_${row.id}`;
+
+
+  // =====================================================
+  // ONE D1 BATCH:
+  //
+  // payment
+  //   +
+  // payroll addition
+  //   +
+  // employee balance
+  //   +
+  // leave balance ledger
+  //
+  // There is NO separate compensation balance mutation.
+  // =====================================================
+
+  await dbBatch(
+    db,
+    [
+      // -------------------------------------------------
+      // A) Create financial payment once
+      // -------------------------------------------------
+      {
+        sql: `
+          INSERT OR IGNORE INTO
+            employee_financial_payments (
+              id,
+              salon_id,
+              request_id,
+              request_number,
+              employee_id,
+              employee_uid,
+              requested_days,
+              base_salary_halalas,
+              day_rate_halalas,
+              amount_halalas,
+              payroll_month,
+              payroll_entry_id,
+              financial_reference,
+              payment_status,
+              leave_balance_deducted,
+              approved_by_uid,
+              approved_at,
+              executed_by_uid,
+              executed_at,
+              created_at,
+              updated_at
+            )
+          SELECT
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            'included',
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          FROM employee_employment employment
+          WHERE employment.salon_id = ?
+            AND employment.employee_id = ?
+            AND employment.leave_balance >= ?
+            AND EXISTS (
+              SELECT 1
+                FROM payroll_entries open_payroll
+               WHERE open_payroll.salon_id = ?
+                 AND open_payroll.id = ?
+                 AND COALESCE(
+                       open_payroll.status,
+                       'draft'
+                     )
+                     NOT IN (
+                       'approved',
+                       'paid'
+                     )
+            )
+        `,
+        params: [
+          paymentId,
+          salonId,
+          row.id,
+          row.request_number,
+          row.employee_id,
+          row.employee_uid,
+          requestedDays,
+          baseSalaryHalalas,
+          dayRateHalalas,
+          amountHalalas,
+          payrollMonth,
+          payrollEntry.id,
+          financialReference,
+          requestedDays,
+          cleanText(
+            row.decided_by_uid
+          ) || null,
+          row.approved_at || now,
+          cleanText(actor.uid) || null,
+          now,
+          now,
+          now,
+
+          salonId,
+          row.employee_id,
+          requestedDays,
+
+          salonId,
+          payrollEntry.id,
+        ],
+      },
+
+
+      // -------------------------------------------------
+      // B) Include amount in payroll exactly once
+      // -------------------------------------------------
+      {
+        sql: `
+          UPDATE payroll_entries
+             SET manual_additions_halalas = ?,
+                 additions_json = ?,
+                 updated_at = ?
+           WHERE salon_id = ?
+             AND id = ?
+             AND COALESCE(
+                   status,
+                   'draft'
+                 )
+                 NOT IN (
+                   'approved',
+                   'paid'
+                 )
+             AND EXISTS (
+               SELECT 1
+                 FROM employee_financial_payments payment
+                WHERE payment.salon_id = ?
+                  AND payment.request_id = ?
+             )
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM employee_leave_balance_ledger ledger
+                WHERE ledger.salon_id = ?
+                  AND ledger.source_type =
+                        'exceptional_financial_payment'
+                  AND ledger.source_id = ?
+             )
+        `,
+        params: [
+          nextManualAdditions,
+          json(nextAdditions),
+          now,
+
+          salonId,
+          payrollEntry.id,
+
+          salonId,
+          row.id,
+
+          salonId,
+          row.id,
+        ],
+      },
+
+
+      // -------------------------------------------------
+      // C) Deduct annual leave and write operation marker
+      // -------------------------------------------------
+      {
+        sql: `
+          UPDATE employee_employment
+             SET leave_balance =
+                   leave_balance - ?,
+
+                 leave_balance_last_entry_id = ?,
+
+                 updated_by_uid = ?,
+                 updated_by_email = ?,
+                 updated_at = ?
+
+           WHERE salon_id = ?
+             AND employee_id = ?
+             AND leave_balance >= ?
+
+             AND EXISTS (
+               SELECT 1
+                 FROM employee_financial_payments payment
+                WHERE payment.salon_id = ?
+                  AND payment.request_id = ?
+             )
+
+             AND EXISTS (
+               SELECT 1
+                 FROM payroll_entries open_payroll
+                WHERE open_payroll.salon_id = ?
+                  AND open_payroll.id = ?
+                  AND COALESCE(
+                        open_payroll.status,
+                        'draft'
+                      )
+                      NOT IN (
+                        'approved',
+                        'paid'
+                      )
+             )
+
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM employee_leave_balance_ledger ledger
+                WHERE ledger.salon_id = ?
+                  AND ledger.source_type =
+                        'exceptional_financial_payment'
+                  AND ledger.source_id = ?
+             )
+        `,
+        params: [
+          requestedDays,
+          ledgerId,
+
+          cleanText(actor.uid) || null,
+          cleanText(actor.email) || null,
+          now,
+
+          salonId,
+          row.employee_id,
+          requestedDays,
+
+          salonId,
+          row.id,
+
+          salonId,
+          payrollEntry.id,
+
+          salonId,
+          row.id,
+        ],
+      },
+
+
+      // -------------------------------------------------
+      // D) Ledger row is tied to exact operation marker
+      // -------------------------------------------------
+      {
+        sql: `
+          INSERT INTO employee_leave_balance_ledger (
+            id,
+            salon_id,
+            employee_id,
+            action_type,
+            days,
+            change_amount,
+            balance_before,
+            balance_after,
+            operation_date,
+            note,
+            source_type,
+            source_id,
+            created_by_uid,
+            created_by_email,
+            created_by_name,
+            created_at
+          )
+          SELECT
+            ?,
+            ?,
+            ?,
+            'deduct',
+            ?,
+            ?,
+            employment.leave_balance + ?,
+            employment.leave_balance,
+            ?,
+            ?,
+            'exceptional_financial_payment',
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          FROM employee_employment employment
+          WHERE employment.salon_id = ?
+            AND employment.employee_id = ?
+            AND employment.leave_balance_last_entry_id = ?
+
+            AND EXISTS (
+              SELECT 1
+                FROM employee_financial_payments payment
+               WHERE payment.salon_id = ?
+                 AND payment.request_id = ?
+            )
+
+            AND NOT EXISTS (
+              SELECT 1
+                FROM employee_leave_balance_ledger existing_ledger
+               WHERE existing_ledger.salon_id = ?
+                 AND existing_ledger.source_type =
+                       'exceptional_financial_payment'
+                 AND existing_ledger.source_id = ?
+            )
+        `,
+        params: [
+          ledgerId,
+          salonId,
+          row.employee_id,
+
+          requestedDays,
+          -requestedDays,
+          requestedDays,
+
+          now.slice(0, 10),
+
+          'تعويض مالي بدل إجازة',
+
+          row.id,
+
+          cleanText(actor.uid) || null,
+          cleanText(actor.email) || null,
+          cleanText(actor.name) || null,
+          now,
+
+          salonId,
+          row.employee_id,
+          ledgerId,
+
+          salonId,
+          row.id,
+
+          salonId,
+          row.id,
+        ],
+      },
+    ]
+  );
+
+
+  // =====================================================
+  // Fail-closed verification
+  // =====================================================
+
+  const stored =
+    await dbFirst(
+      db,
+      `SELECT *
+         FROM employee_financial_payments
+        WHERE salon_id = ?
+          AND request_id = ?
+        LIMIT 1`,
+      [
+        salonId,
+        row.id,
+      ]
+    );
+
+  if (!stored) {
+    const currentPayroll =
+      await dbFirst(
+        db,
+        `SELECT id
+           FROM payroll_entries
+          WHERE salon_id = ?
+            AND id = ?
+            AND COALESCE(
+                  status,
+                  'draft'
+                )
+                NOT IN (
+                  'approved',
+                  'paid'
+                )
+          LIMIT 1`,
+        [
+          salonId,
+          payrollEntry.id,
+        ]
+      );
+
+    if (!currentPayroll) {
+      throw new AppError(
+        409,
+        'core_employee_request:payroll_entry_required'
+      );
+    }
+
+    const latestEmployment =
+      await dbFirst(
+        db,
+        `SELECT leave_balance
+           FROM employee_employment
+          WHERE salon_id = ?
+            AND employee_id = ?
+          LIMIT 1`,
+        [
+          salonId,
+          row.employee_id,
+        ]
+      );
+
+    if (
+      !latestEmployment ||
+      Number(
+        latestEmployment.leave_balance ||
+          0
+      ) < requestedDays
+    ) {
+      throw new AppError(
+        409,
+        'core_employee_request:insufficient_annual_leave_balance'
+      );
+    }
+
+    throw new AppError(
+      409,
+      'core_employee_request:financial_payment_not_applied'
+    );
+  }
+
+
+  const ledger =
+    await dbFirst(
+      db,
+      `SELECT *
+         FROM employee_leave_balance_ledger
+        WHERE salon_id = ?
+          AND source_type =
+                'exceptional_financial_payment'
+          AND source_id = ?
+        LIMIT 1`,
+      [
+        salonId,
+        row.id,
+      ]
+    );
+
+  if (!ledger) {
+    throw new AppError(
+      500,
+      'core_employee_request:financial_payment_balance_ledger_missing'
+    );
+  }
+
+
+  const employmentAfter =
+    await dbFirst(
+      db,
+      `SELECT
+         leave_balance,
+         leave_balance_last_entry_id
+       FROM employee_employment
+       WHERE salon_id = ?
+         AND employee_id = ?
+       LIMIT 1`,
+      [
+        salonId,
+        row.employee_id,
+      ]
+    );
+
+  const leaveBalanceAfter =
+    Number(
+      employmentAfter?.leave_balance
+    );
+
+  if (
+    !Number.isFinite(
+      leaveBalanceAfter
+    ) ||
+    Math.abs(
+      leaveBalanceAfter -
+      Number(ledger.balance_after)
+    ) > 0.000001
+  ) {
+    throw new AppError(
+      500,
+      'core_employee_request:leave_balance_deduction_failed'
+    );
+  }
+
+  if (
+    cleanText(
+      employmentAfter?.leave_balance_last_entry_id
+    ) !== cleanText(ledger.id)
+  ) {
+    throw new AppError(
+      500,
+      'core_employee_request:leave_balance_marker_mismatch'
+    );
+  }
+
+
+  const payrollEntryId =
+    await refreshPayrollFinancials(
+      db,
+      salonId,
+      row.employee_id,
+      payrollMonth
+    );
+
+  if (!payrollEntryId) {
+    throw new AppError(
+      409,
+      'core_employee_request:payroll_entry_required'
+    );
+  }
+
 
   return {
-    sourceType: 'employee_financial_payment',
-    sourceId: stored.id,
-    before: { leaveBalance: leaveBalanceBefore },
+    sourceType:
+      'employee_financial_payment',
+
+    sourceId:
+      stored.id,
+
+    before: {
+      leaveBalance:
+        Number(
+          ledger.balance_before
+        ),
+    },
+
     after: {
       ...stored,
+
       payrollEntryId,
-      leaveBalanceBefore,
-      leaveBalanceAfter,
-      leaveBalanceDeducted: requestedDays,
+
+      leaveBalanceBefore:
+        Number(
+          ledger.balance_before
+        ),
+
+      leaveBalanceAfter:
+        Number(
+          ledger.balance_after
+        ),
+
+      leaveBalanceDeducted:
+        requestedDays,
+
+      leaveBalanceLedgerId:
+        ledger.id,
     },
   };
 }

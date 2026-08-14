@@ -130,6 +130,20 @@ export function calculateLeaveDaysCount(startDate: unknown, endDate: unknown) {
   return Math.floor((end.getTime() - start.getTime()) / oneDay) + 1;
 }
 
+export function getEmployeeLeavePolicy(value: unknown) {
+  const type = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  return {
+    deductFromBalance:
+      type === "annual" ||
+      type === "sick" ||
+      type === "emergency",
+    affectsPayroll: type === "unpaid",
+  };
+}
+
 export function getLeaveTypeLabel(value: unknown) {
   const normalized = String(value || "").trim().toLowerCase();
   return (

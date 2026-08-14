@@ -36,11 +36,12 @@ import {
 
 import { db } from "../services/firebase";
 import {
-  applyStaffLeaveEntryWithBalanceAdjustment,
-  deleteStaffLeaveEntryWithBalanceAdjustment,
   normalizeLeaveEntryType,
-} from "../services/firestoreLeaveBalance";
+} from "../helpers/hr/leaveBalanceEntry";
 import { writeAuditLog } from "../services/logService";
+import {
+  getEmployeeLeavePolicy,
+} from "../helpers/hr/employeeLeave";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { CoreHrService } from "../services/CoreHrService";
 import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
@@ -54,13 +55,12 @@ import {
   listAttendanceByDateRangeForEmployeeFromWorker,
 } from "../services/attendanceWorkerService";
 import {
-  approveEmployeeLeaveRequest,
   createLeaveRequest,
   createEmployeeNotification,
   listEmployeeLeaveRequests,
-  reviewLeaveRequest,
   type EmployeeLeaveRequest,
 } from "../services/employeeHub";
+import { decideCanonicalEmployeeLeaveRequest } from "../services/canonicalEmployeeLeaveRequests";
 import { isRemovedFromStaffRecord } from "../services/staffAccountLinkService";
 import { archiveEmployee } from "../services/employeeLifecycleService";
 import { CoreAccountService } from "../services/CoreAccountService";
@@ -87,7 +87,7 @@ import {
 } from "../components/dashboard-v2";
 import LeaveRequestModal from "../components/LeaveRequestModal";
 
-// ✅ Bookings stats (Owner only)
+// âœ… Bookings stats (Owner only)
 import {
   listBookings,
   type BookingDocWithId,
@@ -930,7 +930,7 @@ function verifyEmployeeSaveSnapshot(
 ) {
   const mismatches = employeeSaveSnapshotMismatches(expected, actual);
   if (mismatches.length) {
-    throw new Error(`تعذر تأكيد حفظ بيانات الموظفة (${stage}): ${mismatches.join(", ")}`);
+    throw new Error(`طھط¹ط°ط± طھط£ظƒظٹط¯ ط­ظپط¸ ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ظˆط¸ظپط© (${stage}): ${mismatches.join(", ")}`);
   }
 }
 
@@ -1011,7 +1011,7 @@ export default function DashboardEmployees() {
 
   const [active, setActive] = useState(true);
 
-  // ✅ جديد
+  // âœ… ط¬ط¯ظٹط¯
   const [showOnAbout, setShowOnAbout] = useState(true);
   const [showOnBooking, setShowOnBooking] = useState(true);
   const [includeInEmployeeManagement, setIncludeInEmployeeManagement] = useState(true);
@@ -1093,6 +1093,10 @@ export default function DashboardEmployees() {
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
   const serviceOptionsRef = useRef<ServiceOption[]>([]);
+  const leaveAdjustmentOperationRef = useRef<{
+    signature: string;
+    operationId: string;
+  } | null>(null);
 
   const [srvQ, setSrvQ] = useState("");
   const [srvSection, setSrvSection] = useState<string>("all");
@@ -1131,19 +1135,19 @@ export default function DashboardEmployees() {
     if (allowed) return true;
     setErrorMsg(
       editId
-        ? "ليست لديك صلاحية لتعديل بيانات الموظفات."
-        : "ليست لديك صلاحية لإضافة موظفات."
+        ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ظˆط¸ظپط§طھ."
+        : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط§طھ."
     );
     return false;
   }, [canCreateEmployees, canUpdateEmployees, editId]);
   const ensureCanDelete = useCallback(() => {
     if (canDeleteEmployees) return true;
-    setErrorMsg("ليست لديك صلاحية لحذف الموظفات.");
+    setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط­ط°ظپ ط§ظ„ظ…ظˆط¸ظپط§طھ.");
     return false;
   }, [canDeleteEmployees]);
   const ensureCanManageLeaveBalance = useCallback(() => {
     if (canManageLeaveBalance) return true;
-    setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
+    setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¯ط§ط±ط© ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ.");
     return false;
   }, [canManageLeaveBalance]);
   const resolveStaffWeeklyOffDays = useCallback((staffLike: any): WeekdayKey[] => {
@@ -1192,7 +1196,7 @@ export default function DashboardEmployees() {
       setAttendanceZones(await listWorkZones());
     } catch (error) {
       setAttendanceZones([]);
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل نطاقات الحضور."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ظ†ط·ط§ظ‚ط§طھ ط§ظ„ط­ط¶ظˆط±."));
     } finally {
       setAttendanceZonesLoading(false);
     }
@@ -1319,11 +1323,11 @@ export default function DashboardEmployees() {
       if (status === 403) {
         const payload = (error as { payload?: { message?: unknown; detail?: unknown } })?.payload || {};
         const developerCode = cleanText(payload.message || payload.detail || (error as Error)?.message || "forbidden");
-        const message = `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`;
+        const message = `طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ط¨ط³ط¨ط¨ طµظ„ط§ط­ظٹط§طھ ط§ظ„ظˆطµظˆظ„. ظƒظˆط¯ ط§ظ„ظ…ط·ظˆط±: 403${developerCode ? ` / ${developerCode}` : ""}`;
         setEmployeeAttendanceError(message);
         setErrorMsg(message);
       } else {
-        const message = toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة.");
+        const message = toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط©.");
         setEmployeeAttendanceError(message);
         setErrorMsg(message);
       }
@@ -1368,8 +1372,8 @@ export default function DashboardEmployees() {
     if (!allowed) {
       setErrorMsg(
         row
-          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
-          : "ليست لديك صلاحية لإضافة بصمة إدارية."
+          ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©."
+          : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ط¨طµظ…ط© ط¥ط¯ط§ط±ظٹط©."
       );
       return;
     }
@@ -1391,7 +1395,7 @@ export default function DashboardEmployees() {
 
   const saveAttendancePunchEditor = useCallback(async () => {
     if (!selectedEmployeeId) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     const date = normalizeLeaveUntil(attendanceEditDate);
@@ -1400,19 +1404,19 @@ export default function DashboardEmployees() {
     if (!allowed) {
       setErrorMsg(
         existingRow
-          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
-          : "ليست لديك صلاحية لإضافة بصمة إدارية."
+          ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©."
+          : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ط¨طµظ…ط© ط¥ط¯ط§ط±ظٹط©."
       );
       return;
     }
     const checkInIso = dateTimeLocalToIso(attendanceEditCheckIn);
     const checkOutIso = dateTimeLocalToIso(attendanceEditCheckOut);
     if (!date || !checkInIso) {
-      setErrorMsg("اختر اليوم ووقت الحضور قبل حفظ تعديل البصمة.");
+      setErrorMsg("ط§ط®طھط± ط§ظ„ظٹظˆظ… ظˆظˆظ‚طھ ط§ظ„ط­ط¶ظˆط± ظ‚ط¨ظ„ ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©.");
       return;
     }
     if (checkOutIso && Date.parse(checkOutIso) <= Date.parse(checkInIso)) {
-      setErrorMsg("وقت الانصراف يجب أن يكون بعد وقت الحضور.");
+      setErrorMsg("ظˆظ‚طھ ط§ظ„ط§ظ†طµط±ط§ظپ ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط¨ط¹ط¯ ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط±.");
       return;
     }
 
@@ -1447,7 +1451,7 @@ export default function DashboardEmployees() {
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
-        description: "تعديل بصمة حضور الموظفة من الإدارة",
+        description: "طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©",
         after: { date, checkInAtClient: checkInIso, checkOutAtClient: checkOutIso || "" },
         meta: {
           staffId: selectedEmployeeId,
@@ -1458,7 +1462,7 @@ export default function DashboardEmployees() {
       closeAttendancePunchEditor();
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ تعديل البصمة."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©."));
     } finally {
       setSaving(false);
     }
@@ -1481,12 +1485,12 @@ export default function DashboardEmployees() {
 
   const deleteAttendancePunch = useCallback(async (dateKey: string) => {
     if (!canDeleteAttendance || !selectedEmployeeId) {
-      setErrorMsg("ليست لديك صلاحية لمسح بصمة الموظفة.");
+      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ظ…ط³ط­ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     const date = normalizeLeaveUntil(dateKey);
     if (!date) return;
-    const ok = confirm(`سيتم مسح سجل البصمة ليوم ${date}. هل تريد المتابعة؟`);
+    const ok = confirm(`ط³ظٹطھظ… ظ…ط³ط­ ط³ط¬ظ„ ط§ظ„ط¨طµظ…ط© ظ„ظٹظˆظ… ${date}. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں`);
     if (!ok) return;
 
     setSaving(true);
@@ -1508,13 +1512,13 @@ export default function DashboardEmployees() {
         employeeUid: attendanceIdentity.employeeUid,
         employeeId: attendanceIdentity.employeeDocId,
         date,
-        note: "مسح بصمة اليوم من إدارة الموظفات",
+        note: "ظ…ط³ط­ ط¨طµظ…ط© ط§ظ„ظٹظˆظ… ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ",
       });
 
       const clearedRecords = Number(clearResult?.clearedRecords || 0);
       if (clearedRecords <= 0) {
         throw new Error(
-          "لم يتم العثور على بصمات لهذا اليوم، لذلك لم يتم حذف أي سجل."
+          "ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¨طµظ…ط§طھ ظ„ظ‡ط°ط§ ط§ظ„ظٹظˆظ…طŒ ظ„ط°ظ„ظƒ ظ„ظ… ظٹطھظ… ط­ط°ظپ ط£ظٹ ط³ط¬ظ„."
         );
       }
 
@@ -1523,7 +1527,7 @@ export default function DashboardEmployees() {
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
-        description: "مسح بصمة حضور الموظفة من الإدارة",
+        description: "ظ…ط³ط­ ط¨طµظ…ط© ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©",
         before: { date, clearedRecords },
         meta: {
           staffId: selectedEmployeeId,
@@ -1534,7 +1538,7 @@ export default function DashboardEmployees() {
       });
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ظ…ط³ط­ ط§ظ„ط¨طµظ…ط©."));
     } finally {
       setSaving(false);
     }
@@ -1547,18 +1551,18 @@ export default function DashboardEmployees() {
 
   const createEmergencyLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
 
     const date = normalizeLeaveUntil(dateKey);
     if (!date) {
-      setErrorMsg("اختر يومًا صحيحًا لتسجيل الإجازة.");
+      setErrorMsg("ط§ط®طھط± ظٹظˆظ…ظ‹ط§ طµط­ظٹط­ظ‹ط§ ظ„طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط©.");
       return;
     }
 
@@ -1579,7 +1583,7 @@ export default function DashboardEmployees() {
     const employeeUid = attendanceIdentity.employeeUid;
     const employeeId = attendanceIdentity.employeeDocId || selectedEmployeeId;
     if (!employeeUid || !employeeId) {
-      setErrorMsg("تعذر تحديد حساب الموظفة لتسجيل الإجازة.");
+      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط­ط³ط§ط¨ ط§ظ„ظ…ظˆط¸ظپط© ظ„طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط©.");
       return;
     }
 
@@ -1590,7 +1594,7 @@ export default function DashboardEmployees() {
       todayDateKey: todayIso(),
     });
     if (approvedLeaveDateKeys.includes(date)) {
-      setErrorMsg("هذا اليوم مسجل كإجازة معتمدة بالفعل.");
+      setErrorMsg("ظ‡ط°ط§ ط§ظ„ظٹظˆظ… ظ…ط³ط¬ظ„ ظƒط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ط¨ط§ظ„ظپط¹ظ„.");
       return;
     }
 
@@ -1600,7 +1604,7 @@ export default function DashboardEmployees() {
         Boolean(row.checkInAtClient || row.checkOutAtClient)
     );
     if (hasAttendanceRecord) {
-      setErrorMsg("لا يمكن تحويل يوم عليه بصمة إلى إجازة مفاجئة من هذا الإجراء.");
+      setErrorMsg("ظ„ط§ ظٹظ…ظƒظ† طھط­ظˆظٹظ„ ظٹظˆظ… ط¹ظ„ظٹظ‡ ط¨طµظ…ط© ط¥ظ„ظ‰ ط¥ط¬ط§ط²ط© ظ…ظپط§ط¬ط¦ط© ظ…ظ† ظ‡ط°ط§ ط§ظ„ط¥ط¬ط±ط§ط،.");
       return;
     }
 
@@ -1627,18 +1631,18 @@ export default function DashboardEmployees() {
 
   const cancelLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
 
     const date = normalizeLeaveUntil(dateKey);
     if (!date) {
-      setErrorMsg("اختر يومًا صحيحًا لإلغاء الإجازة.");
+      setErrorMsg("ط§ط®طھط± ظٹظˆظ…ظ‹ط§ طµط­ظٹط­ظ‹ط§ ظ„ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط©.");
       return;
     }
 
@@ -1650,7 +1654,20 @@ export default function DashboardEmployees() {
     });
 
     if (!leaveRequest) {
-      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
+      const coreLeaves =
+        await CoreHrService.listLeaves({
+          employeeId: selectedEmployeeId,
+        }).catch((error) => {
+          setErrorMsg(
+            toFirestoreErrorMessage(
+              error,
+              "تعذر التحقق من الإجازات والاستئذانات المعتمدة من Core. لم يتم تنفيذ العملية."
+            )
+          );
+          return null;
+        });
+
+      if (!coreLeaves) return;
       const permissionLeave = coreLeaves.find((leave) => {
         if (cleanText(leave.status).toLowerCase() !== "approved") return false;
         if (cleanText(leave.durationKind).toLowerCase() !== "partial") return false;
@@ -1661,11 +1678,11 @@ export default function DashboardEmployees() {
       });
       const permissionId = cleanText(permissionLeave?.requestId);
       if (!permissionLeave || !permissionId) {
-        setErrorMsg("لم يتم العثور على إجازة أو استئذان معتمد لهذا اليوم.");
+        setErrorMsg("ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¥ط¬ط§ط²ط© ط£ظˆ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ„ظ‡ط°ط§ ط§ظ„ظٹظˆظ….");
         return;
       }
 
-      const ok = confirm("سيتم إلغاء الاستئذان المعتمد ليوم " + date + ". هل تريد المتابعة؟");
+      const ok = confirm("ط³ظٹطھظ… ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط¦ط°ط§ظ† ط§ظ„ظ…ط¹طھظ…ط¯ ظ„ظٹظˆظ… " + date + ". ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں");
       if (!ok) return;
 
       setSaving(true);
@@ -1682,39 +1699,38 @@ export default function DashboardEmployees() {
           entityType: "employee_permission_request",
           entityId: permissionId,
           source: "dashboard",
-          description: "إلغاء استئذان معتمد من سجل الحضور",
+          description: "ط¥ظ„ط؛ط§ط، ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ…ظ† ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط±",
           before: { date, status: "approved", coreLeaveId: permissionLeave.id },
           after: { date, status: "cancelled" },
           meta: { staffId: selectedEmployeeId },
         });
         await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
       } catch (error) {
-        setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الاستئذان."));
+        setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط¦ط°ط§ظ†."));
       } finally {
         setSaving(false);
       }
       return;
     }
 
-    const ok = confirm(`سيتم إلغاء الإجازة المعتمدة ليوم ${date}. هل تريد المتابعة؟`);
+    const ok = confirm(`ط³ظٹطھظ… ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ„ظٹظˆظ… ${date}. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں`);
     if (!ok) return;
 
     setSaving(true);
     setErrorMsg("");
     try {
-      await reviewLeaveRequest({
-        requestId: leaveRequest.id,
-        status: "cancelled",
-        reviewerUid: authUser.uid,
-        reviewerName: authUser.displayName || authUser.email,
-        adjustActor: {
-          uid: authUser.uid,
-          role: "hr",
-          displayName: authUser.displayName || authUser.email,
-          email: authUser.email,
-        },
-      });
-
+      await decideCanonicalEmployeeLeaveRequest(
+        leaveRequest,
+        "cancelled",
+        {
+          reviewerUid: authUser.uid,
+          reviewerName:
+            authUser.displayName ||
+            authUser.email,
+          hrNote:
+            "تم إلغاء الإجازة من سجل الحضور",
+        }
+      );
       const employee =
         list.find((item) => item.id === selectedEmployeeId) ||
         list.find((item) => employeeMatchesIdentity(item, selectedEmployeeIdentityRef.current)) ||
@@ -1733,27 +1749,6 @@ export default function DashboardEmployees() {
           !!requestFrom &&
           requestFrom <= (currentTo || requestTo) &&
           requestTo >= (currentFrom || requestFrom));
-
-      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
-      const matchingCoreLeaveIds = Array.from(new Set([
-        cleanText((employee as any).coreLeaveId),
-        cleanText((leaveRequest as any).coreLeaveId),
-        ...coreLeaves
-          .filter((leave) => {
-            if (cleanText(leave.status).toLowerCase() !== "approved") return false;
-            const leaveFrom = normalizeLeaveUntil(leave.startDate);
-            const leaveTo = normalizeLeaveUntil(leave.endDate) || leaveFrom;
-            return !!leaveFrom && !!requestFrom && leaveFrom <= requestTo && leaveTo >= requestFrom;
-          })
-          .map((leave) => cleanText(leave.id)),
-      ].filter(Boolean)));
-
-      await Promise.all(
-        matchingCoreLeaveIds.map((coreLeaveId) =>
-          CoreHrService.decideLeave(coreLeaveId, "rejected", "تم إلغاء الإجازة من سجل الحضور")
-            .catch((error) => console.warn("reject Core leave failed", { coreLeaveId, error }))
-        )
-      );
 
       if (isCurrentProfileLeave) {
         await CoreHrService.saveEmployee({
@@ -1820,7 +1815,7 @@ export default function DashboardEmployees() {
         entityType: "employee_leave",
         entityId: leaveRequest.id,
         source: "dashboard",
-        description: "إلغاء إجازة معتمدة من سجل الحضور",
+        description: "ط¥ظ„ط؛ط§ط، ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط±",
         before: {
           date,
           status: "approved",
@@ -1837,7 +1832,7 @@ export default function DashboardEmployees() {
 
       await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط©."));
     } finally {
       setSaving(false);
     }
@@ -1854,11 +1849,11 @@ export default function DashboardEmployees() {
 
   const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; durationKind: "full_day" | "partial"; partialStartTime: string; partialEndTime: string; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
+      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
@@ -1890,14 +1885,14 @@ export default function DashboardEmployees() {
     );
 
     if (!fromDate || !toDate || days <= 0 || fromDate > toDate) {
-      throw new Error("مدى الإجازة غير صحيح.");
+      throw new Error("ظ…ط¯ظ‰ ط§ظ„ط¥ط¬ط§ط²ط© ط؛ظٹط± طµط­ظٹط­.");
     }
     if (isPartialLeave) {
-      if (fromDate !== toDate) throw new Error("الاستئذان يجب أن يكون في يوم واحد.");
+      if (fromDate !== toDate) throw new Error("ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ظپظٹ ظٹظˆظ… ظˆط§ط­ط¯.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) {
-        throw new Error("وقت الاستئذان غير صحيح.");
+        throw new Error("ظˆظ‚طھ ط§ظ„ط§ط³طھط¦ط°ط§ظ† ط؛ظٹط± طµط­ظٹط­.");
       }
-      if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الاستئذان يجب أن يكون بعد البداية.");
+      if (partialStartTime >= partialEndTime) throw new Error("ظˆظ‚طھ ظ†ظ‡ط§ظٹط© ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط¨ط¹ط¯ ط§ظ„ط¨ط¯ط§ظٹط©.");
 
       setSaving(true);
       setErrorMsg("");
@@ -1909,7 +1904,7 @@ export default function DashboardEmployees() {
           date: fromDate,
           startTime: partialStartTime,
           expectedReturnTime: partialEndTime,
-          reason: cleanText(payload.note) || "استئذان إداري",
+          reason: cleanText(payload.note) || "ط§ط³طھط¦ط°ط§ظ† ط¥ط¯ط§ط±ظٹ",
           note: cleanText(payload.note) || undefined,
           source: "admin_direct",
           financialEffect: "none",
@@ -1924,7 +1919,7 @@ export default function DashboardEmployees() {
           entityType: "employee_permission_request",
           entityId: permission.id,
           source: "dashboard",
-          description: "تسجيل استئذان معتمد وربطه بالحضور والحجز",
+          description: "طھط³ط¬ظٹظ„ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظˆط±ط¨ط·ظ‡ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط­ط¬ط²",
           after: {
             employeeUid: employeeUidLocal,
             employeeId: selectedEmployeeId,
@@ -1940,7 +1935,7 @@ export default function DashboardEmployees() {
         });
         return;
       } catch (error) {
-        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الاستئذان وربطه بالحضور والحجز."));
+        setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظˆط±ط¨ط·ظ‡ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط­ط¬ط²."));
         throw error;
       } finally {
         setSaving(false);
@@ -1952,7 +1947,7 @@ export default function DashboardEmployees() {
     let requestId = "";
     let coreLeaveId = "";
     let createdRequestId = "";
-    let createdCoreLeaveId = "";
+    let requestForCanonical: EmployeeLeaveRequest | null = null;
     try {
       const existingRequests = selectedEmployeeLeaveRequests.length
         ? selectedEmployeeLeaveRequests
@@ -1971,6 +1966,7 @@ export default function DashboardEmployees() {
 
       if (matchingRequest) {
         requestId = matchingRequest.id;
+        requestForCanonical = matchingRequest;
       } else {
         const requestRef = await createLeaveRequest({
           employeeUid: employeeUidLocal,
@@ -1983,7 +1979,7 @@ export default function DashboardEmployees() {
           durationKind,
           partialStartTime,
           partialEndTime,
-          note: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
+          note: payload.note || (isPartialLeave ? "طھط³ط¬ظٹظ„ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ" : "طھط³ط¬ظٹظ„ ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ"),
           createdByUid: authUser.uid,
           createdByName: authUser.displayName || authUser.email,
         });
@@ -1996,71 +1992,83 @@ export default function DashboardEmployees() {
           approvalMode: "admin_direct",
           updatedAt: serverTimestamp(),
         } as any);
-        await approveEmployeeLeaveRequest({
-          requestId,
-          reviewerUid: authUser.uid,
-          reviewerName: authUser.displayName || authUser.email,
-          adjustLeaveBalance: policy.deductFromBalance,
-          adjustActor: policy.deductFromBalance
-            ? {
-                uid: authUser.uid,
-                role: "hr",
-                displayName: authUser.displayName || authUser.email,
-                email: authUser.email,
-              }
-            : undefined,
-        });
+        requestForCanonical = {
+          id: requestId,
+          employeeUid: employeeUidLocal,
+          employeeId: employeeIdLocal,
+          employeeName,
+          type: leaveType,
+          fromDate,
+          toDate,
+          days,
+          durationKind,
+          partialStartTime:
+            isPartialLeave
+              ? partialStartTime
+              : undefined,
+          partialEndTime:
+            isPartialLeave
+              ? partialEndTime
+              : undefined,
+          note:
+            payload.note ||
+            (isPartialLeave
+              ? "تسجيل استئذان معتمد من إدارة الموظفات"
+              : "تسجيل إجازة معتمدة من إدارة الموظفات"),
+          status: "pending",
+          createdByUid: authUser.uid,
+          createdByName:
+            authUser.displayName ||
+            authUser.email,
+        };
       }
 
-      const existingCoreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
-      const matchingCoreLeave = existingCoreLeaves.find((leave) =>
-        cleanText(leave.status).toLowerCase() === "approved" &&
-        normalizeLeaveUntil(leave.startDate) === fromDate &&
-        normalizeLeaveUntil(leave.endDate) === toDate &&
-        normalizeManagedLeaveType(leave.leaveType) === leaveType &&
-        (cleanText(leave.durationKind).toLowerCase() === "partial" ? "partial" : "full_day") === durationKind &&
-        (!isPartialLeave || (cleanText(leave.partialStartTime) === partialStartTime && cleanText(leave.partialEndTime) === partialEndTime))
-      );
-
-      if (matchingCoreLeave) {
-        coreLeaveId = matchingCoreLeave.id;
-      } else {
-        await CoreHrService.getEmployee(selectedEmployeeId).catch(async () => {
-          await CoreHrService.saveEmployee({
-            id: selectedEmployeeId,
-            name: employeeName,
-            firebaseUid: cleanText((employeeProfile as any)?.linkedUid || (employeeProfile as any)?.uid || employeeUidLocal),
-            email: cleanText((employeeProfile as any)?.email),
-            phone: cleanText((employeeProfile as any)?.phone),
-            status: (employeeProfile as any)?.active === false ? "inactive" : "active",
-            employment: {},
-          });
-        });
-        const coreLeave = await CoreHrService.createLeave({
-          employeeId: selectedEmployeeId,
-          employeeUid: employeeUidLocal,
-          employeeName,
-          employeeEmail: cleanText((employeeProfile as any)?.email),
-          status: "pending",
-          leaveType,
-          startDate: fromDate,
-          endDate: toDate,
-          daysCount: days,
-          durationKind,
-          partialStartTime: isPartialLeave ? partialStartTime : undefined,
-          partialEndTime: isPartialLeave ? partialEndTime : undefined,
-          employeeNote: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
-          hrNote: policy.affectsPayroll ? "إجازة بدون راتب — تؤثر على الراتب" : "إجازة مدفوعة — لا تخصم من الراتب",
-        });
-        coreLeaveId = coreLeave.id;
-        createdCoreLeaveId = coreLeave.id;
-        await CoreHrService.decideLeave(
-          coreLeaveId,
-          "approved",
-          policy.affectsPayroll ? "إجازة بدون راتب — تخصم حسب معدل اليوم" : "إجازة مدفوعة معتمدة"
+      if (!requestForCanonical) {
+        throw new Error(
+          "employee_leave_request_not_resolved"
         );
       }
 
+      await decideCanonicalEmployeeLeaveRequest(
+        requestForCanonical,
+        "approved",
+        {
+          reviewerUid: authUser.uid,
+          reviewerName:
+            authUser.displayName ||
+            authUser.email,
+          hrNote:
+            policy.affectsPayroll
+              ? "إجازة بدون راتب — تخصم حسب معدل اليوم"
+              : "إجازة مدفوعة معتمدة",
+        }
+      );
+
+      // Fail closed: after canonical approval the linked Core
+      // operational record MUST exist and be approved.
+      const existingCoreLeaves =
+        await CoreHrService.listLeaves({
+          employeeId: selectedEmployeeId,
+        });
+
+      const matchingCoreLeave =
+        existingCoreLeaves.find(
+          (leave) =>
+            cleanText(leave.requestId) ===
+              requestId &&
+            cleanText(
+              leave.status
+            ).toLowerCase() === "approved"
+        );
+
+      if (!matchingCoreLeave) {
+        throw new Error(
+          "employee_leave_core_approval_missing"
+        );
+      }
+
+      coreLeaveId =
+        matchingCoreLeave.id;
       // A partial leave is operationally authoritative in employee_leaves only.
       // Never mirror it to profile/staff full-day leave fields, otherwise the
       // employee disappears for the entire day instead of only the blocked range.
@@ -2102,7 +2110,7 @@ export default function DashboardEmployees() {
         entityType: "employee_leave",
         entityId: requestId || coreLeaveId,
         source: "dashboard",
-        description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب",
+        description: "طھط³ط¬ظٹظ„ ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظˆط±ط¨ط·ظ‡ط§ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط±ط§طھط¨",
         after: {
           employeeUid: employeeUidLocal,
           employeeId: selectedEmployeeId,
@@ -2124,28 +2132,31 @@ export default function DashboardEmployees() {
         },
       });
     } catch (error) {
-      if (createdCoreLeaveId) {
-        await CoreHrService.decideLeave(
-          createdCoreLeaveId,
-          "rejected",
-          "تم التراجع تلقائيًا بسبب تعذر إكمال ربط الإجازة"
-        ).catch((rollbackError) => console.warn("rollback Core leave failed", rollbackError));
+      if (
+        createdRequestId &&
+        requestForCanonical
+      ) {
+        try {
+          await decideCanonicalEmployeeLeaveRequest(
+            requestForCanonical,
+            "cancelled",
+            {
+              reviewerUid: authUser.uid,
+              reviewerName:
+                authUser.displayName ||
+                authUser.email,
+              hrNote:
+                "تم التراجع تلقائيًا بسبب تعذر إكمال تسجيل الإجازة",
+            }
+          );
+        } catch (rollbackError) {
+          console.warn(
+            "canonical leave rollback failed",
+            rollbackError
+          );
+        }
       }
-      if (createdRequestId) {
-        await reviewLeaveRequest({
-          requestId: createdRequestId,
-          status: "cancelled",
-          reviewerUid: authUser.uid,
-          reviewerName: authUser.displayName || authUser.email,
-          adjustActor: {
-            uid: authUser.uid,
-            role: "hr",
-            displayName: authUser.displayName || authUser.email,
-            email: authUser.email,
-          },
-        }).catch((rollbackError) => console.warn("rollback Firestore leave failed", rollbackError));
-      }
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة وربطها بالحضور والراتب."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط© ظˆط±ط¨ط·ظ‡ط§ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط±ط§طھط¨."));
       throw error;
     } finally {
       setSaving(false);
@@ -2164,7 +2175,7 @@ export default function DashboardEmployees() {
 
   const openApprovedLeaveFromEmployeeProfile = useCallback(() => {
     if (!selectedEmployeeId) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     const employee =
@@ -2178,7 +2189,7 @@ export default function DashboardEmployees() {
 
   const endCurrentApprovedLeave = useCallback(async () => {
     if (!selectedEmployeeId || !authUser?.uid) {
-      setErrorMsg("تعذر تحديد الموظفة أو المستخدم المنفذ.");
+      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط© ط£ظˆ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط°.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
@@ -2186,10 +2197,10 @@ export default function DashboardEmployees() {
       list.find((item) => item.id === selectedEmployeeId) ||
       { id: selectedEmployeeId, name };
     if (!employee) {
-      setErrorMsg("تعذر العثور على ملف الموظفة.");
+      setErrorMsg("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
-    const ok = confirm("سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي. هل تريد المتابعة؟");
+    const ok = confirm("ط³ظٹطھظ… ط¥ظ†ظ‡ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط© ظˆط¥ظ„ط؛ط§ط، ط£ط«ط±ظ‡ط§ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹ. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں");
     if (!ok) return;
 
     setSaving(true);
@@ -2205,7 +2216,7 @@ export default function DashboardEmployees() {
       const targetFrom = currentFrom || todayIso();
       const targetTo = currentTo || targetFrom;
 
-      const allLeaveRequests = await listEmployeeLeaveRequests(500).catch(() => selectedEmployeeLeaveRequests);
+      const allLeaveRequests = await listEmployeeLeaveRequests(500);
       const matchingApprovedRequests = allLeaveRequests.filter((request) => {
         if (cleanText(request.status).toLowerCase() !== "approved") return false;
         if (!leaveRequestMatchesProfile(request, employee, attendanceIdentity.allIds)) return false;
@@ -2215,48 +2226,129 @@ export default function DashboardEmployees() {
         return requestFrom <= targetTo && requestTo >= targetFrom;
       });
 
-      const requestIds = Array.from(new Set([
-        cleanText((employee as any).leaveRequestId),
-        ...matchingApprovedRequests.map((request) => cleanText(request.id)),
-      ].filter(Boolean)));
+      // Read canonical Core state BEFORE mutating either side.
+      const coreLeavesBeforeCancel =
+        await CoreHrService.listLeaves({
+          employeeId: selectedEmployeeId,
+        });
 
-      await Promise.all(
-        requestIds.map((requestId) =>
-          reviewLeaveRequest({
-            requestId,
-            status: "cancelled",
-            reviewerUid: authUser.uid,
-            reviewerName: authUser.displayName || authUser.email,
-            adjustActor: {
-              uid: authUser.uid,
-              role: "hr",
-              displayName: authUser.displayName || authUser.email,
-              email: authUser.email,
-            },
-          }).catch((error) => console.warn("cancel Firestore leave failed", { requestId, error }))
-        )
-      );
+      const matchingCoreLeavesBeforeCancel =
+        coreLeavesBeforeCancel.filter(
+          (leave) => {
+            const status =
+              cleanText(
+                leave.status
+              ).toLowerCase();
 
-      const coreLeaves = await CoreHrService.listLeaves({ employeeId: selectedEmployeeId }).catch(() => []);
-      const matchingApprovedCoreLeaves = coreLeaves.filter((leave) => {
-        if (cleanText(leave.status).toLowerCase() !== "approved") return false;
-        const leaveFrom = normalizeLeaveUntil(leave.startDate);
-        const leaveTo = normalizeLeaveUntil(leave.endDate) || leaveFrom;
-        if (!leaveFrom) return false;
-        return leaveFrom <= targetTo && leaveTo >= targetFrom;
-      });
-      const coreLeaveIds = Array.from(new Set([
-        cleanText((employee as any).coreLeaveId),
-        ...matchingApprovedCoreLeaves.map((leave) => cleanText(leave.id)),
-      ].filter(Boolean)));
+            if (
+              status !== "approved" &&
+              status !== "pending"
+            ) {
+              return false;
+            }
 
-      await Promise.all(
-        coreLeaveIds.map((coreLeaveId) =>
-          CoreHrService.decideLeave(coreLeaveId, "rejected", "تم إنهاء الإجازة من إدارة الموظفات")
-            .catch((error) => console.warn("reject Core leave failed", { coreLeaveId, error }))
-        )
-      );
+            const leaveFrom =
+              normalizeLeaveUntil(
+                leave.startDate
+              );
 
+            const leaveTo =
+              normalizeLeaveUntil(
+                leave.endDate
+              ) || leaveFrom;
+
+            if (!leaveFrom) return false;
+
+            return (
+              leaveFrom <= targetTo &&
+              leaveTo >= targetFrom
+            );
+          }
+        );
+
+      // Every approved Firestore request must have a
+      // canonical Core operational record.
+      for (
+        const request of
+        matchingApprovedRequests
+      ) {
+        const linkedCore =
+          matchingCoreLeavesBeforeCancel.find(
+            (leave) =>
+              cleanText(
+                leave.requestId
+              ) ===
+              cleanText(request.id)
+          );
+
+        if (!linkedCore) {
+          throw new Error(
+            "employee_leave_core_record_missing"
+          );
+        }
+      }
+
+      // A request-linked Core leave must also have its
+      // request mirror. Otherwise stop instead of creating
+      // another split-brain state.
+      for (
+        const coreLeave of
+        matchingCoreLeavesBeforeCancel
+      ) {
+        const requestId =
+          cleanText(
+            coreLeave.requestId
+          );
+
+        if (
+          requestId &&
+          !matchingApprovedRequests.some(
+            (request) =>
+              cleanText(request.id) ===
+              requestId
+          )
+        ) {
+          throw new Error(
+            "employee_leave_request_mirror_mismatch"
+          );
+        }
+      }
+
+      await Promise.all([
+        ...matchingApprovedRequests.map(
+          (request) =>
+            decideCanonicalEmployeeLeaveRequest(
+              request,
+              "cancelled",
+              {
+                reviewerUid: authUser.uid,
+                reviewerName:
+                  authUser.displayName ||
+                  authUser.email,
+                hrNote:
+                  "تم إنهاء الإجازة من إدارة الموظفات",
+              }
+            )
+        ),
+
+        // Legacy Core-only operational leaves have no
+        // request mirror to synchronize.
+        ...matchingCoreLeavesBeforeCancel
+          .filter(
+            (leave) =>
+              !cleanText(
+                leave.requestId
+              )
+          )
+          .map(
+            (leave) =>
+              CoreHrService.decideLeave(
+                leave.id,
+                "rejected",
+                "تم إنهاء الإجازة من إدارة الموظفات"
+              )
+          ),
+      ]);
       // Core availability keeps its own leave window on the staff row.
       // Clear it explicitly after rejecting the leave so booking/schedule availability returns immediately.
       await CoreHrService.saveEmployee({
@@ -2308,7 +2400,11 @@ export default function DashboardEmployees() {
       );
       setSelectedEmployeeLeaveRequests((current) =>
         current.map((request) =>
-          requestIds.includes(cleanText(request.id))
+          matchingApprovedRequests.some(
+            (cancelledRequest) =>
+              cleanText(cancelledRequest.id) ===
+              cleanText(request.id)
+          )
             ? { ...request, status: "cancelled" }
             : request
         )
@@ -2321,7 +2417,7 @@ export default function DashboardEmployees() {
       await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
       window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إنهاء الإجازة الحالية."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ†ظ‡ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط©."));
     } finally {
       setSaving(false);
     }
@@ -2348,7 +2444,7 @@ export default function DashboardEmployees() {
     setReviewsCount("");
     setActive(true);
 
-    // ✅ جديد
+    // âœ… ط¬ط¯ظٹط¯
     setShowOnAbout(true);
     setShowOnBooking(true);
     setIncludeInEmployeeManagement(true);
@@ -2537,7 +2633,7 @@ export default function DashboardEmployees() {
     setOvertimePercent(String(payrollCfg.overtimePercent || 0));
     setOvertimeInvoicePercent(String(payrollCfg.invoicePercent || 0));
 
-    // ✅ جديد
+    // âœ… ط¬ط¯ظٹط¯
     setShowOnAbout((x as any).showOnAbout !== false);
 
     setSpecialties(canonicalizeSpecialties(x.specialties, serviceOptions));
@@ -2556,7 +2652,7 @@ export default function DashboardEmployees() {
     const matched = list.find((item) => employeeMatchesRouteId(item, routeEmployeeId));
     if (!matched) {
       if (!loading) {
-        setErrorMsg("تعذر العثور على ملف الموظفة المطلوب. تم الرجوع إلى قائمة الموظفين.");
+        setErrorMsg("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط·ظ„ظˆط¨. طھظ… ط§ظ„ط±ط¬ظˆط¹ ط¥ظ„ظ‰ ظ‚ط§ط¦ظ…ط© ط§ظ„ظ…ظˆط¸ظپظٹظ†.");
         navigate("/dashboard/employees", { replace: true });
       }
       return;
@@ -2571,6 +2667,65 @@ export default function DashboardEmployees() {
       setModalTab(resolvedRouteSection as EmployeeModalTab);
     }
   }, [editId, list, loading, navigate, routeEmployeeId, routeSection]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId || !canManageLeaveBalance) return;
+
+    let cancelled = false;
+
+    CoreHrService.getLeaveBalance(selectedEmployeeId)
+      .then((state) => {
+        if (cancelled) return;
+
+        const balance = Number(state.leaveBalance || 0);
+        const entitlementDate = cleanText(
+          state.leaveEntitlementDate
+        );
+
+        setList((current) =>
+          current.map((employee) =>
+            employee.id === selectedEmployeeId
+              ? ({
+                  ...employee,
+                  leaveBalanceDays:
+                    Number.isFinite(balance) && balance >= 0
+                      ? balance
+                      : 0,
+                  leaveEntitlementDate: entitlementDate,
+                  leaveEntries: state.entries as LeaveEntry[],
+                } as StaffPublicUi)
+              : employee
+          )
+        );
+
+        setLeaveEntitlementDate(entitlementDate);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+
+        console.warn(
+          "Failed to load canonical Core leave balance:",
+          error
+        );
+
+        if (activeTab === "leave") {
+          setErrorMsg(
+            toFirestoreErrorMessage(
+              error,
+              "تعذر تحميل رصيد الإجازات من Core."
+            )
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    canManageLeaveBalance,
+    selectedEmployeeId,
+  ]);
 
   useEffect(() => {
     if (!selectedEmployeeId || activeTab !== "payroll" || !canViewPayroll) return;
@@ -2667,7 +2822,7 @@ export default function DashboardEmployees() {
       return opts;
     } catch (e) {
       setServiceOptions([]);
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الخدمات."));
+      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط®ط¯ظ…ط§طھ."));
       return [];
     }
   }, []);
@@ -2679,11 +2834,12 @@ export default function DashboardEmployees() {
       try {
         const linkedUserRoleByUid = new Map<string, string>();
         const readDocs = loadOptions.fromServer ? getDocsFromServer : getDocs;
-        const [userSnap, staffSnap, employeeSnap, coreAccounts] = await Promise.all([
+        const [userSnap, staffSnap, employeeSnap, coreAccounts, coreEmployees] = await Promise.all([
           readDocs(usersCol()).catch(() => null),
           readDocs(staffPublicCol()),
           readDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
           CoreAccountService.list(false, "internal").catch(() => []),
+          CoreHrService.listEmployees(),
         ]);
 
         const userByUid = new Map<string, any>();
@@ -2749,8 +2905,8 @@ export default function DashboardEmployees() {
             rawDocId,
           ]).filter((value) => value !== employeeId);
 
-          // حساب الدخول لا يتحول تلقائيًا إلى موظفة. تفضيل users هو مصدر الحقيقة،
-          // ثم نرجع لعلامة السجل، وبعدها فقط نحافظ على الموظفات التشغيليات القديمة.
+          // ط­ط³ط§ط¨ ط§ظ„ط¯ط®ظˆظ„ ظ„ط§ ظٹطھط­ظˆظ„ طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ط¥ظ„ظ‰ ظ…ظˆط¸ظپط©. طھظپط¶ظٹظ„ users ظ‡ظˆ ظ…طµط¯ط± ط§ظ„ط­ظ‚ظٹظ‚ط©طŒ
+          // ط«ظ… ظ†ط±ط¬ط¹ ظ„ط¹ظ„ط§ظ…ط© ط§ظ„ط³ط¬ظ„طŒ ظˆط¨ط¹ط¯ظ‡ط§ ظپظ‚ط· ظ†ط­ط§ظپط¸ ط¹ظ„ظ‰ ط§ظ„ظ…ظˆط¸ظپط§طھ ط§ظ„طھط´ط؛ظٹظ„ظٹط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط©.
           const userVisibility =
             typeof linkedUser?.includeInEmployeeManagement === "boolean"
               ? linkedUser.includeInEmployeeManagement
@@ -2884,9 +3040,10 @@ export default function DashboardEmployees() {
             reviewsCount: Math.floor(
               safeNonNegativeNumber(combined?.reviewsCount || combined?.reviewCount, 0)
             ),
-            leaveBalanceDays: Number(combined?.leaveBalanceDays || 0),
-            leaveEntitlementDate: cleanText(combined?.leaveEntitlementDate),
-            leaveEntries: Array.isArray(combined?.leaveEntries) ? combined.leaveEntries : [],
+            // Canonical leave balance is overlaid from Core D1 below.
+            leaveBalanceDays: 0,
+            leaveEntitlementDate: "",
+            leaveEntries: [],
             createdAt: combined?.createdAt,
             updatedAt: combined?.updatedAt,
           };
@@ -2972,9 +3129,79 @@ export default function DashboardEmployees() {
           upsertEmployeeRecord(userDoc.id, userDoc.data(), "users")
         );
 
-        const rows = Array.from(deduped.values()).sort((a, b) =>
-          cleanText(a.name).localeCompare(cleanText(b.name), "ar")
-        );
+        const coreEmployeeByIdentity = new Map<
+          string,
+          (typeof coreEmployees)[number]
+        >();
+
+        coreEmployees.forEach((coreEmployee) => {
+          uniqueCleanTexts([
+            coreEmployee.id,
+            coreEmployee.firebaseUid,
+          ]).forEach((key) => {
+            coreEmployeeByIdentity.set(key, coreEmployee);
+          });
+        });
+
+        const rows = Array.from(deduped.values())
+          .map((row) => {
+            const identityKeys = uniqueCleanTexts([
+              row.id,
+              row.employeeId,
+              row.employeeDocId,
+              row.linkedEmployeeDocId,
+              row.uid,
+              row.linkedUid,
+              row.authUid,
+              row.employeeUid,
+            ]);
+
+            let coreEmployee:
+              | (typeof coreEmployees)[number]
+              | undefined;
+
+            for (const key of identityKeys) {
+              const candidate =
+                coreEmployeeByIdentity.get(key);
+              if (!candidate) continue;
+              coreEmployee = candidate;
+              break;
+            }
+
+            const employment = (
+              coreEmployee?.employment || {}
+            ) as Record<string, unknown>;
+
+            const rawLeaveBalance = Number(
+              employment.leave_balance ??
+                employment.leaveBalance ??
+                0
+            );
+
+            const canonicalLeaveBalance =
+              Number.isFinite(rawLeaveBalance) &&
+              rawLeaveBalance >= 0
+                ? rawLeaveBalance
+                : 0;
+
+            return {
+              ...row,
+
+              // Core D1 is the only leave-balance runtime source.
+              leaveBalanceDays: canonicalLeaveBalance,
+              leaveEntitlementDate: cleanText(
+                employment.leave_entitlement_date ??
+                  employment.leaveEntitlementDate
+              ),
+              leaveEntries: [],
+            } as StaffPublicUi;
+          })
+          .sort((a, b) =>
+            cleanText(a.name).localeCompare(
+              cleanText(b.name),
+              "ar"
+            )
+          );
 
         const selectedIdentity = selectedEmployeeIdentityRef.current;
         if (selectedIdentity) {
@@ -2993,9 +3220,9 @@ export default function DashboardEmployees() {
         setList(rows);
         return rows;
       } catch (e) {
-        setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الموظفات."));
+        setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ."));
         if (loadOptions.strict) throw e;
-        // لا نمسح القائمة الحالية عند فشل التحديث حتى لا تُغلق الموظفة المحددة.
+        // ظ„ط§ ظ†ظ…ط³ط­ ط§ظ„ظ‚ط§ط¦ظ…ط© ط§ظ„ط­ط§ظ„ظٹط© ط¹ظ†ط¯ ظپط´ظ„ ط§ظ„طھط­ط¯ظٹط« ط­طھظ‰ ظ„ط§ طھظڈط؛ظ„ظ‚ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط­ط¯ط¯ط©.
         return [];
       } finally {
         setLoading(false);
@@ -3004,10 +3231,10 @@ export default function DashboardEmployees() {
     [resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
   );
 
-  // ✅ Original logic for fixing bookings
+  // âœ… Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
     if (!canFixBookings) {
-      setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
+      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥طµظ„ط§ط­ ط§ظ„ط­ط¬ظˆط²ط§طھ.");
       return;
     }
     setRepairConfirmOpen(false);
@@ -3046,9 +3273,9 @@ export default function DashboardEmployees() {
         }
       }
       await batch.commit();
-      setRepairMessage("تم إصلاح ربط الحجوزات القديمة بنجاح.");
+      setRepairMessage("طھظ… ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ط¨ظ†ط¬ط§ط­.");
     } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
+      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط¥ظƒظ…ط§ظ„ ط¥طµظ„ط§ط­ ط§ظ„ط­ط¬ظˆط²ط§طھ."));
     } finally {
       setSaving(false);
     }
@@ -3330,18 +3557,18 @@ export default function DashboardEmployees() {
 
   const savePayrollSettings = async () => {
     if (!canManagePayroll) {
-      setErrorMsg("ليست لديك صلاحية لإدارة الرواتب.");
+      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¯ط§ط±ط© ط§ظ„ط±ظˆط§طھط¨.");
       return;
     }
     const targetEmployeeId = cleanText(selectedEmployeeId || editId || routeEmployeeId);
     const currentEmployee = editingStaff || selectedEmployee;
     if (!targetEmployeeId || !currentEmployee) {
-      setErrorMsg("لم يتم تحديد الموظفة.");
+      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
       return;
     }
     const cleanName = cleanText(name || currentEmployee.name || targetEmployeeId);
     if (!cleanName) {
-      setErrorMsg("اكتب اسم الموظفة قبل حفظ إعدادات الراتب.");
+      setErrorMsg("ط§ظƒطھط¨ ط§ط³ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ‚ط¨ظ„ ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨.");
       return;
     }
 
@@ -3407,9 +3634,9 @@ export default function DashboardEmployees() {
             : employee
         )
       );
-      setPayrollSettingsMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
+      setPayrollSettingsMessage("طھظ… ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨ ظˆط§ظ„ط¯ظˆط§ظ… ظپظٹ ظ…طµط¯ط± ظ…ط³ظٹط±ط§طھ ط§ظ„ط±ظˆط§طھط¨.");
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب."));
+      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨."));
     } finally {
       setPayrollSettingsSaving(false);
     }
@@ -3421,7 +3648,7 @@ export default function DashboardEmployees() {
     const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
     const effectiveShowOnBooking = specialtiesFixed.length > 0 ? !!showOnBooking : false;
     if (!cleanName) {
-      setErrorMsg("اكتب اسم الموظفة");
+      setErrorMsg("ط§ظƒطھط¨ ط§ط³ظ… ط§ظ„ظ…ظˆط¸ظپط©");
       return;
     }
     // Allow saving basic data even when no services are assigned.
@@ -3429,16 +3656,16 @@ export default function DashboardEmployees() {
     if (specialtiesFixed.length === 0 && showOnBooking) {
       setShowOnBooking(false);
     }
-    // ✅ منع "النسيان": موظفة نشطة لكن مخفية من الحجز
+    // âœ… ظ…ظ†ط¹ "ط§ظ„ظ†ط³ظٹط§ظ†": ظ…ظˆط¸ظپط© ظ†ط´ط·ط© ظ„ظƒظ† ظ…ط®ظپظٹط© ظ…ظ† ط§ظ„ط­ط¬ط²
     if (active && specialtiesFixed.length > 0 && !effectiveShowOnBooking) {
       const ok = confirm(
-        "⚠️ تنبيه: الموظفة لديها خدمات لكنها مخفية من الحجز.\nهل تريد الحفظ بهذا الشكل؟"
+        "âڑ ï¸ڈ طھظ†ط¨ظٹظ‡: ط§ظ„ظ…ظˆط¸ظپط© ظ„ط¯ظٹظ‡ط§ ط®ط¯ظ…ط§طھ ظ„ظƒظ†ظ‡ط§ ظ…ط®ظپظٹط© ظ…ظ† ط§ظ„ط­ط¬ط².\nظ‡ظ„ طھط±ظٹط¯ ط§ظ„ط­ظپط¸ ط¨ظ‡ط°ط§ ط§ظ„ط´ظƒظ„طں"
       );
       if (!ok) return;
     }
 
-    // احفظ فقط الاستثناءات التي تم إضافتها فعلياً في القائمة.
-    // لا نطبق المسودة تلقائياً عند الحفظ حتى لا تعيد القيم القديمة.
+    // ط§ط­ظپط¸ ظپظ‚ط· ط§ظ„ط§ط³طھط«ظ†ط§ط،ط§طھ ط§ظ„طھظٹ طھظ… ط¥ط¶ط§ظپطھظ‡ط§ ظپط¹ظ„ظٹط§ظ‹ ظپظٹ ط§ظ„ظ‚ط§ط¦ظ…ط©.
+    // ظ„ط§ ظ†ط·ط¨ظ‚ ط§ظ„ظ…ط³ظˆط¯ط© طھظ„ظ‚ط§ط¦ظٹط§ظ‹ ط¹ظ†ط¯ ط§ظ„ط­ظپط¸ ط­طھظ‰ ظ„ط§ طھط¹ظٹط¯ ط§ظ„ظ‚ظٹظ… ط§ظ„ظ‚ط¯ظٹظ…ط©.
     let normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
     const hasPendingOverrideDraft =
       !!normalizeLeaveUntil(modalHourOverrideEditingDate) ||
@@ -3480,7 +3707,7 @@ export default function DashboardEmployees() {
       return scheduleDay?.enabled !== false && !cleanText(scheduleDay?.shiftTemplateId);
     });
     if (shouldValidateSchedule && missingShiftDays.length) {
-      setErrorMsg(`اختاري شفتًا لأيام العمل التالية: ${missingShiftDays.map((day) => day.label).join("، ")}`);
+      setErrorMsg(`ط§ط®طھط§ط±ظٹ ط´ظپطھظ‹ط§ ظ„ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط§ظ„طھط§ظ„ظٹط©: ${missingShiftDays.map((day) => day.label).join("طŒ ")}`);
       return;
     }
     const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
@@ -3501,7 +3728,7 @@ export default function DashboardEmployees() {
       (!editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot));
     let scheduleChangeReason = cleanText(modalScheduleChangeReason);
     if (scheduleChanged && !scheduleEffectiveFrom) {
-      setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
+      setErrorMsg("ط­ط¯ط¯ظٹ طھط§ط±ظٹط® ط¨ط¯ط، طھط·ط¨ظٹظ‚ ط¬ط¯ظˆظ„ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط¬ط¯ظٹط¯.");
       return;
     }
     if (editId && scheduleChanged && !scheduleChangeReason) {
@@ -3512,8 +3739,8 @@ export default function DashboardEmployees() {
       }).map((day) => day.label);
 
       scheduleChangeReason = changedClosedDays.length
-        ? `تعديل الإجازة الأسبوعية: ${changedClosedDays.join("، ")}`
-        : "تحديث جدول دوام الموظفة";
+        ? `طھط¹ط¯ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط©: ${changedClosedDays.join("طŒ ")}`
+        : "طھط­ط¯ظٹط« ط¬ط¯ظˆظ„ ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط©";
 
       setModalScheduleChangeReason(scheduleChangeReason);
     }
@@ -3524,7 +3751,7 @@ export default function DashboardEmployees() {
         effectiveFrom: scheduleEffectiveFrom,
         next: nextScheduleSnapshot,
         previous: editId ? previousScheduleSnapshot : null,
-        changeReason: scheduleChangeReason || "إنشاء جدول الموظفة",
+        changeReason: scheduleChangeReason || "ط¥ظ†ط´ط§ط، ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط©",
         createdByUid: cleanText(authUser?.uid),
       });
     }
@@ -3809,7 +4036,7 @@ export default function DashboardEmployees() {
       });
 
       } catch (coreSyncError) {
-        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "تعذرت مزامنة Core HR بعد حفظ Firestore.");
+        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "طھط¹ط°ط±طھ ظ…ط²ط§ظ…ظ†ط© Core HR ط¨ط¹ط¯ ط­ظپط¸ Firestore.");
         employeeSaveDebug("core sync failed", {
           employeeId: targetEmployeeId,
           message: coreSyncWarning,
@@ -3853,10 +4080,10 @@ export default function DashboardEmployees() {
             targetUid: target.targetUid || undefined,
             targetEmployeeId: target.targetEmployeeId || undefined,
             type: leaveChanged ? "leave" : "system",
-            title: leaveChanged ? "تم تحديث حالة الإجازة" : "تم تحديث حالة الموظفة",
+            title: leaveChanged ? "طھظ… طھط­ط¯ظٹط« ط­ط§ظ„ط© ط§ظ„ط¥ط¬ط§ط²ط©" : "طھظ… طھط­ط¯ظٹط« ط­ط§ظ„ط© ط§ظ„ظ…ظˆط¸ظپط©",
             body: leaveChanged
-              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveFrom ? ` من ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
-              : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
+              ? `${effectiveModalOnLeave ? "ظپظٹ ط¥ط¬ط§ط²ط©" : "ظ…طھط§ط­ط© ظ„ظ„ط¹ظ…ظ„"}${normalizedModalLeaveFrom ? ` ظ…ظ† ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` ط­طھظ‰ ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
+              : `${!!active ? "ظ†ط´ط·ط©" : "ط؛ظٹط± ظ†ط´ط·ط©"}${normalizedEmploymentEndDate ? ` - ظٹظ†طھظ‡ظٹ ط§ظ„طھظˆط¸ظٹظپ ظپظٹ ${normalizedEmploymentEndDate}` : ""}`,
             route: leaveChanged ? "/employee/leave" : "/employee/profile",
           }).catch((notificationError) => {
             console.warn("createEmployeeNotification after employee save failed:", notificationError);
@@ -3871,7 +4098,7 @@ export default function DashboardEmployees() {
         staffPublicExists: savedStaffSnap.exists(),
       });
       if (!savedStaffSnap.exists()) {
-        throw new Error("تعذر قراءة ملف الموظفة من staff_public بعد الحفظ.");
+        throw new Error("طھط¹ط°ط± ظ‚ط±ط§ط،ط© ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† staff_public ط¨ط¹ط¯ ط§ظ„ط­ظپط¸.");
       }
       const persistedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
         savedStaffSnap.data() as Partial<StaffPublicDoc>,
@@ -3894,7 +4121,7 @@ export default function DashboardEmployees() {
         selectedEmployeeIdentityRef.current
       );
       if (!reloadedEmployee) {
-        throw new Error("تعذر إعادة تحميل الموظفة من السيرفر بعد الحفظ.");
+        throw new Error("طھط¹ط°ط± ط¥ط¹ط§ط¯ط© طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط³ظٹط±ظپط± ط¨ط¹ط¯ ط§ظ„ط­ظپط¸.");
       }
       const rehydratedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
         reloadedEmployee,
@@ -3916,8 +4143,8 @@ export default function DashboardEmployees() {
       window.dispatchEvent(new Event("queens:staff-updated"));
       setSaveMessage(
         coreSyncWarning
-          ? `تم حفظ التغييرات بنجاح، لكن تعذرت مزامنة Core HR: ${coreSyncWarning}`
-          : "تم حفظ التغييرات بنجاح"
+          ? `طھظ… ط­ظپط¸ ط§ظ„طھط؛ظٹظٹط±ط§طھ ط¨ظ†ط¬ط§ط­طŒ ظ„ظƒظ† طھط¹ط°ط±طھ ظ…ط²ط§ظ…ظ†ط© Core HR: ${coreSyncWarning}`
+          : "طھظ… ط­ظپط¸ ط§ظ„طھط؛ظٹظٹط±ط§طھ ط¨ظ†ط¬ط§ط­"
       );
       employeeSaveDebug("completed", {
         employeeId: targetEmployeeId,
@@ -3931,7 +4158,7 @@ export default function DashboardEmployees() {
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
       }, e);
       setSaveMessage("");
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
+      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط­ظپط¸ ط§ظ„ظ…ظˆط¸ظپط©."));
     } finally {
       setSaving(false);
     }
@@ -3940,7 +4167,7 @@ export default function DashboardEmployees() {
   const remove = async (id: string) => {
     if (!ensureCanDelete()) return;
     const target = list.find((row) => row.id === id);
-    if (!confirm(`هل تريد أرشفة الموظفة "${target?.name || id}"؟\nستختفي من الحجوزات الجديدة مع بقاء الحجوزات التاريخية.`)) return;
+    if (!confirm(`ظ‡ظ„ طھط±ظٹط¯ ط£ط±ط´ظپط© ط§ظ„ظ…ظˆط¸ظپط© "${target?.name || id}"طں\nط³طھط®طھظپظٹ ظ…ظ† ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¬ط¯ظٹط¯ط© ظ…ط¹ ط¨ظ‚ط§ط، ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„طھط§ط±ظٹط®ظٹط©.`)) return;
     setSaving(true);
     setErrorMsg("");
     const previousList = list;
@@ -3965,7 +4192,7 @@ export default function DashboardEmployees() {
       window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (e) {
       setList(previousList);
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف الموظفة."));
+      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط­ط°ظپ ط§ظ„ظ…ظˆط¸ظپط©."));
     } finally {
       setSaving(false);
     }
@@ -4029,11 +4256,11 @@ export default function DashboardEmployees() {
     !!(selectedEmployee as any)?.onLeave && !selectedEmployeeLeaveExpired;
   const selectedEmployeeStatusLabel = selectedEmployeeOnLeave
     ? selectedEmployeeLeaveUntil
-      ? `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
-      : "في إجازة"
+      ? `ظپظٹ ط¥ط¬ط§ط²ط© ط­طھظ‰ ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
+      : "ظپظٹ ط¥ط¬ط§ط²ط©"
     : selectedEmployee?.active
-      ? "نشطة"
-      : "غير نشطة";
+      ? "ظ†ط´ط·ط©"
+      : "ط؛ظٹط± ظ†ط´ط·ط©";
   const selectedEmployeeStatusClass = selectedEmployeeOnLeave
     ? "warn"
     : selectedEmployee?.active
@@ -4104,7 +4331,7 @@ export default function DashboardEmployees() {
     let salonEnabled = salonWeeklyEnabled;
     let salonOpen = salonWeeklyOpen;
     let salonClose = salonWeeklyClose;
-    let salonSourceLabel = "أسبوعي";
+    let salonSourceLabel = "ط£ط³ط¨ظˆط¹ظٹ";
     let activeSalonOverride:
       | {
           sourceIndex: number;
@@ -4125,13 +4352,13 @@ export default function DashboardEmployees() {
       const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
       if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
         salonEnabled = false;
-        salonSourceLabel = "استثناء فعلي";
+        salonSourceLabel = "ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ";
         activeSalonOverride = {
           sourceIndex: i,
           fromDate: ov.fromDate,
           toDate: ov.toDate,
           mode: "closed",
-          windowLabel: "إغلاق كامل اليوم",
+          windowLabel: "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…",
           includeDays: includeDays as WeekdayKey[],
           blockedDays: blockedDays as WeekdayKey[],
         };
@@ -4141,7 +4368,7 @@ export default function DashboardEmployees() {
         const ovEnd = normalizeTimeHHMM(ov.end) || salonClose;
         salonOpen = ovStart;
         salonClose = ovEnd;
-        salonSourceLabel = "استثناء فعلي";
+        salonSourceLabel = "ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ";
         activeSalonOverride = {
           sourceIndex: i,
           fromDate: ov.fromDate,
@@ -4156,10 +4383,10 @@ export default function DashboardEmployees() {
     }
     const salonWeeklyWindowLabel = salonWeeklyEnabled
       ? formatWindow(salonWeeklyOpen, salonWeeklyClose)
-      : "مغلق أسبوعيًا";
+      : "ظ…ط؛ظ„ظ‚ ط£ط³ط¨ظˆط¹ظٹظ‹ط§";
     const salonEffectiveWindowLabel = salonEnabled
       ? formatWindow(salonOpen, salonClose)
-      : "مغلق للحجوزات اليوم";
+      : "ظ…ط؛ظ„ظ‚ ظ„ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ…";
 
     const weekdayLabel = (key: WeekdayKey | "") =>
       WEEKDAY_OPTIONS.find((x) => x.key === key)?.label || "-";
@@ -4168,14 +4395,14 @@ export default function DashboardEmployees() {
     const formatOverrideMeta = (ov: BookingHourOverride) => {
       const includeDays = Array.isArray(ov?.includeWeekdays) ? (ov.includeWeekdays as WeekdayKey[]) : [];
       const blockedDays = Array.isArray(ov?.blockedWeekdays) ? (ov.blockedWeekdays as WeekdayKey[]) : [];
-      const includeLabel = includeDays.length ? formatWeekdaySet(includeDays) : "كل الأيام";
+      const includeLabel = includeDays.length ? formatWeekdaySet(includeDays) : "ظƒظ„ ط§ظ„ط£ظٹط§ظ…";
       const blockedLabel = blockedDays.length ? formatWeekdaySet(blockedDays) : "";
       const isClosed = String(ov?.mode || "").trim() === "closed";
       const start = normalizeTimeHHMM(ov?.start) || DEFAULT_OPEN_TIME;
       const end = normalizeTimeHHMM(ov?.end) || DEFAULT_CLOSE_TIME;
-      const modeLabel = isClosed ? "إغلاق كامل" : `ساعات ${formatWindow(start, end)}`;
-      return `${modeLabel} | الأيام المستهدفة: ${includeLabel}${
-        blockedLabel ? ` | أيام الإغلاق: ${blockedLabel}` : ""
+      const modeLabel = isClosed ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„" : `ط³ط§ط¹ط§طھ ${formatWindow(start, end)}`;
+      return `${modeLabel} | ط§ظ„ط£ظٹط§ظ… ط§ظ„ظ…ط³طھظ‡ط¯ظپط©: ${includeLabel}${
+        blockedLabel ? ` | ط£ظٹط§ظ… ط§ظ„ط¥ط؛ظ„ط§ظ‚: ${blockedLabel}` : ""
       }`;
     };
     const allOverrideDetails = bookingHourOverrides.map((ov, idx) => ({
@@ -4185,16 +4412,16 @@ export default function DashboardEmployees() {
     }));
         const todayDateGregorian = fmtIsoDate(today);
         const todayDateHijri = fmtIsoDateHijri(today);
-        const todayDateCombinedLabel = `${todayDateGregorian} — ${todayDateHijri}`;
-        const todayDateLabel = `${todayDateGregorian} م / ${todayDateHijri} هـ`;
+        const todayDateCombinedLabel = `${todayDateGregorian} â€” ${todayDateHijri}`;
+        const todayDateLabel = `${todayDateGregorian} ظ… / ${todayDateHijri} ظ‡ظ€`;
     const salonWeeklyDetails = salonWeeklyEnabled
-      ? "الدوام الأساسي مأخوذ من الجدول الأسبوعي."
-      : "اليوم مغلق في الجدول الأسبوعي.";
+      ? "ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط£ط³ط§ط³ظٹ ظ…ط£ط®ظˆط° ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ."
+      : "ط§ظ„ظٹظˆظ… ظ…ط؛ظ„ظ‚ ظپظٹ ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ.";
     const salonEffectiveBaseDetails = activeSalonOverride
       ? activeSalonOverride.mode === "closed"
-        ? "تم إغلاق الصالون اليوم عبر الاستثناء الفعلي."
-        : `تم تعديل ساعات الصالون اليوم عبر الاستثناء الفعلي (${activeSalonOverride.windowLabel}).`
-      : "لا يوجد استثناء فعلي اليوم على الصالون.";
+        ? "طھظ… ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ… ط¹ط¨ط± ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ."
+        : `طھظ… طھط¹ط¯ظٹظ„ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ… ط¹ط¨ط± ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ (${activeSalonOverride.windowLabel}).`
+      : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ط§ظ„طµط§ظ„ظˆظ†.";
     const salonSourceDetails = (() => {
       const notes: string[] = [];
       const groups: SummarySourceGroup[] = [];
@@ -4216,19 +4443,19 @@ export default function DashboardEmployees() {
         const activeDual = formatIsoDateRangeDual(activeSalonOverride.fromDate, activeSalonOverride.toDate);
         const activeDetails: string[] = [];
         if (activeSalonOverride.mode === "closed") {
-          activeDetails.push("نوع الاستثناء: إغلاق كامل للحجوزات اليوم.");
+          activeDetails.push("ظ†ظˆط¹ ط§ظ„ط§ط³طھط«ظ†ط§ط،: ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ظ„ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ….");
         } else {
-          activeDetails.push(`وقت الاستثناء الفعلي: ${activeSalonOverride.windowLabel}`);
+          activeDetails.push(`ظˆظ‚طھ ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ: ${activeSalonOverride.windowLabel}`);
         }
         if (activeSalonOverride.includeDays.length > 0) {
-          activeDetails.push(`الأيام المستهدفة: ${formatWeekdaySet(activeSalonOverride.includeDays)}`);
+          activeDetails.push(`ط§ظ„ط£ظٹط§ظ… ط§ظ„ظ…ط³طھظ‡ط¯ظپط©: ${formatWeekdaySet(activeSalonOverride.includeDays)}`);
         }
         if (activeSalonOverride.blockedDays.length > 0) {
-          activeDetails.push(`أيام الإغلاق داخل النطاق: ${formatWeekdaySet(activeSalonOverride.blockedDays)}`);
+          activeDetails.push(`ط£ظٹط§ظ… ط§ظ„ط¥ط؛ظ„ط§ظ‚ ط¯ط§ط®ظ„ ط§ظ„ظ†ط·ط§ظ‚: ${formatWeekdaySet(activeSalonOverride.blockedDays)}`);
         }
         groups.push(
           buildGroup(
-            "الاستثناء الفعلي",
+            "ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ",
             activeDual.gregorian,
             activeDual.hijri,
             activeDetails,
@@ -4238,35 +4465,35 @@ export default function DashboardEmployees() {
 
         const others = allOverrideDetails.filter((x) => x.sourceIndex !== activeSalonOverride.sourceIndex);
         if (others.length) {
-          notes.push(`استثناءات أخرى مسجلة (${others.length}):`);
+          notes.push(`ط§ط³طھط«ظ†ط§ط،ط§طھ ط£ط®ط±ظ‰ ظ…ط³ط¬ظ„ط© (${others.length}):`);
           others.forEach((x, idx) => {
             groups.push(
               buildGroup(
-                `الاستثناء ${idx + 1}`,
+                `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}`,
                 x.rangeDual.gregorian,
                 x.rangeDual.hijri,
-                [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
+                [`طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}: ${x.meta}`],
                 "other"
               )
             );
           });
         }
       } else if (allOverrideDetails.length) {
-        notes.push("لا يوجد استثناء فعلي اليوم.");
-        notes.push(`الاستثناءات المسجلة (${allOverrideDetails.length}):`);
+        notes.push("ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ….");
+        notes.push(`ط§ظ„ط§ط³طھط«ظ†ط§ط،ط§طھ ط§ظ„ظ…ط³ط¬ظ„ط© (${allOverrideDetails.length}):`);
         allOverrideDetails.forEach((x, idx) => {
           groups.push(
             buildGroup(
-              `الاستثناء ${idx + 1}`,
+              `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}`,
               x.rangeDual.gregorian,
               x.rangeDual.hijri,
-              [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
+              [`طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}: ${x.meta}`],
               "other"
             )
           );
         });
       } else {
-        notes.push("لا توجد استثناءات مسجلة على دوام الصالون.");
+        notes.push("ظ„ط§ طھظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ظ…ط³ط¬ظ„ط© ط¹ظ„ظ‰ ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ†.");
       }
       return { notes, groups };
     })();
@@ -4334,7 +4561,7 @@ export default function DashboardEmployees() {
                 fromDate: ov.fromDate,
                 toDate: ov.toDate,
                 mode: "closed",
-                windowLabel: "إغلاق كامل اليوم",
+                windowLabel: "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…",
                 includeDays,
                 blockedDays,
               };
@@ -4403,19 +4630,19 @@ export default function DashboardEmployees() {
                 )
               : null;
           const targetSourceLabel = targetOverride
-            ? "استثناء الموظفة"
+            ? "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
             : targetSalonOverride
-              ? "ساعات الصالون الخاصة"
+              ? "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
               : targetUseCustom
-                ? "الجدول الأسبوعي للموظفة"
-                : "ساعات تشغيل الصالون";
+                ? "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©"
+                : "ط³ط§ط¹ط§طھ طھط´ط؛ظٹظ„ ط§ظ„طµط§ظ„ظˆظ†";
           const targetSourceNote = targetOverride ? String(targetOverride.note || "").trim() : "";
           const targetImpactNote = targetOverride
             ? targetSourceNote
-              ? `أول يوم العودة يتأثر باستثناء الموظفة: ${targetSourceNote}`
-              : "أول يوم العودة يتأثر باستثناء الموظفة في هذا التاريخ."
+              ? `ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©: ${targetSourceNote}`
+              : "ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ظ‡ط°ط§ ط§ظ„طھط§ط±ظٹط®."
             : targetSalonOverride
-              ? "أول يوم العودة يتأثر باستثناء ساعات الصالون في هذا التاريخ."
+              ? "ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ظپظٹ ظ‡ط°ط§ ط§ظ„طھط§ط±ظٹط®."
               : "";
 
           return {
@@ -4447,17 +4674,17 @@ export default function DashboardEmployees() {
           const rangeHijri = formatIsoDateRangeByCalendar(group.fromDate, group.toDate, "hijri");
           const rangeLabel =
             rangeHijri && rangeHijri !== rangeGregorian
-              ? `${rangeGregorian} | هجري: ${rangeHijri}`
+              ? `${rangeGregorian} | ظ‡ط¬ط±ظٹ: ${rangeHijri}`
               : rangeGregorian;
           const modeLabel =
             group.enabled === false
-              ? "إغلاق كامل"
-              : `ساعات ${formatWindow(
+              ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„"
+              : `ط³ط§ط¹ط§طھ ${formatWindow(
                   normalizeTimeHHMM(group.start) || salonOpen,
                   normalizeTimeHHMM(group.end) || salonClose
                 )}`;
           const dayCountLabel =
-            group.count > 1 ? `${formatArabicInteger(group.count)} أيام` : "يوم واحد";
+            group.count > 1 ? `${formatArabicInteger(group.count)} ط£ظٹط§ظ…` : "ظٹظˆظ… ظˆط§ط­ط¯";
           return {
             rangeLabel,
             modeLabel,
@@ -4474,13 +4701,13 @@ export default function DashboardEmployees() {
                 normalizeTimeHHMM(baseDay.start) || salonOpen,
                 normalizeTimeHHMM(baseDay.end) || salonClose
               )
-            : "مغلق هذا اليوم"
+            : "ظ…ط؛ظ„ظ‚ ظ‡ط°ط§ ط§ظ„ظٹظˆظ…"
           : formatWindow(salonOpen, salonClose);
         const staffBaseMatchesSalonWeekly = staffBaseWindowLabel === salonWeeklyWindowLabel;
 
         const staffOverrideLabel = overrideToday
           ? overrideToday.enabled === false
-            ? "إغلاق كامل اليوم"
+            ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…"
             : formatWindow(
                 normalizeTimeHHMM(overrideToday.start) || salonOpen,
                 normalizeTimeHHMM(overrideToday.end) || salonClose
@@ -4492,22 +4719,22 @@ export default function DashboardEmployees() {
           : "-";
         const staffBaseDetails = useCustom
           ? baseDay && baseDay.enabled !== false
-            ? "الدوام مأخوذ من الجدول الأسبوعي المخصص للموظفة."
-            : "اليوم مغلق في جدول الموظفة الأسبوعي المخصص."
-          : "لا يوجد جدول أسبوعي مخصص؛ يتم الاعتماد على دوام الصالون الفعلي.";
+            ? "ط§ظ„ط¯ظˆط§ظ… ظ…ط£ط®ظˆط° ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط®طµطµ ظ„ظ„ظ…ظˆط¸ظپط©."
+            : "ط§ظ„ظٹظˆظ… ظ…ط؛ظ„ظ‚ ظپظٹ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط®طµطµ."
+          : "ظ„ط§ ظٹظˆط¬ط¯ ط¬ط¯ظˆظ„ ط£ط³ط¨ظˆط¹ظٹ ظ…ط®طµطµط› ظٹطھظ… ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰ ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظپط¹ظ„ظٹ.";
         const staffOverrideDetails = overrideToday
           ? overrideToday.enabled === false
-            ? `تم إغلاق دوام الموظفة بتاريخ ${todayDateLabel}.`
-            : `استثناء موظفة فعلي اليوم: ${staffOverrideLabel}.`
+            ? `طھظ… ط¥ط؛ظ„ط§ظ‚ ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ط¨طھط§ط±ظٹط® ${todayDateLabel}.`
+            : `ط§ط³طھط«ظ†ط§ط، ظ…ظˆط¸ظپط© ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…: ${staffOverrideLabel}.`
           : nextSavedOverrideSummary
-            ? `لا يوجد استثناء فعلي اليوم. أقرب استثناء محفوظ (${nextSavedOverrideSummary.dayCountLabel}) من ${nextSavedOverrideSummary.rangeLabel}: ${nextSavedOverrideSummary.modeLabel}${
-                nextSavedOverrideSummary.note ? ` | ملاحظة: ${nextSavedOverrideSummary.note}` : ""
+            ? `ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…. ط£ظ‚ط±ط¨ ط§ط³طھط«ظ†ط§ط، ظ…ط­ظپظˆط¸ (${nextSavedOverrideSummary.dayCountLabel}) ظ…ظ† ${nextSavedOverrideSummary.rangeLabel}: ${nextSavedOverrideSummary.modeLabel}${
+                nextSavedOverrideSummary.note ? ` | ظ…ظ„ط§ط­ط¸ط©: ${nextSavedOverrideSummary.note}` : ""
               }.`
             : lastSavedOverrideSummary
-              ? `لا يوجد استثناء فعلي اليوم. آخر استثناء محفوظ كان (${lastSavedOverrideSummary.dayCountLabel}) في ${lastSavedOverrideSummary.rangeLabel}: ${lastSavedOverrideSummary.modeLabel}${
-                  lastSavedOverrideSummary.note ? ` | ملاحظة: ${lastSavedOverrideSummary.note}` : ""
+              ? `ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…. ط¢ط®ط± ط§ط³طھط«ظ†ط§ط، ظ…ط­ظپظˆط¸ ظƒط§ظ† (${lastSavedOverrideSummary.dayCountLabel}) ظپظٹ ${lastSavedOverrideSummary.rangeLabel}: ${lastSavedOverrideSummary.modeLabel}${
+                  lastSavedOverrideSummary.note ? ` | ظ…ظ„ط§ط­ط¸ط©: ${lastSavedOverrideSummary.note}` : ""
                 }.`
-          : "لا يوجد استثناء يومي خاص بالموظفة اليوم.";
+          : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظٹظˆظ…ظٹ ط®ط§طµ ط¨ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظٹظˆظ….";
 
         const leaveByDate = exceptionalDates.includes(today);
         const leaveByWeekday = weekday ? exceptionalWeekdays.includes(weekday) : false;
@@ -4542,18 +4769,18 @@ export default function DashboardEmployees() {
           !!intersection && isTimeInsideWindow(timeNow, intersection.start, intersection.end);
 
         const actualNow = ended
-          ? "مستبعدة من الحجز (انتهى التوظيف)"
+          ? "ظ…ط³طھط¨ط¹ط¯ط© ظ…ظ† ط§ظ„ط­ط¬ط² (ط§ظ†طھظ‡ظ‰ ط§ظ„طھظˆط¸ظٹظپ)"
           : leaveActiveToday
-            ? "متوقفة اليوم (إجازة)"
+            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ… (ط¥ط¬ط§ط²ط©)"
             : !salonEnabled
-              ? "الحجوزات مغلقة اليوم على مستوى الصالون"
+              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†"
               : !effectiveEnabled
-                ? "لا يوجد دوام موظفة اليوم"
+                ? "ظ„ط§ ظٹظˆط¬ط¯ ط¯ظˆط§ظ… ظ…ظˆط¸ظپط© ط§ظ„ظٹظˆظ…"
                 : !intersection
-                  ? "لا يوجد تقاطع بين دوام الموظفة ودوام الحجوزات"
+                  ? "ظ„ط§ ظٹظˆط¬ط¯ طھظ‚ط§ط·ط¹ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظˆط¯ظˆط§ظ… ط§ظ„ط­ط¬ظˆط²ط§طھ"
                   : nowInsideWindow
-                    ? `تعمل الآن: ${formatWindow(intersection.start, intersection.end)}`
-                    : `خارج الدوام الآن: ${formatWindow(intersection.start, intersection.end)}`;
+                    ? `طھط¹ظ…ظ„ ط§ظ„ط¢ظ†: ${formatWindow(intersection.start, intersection.end)}`
+                    : `ط®ط§ط±ط¬ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط¢ظ†: ${formatWindow(intersection.start, intersection.end)}`;
         const statusTone: "good" | "warn" | "muted" =
           nowInsideWindow && !!intersection && !ended && !leaveActiveToday
             ? "good"
@@ -4561,28 +4788,28 @@ export default function DashboardEmployees() {
               ? "warn"
               : "muted";
         const salonEffectiveDetails = ended
-          ? "الموظفة مستبعدة من الحجز بعد انتهاء التوظيف."
+          ? "ط§ظ„ظ…ظˆط¸ظپط© ظ…ط³طھط¨ط¹ط¯ط© ظ…ظ† ط§ظ„ط­ط¬ط² ط¨ط¹ط¯ ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ."
           : leaveActiveToday
-            ? "الموظفة في إجازة اليوم، لذلك لا يظهر حجز فعلي لها."
+            ? "ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ط¥ط¬ط§ط²ط© ط§ظ„ظٹظˆظ…طŒ ظ„ط°ظ„ظƒ ظ„ط§ ظٹط¸ظ‡ط± ط­ط¬ط² ظپط¹ظ„ظٹ ظ„ظ‡ط§."
             : !salonEnabled
-              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
+              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†."
               : !effectiveEnabled
-                ? "دوام الموظفة مغلق اليوم."
+                ? "ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…."
                 : !intersection
-                  ? "لا يوجد وقت مشترك بين دوام الصالون ودوام الموظفة."
-                  : `المدى المتاح للحجز مع الموظفة: ${formatWindow(intersection.start, intersection.end)}.`;
+                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ† ظˆط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط©."
+                  : `ط§ظ„ظ…ط¯ظ‰ ط§ظ„ظ…طھط§ط­ ظ„ظ„ط­ط¬ط² ظ…ط¹ ط§ظ„ظ…ظˆط¸ظپط©: ${formatWindow(intersection.start, intersection.end)}.`;
 
         const warnings: string[] = [];
         if (leaveByDate) {
-          warnings.push(`اليوم ضمن إجازة استثنائية محددة بتاريخ ${todayDateLabel}.`);
+          warnings.push(`ط§ظ„ظٹظˆظ… ط¶ظ…ظ† ط¥ط¬ط§ط²ط© ط§ط³طھط«ظ†ط§ط¦ظٹط© ظ…ط­ط¯ط¯ط© ط¨طھط§ط±ظٹط® ${todayDateLabel}.`);
         }
         if ((staff as any).onLeave) {
           if (leaveUntil && leaveUntil >= today) {
-            warnings.push(`في إجازة من ${fmtIsoDate(today)} إلى ${fmtIsoDate(leaveUntil)}.`);
+            warnings.push(`ظپظٹ ط¥ط¬ط§ط²ط© ظ…ظ† ${fmtIsoDate(today)} ط¥ظ„ظ‰ ${fmtIsoDate(leaveUntil)}.`);
           } else if (leaveUntil && leaveUntil < today) {
-            warnings.push(`انتهت إجازتها بتاريخ ${fmtIsoDate(leaveUntil)}.`);
+            warnings.push(`ط§ظ†طھظ‡طھ ط¥ط¬ط§ط²طھظ‡ط§ ط¨طھط§ط±ظٹط® ${fmtIsoDate(leaveUntil)}.`);
           } else {
-            warnings.push("في إجازة حالياً بدون تاريخ نهاية محدد.");
+            warnings.push("ظپظٹ ط¥ط¬ط§ط²ط© ط­ط§ظ„ظٹط§ظ‹ ط¨ط¯ظˆظ† طھط§ط±ظٹط® ظ†ظ‡ط§ظٹط© ظ…ط­ط¯ط¯.");
           }
         }
 
@@ -4605,71 +4832,71 @@ export default function DashboardEmployees() {
                 86400000
             )
           );
-          const lead = diffDays <= 14 ? "إجازة قريبة" : "إجازة مجدولة";
-          warnings.push(`${lead} تبدأ ${fmtIsoDate(start)} وتنتهي ${fmtIsoDate(end)}.`);
+          const lead = diffDays <= 14 ? "ط¥ط¬ط§ط²ط© ظ‚ط±ظٹط¨ط©" : "ط¥ط¬ط§ط²ط© ظ…ط¬ط¯ظˆظ„ط©";
+          warnings.push(`${lead} طھط¨ط¯ط£ ${fmtIsoDate(start)} ظˆطھظ†طھظ‡ظٹ ${fmtIsoDate(end)}.`);
         }
 
         if (exceptionalWeekdays.length > 0) {
           const weeklyLabels = exceptionalWeekdays.map((d) => weekdayLabel(d));
           if (weeklyLabels.length === 1) {
-            warnings.push(`إجازة ثابتة كل ${weeklyLabels[0]}.`);
+            warnings.push(`ط¥ط¬ط§ط²ط© ط«ط§ط¨طھط© ظƒظ„ ${weeklyLabels[0]}.`);
           } else {
-            warnings.push(`إجازة ثابتة كل: ${weeklyLabels.join(" / ")}.`);
+            warnings.push(`ط¥ط¬ط§ط²ط© ط«ط§ط¨طھط© ظƒظ„: ${weeklyLabels.join(" / ")}.`);
           }
         }
 
         const leaveDaysLabel = exceptionalWeekdays.length
-          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join("، ")
+          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join("طŒ ")
           : "-";
         const leaveDaysDetails = exceptionalWeekdays.length
           ? leaveByWeekday
-            ? "اليوم يقع ضمن الإجازة الأسبوعية الثابتة."
-            : "اليوم ليس ضمن الإجازة الأسبوعية الثابتة."
-          : "لا توجد أيام إجازة أسبوعية ثابتة.";
+            ? "ط§ظ„ظٹظˆظ… ظٹظ‚ط¹ ط¶ظ…ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط© ط§ظ„ط«ط§ط¨طھط©."
+            : "ط§ظ„ظٹظˆظ… ظ„ظٹط³ ط¶ظ…ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط© ط§ظ„ط«ط§ط¨طھط©."
+          : "ظ„ط§ طھظˆط¬ط¯ ط£ظٹط§ظ… ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©.";
         const weeklyOffTodayLabel = exceptionalWeekdays.length
-          ? `إجازة الموظفة الثابتة: ${exceptionalWeekdays.map((d) => weekdayLabel(d)).join("، ")}`
+          ? `ط¥ط¬ط§ط²ط© ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط«ط§ط¨طھط©: ${exceptionalWeekdays.map((d) => weekdayLabel(d)).join("طŒ ")}`
           : "";
         const finalWindowLabel = hardBlockedToday
           ? leaveByWeekday
-            ? "اليوم إجازة أسبوعية ثابتة"
-            : "لا يوجد ساعات عمل اليوم"
+            ? "ط§ظ„ظٹظˆظ… ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©"
+            : "ظ„ط§ ظٹظˆط¬ط¯ ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ط§ظ„ظٹظˆظ…"
           : intersection
             ? formatWindow(intersection.start, intersection.end)
-            : "مغلق اليوم";
+            : "ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…";
         const operationalState: "working" | "outside" | "closed" =
           nowInsideWindow && !!intersection ? "working" : intersection ? "outside" : "closed";
         const operationalStatusLabel = ended
-          ? "خارج الخدمة"
+          ? "ط®ط§ط±ط¬ ط§ظ„ط®ط¯ظ…ط©"
           : leaveActiveToday
-            ? "متوقفة اليوم"
+            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ…"
             : !intersection
-              ? "مغلقة اليوم"
+              ? "ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ…"
               : nowInsideWindow
-                ? "تعمل الآن"
-                : "خارج ساعات العمل";
+                ? "طھط¹ظ…ظ„ ط§ظ„ط¢ظ†"
+                : "ط®ط§ط±ط¬ ط³ط§ط¹ط§طھ ط§ظ„ط¹ظ…ظ„";
         const reasonLabel = ended
-          ? "مغلقة بسبب انتهاء التوظيف"
+          ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ"
           : leaveActiveToday
-            ? "مغلقة بسبب الإجازة"
+            ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ظ„ط¥ط¬ط§ط²ط©"
             : !salonEnabled
               ? activeSalonOverride?.mode === "closed"
-                ? "مغلقة بسبب إغلاق الصالون اليوم"
-                : "مغلقة وفق ساعات الصالون"
+                ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ…"
+                : "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†"
               : !effectiveEnabled
                 ? overrideToday?.enabled === false
-                  ? "مغلقة بسبب استثناء الموظفة"
+                  ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
                   : useCustom
-                    ? "مغلقة وفق جدول الموظفة الأسبوعي"
-                    : "مغلقة وفق جدول الصالون"
+                    ? "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ"
+                    : "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط¬ط¯ظˆظ„ ط§ظ„طµط§ظ„ظˆظ†"
                 : !intersection
-                  ? "مغلقة لعدم وجود وقت مشترك"
+                  ? "ظ…ط؛ظ„ظ‚ط© ظ„ط¹ط¯ظ… ظˆط¬ظˆط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ"
                   : overrideToday
-                    ? "بناءً على استثناء الموظفة"
+                    ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
                     : useCustom
-                      ? "بناءً على جدول الموظفة الأسبوعي"
+                      ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ"
                       : activeSalonOverride
-                        ? "بناءً على ساعات الصالون الخاصة"
-                        : "بناءً على جدول الصالون";
+                        ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
+                        : "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط¬ط¯ظˆظ„ ط§ظ„طµط§ظ„ظˆظ†";
         const savedOverrideRows = overrideGroups.map((group, groupIndex) => {
           const tone = group.dates.includes(today)
             ? "active"
@@ -4682,18 +4909,18 @@ export default function DashboardEmployees() {
           ) as WeekdayKey[];
           const appliesToLabel =
             weekdaysInGroup.length === WEEKDAY_OPTIONS.length
-              ? "كل الأيام"
+              ? "ظƒظ„ ط§ظ„ط£ظٹط§ظ…"
               : formatWeekdaySet(weekdaysInGroup);
           return {
             id: group.id,
             tone,
-            badge: tone === "active" ? "نشط" : tone === "upcoming" ? "قادم" : "منتهي",
-            title: `الاستثناء ${formatArabicInteger(groupIndex + 1)}`,
+            badge: tone === "active" ? "ظ†ط´ط·" : tone === "upcoming" ? "ظ‚ط§ط¯ظ…" : "ظ…ظ†طھظ‡ظٹ",
+            title: `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${formatArabicInteger(groupIndex + 1)}`,
             gregorianRange: rangeDual.gregorian,
             hijriRange: rangeDual.hijri,
             hoursLabel:
               group.enabled === false
-                ? "إغلاق كامل"
+                ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„"
                 : formatWindow(
                     normalizeTimeHHMM(group.start) || salonOpen,
                     normalizeTimeHHMM(group.end) || salonClose
@@ -4707,70 +4934,70 @@ export default function DashboardEmployees() {
         const lastTimelineOverrideGroup =
           overrideGroups.length ? overrideGroups[overrideGroups.length - 1] : null;
         const overrideTimelineSummary = lastTimelineOverrideGroup
-          ? `آخر استثناء مجدول ينتهي في ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} — ${fmtIsoDateHijri(
+          ? `ط¢ط®ط± ط§ط³طھط«ظ†ط§ط، ظ…ط¬ط¯ظˆظ„ ظٹظ†طھظ‡ظٹ ظپظٹ ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} â€” ${fmtIsoDateHijri(
               lastTimelineOverrideGroup.toDate
             )}`
           : "";
         const overrideTimelineFallback = lastTimelineOverrideGroup
-          ? `بعد ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} (${fmtIsoDateHijri(
+          ? `ط¨ط¹ط¯ ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} (${fmtIsoDateHijri(
               lastTimelineOverrideGroup.toDate
-            )}) يعود النظام إلى الجدول الأسبوعي المعتاد ما لم يُضف استثناء جديد.`
+            )}) ظٹط¹ظˆط¯ ط§ظ„ظ†ط¸ط§ظ… ط¥ظ„ظ‰ ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط¹طھط§ط¯ ظ…ط§ ظ„ظ… ظٹظڈط¶ظپ ط§ط³طھط«ظ†ط§ط، ط¬ط¯ظٹط¯.`
           : "";
-        const overrideTodayLabel = overrideToday ? staffOverrideLabel : "لا يوجد اليوم";
+        const overrideTodayLabel = overrideToday ? staffOverrideLabel : "ظ„ط§ ظٹظˆط¬ط¯ ط§ظ„ظٹظˆظ…";
         const overrideTodayNote = overrideToday
-          ? "الاستثناء المطبق اليوم موضح ضمن الجدول الزمني أعلاه."
-          : "لا يوجد استثناء موظفة مطبق على هذا اليوم.";
+          ? "ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ… ظ…ظˆط¶ط­ ط¶ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط²ظ…ظ†ظٹ ط£ط¹ظ„ط§ظ‡."
+          : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظ…ظˆط¸ظپط© ظ…ط·ط¨ظ‚ ط¹ظ„ظ‰ ظ‡ط°ط§ ط§ظ„ظٹظˆظ….";
         const hasClosureStatus = ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection;
         const closureStatusValue = ended
-          ? "انتهى التوظيف"
+          ? "ط§ظ†طھظ‡ظ‰ ط§ظ„طھظˆط¸ظٹظپ"
           : leaveActiveToday
-            ? "إجازة / توقف"
+            ? "ط¥ط¬ط§ط²ط© / طھظˆظ‚ظپ"
             : !salonEnabled
-              ? "إغلاق على مستوى الصالون"
+              ? "ط¥ط؛ظ„ط§ظ‚ ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†"
               : !effectiveEnabled
-                ? "إغلاق على مستوى الموظفة"
+                ? "ط¥ط؛ظ„ط§ظ‚ ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„ظ…ظˆط¸ظپط©"
                 : !intersection
-                  ? "لا يوجد وقت مشترك"
-                  : "لا يوجد إغلاق اليوم";
+                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ"
+                  : "ظ„ط§ ظٹظˆط¬ط¯ ط¥ط؛ظ„ط§ظ‚ ط§ظ„ظٹظˆظ…";
         const closureStatusNote = ended
-          ? "الموظفة غير متاحة للحجز بعد تاريخ انتهاء التوظيف."
+          ? "ط§ظ„ظ…ظˆط¸ظپط© ط؛ظٹط± ظ…طھط§ط­ط© ظ„ظ„ط­ط¬ط² ط¨ط¹ط¯ طھط§ط±ظٹط® ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ."
           : leaveActiveToday
-            ? "متوقفة اليوم بسبب الإجازة أو التعطيل."
+            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ… ط¨ط³ط¨ط¨ ط§ظ„ط¥ط¬ط§ط²ط© ط£ظˆ ط§ظ„طھط¹ط·ظٹظ„."
             : !salonEnabled
-              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
+              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†."
               : !effectiveEnabled
-                ? "دوام الموظفة مغلق اليوم."
+                ? "ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…."
                 : !intersection
-                  ? "لا يوجد وقت مشترك بين دوام الموظفة وساعات الصالون."
+                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظˆط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†."
                   : undefined;
         const reasonStatusValue = ended
-          ? "انتهاء التوظيف"
+          ? "ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ"
           : leaveActiveToday
-            ? "إجازة أو تعطيل"
+            ? "ط¥ط¬ط§ط²ط© ط£ظˆ طھط¹ط·ظٹظ„"
             : overrideToday
-              ? "استثناء الموظفة"
+              ? "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
               : useCustom
-                ? "الجدول الأسبوعي للموظفة"
+                ? "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©"
                 : activeSalonOverride
                   ? activeSalonOverride.mode === "closed"
-                    ? "إغلاق الصالون اليوم"
-                    : "ساعات الصالون الخاصة"
-                  : "ساعات الصالون";
+                    ? "ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ…"
+                    : "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
+                  : "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†";
         const bookingAvailabilityValue =
           ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection
-            ? "غير متاح اليوم"
-            : "متاح ضمن هذه الفترة";
+            ? "ط؛ظٹط± ظ…طھط§ط­ ط§ظ„ظٹظˆظ…"
+            : "ظ…طھط§ط­ ط¶ظ…ظ† ظ‡ط°ظ‡ ط§ظ„ظپطھط±ط©";
         const statusRows = [
           {
-            label: "السبب",
+            label: "ط§ظ„ط³ط¨ط¨",
             value: reasonStatusValue,
           },
           {
-            label: "حالة الإغلاق",
-            value: hasClosureStatus ? closureStatusValue : "لا يوجد",
+            label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
+            value: hasClosureStatus ? closureStatusValue : "ظ„ط§ ظٹظˆط¬ط¯",
           },
           {
-            label: "إتاحة الحجز",
+            label: "ط¥طھط§ط­ط© ط§ظ„ط­ط¬ط²",
             value: bookingAvailabilityValue,
           },
         ];
@@ -4780,12 +5007,12 @@ export default function DashboardEmployees() {
           const ongoingLeaveWithoutEnd = leaveByToggle && !leaveUntil;
           if (ongoingLeaveWithoutEnd) {
             return {
-              gregorianDate: "غير محدد حتى الآن",
-              hijriDate: "بانتظار تحديد نهاية الإجازة",
-              windowLabel: "سيُحدد لاحقًا",
-              sourceLabel: "بانتظار تحديد نهاية الإجازة",
-              availabilityLabel: "الحجز غير متاح حتى يتم تحديد موعد العودة",
-              note: "لا يمكن احتساب أول يوم عمل لأن الإجازة الحالية بلا تاريخ نهاية محدد.",
+              gregorianDate: "ط؛ظٹط± ظ…ط­ط¯ط¯ ط­طھظ‰ ط§ظ„ط¢ظ†",
+              hijriDate: "ط¨ط§ظ†طھط¸ط§ط± طھط­ط¯ظٹط¯ ظ†ظ‡ط§ظٹط© ط§ظ„ط¥ط¬ط§ط²ط©",
+              windowLabel: "ط³ظٹظڈط­ط¯ط¯ ظ„ط§ط­ظ‚ظ‹ط§",
+              sourceLabel: "ط¨ط§ظ†طھط¸ط§ط± طھط­ط¯ظٹط¯ ظ†ظ‡ط§ظٹط© ط§ظ„ط¥ط¬ط§ط²ط©",
+              availabilityLabel: "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط­طھظ‰ ظٹطھظ… طھط­ط¯ظٹط¯ ظ…ظˆط¹ط¯ ط§ظ„ط¹ظˆط¯ط©",
+              note: "ظ„ط§ ظٹظ…ظƒظ† ط§ط­طھط³ط§ط¨ ط£ظˆظ„ ظٹظˆظ… ط¹ظ…ظ„ ظ„ط£ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط© ط¨ظ„ط§ طھط§ط±ظٹط® ظ†ظ‡ط§ظٹط© ظ…ط­ط¯ط¯.",
               leaveEndsLabel: "",
             };
           }
@@ -4808,10 +5035,10 @@ export default function DashboardEmployees() {
                 hijriDate: fmtIsoDateHijri(candidate.dateIso),
                 windowLabel: formatWindow(candidate.intersection.start, candidate.intersection.end),
                 sourceLabel: candidate.sourceLabel,
-                availabilityLabel: "الحجز سيكون متاحًا ابتداءً من هذا الوقت",
+                availabilityLabel: "ط§ظ„ط­ط¬ط² ط³ظٹظƒظˆظ† ظ…طھط§ط­ظ‹ط§ ط§ط¨طھط¯ط§ط،ظ‹ ظ…ظ† ظ‡ط°ط§ ط§ظ„ظˆظ‚طھ",
                 note: candidate.impactNote,
                 leaveEndsLabel: leaveEndsOn
-                  ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
+                  ? `${fmtIsoDate(leaveEndsOn)} â€” ${fmtIsoDateHijri(leaveEndsOn)}`
                   : "",
               };
             }
@@ -4819,53 +5046,53 @@ export default function DashboardEmployees() {
           }
 
           return {
-            gregorianDate: "لا توجد عودة مجدولة",
-            hijriDate: "بحسب البيانات الحالية",
-            windowLabel: "سيُحدد لاحقًا",
-            sourceLabel: "لا توجد ساعات عمل لاحقة ضمن الإعدادات الحالية",
-            availabilityLabel: "الحجز غير متاح حتى تتوفر ساعات عمل لاحقة",
-            note: "لم يتم العثور على يوم عمل قادم ضمن الجدول الحالي.",
-            leaveEndsLabel: leaveEndsOn ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}` : "",
+            gregorianDate: "ظ„ط§ طھظˆط¬ط¯ ط¹ظˆط¯ط© ظ…ط¬ط¯ظˆظ„ط©",
+            hijriDate: "ط¨ط­ط³ط¨ ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط§ظ„ظٹط©",
+            windowLabel: "ط³ظٹظڈط­ط¯ط¯ ظ„ط§ط­ظ‚ظ‹ط§",
+            sourceLabel: "ظ„ط§ طھظˆط¬ط¯ ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ظ„ط§ط­ظ‚ط© ط¶ظ…ظ† ط§ظ„ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط­ط§ظ„ظٹط©",
+            availabilityLabel: "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط­طھظ‰ طھطھظˆظپط± ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ظ„ط§ط­ظ‚ط©",
+            note: "ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظٹظˆظ… ط¹ظ…ظ„ ظ‚ط§ط¯ظ… ط¶ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط­ط§ظ„ظٹ.",
+            leaveEndsLabel: leaveEndsOn ? `${fmtIsoDate(leaveEndsOn)} â€” ${fmtIsoDateHijri(leaveEndsOn)}` : "",
           };
         })();
         const detailRows = [
           {
-            label: "الجدول الأسبوعي للموظفة",
+            label: "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©",
             value: staffBaseWindowLabel,
             note: useCustom
-              ? "الساعات الأساسية المعتمدة من جدول الموظفة."
-              : "لا يوجد جدول أسبوعي مخصص؛ تعتمد الموظفة على ساعات الصالون.",
+              ? "ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط© ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط©."
+              : "ظ„ط§ ظٹظˆط¬ط¯ ط¬ط¯ظˆظ„ ط£ط³ط¨ظˆط¹ظٹ ظ…ط®طµطµط› طھط¹طھظ…ط¯ ط§ظ„ظ…ظˆط¸ظپط© ط¹ظ„ظ‰ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†.",
           },
           {
-            label: "ساعات تشغيل الصالون",
+            label: "ط³ط§ط¹ط§طھ طھط´ط؛ظٹظ„ ط§ظ„طµط§ظ„ظˆظ†",
             value: salonEffectiveWindowLabel,
             note: activeSalonOverride
-              ? "تشمل استثناء الصالون المطبق اليوم."
-              : "ساعات التشغيل المعتمدة للصالون اليوم.",
+              ? "طھط´ظ…ظ„ ط§ط³طھط«ظ†ط§ط، ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ…."
+              : "ط³ط§ط¹ط§طھ ط§ظ„طھط´ط؛ظٹظ„ ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ„ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ….",
           },
           {
-            label: "استثناء الموظفة المطبق اليوم",
+            label: "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ…",
             value: overrideTodayLabel,
             note: overrideTodayNote,
           },
           hasClosureStatus
             ? {
-                label: "حالة الإغلاق",
+                label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
                 value: closureStatusValue,
                 note: closureStatusNote,
               }
             : {
-                label: "حالة الإغلاق",
-                value: "لا يوجد",
-                note: "لا يوجد إغلاق أو تعطيل يؤثر على الدوام اليوم.",
+                label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
+                value: "ظ„ط§ ظٹظˆط¬ط¯",
+                note: "ظ„ط§ ظٹظˆط¬ط¯ ط¥ط؛ظ„ط§ظ‚ ط£ظˆ طھط¹ط·ظٹظ„ ظٹط¤ط«ط± ط¹ظ„ظ‰ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ظٹظˆظ….",
               },
           {
-            label: "إتاحة الحجز",
+            label: "ط¥طھط§ط­ط© ط§ظ„ط­ط¬ط²",
             value: bookingAvailabilityValue,
             note:
-              bookingAvailabilityValue === "متاح ضمن هذه الفترة"
-                ? `الحجز متاح ضمن ${finalWindowLabel}.`
-                : "الحجز غير متاح اليوم بحسب النتيجة النهائية أعلاه.",
+              bookingAvailabilityValue === "ظ…طھط§ط­ ط¶ظ…ظ† ظ‡ط°ظ‡ ط§ظ„ظپطھط±ط©"
+                ? `ط§ظ„ط­ط¬ط² ظ…طھط§ط­ ط¶ظ…ظ† ${finalWindowLabel}.`
+                : "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط§ظ„ظٹظˆظ… ط¨ط­ط³ط¨ ط§ظ„ظ†طھظٹط¬ط© ط§ظ„ظ†ظ‡ط§ط¦ظٹط© ط£ط¹ظ„ط§ظ‡.",
           },
         ].filter(Boolean);
 
@@ -4873,8 +5100,8 @@ export default function DashboardEmployees() {
           id: staff.id,
           name: String(staff.name || "-"),
           todayWeekdayLabel: weekdayLabel(weekday),
-          todayDateGregorianLabel: `${todayDateGregorian} م`,
-          todayDateHijriLabel: `${todayDateHijri} هـ`,
+          todayDateGregorianLabel: `${todayDateGregorian} ظ…`,
+          todayDateHijriLabel: `${todayDateHijri} ظ‡ظ€`,
           todayDateCombinedLabel,
           salonWeeklyWindowLabel,
           salonWeeklyDetails,
@@ -4929,9 +5156,9 @@ export default function DashboardEmployees() {
           ? roundPayrollNumber(workDays * dailyHours)
           : 0;
     const missing: string[] = [];
-    if (baseSalaryRiyals <= 0) missing.push("الراتب الأساسي غير محدد");
-    if (workDays <= 0) missing.push("أيام العمل غير محددة");
-    if (computedMonthlyHours <= 0) missing.push("ساعات العمل غير محددة");
+    if (baseSalaryRiyals <= 0) missing.push("ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ ط؛ظٹط± ظ…ط­ط¯ط¯");
+    if (workDays <= 0) missing.push("ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط؛ظٹط± ظ…ط­ط¯ط¯ط©");
+    if (computedMonthlyHours <= 0) missing.push("ط³ط§ط¹ط§طھ ط§ظ„ط¹ظ…ظ„ ط؛ظٹط± ظ…ط­ط¯ط¯ط©");
     const dailyRateRiyals = baseSalaryRiyals > 0 && workDays > 0
       ? roundPayrollNumber(baseSalaryRiyals / workDays)
       : 0;
@@ -5111,40 +5338,40 @@ export default function DashboardEmployees() {
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
-        { key: "stats", label: "الإحصائيات والإجازات" },
+        { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©" },
+        { key: "booking", label: "ط§ظ„ط­ط¬ط² ظˆط§ظ„ط¯ظˆط§ظ…" },
+        { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ" },
+        { key: "profile", label: "ط§ظ„ظ…ظ„ظپ" },
+        { key: "stats", label: "ط§ظ„ط¥ط­طµط§ط¦ظٹط§طھ ظˆط§ظ„ط¥ط¬ط§ط²ط§طھ" },
       ]
     : [
-        { key: "basic", label: "البيانات الأساسية" },
-        { key: "booking", label: "الحجز والدوام" },
-        { key: "services", label: "الخدمات" },
-        { key: "profile", label: "الملف" },
+        { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©" },
+        { key: "booking", label: "ط§ظ„ط­ط¬ط² ظˆط§ظ„ط¯ظˆط§ظ…" },
+        { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ" },
+        { key: "profile", label: "ط§ظ„ظ…ظ„ظپ" },
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
-    { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
-    { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
-    { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
-    { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
+    { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©", hint: "ط§ظ„ط§ط³ظ… ظˆط§ظ„ط­ط§ظ„ط© ظˆط§ظ„ط¸ظ‡ظˆط±", icon: faUserTie },
+    { key: "profile", label: "ط§ظ„ظ…ظ„ظپ ظˆط§ظ„طµظˆط±ط©", hint: "ط§ظ„طµظˆط±ط© ظˆط§ظ„ظ†ط¨ط°ط© ظˆط§ظ„طھظ‚ظٹظٹظ…", icon: faFileLines },
+    { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ", hint: "ط§ظ„ط®ط¯ظ…ط§طھ ط§ظ„ظ…ط³ظ†ط¯ط© ظ„ظ„ظ…ظˆط¸ظپط©", icon: faInbox },
+    { key: "booking", label: "ط§ظ„ط¯ظˆط§ظ… ظˆط§ظ„ط´ظپطھط§طھ", hint: "ط§ظ„ط¬ط¯ظˆظ„ ظˆط§ظ„ظ‚ظˆط§ظ„ط¨ ظˆط§ظ„ط³ظٹط§ط³ط§طھ", icon: faClock },
     ...(canViewAttendance
-      ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
+      ? [{ key: "attendance" as EmployeeSplitTab, label: "ط§ظ„ط­ط¶ظˆط±", hint: "ط§ظ„ط³ط¬ظ„ ط§ظ„ظٹظˆظ…ظٹ", icon: faCalendarCheck }]
       : []),
     ...(canViewPayroll
-      ? [{ key: "payroll" as EmployeeSplitTab, label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave }]
+      ? [{ key: "payroll" as EmployeeSplitTab, label: "ط³ط¬ظ„ ط§ظ„ط±ظˆط§طھط¨", hint: "ط§ظ„ظ‚ظپظ„ ظˆط§ظ„ط­ط³ط§ط¨", icon: faMoneyBillWave }]
       : []),
     ...(canManageLeaveBalance
       ? [
-          { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
-          { key: "leave" as EmployeeSplitTab, label: "رصيد الإجازات", hint: "الحالة والرصيد والسجل", icon: faCalendarCheck },
+          { key: "requests" as EmployeeSplitTab, label: "ط§ظ„ط·ظ„ط¨ط§طھ", hint: "ط·ظ„ط¨ط§طھ ط§ظ„ظ…ظˆط¸ظپط©", icon: faInbox },
+          { key: "leave" as EmployeeSplitTab, label: "ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ", hint: "ط§ظ„ط­ط§ظ„ط© ظˆط§ظ„ط±طµظٹط¯ ظˆط§ظ„ط³ط¬ظ„", icon: faCalendarCheck },
         ]
       : []),
     ...(canViewEmployeeMessages
-      ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
+      ? [{ key: "messages" as EmployeeSplitTab, label: "ط§ظ„ط±ط³ط§ط¦ظ„", hint: "ط§ظ„طھظˆط§طµظ„ ط§ظ„ط¯ط§ط®ظ„ظٹ", icon: faEnvelope }]
       : []),
     ...(canViewEmployeeFiles
-      ? [{ key: "files" as EmployeeSplitTab, label: "الملفات", hint: "المستندات", icon: faFileLines }]
+      ? [{ key: "files" as EmployeeSplitTab, label: "ط§ظ„ظ…ظ„ظپط§طھ", hint: "ط§ظ„ظ…ط³طھظ†ط¯ط§طھ", icon: faFileLines }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
@@ -5380,14 +5607,14 @@ export default function DashboardEmployees() {
     const parsed = parseHijriDateInput(nextRaw);
     if (!parsed) {
       if (commit && nextRaw.trim()) {
-        setErrorMsg("صيغة التاريخ الهجري يجب أن تكون: يوم/شهر/سنة (مثال: 09/09/1447).");
+        setErrorMsg("طµظٹط؛ط© ط§ظ„طھط§ط±ظٹط® ط§ظ„ظ‡ط¬ط±ظٹ ظٹط¬ط¨ ط£ظ† طھظƒظˆظ†: ظٹظˆظ…/ط´ظ‡ط±/ط³ظ†ط© (ظ…ط«ط§ظ„: 09/09/1447).");
       }
       return;
     }
     const iso = isoFromHijriDateParts(parsed);
     if (!iso) {
       if (commit) {
-        setErrorMsg("تعذر تحويل التاريخ الهجري. تأكد من إدخال تاريخ هجري صحيح.");
+        setErrorMsg("طھط¹ط°ط± طھط­ظˆظٹظ„ ط§ظ„طھط§ط±ظٹط® ط§ظ„ظ‡ط¬ط±ظٹ. طھط£ظƒط¯ ظ…ظ† ط¥ط¯ط®ط§ظ„ طھط§ط±ظٹط® ظ‡ط¬ط±ظٹ طµط­ظٹط­.");
       }
       return;
     }
@@ -5399,7 +5626,7 @@ export default function DashboardEmployees() {
   const setModalHourOverrideRangeFromExisting = () => {
     const rows = normalizeWorkingHourOverrides(modalCustomHourOverrides);
     if (!rows.length) {
-      setErrorMsg("لا توجد استثناءات حالية لتعديلها.");
+      setErrorMsg("ظ„ط§ طھظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ط­ط§ظ„ظٹط© ظ„طھط¹ط¯ظٹظ„ظ‡ط§.");
       return false;
     }
     const first = rows[0];
@@ -5610,18 +5837,18 @@ export default function DashboardEmployees() {
       cursor = addDaysIso(cursor, 1);
       guard += 1;
       if (guard > maxDays) {
-        return { next: base, appliedCount: 0, error: "نطاق التاريخ كبير جداً. الحد الأقصى 120 يوم." };
+        return { next: base, appliedCount: 0, error: "ظ†ط·ط§ظ‚ ط§ظ„طھط§ط±ظٹط® ظƒط¨ظٹط± ط¬ط¯ط§ظ‹. ط§ظ„ط­ط¯ ط§ظ„ط£ظ‚طµظ‰ 120 ظٹظˆظ…." };
       }
     }
     if (rows.length === 0) {
-      return { next: base, appliedCount: 0, error: "لا يوجد أيام مطابقة للفلاتر المختارة داخل النطاق." };
+      return { next: base, appliedCount: 0, error: "ظ„ط§ ظٹظˆط¬ط¯ ط£ظٹط§ظ… ظ…ط·ط§ط¨ظ‚ط© ظ„ظ„ظپظ„ط§طھط± ط§ظ„ظ…ط®طھط§ط±ط© ط¯ط§ط®ظ„ ط§ظ„ظ†ط·ط§ظ‚." };
     }
 
     const rowsToApply = modalHourOverrideUpdateExistingOnly
       ? rows.filter((r) => base.some((x) => x.date === r.date))
       : rows;
     if (modalHourOverrideUpdateExistingOnly && rowsToApply.length === 0) {
-      return { next: base, appliedCount: 0, error: "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر لتعديلها." };
+      return { next: base, appliedCount: 0, error: "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ط­ط§ظ„ظٹط© ظ…ط·ط§ط¨ظ‚ط© ظ„ظ„ظ†ط·ط§ظ‚/ط§ظ„ظپظ„ط§طھط± ظ„طھط¹ط¯ظٹظ„ظ‡ط§." };
     }
 
     if (modalHourOverrideUpdateExistingOnly || modalHourOverrideApplyMethod === "replace") {
@@ -5676,45 +5903,108 @@ export default function DashboardEmployees() {
     setModalHourOverrideUpdateExistingOnly(false);
   };
 
-  const applyLeaveChange = async (mode: "add" | "deduct") => {
-    if (!authUser || !editingStaff || !ensureCanManageLeaveBalance()) return;
-    const days = parsePositiveInt(leaveAdjustDays, 0);
-    if (days <= 0) {
-      setErrorMsg("اكتب عدد أيام صحيح.");
+  const applyLeaveChange = async (
+    mode: "add" | "deduct"
+  ) => {
+    if (
+      !authUser ||
+      !editingStaff ||
+      !ensureCanManageLeaveBalance()
+    ) {
       return;
     }
-    const opDate = String(leaveAdjustDate || "").trim();
+
+    const days = Number(
+      String(leaveAdjustDays || "")
+        .trim()
+        .replace(",", ".")
+    );
+
+    if (
+      !Number.isFinite(days) ||
+      days <= 0 ||
+      Math.round(days * 2) !== days * 2
+    ) {
+      setErrorMsg(
+        "اكتب عدد أيام صحيح بفواصل نصف يوم مثل 0.5 أو 1 أو 1.5."
+      );
+      return;
+    }
+
+    const opDate = String(
+      leaveAdjustDate || ""
+    ).trim();
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(opDate)) {
       setErrorMsg("اختر تاريخ العملية.");
       return;
     }
 
+    const operationSignature = [
+      editingStaff.id,
+      mode,
+      String(days),
+      opDate,
+      leaveAdjustNote.trim(),
+    ].join("|");
+
+    const pendingOperation =
+      leaveAdjustmentOperationRef.current;
+
+    const generatedOperationId =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
+    const operationId =
+      pendingOperation?.signature === operationSignature
+        ? pendingOperation.operationId
+        : `manual_leave_${generatedOperationId}`;
+
+    leaveAdjustmentOperationRef.current = {
+      signature: operationSignature,
+      operationId,
+    };
     setSaving(true);
     setErrorMsg("");
+
     try {
-      const result = await applyStaffLeaveEntryWithBalanceAdjustment({
-        staffId: editingStaff.id,
-        actionType: mode,
-        days,
-        opDate,
-        note: leaveAdjustNote.trim(),
-        actor: {
-          uid: authUser.uid,
-          role: authUser.role,
-          displayName: authUser.displayName,
-          email: authUser.email,
-        },
-      });
+      const result =
+        await CoreHrService.adjustLeaveBalance(
+          editingStaff.id,
+          {
+            actionType: mode,
+            operationId,
+            days,
+            operationDate: opDate,
+            note: leaveAdjustNote.trim(),
+          }
+        );
+
+      if (!result.createdEntry) {
+        throw new Error(
+          "core_leave_balance:missing_created_entry"
+        );
+      }
+
+      const createdEntry =
+        result.createdEntry;
+
+      leaveAdjustmentOperationRef.current = null;
 
       setList((prev) =>
-        prev.map((r) =>
-          r.id === editingStaff.id
+        prev.map((row) =>
+          row.id === editingStaff.id
             ? ({
-                ...r,
-                leaveBalanceDays: result.leaveBalanceDays,
-                leaveEntries: result.leaveEntries,
+                ...row,
+                leaveBalanceDays:
+                  result.leaveBalanceDays,
+                leaveEntries:
+                  result.leaveEntries as LeaveEntry[],
               } as StaffPublicUi)
-            : r
+            : row
         )
       );
 
@@ -5722,123 +6012,282 @@ export default function DashboardEmployees() {
       setLeaveAdjustNote("");
 
       void writeAuditLog({
-        action: "employee_updated",
+        action:
+          "employee_leave_balance_updated",
         entityType: "employee",
         entityId: editingStaff.id,
         source: "dashboard",
-        description: mode === "add" ? "إضافة رصيد إجازة للموظفة" : "خصم رصيد إجازة من الموظفة",
-        before: { leaveBalanceDays: result.previousBalance },
-        after: { leaveBalanceDays: result.leaveBalanceDays },
+        description:
+          mode === "add"
+            ? "ط¥ط¶ط§ظپط© ط±طµظٹط¯ ط¥ط¬ط§ط²ط© ظ„ظ„ظ…ظˆط¸ظپط©"
+            : "ط®طµظ… ط±طµظٹط¯ ط¥ط¬ط§ط²ط© ظ…ظ† ط§ظ„ظ…ظˆط¸ظپط©",
+        before: {
+          leaveBalanceDays:
+            result.previousBalance,
+        },
+        after: {
+          leaveBalanceDays:
+            result.leaveBalanceDays,
+        },
         meta: {
           leaveAction: mode,
           days,
-          changeAmount: result.createdEntry.changeAmount,
-          balanceBefore: result.createdEntry.balanceBefore,
-          balanceAfter: result.createdEntry.balanceAfter,
+          changeAmount:
+            createdEntry.changeAmount,
+          balanceBefore:
+            createdEntry.balanceBefore,
+          balanceAfter:
+            createdEntry.balanceAfter,
+          leaveBalanceEntryId:
+            createdEntry.id,
+          sourceType:
+            createdEntry.sourceType,
           opDate,
-          staffName: editingStaff.name,
+          staffName:
+            editingStaff.name,
         },
       });
 
-      const target = resolveStaffNotificationTarget(editingStaff);
+      const target =
+        resolveStaffNotificationTarget(
+          editingStaff
+        );
+
       await createEmployeeNotification({
-        targetUid: target.targetUid || undefined,
-        targetEmployeeId: target.targetEmployeeId || undefined,
+        targetUid:
+          target.targetUid || undefined,
+        targetEmployeeId:
+          target.targetEmployeeId ||
+          undefined,
         type: "leave",
-        title: mode === "add" ? "تمت إضافة رصيد إجازة" : "تم خصم رصيد إجازة",
-        body: `العملية ${mode === "add" ? "إضافة" : "خصم"} ${days} يوم. الرصيد الحالي: ${result.leaveBalanceDays} يوم.`,
+        title:
+          mode === "add"
+            ? "طھظ…طھ ط¥ط¶ط§ظپط© ط±طµظٹط¯ ط¥ط¬ط§ط²ط©"
+            : "طھظ… ط®طµظ… ط±طµظٹط¯ ط¥ط¬ط§ط²ط©",
+        body:
+          `ط§ظ„ط¹ظ…ظ„ظٹط© ${
+            mode === "add"
+              ? "ط¥ط¶ط§ظپط©"
+              : "ط®طµظ…"
+          } ${days} ظٹظˆظ…. ` +
+          `ط§ظ„ط±طµظٹط¯ ط§ظ„ط­ط§ظ„ظٹ: ${
+            result.leaveBalanceDays
+          } ظٹظˆظ….`,
         route: "/employee/leave",
       }).catch(() => {});
-    } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ حركة الإجازة."));
+    } catch (error) {
+      setErrorMsg(
+        toFirestoreErrorMessage(
+          error,
+          "طھط¹ط°ط± ط­ظپط¸ ط­ط±ظƒط© ط§ظ„ط¥ط¬ط§ط²ط© ظپظٹ Core."
+        )
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteLeaveEntry = async (entry: LeaveEntry) => {
-    if (!authUser || !editingStaff || !ensureCanManageLeaveBalance()) return;
-    if (!String(entry?.id || "").trim()) {
-      setErrorMsg("تعذر تحديد سجل الإجازة المطلوب.");
+  const deleteLeaveEntry = async (
+    entry: LeaveEntry
+  ) => {
+    if (
+      !authUser ||
+      !editingStaff ||
+      !ensureCanManageLeaveBalance()
+    ) {
       return;
     }
 
-    const ok = confirm("هل أنت متأكد من حذف هذا السجل؟ سيتم تعديل رصيد الإجازات تلقائيًا.");
+    const entryId = String(
+      entry?.id || ""
+    ).trim();
+
+    if (!entryId) {
+      setErrorMsg(
+        "طھط¹ط°ط± طھط­ط¯ظٹط¯ ط³ط¬ظ„ ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ظ…ط·ظ„ظˆط¨."
+      );
+      return;
+    }
+
+    const ok = confirm(
+      "ظ‡ظ„ ط£ظ†طھ ظ…طھط£ظƒط¯ ظ…ظ† ط­ط°ظپ ظ‡ط°ط§ ط§ظ„ط³ط¬ظ„طں ط³ظٹطھظ… ط¥ظ†ط´ط§ط، ط­ط±ظƒط© ط¹ظƒط³ظٹط© ظˆطھط¹ط¯ظٹظ„ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ طھظ„ظ‚ط§ط¦ظٹظ‹ط§."
+    );
+
     if (!ok) return;
 
     setSaving(true);
     setErrorMsg("");
+
     try {
-      const result = await deleteStaffLeaveEntryWithBalanceAdjustment({
-        staffId: editingStaff.id,
-        entryId: entry.id,
-        actor: {
-          uid: authUser.uid,
-          role: authUser.role,
-          displayName: authUser.displayName,
-          email: authUser.email,
-        },
-      });
+      const result =
+        await CoreHrService.deleteLeaveBalanceEntry(
+          editingStaff.id,
+          entryId
+        );
+
+      if (!result.deletedEntry) {
+        throw new Error(
+          "core_leave_balance:missing_deleted_entry"
+        );
+      }
+
+      const deletedEntry =
+        result.deletedEntry;
 
       setList((prev) =>
         prev.map((row) =>
           row.id === editingStaff.id
             ? ({
                 ...row,
-                leaveBalanceDays: result.leaveBalanceDays,
-                leaveEntries: result.leaveEntries,
+                leaveBalanceDays:
+                  result.leaveBalanceDays,
+                leaveEntries:
+                  result.leaveEntries as LeaveEntry[],
               } as StaffPublicUi)
             : row
         )
       );
 
       void writeAuditLog({
-        action: "employee_updated",
+        action:
+          "employee_leave_balance_updated",
         entityType: "employee",
         entityId: editingStaff.id,
         source: "dashboard",
-        description: "حذف حركة من سجل الإجازات للموظفة",
-        before: { leaveBalanceDays: result.previousBalance },
-        after: { leaveBalanceDays: result.leaveBalanceDays },
+        description:
+          "ط¹ظƒط³ ط­ط±ظƒط© ظ…ظ† ط³ط¬ظ„ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ ظ„ظ„ظ…ظˆط¸ظپط©",
+        before: {
+          leaveBalanceDays:
+            result.previousBalance,
+        },
+        after: {
+          leaveBalanceDays:
+            result.leaveBalanceDays,
+        },
         meta: {
-          leaveAction: normalizeLeaveEntryType(result.deletedEntry.type) || String(result.deletedEntry.type || ""),
-          deletedLeaveEntryId: result.deletedEntry.id,
-          days: result.deletedEntry.days,
-          changeAmount: result.deletedEntry.changeAmount,
-          reversedChangeAmount: result.reversedChangeAmount,
-          balanceBefore: result.deletedEntry.balanceBefore,
-          balanceAfter: result.deletedEntry.balanceAfter,
-          opDate: result.deletedEntry.date,
-          staffName: editingStaff.name,
+          leaveAction:
+            normalizeLeaveEntryType(
+              deletedEntry.type
+            ) ||
+            String(
+              deletedEntry.actionType || ""
+            ),
+          deletedLeaveEntryId:
+            deletedEntry.id,
+          reversalEntryId:
+            result.reversalEntry?.id || "",
+          days:
+            deletedEntry.days,
+          changeAmount:
+            deletedEntry.changeAmount,
+          reversedChangeAmount:
+            result.reversedChangeAmount,
+          balanceBefore:
+            deletedEntry.balanceBefore,
+          balanceAfter:
+            deletedEntry.balanceAfter,
+          opDate:
+            deletedEntry.date,
+          staffName:
+            editingStaff.name,
           softDeleted: true,
+          sourceType:
+            deletedEntry.sourceType,
         },
       });
-    } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف حركة الإجازة."));
+    } catch (error) {
+      setErrorMsg(
+        toFirestoreErrorMessage(
+          error,
+          "طھط¹ط°ط± ط¹ظƒط³ ط­ط±ظƒط© ط§ظ„ط¥ط¬ط§ط²ط© ظپظٹ Core."
+        )
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const saveEntitlementDate = async () => {
-    if (!editingStaff || !ensureCanManageLeaveBalance()) return;
-    const d = String(leaveEntitlementDate || "").trim();
-    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      setErrorMsg("تاريخ الاستحقاق غير صحيح.");
+    if (
+      !editingStaff ||
+      !ensureCanManageLeaveBalance()
+    ) {
       return;
     }
+
+    const date = String(
+      leaveEntitlementDate || ""
+    ).trim();
+
+    if (
+      date &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    ) {
+      setErrorMsg(
+        "طھط§ط±ظٹط® ط§ظ„ط§ط³طھط­ظ‚ط§ظ‚ ط؛ظٹط± طµط­ظٹط­."
+      );
+      return;
+    }
+
     setSaving(true);
     setErrorMsg("");
+
     try {
-      await updateDoc(staffPublicDoc(editingStaff.id), {
-        leaveEntitlementDate: d || "",
-        updatedAt: serverTimestamp(),
-      } as any);
-      setList((prev) =>
-        prev.map((r) => (r.id === editingStaff.id ? ({ ...r, leaveEntitlementDate: d } as StaffPublicUi) : r))
+      const state =
+        await CoreHrService.setLeaveEntitlementDate(
+          editingStaff.id,
+          date
+        );
+
+      const canonicalDate =
+        cleanText(
+          state.leaveEntitlementDate
+        );
+
+      setLeaveEntitlementDate(
+        canonicalDate
       );
-    } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ تاريخ الاستحقاق."));
+
+      setList((prev) =>
+        prev.map((row) =>
+          row.id === editingStaff.id
+            ? ({
+                ...row,
+                leaveBalanceDays:
+                  state.leaveBalance,
+                leaveEntitlementDate:
+                  canonicalDate,
+                leaveEntries:
+                  state.entries as LeaveEntry[],
+              } as StaffPublicUi)
+            : row
+        )
+      );
+
+      void writeAuditLog({
+        action:
+          "employee_leave_balance_updated",
+        entityType: "employee",
+        entityId: editingStaff.id,
+        source: "dashboard",
+        description:
+          "طھط­ط¯ظٹط« طھط§ط±ظٹط® ط§ط³طھط­ظ‚ط§ظ‚ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط©",
+        after: {
+          leaveEntitlementDate:
+            canonicalDate,
+        },
+        meta: {
+          staffName:
+            editingStaff.name,
+        },
+      });
+    } catch (error) {
+      setErrorMsg(
+        toFirestoreErrorMessage(
+          error,
+          "طھط¹ط°ط± ط­ظپط¸ طھط§ط±ظٹط® ط§ظ„ط§ط³طھط­ظ‚ط§ظ‚ ظپظٹ Core."
+        )
+      );
     } finally {
       setSaving(false);
     }
@@ -5848,8 +6297,8 @@ export default function DashboardEmployees() {
     return (
       <div className="dsv2-page dsv2-employees-page">
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">غير مصرح</h2>
-          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
+          <h2 className="dsv2-section-title">ط؛ظٹط± ظ…طµط±ط­</h2>
+          <p className="dsv2-section-caption">ط³ط¬ظ‘ظ„ ط¯ط®ظˆظ„ ط«ظ… ط¬ط±ظ‘ط¨ ظ…ط±ط© ط£ط®ط±ظ‰.</p>
         </section>
       </div>
 
@@ -5860,8 +6309,8 @@ export default function DashboardEmployees() {
     return (
       <div className="dsv2-page dsv2-employees-page">
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
-          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
+          <h2 className="dsv2-section-title">طµظ„ط§ط­ظٹط§طھ ط؛ظٹط± ظƒط§ظپظٹط©</h2>
+          <p className="dsv2-section-caption">ظ‡ط°ظ‡ ط§ظ„طµظپط­ط© ظ…ط®طµطµط© ظ„ظ„ط¥ط¯ط§ط±ط©.</p>
         </section>
       </div>
     );
@@ -5869,7 +6318,7 @@ export default function DashboardEmployees() {
 
   const openCreateEmployee = () => {
     if (!canCreateEmployees) {
-      setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
+      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط§طھ.");
       return;
     }
     resetForm();
@@ -6032,15 +6481,15 @@ export default function DashboardEmployees() {
       <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label="ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ">
               <div className="employees-v2-page-heading">
                 <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
-                  الموارد البشرية
+                  ط§ظ„ظ…ظˆط§ط±ط¯ ط§ظ„ط¨ط´ط±ظٹط©
                 </span>
-                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
+                <h1 className="dsv2-page-title">ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ</h1>
                 <p className="dsv2-page-subtitle">
-                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
+                  ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظ„ظپط§طھ ط§ظ„ظˆط¸ظٹظپظٹط© ظˆط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط®ط¯ظ…ط§طھ ظˆط§ظ„ط±ظˆط§طھط¨ ظ…ظ† ظ…ط³ط§ط­ط© ظ…ظˆط­ط¯ط©.
                 </p>
               </div>
 
@@ -6048,7 +6497,7 @@ export default function DashboardEmployees() {
                 {canCreateEmployees ? (
                   <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
-                    إضافة موظفة
+                    ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط©
                   </button>
                 ) : null}
                 {canFixBookings ? (
@@ -6056,10 +6505,10 @@ export default function DashboardEmployees() {
                     className="dsv2-btn dsv2-btn--secondary"
                     type="button"
                     onClick={() => setRepairConfirmOpen(true)}
-                    title="إصلاح ربط الحجوزات"
+                    title="ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ"
                   >
                     <FontAwesomeIcon icon={faScrewdriverWrench} />
-                    إصلاح الملفات
+                    ط¥طµظ„ط§ط­ ط§ظ„ظ…ظ„ظپط§طھ
                   </button>
                 ) : null}
                 <button
@@ -6069,31 +6518,31 @@ export default function DashboardEmployees() {
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  تحديث البيانات
+                  طھط­ط¯ظٹط« ط§ظ„ط¨ظٹط§ظ†ط§طھ
                 </button>
               </div>
             </header>
 
-            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="ط¥ط­طµط§ط،ط§طھ ط§ظ„ظ…ظˆط¸ظپط§طھ">
               <article className="dsv2-metric-card dsv2-metric-card--dark">
-                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
+                <p className="dsv2-metric-card__label">ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ظ„ظپط§طھ</p>
                 <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
+                <p className="dsv2-metric-card__meta">ظƒظ„ ط§ظ„ظ…ظ„ظپط§طھ ط§ظ„ظ…طھط§ط­ط© ط­ط³ط¨ ط§ظ„طµظ„ط§ط­ظٹط©</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--success">
-                <p className="dsv2-metric-card__label">على رأس العمل</p>
+                <p className="dsv2-metric-card__label">ط¹ظ„ظ‰ ط±ط£ط³ ط§ظ„ط¹ظ…ظ„</p>
                 <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
+                <p className="dsv2-metric-card__meta">ظ†ط´ط·ط§طھ ظˆظ„ط³ظ† ظپظٹ ط¥ط¬ط§ط²ط©</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--gold">
-                <p className="dsv2-metric-card__label">في إجازة</p>
+                <p className="dsv2-metric-card__label">ظپظٹ ط¥ط¬ط§ط²ط©</p>
                 <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
+                <p className="dsv2-metric-card__meta">ط¥ط¬ط§ط²ط© ط­ط§ظ„ظٹط© ظ…ظ† ط³ط¬ظ„ ط§ظ„ظ…ظˆط¸ظپط©</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--danger">
-                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
+                <p className="dsv2-metric-card__label">طھط­طھط§ط¬ ظ…طھط§ط¨ط¹ط©</p>
                 <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
+                <p className="dsv2-metric-card__meta">ط؛ظٹط± ظ†ط´ط·ط© ط£ظˆ ط¨ط¯ظˆظ† ط®ط¯ظ…ط§طھ ط£ظˆ ظ…ظ„ظپ ط؛ظٹط± ظ…ظƒطھظ…ظ„</p>
               </article>
             </section>
           </>
@@ -6143,8 +6592,8 @@ export default function DashboardEmployees() {
             <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
               <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
-                <strong>جاري فتح ملف الموظفة...</strong>
-                <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
+                <strong>ط¬ط§ط±ظٹ ظپطھط­ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©...</strong>
+                <p>ظٹطھظ… طھط­ظ…ظٹظ„ ط§ظ„ظ…ظ„ظپ ظ…ظ† ط§ظ„ط³ط¬ظ„ ط§ظ„ظˆط¸ظٹظپظٹ ط§ظ„ط­ط§ظ„ظٹ ط¨ط¯ظˆظ† طھط؛ظٹظٹط± ظ…ط³ط§ط±ط§طھ ط§ظ„ط­ط³ط§ط¨ط§طھ.</p>
               </div>
             </section>
           ) : null}
@@ -6305,13 +6754,13 @@ export default function DashboardEmployees() {
                   (canCreateAttendance || canUpdateAttendance)
                 }
                 onClose={closeAttendancePunchEditor}
-                title="تعديل البصمة"
+                title="طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©"
                 description={
                   attendanceEditDate
-                    ? `تعديل سجل الحضور ليوم ${attendanceEditDate}`
-                    : "تعديل سجل الحضور والانصراف"
+                    ? `طھط¹ط¯ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ظ„ظٹظˆظ… ${attendanceEditDate}`
+                    : "طھط¹ط¯ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط§ظ†طµط±ط§ظپ"
                 }
-                eyebrow="الحضور والانصراف"
+                eyebrow="ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط§ظ†طµط±ط§ظپ"
                 size="md"
                 closeOnBackdrop={!saving}
                 closeOnEscape={!saving}
@@ -6323,7 +6772,7 @@ export default function DashboardEmployees() {
                       onClick={closeAttendancePunchEditor}
                       disabled={saving}
                     >
-                      إلغاء
+                      ط¥ظ„ط؛ط§ط،
                     </button>
                     <button
                       type="button"
@@ -6331,7 +6780,7 @@ export default function DashboardEmployees() {
                       onClick={() => void saveAttendancePunchEditor()}
                       disabled={saving}
                     >
-                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
+                      {saving ? "ط¬ط§ط±ظچ ط§ظ„ط­ظپط¸..." : "ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©"}
                     </button>
                   </>
                 }
@@ -6339,8 +6788,8 @@ export default function DashboardEmployees() {
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-in"
-                    label="وقت الحضور"
-                    hint="اختاري ساعة ودقيقة الحضور فقط."
+                    label="ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط±"
+                    hint="ط§ط®طھط§ط±ظٹ ط³ط§ط¹ط© ظˆط¯ظ‚ظٹظ‚ط© ط§ظ„ط­ط¶ظˆط± ظپظ‚ط·."
                   >
                     <input
                       id="employee-attendance-edit-check-in"
@@ -6366,8 +6815,8 @@ export default function DashboardEmployees() {
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-out"
-                    label="وقت الانصراف"
-                    hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
+                    label="ظˆظ‚طھ ط§ظ„ط§ظ†طµط±ط§ظپ"
+                    hint="ظٹظ…ظƒظ† طھط±ظƒظ‡ ظپط§ط±ط؛ظ‹ط§ ط¥ط°ط§ ظ„ظ… طھط³ط¬ظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ†طµط±ط§ظپظ‹ط§."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
                       <input
@@ -6398,7 +6847,7 @@ export default function DashboardEmployees() {
                           onClick={() => setAttendanceEditCheckOut("")}
                           disabled={saving}
                         >
-                          مسح الوقت
+                          ظ…ط³ط­ ط§ظ„ظˆظ‚طھ
                         </button>
                       ) : null}
                     </div>
@@ -6406,8 +6855,8 @@ export default function DashboardEmployees() {
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-note"
-                    label="ملاحظة الإدارة"
-                    hint="يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة."
+                    label="ظ…ظ„ط§ط­ط¸ط© ط§ظ„ط¥ط¯ط§ط±ط©"
+                    hint="ظٹظڈظپط¶ظ‘ظ„ طھظˆط¶ظٹط­ ط³ط¨ط¨ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط© ظ„ط£ط؛ط±ط§ط¶ ط§ظ„ظ…ط±ط§ط¬ط¹ط©."
                     className="dsv2-ew-form-wide"
                   >
                     <textarea
@@ -6418,7 +6867,7 @@ export default function DashboardEmployees() {
                         setAttendanceEditNote(event.target.value)
                       }
                       disabled={saving}
-                      placeholder="مثال: تصحيح بصمة من الإدارة"
+                      placeholder="ظ…ط«ط§ظ„: طھطµط­ظٹط­ ط¨طµظ…ط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©"
                       rows={4}
                     />
                   </DashboardFieldV2>
@@ -6433,8 +6882,8 @@ export default function DashboardEmployees() {
                 includeInEmployeeManagement={includeInEmployeeManagement}
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
-                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("، ")
-                    : "لا توجد إجازة أسبوعية ثابتة."
+                    ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("طŒ ")
+                    : "ظ„ط§ طھظˆط¬ط¯ ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©."
                 }
                 onNameChange={setName}
                 onActiveChange={setActive}
@@ -6510,7 +6959,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   reviewerUid={authUser?.uid || ""}
-                  reviewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  reviewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
                   canManage={canManageLeaveBalance}
                 />
               ) : null}
@@ -6521,7 +6970,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   viewerUid={authUser?.uid || ""}
-                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  viewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
                   canManage={canViewEmployeeMessages}
                 />
               ) : null}
@@ -6532,7 +6981,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   viewerUid={authUser?.uid || ""}
-                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
+                  viewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
                   canManage={canViewEmployeeFiles}
                 />
               ) : null}
@@ -6579,14 +7028,14 @@ export default function DashboardEmployees() {
         open={repairConfirmOpen}
         onClose={() => setRepairConfirmOpen(false)}
         onConfirm={fixBookingsEmployeeUid}
-        title="إصلاح ربط الحجوزات القديمة"
-        description="سيتم استكمال معرف الموظفة في الحجوزات القديمة التي ينقصها الربط فقط، دون حذف أي حجز."
+        title="ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط©"
+        description="ط³ظٹطھظ… ط§ط³طھظƒظ…ط§ظ„ ظ…ط¹ط±ظپ ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ط§ظ„طھظٹ ظٹظ†ظ‚طµظ‡ط§ ط§ظ„ط±ط¨ط· ظپظ‚ط·طŒ ط¯ظˆظ† ط­ط°ظپ ط£ظٹ ط­ط¬ط²."
         tone="gold"
-        confirmLabel="بدء الإصلاح"
-        cancelLabel="إلغاء"
-        pendingLabel="جاري الإصلاح..."
+        confirmLabel="ط¨ط¯ط، ط§ظ„ط¥طµظ„ط§ط­"
+        cancelLabel="ط¥ظ„ط؛ط§ط،"
+        pendingLabel="ط¬ط§ط±ظٹ ط§ظ„ط¥طµظ„ط§ط­..."
       >
-        <p className="employees-v2-confirm-note">يُنفذ هذا الإجراء عند وجود حجوزات قديمة غير مرتبطة بحساب الموظفة.</p>
+        <p className="employees-v2-confirm-note">ظٹظڈظ†ظپط° ظ‡ط°ط§ ط§ظ„ط¥ط¬ط±ط§ط، ط¹ظ†ط¯ ظˆط¬ظˆط¯ ط­ط¬ظˆط²ط§طھ ظ‚ط¯ظٹظ…ط© ط؛ظٹط± ظ…ط±طھط¨ط·ط© ط¨ط­ط³ط§ط¨ ط§ظ„ظ…ظˆط¸ظپط©.</p>
       </DashboardConfirmV2>
     </div>
   );

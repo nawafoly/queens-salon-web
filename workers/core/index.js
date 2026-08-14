@@ -1,4 +1,4 @@
-// CORE D1 ONLY — do not add Firestore fallback.
+// CORE D1 ONLY â€” do not add Firestore fallback.
 
 import { handleRequest as handleUnifiedPackagesRequest } from '../packages/routes.js';
 import { expireClientPackagesD1 } from '../packages/d1.js';
@@ -99,6 +99,12 @@ import {
   recordAttendance,
 } from './repositories/attendance.js';
 import { createLeave, decideLeave, listLeaves } from './repositories/leaves.js';
+import {
+  adjustLeaveBalance,
+  getLeaveBalanceState,
+  reverseLeaveBalanceAdjustment,
+  setLeaveEntitlementDate,
+} from './repositories/leave-balance.js';
 import {
   createPermissionRequest,
   decidePermissionRequest,
@@ -416,6 +422,55 @@ function match(url, method) {
   }
   const leaveDecision = /^\/api\/core\/hr\/leaves\/([^/]+)\/(approve|reject)$/.exec(path);
   if (leaveDecision && method === "POST") return { name: `leave:${leaveDecision[2]}`, id: leaveDecision[1] };
+  const leaveBalanceEntry = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/entries\/([^/]+)$/.exec(path);
+  if (leaveBalanceEntry && method === "DELETE") {
+    return {
+      name: "hr-employee:leave-balance-entry",
+      id: leaveBalanceEntry[1],
+      entryId: leaveBalanceEntry[2],
+    };
+  }
+
+  const leaveBalanceAdjustment = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/adjustments$/.exec(path);
+  if (leaveBalanceAdjustment && method === "POST") {
+    return {
+      name: "hr-employee:leave-balance-adjustment",
+      id: leaveBalanceAdjustment[1],
+    };
+  }
+
+  const leaveEntitlementDate = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance\/entitlement-date$/.exec(path);
+  if (leaveEntitlementDate && method === "PATCH") {
+    return {
+      name: "hr-employee:leave-entitlement-date",
+      id: leaveEntitlementDate[1],
+    };
+  }
+
+  if (
+    path === "/api/core/hr/employee-portal/leave-balance" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-portal:leave-balance",
+    };
+  }
+  if (
+    path === "/api/core/hr/employee-portal/leaves" &&
+    method === "GET"
+  ) {
+    return {
+      name: "employee-portal:leaves",
+    };
+  }
+  const leaveBalanceState = /^\/api\/core\/hr\/employees\/([^/]+)\/leave-balance$/.exec(path);
+  if (leaveBalanceState && method === "GET") {
+    return {
+      name: "hr-employee:leave-balance",
+      id: leaveBalanceState[1],
+    };
+  }
+
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
   const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
@@ -1052,6 +1107,151 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "employee-portal:leave-balance": {
+      requireAnyPermission(ctx, [
+        "employee_requests.own.view",
+        "workspace.employee_portal.view",
+      ]);
+
+      if (!ctx.employeeId) {
+        throw new AppError(
+          409,
+          "core_leave_balance:employee_link_required"
+        );
+      }
+
+      // Employee portal receives only its own balance summary.
+      // Do not expose ledger entries, actors, notes or audit metadata.
+      const state = await getLeaveBalanceState(
+        db,
+        ctx.salonId,
+        ctx.employeeId,
+        {
+          limit: 1,
+          includeDeleted: false,
+          includeReversals: false,
+        }
+      );
+
+      return {
+        employeeId: state.employeeId,
+        leaveBalance: state.leaveBalance,
+        leaveEntitlementDate:
+          state.leaveEntitlementDate ?? null,
+      };
+    }
+    case "employee-portal:leaves": {
+      requireAnyPermission(ctx, [
+        "employee_requests.own.view",
+        "workspace.employee_portal.view",
+      ]);
+
+      if (!ctx.employeeId) {
+        throw new AppError(
+          409,
+          "core_leave:employee_link_required"
+        );
+      }
+
+      // Self endpoint is identity-bound.
+      // Never accept employeeId / employeeUid from the client.
+      const selfQuery = {
+        employeeId: ctx.employeeId,
+      };
+
+      const requestedStatus =
+        cleanText(query.status);
+
+      if (requestedStatus) {
+        selfQuery.status =
+          requestedStatus;
+      }
+
+      return listLeaves(
+        db,
+        ctx.salonId,
+        selfQuery
+      );
+    }
+    case "hr-employee:leave-balance":
+      requireAnyPermission(ctx, [
+        "employees.view",
+        "employees.update",
+        "employees.manage",
+        "attendance.view",
+        "attendance.leaves.manage",
+        "payroll.view",
+        "payroll.manage",
+      ]);
+      return getLeaveBalanceState(
+        db,
+        ctx.salonId,
+        route.id,
+        query
+      );
+
+    case "hr-employee:leave-balance-adjustment": {
+      requirePermission(
+        ctx,
+        "attendance.leaves.manage"
+      );
+
+      const operationId = requiredId(
+        body.operationId ??
+          body.operation_id,
+        "operationId"
+      );
+
+      return adjustLeaveBalance(
+        db,
+        ctx.salonId,
+        route.id,
+        {
+          ...body,
+
+          // Server-controlled canonical source.
+          sourceType:
+            "manual_adjustment",
+
+          // Same logical submit/retry = same ledger source.
+          sourceId:
+            operationId,
+        },
+        actorInfo
+      );
+    }
+    case "hr-employee:leave-balance-entry":
+      requirePermission(ctx, "attendance.leaves.manage");
+      return reverseLeaveBalanceAdjustment(
+        db,
+        ctx.salonId,
+        route.entryId,
+        {
+          reason:
+            "حذف حركة رصيد الإجازة من إدارة الموظفات",
+        },
+        actorInfo,
+        {
+          allowedSourceTypes: [
+            "manual_adjustment",
+          ],
+          expectedEmployeeId: route.id,
+        }
+      );
+
+    case "hr-employee:leave-entitlement-date":
+      requirePermission(ctx, "attendance.leaves.manage");
+      return setLeaveEntitlementDate(
+        db,
+        ctx.salonId,
+        route.id,
+        body.leaveEntitlementDate ??
+          body.leave_entitlement_date ??
+          body.date ??
+          "",
+        actorInfo
+      );
+
     case "hr-employee:schedules":
       requirePermission(ctx, "employees.schedule.manage");
       return replaceHrSchedules(db, ctx.salonId, route.id, body.schedules || []);
@@ -1137,10 +1337,36 @@ async function dispatch(ctx, route, method, body, query, env) {
       return recordAttendance(db, ctx.salonId, { ...body, type: "check_out" }, actorInfo);
 
     case "leaves":
-      if (method === "GET") return listLeaves(db, ctx.salonId, query);
-      if (method === "POST") return createLeave(db, ctx.salonId, body, actorInfo);
-      break;
+      if (method === "GET") {
+        requireAnyPermission(ctx, [
+          "attendance.view",
+          "attendance.leaves.manage",
+          "payroll.view",
+          "payroll.manage",
+        ]);
 
+        return listLeaves(
+          db,
+          ctx.salonId,
+          query
+        );
+      }
+
+      if (method === "POST") {
+        requirePermission(
+          ctx,
+          "attendance.leaves.manage"
+        );
+
+        return createLeave(
+          db,
+          ctx.salonId,
+          body,
+          actorInfo
+        );
+      }
+
+      break;
     case "leave:approve":
       requirePermission(ctx, "attendance.leaves.manage");
       return decideLeave(db, ctx.salonId, route.id, { ...body, status: "approved" }, actorInfo);

@@ -20,6 +20,7 @@ import {
   markEmployeeNotificationsRead,
   type EmployeeLeaveRequest,
 } from "../../services/employeeHub";
+import { CoreHrService } from "../../services/CoreHrService";
 import {
   calculateLeaveDaysCount,
   formatLeaveDateRange,
@@ -39,6 +40,9 @@ type Props = {
 
 export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
   const [requests, setRequests] = useState<EmployeeLeaveRequest[]>([]);
+  const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
+  const [leaveBalanceLoading, setLeaveBalanceLoading] = useState(false);
+  const [leaveBalanceError, setLeaveBalanceError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -53,8 +57,42 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
 
   const profile = session.employeeDoc || session.staffDoc || session.userDoc || {};
   const employeeLabel = cleanText(profile.displayName || profile.name || session.displayName || session.email || "الموظفة");
-  const leaveBalance = Number(profile.leaveBalanceDays ?? profile.leaveBalance ?? 0);
 
+  const loadLeaveBalance = useCallback(async () => {
+    if (!session.uid) {
+      setLeaveBalance(null);
+      setLeaveBalanceError("");
+      return;
+    }
+
+    setLeaveBalanceLoading(true);
+    setLeaveBalanceError("");
+
+    try {
+      const state =
+        await CoreHrService.getMyLeaveBalance();
+
+      const value = Number(
+        state.leaveBalance
+      );
+
+      setLeaveBalance(
+        Number.isFinite(value)
+          ? value
+          : null
+      );
+    } catch (error) {
+      setLeaveBalance(null);
+      setLeaveBalanceError(
+        cleanText(
+          (error as any)?.message ||
+            "تعذر تحميل رصيد الإجازة من النظام المركزي."
+        )
+      );
+    } finally {
+      setLeaveBalanceLoading(false);
+    }
+  }, [session.uid]);
   const load = useCallback(async () => {
     if (!session.uid) return;
     setLoading(true);
@@ -72,6 +110,10 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadLeaveBalance();
+  }, [loadLeaveBalance]);
 
   useEffect(() => {
     if (!session.uid) return;
@@ -180,8 +222,17 @@ export default function EmployeeLeavePage({ session, onPortalChange }: Props) {
       <section className="employee-kpi-grid employee-kpi-grid--four">
         <article className="employee-kpi-card is-accent">
           <span>الرصيد الحالي</span>
-          <strong>{Number.isFinite(leaveBalance) ? `${leaveBalance} يوم` : "—"}</strong>
-          <small>حسب آخر رصيد مسجل في ملفك</small>
+          <strong>
+            {leaveBalanceLoading
+              ? "جاري..."
+              : leaveBalance === null
+                ? "—"
+                : `${leaveBalance} يوم`}
+          </strong>
+          <small>
+            {leaveBalanceError ||
+              "الرصيد التشغيلي المعتمد من Core"}
+          </small>
           <FontAwesomeIcon icon={faCalendarDays} />
         </article>
         <article className="employee-kpi-card">

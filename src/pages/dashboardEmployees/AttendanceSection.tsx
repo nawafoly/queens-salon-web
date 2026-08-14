@@ -699,6 +699,8 @@ export default function AttendanceSection({
 }: AttendanceSectionProps) {
   const [coreResolvedShiftsByDate, setCoreResolvedShiftsByDate] = useState<Record<string, CoreResolvedShift | null>>({});
   const [corePermissionSpecialDays, setCorePermissionSpecialDays] = useState<AttendanceSpecialDay[]>([]);
+  const [corePermissionLoading, setCorePermissionLoading] = useState(false);
+  const [corePermissionError, setCorePermissionError] = useState("");
   const [coreShiftLoading, setCoreShiftLoading] = useState(false);
   const [coreShiftError, setCoreShiftError] = useState("");
   const [clearingPunchType, setClearingPunchType] = useState<"check_in" | "check_out" | "">("");
@@ -767,92 +769,175 @@ export default function AttendanceSection({
   }, [employeeIdsKey, onReload]);
 
   useEffect(() => {
-    const identityIds = employeeIdsKey.split("|").filter(Boolean);
-    const dateKeys = monthDateKeys(monthKey);
-    if (!isVisible || !identityIds.length || !dateKeys.length) {
-      setCoreResolvedShiftsByDate({});
-      setCoreShiftLoading(false);
-      setCoreShiftError("");
+    const identityIds =
+      employeeIdsKey
+        .split("|")
+        .filter(Boolean);
+
+    if (
+      !isVisible ||
+      !identityIds.length ||
+      !/^\d{4}-\d{2}$/.test(monthKey)
+    ) {
+      setCorePermissionSpecialDays([]);
+      setCorePermissionError("");
+      setCorePermissionLoading(false);
       return;
     }
 
     let cancelled = false;
-    setCoreShiftLoading(true);
-    setCoreShiftError("");
 
-    const request = Promise.all(
-      dateKeys.map(async (date) => {
-        const resolved = await Promise.all(
-          identityIds.map((id) => CoreHrService.resolveEmployeeShift(id, date).catch(() => null))
+    setCorePermissionLoading(true);
+    setCorePermissionError("");
+
+    Promise.all(
+      identityIds.map((id) =>
+        CoreHrService.listLeaves({
+          employeeId: id,
+          status: "approved",
+        })
+      )
+    )
+      .then((groups) => {
+        if (cancelled) return;
+
+        const monthPrefix =
+          monthKey + "-";
+
+        const byInterval =
+          new Map<
+            string,
+            AttendanceSpecialDay
+          >();
+
+        groups
+          .flat()
+          .forEach((leave) => {
+            if (
+              cleanText(
+                leave.status
+              ).toLowerCase() !==
+              "approved"
+            ) {
+              return;
+            }
+
+            if (
+              cleanText(
+                leave.durationKind
+              ).toLowerCase() !==
+              "partial"
+            ) {
+              return;
+            }
+
+            const date =
+              cleanText(
+                leave.startDate
+              );
+
+            const startTime =
+              cleanText(
+                leave.partialStartTime
+              );
+
+            const endTime =
+              cleanText(
+                leave.partialEndTime
+              );
+
+            if (
+              !date.startsWith(
+                monthPrefix
+              )
+            ) {
+              return;
+            }
+
+            if (
+              !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                startTime
+              ) ||
+              !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                endTime
+              )
+            ) {
+              return;
+            }
+
+            byInterval.set(
+              [
+                date,
+                startTime,
+                endTime,
+              ].join("|"),
+              {
+                date,
+                kind:
+                  "partial_leave",
+                label:
+                  "استئذان",
+                source:
+                  "core_employee_leave",
+                sourceId:
+                  cleanText(
+                    leave.id
+                  ),
+                type:
+                  cleanText(
+                    leave.leaveType
+                  ),
+                partialStartTime:
+                  startTime,
+                partialEndTime:
+                  endTime,
+              }
+            );
+          });
+
+        setCorePermissionSpecialDays(
+          Array.from(
+            byInterval.values()
+          ).sort((a, b) =>
+            a.date.localeCompare(
+              b.date
+            )
+          )
         );
-        return [date, pickBestResolvedShift(resolved)] as const;
       })
-    );
+      .catch((loadError) => {
+        if (cancelled) return;
 
-    request
-      .then((pairs) => {
-        if (cancelled) return;
-        setCoreResolvedShiftsByDate(Object.fromEntries(pairs));
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.warn("attendance resolved shifts load failed", err);
-        setCoreResolvedShiftsByDate({});
-        setCoreShiftError("تعذر تحميل شفتات الحضور من Core.");
+        console.warn(
+          "attendance permission intervals load failed",
+          loadError
+        );
+
+        // We may clear stale intervals, but the UI is
+        // explicitly locked/error-state below. Core failure
+        // must never be interpreted as "there are no leaves".
+        setCorePermissionSpecialDays([]);
+
+        setCorePermissionError(
+          "تعذر تحميل الإجازات والاستئذانات المعتمدة من Core. تم إيقاف تعديلات الحضور حتى ينجح التحقق."
+        );
       })
       .finally(() => {
-        if (!cancelled) setCoreShiftLoading(false);
+        if (!cancelled) {
+          setCorePermissionLoading(
+            false
+          );
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [coreScheduleRefreshVersion, employeeIdsKey, isVisible, monthKey]);
-
-  useEffect(() => {
-    const identityIds = employeeIdsKey.split("|").filter(Boolean);
-    if (!isVisible || !identityIds.length || !/^\d{4}-\d{2}$/.test(monthKey)) {
-      setCorePermissionSpecialDays([]);
-      return;
-    }
-
-    let cancelled = false;
-    Promise.all(
-      identityIds.map((id) => CoreHrService.listLeaves({ employeeId: id, status: "approved" }).catch(() => []))
-    ).then((groups) => {
-      if (cancelled) return;
-      const monthPrefix = monthKey + "-";
-      const byInterval = new Map<string, AttendanceSpecialDay>();
-      groups.flat().forEach((leave) => {
-        if (cleanText(leave.status).toLowerCase() !== "approved") return;
-        if (cleanText(leave.durationKind).toLowerCase() !== "partial") return;
-        const date = cleanText(leave.startDate);
-        const startTime = cleanText(leave.partialStartTime);
-        const endTime = cleanText(leave.partialEndTime);
-        if (!date.startsWith(monthPrefix)) return;
-        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) return;
-        byInterval.set([date, startTime, endTime].join("|"), {
-          date,
-          kind: "partial_leave",
-          label: "استئذان",
-          source: "core_employee_leave",
-          sourceId: cleanText(leave.id),
-          type: cleanText(leave.leaveType),
-          partialStartTime: startTime,
-          partialEndTime: endTime,
-        });
-      });
-      setCorePermissionSpecialDays(Array.from(byInterval.values()).sort((a, b) => a.date.localeCompare(b.date)));
-    }).catch((error) => {
-      if (cancelled) return;
-      console.warn("attendance permission intervals load failed", error);
-      setCorePermissionSpecialDays([]);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [employeeIdsKey, isVisible, monthKey]);
+  }, [
+    employeeIdsKey,
+    isVisible,
+    monthKey,
+  ]);
 
   useEffect(() => {
     setPunchClearMessage("");
@@ -942,9 +1027,9 @@ export default function AttendanceSection({
       specialDay: selectedSpecialDay,
       coreResolvedShift: cleanText(selectedDate) ? coreResolvedShiftsByDate[cleanText(selectedDate)] || null : null,
       coreLoading: coreShiftLoading,
-      coreError: coreShiftError,
+      coreError: coreShiftError || corePermissionError,
     }),
-    [approvedLeaveDateKeys, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, effectiveSchedule, salonBusinessHours, selectedDate, selectedRawRow, selectedSpecialDay]
+    [approvedLeaveDateKeys, corePermissionError, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, effectiveSchedule, salonBusinessHours, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
   const selectedRawRecord = (selectedRawRow || {}) as StaffAttendanceWithId & Record<string, unknown>;
@@ -1021,9 +1106,9 @@ export default function AttendanceSection({
   return (
     <>
       <EmployeeAttendanceTabLiveV2
-        readOnly={loading || Boolean(clearingPunchType)}
-        loading={loading}
-        error={error}
+        readOnly={loading || corePermissionLoading || Boolean(corePermissionError) || Boolean(clearingPunchType)}
+        loading={loading || corePermissionLoading}
+        error={error || corePermissionError}
         rows={liveRows}
         monthKey={monthKey}
         selectedDate={selectedDate}
