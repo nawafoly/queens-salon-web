@@ -256,7 +256,6 @@ export default function LeaveRequestModal({
             <DashboardDatePickerV2
               id="leave-from-date-v2"
               value={fromDate}
-              max={!isPartialLeave ? toDate || undefined : undefined}
               onChange={handleFromDateChange}
             />
           </DashboardFieldV2>
