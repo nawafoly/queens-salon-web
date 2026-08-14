@@ -946,24 +946,89 @@ export async function createLeaveRequest(input: {
   createdByUid?: string;
   createdByName?: string;
 }) {
-  return addDoc(employeeLeaveRequestsCol(), {
-    employeeUid: cleanText(input.employeeUid),
-    employeeId: cleanText(input.employeeId || "") || undefined,
-    employeeName: cleanText(input.employeeName || "") || undefined,
-    type: input.type || "annual",
-    fromDate: cleanText(input.fromDate),
-    toDate: cleanText(input.toDate),
-    days: Number.isFinite(Number(input.days)) ? Number(input.days) : undefined,
-    durationKind: cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",
-    partialStartTime: input.durationKind === "partial" ? cleanText(input.partialStartTime || "") || undefined : undefined,
-    partialEndTime: input.durationKind === "partial" ? cleanText(input.partialEndTime || "") || undefined : undefined,
-    note: cleanText(input.note || "") || undefined,
+  const employeeUid = cleanText(input.employeeUid);
+  const employeeId = cleanText(input.employeeId || "");
+  const employeeName = cleanText(input.employeeName || "");
+  const fromDate = cleanText(input.fromDate);
+  const toDate = cleanText(input.toDate);
+  const note = cleanText(input.note || "");
+  const createdByUid = cleanText(input.createdByUid || "");
+  const createdByName = cleanText(input.createdByName || "");
+
+  const durationKind =
+    cleanText(input.durationKind).toLowerCase() === "partial"
+      ? "partial"
+      : "full_day";
+
+  const partialStartTime =
+    durationKind === "partial"
+      ? cleanText(input.partialStartTime || "")
+      : "";
+
+  const partialEndTime =
+    durationKind === "partial"
+      ? cleanText(input.partialEndTime || "")
+      : "";
+
+  const days = Number(input.days);
+  const hasDays =
+    Number.isFinite(days) &&
+    days > 0;
+
+  const payload = {
+    employeeUid,
+
+    ...(employeeId
+      ? { employeeId }
+      : {}),
+
+    ...(employeeName
+      ? { employeeName }
+      : {}),
+
+    type:
+      input.type ||
+      "annual",
+
+    fromDate,
+    toDate,
+
+    ...(hasDays
+      ? { days }
+      : {}),
+
+    durationKind,
+
+    ...(partialStartTime
+      ? { partialStartTime }
+      : {}),
+
+    ...(partialEndTime
+      ? { partialEndTime }
+      : {}),
+
+    ...(note
+      ? { note }
+      : {}),
+
     status: "pending",
-    createdByUid: cleanText(input.createdByUid || "") || undefined,
-    createdByName: cleanText(input.createdByName || "") || undefined,
+
+    ...(createdByUid
+      ? { createdByUid }
+      : {}),
+
+    ...(createdByName
+      ? { createdByName }
+      : {}),
+
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  return addDoc(
+    employeeLeaveRequestsCol(),
+    payload
+  );
 }
 
 export async function reviewLeaveRequest(args: {
