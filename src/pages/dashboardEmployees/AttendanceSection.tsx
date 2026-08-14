@@ -774,6 +774,108 @@ export default function AttendanceSection({
         .split("|")
         .filter(Boolean);
 
+    const dateKeys =
+      monthDateKeys(monthKey);
+
+    if (
+      !isVisible ||
+      !identityIds.length ||
+      !dateKeys.length
+    ) {
+      setCoreResolvedShiftsByDate({});
+      setCoreShiftLoading(false);
+      setCoreShiftError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    setCoreShiftLoading(true);
+    setCoreShiftError("");
+
+    Promise.all(
+      dateKeys.map(async (date) => {
+        // Core is authoritative.
+        // Any failed identity/date lookup rejects the whole
+        // verification instead of silently becoming "no shift".
+        const attempts =
+          await Promise.allSettled(
+            identityIds.map((id) =>
+              CoreHrService.resolveEmployeeShift(
+                id,
+                date
+              )
+            )
+          );
+
+        const resolved =
+          attempts
+            .filter(
+              (attempt) =>
+                attempt.status ===
+                "fulfilled"
+            )
+            .map(
+              (attempt) =>
+                attempt.value
+            );
+
+        if (!resolved.length) {
+          throw new Error(
+            `core_shift_resolution_failed:${date}`
+          );
+        }
+
+        return [
+          date,
+          pickBestResolvedShift(
+            resolved
+          ),
+        ] as const;
+      })
+    )
+      .then((pairs) => {
+        if (cancelled) return;
+
+        setCoreResolvedShiftsByDate(
+          Object.fromEntries(pairs)
+        );
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+
+        console.warn(
+          "attendance resolved shifts load failed",
+          loadError
+        );
+
+        setCoreResolvedShiftsByDate({});
+
+        setCoreShiftError(
+          "تعذر تحميل شفتات الحضور من Core. تم إيقاف تعديلات الحضور حتى ينجح التحقق."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCoreShiftLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    coreScheduleRefreshVersion,
+    employeeIdsKey,
+    isVisible,
+    monthKey,
+  ]);
+  useEffect(() => {
+    const identityIds =
+      employeeIdsKey
+        .split("|")
+        .filter(Boolean);
+
     if (
       !isVisible ||
       !identityIds.length ||
@@ -1106,9 +1208,9 @@ export default function AttendanceSection({
   return (
     <>
       <EmployeeAttendanceTabLiveV2
-        readOnly={loading || corePermissionLoading || Boolean(corePermissionError) || Boolean(clearingPunchType)}
-        loading={loading || corePermissionLoading}
-        error={error || corePermissionError}
+        readOnly={loading || coreShiftLoading || corePermissionLoading || Boolean(coreShiftError) || Boolean(corePermissionError) || Boolean(clearingPunchType)}
+        loading={loading || coreShiftLoading || corePermissionLoading}
+        error={error || coreShiftError || corePermissionError}
         rows={liveRows}
         monthKey={monthKey}
         selectedDate={selectedDate}
