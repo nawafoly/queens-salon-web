@@ -268,7 +268,7 @@ export default function EmployeeStatsSection({
         <WorkspaceMetricV2 label="الحالة" value={leaveStatusLabel} tone={leave.modalOnLeave ? "gold" : "success"} />
         <WorkspaceMetricV2 label="بداية الإجازة" value={leave.modalLeaveFrom ? fmtIsoDate(leave.modalLeaveFrom) : "غير محددة"} />
         <WorkspaceMetricV2 label="نهاية الإجازة" value={leave.modalLeaveUntil ? fmtIsoDate(leave.modalLeaveUntil) : "غير محددة"} />
-        <WorkspaceMetricV2 label="نوع الإجازة" value={leaveTypeLabel(leave.modalLeaveType)} />
+        <WorkspaceMetricV2 label="نوع الإجازة" value={leave.modalOnLeave ? leaveTypeLabel(leave.modalLeaveType) : "غير محددة"} />
         <WorkspaceMetricV2 label="سجل الحركات" value={sortedLeaveEntries.length} />
       </div>
 
