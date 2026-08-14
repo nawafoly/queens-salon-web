@@ -1134,6 +1134,11 @@ export default function AttendanceSection({
     [approvedLeaveDateKeys, corePermissionError, coreResolvedShiftsByDate, coreShiftError, coreShiftLoading, effectiveSchedule, salonBusinessHours, selectedDate, selectedRawRow, selectedSpecialDay]
   );
 
+  const attendanceCoreBlocked =
+    coreShiftLoading ||
+    corePermissionLoading ||
+    Boolean(coreShiftError) ||
+    Boolean(corePermissionError);
   const selectedRawRecord = (selectedRawRow || {}) as StaffAttendanceWithId & Record<string, unknown>;
   const selectedCheckInTime = cleanText(
     selectedRawRecord.checkInAtClient || selectedRawRecord.checkInAt || selectedRawRecord.checkInTime
@@ -1143,6 +1148,14 @@ export default function AttendanceSection({
   );
 
   const clearSelectedPunchTime = async (type: "check_in" | "check_out") => {
+    if (attendanceCoreBlocked) {
+      setPunchClearError(
+        coreShiftError ||
+          corePermissionError ||
+          "جاري التحقق من بيانات Core. لا يمكن تعديل البصمة الآن."
+      );
+      return;
+    }
     const date = cleanText(selectedDate);
     const currentTime = type === "check_in" ? selectedCheckInTime : selectedCheckOutTime;
     if (!canDelete) {
@@ -1208,7 +1221,7 @@ export default function AttendanceSection({
   return (
     <>
       <EmployeeAttendanceTabLiveV2
-        readOnly={loading || coreShiftLoading || corePermissionLoading || Boolean(coreShiftError) || Boolean(corePermissionError) || Boolean(clearingPunchType)}
+        readOnly={loading || attendanceCoreBlocked || Boolean(clearingPunchType)}
         loading={loading || coreShiftLoading || corePermissionLoading}
         error={error || coreShiftError || corePermissionError}
         rows={liveRows}
@@ -1245,7 +1258,7 @@ export default function AttendanceSection({
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
-                  disabled={Boolean(clearingPunchType)}
+                  disabled={attendanceCoreBlocked || Boolean(clearingPunchType)}
                   onClick={() => void clearSelectedPunchTime("check_in")}
                 >
                   {clearingPunchType === "check_in" ? "جاري مسح الحضور..." : "مسح وقت الحضور"}
@@ -1255,7 +1268,7 @@ export default function AttendanceSection({
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--danger dsv2-btn--sm"
-                  disabled={Boolean(clearingPunchType)}
+                  disabled={attendanceCoreBlocked || Boolean(clearingPunchType)}
                   onClick={() => void clearSelectedPunchTime("check_out")}
                 >
                   {clearingPunchType === "check_out" ? "جاري مسح الانصراف..." : "مسح وقت الانصراف"}
