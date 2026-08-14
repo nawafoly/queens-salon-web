@@ -3210,10 +3210,40 @@ export default function DashboardEmployees() {
             selectedIdentity.employeeId || selectedIdentity.id,
             selectedIdentity
           );
+
           if (matched) {
+            // A list reload must not erase the canonical leave ledger.
+            // When an employee is open, refresh the complete leave-balance
+            // state from Core D1 before publishing the reloaded rows.
+            if (canManageLeaveBalance) {
+              const leaveState =
+                await CoreHrService.getLeaveBalance(matched.id);
+
+              const leaveBalance = Number(
+                leaveState.leaveBalance ?? 0
+              );
+
+              matched.leaveBalanceDays =
+                Number.isFinite(leaveBalance) &&
+                leaveBalance >= 0
+                  ? leaveBalance
+                  : 0;
+
+              matched.leaveEntitlementDate =
+                cleanText(
+                  leaveState.leaveEntitlementDate
+                );
+
+              matched.leaveEntries =
+                leaveState.entries as LeaveEntry[];
+            }
+
             setSelectedEmployeeId(matched.id);
-            setEditId((current) => (current ? matched.id : current));
-            selectedEmployeeIdentityRef.current = employeeIdentityOf(matched);
+            setEditId((current) =>
+              current ? matched.id : current
+            );
+            selectedEmployeeIdentityRef.current =
+              employeeIdentityOf(matched);
           }
         }
 
@@ -3228,7 +3258,7 @@ export default function DashboardEmployees() {
         setLoading(false);
       }
     },
-    [resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
+    [canManageLeaveBalance, resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
   );
 
   // ✅ Original logic for fixing bookings
