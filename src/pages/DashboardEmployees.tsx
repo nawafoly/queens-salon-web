@@ -87,7 +87,7 @@ import {
 } from "../components/dashboard-v2";
 import LeaveRequestModal from "../components/LeaveRequestModal";
 
-// âœ… Bookings stats (Owner only)
+// ✅ Bookings stats (Owner only)
 import {
   listBookings,
   type BookingDocWithId,
@@ -930,7 +930,7 @@ function verifyEmployeeSaveSnapshot(
 ) {
   const mismatches = employeeSaveSnapshotMismatches(expected, actual);
   if (mismatches.length) {
-    throw new Error(`طھط¹ط°ط± طھط£ظƒظٹط¯ ط­ظپط¸ ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ظˆط¸ظپط© (${stage}): ${mismatches.join(", ")}`);
+    throw new Error(`تعذر تأكيد حفظ بيانات الموظفة (${stage}): ${mismatches.join(", ")}`);
   }
 }
 
@@ -1011,7 +1011,7 @@ export default function DashboardEmployees() {
 
   const [active, setActive] = useState(true);
 
-  // âœ… ط¬ط¯ظٹط¯
+  // ✅ جديد
   const [showOnAbout, setShowOnAbout] = useState(true);
   const [showOnBooking, setShowOnBooking] = useState(true);
   const [includeInEmployeeManagement, setIncludeInEmployeeManagement] = useState(true);
@@ -1135,19 +1135,19 @@ export default function DashboardEmployees() {
     if (allowed) return true;
     setErrorMsg(
       editId
-        ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ظ…ظˆط¸ظپط§طھ."
-        : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط§طھ."
+        ? "ليست لديك صلاحية لتعديل بيانات الموظفات."
+        : "ليست لديك صلاحية لإضافة موظفات."
     );
     return false;
   }, [canCreateEmployees, canUpdateEmployees, editId]);
   const ensureCanDelete = useCallback(() => {
     if (canDeleteEmployees) return true;
-    setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط­ط°ظپ ط§ظ„ظ…ظˆط¸ظپط§طھ.");
+    setErrorMsg("ليست لديك صلاحية لحذف الموظفات.");
     return false;
   }, [canDeleteEmployees]);
   const ensureCanManageLeaveBalance = useCallback(() => {
     if (canManageLeaveBalance) return true;
-    setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¯ط§ط±ط© ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ.");
+    setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
     return false;
   }, [canManageLeaveBalance]);
   const resolveStaffWeeklyOffDays = useCallback((staffLike: any): WeekdayKey[] => {
@@ -1196,7 +1196,7 @@ export default function DashboardEmployees() {
       setAttendanceZones(await listWorkZones());
     } catch (error) {
       setAttendanceZones([]);
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ظ†ط·ط§ظ‚ط§طھ ط§ظ„ط­ط¶ظˆط±."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تحميل نطاقات الحضور."));
     } finally {
       setAttendanceZonesLoading(false);
     }
@@ -1323,11 +1323,11 @@ export default function DashboardEmployees() {
       if (status === 403) {
         const payload = (error as { payload?: { message?: unknown; detail?: unknown } })?.payload || {};
         const developerCode = cleanText(payload.message || payload.detail || (error as Error)?.message || "forbidden");
-        const message = `طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ط¨ط³ط¨ط¨ طµظ„ط§ط­ظٹط§طھ ط§ظ„ظˆطµظˆظ„. ظƒظˆط¯ ط§ظ„ظ…ط·ظˆط±: 403${developerCode ? ` / ${developerCode}` : ""}`;
+        const message = `تعذر تحميل سجل الحضور بسبب صلاحيات الوصول. كود المطور: 403${developerCode ? ` / ${developerCode}` : ""}`;
         setEmployeeAttendanceError(message);
         setErrorMsg(message);
       } else {
-        const message = toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط³ط¬ظ„ ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط©.");
+        const message = toFirestoreErrorMessage(error, "تعذر تحميل سجل حضور الموظفة.");
         setEmployeeAttendanceError(message);
         setErrorMsg(message);
       }
@@ -1372,8 +1372,8 @@ export default function DashboardEmployees() {
     if (!allowed) {
       setErrorMsg(
         row
-          ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©."
-          : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ط¨طµظ…ط© ط¥ط¯ط§ط±ظٹط©."
+          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
+          : "ليست لديك صلاحية لإضافة بصمة إدارية."
       );
       return;
     }
@@ -1395,7 +1395,7 @@ export default function DashboardEmployees() {
 
   const saveAttendancePunchEditor = useCallback(async () => {
     if (!selectedEmployeeId) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     const date = normalizeLeaveUntil(attendanceEditDate);
@@ -1404,19 +1404,19 @@ export default function DashboardEmployees() {
     if (!allowed) {
       setErrorMsg(
         existingRow
-          ? "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©."
-          : "ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ط¨طµظ…ط© ط¥ط¯ط§ط±ظٹط©."
+          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
+          : "ليست لديك صلاحية لإضافة بصمة إدارية."
       );
       return;
     }
     const checkInIso = dateTimeLocalToIso(attendanceEditCheckIn);
     const checkOutIso = dateTimeLocalToIso(attendanceEditCheckOut);
     if (!date || !checkInIso) {
-      setErrorMsg("ط§ط®طھط± ط§ظ„ظٹظˆظ… ظˆظˆظ‚طھ ط§ظ„ط­ط¶ظˆط± ظ‚ط¨ظ„ ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©.");
+      setErrorMsg("اختر اليوم ووقت الحضور قبل حفظ تعديل البصمة.");
       return;
     }
     if (checkOutIso && Date.parse(checkOutIso) <= Date.parse(checkInIso)) {
-      setErrorMsg("ظˆظ‚طھ ط§ظ„ط§ظ†طµط±ط§ظپ ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط¨ط¹ط¯ ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط±.");
+      setErrorMsg("وقت الانصراف يجب أن يكون بعد وقت الحضور.");
       return;
     }
 
@@ -1451,7 +1451,7 @@ export default function DashboardEmployees() {
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
-        description: "طھط¹ط¯ظٹظ„ ط¨طµظ…ط© ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©",
+        description: "تعديل بصمة حضور الموظفة من الإدارة",
         after: { date, checkInAtClient: checkInIso, checkOutAtClient: checkOutIso || "" },
         meta: {
           staffId: selectedEmployeeId,
@@ -1462,7 +1462,7 @@ export default function DashboardEmployees() {
       closeAttendancePunchEditor();
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ تعديل البصمة."));
     } finally {
       setSaving(false);
     }
@@ -1485,12 +1485,12 @@ export default function DashboardEmployees() {
 
   const deleteAttendancePunch = useCallback(async (dateKey: string) => {
     if (!canDeleteAttendance || !selectedEmployeeId) {
-      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ظ…ط³ط­ ط¨طµظ…ط© ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("ليست لديك صلاحية لمسح بصمة الموظفة.");
       return;
     }
     const date = normalizeLeaveUntil(dateKey);
     if (!date) return;
-    const ok = confirm(`ط³ظٹطھظ… ظ…ط³ط­ ط³ط¬ظ„ ط§ظ„ط¨طµظ…ط© ظ„ظٹظˆظ… ${date}. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں`);
+    const ok = confirm(`سيتم مسح سجل البصمة ليوم ${date}. هل تريد المتابعة؟`);
     if (!ok) return;
 
     setSaving(true);
@@ -1512,13 +1512,13 @@ export default function DashboardEmployees() {
         employeeUid: attendanceIdentity.employeeUid,
         employeeId: attendanceIdentity.employeeDocId,
         date,
-        note: "ظ…ط³ط­ ط¨طµظ…ط© ط§ظ„ظٹظˆظ… ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ",
+        note: "مسح بصمة اليوم من إدارة الموظفات",
       });
 
       const clearedRecords = Number(clearResult?.clearedRecords || 0);
       if (clearedRecords <= 0) {
         throw new Error(
-          "ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¨طµظ…ط§طھ ظ„ظ‡ط°ط§ ط§ظ„ظٹظˆظ…طŒ ظ„ط°ظ„ظƒ ظ„ظ… ظٹطھظ… ط­ط°ظپ ط£ظٹ ط³ط¬ظ„."
+          "لم يتم العثور على بصمات لهذا اليوم، لذلك لم يتم حذف أي سجل."
         );
       }
 
@@ -1527,7 +1527,7 @@ export default function DashboardEmployees() {
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
-        description: "ظ…ط³ط­ ط¨طµظ…ط© ط­ط¶ظˆط± ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©",
+        description: "مسح بصمة حضور الموظفة من الإدارة",
         before: { date, clearedRecords },
         meta: {
           staffId: selectedEmployeeId,
@@ -1538,7 +1538,7 @@ export default function DashboardEmployees() {
       });
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ظ…ط³ط­ ط§ظ„ط¨طµظ…ط©."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر مسح البصمة."));
     } finally {
       setSaving(false);
     }
@@ -1551,18 +1551,18 @@ export default function DashboardEmployees() {
 
   const createEmergencyLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
 
     const date = normalizeLeaveUntil(dateKey);
     if (!date) {
-      setErrorMsg("ط§ط®طھط± ظٹظˆظ…ظ‹ط§ طµط­ظٹط­ظ‹ط§ ظ„طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط©.");
+      setErrorMsg("اختر يومًا صحيحًا لتسجيل الإجازة.");
       return;
     }
 
@@ -1583,7 +1583,7 @@ export default function DashboardEmployees() {
     const employeeUid = attendanceIdentity.employeeUid;
     const employeeId = attendanceIdentity.employeeDocId || selectedEmployeeId;
     if (!employeeUid || !employeeId) {
-      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط­ط³ط§ط¨ ط§ظ„ظ…ظˆط¸ظپط© ظ„طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط©.");
+      setErrorMsg("تعذر تحديد حساب الموظفة لتسجيل الإجازة.");
       return;
     }
 
@@ -1594,7 +1594,7 @@ export default function DashboardEmployees() {
       todayDateKey: todayIso(),
     });
     if (approvedLeaveDateKeys.includes(date)) {
-      setErrorMsg("ظ‡ط°ط§ ط§ظ„ظٹظˆظ… ظ…ط³ط¬ظ„ ظƒط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ط¨ط§ظ„ظپط¹ظ„.");
+      setErrorMsg("هذا اليوم مسجل كإجازة معتمدة بالفعل.");
       return;
     }
 
@@ -1604,7 +1604,7 @@ export default function DashboardEmployees() {
         Boolean(row.checkInAtClient || row.checkOutAtClient)
     );
     if (hasAttendanceRecord) {
-      setErrorMsg("ظ„ط§ ظٹظ…ظƒظ† طھط­ظˆظٹظ„ ظٹظˆظ… ط¹ظ„ظٹظ‡ ط¨طµظ…ط© ط¥ظ„ظ‰ ط¥ط¬ط§ط²ط© ظ…ظپط§ط¬ط¦ط© ظ…ظ† ظ‡ط°ط§ ط§ظ„ط¥ط¬ط±ط§ط،.");
+      setErrorMsg("لا يمكن تحويل يوم عليه بصمة إلى إجازة مفاجئة من هذا الإجراء.");
       return;
     }
 
@@ -1631,18 +1631,18 @@ export default function DashboardEmployees() {
 
   const cancelLeaveForAttendanceDay = useCallback(async (dateKey: string) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
 
     const date = normalizeLeaveUntil(dateKey);
     if (!date) {
-      setErrorMsg("ط§ط®طھط± ظٹظˆظ…ظ‹ط§ طµط­ظٹط­ظ‹ط§ ظ„ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط©.");
+      setErrorMsg("اختر يومًا صحيحًا لإلغاء الإجازة.");
       return;
     }
 
@@ -1678,11 +1678,11 @@ export default function DashboardEmployees() {
       });
       const permissionId = cleanText(permissionLeave?.requestId);
       if (!permissionLeave || !permissionId) {
-        setErrorMsg("ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط¥ط¬ط§ط²ط© ط£ظˆ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ„ظ‡ط°ط§ ط§ظ„ظٹظˆظ….");
+        setErrorMsg("لم يتم العثور على إجازة أو استئذان معتمد لهذا اليوم.");
         return;
       }
 
-      const ok = confirm("ط³ظٹطھظ… ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط¦ط°ط§ظ† ط§ظ„ظ…ط¹طھظ…ط¯ ظ„ظٹظˆظ… " + date + ". ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں");
+      const ok = confirm("سيتم إلغاء الاستئذان المعتمد ليوم " + date + ". هل تريد المتابعة؟");
       if (!ok) return;
 
       setSaving(true);
@@ -1699,21 +1699,21 @@ export default function DashboardEmployees() {
           entityType: "employee_permission_request",
           entityId: permissionId,
           source: "dashboard",
-          description: "ط¥ظ„ط؛ط§ط، ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ…ظ† ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط±",
+          description: "إلغاء استئذان معتمد من سجل الحضور",
           before: { date, status: "approved", coreLeaveId: permissionLeave.id },
           after: { date, status: "cancelled" },
           meta: { staffId: selectedEmployeeId },
         });
         await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
       } catch (error) {
-        setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط§ط³طھط¦ط°ط§ظ†."));
+        setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الاستئذان."));
       } finally {
         setSaving(false);
       }
       return;
     }
 
-    const ok = confirm(`ط³ظٹطھظ… ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ„ظٹظˆظ… ${date}. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں`);
+    const ok = confirm(`سيتم إلغاء الإجازة المعتمدة ليوم ${date}. هل تريد المتابعة؟`);
     if (!ok) return;
 
     setSaving(true);
@@ -1815,7 +1815,7 @@ export default function DashboardEmployees() {
         entityType: "employee_leave",
         entityId: leaveRequest.id,
         source: "dashboard",
-        description: "ط¥ظ„ط؛ط§ط، ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط±",
+        description: "إلغاء إجازة معتمدة من سجل الحضور",
         before: {
           date,
           status: "approved",
@@ -1832,7 +1832,7 @@ export default function DashboardEmployees() {
 
       await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ„ط؛ط§ط، ط§ظ„ط¥ط¬ط§ط²ط©."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إلغاء الإجازة."));
     } finally {
       setSaving(false);
     }
@@ -1849,11 +1849,11 @@ export default function DashboardEmployees() {
 
   const handleLeaveModalSubmit = useCallback(async (payload: { type: string; fromDate: string; toDate: string; days: number; durationKind: "full_day" | "partial"; partialStartTime: string; partialEndTime: string; deductFromBalance: boolean; affectsPayroll: boolean; note: string; }) => {
     if (!selectedEmployeeId) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     if (!authUser?.uid) {
-      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط° ظ„ظ„ط¹ظ…ظ„ظٹط©.");
+      setErrorMsg("تعذر تحديد المستخدم المنفذ للعملية.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
@@ -1885,14 +1885,14 @@ export default function DashboardEmployees() {
     );
 
     if (!fromDate || !toDate || days <= 0 || fromDate > toDate) {
-      throw new Error("ظ…ط¯ظ‰ ط§ظ„ط¥ط¬ط§ط²ط© ط؛ظٹط± طµط­ظٹط­.");
+      throw new Error("مدى الإجازة غير صحيح.");
     }
     if (isPartialLeave) {
-      if (fromDate !== toDate) throw new Error("ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ظپظٹ ظٹظˆظ… ظˆط§ط­ط¯.");
+      if (fromDate !== toDate) throw new Error("الاستئذان يجب أن يكون في يوم واحد.");
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(partialStartTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(partialEndTime)) {
-        throw new Error("ظˆظ‚طھ ط§ظ„ط§ط³طھط¦ط°ط§ظ† ط؛ظٹط± طµط­ظٹط­.");
+        throw new Error("وقت الاستئذان غير صحيح.");
       }
-      if (partialStartTime >= partialEndTime) throw new Error("ظˆظ‚طھ ظ†ظ‡ط§ظٹط© ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظٹط¬ط¨ ط£ظ† ظٹظƒظˆظ† ط¨ط¹ط¯ ط§ظ„ط¨ط¯ط§ظٹط©.");
+      if (partialStartTime >= partialEndTime) throw new Error("وقت نهاية الاستئذان يجب أن يكون بعد البداية.");
 
       setSaving(true);
       setErrorMsg("");
@@ -1904,7 +1904,7 @@ export default function DashboardEmployees() {
           date: fromDate,
           startTime: partialStartTime,
           expectedReturnTime: partialEndTime,
-          reason: cleanText(payload.note) || "ط§ط³طھط¦ط°ط§ظ† ط¥ط¯ط§ط±ظٹ",
+          reason: cleanText(payload.note) || "استئذان إداري",
           note: cleanText(payload.note) || undefined,
           source: "admin_direct",
           financialEffect: "none",
@@ -1919,7 +1919,7 @@ export default function DashboardEmployees() {
           entityType: "employee_permission_request",
           entityId: permission.id,
           source: "dashboard",
-          description: "طھط³ط¬ظٹظ„ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظˆط±ط¨ط·ظ‡ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط­ط¬ط²",
+          description: "تسجيل استئذان معتمد وربطه بالحضور والحجز",
           after: {
             employeeUid: employeeUidLocal,
             employeeId: selectedEmployeeId,
@@ -1935,7 +1935,7 @@ export default function DashboardEmployees() {
         });
         return;
       } catch (error) {
-        setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط§ط³طھط¦ط°ط§ظ† ظˆط±ط¨ط·ظ‡ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط­ط¬ط²."));
+        setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الاستئذان وربطه بالحضور والحجز."));
         throw error;
       } finally {
         setSaving(false);
@@ -1979,7 +1979,7 @@ export default function DashboardEmployees() {
           durationKind,
           partialStartTime,
           partialEndTime,
-          note: payload.note || (isPartialLeave ? "طھط³ط¬ظٹظ„ ط§ط³طھط¦ط°ط§ظ† ظ…ط¹طھظ…ط¯ ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ" : "طھط³ط¬ظٹظ„ ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ"),
+          note: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
           createdByUid: authUser.uid,
           createdByName: authUser.displayName || authUser.email,
         });
@@ -2110,7 +2110,7 @@ export default function DashboardEmployees() {
         entityType: "employee_leave",
         entityId: requestId || coreLeaveId,
         source: "dashboard",
-        description: "طھط³ط¬ظٹظ„ ط¥ط¬ط§ط²ط© ظ…ط¹طھظ…ط¯ط© ظˆط±ط¨ط·ظ‡ط§ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط±ط§طھط¨",
+        description: "تسجيل إجازة معتمدة وربطها بالحضور والراتب",
         after: {
           employeeUid: employeeUidLocal,
           employeeId: selectedEmployeeId,
@@ -2156,7 +2156,7 @@ export default function DashboardEmployees() {
           );
         }
       }
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط© ظˆط±ط¨ط·ظ‡ط§ ط¨ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط±ط§طھط¨."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر تسجيل الإجازة وربطها بالحضور والراتب."));
       throw error;
     } finally {
       setSaving(false);
@@ -2175,7 +2175,7 @@ export default function DashboardEmployees() {
 
   const openApprovedLeaveFromEmployeeProfile = useCallback(() => {
     if (!selectedEmployeeId) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     const employee =
@@ -2189,7 +2189,7 @@ export default function DashboardEmployees() {
 
   const endCurrentApprovedLeave = useCallback(async () => {
     if (!selectedEmployeeId || !authUser?.uid) {
-      setErrorMsg("طھط¹ط°ط± طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط© ط£ظˆ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ظ…ظ†ظپط°.");
+      setErrorMsg("تعذر تحديد الموظفة أو المستخدم المنفذ.");
       return;
     }
     if (!ensureCanManageLeaveBalance()) return;
@@ -2197,10 +2197,10 @@ export default function DashboardEmployees() {
       list.find((item) => item.id === selectedEmployeeId) ||
       { id: selectedEmployeeId, name };
     if (!employee) {
-      setErrorMsg("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("تعذر العثور على ملف الموظفة.");
       return;
     }
-    const ok = confirm("ط³ظٹطھظ… ط¥ظ†ظ‡ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط© ظˆط¥ظ„ط؛ط§ط، ط£ط«ط±ظ‡ط§ ط§ظ„ظ…ط³طھظ‚ط¨ظ„ظٹ. ظ‡ظ„ طھط±ظٹط¯ ط§ظ„ظ…طھط§ط¨ط¹ط©طں");
+    const ok = confirm("سيتم إنهاء الإجازة الحالية وإلغاء أثرها المستقبلي. هل تريد المتابعة؟");
     if (!ok) return;
 
     setSaving(true);
@@ -2417,7 +2417,7 @@ export default function DashboardEmployees() {
       await Promise.all([load(), loadSelectedEmployeeAttendance({ force: true })]);
       window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط¥ظ†ظ‡ط§ط، ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط©."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر إنهاء الإجازة الحالية."));
     } finally {
       setSaving(false);
     }
@@ -2444,7 +2444,7 @@ export default function DashboardEmployees() {
     setReviewsCount("");
     setActive(true);
 
-    // âœ… ط¬ط¯ظٹط¯
+    // ✅ جديد
     setShowOnAbout(true);
     setShowOnBooking(true);
     setIncludeInEmployeeManagement(true);
@@ -2633,7 +2633,7 @@ export default function DashboardEmployees() {
     setOvertimePercent(String(payrollCfg.overtimePercent || 0));
     setOvertimeInvoicePercent(String(payrollCfg.invoicePercent || 0));
 
-    // âœ… ط¬ط¯ظٹط¯
+    // ✅ جديد
     setShowOnAbout((x as any).showOnAbout !== false);
 
     setSpecialties(canonicalizeSpecialties(x.specialties, serviceOptions));
@@ -2652,7 +2652,7 @@ export default function DashboardEmployees() {
     const matched = list.find((item) => employeeMatchesRouteId(item, routeEmployeeId));
     if (!matched) {
       if (!loading) {
-        setErrorMsg("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط·ظ„ظˆط¨. طھظ… ط§ظ„ط±ط¬ظˆط¹ ط¥ظ„ظ‰ ظ‚ط§ط¦ظ…ط© ط§ظ„ظ…ظˆط¸ظپظٹظ†.");
+        setErrorMsg("تعذر العثور على ملف الموظفة المطلوب. تم الرجوع إلى قائمة الموظفين.");
         navigate("/dashboard/employees", { replace: true });
       }
       return;
@@ -2822,7 +2822,7 @@ export default function DashboardEmployees() {
       return opts;
     } catch (e) {
       setServiceOptions([]);
-      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط®ط¯ظ…ط§طھ."));
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الخدمات."));
       return [];
     }
   }, []);
@@ -2905,8 +2905,8 @@ export default function DashboardEmployees() {
             rawDocId,
           ]).filter((value) => value !== employeeId);
 
-          // ط­ط³ط§ط¨ ط§ظ„ط¯ط®ظˆظ„ ظ„ط§ ظٹطھط­ظˆظ„ طھظ„ظ‚ط§ط¦ظٹظ‹ط§ ط¥ظ„ظ‰ ظ…ظˆط¸ظپط©. طھظپط¶ظٹظ„ users ظ‡ظˆ ظ…طµط¯ط± ط§ظ„ط­ظ‚ظٹظ‚ط©طŒ
-          // ط«ظ… ظ†ط±ط¬ط¹ ظ„ط¹ظ„ط§ظ…ط© ط§ظ„ط³ط¬ظ„طŒ ظˆط¨ط¹ط¯ظ‡ط§ ظپظ‚ط· ظ†ط­ط§ظپط¸ ط¹ظ„ظ‰ ط§ظ„ظ…ظˆط¸ظپط§طھ ط§ظ„طھط´ط؛ظٹظ„ظٹط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط©.
+          // حساب الدخول لا يتحول تلقائيًا إلى موظفة. تفضيل users هو مصدر الحقيقة،
+          // ثم نرجع لعلامة السجل، وبعدها فقط نحافظ على الموظفات التشغيليات القديمة.
           const userVisibility =
             typeof linkedUser?.includeInEmployeeManagement === "boolean"
               ? linkedUser.includeInEmployeeManagement
@@ -3220,9 +3220,9 @@ export default function DashboardEmployees() {
         setList(rows);
         return rows;
       } catch (e) {
-        setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط§طھ."));
+        setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الموظفات."));
         if (loadOptions.strict) throw e;
-        // ظ„ط§ ظ†ظ…ط³ط­ ط§ظ„ظ‚ط§ط¦ظ…ط© ط§ظ„ط­ط§ظ„ظٹط© ط¹ظ†ط¯ ظپط´ظ„ ط§ظ„طھط­ط¯ظٹط« ط­طھظ‰ ظ„ط§ طھظڈط؛ظ„ظ‚ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط­ط¯ط¯ط©.
+        // لا نمسح القائمة الحالية عند فشل التحديث حتى لا تُغلق الموظفة المحددة.
         return [];
       } finally {
         setLoading(false);
@@ -3231,10 +3231,10 @@ export default function DashboardEmployees() {
     [resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
   );
 
-  // âœ… Original logic for fixing bookings
+  // ✅ Original logic for fixing bookings
   const fixBookingsEmployeeUid = async () => {
     if (!canFixBookings) {
-      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥طµظ„ط§ط­ ط§ظ„ط­ط¬ظˆط²ط§طھ.");
+      setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
       return;
     }
     setRepairConfirmOpen(false);
@@ -3273,9 +3273,9 @@ export default function DashboardEmployees() {
         }
       }
       await batch.commit();
-      setRepairMessage("طھظ… ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ط¨ظ†ط¬ط§ط­.");
+      setRepairMessage("تم إصلاح ربط الحجوزات القديمة بنجاح.");
     } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط¥ظƒظ…ط§ظ„ ط¥طµظ„ط§ط­ ط§ظ„ط­ط¬ظˆط²ط§طھ."));
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
     } finally {
       setSaving(false);
     }
@@ -3557,18 +3557,18 @@ export default function DashboardEmployees() {
 
   const savePayrollSettings = async () => {
     if (!canManagePayroll) {
-      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¯ط§ط±ط© ط§ظ„ط±ظˆط§طھط¨.");
+      setErrorMsg("ليست لديك صلاحية لإدارة الرواتب.");
       return;
     }
     const targetEmployeeId = cleanText(selectedEmployeeId || editId || routeEmployeeId);
     const currentEmployee = editingStaff || selectedEmployee;
     if (!targetEmployeeId || !currentEmployee) {
-      setErrorMsg("ظ„ظ… ظٹطھظ… طھط­ط¯ظٹط¯ ط§ظ„ظ…ظˆط¸ظپط©.");
+      setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
     const cleanName = cleanText(name || currentEmployee.name || targetEmployeeId);
     if (!cleanName) {
-      setErrorMsg("ط§ظƒطھط¨ ط§ط³ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ‚ط¨ظ„ ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨.");
+      setErrorMsg("اكتب اسم الموظفة قبل حفظ إعدادات الراتب.");
       return;
     }
 
@@ -3634,9 +3634,9 @@ export default function DashboardEmployees() {
             : employee
         )
       );
-      setPayrollSettingsMessage("طھظ… ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨ ظˆط§ظ„ط¯ظˆط§ظ… ظپظٹ ظ…طµط¯ط± ظ…ط³ظٹط±ط§طھ ط§ظ„ط±ظˆط§طھط¨.");
+      setPayrollSettingsMessage("تم حفظ إعدادات الراتب والدوام في مصدر مسيرات الرواتب.");
     } catch (error) {
-      setErrorMsg(toFirestoreErrorMessage(error, "طھط¹ط°ط± ط­ظپط¸ ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط±ط§طھط¨."));
+      setErrorMsg(toFirestoreErrorMessage(error, "تعذر حفظ إعدادات الراتب."));
     } finally {
       setPayrollSettingsSaving(false);
     }
@@ -3648,7 +3648,7 @@ export default function DashboardEmployees() {
     const specialtiesFixed = canonicalizeSpecialties(specialties, serviceOptions);
     const effectiveShowOnBooking = specialtiesFixed.length > 0 ? !!showOnBooking : false;
     if (!cleanName) {
-      setErrorMsg("ط§ظƒطھط¨ ط§ط³ظ… ط§ظ„ظ…ظˆط¸ظپط©");
+      setErrorMsg("اكتب اسم الموظفة");
       return;
     }
     // Allow saving basic data even when no services are assigned.
@@ -3656,16 +3656,16 @@ export default function DashboardEmployees() {
     if (specialtiesFixed.length === 0 && showOnBooking) {
       setShowOnBooking(false);
     }
-    // âœ… ظ…ظ†ط¹ "ط§ظ„ظ†ط³ظٹط§ظ†": ظ…ظˆط¸ظپط© ظ†ط´ط·ط© ظ„ظƒظ† ظ…ط®ظپظٹط© ظ…ظ† ط§ظ„ط­ط¬ط²
+    // ✅ منع "النسيان": موظفة نشطة لكن مخفية من الحجز
     if (active && specialtiesFixed.length > 0 && !effectiveShowOnBooking) {
       const ok = confirm(
-        "âڑ ï¸ڈ طھظ†ط¨ظٹظ‡: ط§ظ„ظ…ظˆط¸ظپط© ظ„ط¯ظٹظ‡ط§ ط®ط¯ظ…ط§طھ ظ„ظƒظ†ظ‡ط§ ظ…ط®ظپظٹط© ظ…ظ† ط§ظ„ط­ط¬ط².\nظ‡ظ„ طھط±ظٹط¯ ط§ظ„ط­ظپط¸ ط¨ظ‡ط°ط§ ط§ظ„ط´ظƒظ„طں"
+        "⚠️ تنبيه: الموظفة لديها خدمات لكنها مخفية من الحجز.\nهل تريد الحفظ بهذا الشكل؟"
       );
       if (!ok) return;
     }
 
-    // ط§ط­ظپط¸ ظپظ‚ط· ط§ظ„ط§ط³طھط«ظ†ط§ط،ط§طھ ط§ظ„طھظٹ طھظ… ط¥ط¶ط§ظپطھظ‡ط§ ظپط¹ظ„ظٹط§ظ‹ ظپظٹ ط§ظ„ظ‚ط§ط¦ظ…ط©.
-    // ظ„ط§ ظ†ط·ط¨ظ‚ ط§ظ„ظ…ط³ظˆط¯ط© طھظ„ظ‚ط§ط¦ظٹط§ظ‹ ط¹ظ†ط¯ ط§ظ„ط­ظپط¸ ط­طھظ‰ ظ„ط§ طھط¹ظٹط¯ ط§ظ„ظ‚ظٹظ… ط§ظ„ظ‚ط¯ظٹظ…ط©.
+    // احفظ فقط الاستثناءات التي تم إضافتها فعلياً في القائمة.
+    // لا نطبق المسودة تلقائياً عند الحفظ حتى لا تعيد القيم القديمة.
     let normalizedCustomHourOverrides = normalizeWorkingHourOverrides(modalCustomHourOverrides);
     const hasPendingOverrideDraft =
       !!normalizeLeaveUntil(modalHourOverrideEditingDate) ||
@@ -3707,7 +3707,7 @@ export default function DashboardEmployees() {
       return scheduleDay?.enabled !== false && !cleanText(scheduleDay?.shiftTemplateId);
     });
     if (shouldValidateSchedule && missingShiftDays.length) {
-      setErrorMsg(`ط§ط®طھط§ط±ظٹ ط´ظپطھظ‹ط§ ظ„ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط§ظ„طھط§ظ„ظٹط©: ${missingShiftDays.map((day) => day.label).join("طŒ ")}`);
+      setErrorMsg(`اختاري شفتًا لأيام العمل التالية: ${missingShiftDays.map((day) => day.label).join("، ")}`);
       return;
     }
     const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
@@ -3728,7 +3728,7 @@ export default function DashboardEmployees() {
       (!editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot));
     let scheduleChangeReason = cleanText(modalScheduleChangeReason);
     if (scheduleChanged && !scheduleEffectiveFrom) {
-      setErrorMsg("ط­ط¯ط¯ظٹ طھط§ط±ظٹط® ط¨ط¯ط، طھط·ط¨ظٹظ‚ ط¬ط¯ظˆظ„ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط¬ط¯ظٹط¯.");
+      setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
       return;
     }
     if (editId && scheduleChanged && !scheduleChangeReason) {
@@ -3739,8 +3739,8 @@ export default function DashboardEmployees() {
       }).map((day) => day.label);
 
       scheduleChangeReason = changedClosedDays.length
-        ? `طھط¹ط¯ظٹظ„ ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط©: ${changedClosedDays.join("طŒ ")}`
-        : "طھط­ط¯ظٹط« ط¬ط¯ظˆظ„ ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط©";
+        ? `تعديل الإجازة الأسبوعية: ${changedClosedDays.join("، ")}`
+        : "تحديث جدول دوام الموظفة";
 
       setModalScheduleChangeReason(scheduleChangeReason);
     }
@@ -3751,7 +3751,7 @@ export default function DashboardEmployees() {
         effectiveFrom: scheduleEffectiveFrom,
         next: nextScheduleSnapshot,
         previous: editId ? previousScheduleSnapshot : null,
-        changeReason: scheduleChangeReason || "ط¥ظ†ط´ط§ط، ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط©",
+        changeReason: scheduleChangeReason || "إنشاء جدول الموظفة",
         createdByUid: cleanText(authUser?.uid),
       });
     }
@@ -4036,7 +4036,7 @@ export default function DashboardEmployees() {
       });
 
       } catch (coreSyncError) {
-        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "طھط¹ط°ط±طھ ظ…ط²ط§ظ…ظ†ط© Core HR ط¨ط¹ط¯ ط­ظپط¸ Firestore.");
+        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "تعذرت مزامنة Core HR بعد حفظ Firestore.");
         employeeSaveDebug("core sync failed", {
           employeeId: targetEmployeeId,
           message: coreSyncWarning,
@@ -4080,10 +4080,10 @@ export default function DashboardEmployees() {
             targetUid: target.targetUid || undefined,
             targetEmployeeId: target.targetEmployeeId || undefined,
             type: leaveChanged ? "leave" : "system",
-            title: leaveChanged ? "طھظ… طھط­ط¯ظٹط« ط­ط§ظ„ط© ط§ظ„ط¥ط¬ط§ط²ط©" : "طھظ… طھط­ط¯ظٹط« ط­ط§ظ„ط© ط§ظ„ظ…ظˆط¸ظپط©",
+            title: leaveChanged ? "تم تحديث حالة الإجازة" : "تم تحديث حالة الموظفة",
             body: leaveChanged
-              ? `${effectiveModalOnLeave ? "ظپظٹ ط¥ط¬ط§ط²ط©" : "ظ…طھط§ط­ط© ظ„ظ„ط¹ظ…ظ„"}${normalizedModalLeaveFrom ? ` ظ…ظ† ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` ط­طھظ‰ ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
-              : `${!!active ? "ظ†ط´ط·ط©" : "ط؛ظٹط± ظ†ط´ط·ط©"}${normalizedEmploymentEndDate ? ` - ظٹظ†طھظ‡ظٹ ط§ظ„طھظˆط¸ظٹظپ ظپظٹ ${normalizedEmploymentEndDate}` : ""}`,
+              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveFrom ? ` من ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
+              : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
             route: leaveChanged ? "/employee/leave" : "/employee/profile",
           }).catch((notificationError) => {
             console.warn("createEmployeeNotification after employee save failed:", notificationError);
@@ -4098,7 +4098,7 @@ export default function DashboardEmployees() {
         staffPublicExists: savedStaffSnap.exists(),
       });
       if (!savedStaffSnap.exists()) {
-        throw new Error("طھط¹ط°ط± ظ‚ط±ط§ط،ط© ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† staff_public ط¨ط¹ط¯ ط§ظ„ط­ظپط¸.");
+        throw new Error("تعذر قراءة ملف الموظفة من staff_public بعد الحفظ.");
       }
       const persistedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
         savedStaffSnap.data() as Partial<StaffPublicDoc>,
@@ -4121,7 +4121,7 @@ export default function DashboardEmployees() {
         selectedEmployeeIdentityRef.current
       );
       if (!reloadedEmployee) {
-        throw new Error("طھط¹ط°ط± ط¥ط¹ط§ط¯ط© طھط­ظ…ظٹظ„ ط§ظ„ظ…ظˆط¸ظپط© ظ…ظ† ط§ظ„ط³ظٹط±ظپط± ط¨ط¹ط¯ ط§ظ„ط­ظپط¸.");
+        throw new Error("تعذر إعادة تحميل الموظفة من السيرفر بعد الحفظ.");
       }
       const rehydratedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
         reloadedEmployee,
@@ -4143,8 +4143,8 @@ export default function DashboardEmployees() {
       window.dispatchEvent(new Event("queens:staff-updated"));
       setSaveMessage(
         coreSyncWarning
-          ? `طھظ… ط­ظپط¸ ط§ظ„طھط؛ظٹظٹط±ط§طھ ط¨ظ†ط¬ط§ط­طŒ ظ„ظƒظ† طھط¹ط°ط±طھ ظ…ط²ط§ظ…ظ†ط© Core HR: ${coreSyncWarning}`
-          : "طھظ… ط­ظپط¸ ط§ظ„طھط؛ظٹظٹط±ط§طھ ط¨ظ†ط¬ط§ط­"
+          ? `تم حفظ التغييرات بنجاح، لكن تعذرت مزامنة Core HR: ${coreSyncWarning}`
+          : "تم حفظ التغييرات بنجاح"
       );
       employeeSaveDebug("completed", {
         employeeId: targetEmployeeId,
@@ -4158,7 +4158,7 @@ export default function DashboardEmployees() {
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
       }, e);
       setSaveMessage("");
-      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط­ظپط¸ ط§ظ„ظ…ظˆط¸ظپط©."));
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
     } finally {
       setSaving(false);
     }
@@ -4167,7 +4167,7 @@ export default function DashboardEmployees() {
   const remove = async (id: string) => {
     if (!ensureCanDelete()) return;
     const target = list.find((row) => row.id === id);
-    if (!confirm(`ظ‡ظ„ طھط±ظٹط¯ ط£ط±ط´ظپط© ط§ظ„ظ…ظˆط¸ظپط© "${target?.name || id}"طں\nط³طھط®طھظپظٹ ظ…ظ† ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ط¬ط¯ظٹط¯ط© ظ…ط¹ ط¨ظ‚ط§ط، ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„طھط§ط±ظٹط®ظٹط©.`)) return;
+    if (!confirm(`هل تريد أرشفة الموظفة "${target?.name || id}"؟\nستختفي من الحجوزات الجديدة مع بقاء الحجوزات التاريخية.`)) return;
     setSaving(true);
     setErrorMsg("");
     const previousList = list;
@@ -4192,7 +4192,7 @@ export default function DashboardEmployees() {
       window.dispatchEvent(new Event("queens:staff-updated"));
     } catch (e) {
       setList(previousList);
-      setErrorMsg(toFirestoreErrorMessage(e, "طھط¹ط°ط± ط­ط°ظپ ط§ظ„ظ…ظˆط¸ظپط©."));
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف الموظفة."));
     } finally {
       setSaving(false);
     }
@@ -4256,11 +4256,11 @@ export default function DashboardEmployees() {
     !!(selectedEmployee as any)?.onLeave && !selectedEmployeeLeaveExpired;
   const selectedEmployeeStatusLabel = selectedEmployeeOnLeave
     ? selectedEmployeeLeaveUntil
-      ? `ظپظٹ ط¥ط¬ط§ط²ط© ط­طھظ‰ ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
-      : "ظپظٹ ط¥ط¬ط§ط²ط©"
+      ? `في إجازة حتى ${fmtIsoDate(selectedEmployeeLeaveUntil)}`
+      : "في إجازة"
     : selectedEmployee?.active
-      ? "ظ†ط´ط·ط©"
-      : "ط؛ظٹط± ظ†ط´ط·ط©";
+      ? "نشطة"
+      : "غير نشطة";
   const selectedEmployeeStatusClass = selectedEmployeeOnLeave
     ? "warn"
     : selectedEmployee?.active
@@ -4331,7 +4331,7 @@ export default function DashboardEmployees() {
     let salonEnabled = salonWeeklyEnabled;
     let salonOpen = salonWeeklyOpen;
     let salonClose = salonWeeklyClose;
-    let salonSourceLabel = "ط£ط³ط¨ظˆط¹ظٹ";
+    let salonSourceLabel = "أسبوعي";
     let activeSalonOverride:
       | {
           sourceIndex: number;
@@ -4352,13 +4352,13 @@ export default function DashboardEmployees() {
       const blockedDays = Array.isArray(ov?.blockedWeekdays) ? ov.blockedWeekdays : [];
       if (blockedDays.includes(dayKey) || String(ov?.mode || "").trim() === "closed") {
         salonEnabled = false;
-        salonSourceLabel = "ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ";
+        salonSourceLabel = "استثناء فعلي";
         activeSalonOverride = {
           sourceIndex: i,
           fromDate: ov.fromDate,
           toDate: ov.toDate,
           mode: "closed",
-          windowLabel: "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…",
+          windowLabel: "إغلاق كامل اليوم",
           includeDays: includeDays as WeekdayKey[],
           blockedDays: blockedDays as WeekdayKey[],
         };
@@ -4368,7 +4368,7 @@ export default function DashboardEmployees() {
         const ovEnd = normalizeTimeHHMM(ov.end) || salonClose;
         salonOpen = ovStart;
         salonClose = ovEnd;
-        salonSourceLabel = "ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ";
+        salonSourceLabel = "استثناء فعلي";
         activeSalonOverride = {
           sourceIndex: i,
           fromDate: ov.fromDate,
@@ -4383,10 +4383,10 @@ export default function DashboardEmployees() {
     }
     const salonWeeklyWindowLabel = salonWeeklyEnabled
       ? formatWindow(salonWeeklyOpen, salonWeeklyClose)
-      : "ظ…ط؛ظ„ظ‚ ط£ط³ط¨ظˆط¹ظٹظ‹ط§";
+      : "مغلق أسبوعيًا";
     const salonEffectiveWindowLabel = salonEnabled
       ? formatWindow(salonOpen, salonClose)
-      : "ظ…ط؛ظ„ظ‚ ظ„ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ…";
+      : "مغلق للحجوزات اليوم";
 
     const weekdayLabel = (key: WeekdayKey | "") =>
       WEEKDAY_OPTIONS.find((x) => x.key === key)?.label || "-";
@@ -4395,14 +4395,14 @@ export default function DashboardEmployees() {
     const formatOverrideMeta = (ov: BookingHourOverride) => {
       const includeDays = Array.isArray(ov?.includeWeekdays) ? (ov.includeWeekdays as WeekdayKey[]) : [];
       const blockedDays = Array.isArray(ov?.blockedWeekdays) ? (ov.blockedWeekdays as WeekdayKey[]) : [];
-      const includeLabel = includeDays.length ? formatWeekdaySet(includeDays) : "ظƒظ„ ط§ظ„ط£ظٹط§ظ…";
+      const includeLabel = includeDays.length ? formatWeekdaySet(includeDays) : "كل الأيام";
       const blockedLabel = blockedDays.length ? formatWeekdaySet(blockedDays) : "";
       const isClosed = String(ov?.mode || "").trim() === "closed";
       const start = normalizeTimeHHMM(ov?.start) || DEFAULT_OPEN_TIME;
       const end = normalizeTimeHHMM(ov?.end) || DEFAULT_CLOSE_TIME;
-      const modeLabel = isClosed ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„" : `ط³ط§ط¹ط§طھ ${formatWindow(start, end)}`;
-      return `${modeLabel} | ط§ظ„ط£ظٹط§ظ… ط§ظ„ظ…ط³طھظ‡ط¯ظپط©: ${includeLabel}${
-        blockedLabel ? ` | ط£ظٹط§ظ… ط§ظ„ط¥ط؛ظ„ط§ظ‚: ${blockedLabel}` : ""
+      const modeLabel = isClosed ? "إغلاق كامل" : `ساعات ${formatWindow(start, end)}`;
+      return `${modeLabel} | الأيام المستهدفة: ${includeLabel}${
+        blockedLabel ? ` | أيام الإغلاق: ${blockedLabel}` : ""
       }`;
     };
     const allOverrideDetails = bookingHourOverrides.map((ov, idx) => ({
@@ -4412,16 +4412,16 @@ export default function DashboardEmployees() {
     }));
         const todayDateGregorian = fmtIsoDate(today);
         const todayDateHijri = fmtIsoDateHijri(today);
-        const todayDateCombinedLabel = `${todayDateGregorian} â€” ${todayDateHijri}`;
-        const todayDateLabel = `${todayDateGregorian} ظ… / ${todayDateHijri} ظ‡ظ€`;
+        const todayDateCombinedLabel = `${todayDateGregorian} — ${todayDateHijri}`;
+        const todayDateLabel = `${todayDateGregorian} م / ${todayDateHijri} هـ`;
     const salonWeeklyDetails = salonWeeklyEnabled
-      ? "ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط£ط³ط§ط³ظٹ ظ…ط£ط®ظˆط° ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ."
-      : "ط§ظ„ظٹظˆظ… ظ…ط؛ظ„ظ‚ ظپظٹ ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ.";
+      ? "الدوام الأساسي مأخوذ من الجدول الأسبوعي."
+      : "اليوم مغلق في الجدول الأسبوعي.";
     const salonEffectiveBaseDetails = activeSalonOverride
       ? activeSalonOverride.mode === "closed"
-        ? "طھظ… ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ… ط¹ط¨ط± ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ."
-        : `طھظ… طھط¹ط¯ظٹظ„ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ… ط¹ط¨ط± ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ (${activeSalonOverride.windowLabel}).`
-      : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ط§ظ„طµط§ظ„ظˆظ†.";
+        ? "تم إغلاق الصالون اليوم عبر الاستثناء الفعلي."
+        : `تم تعديل ساعات الصالون اليوم عبر الاستثناء الفعلي (${activeSalonOverride.windowLabel}).`
+      : "لا يوجد استثناء فعلي اليوم على الصالون.";
     const salonSourceDetails = (() => {
       const notes: string[] = [];
       const groups: SummarySourceGroup[] = [];
@@ -4443,19 +4443,19 @@ export default function DashboardEmployees() {
         const activeDual = formatIsoDateRangeDual(activeSalonOverride.fromDate, activeSalonOverride.toDate);
         const activeDetails: string[] = [];
         if (activeSalonOverride.mode === "closed") {
-          activeDetails.push("ظ†ظˆط¹ ط§ظ„ط§ط³طھط«ظ†ط§ط،: ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ظ„ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظٹظˆظ….");
+          activeDetails.push("نوع الاستثناء: إغلاق كامل للحجوزات اليوم.");
         } else {
-          activeDetails.push(`ظˆظ‚طھ ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ: ${activeSalonOverride.windowLabel}`);
+          activeDetails.push(`وقت الاستثناء الفعلي: ${activeSalonOverride.windowLabel}`);
         }
         if (activeSalonOverride.includeDays.length > 0) {
-          activeDetails.push(`ط§ظ„ط£ظٹط§ظ… ط§ظ„ظ…ط³طھظ‡ط¯ظپط©: ${formatWeekdaySet(activeSalonOverride.includeDays)}`);
+          activeDetails.push(`الأيام المستهدفة: ${formatWeekdaySet(activeSalonOverride.includeDays)}`);
         }
         if (activeSalonOverride.blockedDays.length > 0) {
-          activeDetails.push(`ط£ظٹط§ظ… ط§ظ„ط¥ط؛ظ„ط§ظ‚ ط¯ط§ط®ظ„ ط§ظ„ظ†ط·ط§ظ‚: ${formatWeekdaySet(activeSalonOverride.blockedDays)}`);
+          activeDetails.push(`أيام الإغلاق داخل النطاق: ${formatWeekdaySet(activeSalonOverride.blockedDays)}`);
         }
         groups.push(
           buildGroup(
-            "ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظپط¹ظ„ظٹ",
+            "الاستثناء الفعلي",
             activeDual.gregorian,
             activeDual.hijri,
             activeDetails,
@@ -4465,35 +4465,35 @@ export default function DashboardEmployees() {
 
         const others = allOverrideDetails.filter((x) => x.sourceIndex !== activeSalonOverride.sourceIndex);
         if (others.length) {
-          notes.push(`ط§ط³طھط«ظ†ط§ط،ط§طھ ط£ط®ط±ظ‰ ظ…ط³ط¬ظ„ط© (${others.length}):`);
+          notes.push(`استثناءات أخرى مسجلة (${others.length}):`);
           others.forEach((x, idx) => {
             groups.push(
               buildGroup(
-                `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}`,
+                `الاستثناء ${idx + 1}`,
                 x.rangeDual.gregorian,
                 x.rangeDual.hijri,
-                [`طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}: ${x.meta}`],
+                [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
                 "other"
               )
             );
           });
         }
       } else if (allOverrideDetails.length) {
-        notes.push("ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ….");
-        notes.push(`ط§ظ„ط§ط³طھط«ظ†ط§ط،ط§طھ ط§ظ„ظ…ط³ط¬ظ„ط© (${allOverrideDetails.length}):`);
+        notes.push("لا يوجد استثناء فعلي اليوم.");
+        notes.push(`الاستثناءات المسجلة (${allOverrideDetails.length}):`);
         allOverrideDetails.forEach((x, idx) => {
           groups.push(
             buildGroup(
-              `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}`,
+              `الاستثناء ${idx + 1}`,
               x.rangeDual.gregorian,
               x.rangeDual.hijri,
-              [`طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط«ظ†ط§ط، ${idx + 1}: ${x.meta}`],
+              [`تفاصيل الاستثناء ${idx + 1}: ${x.meta}`],
               "other"
             )
           );
         });
       } else {
-        notes.push("ظ„ط§ طھظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ظ…ط³ط¬ظ„ط© ط¹ظ„ظ‰ ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ†.");
+        notes.push("لا توجد استثناءات مسجلة على دوام الصالون.");
       }
       return { notes, groups };
     })();
@@ -4561,7 +4561,7 @@ export default function DashboardEmployees() {
                 fromDate: ov.fromDate,
                 toDate: ov.toDate,
                 mode: "closed",
-                windowLabel: "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…",
+                windowLabel: "إغلاق كامل اليوم",
                 includeDays,
                 blockedDays,
               };
@@ -4630,19 +4630,19 @@ export default function DashboardEmployees() {
                 )
               : null;
           const targetSourceLabel = targetOverride
-            ? "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
+            ? "استثناء الموظفة"
             : targetSalonOverride
-              ? "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
+              ? "ساعات الصالون الخاصة"
               : targetUseCustom
-                ? "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©"
-                : "ط³ط§ط¹ط§طھ طھط´ط؛ظٹظ„ ط§ظ„طµط§ظ„ظˆظ†";
+                ? "الجدول الأسبوعي للموظفة"
+                : "ساعات تشغيل الصالون";
           const targetSourceNote = targetOverride ? String(targetOverride.note || "").trim() : "";
           const targetImpactNote = targetOverride
             ? targetSourceNote
-              ? `ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©: ${targetSourceNote}`
-              : "ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ظ‡ط°ط§ ط§ظ„طھط§ط±ظٹط®."
+              ? `أول يوم العودة يتأثر باستثناء الموظفة: ${targetSourceNote}`
+              : "أول يوم العودة يتأثر باستثناء الموظفة في هذا التاريخ."
             : targetSalonOverride
-              ? "ط£ظˆظ„ ظٹظˆظ… ط§ظ„ط¹ظˆط¯ط© ظٹطھط£ط«ط± ط¨ط§ط³طھط«ظ†ط§ط، ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ظپظٹ ظ‡ط°ط§ ط§ظ„طھط§ط±ظٹط®."
+              ? "أول يوم العودة يتأثر باستثناء ساعات الصالون في هذا التاريخ."
               : "";
 
           return {
@@ -4674,17 +4674,17 @@ export default function DashboardEmployees() {
           const rangeHijri = formatIsoDateRangeByCalendar(group.fromDate, group.toDate, "hijri");
           const rangeLabel =
             rangeHijri && rangeHijri !== rangeGregorian
-              ? `${rangeGregorian} | ظ‡ط¬ط±ظٹ: ${rangeHijri}`
+              ? `${rangeGregorian} | هجري: ${rangeHijri}`
               : rangeGregorian;
           const modeLabel =
             group.enabled === false
-              ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„"
-              : `ط³ط§ط¹ط§طھ ${formatWindow(
+              ? "إغلاق كامل"
+              : `ساعات ${formatWindow(
                   normalizeTimeHHMM(group.start) || salonOpen,
                   normalizeTimeHHMM(group.end) || salonClose
                 )}`;
           const dayCountLabel =
-            group.count > 1 ? `${formatArabicInteger(group.count)} ط£ظٹط§ظ…` : "ظٹظˆظ… ظˆط§ط­ط¯";
+            group.count > 1 ? `${formatArabicInteger(group.count)} أيام` : "يوم واحد";
           return {
             rangeLabel,
             modeLabel,
@@ -4701,13 +4701,13 @@ export default function DashboardEmployees() {
                 normalizeTimeHHMM(baseDay.start) || salonOpen,
                 normalizeTimeHHMM(baseDay.end) || salonClose
               )
-            : "ظ…ط؛ظ„ظ‚ ظ‡ط°ط§ ط§ظ„ظٹظˆظ…"
+            : "مغلق هذا اليوم"
           : formatWindow(salonOpen, salonClose);
         const staffBaseMatchesSalonWeekly = staffBaseWindowLabel === salonWeeklyWindowLabel;
 
         const staffOverrideLabel = overrideToday
           ? overrideToday.enabled === false
-            ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„ ط§ظ„ظٹظˆظ…"
+            ? "إغلاق كامل اليوم"
             : formatWindow(
                 normalizeTimeHHMM(overrideToday.start) || salonOpen,
                 normalizeTimeHHMM(overrideToday.end) || salonClose
@@ -4719,22 +4719,22 @@ export default function DashboardEmployees() {
           : "-";
         const staffBaseDetails = useCustom
           ? baseDay && baseDay.enabled !== false
-            ? "ط§ظ„ط¯ظˆط§ظ… ظ…ط£ط®ظˆط° ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط®طµطµ ظ„ظ„ظ…ظˆط¸ظپط©."
-            : "ط§ظ„ظٹظˆظ… ظ…ط؛ظ„ظ‚ ظپظٹ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط®طµطµ."
-          : "ظ„ط§ ظٹظˆط¬ط¯ ط¬ط¯ظˆظ„ ط£ط³ط¨ظˆط¹ظٹ ظ…ط®طµطµط› ظٹطھظ… ط§ظ„ط§ط¹طھظ…ط§ط¯ ط¹ظ„ظ‰ ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظپط¹ظ„ظٹ.";
+            ? "الدوام مأخوذ من الجدول الأسبوعي المخصص للموظفة."
+            : "اليوم مغلق في جدول الموظفة الأسبوعي المخصص."
+          : "لا يوجد جدول أسبوعي مخصص؛ يتم الاعتماد على دوام الصالون الفعلي.";
         const staffOverrideDetails = overrideToday
           ? overrideToday.enabled === false
-            ? `طھظ… ط¥ط؛ظ„ط§ظ‚ ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ط¨طھط§ط±ظٹط® ${todayDateLabel}.`
-            : `ط§ط³طھط«ظ†ط§ط، ظ…ظˆط¸ظپط© ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…: ${staffOverrideLabel}.`
+            ? `تم إغلاق دوام الموظفة بتاريخ ${todayDateLabel}.`
+            : `استثناء موظفة فعلي اليوم: ${staffOverrideLabel}.`
           : nextSavedOverrideSummary
-            ? `ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…. ط£ظ‚ط±ط¨ ط§ط³طھط«ظ†ط§ط، ظ…ط­ظپظˆط¸ (${nextSavedOverrideSummary.dayCountLabel}) ظ…ظ† ${nextSavedOverrideSummary.rangeLabel}: ${nextSavedOverrideSummary.modeLabel}${
-                nextSavedOverrideSummary.note ? ` | ظ…ظ„ط§ط­ط¸ط©: ${nextSavedOverrideSummary.note}` : ""
+            ? `لا يوجد استثناء فعلي اليوم. أقرب استثناء محفوظ (${nextSavedOverrideSummary.dayCountLabel}) من ${nextSavedOverrideSummary.rangeLabel}: ${nextSavedOverrideSummary.modeLabel}${
+                nextSavedOverrideSummary.note ? ` | ملاحظة: ${nextSavedOverrideSummary.note}` : ""
               }.`
             : lastSavedOverrideSummary
-              ? `ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظپط¹ظ„ظٹ ط§ظ„ظٹظˆظ…. ط¢ط®ط± ط§ط³طھط«ظ†ط§ط، ظ…ط­ظپظˆط¸ ظƒط§ظ† (${lastSavedOverrideSummary.dayCountLabel}) ظپظٹ ${lastSavedOverrideSummary.rangeLabel}: ${lastSavedOverrideSummary.modeLabel}${
-                  lastSavedOverrideSummary.note ? ` | ظ…ظ„ط§ط­ط¸ط©: ${lastSavedOverrideSummary.note}` : ""
+              ? `لا يوجد استثناء فعلي اليوم. آخر استثناء محفوظ كان (${lastSavedOverrideSummary.dayCountLabel}) في ${lastSavedOverrideSummary.rangeLabel}: ${lastSavedOverrideSummary.modeLabel}${
+                  lastSavedOverrideSummary.note ? ` | ملاحظة: ${lastSavedOverrideSummary.note}` : ""
                 }.`
-          : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظٹظˆظ…ظٹ ط®ط§طµ ط¨ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظٹظˆظ….";
+          : "لا يوجد استثناء يومي خاص بالموظفة اليوم.";
 
         const leaveByDate = exceptionalDates.includes(today);
         const leaveByWeekday = weekday ? exceptionalWeekdays.includes(weekday) : false;
@@ -4769,18 +4769,18 @@ export default function DashboardEmployees() {
           !!intersection && isTimeInsideWindow(timeNow, intersection.start, intersection.end);
 
         const actualNow = ended
-          ? "ظ…ط³طھط¨ط¹ط¯ط© ظ…ظ† ط§ظ„ط­ط¬ط² (ط§ظ†طھظ‡ظ‰ ط§ظ„طھظˆط¸ظٹظپ)"
+          ? "مستبعدة من الحجز (انتهى التوظيف)"
           : leaveActiveToday
-            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ… (ط¥ط¬ط§ط²ط©)"
+            ? "متوقفة اليوم (إجازة)"
             : !salonEnabled
-              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†"
+              ? "الحجوزات مغلقة اليوم على مستوى الصالون"
               : !effectiveEnabled
-                ? "ظ„ط§ ظٹظˆط¬ط¯ ط¯ظˆط§ظ… ظ…ظˆط¸ظپط© ط§ظ„ظٹظˆظ…"
+                ? "لا يوجد دوام موظفة اليوم"
                 : !intersection
-                  ? "ظ„ط§ ظٹظˆط¬ط¯ طھظ‚ط§ط·ط¹ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظˆط¯ظˆط§ظ… ط§ظ„ط­ط¬ظˆط²ط§طھ"
+                  ? "لا يوجد تقاطع بين دوام الموظفة ودوام الحجوزات"
                   : nowInsideWindow
-                    ? `طھط¹ظ…ظ„ ط§ظ„ط¢ظ†: ${formatWindow(intersection.start, intersection.end)}`
-                    : `ط®ط§ط±ط¬ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ط¢ظ†: ${formatWindow(intersection.start, intersection.end)}`;
+                    ? `تعمل الآن: ${formatWindow(intersection.start, intersection.end)}`
+                    : `خارج الدوام الآن: ${formatWindow(intersection.start, intersection.end)}`;
         const statusTone: "good" | "warn" | "muted" =
           nowInsideWindow && !!intersection && !ended && !leaveActiveToday
             ? "good"
@@ -4788,28 +4788,28 @@ export default function DashboardEmployees() {
               ? "warn"
               : "muted";
         const salonEffectiveDetails = ended
-          ? "ط§ظ„ظ…ظˆط¸ظپط© ظ…ط³طھط¨ط¹ط¯ط© ظ…ظ† ط§ظ„ط­ط¬ط² ط¨ط¹ط¯ ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ."
+          ? "الموظفة مستبعدة من الحجز بعد انتهاء التوظيف."
           : leaveActiveToday
-            ? "ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ط¥ط¬ط§ط²ط© ط§ظ„ظٹظˆظ…طŒ ظ„ط°ظ„ظƒ ظ„ط§ ظٹط¸ظ‡ط± ط­ط¬ط² ظپط¹ظ„ظٹ ظ„ظ‡ط§."
+            ? "الموظفة في إجازة اليوم، لذلك لا يظهر حجز فعلي لها."
             : !salonEnabled
-              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†."
+              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
               : !effectiveEnabled
-                ? "ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…."
+                ? "دوام الموظفة مغلق اليوم."
                 : !intersection
-                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„طµط§ظ„ظˆظ† ظˆط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط©."
-                  : `ط§ظ„ظ…ط¯ظ‰ ط§ظ„ظ…طھط§ط­ ظ„ظ„ط­ط¬ط² ظ…ط¹ ط§ظ„ظ…ظˆط¸ظپط©: ${formatWindow(intersection.start, intersection.end)}.`;
+                  ? "لا يوجد وقت مشترك بين دوام الصالون ودوام الموظفة."
+                  : `المدى المتاح للحجز مع الموظفة: ${formatWindow(intersection.start, intersection.end)}.`;
 
         const warnings: string[] = [];
         if (leaveByDate) {
-          warnings.push(`ط§ظ„ظٹظˆظ… ط¶ظ…ظ† ط¥ط¬ط§ط²ط© ط§ط³طھط«ظ†ط§ط¦ظٹط© ظ…ط­ط¯ط¯ط© ط¨طھط§ط±ظٹط® ${todayDateLabel}.`);
+          warnings.push(`اليوم ضمن إجازة استثنائية محددة بتاريخ ${todayDateLabel}.`);
         }
         if ((staff as any).onLeave) {
           if (leaveUntil && leaveUntil >= today) {
-            warnings.push(`ظپظٹ ط¥ط¬ط§ط²ط© ظ…ظ† ${fmtIsoDate(today)} ط¥ظ„ظ‰ ${fmtIsoDate(leaveUntil)}.`);
+            warnings.push(`في إجازة من ${fmtIsoDate(today)} إلى ${fmtIsoDate(leaveUntil)}.`);
           } else if (leaveUntil && leaveUntil < today) {
-            warnings.push(`ط§ظ†طھظ‡طھ ط¥ط¬ط§ط²طھظ‡ط§ ط¨طھط§ط±ظٹط® ${fmtIsoDate(leaveUntil)}.`);
+            warnings.push(`انتهت إجازتها بتاريخ ${fmtIsoDate(leaveUntil)}.`);
           } else {
-            warnings.push("ظپظٹ ط¥ط¬ط§ط²ط© ط­ط§ظ„ظٹط§ظ‹ ط¨ط¯ظˆظ† طھط§ط±ظٹط® ظ†ظ‡ط§ظٹط© ظ…ط­ط¯ط¯.");
+            warnings.push("في إجازة حالياً بدون تاريخ نهاية محدد.");
           }
         }
 
@@ -4832,16 +4832,16 @@ export default function DashboardEmployees() {
                 86400000
             )
           );
-          const lead = diffDays <= 14 ? "ط¥ط¬ط§ط²ط© ظ‚ط±ظٹط¨ط©" : "ط¥ط¬ط§ط²ط© ظ…ط¬ط¯ظˆظ„ط©";
-          warnings.push(`${lead} طھط¨ط¯ط£ ${fmtIsoDate(start)} ظˆطھظ†طھظ‡ظٹ ${fmtIsoDate(end)}.`);
+          const lead = diffDays <= 14 ? "إجازة قريبة" : "إجازة مجدولة";
+          warnings.push(`${lead} تبدأ ${fmtIsoDate(start)} وتنتهي ${fmtIsoDate(end)}.`);
         }
 
         if (exceptionalWeekdays.length > 0) {
           const weeklyLabels = exceptionalWeekdays.map((d) => weekdayLabel(d));
           if (weeklyLabels.length === 1) {
-            warnings.push(`ط¥ط¬ط§ط²ط© ط«ط§ط¨طھط© ظƒظ„ ${weeklyLabels[0]}.`);
+            warnings.push(`إجازة ثابتة كل ${weeklyLabels[0]}.`);
           } else {
-            warnings.push(`ط¥ط¬ط§ط²ط© ط«ط§ط¨طھط© ظƒظ„: ${weeklyLabels.join(" / ")}.`);
+            warnings.push(`إجازة ثابتة كل: ${weeklyLabels.join(" / ")}.`);
           }
         }
 
@@ -4850,53 +4850,53 @@ export default function DashboardEmployees() {
           : "-";
         const leaveDaysDetails = exceptionalWeekdays.length
           ? leaveByWeekday
-            ? "ط§ظ„ظٹظˆظ… ظٹظ‚ط¹ ط¶ظ…ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط© ط§ظ„ط«ط§ط¨طھط©."
-            : "ط§ظ„ظٹظˆظ… ظ„ظٹط³ ط¶ظ…ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹط© ط§ظ„ط«ط§ط¨طھط©."
-          : "ظ„ط§ طھظˆط¬ط¯ ط£ظٹط§ظ… ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©.";
+            ? "اليوم يقع ضمن الإجازة الأسبوعية الثابتة."
+            : "اليوم ليس ضمن الإجازة الأسبوعية الثابتة."
+          : "لا توجد أيام إجازة أسبوعية ثابتة.";
         const weeklyOffTodayLabel = exceptionalWeekdays.length
-          ? `ط¥ط¬ط§ط²ط© ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط«ط§ط¨طھط©: ${exceptionalWeekdays.map((d) => weekdayLabel(d)).join("طŒ ")}`
+          ? `إجازة الموظفة الثابتة: ${exceptionalWeekdays.map((d) => weekdayLabel(d)).join("، ")}`
           : "";
         const finalWindowLabel = hardBlockedToday
           ? leaveByWeekday
-            ? "ط§ظ„ظٹظˆظ… ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©"
-            : "ظ„ط§ ظٹظˆط¬ط¯ ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ط§ظ„ظٹظˆظ…"
+            ? "اليوم إجازة أسبوعية ثابتة"
+            : "لا يوجد ساعات عمل اليوم"
           : intersection
             ? formatWindow(intersection.start, intersection.end)
-            : "ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…";
+            : "مغلق اليوم";
         const operationalState: "working" | "outside" | "closed" =
           nowInsideWindow && !!intersection ? "working" : intersection ? "outside" : "closed";
         const operationalStatusLabel = ended
-          ? "ط®ط§ط±ط¬ ط§ظ„ط®ط¯ظ…ط©"
+          ? "خارج الخدمة"
           : leaveActiveToday
-            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ…"
+            ? "متوقفة اليوم"
             : !intersection
-              ? "ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ…"
+              ? "مغلقة اليوم"
               : nowInsideWindow
-                ? "طھط¹ظ…ظ„ ط§ظ„ط¢ظ†"
-                : "ط®ط§ط±ط¬ ط³ط§ط¹ط§طھ ط§ظ„ط¹ظ…ظ„";
+                ? "تعمل الآن"
+                : "خارج ساعات العمل";
         const reasonLabel = ended
-          ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ"
+          ? "مغلقة بسبب انتهاء التوظيف"
           : leaveActiveToday
-            ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ظ„ط¥ط¬ط§ط²ط©"
+            ? "مغلقة بسبب الإجازة"
             : !salonEnabled
               ? activeSalonOverride?.mode === "closed"
-                ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ…"
-                : "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†"
+                ? "مغلقة بسبب إغلاق الصالون اليوم"
+                : "مغلقة وفق ساعات الصالون"
               : !effectiveEnabled
                 ? overrideToday?.enabled === false
-                  ? "ظ…ط؛ظ„ظ‚ط© ط¨ط³ط¨ط¨ ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
+                  ? "مغلقة بسبب استثناء الموظفة"
                   : useCustom
-                    ? "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ"
-                    : "ظ…ط؛ظ„ظ‚ط© ظˆظپظ‚ ط¬ط¯ظˆظ„ ط§ظ„طµط§ظ„ظˆظ†"
+                    ? "مغلقة وفق جدول الموظفة الأسبوعي"
+                    : "مغلقة وفق جدول الصالون"
                 : !intersection
-                  ? "ظ…ط؛ظ„ظ‚ط© ظ„ط¹ط¯ظ… ظˆط¬ظˆط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ"
+                  ? "مغلقة لعدم وجود وقت مشترك"
                   : overrideToday
-                    ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
+                    ? "بناءً على استثناء الموظفة"
                     : useCustom
-                      ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ط£ط³ط¨ظˆط¹ظٹ"
+                      ? "بناءً على جدول الموظفة الأسبوعي"
                       : activeSalonOverride
-                        ? "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
-                        : "ط¨ظ†ط§ط،ظ‹ ط¹ظ„ظ‰ ط¬ط¯ظˆظ„ ط§ظ„طµط§ظ„ظˆظ†";
+                        ? "بناءً على ساعات الصالون الخاصة"
+                        : "بناءً على جدول الصالون";
         const savedOverrideRows = overrideGroups.map((group, groupIndex) => {
           const tone = group.dates.includes(today)
             ? "active"
@@ -4909,18 +4909,18 @@ export default function DashboardEmployees() {
           ) as WeekdayKey[];
           const appliesToLabel =
             weekdaysInGroup.length === WEEKDAY_OPTIONS.length
-              ? "ظƒظ„ ط§ظ„ط£ظٹط§ظ…"
+              ? "كل الأيام"
               : formatWeekdaySet(weekdaysInGroup);
           return {
             id: group.id,
             tone,
-            badge: tone === "active" ? "ظ†ط´ط·" : tone === "upcoming" ? "ظ‚ط§ط¯ظ…" : "ظ…ظ†طھظ‡ظٹ",
-            title: `ط§ظ„ط§ط³طھط«ظ†ط§ط، ${formatArabicInteger(groupIndex + 1)}`,
+            badge: tone === "active" ? "نشط" : tone === "upcoming" ? "قادم" : "منتهي",
+            title: `الاستثناء ${formatArabicInteger(groupIndex + 1)}`,
             gregorianRange: rangeDual.gregorian,
             hijriRange: rangeDual.hijri,
             hoursLabel:
               group.enabled === false
-                ? "ط¥ط؛ظ„ط§ظ‚ ظƒط§ظ…ظ„"
+                ? "إغلاق كامل"
                 : formatWindow(
                     normalizeTimeHHMM(group.start) || salonOpen,
                     normalizeTimeHHMM(group.end) || salonClose
@@ -4934,70 +4934,70 @@ export default function DashboardEmployees() {
         const lastTimelineOverrideGroup =
           overrideGroups.length ? overrideGroups[overrideGroups.length - 1] : null;
         const overrideTimelineSummary = lastTimelineOverrideGroup
-          ? `ط¢ط®ط± ط§ط³طھط«ظ†ط§ط، ظ…ط¬ط¯ظˆظ„ ظٹظ†طھظ‡ظٹ ظپظٹ ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} â€” ${fmtIsoDateHijri(
+          ? `آخر استثناء مجدول ينتهي في ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} — ${fmtIsoDateHijri(
               lastTimelineOverrideGroup.toDate
             )}`
           : "";
         const overrideTimelineFallback = lastTimelineOverrideGroup
-          ? `ط¨ط¹ط¯ ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} (${fmtIsoDateHijri(
+          ? `بعد ${fmtIsoDate(lastTimelineOverrideGroup.toDate)} (${fmtIsoDateHijri(
               lastTimelineOverrideGroup.toDate
-            )}) ظٹط¹ظˆط¯ ط§ظ„ظ†ط¸ط§ظ… ط¥ظ„ظ‰ ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ط§ظ„ظ…ط¹طھط§ط¯ ظ…ط§ ظ„ظ… ظٹظڈط¶ظپ ط§ط³طھط«ظ†ط§ط، ط¬ط¯ظٹط¯.`
+            )}) يعود النظام إلى الجدول الأسبوعي المعتاد ما لم يُضف استثناء جديد.`
           : "";
-        const overrideTodayLabel = overrideToday ? staffOverrideLabel : "ظ„ط§ ظٹظˆط¬ط¯ ط§ظ„ظٹظˆظ…";
+        const overrideTodayLabel = overrideToday ? staffOverrideLabel : "لا يوجد اليوم";
         const overrideTodayNote = overrideToday
-          ? "ط§ظ„ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ… ظ…ظˆط¶ط­ ط¶ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط²ظ…ظ†ظٹ ط£ط¹ظ„ط§ظ‡."
-          : "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط، ظ…ظˆط¸ظپط© ظ…ط·ط¨ظ‚ ط¹ظ„ظ‰ ظ‡ط°ط§ ط§ظ„ظٹظˆظ….";
+          ? "الاستثناء المطبق اليوم موضح ضمن الجدول الزمني أعلاه."
+          : "لا يوجد استثناء موظفة مطبق على هذا اليوم.";
         const hasClosureStatus = ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection;
         const closureStatusValue = ended
-          ? "ط§ظ†طھظ‡ظ‰ ط§ظ„طھظˆط¸ظٹظپ"
+          ? "انتهى التوظيف"
           : leaveActiveToday
-            ? "ط¥ط¬ط§ط²ط© / طھظˆظ‚ظپ"
+            ? "إجازة / توقف"
             : !salonEnabled
-              ? "ط¥ط؛ظ„ط§ظ‚ ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†"
+              ? "إغلاق على مستوى الصالون"
               : !effectiveEnabled
-                ? "ط¥ط؛ظ„ط§ظ‚ ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„ظ…ظˆط¸ظپط©"
+                ? "إغلاق على مستوى الموظفة"
                 : !intersection
-                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ"
-                  : "ظ„ط§ ظٹظˆط¬ط¯ ط¥ط؛ظ„ط§ظ‚ ط§ظ„ظٹظˆظ…";
+                  ? "لا يوجد وقت مشترك"
+                  : "لا يوجد إغلاق اليوم";
         const closureStatusNote = ended
-          ? "ط§ظ„ظ…ظˆط¸ظپط© ط؛ظٹط± ظ…طھط§ط­ط© ظ„ظ„ط­ط¬ط² ط¨ط¹ط¯ طھط§ط±ظٹط® ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ."
+          ? "الموظفة غير متاحة للحجز بعد تاريخ انتهاء التوظيف."
           : leaveActiveToday
-            ? "ظ…طھظˆظ‚ظپط© ط§ظ„ظٹظˆظ… ط¨ط³ط¨ط¨ ط§ظ„ط¥ط¬ط§ط²ط© ط£ظˆ ط§ظ„طھط¹ط·ظٹظ„."
+            ? "متوقفة اليوم بسبب الإجازة أو التعطيل."
             : !salonEnabled
-              ? "ط§ظ„ط­ط¬ظˆط²ط§طھ ظ…ط؛ظ„ظ‚ط© ط§ظ„ظٹظˆظ… ط¹ظ„ظ‰ ظ…ط³طھظˆظ‰ ط§ظ„طµط§ظ„ظˆظ†."
+              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
               : !effectiveEnabled
-                ? "ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظ…ط؛ظ„ظ‚ ط§ظ„ظٹظˆظ…."
+                ? "دوام الموظفة مغلق اليوم."
                 : !intersection
-                  ? "ظ„ط§ ظٹظˆط¬ط¯ ظˆظ‚طھ ظ…ط´طھط±ظƒ ط¨ظٹظ† ط¯ظˆط§ظ… ط§ظ„ظ…ظˆط¸ظپط© ظˆط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†."
+                  ? "لا يوجد وقت مشترك بين دوام الموظفة وساعات الصالون."
                   : undefined;
         const reasonStatusValue = ended
-          ? "ط§ظ†طھظ‡ط§ط، ط§ظ„طھظˆط¸ظٹظپ"
+          ? "انتهاء التوظيف"
           : leaveActiveToday
-            ? "ط¥ط¬ط§ط²ط© ط£ظˆ طھط¹ط·ظٹظ„"
+            ? "إجازة أو تعطيل"
             : overrideToday
-              ? "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط©"
+              ? "استثناء الموظفة"
               : useCustom
-                ? "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©"
+                ? "الجدول الأسبوعي للموظفة"
                 : activeSalonOverride
                   ? activeSalonOverride.mode === "closed"
-                    ? "ط¥ط؛ظ„ط§ظ‚ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ…"
-                    : "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ط®ط§طµط©"
-                  : "ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†";
+                    ? "إغلاق الصالون اليوم"
+                    : "ساعات الصالون الخاصة"
+                  : "ساعات الصالون";
         const bookingAvailabilityValue =
           ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection
-            ? "ط؛ظٹط± ظ…طھط§ط­ ط§ظ„ظٹظˆظ…"
-            : "ظ…طھط§ط­ ط¶ظ…ظ† ظ‡ط°ظ‡ ط§ظ„ظپطھط±ط©";
+            ? "غير متاح اليوم"
+            : "متاح ضمن هذه الفترة";
         const statusRows = [
           {
-            label: "ط§ظ„ط³ط¨ط¨",
+            label: "السبب",
             value: reasonStatusValue,
           },
           {
-            label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
-            value: hasClosureStatus ? closureStatusValue : "ظ„ط§ ظٹظˆط¬ط¯",
+            label: "حالة الإغلاق",
+            value: hasClosureStatus ? closureStatusValue : "لا يوجد",
           },
           {
-            label: "ط¥طھط§ط­ط© ط§ظ„ط­ط¬ط²",
+            label: "إتاحة الحجز",
             value: bookingAvailabilityValue,
           },
         ];
@@ -5007,12 +5007,12 @@ export default function DashboardEmployees() {
           const ongoingLeaveWithoutEnd = leaveByToggle && !leaveUntil;
           if (ongoingLeaveWithoutEnd) {
             return {
-              gregorianDate: "ط؛ظٹط± ظ…ط­ط¯ط¯ ط­طھظ‰ ط§ظ„ط¢ظ†",
-              hijriDate: "ط¨ط§ظ†طھط¸ط§ط± طھط­ط¯ظٹط¯ ظ†ظ‡ط§ظٹط© ط§ظ„ط¥ط¬ط§ط²ط©",
-              windowLabel: "ط³ظٹظڈط­ط¯ط¯ ظ„ط§ط­ظ‚ظ‹ط§",
-              sourceLabel: "ط¨ط§ظ†طھط¸ط§ط± طھط­ط¯ظٹط¯ ظ†ظ‡ط§ظٹط© ط§ظ„ط¥ط¬ط§ط²ط©",
-              availabilityLabel: "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط­طھظ‰ ظٹطھظ… طھط­ط¯ظٹط¯ ظ…ظˆط¹ط¯ ط§ظ„ط¹ظˆط¯ط©",
-              note: "ظ„ط§ ظٹظ…ظƒظ† ط§ط­طھط³ط§ط¨ ط£ظˆظ„ ظٹظˆظ… ط¹ظ…ظ„ ظ„ط£ظ† ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ط­ط§ظ„ظٹط© ط¨ظ„ط§ طھط§ط±ظٹط® ظ†ظ‡ط§ظٹط© ظ…ط­ط¯ط¯.",
+              gregorianDate: "غير محدد حتى الآن",
+              hijriDate: "بانتظار تحديد نهاية الإجازة",
+              windowLabel: "سيُحدد لاحقًا",
+              sourceLabel: "بانتظار تحديد نهاية الإجازة",
+              availabilityLabel: "الحجز غير متاح حتى يتم تحديد موعد العودة",
+              note: "لا يمكن احتساب أول يوم عمل لأن الإجازة الحالية بلا تاريخ نهاية محدد.",
               leaveEndsLabel: "",
             };
           }
@@ -5035,10 +5035,10 @@ export default function DashboardEmployees() {
                 hijriDate: fmtIsoDateHijri(candidate.dateIso),
                 windowLabel: formatWindow(candidate.intersection.start, candidate.intersection.end),
                 sourceLabel: candidate.sourceLabel,
-                availabilityLabel: "ط§ظ„ط­ط¬ط² ط³ظٹظƒظˆظ† ظ…طھط§ط­ظ‹ط§ ط§ط¨طھط¯ط§ط،ظ‹ ظ…ظ† ظ‡ط°ط§ ط§ظ„ظˆظ‚طھ",
+                availabilityLabel: "الحجز سيكون متاحًا ابتداءً من هذا الوقت",
                 note: candidate.impactNote,
                 leaveEndsLabel: leaveEndsOn
-                  ? `${fmtIsoDate(leaveEndsOn)} â€” ${fmtIsoDateHijri(leaveEndsOn)}`
+                  ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
                   : "",
               };
             }
@@ -5046,53 +5046,53 @@ export default function DashboardEmployees() {
           }
 
           return {
-            gregorianDate: "ظ„ط§ طھظˆط¬ط¯ ط¹ظˆط¯ط© ظ…ط¬ط¯ظˆظ„ط©",
-            hijriDate: "ط¨ط­ط³ط¨ ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط§ظ„ظٹط©",
-            windowLabel: "ط³ظٹظڈط­ط¯ط¯ ظ„ط§ط­ظ‚ظ‹ط§",
-            sourceLabel: "ظ„ط§ طھظˆط¬ط¯ ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ظ„ط§ط­ظ‚ط© ط¶ظ…ظ† ط§ظ„ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ط­ط§ظ„ظٹط©",
-            availabilityLabel: "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط­طھظ‰ طھطھظˆظپط± ط³ط§ط¹ط§طھ ط¹ظ…ظ„ ظ„ط§ط­ظ‚ط©",
-            note: "ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ظٹظˆظ… ط¹ظ…ظ„ ظ‚ط§ط¯ظ… ط¶ظ…ظ† ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط­ط§ظ„ظٹ.",
-            leaveEndsLabel: leaveEndsOn ? `${fmtIsoDate(leaveEndsOn)} â€” ${fmtIsoDateHijri(leaveEndsOn)}` : "",
+            gregorianDate: "لا توجد عودة مجدولة",
+            hijriDate: "بحسب البيانات الحالية",
+            windowLabel: "سيُحدد لاحقًا",
+            sourceLabel: "لا توجد ساعات عمل لاحقة ضمن الإعدادات الحالية",
+            availabilityLabel: "الحجز غير متاح حتى تتوفر ساعات عمل لاحقة",
+            note: "لم يتم العثور على يوم عمل قادم ضمن الجدول الحالي.",
+            leaveEndsLabel: leaveEndsOn ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}` : "",
           };
         })();
         const detailRows = [
           {
-            label: "ط§ظ„ط¬ط¯ظˆظ„ ط§ظ„ط£ط³ط¨ظˆط¹ظٹ ظ„ظ„ظ…ظˆط¸ظپط©",
+            label: "الجدول الأسبوعي للموظفة",
             value: staffBaseWindowLabel,
             note: useCustom
-              ? "ط§ظ„ط³ط§ط¹ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط© ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط¬ط¯ظˆظ„ ط§ظ„ظ…ظˆط¸ظپط©."
-              : "ظ„ط§ ظٹظˆط¬ط¯ ط¬ط¯ظˆظ„ ط£ط³ط¨ظˆط¹ظٹ ظ…ط®طµطµط› طھط¹طھظ…ط¯ ط§ظ„ظ…ظˆط¸ظپط© ط¹ظ„ظ‰ ط³ط§ط¹ط§طھ ط§ظ„طµط§ظ„ظˆظ†.",
+              ? "الساعات الأساسية المعتمدة من جدول الموظفة."
+              : "لا يوجد جدول أسبوعي مخصص؛ تعتمد الموظفة على ساعات الصالون.",
           },
           {
-            label: "ط³ط§ط¹ط§طھ طھط´ط؛ظٹظ„ ط§ظ„طµط§ظ„ظˆظ†",
+            label: "ساعات تشغيل الصالون",
             value: salonEffectiveWindowLabel,
             note: activeSalonOverride
-              ? "طھط´ظ…ظ„ ط§ط³طھط«ظ†ط§ط، ط§ظ„طµط§ظ„ظˆظ† ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ…."
-              : "ط³ط§ط¹ط§طھ ط§ظ„طھط´ط؛ظٹظ„ ط§ظ„ظ…ط¹طھظ…ط¯ط© ظ„ظ„طµط§ظ„ظˆظ† ط§ظ„ظٹظˆظ….",
+              ? "تشمل استثناء الصالون المطبق اليوم."
+              : "ساعات التشغيل المعتمدة للصالون اليوم.",
           },
           {
-            label: "ط§ط³طھط«ظ†ط§ط، ط§ظ„ظ…ظˆط¸ظپط© ط§ظ„ظ…ط·ط¨ظ‚ ط§ظ„ظٹظˆظ…",
+            label: "استثناء الموظفة المطبق اليوم",
             value: overrideTodayLabel,
             note: overrideTodayNote,
           },
           hasClosureStatus
             ? {
-                label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
+                label: "حالة الإغلاق",
                 value: closureStatusValue,
                 note: closureStatusNote,
               }
             : {
-                label: "ط­ط§ظ„ط© ط§ظ„ط¥ط؛ظ„ط§ظ‚",
-                value: "ظ„ط§ ظٹظˆط¬ط¯",
-                note: "ظ„ط§ ظٹظˆط¬ط¯ ط¥ط؛ظ„ط§ظ‚ ط£ظˆ طھط¹ط·ظٹظ„ ظٹط¤ط«ط± ط¹ظ„ظ‰ ط§ظ„ط¯ظˆط§ظ… ط§ظ„ظٹظˆظ….",
+                label: "حالة الإغلاق",
+                value: "لا يوجد",
+                note: "لا يوجد إغلاق أو تعطيل يؤثر على الدوام اليوم.",
               },
           {
-            label: "ط¥طھط§ط­ط© ط§ظ„ط­ط¬ط²",
+            label: "إتاحة الحجز",
             value: bookingAvailabilityValue,
             note:
-              bookingAvailabilityValue === "ظ…طھط§ط­ ط¶ظ…ظ† ظ‡ط°ظ‡ ط§ظ„ظپطھط±ط©"
-                ? `ط§ظ„ط­ط¬ط² ظ…طھط§ط­ ط¶ظ…ظ† ${finalWindowLabel}.`
-                : "ط§ظ„ط­ط¬ط² ط؛ظٹط± ظ…طھط§ط­ ط§ظ„ظٹظˆظ… ط¨ط­ط³ط¨ ط§ظ„ظ†طھظٹط¬ط© ط§ظ„ظ†ظ‡ط§ط¦ظٹط© ط£ط¹ظ„ط§ظ‡.",
+              bookingAvailabilityValue === "متاح ضمن هذه الفترة"
+                ? `الحجز متاح ضمن ${finalWindowLabel}.`
+                : "الحجز غير متاح اليوم بحسب النتيجة النهائية أعلاه.",
           },
         ].filter(Boolean);
 
@@ -5100,8 +5100,8 @@ export default function DashboardEmployees() {
           id: staff.id,
           name: String(staff.name || "-"),
           todayWeekdayLabel: weekdayLabel(weekday),
-          todayDateGregorianLabel: `${todayDateGregorian} ظ…`,
-          todayDateHijriLabel: `${todayDateHijri} ظ‡ظ€`,
+          todayDateGregorianLabel: `${todayDateGregorian} م`,
+          todayDateHijriLabel: `${todayDateHijri} هـ`,
           todayDateCombinedLabel,
           salonWeeklyWindowLabel,
           salonWeeklyDetails,
@@ -5156,9 +5156,9 @@ export default function DashboardEmployees() {
           ? roundPayrollNumber(workDays * dailyHours)
           : 0;
     const missing: string[] = [];
-    if (baseSalaryRiyals <= 0) missing.push("ط§ظ„ط±ط§طھط¨ ط§ظ„ط£ط³ط§ط³ظٹ ط؛ظٹط± ظ…ط­ط¯ط¯");
-    if (workDays <= 0) missing.push("ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط؛ظٹط± ظ…ط­ط¯ط¯ط©");
-    if (computedMonthlyHours <= 0) missing.push("ط³ط§ط¹ط§طھ ط§ظ„ط¹ظ…ظ„ ط؛ظٹط± ظ…ط­ط¯ط¯ط©");
+    if (baseSalaryRiyals <= 0) missing.push("الراتب الأساسي غير محدد");
+    if (workDays <= 0) missing.push("أيام العمل غير محددة");
+    if (computedMonthlyHours <= 0) missing.push("ساعات العمل غير محددة");
     const dailyRateRiyals = baseSalaryRiyals > 0 && workDays > 0
       ? roundPayrollNumber(baseSalaryRiyals / workDays)
       : 0;
@@ -5338,40 +5338,40 @@ export default function DashboardEmployees() {
   ]);
   const modalTabs: Array<{ key: EmployeeModalTab; label: string }> = editingStaff
     ? [
-        { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©" },
-        { key: "booking", label: "ط§ظ„ط­ط¬ط² ظˆط§ظ„ط¯ظˆط§ظ…" },
-        { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ" },
-        { key: "profile", label: "ط§ظ„ظ…ظ„ظپ" },
-        { key: "stats", label: "ط§ظ„ط¥ط­طµط§ط¦ظٹط§طھ ظˆط§ظ„ط¥ط¬ط§ط²ط§طھ" },
+        { key: "basic", label: "البيانات الأساسية" },
+        { key: "booking", label: "الحجز والدوام" },
+        { key: "services", label: "الخدمات" },
+        { key: "profile", label: "الملف" },
+        { key: "stats", label: "الإحصائيات والإجازات" },
       ]
     : [
-        { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©" },
-        { key: "booking", label: "ط§ظ„ط­ط¬ط² ظˆط§ظ„ط¯ظˆط§ظ…" },
-        { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ" },
-        { key: "profile", label: "ط§ظ„ظ…ظ„ظپ" },
+        { key: "basic", label: "البيانات الأساسية" },
+        { key: "booking", label: "الحجز والدوام" },
+        { key: "services", label: "الخدمات" },
+        { key: "profile", label: "الملف" },
       ];
   const detailTabs: Array<{ key: EmployeeSplitTab; label: string; hint: string; icon?: typeof faUserTie }> = [
-    { key: "basic", label: "ط§ظ„ط¨ظٹط§ظ†ط§طھ ط§ظ„ط£ط³ط§ط³ظٹط©", hint: "ط§ظ„ط§ط³ظ… ظˆط§ظ„ط­ط§ظ„ط© ظˆط§ظ„ط¸ظ‡ظˆط±", icon: faUserTie },
-    { key: "profile", label: "ط§ظ„ظ…ظ„ظپ ظˆط§ظ„طµظˆط±ط©", hint: "ط§ظ„طµظˆط±ط© ظˆط§ظ„ظ†ط¨ط°ط© ظˆط§ظ„طھظ‚ظٹظٹظ…", icon: faFileLines },
-    { key: "services", label: "ط§ظ„ط®ط¯ظ…ط§طھ", hint: "ط§ظ„ط®ط¯ظ…ط§طھ ط§ظ„ظ…ط³ظ†ط¯ط© ظ„ظ„ظ…ظˆط¸ظپط©", icon: faInbox },
-    { key: "booking", label: "ط§ظ„ط¯ظˆط§ظ… ظˆط§ظ„ط´ظپطھط§طھ", hint: "ط§ظ„ط¬ط¯ظˆظ„ ظˆط§ظ„ظ‚ظˆط§ظ„ط¨ ظˆط§ظ„ط³ظٹط§ط³ط§طھ", icon: faClock },
+    { key: "basic", label: "البيانات الأساسية", hint: "الاسم والحالة والظهور", icon: faUserTie },
+    { key: "profile", label: "الملف والصورة", hint: "الصورة والنبذة والتقييم", icon: faFileLines },
+    { key: "services", label: "الخدمات", hint: "الخدمات المسندة للموظفة", icon: faInbox },
+    { key: "booking", label: "الدوام والشفتات", hint: "الجدول والقوالب والسياسات", icon: faClock },
     ...(canViewAttendance
-      ? [{ key: "attendance" as EmployeeSplitTab, label: "ط§ظ„ط­ط¶ظˆط±", hint: "ط§ظ„ط³ط¬ظ„ ط§ظ„ظٹظˆظ…ظٹ", icon: faCalendarCheck }]
+      ? [{ key: "attendance" as EmployeeSplitTab, label: "الحضور", hint: "السجل اليومي", icon: faCalendarCheck }]
       : []),
     ...(canViewPayroll
-      ? [{ key: "payroll" as EmployeeSplitTab, label: "ط³ط¬ظ„ ط§ظ„ط±ظˆط§طھط¨", hint: "ط§ظ„ظ‚ظپظ„ ظˆط§ظ„ط­ط³ط§ط¨", icon: faMoneyBillWave }]
+      ? [{ key: "payroll" as EmployeeSplitTab, label: "سجل الرواتب", hint: "القفل والحساب", icon: faMoneyBillWave }]
       : []),
     ...(canManageLeaveBalance
       ? [
-          { key: "requests" as EmployeeSplitTab, label: "ط§ظ„ط·ظ„ط¨ط§طھ", hint: "ط·ظ„ط¨ط§طھ ط§ظ„ظ…ظˆط¸ظپط©", icon: faInbox },
-          { key: "leave" as EmployeeSplitTab, label: "ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ", hint: "ط§ظ„ط­ط§ظ„ط© ظˆط§ظ„ط±طµظٹط¯ ظˆط§ظ„ط³ط¬ظ„", icon: faCalendarCheck },
+          { key: "requests" as EmployeeSplitTab, label: "الطلبات", hint: "طلبات الموظفة", icon: faInbox },
+          { key: "leave" as EmployeeSplitTab, label: "رصيد الإجازات", hint: "الحالة والرصيد والسجل", icon: faCalendarCheck },
         ]
       : []),
     ...(canViewEmployeeMessages
-      ? [{ key: "messages" as EmployeeSplitTab, label: "ط§ظ„ط±ط³ط§ط¦ظ„", hint: "ط§ظ„طھظˆط§طµظ„ ط§ظ„ط¯ط§ط®ظ„ظٹ", icon: faEnvelope }]
+      ? [{ key: "messages" as EmployeeSplitTab, label: "الرسائل", hint: "التواصل الداخلي", icon: faEnvelope }]
       : []),
     ...(canViewEmployeeFiles
-      ? [{ key: "files" as EmployeeSplitTab, label: "ط§ظ„ظ…ظ„ظپط§طھ", hint: "ط§ظ„ظ…ط³طھظ†ط¯ط§طھ", icon: faFileLines }]
+      ? [{ key: "files" as EmployeeSplitTab, label: "الملفات", hint: "المستندات", icon: faFileLines }]
       : []),
   ];
   const modalLeaveExpired = useMemo(() => {
@@ -5607,14 +5607,14 @@ export default function DashboardEmployees() {
     const parsed = parseHijriDateInput(nextRaw);
     if (!parsed) {
       if (commit && nextRaw.trim()) {
-        setErrorMsg("طµظٹط؛ط© ط§ظ„طھط§ط±ظٹط® ط§ظ„ظ‡ط¬ط±ظٹ ظٹط¬ط¨ ط£ظ† طھظƒظˆظ†: ظٹظˆظ…/ط´ظ‡ط±/ط³ظ†ط© (ظ…ط«ط§ظ„: 09/09/1447).");
+        setErrorMsg("صيغة التاريخ الهجري يجب أن تكون: يوم/شهر/سنة (مثال: 09/09/1447).");
       }
       return;
     }
     const iso = isoFromHijriDateParts(parsed);
     if (!iso) {
       if (commit) {
-        setErrorMsg("طھط¹ط°ط± طھط­ظˆظٹظ„ ط§ظ„طھط§ط±ظٹط® ط§ظ„ظ‡ط¬ط±ظٹ. طھط£ظƒط¯ ظ…ظ† ط¥ط¯ط®ط§ظ„ طھط§ط±ظٹط® ظ‡ط¬ط±ظٹ طµط­ظٹط­.");
+        setErrorMsg("تعذر تحويل التاريخ الهجري. تأكد من إدخال تاريخ هجري صحيح.");
       }
       return;
     }
@@ -5626,7 +5626,7 @@ export default function DashboardEmployees() {
   const setModalHourOverrideRangeFromExisting = () => {
     const rows = normalizeWorkingHourOverrides(modalCustomHourOverrides);
     if (!rows.length) {
-      setErrorMsg("ظ„ط§ طھظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ط­ط§ظ„ظٹط© ظ„طھط¹ط¯ظٹظ„ظ‡ط§.");
+      setErrorMsg("لا توجد استثناءات حالية لتعديلها.");
       return false;
     }
     const first = rows[0];
@@ -5837,18 +5837,18 @@ export default function DashboardEmployees() {
       cursor = addDaysIso(cursor, 1);
       guard += 1;
       if (guard > maxDays) {
-        return { next: base, appliedCount: 0, error: "ظ†ط·ط§ظ‚ ط§ظ„طھط§ط±ظٹط® ظƒط¨ظٹط± ط¬ط¯ط§ظ‹. ط§ظ„ط­ط¯ ط§ظ„ط£ظ‚طµظ‰ 120 ظٹظˆظ…." };
+        return { next: base, appliedCount: 0, error: "نطاق التاريخ كبير جداً. الحد الأقصى 120 يوم." };
       }
     }
     if (rows.length === 0) {
-      return { next: base, appliedCount: 0, error: "ظ„ط§ ظٹظˆط¬ط¯ ط£ظٹط§ظ… ظ…ط·ط§ط¨ظ‚ط© ظ„ظ„ظپظ„ط§طھط± ط§ظ„ظ…ط®طھط§ط±ط© ط¯ط§ط®ظ„ ط§ظ„ظ†ط·ط§ظ‚." };
+      return { next: base, appliedCount: 0, error: "لا يوجد أيام مطابقة للفلاتر المختارة داخل النطاق." };
     }
 
     const rowsToApply = modalHourOverrideUpdateExistingOnly
       ? rows.filter((r) => base.some((x) => x.date === r.date))
       : rows;
     if (modalHourOverrideUpdateExistingOnly && rowsToApply.length === 0) {
-      return { next: base, appliedCount: 0, error: "ظ„ط§ ظٹظˆط¬ط¯ ط§ط³طھط«ظ†ط§ط،ط§طھ ط­ط§ظ„ظٹط© ظ…ط·ط§ط¨ظ‚ط© ظ„ظ„ظ†ط·ط§ظ‚/ط§ظ„ظپظ„ط§طھط± ظ„طھط¹ط¯ظٹظ„ظ‡ط§." };
+      return { next: base, appliedCount: 0, error: "لا يوجد استثناءات حالية مطابقة للنطاق/الفلاتر لتعديلها." };
     }
 
     if (modalHourOverrideUpdateExistingOnly || modalHourOverrideApplyMethod === "replace") {
@@ -6019,8 +6019,8 @@ export default function DashboardEmployees() {
         source: "dashboard",
         description:
           mode === "add"
-            ? "ط¥ط¶ط§ظپط© ط±طµظٹط¯ ط¥ط¬ط§ط²ط© ظ„ظ„ظ…ظˆط¸ظپط©"
-            : "ط®طµظ… ط±طµظٹط¯ ط¥ط¬ط§ط²ط© ظ…ظ† ط§ظ„ظ…ظˆط¸ظپط©",
+            ? "إضافة رصيد إجازة للموظفة"
+            : "خصم رصيد إجازة من الموظفة",
         before: {
           leaveBalanceDays:
             result.previousBalance,
@@ -6062,24 +6062,24 @@ export default function DashboardEmployees() {
         type: "leave",
         title:
           mode === "add"
-            ? "طھظ…طھ ط¥ط¶ط§ظپط© ط±طµظٹط¯ ط¥ط¬ط§ط²ط©"
-            : "طھظ… ط®طµظ… ط±طµظٹط¯ ط¥ط¬ط§ط²ط©",
+            ? "تمت إضافة رصيد إجازة"
+            : "تم خصم رصيد إجازة",
         body:
-          `ط§ظ„ط¹ظ…ظ„ظٹط© ${
+          `العملية ${
             mode === "add"
-              ? "ط¥ط¶ط§ظپط©"
-              : "ط®طµظ…"
-          } ${days} ظٹظˆظ…. ` +
-          `ط§ظ„ط±طµظٹط¯ ط§ظ„ط­ط§ظ„ظٹ: ${
+              ? "إضافة"
+              : "خصم"
+          } ${days} يوم. ` +
+          `الرصيد الحالي: ${
             result.leaveBalanceDays
-          } ظٹظˆظ….`,
+          } يوم.`,
         route: "/employee/leave",
       }).catch(() => {});
     } catch (error) {
       setErrorMsg(
         toFirestoreErrorMessage(
           error,
-          "طھط¹ط°ط± ط­ظپط¸ ط­ط±ظƒط© ط§ظ„ط¥ط¬ط§ط²ط© ظپظٹ Core."
+          "تعذر حفظ حركة الإجازة في Core."
         )
       );
     } finally {
@@ -6104,13 +6104,13 @@ export default function DashboardEmployees() {
 
     if (!entryId) {
       setErrorMsg(
-        "طھط¹ط°ط± طھط­ط¯ظٹط¯ ط³ط¬ظ„ ط§ظ„ط¥ط¬ط§ط²ط© ط§ظ„ظ…ط·ظ„ظˆط¨."
+        "تعذر تحديد سجل الإجازة المطلوب."
       );
       return;
     }
 
     const ok = confirm(
-      "ظ‡ظ„ ط£ظ†طھ ظ…طھط£ظƒط¯ ظ…ظ† ط­ط°ظپ ظ‡ط°ط§ ط§ظ„ط³ط¬ظ„طں ط³ظٹطھظ… ط¥ظ†ط´ط§ط، ط­ط±ظƒط© ط¹ظƒط³ظٹط© ظˆطھط¹ط¯ظٹظ„ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ طھظ„ظ‚ط§ط¦ظٹظ‹ط§."
+      "هل أنت متأكد من حذف هذا السجل؟ سيتم إنشاء حركة عكسية وتعديل رصيد الإجازات تلقائيًا."
     );
 
     if (!ok) return;
@@ -6155,7 +6155,7 @@ export default function DashboardEmployees() {
         entityId: editingStaff.id,
         source: "dashboard",
         description:
-          "ط¹ظƒط³ ط­ط±ظƒط© ظ…ظ† ط³ط¬ظ„ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط§طھ ظ„ظ„ظ…ظˆط¸ظپط©",
+          "عكس حركة من سجل رصيد الإجازات للموظفة",
         before: {
           leaveBalanceDays:
             result.previousBalance,
@@ -6199,7 +6199,7 @@ export default function DashboardEmployees() {
       setErrorMsg(
         toFirestoreErrorMessage(
           error,
-          "طھط¹ط°ط± ط¹ظƒط³ ط­ط±ظƒط© ط§ظ„ط¥ط¬ط§ط²ط© ظپظٹ Core."
+          "تعذر عكس حركة الإجازة في Core."
         )
       );
     } finally {
@@ -6224,7 +6224,7 @@ export default function DashboardEmployees() {
       !/^\d{4}-\d{2}-\d{2}$/.test(date)
     ) {
       setErrorMsg(
-        "طھط§ط±ظٹط® ط§ظ„ط§ط³طھط­ظ‚ط§ظ‚ ط؛ظٹط± طµط­ظٹط­."
+        "تاريخ الاستحقاق غير صحيح."
       );
       return;
     }
@@ -6271,7 +6271,7 @@ export default function DashboardEmployees() {
         entityId: editingStaff.id,
         source: "dashboard",
         description:
-          "طھط­ط¯ظٹط« طھط§ط±ظٹط® ط§ط³طھط­ظ‚ط§ظ‚ ط±طµظٹط¯ ط§ظ„ط¥ط¬ط§ط²ط©",
+          "تحديث تاريخ استحقاق رصيد الإجازة",
         after: {
           leaveEntitlementDate:
             canonicalDate,
@@ -6285,7 +6285,7 @@ export default function DashboardEmployees() {
       setErrorMsg(
         toFirestoreErrorMessage(
           error,
-          "طھط¹ط°ط± ط­ظپط¸ طھط§ط±ظٹط® ط§ظ„ط§ط³طھط­ظ‚ط§ظ‚ ظپظٹ Core."
+          "تعذر حفظ تاريخ الاستحقاق في Core."
         )
       );
     } finally {
@@ -6297,8 +6297,8 @@ export default function DashboardEmployees() {
     return (
       <div className="dsv2-page dsv2-employees-page">
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">ط؛ظٹط± ظ…طµط±ط­</h2>
-          <p className="dsv2-section-caption">ط³ط¬ظ‘ظ„ ط¯ط®ظˆظ„ ط«ظ… ط¬ط±ظ‘ط¨ ظ…ط±ط© ط£ط®ط±ظ‰.</p>
+          <h2 className="dsv2-section-title">غير مصرح</h2>
+          <p className="dsv2-section-caption">سجّل دخول ثم جرّب مرة أخرى.</p>
         </section>
       </div>
 
@@ -6309,8 +6309,8 @@ export default function DashboardEmployees() {
     return (
       <div className="dsv2-page dsv2-employees-page">
         <section className="dsv2-card dsv2-card--padded employees-v2-access-state">
-          <h2 className="dsv2-section-title">طµظ„ط§ط­ظٹط§طھ ط؛ظٹط± ظƒط§ظپظٹط©</h2>
-          <p className="dsv2-section-caption">ظ‡ط°ظ‡ ط§ظ„طµظپط­ط© ظ…ط®طµطµط© ظ„ظ„ط¥ط¯ط§ط±ط©.</p>
+          <h2 className="dsv2-section-title">صلاحيات غير كافية</h2>
+          <p className="dsv2-section-caption">هذه الصفحة مخصصة للإدارة.</p>
         </section>
       </div>
     );
@@ -6318,7 +6318,7 @@ export default function DashboardEmployees() {
 
   const openCreateEmployee = () => {
     if (!canCreateEmployees) {
-      setErrorMsg("ظ„ظٹط³طھ ظ„ط¯ظٹظƒ طµظ„ط§ط­ظٹط© ظ„ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط§طھ.");
+      setErrorMsg("ليست لديك صلاحية لإضافة موظفات.");
       return;
     }
     resetForm();
@@ -6481,15 +6481,15 @@ export default function DashboardEmployees() {
       <div className="dsv2-employees-page__container">
         {!isEmployeeProfileRoute ? (
           <>
-            <header className="dsv2-page-head employees-v2-page-head" aria-label="ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ">
+            <header className="dsv2-page-head employees-v2-page-head" aria-label="إدارة الموظفات">
               <div className="employees-v2-page-heading">
                 <span className="dsv2-badge dsv2-badge--gold">
                   <FontAwesomeIcon icon={faUserTie} />
-                  ط§ظ„ظ…ظˆط§ط±ط¯ ط§ظ„ط¨ط´ط±ظٹط©
+                  الموارد البشرية
                 </span>
-                <h1 className="dsv2-page-title">ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظˆط¸ظپط§طھ</h1>
+                <h1 className="dsv2-page-title">إدارة الموظفات</h1>
                 <p className="dsv2-page-subtitle">
-                  ط¥ط¯ط§ط±ط© ط§ظ„ظ…ظ„ظپط§طھ ط§ظ„ظˆط¸ظٹظپظٹط© ظˆط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط®ط¯ظ…ط§طھ ظˆط§ظ„ط±ظˆط§طھط¨ ظ…ظ† ظ…ط³ط§ط­ط© ظ…ظˆط­ط¯ط©.
+                  إدارة الملفات الوظيفية والحضور والخدمات والرواتب من مساحة موحدة.
                 </p>
               </div>
 
@@ -6497,7 +6497,7 @@ export default function DashboardEmployees() {
                 {canCreateEmployees ? (
                   <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={openCreateEmployee}>
                     <FontAwesomeIcon icon={faPlus} />
-                    ط¥ط¶ط§ظپط© ظ…ظˆط¸ظپط©
+                    إضافة موظفة
                   </button>
                 ) : null}
                 {canFixBookings ? (
@@ -6505,10 +6505,10 @@ export default function DashboardEmployees() {
                     className="dsv2-btn dsv2-btn--secondary"
                     type="button"
                     onClick={() => setRepairConfirmOpen(true)}
-                    title="ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ"
+                    title="إصلاح ربط الحجوزات"
                   >
                     <FontAwesomeIcon icon={faScrewdriverWrench} />
-                    ط¥طµظ„ط§ط­ ط§ظ„ظ…ظ„ظپط§طھ
+                    إصلاح الملفات
                   </button>
                 ) : null}
                 <button
@@ -6518,31 +6518,31 @@ export default function DashboardEmployees() {
                   type="button"
                 >
                   <FontAwesomeIcon icon={faRotateRight} />
-                  طھط­ط¯ظٹط« ط§ظ„ط¨ظٹط§ظ†ط§طھ
+                  تحديث البيانات
                 </button>
               </div>
             </header>
 
-            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="ط¥ط­طµط§ط،ط§طھ ط§ظ„ظ…ظˆط¸ظپط§طھ">
+            <section className="dsv2-grid dsv2-grid--metrics employees-v2-metrics" aria-label="إحصاءات الموظفات">
               <article className="dsv2-metric-card dsv2-metric-card--dark">
-                <p className="dsv2-metric-card__label">ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ظ„ظپط§طھ</p>
+                <p className="dsv2-metric-card__label">إجمالي الملفات</p>
                 <strong className="dsv2-metric-card__value">{totalEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">ظƒظ„ ط§ظ„ظ…ظ„ظپط§طھ ط§ظ„ظ…طھط§ط­ط© ط­ط³ط¨ ط§ظ„طµظ„ط§ط­ظٹط©</p>
+                <p className="dsv2-metric-card__meta">كل الملفات المتاحة حسب الصلاحية</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--success">
-                <p className="dsv2-metric-card__label">ط¹ظ„ظ‰ ط±ط£ط³ ط§ظ„ط¹ظ…ظ„</p>
+                <p className="dsv2-metric-card__label">على رأس العمل</p>
                 <strong className="dsv2-metric-card__value">{availableEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">ظ†ط´ط·ط§طھ ظˆظ„ط³ظ† ظپظٹ ط¥ط¬ط§ط²ط©</p>
+                <p className="dsv2-metric-card__meta">نشطات ولسن في إجازة</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--gold">
-                <p className="dsv2-metric-card__label">ظپظٹ ط¥ط¬ط§ط²ط©</p>
+                <p className="dsv2-metric-card__label">في إجازة</p>
                 <strong className="dsv2-metric-card__value">{leaveEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">ط¥ط¬ط§ط²ط© ط­ط§ظ„ظٹط© ظ…ظ† ط³ط¬ظ„ ط§ظ„ظ…ظˆط¸ظپط©</p>
+                <p className="dsv2-metric-card__meta">إجازة حالية من سجل الموظفة</p>
               </article>
               <article className="dsv2-metric-card dsv2-metric-card--danger">
-                <p className="dsv2-metric-card__label">طھط­طھط§ط¬ ظ…طھط§ط¨ط¹ط©</p>
+                <p className="dsv2-metric-card__label">تحتاج متابعة</p>
                 <strong className="dsv2-metric-card__value">{inactiveEmployeeCount + noServiceEmployeeCount + incompleteEmployeeCount}</strong>
-                <p className="dsv2-metric-card__meta">ط؛ظٹط± ظ†ط´ط·ط© ط£ظˆ ط¨ط¯ظˆظ† ط®ط¯ظ…ط§طھ ط£ظˆ ظ…ظ„ظپ ط؛ظٹط± ظ…ظƒطھظ…ظ„</p>
+                <p className="dsv2-metric-card__meta">غير نشطة أو بدون خدمات أو ملف غير مكتمل</p>
               </article>
             </section>
           </>
@@ -6592,8 +6592,8 @@ export default function DashboardEmployees() {
             <section className="dsv2-card dsv2-card--padded employees-v2-profile-loading" aria-live="polite">
               <span className="employees-v2-loading-ring" aria-hidden="true" />
               <div>
-                <strong>ط¬ط§ط±ظٹ ظپطھط­ ظ…ظ„ظپ ط§ظ„ظ…ظˆط¸ظپط©...</strong>
-                <p>ظٹطھظ… طھط­ظ…ظٹظ„ ط§ظ„ظ…ظ„ظپ ظ…ظ† ط§ظ„ط³ط¬ظ„ ط§ظ„ظˆط¸ظٹظپظٹ ط§ظ„ط­ط§ظ„ظٹ ط¨ط¯ظˆظ† طھط؛ظٹظٹط± ظ…ط³ط§ط±ط§طھ ط§ظ„ط­ط³ط§ط¨ط§طھ.</p>
+                <strong>جاري فتح ملف الموظفة...</strong>
+                <p>يتم تحميل الملف من السجل الوظيفي الحالي بدون تغيير مسارات الحسابات.</p>
               </div>
             </section>
           ) : null}
@@ -6754,13 +6754,13 @@ export default function DashboardEmployees() {
                   (canCreateAttendance || canUpdateAttendance)
                 }
                 onClose={closeAttendancePunchEditor}
-                title="طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©"
+                title="تعديل البصمة"
                 description={
                   attendanceEditDate
-                    ? `طھط¹ط¯ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ظ„ظٹظˆظ… ${attendanceEditDate}`
-                    : "طھط¹ط¯ظٹظ„ ط³ط¬ظ„ ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط§ظ†طµط±ط§ظپ"
+                    ? `تعديل سجل الحضور ليوم ${attendanceEditDate}`
+                    : "تعديل سجل الحضور والانصراف"
                 }
-                eyebrow="ط§ظ„ط­ط¶ظˆط± ظˆط§ظ„ط§ظ†طµط±ط§ظپ"
+                eyebrow="الحضور والانصراف"
                 size="md"
                 closeOnBackdrop={!saving}
                 closeOnEscape={!saving}
@@ -6772,7 +6772,7 @@ export default function DashboardEmployees() {
                       onClick={closeAttendancePunchEditor}
                       disabled={saving}
                     >
-                      ط¥ظ„ط؛ط§ط،
+                      إلغاء
                     </button>
                     <button
                       type="button"
@@ -6780,7 +6780,7 @@ export default function DashboardEmployees() {
                       onClick={() => void saveAttendancePunchEditor()}
                       disabled={saving}
                     >
-                      {saving ? "ط¬ط§ط±ظچ ط§ظ„ط­ظپط¸..." : "ط­ظپط¸ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط©"}
+                      {saving ? "جارٍ الحفظ..." : "حفظ تعديل البصمة"}
                     </button>
                   </>
                 }
@@ -6788,8 +6788,8 @@ export default function DashboardEmployees() {
                 <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2 emp-attendance-edit-form-v2">
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-in"
-                    label="ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط±"
-                    hint="ط§ط®طھط§ط±ظٹ ط³ط§ط¹ط© ظˆط¯ظ‚ظٹظ‚ط© ط§ظ„ط­ط¶ظˆط± ظپظ‚ط·."
+                    label="وقت الحضور"
+                    hint="اختاري ساعة ودقيقة الحضور فقط."
                   >
                     <input
                       id="employee-attendance-edit-check-in"
@@ -6815,8 +6815,8 @@ export default function DashboardEmployees() {
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-check-out"
-                    label="ظˆظ‚طھ ط§ظ„ط§ظ†طµط±ط§ظپ"
-                    hint="ظٹظ…ظƒظ† طھط±ظƒظ‡ ظپط§ط±ط؛ظ‹ط§ ط¥ط°ط§ ظ„ظ… طھط³ط¬ظ„ ط§ظ„ظ…ظˆط¸ظپط© ط§ظ†طµط±ط§ظپظ‹ط§."
+                    label="وقت الانصراف"
+                    hint="يمكن تركه فارغًا إذا لم تسجل الموظفة انصرافًا."
                   >
                     <div className="emp-attendance-edit-time-control-v2">
                       <input
@@ -6847,7 +6847,7 @@ export default function DashboardEmployees() {
                           onClick={() => setAttendanceEditCheckOut("")}
                           disabled={saving}
                         >
-                          ظ…ط³ط­ ط§ظ„ظˆظ‚طھ
+                          مسح الوقت
                         </button>
                       ) : null}
                     </div>
@@ -6855,8 +6855,8 @@ export default function DashboardEmployees() {
 
                   <DashboardFieldV2
                     id="employee-attendance-edit-note"
-                    label="ظ…ظ„ط§ط­ط¸ط© ط§ظ„ط¥ط¯ط§ط±ط©"
-                    hint="ظٹظڈظپط¶ظ‘ظ„ طھظˆط¶ظٹط­ ط³ط¨ط¨ طھط¹ط¯ظٹظ„ ط§ظ„ط¨طµظ…ط© ظ„ط£ط؛ط±ط§ط¶ ط§ظ„ظ…ط±ط§ط¬ط¹ط©."
+                    label="ملاحظة الإدارة"
+                    hint="يُفضّل توضيح سبب تعديل البصمة لأغراض المراجعة."
                     className="dsv2-ew-form-wide"
                   >
                     <textarea
@@ -6867,7 +6867,7 @@ export default function DashboardEmployees() {
                         setAttendanceEditNote(event.target.value)
                       }
                       disabled={saving}
-                      placeholder="ظ…ط«ط§ظ„: طھطµط­ظٹط­ ط¨طµظ…ط© ظ…ظ† ط§ظ„ط¥ط¯ط§ط±ط©"
+                      placeholder="مثال: تصحيح بصمة من الإدارة"
                       rows={4}
                     />
                   </DashboardFieldV2>
@@ -6883,7 +6883,7 @@ export default function DashboardEmployees() {
                 weeklyOffLabel={
                   modalExceptionalLeaveWeekdays.length
                     ? modalExceptionalLeaveWeekdays.map((day) => WEEKDAY_OPTIONS.find((item) => item.key === day)?.label || day).join("طŒ ")
-                    : "ظ„ط§ طھظˆط¬ط¯ ط¥ط¬ط§ط²ط© ط£ط³ط¨ظˆط¹ظٹط© ط«ط§ط¨طھط©."
+                    : "لا توجد إجازة أسبوعية ثابتة."
                 }
                 onNameChange={setName}
                 onActiveChange={setActive}
@@ -6959,7 +6959,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   reviewerUid={authUser?.uid || ""}
-                  reviewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
+                  reviewerName={authUser?.displayName || authUser?.email || "الإدارة"}
                   canManage={canManageLeaveBalance}
                 />
               ) : null}
@@ -6970,7 +6970,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   viewerUid={authUser?.uid || ""}
-                  viewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
                   canManage={canViewEmployeeMessages}
                 />
               ) : null}
@@ -6981,7 +6981,7 @@ export default function DashboardEmployees() {
                   employeeUid={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || editingStaff.id}
                   employeeName={name || editingStaff.name || ""}
                   viewerUid={authUser?.uid || ""}
-                  viewerName={authUser?.displayName || authUser?.email || "ط§ظ„ط¥ط¯ط§ط±ط©"}
+                  viewerName={authUser?.displayName || authUser?.email || "الإدارة"}
                   canManage={canViewEmployeeFiles}
                 />
               ) : null}
@@ -7028,14 +7028,14 @@ export default function DashboardEmployees() {
         open={repairConfirmOpen}
         onClose={() => setRepairConfirmOpen(false)}
         onConfirm={fixBookingsEmployeeUid}
-        title="ط¥طµظ„ط§ط­ ط±ط¨ط· ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط©"
-        description="ط³ظٹطھظ… ط§ط³طھظƒظ…ط§ظ„ ظ…ط¹ط±ظپ ط§ظ„ظ…ظˆط¸ظپط© ظپظٹ ط§ظ„ط­ط¬ظˆط²ط§طھ ط§ظ„ظ‚ط¯ظٹظ…ط© ط§ظ„طھظٹ ظٹظ†ظ‚طµظ‡ط§ ط§ظ„ط±ط¨ط· ظپظ‚ط·طŒ ط¯ظˆظ† ط­ط°ظپ ط£ظٹ ط­ط¬ط²."
+        title="إصلاح ربط الحجوزات القديمة"
+        description="سيتم استكمال معرف الموظفة في الحجوزات القديمة التي ينقصها الربط فقط، دون حذف أي حجز."
         tone="gold"
-        confirmLabel="ط¨ط¯ط، ط§ظ„ط¥طµظ„ط§ط­"
-        cancelLabel="ط¥ظ„ط؛ط§ط،"
-        pendingLabel="ط¬ط§ط±ظٹ ط§ظ„ط¥طµظ„ط§ط­..."
+        confirmLabel="بدء الإصلاح"
+        cancelLabel="إلغاء"
+        pendingLabel="جاري الإصلاح..."
       >
-        <p className="employees-v2-confirm-note">ظٹظڈظ†ظپط° ظ‡ط°ط§ ط§ظ„ط¥ط¬ط±ط§ط، ط¹ظ†ط¯ ظˆط¬ظˆط¯ ط­ط¬ظˆط²ط§طھ ظ‚ط¯ظٹظ…ط© ط؛ظٹط± ظ…ط±طھط¨ط·ط© ط¨ط­ط³ط§ط¨ ط§ظ„ظ…ظˆط¸ظپط©.</p>
+        <p className="employees-v2-confirm-note">يُنفذ هذا الإجراء عند وجود حجوزات قديمة غير مرتبطة بحساب الموظفة.</p>
       </DashboardConfirmV2>
     </div>
   );
