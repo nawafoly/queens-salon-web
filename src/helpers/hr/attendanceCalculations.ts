@@ -54,7 +54,8 @@ export type AttendanceStatus =
   | "leave"
   | "off_day"
   | "future"
-  | "today_pending";
+  | "today_pending"
+  | "schedule_unavailable";
 
 export type AttendancePayrollSummary = {
   expectedHours: number;

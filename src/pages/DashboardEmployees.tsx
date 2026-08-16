@@ -95,9 +95,7 @@ import {
 } from "../services/firestoreBookings";
 import {
   buildApprovedLeaveDateKeys,
-  buildAttendanceSpecialDayMap,
   leaveRequestMatchesProfile,
-  type AttendanceSpecialDay,
 } from "../helpers/hr/attendanceCalendarData";
 import {
   appendDateEffectiveScheduleVersion,
@@ -6473,41 +6471,6 @@ export default function DashboardEmployees() {
     editingStaff || selectedEmployee,
     selectedEmployeeId || ""
   );
-  const selectedAttendanceIdentityKey = selectedAttendanceIdentity.allIds.join("|");
-  const selectedEmployeeSpecialDays = useMemo<AttendanceSpecialDay[]>(() => {
-    const profile = editingStaff || selectedEmployee;
-    if (!profile) return [];
-    const cleanMonth = /^\d{4}-\d{2}$/.test(employeeAttendanceMonth)
-      ? employeeAttendanceMonth
-      : todayIso().slice(0, 7);
-    const fromDate = `${cleanMonth}-01`;
-    const toDate = new Date(
-      Date.UTC(Number(cleanMonth.slice(0, 4)), Number(cleanMonth.slice(5, 7)), 0)
-    ).toISOString().slice(0, 10);
-
-    return Array.from(buildAttendanceSpecialDayMap({
-      profile,
-      leaveRequests: selectedEmployeeLeaveRequests,
-      leaveEntries: modalLeaveEntries as any[],
-      extraIds: selectedAttendanceIdentity.allIds,
-      fromDate,
-      toDate,
-      todayDateKey: todayIso(),
-    }).values()).sort((left, right) => left.date.localeCompare(right.date));
-  }, [
-    editingStaff,
-    employeeAttendanceMonth,
-    modalLeaveEntries,
-    selectedAttendanceIdentityKey,
-    selectedEmployee,
-    selectedEmployeeLeaveRequests,
-  ]);
-  const selectedEmployeeApprovedLeaveDateKeys = useMemo(
-    () => selectedEmployeeSpecialDays
-      .filter((day) => day.kind === "leave" || day.kind === "rest")
-      .map((day) => day.date),
-    [selectedEmployeeSpecialDays]
-  );
   const EmployeeEditorSurface = editingStaff ? EmployeeProfilePageLayout : EmployeeEditorModal;
 
   return (
@@ -6755,12 +6718,8 @@ export default function DashboardEmployees() {
                 rows={employeeAttendanceRows}
                 monthKey={employeeAttendanceMonth}
                 selectedDate={employeeAttendanceSelectedDate}
-                schedule={editingStaff}
-                salonBusinessHours={((appSettings as any)?.booking || {})?.businessHours || null}
                 employeeId={selectedAttendanceIdentity.employeeUid || selectedEmployeeId || (editingStaff as any)?.id || ""}
                 employeeIds={selectedAttendanceIdentity.allIds}
-                approvedLeaveDateKeys={selectedEmployeeApprovedLeaveDateKeys}
-                specialDays={selectedEmployeeSpecialDays}
                 canEdit={canCreateAttendance || canUpdateAttendance}
                 canDelete={canDeleteAttendance}
                 canReview={canViewAttendance}

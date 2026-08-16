@@ -387,6 +387,10 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
   const [attendanceMonth, setAttendanceMonth] = useState(() => getTodayAttendanceDateKey().slice(0, 7));
   const [attendanceSelectedDate, setAttendanceSelectedDate] = useState(() => getTodayAttendanceDateKey());
   const [attendancePermissionEntries, setAttendancePermissionEntries] = useState<EmployeePermissionRequest[]>([]);
+  const [attendanceAbsenceDateKeys, setAttendanceAbsenceDateKeys] = useState<string[]>([]);
+  const [attendanceAbsenceLoading, setAttendanceAbsenceLoading] = useState(false);
+  const [attendanceAbsenceError, setAttendanceAbsenceError] = useState("");
+  const [attendanceAbsenceReloadKey, setAttendanceAbsenceReloadKey] = useState(0);
   const [todayResolvedShift, setTodayResolvedShift] = useState<CoreResolvedShift | null>(null);
   const [todayResolvedShiftLoading, setTodayResolvedShiftLoading] = useState(false);
   const [todayResolvedShiftError, setTodayResolvedShiftError] = useState("");
@@ -442,6 +446,15 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
       .slice(0, 5);
   }, [employeeBookings]);
 
+  const attendanceAbsenceDateKeySet =
+    useMemo(
+      () =>
+        new Set(
+          attendanceAbsenceDateKeys
+        ),
+      [attendanceAbsenceDateKeys]
+    );
+
   const approvedLeaveDateKeys = useMemo(
     () =>
       buildApprovedLeaveDateKeys({
@@ -491,6 +504,8 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     todayDateKey: attendanceDate,
     weeklyOffDays: todayAttendanceSchedule.weeklyOffDays,
     approvedLeaveDateKeys,
+    absenceDateKeys:
+      attendanceAbsenceDateKeySet,
   });
 
   const loadAttendance = async () => {
@@ -571,6 +586,94 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
     void loadAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAttendance, attendanceEmployeeId, attendanceDate]);
+
+  useEffect(() => {
+    if (
+      !canViewAttendance ||
+      !attendanceEmployeeId
+    ) {
+      setAttendanceAbsenceDateKeys([]);
+      setAttendanceAbsenceLoading(false);
+      setAttendanceAbsenceError("");
+      return;
+    }
+
+    let alive = true;
+
+    async function loadCanonicalAbsences() {
+      setAttendanceAbsenceLoading(true);
+      setAttendanceAbsenceError("");
+
+      try {
+        const rows =
+          await CoreHrService.listAbsences({
+            employeeId:
+              attendanceEmployeeId,
+          });
+
+        if (!alive) return;
+
+        const dates =
+          Array.from(
+            new Set(
+              rows
+                .filter(
+                  (row) =>
+                    cleanText(
+                      row.absenceType
+                    ).toLowerCase() ===
+                    "full_day"
+                )
+                .map((row) =>
+                  cleanText(
+                    row.dateKey
+                  )
+                )
+                .filter((date) =>
+                  /^\d{4}-\d{2}-\d{2}$/.test(
+                    date
+                  )
+                )
+            )
+          ).sort((a, b) =>
+            a.localeCompare(b)
+          );
+
+        setAttendanceAbsenceDateKeys(
+          dates
+        );
+      } catch (error) {
+        if (!alive) return;
+
+        console.warn(
+          "employee attendance Core absences load failed",
+          error
+        );
+
+        setAttendanceAbsenceDateKeys([]);
+
+        setAttendanceAbsenceError(
+          "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u063a\u064a\u0627\u0628 \u0627\u0644\u0645\u0639\u062a\u0645\u062f \u0645\u0646 Core."
+        );
+      } finally {
+        if (alive) {
+          setAttendanceAbsenceLoading(
+            false
+          );
+        }
+      }
+    }
+
+    void loadCanonicalAbsences();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    attendanceAbsenceReloadKey,
+    attendanceEmployeeId,
+    canViewAttendance,
+  ]);
 
   useEffect(() => {
     if (!canViewAttendance || !attendanceEmployeeId) {
@@ -1137,17 +1240,25 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
         <AttendanceMonthView
           className="attendance-month--employee-portal-v2"
           rows={attendanceMonthRows}
-          loading={attendanceMonthLoading || attendanceLoading || attendanceMonthResolvedShiftsLoading}
+          loading={
+            attendanceMonthLoading ||
+            attendanceLoading ||
+            attendanceMonthResolvedShiftsLoading ||
+            attendanceAbsenceLoading
+          }
           monthKey={attendanceMonth}
           selectedDate={attendanceSelectedDate}
           title="سجل حضور الموظفة"
           subtitle="اختر الشهر لعرض تقويم الحضور اليومي، ثم اختر اليوم لمراجعة السجل."
           viewerMode="employee"
-          schedule={profile}
           coreResolvedShifts={attendanceMonthResolvedShifts}
           coreResolvedShiftsLoading={attendanceMonthResolvedShiftsLoading}
-          coreResolvedShiftsError={attendanceMonthResolvedShiftsError}
+          coreResolvedShiftsError={
+            attendanceMonthResolvedShiftsError ||
+            attendanceAbsenceError
+          }
           approvedLeaveDateKeys={approvedLeaveDateKeys}
+          absenceDateKeys={attendanceAbsenceDateKeys}
           permissionEntries={attendancePermissionEntries}
           onMonthChange={(monthKey) => {
             setAttendanceMonth(monthKey);
@@ -1158,6 +1269,7 @@ export default function EmployeeOverviewPage({ session, notifications, onRefresh
           onSelectedDateChange={setAttendanceSelectedDate}
           onGenerateSummary={() => {
             setAttendanceMonthResolvedShiftsReloadKey((value) => value + 1);
+            setAttendanceAbsenceReloadKey((value) => value + 1);
             void Promise.all([
               loadAttendanceMonth(),
               loadAttendancePermissions(),

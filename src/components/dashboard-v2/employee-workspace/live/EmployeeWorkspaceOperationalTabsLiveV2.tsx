@@ -141,7 +141,6 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   if (Number(row.earlyLeaveMinutes || 0) > 0) return "خروج مبكر";
   if (cleanText(row.checkInAtClient || row.checkOutAtClient)) return "حضور";
   if (rawStatus === "checked_in" || rawStatus === "checked_out") return "حضور";
-  if (rawStatus === "not_started") return "غياب";
   return cleanText(row.status) || "حضور";
 }
 
@@ -175,45 +174,161 @@ function buildAttendanceCalendar(
   monthKey: string,
   rows: EmployeeAttendanceRowLiveV2[],
   approvedLeaveDateKeys: readonly string[],
+  absenceDateKeys: readonly string[],
   specialDays: readonly AttendanceSpecialDay[] = []
 ): AttendanceCalendarDayLiveV2[] {
-  const normalized = safeMonthKey(monthKey);
-  const year = Number(normalized.slice(0, 4));
-  const month = Number(normalized.slice(5, 7));
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayKey = getLocalDateKey();
-  const leaveDates = new Set(approvedLeaveDateKeys.map(cleanText).filter(Boolean));
-  const specialByDate = new Map(
-    specialDays
-      .map((day) => [cleanText(day.date), day] as const)
-      .filter(([date]) => Boolean(date))
-  );
-  const byDate = new Map<string, EmployeeAttendanceRowLiveV2>();
+  const normalized =
+    safeMonthKey(monthKey);
+
+  const year =
+    Number(
+      normalized.slice(0, 4)
+    );
+
+  const month =
+    Number(
+      normalized.slice(5, 7)
+    );
+
+  const daysInMonth =
+    new Date(
+      year,
+      month,
+      0
+    ).getDate();
+
+  const leaveDates =
+    new Set(
+      approvedLeaveDateKeys
+        .map(cleanText)
+        .filter(Boolean)
+    );
+
+  const absenceDates =
+    new Set(
+      absenceDateKeys
+        .map(cleanText)
+        .filter(Boolean)
+    );
+
+  const specialByDate =
+    new Map(
+      specialDays
+        .map(
+          (day) =>
+            [
+              cleanText(
+                day.date
+              ),
+              day,
+            ] as const
+        )
+        .filter(
+          ([date]) =>
+            Boolean(date)
+        )
+    );
+
+  const byDate =
+    new Map<
+      string,
+      EmployeeAttendanceRowLiveV2
+    >();
+
   rows.forEach((row) => {
-    const date = cleanText(row.date);
-    if (date) byDate.set(date, row);
+    const date =
+      cleanText(
+        row.date
+      );
+
+    if (date) {
+      byDate.set(
+        date,
+        row
+      );
+    }
   });
 
-  return Array.from({ length: daysInMonth }, (_, index) => {
-    const dayNumber = index + 1;
-    const date = `${normalized}-${String(dayNumber).padStart(2, "0")}`;
-    const row = byDate.get(date);
-    const checkIn = formatAttendanceTime(row?.checkInAtClient);
-    const checkOut = formatAttendanceTime(row?.checkOutAtClient);
-    const hasLeave = leaveDates.has(date);
-    const specialDay = specialByDate.get(date);
-    const hasPunch = Boolean(checkIn || checkOut);
-    const rowStatus = attendanceRowStatus(row);
-    const status = specialDay?.label || (hasLeave ? "\u0625\u062c\u0627\u0632\u0629" : rowStatus || (date < todayKey ? "\u063a\u064a\u0627\u0628" : "\u2014"));
-    return {
-      date,
-      dayNumber,
-      row,
-      specialDay,
-      status,
-      timeLabel: [checkIn, checkOut].filter(Boolean).join(" → ") || "لا توجد بصمة",
-    };
-  });
+  return Array.from(
+    {
+      length:
+        daysInMonth,
+    },
+    (_, index) => {
+      const dayNumber =
+        index + 1;
+
+      const date =
+        `${normalized}-${String(
+          dayNumber
+        ).padStart(
+          2,
+          "0"
+        )}`;
+
+      const row =
+        byDate.get(
+          date
+        );
+
+      const checkIn =
+        formatAttendanceTime(
+          row?.checkInAtClient
+        );
+
+      const checkOut =
+        formatAttendanceTime(
+          row?.checkOutAtClient
+        );
+
+      const hasLeave =
+        leaveDates.has(
+          date
+        );
+
+      const hasAbsence =
+        absenceDates.has(
+          date
+        );
+
+      const specialDay =
+        specialByDate.get(
+          date
+        );
+
+      const rowStatus =
+        attendanceRowStatus(
+          row
+        );
+
+      const status =
+        specialDay?.label ||
+        (
+          hasLeave
+            ? "\u0625\u062c\u0627\u0632\u0629"
+            : hasAbsence
+              ? "\u063a\u064a\u0627\u0628"
+              : rowStatus ||
+                "?"
+        );
+
+      return {
+        date,
+        dayNumber,
+        row,
+        specialDay,
+        status,
+        timeLabel:
+          [
+            checkIn,
+            checkOut,
+          ]
+            .filter(Boolean)
+            .join(" ? ") ||
+          "\u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u0635\u0645\u0629",
+      };
+    }
+  );
 }
 
 type WorkingDayLiveV2 = {
@@ -586,6 +701,7 @@ export type EmployeeAttendanceTabLiveV2Props = {
   monthKey: string;
   selectedDate: string;
   approvedLeaveDateKeys?: string[];
+  absenceDateKeys?: string[];
   specialDays?: AttendanceSpecialDay[];
   effectiveShiftInfo?: EmployeeAttendanceShiftInfoLiveV2 | null;
   canEdit: boolean;
@@ -609,6 +725,7 @@ export function EmployeeAttendanceTabLiveV2({
   monthKey,
   selectedDate,
   approvedLeaveDateKeys = [],
+  absenceDateKeys = [],
   specialDays = [],
   effectiveShiftInfo = null,
   canEdit,
@@ -630,9 +747,43 @@ export function EmployeeAttendanceTabLiveV2({
     ? selectedDate
     : coerceDateToMonth(selectedDate, normalizedMonth);
   const normalizedRows = rows.filter((row) => cleanText(row.date).startsWith(normalizedMonth));
-  const monthLeaveDates = approvedLeaveDateKeys.filter((date) => cleanText(date).startsWith(normalizedMonth));
-  const monthSpecialDays = specialDays.filter((day) => cleanText(day.date).startsWith(normalizedMonth));
-  const calendarDays = buildAttendanceCalendar(normalizedMonth, normalizedRows, monthLeaveDates, monthSpecialDays);
+  const monthLeaveDates =
+    approvedLeaveDateKeys.filter(
+      (date) =>
+        cleanText(date)
+          .startsWith(
+            normalizedMonth
+          )
+    );
+
+  const monthAbsenceDates =
+    absenceDateKeys.filter(
+      (date) =>
+        cleanText(date)
+          .startsWith(
+            normalizedMonth
+          )
+    );
+
+  const monthSpecialDays =
+    specialDays.filter(
+      (day) =>
+        cleanText(
+          day.date
+        ).startsWith(
+          normalizedMonth
+        )
+    );
+
+  const calendarDays =
+    buildAttendanceCalendar(
+      normalizedMonth,
+      normalizedRows,
+      monthLeaveDates,
+      monthAbsenceDates,
+      monthSpecialDays
+    );
+
   const selectedDay = calendarDays.find((day) => day.date === activeSelectedDate) || null;
   const selectedRow = selectedDay?.row || null;
   const selectedSpecialDay = selectedDay?.specialDay || null;
