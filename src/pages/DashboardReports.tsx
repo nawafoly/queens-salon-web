@@ -23,7 +23,10 @@ import {
   PAYROLL_CLOSE_DAY,
   payrollCycleKeyFromDate,
   payrollCycleRangeForMonthKey,
-} from "../helpers/staffPayroll";
+} from "../helpers/hr/payrollCycle";
+import {
+  projectCorePayrollEntriesToFinancialRows,
+} from "../helpers/corePayrollFinancialRows";
 
 type PeriodKey = "day" | "week" | "month" | "year" | "custom";
 type BookingStatus = "pending" | "confirmed" | "completed" | "cancelled";
@@ -785,120 +788,23 @@ export default function DashboardReports() {
     });
   }, [incomeRows, range.from, range.to, incomeMethodFilter, incomeSourceFilter, incomeStatusFilter, bookingById]);
 
-  const recordedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
-    const rows: ExpenseRow[] = [];
-    payrollEntries.forEach((entry) => {
-      const id = String(entry?.id || "").trim();
-      const monthKey = String(entry?.payrollMonth || entry?.payroll_month || "").trim();
-      if (!id || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+  const recordedPayrollExpenses = useMemo<ExpenseRow[]>(
+    () =>
+      projectCorePayrollEntriesToFinancialRows(
+        payrollEntries,
+        "recorded"
+      ),
+    [payrollEntries]
+  );
 
-      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
-      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
-      const employeeName = String(entry?.employeeName || entry?.employee_name || entry?.employeeId || entry?.employee_id || "موظفة").trim();
-      const finalHalalas = Number(
-        entry?.finalSalaryHalalas ??
-          entry?.final_salary_halalas ??
-          entry?.netSalaryHalalas ??
-          entry?.net_salary_halalas ??
-          0
-      );
-      const overtimeHalalas = Math.max(
-        0,
-        Number(entry?.overtimeValueHalalas ?? entry?.overtime_value_halalas ?? 0) +
-          Number(entry?.overtimeBonusHalalas ?? entry?.overtime_bonus_halalas ?? 0)
-      );
-      const salaryHalalas = Math.max(0, finalHalalas - overtimeHalalas);
-      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
-
-      if (salaryHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_salary_core_${id}`,
-          date,
-          amount: salaryHalalas / 100,
-          category: "رواتب الموظفات",
-          title: `راتب ${employeeName} (${monthKey})`,
-          note: "كشف راتب محفوظ في Core D1",
-          addedBy: "النظام (كشف راتب)",
-          createdAtMs,
-          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
-          payrollMonth: monthKey,
-          payrollKind: "salary",
-        });
-      }
-
-      if (overtimeHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_overtime_core_${id}`,
-          date,
-          amount: overtimeHalalas / 100,
-          category: "أوفر تايم",
-          title: `أوفر تايم ${employeeName} (${monthKey})`,
-          note: "قيمة أوفر تايم محفوظة في كشف الراتب",
-          addedBy: "النظام (كشف راتب)",
-          createdAtMs,
-          employeeId: String(entry?.employeeId || entry?.employee_id || "").trim() || undefined,
-          payrollMonth: monthKey,
-          payrollKind: "overtime",
-        });
-      }
-    });
-    return rows;
-  }, [payrollEntries]);
-
-  const calculatedPayrollExpenses = useMemo<ExpenseRow[]>(() => {
-    const rows: ExpenseRow[] = [];
-    calculatedPayrollEntries.forEach((entry) => {
-      const employeeId = String(entry.employeeId || "").trim();
-      const employeeName = String(entry.employeeName || employeeId || "موظفة").trim();
-      const monthKey = String(entry.payrollMonth || "").trim();
-      if (!employeeId || !/^\d{4}-\d{2}$/.test(monthKey)) return;
-
-      const cycle = payrollCycleRangeForMonthKey(monthKey, PAYROLL_CLOSE_DAY);
-      const date = String(cycle?.to || `${monthKey}-${String(PAYROLL_CLOSE_DAY).padStart(2, "0")}`);
-      const netHalalas = Math.max(0, Number(entry.netSalaryHalalas || entry.finalSalaryHalalas || 0));
-      const overtimeHalalas = Math.min(
-        netHalalas,
-        Math.max(0, Number(entry.overtimeValueHalalas || 0))
-      );
-      const salaryHalalas = Math.max(0, netHalalas - overtimeHalalas);
-      const createdAtMs = Date.parse(`${date}T12:00:00`) || Date.now();
-
-      if (salaryHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_salary_live_${employeeId}_${monthKey}`,
-          date,
-          amount: salaryHalalas / 100,
-          category: "رواتب الموظفات",
-          title: `صافي راتب ${employeeName} (${monthKey})`,
-          note: entry.saved
-            ? "صافي مسير محفوظ بعد الإضافات والخصومات"
-            : "صافي مسير محسوب تلقائيًا لجميع الموظفات",
-          addedBy: "النظام (احتساب المسير)",
-          createdAtMs,
-          employeeId,
-          payrollMonth: monthKey,
-          payrollKind: "salary",
-        });
-      }
-
-      if (overtimeHalalas > 0) {
-        rows.push({
-          id: `auto_payroll_overtime_live_${employeeId}_${monthKey}`,
-          date,
-          amount: overtimeHalalas / 100,
-          category: "أوفر تايم",
-          title: `أوفر تايم ${employeeName} (${monthKey})`,
-          note: "قيمة الأوفر تايم ضمن صافي المسير المحسوب",
-          addedBy: "النظام (احتساب المسير)",
-          createdAtMs,
-          employeeId,
-          payrollMonth: monthKey,
-          payrollKind: "overtime",
-        });
-      }
-    });
-    return rows;
-  }, [calculatedPayrollEntries]);
+  const calculatedPayrollExpenses = useMemo<ExpenseRow[]>(
+    () =>
+      projectCorePayrollEntriesToFinancialRows(
+        calculatedPayrollEntries,
+        "calculated"
+      ),
+    [calculatedPayrollEntries]
+  );
 
   const calculatedPayrollMonthKeySet = useMemo(
     () => new Set(calculatedPayrollMonthKeys),

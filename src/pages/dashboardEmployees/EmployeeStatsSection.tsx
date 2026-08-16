@@ -27,34 +27,9 @@ import {
   getLeaveEntryCreatedAt,
   isDeletedLeaveEntry,
 } from "../../helpers/hr/leaveBalanceEntry";
-import type { StaffOvertimeHoursBasis } from "../../helpers/staffPayroll";
-
 type PayrollSummary = {
-  salaryAmount?: number;
-  overtimeAmount?: number;
   totalAmount?: number;
-  monthKey?: string;
-  invoiceCount?: number;
   invoiceRevenue?: number;
-  method?: string;
-  config: {
-    invoicePercent?: number;
-    daysPerMonth?: number;
-    hoursBasis?: StaffOvertimeHoursBasis;
-    seasonBaseHoursPerDay?: number;
-    baseHoursPerDay?: number;
-    overtimePercent?: number;
-  };
-  schedule: {
-    scheduledHours?: number;
-    baselineHours?: number;
-    overtimeHours?: number;
-    periodFrom?: string;
-    periodTo?: string;
-    workedDays?: number;
-    averageHoursPerWorkedDay?: number;
-    dailyHourBuckets?: unknown;
-  };
 } | null;
 
 type PayrollSetupPreview = {

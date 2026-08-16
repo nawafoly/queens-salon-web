@@ -105,13 +105,17 @@ import {
   scheduleSnapshotsEqual,
 } from "../helpers/hr/staffScheduleHistory";
 import {
-  computeStaffPayrollForMonth,
   normalizePayrollConfig,
-  PAYROLL_CLOSE_DAY,
-  payrollCycleKeyFromDate,
   type StaffPayrollMethod,
   type StaffOvertimeHoursBasis,
-} from "../helpers/staffPayroll";
+} from "../helpers/hr/payrollProfileConfig";
+import {
+  PAYROLL_CLOSE_DAY,
+  payrollCycleKeyFromDate,
+} from "../helpers/hr/payrollCycle";
+import {
+  generatePayrollEntriesForMonths,
+} from "../services/CorePayrollService";
 
 import {
   DEFAULT_CLOSE_TIME,
@@ -5215,58 +5219,158 @@ export default function DashboardEmployees() {
       missing,
     };
   }, [monthlySalary, overtimeBaseHoursPerDay, overtimeDaysPerMonth, payrollMonthlyHours]);
-  const modalPayrollMonthSummary = useMemo(() => {
-    if (!editingStaff) return null;
-    const monthStats = bookingStats[editingStaff.id]?.month;
-    const cycleMonthKey =
-      payrollCycleKeyFromDate(todayIso(), PAYROLL_CLOSE_DAY) ||
-      String(monthStats?.key || currentMonthKey());
-    const staffCalc: StaffPublicDoc & { id: string } = {
-      ...editingStaff,
-      id: editingStaff.id,
-      name: String(name || editingStaff.name || "").trim() || editingStaff.name || editingStaff.id,
-      active: !!active,
-      useCustomWorkingHours: !!modalUseCustomWorkingHours,
-      customWorkingHours: normalizeWorkingHours(modalCustomWorkingHours),
-      customWorkingHourOverrides: normalizeWorkingHourOverrides(modalCustomHourOverrides),
-      monthlySalary: safeNonNegativeNumber(monthlySalary, 0),
-      overtimeMethod:
-        overtimeMethod === "invoice_percentage" ? "invoice_percentage" : "hours_from_salary",
-      overtimeDaysPerMonth: Math.max(1, safeNonNegativeNumber(overtimeDaysPerMonth, 30)),
-      overtimeBaseHoursPerDay: Math.max(1, safeNonNegativeNumber(overtimeBaseHoursPerDay, 8)),
-      overtimeSeasonBaseHoursPerDay: Math.max(
-        1,
-        safeNonNegativeNumber(overtimeSeasonBaseHoursPerDay, 6)
-      ),
-      overtimeHoursBasis: overtimeHoursBasis === "season" ? "season" : "regular",
-      overtimePercent: safeNonNegativeNumber(overtimePercent, 0),
-      overtimeInvoicePercent: safeNonNegativeNumber(overtimeInvoicePercent, 0),
-    };
-    return computeStaffPayrollForMonth({
-      staff: staffCalc as any,
-      monthKey: cycleMonthKey,
-      appSettings,
-      invoiceCount: Number(monthStats?.invoiceCount || 0),
-      invoiceRevenue: Number(monthStats?.invoiceRevenue || 0),
-    });
+  const modalPayrollCycleMonthKey = useMemo(() => {
+    if (!editingStaff) {
+      return "";
+    }
+
+    const monthStats =
+      bookingStats[
+        editingStaff.id
+      ]?.month;
+
+    return (
+      payrollCycleKeyFromDate(
+        todayIso(),
+        PAYROLL_CLOSE_DAY
+      ) ||
+      String(
+        monthStats?.key ||
+        currentMonthKey()
+      )
+    );
   }, [
     editingStaff,
     bookingStats,
-    appSettings,
-    name,
-    active,
-    modalUseCustomWorkingHours,
-    modalCustomWorkingHours,
-    modalCustomHourOverrides,
-    monthlySalary,
-    overtimeMethod,
-    overtimeDaysPerMonth,
-    overtimeBaseHoursPerDay,
-    overtimeSeasonBaseHoursPerDay,
-    overtimeHoursBasis,
-    overtimePercent,
-    overtimeInvoicePercent,
   ]);
+
+  const [
+    modalPayrollMonthSummary,
+    setModalPayrollMonthSummary,
+  ] = useState<{
+    totalAmount?: number;
+    invoiceRevenue?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const employeeId =
+      String(
+        editingStaff?.id ||
+        ""
+      ).trim();
+
+    const invoiceRevenue =
+      Math.max(
+        0,
+        Number(
+          employeeId
+            ? bookingStats[
+                employeeId
+              ]?.month
+                ?.invoiceRevenue ||
+              0
+            : 0
+        ) || 0
+      );
+
+    if (
+      !employeeId ||
+      !modalPayrollCycleMonthKey
+    ) {
+      setModalPayrollMonthSummary(
+        null
+      );
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (payrollSettingsSaving) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setModalPayrollMonthSummary({
+      totalAmount:
+        undefined,
+      invoiceRevenue,
+    });
+
+    void generatePayrollEntriesForMonths({
+      monthKeys: [
+        modalPayrollCycleMonthKey,
+      ],
+      employeeId,
+    })
+      .then((entries) => {
+        if (cancelled) {
+          return;
+        }
+
+        const entry =
+          entries.find(
+            (row) =>
+              String(
+                row.employeeId ||
+                ""
+              ).trim() ===
+              employeeId
+          ) ||
+          entries[0] ||
+          null;
+
+        const grossHalalas =
+          entry
+            ? Math.max(
+                0,
+                Number(
+                  entry
+                    .grossSalaryHalalas ??
+                  entry
+                    .netSalaryHalalas ??
+                  entry
+                    .finalSalaryHalalas ??
+                  0
+                ) || 0
+              )
+            : 0;
+
+        setModalPayrollMonthSummary({
+          totalAmount:
+            grossHalalas / 100,
+          invoiceRevenue,
+        });
+      })
+      .catch((error) => {
+        console.warn(
+          "Malikat Core employee payroll preview load error:",
+          error
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setModalPayrollMonthSummary({
+          totalAmount: 0,
+          invoiceRevenue,
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    editingStaff?.id,
+    modalPayrollCycleMonthKey,
+    bookingStats,
+    payrollSettingsSaving,
+  ]);
+
   const employeeProfileHasUnsavedChanges = useMemo(() => {
     if (!editingStaff) return false;
 

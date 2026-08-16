@@ -1,6 +1,6 @@
 ﻿import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -130,6 +130,284 @@ test("DashboardReports payroll expenses use Malikat Core only", () => {
   assert.equal(
     source.includes(
       "recordedPayrollExpenses"
+    ),
+    true
+  );
+});
+
+
+test("Reports and Expenses share Malikat Core payroll financial projection", () => {
+  const reports =
+    readFileSync(
+      "src/pages/DashboardReports.tsx",
+      "utf8"
+    );
+
+  const expenses =
+    readFileSync(
+      "src/pages/DashboardExpenses.tsx",
+      "utf8"
+    );
+
+  const projection =
+    readFileSync(
+      "src/helpers/corePayrollFinancialRows.ts",
+      "utf8"
+    );
+
+  const expensesForbidden = [
+    "buildPayrollExpenseRowsForMonths",
+    "normalizeStaffPayrollRows",
+    "normalizeBookingPayrollRows",
+    "staff_public",
+    "AppSettingsService",
+    "listAllBookings",
+    "customWorkingHours",
+    "customWorkingHourOverrides",
+    "StaffPayrollSource",
+    "BookingPayrollSource",
+    "staffSnap",
+    "allBookings",
+    "appSettings",
+  ];
+
+  for (const token of expensesForbidden) {
+    assert.equal(
+      expenses.includes(token),
+      false,
+      "DashboardExpenses must not own legacy payroll runtime: " + token
+    );
+  }
+
+  assert.equal(
+    expenses.includes(
+      "generatePayrollEntriesForMonths"
+    ),
+    true
+  );
+
+  assert.equal(
+    reports.includes(
+      "projectCorePayrollEntriesToFinancialRows"
+    ),
+    true
+  );
+
+  assert.equal(
+    expenses.includes(
+      "projectCorePayrollEntriesToFinancialRows"
+    ),
+    true
+  );
+
+  assert.equal(
+    projection.includes(
+      "projectCorePayrollEntriesToFinancialRows"
+    ),
+    true
+  );
+
+  assert.equal(
+    projection.includes(
+      "resolveStaffScheduleVersionForDate"
+    ),
+    false
+  );
+
+  assert.equal(
+    projection.includes(
+      "customWorkingHours"
+    ),
+    false
+  );
+});
+
+
+test("DashboardEmployees payroll preview uses Malikat Core only", () => {
+  const employees =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  const stats =
+    readFileSync(
+      "src/pages/dashboardEmployees/EmployeeStatsSection.tsx",
+      "utf8"
+    );
+
+  assert.equal(
+    employees.includes(
+      "computeStaffPayrollForMonth"
+    ),
+    false,
+    "DashboardEmployees must not calculate payroll through staffPayroll"
+  );
+
+  assert.equal(
+    employees.includes(
+      "generatePayrollEntriesForMonths"
+    ),
+    true,
+    "DashboardEmployees payroll preview must come from CorePayrollService"
+  );
+
+  assert.equal(
+    employees.includes(
+      "employeeId,"
+    ),
+    true,
+    "Employee payroll preview should scope Core generation to one employee"
+  );
+
+  assert.equal(
+    employees.includes(
+      "Malikat Core employee payroll preview load error:"
+    ),
+    true
+  );
+
+  assert.equal(
+    stats.includes(
+      'helpers/staffPayroll'
+    ),
+    false,
+    "EmployeeStatsSection must not depend on legacy payroll types"
+  );
+
+  assert.equal(
+    stats.includes(
+      "scheduledHours?:"
+    ),
+    false,
+    "Employee payroll UI must not require legacy schedule summary"
+  );
+
+  assert.equal(
+    stats.includes(
+      "totalAmount?: number"
+    ),
+    true
+  );
+
+  assert.equal(
+    stats.includes(
+      "invoiceRevenue?: number"
+    ),
+    true
+  );
+});
+
+
+test("Legacy staffPayroll runtime is removed", () => {
+  assert.equal(
+    existsSync(
+      "src/helpers/staffPayroll.ts"
+    ),
+    false,
+    "Legacy staffPayroll runtime file must not exist"
+  );
+
+  const profileConfig =
+    readFileSync(
+      "src/helpers/hr/payrollProfileConfig.ts",
+      "utf8"
+    );
+
+  const payrollCycle =
+    readFileSync(
+      "src/helpers/hr/payrollCycle.ts",
+      "utf8"
+    );
+
+  const employees =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  const expenses =
+    readFileSync(
+      "src/pages/DashboardExpenses.tsx",
+      "utf8"
+    );
+
+  const reports =
+    readFileSync(
+      "src/pages/DashboardReports.tsx",
+      "utf8"
+    );
+
+  const shared =
+    readFileSync(
+      "src/pages/dashboardEmployees/shared.ts",
+      "utf8"
+    );
+
+  for (
+    const forbidden of [
+      "resolveStaffScheduleVersionForDate",
+      "computeScheduledHoursSummaryForMonth",
+      "computeStaffPayrollForMonth",
+      "buildPayrollExpenseRowsForMonths",
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "workingScheduleVersions",
+    ]
+  ) {
+    assert.equal(
+      profileConfig.includes(
+        forbidden
+      ),
+      false,
+      "Payroll profile config must not contain Legacy runtime: " +
+        forbidden
+    );
+
+    assert.equal(
+      payrollCycle.includes(
+        forbidden
+      ),
+      false,
+      "Payroll cycle helper must not contain Legacy runtime: " +
+        forbidden
+    );
+  }
+
+  for (
+    const source of [
+      employees,
+      expenses,
+      reports,
+      shared,
+    ]
+  ) {
+    assert.equal(
+      source.includes(
+        "helpers/staffPayroll"
+      ),
+      false,
+      "No active consumer may import staffPayroll"
+    );
+  }
+
+  assert.equal(
+    profileConfig.includes(
+      "normalizePayrollConfig"
+    ),
+    true
+  );
+
+  assert.equal(
+    payrollCycle.includes(
+      "payrollCycleKeyFromDate"
+    ),
+    true
+  );
+
+  assert.equal(
+    payrollCycle.includes(
+      "payrollCycleRangeForMonthKey"
     ),
     true
   );

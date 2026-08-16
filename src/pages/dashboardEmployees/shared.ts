@@ -6,7 +6,7 @@ import { type BookingStatus } from "../../services/firestoreBookings";
 import {
   type StaffOvertimeHoursBasis,
   type StaffPayrollMethod,
-} from "../../helpers/staffPayroll";
+} from "../../helpers/hr/payrollProfileConfig";
 
 export type UiRole = "owner" | "admin" | "hr" | "reception" | "staff" | "client" | "guest";
 
