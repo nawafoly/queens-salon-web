@@ -556,6 +556,87 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
 }
 
 
+export async function resolveEmployeeShiftsBatch(db, salonId, data = {}) {
+  const rawEmployeeIds = Array.isArray(data.employeeIds ?? data.employee_ids)
+    ? (data.employeeIds ?? data.employee_ids)
+    : [];
+
+  const employeeIds = Array.from(
+    new Set(
+      rawEmployeeIds
+        .map((value) => cleanText(value))
+        .filter(Boolean)
+    )
+  ).map((value) => requiredId(value, 'employeeId'));
+
+  if (!employeeIds.length) {
+    throw Object.assign(new Error('employee_ids_required'), {
+      code: 'core_hr:employee_ids_required',
+    });
+  }
+
+  if (employeeIds.length > 100) {
+    throw Object.assign(new Error('employee_batch_too_large'), {
+      code: 'core_hr:employee_batch_too_large',
+    });
+  }
+
+  const dateFrom = dateKey(
+    data.dateFrom ?? data.date_from,
+    'dateFrom'
+  );
+
+  const dateTo = dateKey(
+    data.dateTo ?? data.date_to ?? dateFrom,
+    'dateTo'
+  );
+
+  if (dateTo < dateFrom) {
+    throw Object.assign(new Error('date_range_invalid'), {
+      code: 'core_hr:invalid_date_range',
+    });
+  }
+
+  const daysCount = daysBetweenInclusive(dateFrom, dateTo);
+
+  if (daysCount > 62) {
+    throw Object.assign(new Error('shift_resolution_range_too_large'), {
+      code: 'core_hr:shift_resolution_range_too_large',
+    });
+  }
+
+  if (employeeIds.length * daysCount > 5000) {
+    throw Object.assign(new Error('shift_resolution_batch_too_large'), {
+      code: 'core_hr:shift_resolution_batch_too_large',
+    });
+  }
+
+  const rows = [];
+
+  for (const employeeId of employeeIds) {
+    for (let offset = 0; offset < daysCount; offset += 1) {
+      const date = addDays(dateFrom, offset);
+
+      rows.push(
+        await resolveEmployeeShift(
+          db,
+          salonId,
+          employeeId,
+          date
+        )
+      );
+    }
+  }
+
+  return {
+    date_from: dateFrom,
+    date_to: dateTo,
+    employees_count: employeeIds.length,
+    days_count: daysCount,
+    rows,
+  };
+}
+
 function riyadhCronParts(value = new Date().toISOString()) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;

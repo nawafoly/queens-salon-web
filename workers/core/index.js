@@ -147,6 +147,7 @@ import {
   markClosedCheckInWindowsAbsent,
   previewShiftChange,
   resolveEmployeeShift,
+  resolveEmployeeShiftsBatch,
   saveShiftPayrollPeriodLock,
   saveShiftTemplate,
   updateScheduleException,
@@ -473,6 +474,13 @@ function match(url, method) {
 
   const employeeSchedules = /^\/api\/core\/hr\/employees\/([^/]+)\/schedules$/.exec(path);
   if (employeeSchedules && method === "PUT") return { name: "hr-employee:schedules", id: employeeSchedules[1] };
+  if (
+    path === "/api/core/hr/resolved-shifts/batch" &&
+    method === "POST"
+  ) {
+    return { name: "hr-shift:resolve-batch" };
+  }
+
   const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
   if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
@@ -1297,6 +1305,21 @@ async function dispatch(ctx, route, method, body, query, env) {
         return saveShiftPayrollPeriodLock(db, ctx.salonId, body, actorInfo);
       }
       break;
+
+    case "hr-shift:resolve-batch": {
+      requireAnyPermission(ctx, [
+        "employees.schedule.manage",
+        "attendance.view",
+        "payroll.view",
+        "payroll.manage",
+      ]);
+
+      return resolveEmployeeShiftsBatch(
+        db,
+        ctx.salonId,
+        body
+      );
+    }
 
     case "hr-shift:resolve": {
       const actorEmployeeId = cleanText(ctx.employeeId);

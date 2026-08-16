@@ -115,6 +115,40 @@ export const CoreHrService = {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/resolved-shift`, { query: { date } });
     return camel<CoreResolvedShift>(row);
   },
+
+  async resolveEmployeeShiftsBatch(input: {
+    employeeIds: string[];
+    dateFrom: string;
+    dateTo: string;
+  }) {
+    const payload = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/resolved-shifts/batch",
+      {
+        method: "POST",
+        body: {
+          employeeIds: input.employeeIds,
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+        },
+      }
+    );
+
+    const rows = Array.isArray(payload.rows)
+      ? payload.rows.map((row) =>
+          camel<CoreResolvedShift>(row as Record<string, unknown>)
+        )
+      : [];
+
+    return {
+      dateFrom: String(payload.date_from || payload.dateFrom || input.dateFrom),
+      dateTo: String(payload.date_to || payload.dateTo || input.dateTo),
+      employeesCount: Number(
+        payload.employees_count || payload.employeesCount || input.employeeIds.length
+      ),
+      daysCount: Number(payload.days_count || payload.daysCount || 0),
+      rows,
+    };
+  },
   async previewShiftChange(input: Record<string, unknown>) {
     return camel<CoreShiftChangePreview>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-change-preview", { method: "POST", body: input }));
   },
