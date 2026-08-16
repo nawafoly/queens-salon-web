@@ -1864,7 +1864,7 @@ export default function DashboardEmployees() {
       { id: selectedEmployeeId, name: leaveModalEmployeeName };
     const attendanceIdentity = resolveEmployeeAttendanceIdentity(employeeProfile, selectedEmployeeId);
     const employeeUidLocal = attendanceIdentity.employeeUid;
-    const employeeIdLocal = attendanceIdentity.employeeDocId || selectedEmployeeId;
+    const employeeIdLocal = selectedEmployeeId;
     const leaveType = normalizeManagedLeaveType(payload.type);
     const durationKind = payload.durationKind === "partial" ? "partial" : "full_day";
     const isPartialLeave = durationKind === "partial";
@@ -2028,6 +2028,16 @@ export default function DashboardEmployees() {
           "employee_leave_request_not_resolved"
         );
       }
+
+      // Attendance identity may be Firebase UID.
+      // Core HR operations must use the canonical employee_profiles.id.
+      requestForCanonical = {
+        ...requestForCanonical,
+        employeeUid:
+          employeeUidLocal ||
+          requestForCanonical.employeeUid,
+        employeeId: employeeIdLocal,
+      };
 
       await decideCanonicalEmployeeLeaveRequest(
         requestForCanonical,

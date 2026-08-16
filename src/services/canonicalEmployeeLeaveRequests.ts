@@ -34,6 +34,70 @@ function requestEmployeeId(
 }
 
 
+async function resolveCoreEmployeeId(
+  request: EmployeeLeaveRequest
+) {
+  const requestedId =
+    requestEmployeeId(request);
+
+  if (!requestedId) {
+    throw new Error(
+      "employee_leave_employee_id_required"
+    );
+  }
+
+  try {
+    const employee =
+      await CoreHrService.getEmployee(
+        requestedId
+      );
+
+    return (
+      cleanText(employee.id) ||
+      requestedId
+    );
+  } catch (directError) {
+    // Historical/mirrored requests may contain
+    // Firebase UID where Core employee_profiles.id is required.
+    const candidates = new Set(
+      [
+        requestedId,
+        cleanText(request.employeeId),
+        cleanText(request.employeeUid),
+      ].filter(Boolean)
+    );
+
+    const employees =
+      await CoreHrService.listEmployees();
+
+    const matched =
+      employees.find((employee) => {
+        const row = employee as any;
+
+        return [
+          row.id,
+          row.employeeId,
+          row.firebaseUid,
+          row.firebase_uid,
+        ]
+          .map(cleanText)
+          .some((value) =>
+            candidates.has(value)
+          );
+      });
+
+    const canonicalId =
+      cleanText((matched as any)?.id);
+
+    if (canonicalId) {
+      return canonicalId;
+    }
+
+    throw directError;
+  }
+}
+
+
 function requestDays(
   request: EmployeeLeaveRequest
 ) {
@@ -81,7 +145,7 @@ async function ensureCoreLeaveForRequest(
   const requestId = cleanText(request.id);
 
   const employeeId =
-    requestEmployeeId(request);
+    await resolveCoreEmployeeId(request);
 
   if (!requestId) {
     throw new Error(
@@ -272,7 +336,7 @@ export async function decideCanonicalEmployeeLeaveRequest(
   }
 
   const employeeId =
-    requestEmployeeId(request);
+    await resolveCoreEmployeeId(request);
 
   if (!employeeId) {
     throw new Error(
