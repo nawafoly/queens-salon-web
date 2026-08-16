@@ -111,6 +111,66 @@ export const CoreHrService = {
   async updateScheduleException(id: string, input: Record<string, unknown>) {
     return camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
   },
+
+  async syncWorkingHourScheduleExceptions(input: {
+    employeeId: string;
+    expectedOverrides: Array<Record<string, unknown>>;
+    desiredOverrides: Array<Record<string, unknown>>;
+  }) {
+    const payload =
+      await coreApiRequest<Record<string, unknown>>(
+        "/api/core/hr/schedule-exceptions/working-hours-sync",
+        {
+          method: "PUT",
+          body: input,
+        }
+      );
+
+    return {
+      employeeId:
+        String(
+          payload.employee_id ||
+          payload.employeeId ||
+          input.employeeId
+        ),
+
+      changed:
+        payload.changed === true,
+
+      createdCount:
+        Number(
+          payload.created_count ||
+          payload.createdCount ||
+          0
+        ),
+
+      cancelledCount:
+        Number(
+          payload.cancelled_count ||
+          payload.cancelledCount ||
+          0
+        ),
+
+      rows:
+        Array.isArray(
+          payload.rows
+        )
+          ? payload.rows.map(
+              (row) =>
+                camel<CoreScheduleException>(
+                  row as Record<string, unknown>
+                )
+            )
+          : [],
+
+      overrides:
+        Array.isArray(
+          payload.overrides
+        )
+          ? payload.overrides
+          : [],
+    };
+  },
   async resolveEmployeeShift(employeeId: string, date: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/resolved-shift`, { query: { date } });
     return camel<CoreResolvedShift>(row);

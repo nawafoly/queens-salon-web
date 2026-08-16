@@ -412,3 +412,405 @@ test("Legacy staffPayroll runtime is removed", () => {
     true
   );
 });
+
+
+test("DashboardEmployees schedule editor reads its base schedule from Malikat Core", () => {
+  const source =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  assert.match(
+    source,
+    /CoreHrService[\s\S]*\.getEmployee\(\s*employeeId\s*\)/
+  );
+
+  assert.match(
+    source,
+    /resolveCoreScheduleEditorRows/
+  );
+
+  assert.match(
+    source,
+    /coreScheduleLoadedEmployeeId/
+  );
+
+  assert.match(
+    source,
+    /scheduleVersionCount=\{coreScheduleVersionCount\}/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /const currentScheduleSnapshot = resolveDateEffectiveScheduleSnapshot\(x as any, todayIso\(\)\)/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /setModalCustomWorkingHours\(alignedInitialWorkingHours\)/
+  );
+});
+
+
+test("DashboardEmployees base schedule save is Core-only and fail-closed", () => {
+  const source =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  assert.match(
+    source,
+    /coreScheduleLoadedEmployeeId[\s\S]*cleanText\(editId\)/
+  );
+
+  assert.match(
+    source,
+    /coreScheduleEditorRowsEqual/
+  );
+
+  assert.match(
+    source,
+    /CoreHrService[\s\S]*\.replaceSchedules\(/
+  );
+
+  assert.match(
+    source,
+    /\$\{targetEmployeeId\}-\$\{day\.key\}-\$\{versionDate\}/
+  );
+
+  assert.match(
+    source,
+    /const refreshedCoreEmployee/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /let workingScheduleVersions =/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /appendDateEffectiveScheduleVersion\(/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /weeklyOffDays:\s*normalizedExceptionalWeekdays/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /let coreSyncWarning =/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /Core HR sync failed after employee Firestore save:/
+  );
+});
+
+
+test("approved off schedule exceptions participate in canonical shift resolution", () => {
+  const source =
+    readFileSync(
+      "workers/core/repositories/shift-control.js",
+      "utf8"
+    );
+
+  assert.match(
+    source,
+    /e\.status='approved' AND \(e\.exception_type='off' OR e\.enabled=1\) AND e\.date_from<=\?/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /e\.status='approved' AND e\.enabled=1 AND e\.date_from<=\?/
+  );
+
+  assert.match(
+    source,
+    /if \(exception\)[\s\S]*return \{ source: 'exception', date, \.\.\.exception \}/
+  );
+});
+
+
+test("DashboardEmployees dated overrides read from Core schedule exceptions", () => {
+  const source =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  assert.match(
+    source,
+    /CoreHrService[\s\S]*\.listScheduleExceptions\(\{[\s\S]*employeeId/
+  );
+
+  assert.match(
+    source,
+    /projectCoreScheduleExceptionsToOverrides/
+  );
+
+  assert.match(
+    source,
+    /type === "custom" \|\|[\s\S]*type === "off"/
+  );
+
+  assert.match(
+    source,
+    /setCoreScheduleExceptionRows\([\s\S]*scheduleExceptions/
+  );
+
+  assert.match(
+    source,
+    /setModalCustomHourOverrides\([\s\S]*projectedOverrides/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /Temporary compatibility only:[\s\S]*customWorkingHourOverrides/
+  );
+});
+
+
+test("temporary weekly off is Core-only and refreshes Dashboard canonical exception state", () => {
+  const service =
+    readFileSync(
+      "src/services/temporaryWeeklyOffService.ts",
+      "utf8"
+    );
+
+  const card =
+    readFileSync(
+      "src/pages/dashboardEmployees/TemporaryWeeklyOffPeriodCard.tsx",
+      "utf8"
+    );
+
+  const dashboard =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  assert.doesNotMatch(
+    service,
+    /firebase\/firestore/
+  );
+
+  assert.doesNotMatch(
+    service,
+    /from "\.\/firebase"/
+  );
+
+  assert.doesNotMatch(
+    service,
+    /saveProfileOverrides/
+  );
+
+  assert.doesNotMatch(
+    service,
+    /customWorkingHourOverrides/
+  );
+
+  assert.match(
+    service,
+    /TEMP_WEEKLY_OFF_SYNC_EVENT/
+  );
+
+  assert.match(
+    service,
+    /createScheduleException/
+  );
+
+  assert.match(
+    service,
+    /updateScheduleException/
+  );
+
+  assert.match(
+    card,
+    /TEMP_WEEKLY_OFF_SYNC_EVENT/
+  );
+
+  assert.match(
+    dashboard,
+    /window\.addEventListener\([\s\S]*TEMP_WEEKLY_OFF_SYNC_EVENT/
+  );
+
+  assert.match(
+    dashboard,
+    /refreshCoreExceptionsAfterTemporaryWeeklyOff/
+  );
+
+  assert.match(
+    dashboard,
+    /listScheduleExceptions\(\{[\s\S]*employeeId/
+  );
+
+  assert.match(
+    dashboard,
+    /setCoreScheduleExceptionRows\([\s\S]*canonicalRows/
+  );
+
+  assert.match(
+    dashboard,
+    /projectCoreScheduleExceptionsToOverrides\([\s\S]*canonicalRows/
+  );
+});
+
+
+test("working-hour override mutations are centralized in one Malikat Core sync operation", () => {
+  const repo =
+    readFileSync(
+      "workers/core/repositories/shift-control.js",
+      "utf8"
+    );
+
+  const worker =
+    readFileSync(
+      "workers/core/index.js",
+      "utf8"
+    );
+
+  const service =
+    readFileSync(
+      "src/services/CoreHrService.ts",
+      "utf8"
+    );
+
+  assert.match(
+    repo,
+    /export async function syncWorkingHourScheduleExceptions/
+  );
+
+  assert.match(
+    repo,
+    /working_hour_exceptions_changed/
+  );
+
+  assert.match(
+    repo,
+    /working_hour_exception_shift_conflict/
+  );
+
+  assert.match(
+    repo,
+    /assertUnlockedOrAdjustmentAllowed/
+  );
+
+  assert.match(
+    repo,
+    /await dbBatch\([\s\S]*statements/
+  );
+
+  assert.match(
+    repo,
+    /sync_working_hour_overrides/
+  );
+
+  assert.match(
+    worker,
+    /route\.id === "working-hours-sync"/
+  );
+
+  assert.match(
+    worker,
+    /syncWorkingHourScheduleExceptions\(/
+  );
+
+  assert.match(
+    service,
+    /async syncWorkingHourScheduleExceptions\(/
+  );
+
+  assert.match(
+    service,
+    /schedule-exceptions\/working-hours-sync/
+  );
+});
+
+
+test("DashboardEmployees working-hour override save is Core-only", () => {
+  const source =
+    readFileSync(
+      "src/pages/DashboardEmployees.tsx",
+      "utf8"
+    );
+
+  const saveStart =
+    source.indexOf(
+      "  const save = async () => {"
+    );
+
+  const saveEnd =
+    source.indexOf(
+      "\n  const remove = async",
+      saveStart
+    );
+
+  assert.ok(
+    saveStart >= 0 &&
+    saveEnd > saveStart
+  );
+
+  const saveSource =
+    source.slice(
+      saveStart,
+      saveEnd
+    );
+
+  assert.match(
+    saveSource,
+    /syncWorkingHourScheduleExceptions\(\{[\s\S]*expectedOverrides:[\s\S]*desiredOverrides:/
+  );
+
+  assert.match(
+    source,
+    /workingHourOverridesDirty/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /customWorkingHourOverrides:\s*normalizedCustomHourOverrides/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /customWorkingHourOverrides:\s*normalizeWorkingHourOverrides\(staff\.customWorkingHourOverrides\)/
+  );
+
+  assert.doesNotMatch(
+    source,
+    /customWorkingHourOverrides:\s*normalizeWorkingHourOverrides\(\(editingStaff as any\)\.customWorkingHourOverrides\)/
+  );
+
+  const coreSyncIndex =
+    saveSource.indexOf(
+      ".syncWorkingHourScheduleExceptions("
+    );
+
+  const scheduleIndex =
+    saveSource.indexOf(
+      ".replaceSchedules("
+    );
+
+  const firestoreIndex =
+    saveSource.indexOf(
+      "await setDoc(staffPublicDoc(targetEmployeeId)"
+    );
+
+  assert.ok(
+    coreSyncIndex >= 0 &&
+    firestoreIndex >= 0 &&
+    coreSyncIndex < firestoreIndex,
+    "Core exception sync must precede Firestore profile save"
+  );
+
+  assert.ok(
+    scheduleIndex < 0 ||
+    scheduleIndex < firestoreIndex,
+    "Core weekly schedule mutation must precede Firestore profile save"
+  );
+});

@@ -1,4 +1,4 @@
-// src/pages/DashboardEmployees.tsx
+﻿// src/pages/DashboardEmployees.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -44,6 +44,10 @@ import {
 } from "../helpers/hr/employeeLeave";
 import { AppSettingsService } from "../services/AppSettingsService";
 import { CoreHrService } from "../services/CoreHrService";
+import {
+  TEMP_WEEKLY_OFF_SYNC_EVENT,
+} from "../services/temporaryWeeklyOffService";
+import type { CoreHrSchedule, CoreScheduleException } from "../types/hrCoreApi";
 import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
@@ -98,11 +102,8 @@ import {
   leaveRequestMatchesProfile,
 } from "../helpers/hr/attendanceCalendarData";
 import {
-  appendDateEffectiveScheduleVersion,
-  normalizeScheduleDateKey,
   normalizeStaffScheduleVersions,
   resolveDateEffectiveScheduleSnapshot,
-  scheduleSnapshotsEqual,
 } from "../helpers/hr/staffScheduleHistory";
 import {
   normalizePayrollConfig,
@@ -206,6 +207,259 @@ import {
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
+}
+
+const CORE_WEEKDAY_NUMBER: Record<WeekdayKey, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+function emptyCoreScheduleEditorRows():
+  Record<WeekdayKey, StaffWorkingDay> {
+  return WEEKDAY_OPTIONS.reduce(
+    (rows, day) => {
+      rows[day.key] = {
+        enabled: false,
+        shiftTemplateId: "",
+        shiftName: "",
+        start: "",
+        end: "",
+      };
+
+      return rows;
+    },
+    {} as Record<
+      WeekdayKey,
+      StaffWorkingDay
+    >
+  );
+}
+
+function coreScheduleIsActive(
+  value: unknown
+) {
+  if (
+    value === true ||
+    value === 1
+  ) {
+    return true;
+  }
+
+  const text =
+    String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+  return (
+    text === "true" ||
+    text === "1"
+  );
+}
+
+function coreScheduleDate(
+  value: unknown
+) {
+  const text =
+    cleanText(value);
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(
+    text
+  )
+    ? text
+    : "";
+}
+
+function resolveCoreScheduleEditorRows(
+  schedules: readonly CoreHrSchedule[],
+  targetDateValue: string
+): Record<WeekdayKey, StaffWorkingDay> {
+  const targetDate =
+    coreScheduleDate(
+      targetDateValue
+    ) ||
+    todayIso();
+
+  const rows =
+    emptyCoreScheduleEditorRows();
+
+  for (
+    const day of WEEKDAY_OPTIONS
+  ) {
+    const weekday =
+      CORE_WEEKDAY_NUMBER[
+        day.key
+      ];
+
+    const schedule =
+      schedules
+        .filter((row) => {
+          if (
+            Number(row.weekday) !==
+            weekday
+          ) {
+            return false;
+          }
+
+          const from =
+            coreScheduleDate(
+              row.effectiveFrom
+            );
+
+          const to =
+            coreScheduleDate(
+              row.effectiveTo
+            );
+
+          if (
+            from &&
+            targetDate < from
+          ) {
+            return false;
+          }
+
+          if (
+            to &&
+            targetDate > to
+          ) {
+            return false;
+          }
+
+          return true;
+        })
+        .sort((left, right) =>
+          coreScheduleDate(
+            right.effectiveFrom
+          ).localeCompare(
+            coreScheduleDate(
+              left.effectiveFrom
+            )
+          )
+        )[0] ||
+      null;
+
+    if (
+      !schedule ||
+      !coreScheduleIsActive(
+        schedule.active
+      )
+    ) {
+      rows[day.key] = {
+        enabled: false,
+        shiftTemplateId: "",
+        shiftName: "",
+        start: "",
+        end: "",
+      };
+
+      continue;
+    }
+
+    rows[day.key] = {
+      enabled: true,
+
+      shiftTemplateId:
+        cleanText(
+          schedule.shiftTemplateId
+        ),
+
+      shiftName:
+        cleanText(
+          schedule.shiftName
+        ),
+
+      start:
+        normalizeTimeHHMM(
+          schedule.templateStartTime ||
+          schedule.startTime
+        ),
+
+      end:
+        normalizeTimeHHMM(
+          schedule.templateEndTime ||
+          schedule.endTime
+        ),
+    };
+  }
+
+  return rows;
+}
+
+function coreScheduleEditorRowsEqual(
+  left:
+    | Record<
+        WeekdayKey,
+        StaffWorkingDay
+      >
+    | null
+    | undefined,
+
+  right:
+    | Record<
+        WeekdayKey,
+        StaffWorkingDay
+      >
+    | null
+    | undefined
+) {
+  const normalize = (
+    rows:
+      | Record<
+          WeekdayKey,
+          StaffWorkingDay
+        >
+      | null
+      | undefined
+  ) =>
+    WEEKDAY_OPTIONS.map(
+      (day) => {
+        const row =
+          rows?.[day.key];
+
+        const enabled =
+          row?.enabled !== false;
+
+        return {
+          weekday: day.key,
+          enabled,
+
+          shiftTemplateId:
+            enabled
+              ? cleanText(
+                  row?.shiftTemplateId
+                )
+              : "",
+        };
+      }
+    );
+
+  return (
+    JSON.stringify(
+      normalize(left)
+    ) ===
+    JSON.stringify(
+      normalize(right)
+    )
+  );
+}
+
+function countCoreScheduleVersions(
+  schedules:
+    readonly CoreHrSchedule[]
+) {
+  return new Set(
+    schedules.map(
+      (row) =>
+        coreScheduleDate(
+          row.effectiveFrom
+        ) ||
+        "baseline"
+    )
+  ).size;
 }
 
 type ManagedLeaveType = "annual" | "sick" | "emergency" | "unpaid" | "rest" | "other";
@@ -850,6 +1104,180 @@ function sortedWeekdayKeys(value: unknown) {
   return normalizeExceptionalLeaveWeekdays(value).slice().sort((a, b) => a.localeCompare(b));
 }
 
+
+function coreScheduleExceptionIsApproved(
+  row: CoreScheduleException
+) {
+  return (
+    cleanText(row?.status)
+      .toLowerCase() ===
+    "approved"
+  );
+}
+
+function projectCoreScheduleExceptionsToOverrides(
+  rows: CoreScheduleException[]
+): StaffWorkingHourOverride[] {
+  const projected =
+    new Map<
+      string,
+      StaffWorkingHourOverride
+    >();
+
+  const operationalRows =
+    (Array.isArray(rows)
+      ? rows
+      : []
+    )
+      .filter(
+        (row) => {
+          const type =
+            cleanText(
+              row?.exceptionType
+            ).toLowerCase();
+
+          return (
+            coreScheduleExceptionIsApproved(
+              row
+            ) &&
+            (
+              type === "custom" ||
+              type === "off"
+            )
+          );
+        }
+      )
+      .slice()
+      .sort(
+        (left, right) =>
+          cleanText(
+            left.createdAt
+          ).localeCompare(
+            cleanText(
+              right.createdAt
+            )
+          )
+      );
+
+  for (
+    const row of operationalRows
+  ) {
+    const type =
+      cleanText(
+        row.exceptionType
+      ).toLowerCase();
+
+    const from =
+      coreScheduleDate(
+        row.dateFrom
+      );
+
+    const to =
+      coreScheduleDate(
+        row.dateTo
+      ) ||
+      from;
+
+    if (
+      !from ||
+      !to ||
+      to < from
+    ) {
+      continue;
+    }
+
+    const enabled =
+      type !== "off" &&
+      (
+        row.enabled === true ||
+        row.enabled === 1
+      );
+
+    const start =
+      normalizeTimeHHMM(
+        row.startTime
+      ) ||
+      "10:00";
+
+    const end =
+      normalizeTimeHHMM(
+        row.endTime
+      ) ||
+      "22:00";
+
+    const note =
+      cleanText(
+        row.note
+      );
+
+    let cursor =
+      from;
+
+    let guard =
+      0;
+
+    while (
+      cursor &&
+      cursor <= to
+    ) {
+      projected.set(
+        cursor,
+        {
+          date:
+            cursor,
+
+          enabled,
+
+          start,
+
+          end,
+
+          ...(note
+            ? {
+                note,
+              }
+            : {}),
+        }
+      );
+
+      cursor =
+        addDaysIso(
+          cursor,
+          1
+        );
+
+      guard += 1;
+
+      if (
+        guard > 730
+      ) {
+        break;
+      }
+    }
+  }
+
+  return normalizeWorkingHourOverrides(
+    Array.from(
+      projected.values()
+    )
+  );
+}
+
+
+function workingHourOverridesEqual(
+  left: StaffWorkingHourOverride[],
+  right: StaffWorkingHourOverride[]
+) {
+  return (
+    JSON.stringify(
+      normalizeWorkingHourOverrides(left)
+    ) ===
+    JSON.stringify(
+      normalizeWorkingHourOverrides(right)
+    )
+  );
+}
+
 type EmployeeSaveVerificationSnapshot = Record<string, unknown>;
 
 function buildEmployeeSaveVerificationSnapshot(
@@ -876,13 +1304,8 @@ function buildEmployeeSaveVerificationSnapshot(
     leaveType: normalizeManagedLeaveType(staff.leaveType),
     leaveNote: cleanText(staff.leaveNote),
     exceptionalLeaveDates: normalizeExceptionalLeaveDates(staff.exceptionalLeaveDates),
-    exceptionalLeaveWeekdays: sortedWeekdayKeys(staff.exceptionalLeaveWeekdays),
     attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
     allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
-    useCustomWorkingHours: staff.useCustomWorkingHours === true,
-    customWorkingHours: normalizeWorkingHours(staff.customWorkingHours),
-    workingScheduleVersions: normalizeStaffScheduleVersions(staff.workingScheduleVersions),
-    customWorkingHourOverrides: normalizeWorkingHourOverrides(staff.customWorkingHourOverrides),
     monthlySalary: safeNonNegativeNumber(staff.monthlySalary, 0),
     payrollMonthlyHours: safeNonNegativeNumber(staff.payrollMonthlyHours, 0),
     payrollOvertimeEnabled: staff.payrollOvertimeEnabled === true,
@@ -1052,6 +1475,34 @@ export default function DashboardEmployees() {
   const [modalCustomHourOverrides, setModalCustomHourOverrides] = useState<StaffWorkingHourOverride[]>([]);
   const [modalScheduleEffectiveFrom, setModalScheduleEffectiveFrom] = useState(() => todayIso());
   const [modalScheduleChangeReason, setModalScheduleChangeReason] = useState("");
+
+  const [coreScheduleRows, setCoreScheduleRows] =
+    useState<CoreHrSchedule[]>([]);
+
+  const [
+    coreScheduleExceptionRows,
+    setCoreScheduleExceptionRows,
+  ] = useState<CoreScheduleException[]>([]);
+
+  const [
+    coreScheduleLoadedEmployeeId,
+    setCoreScheduleLoadedEmployeeId,
+  ] = useState("");
+
+  const [
+    coreScheduleLoading,
+    setCoreScheduleLoading,
+  ] = useState(false);
+
+  const [
+    coreScheduleError,
+    setCoreScheduleError,
+  ] = useState("");
+
+  const [
+    coreScheduleVersionCount,
+    setCoreScheduleVersionCount,
+  ] = useState(0);
   const [modalHourOverrideFromDate, setModalHourOverrideFromDate] = useState("");
   const [modalHourOverrideToDate, setModalHourOverrideToDate] = useState("");
   const [modalHourOverrideCalendar, setModalHourOverrideCalendar] = useState<DateCalendar>("gregory");
@@ -2473,6 +2924,14 @@ export default function DashboardEmployees() {
     setModalCustomHourOverrides([]);
     setModalScheduleEffectiveFrom(todayIso());
     setModalScheduleChangeReason("");
+
+    setCoreScheduleRows([]);
+    setCoreScheduleExceptionRows([]);
+    setCoreScheduleLoadedEmployeeId("");
+    setCoreScheduleLoading(false);
+    setCoreScheduleError("");
+    setCoreScheduleVersionCount(0);
+
     setModalHourOverrideFromDate("");
     setModalHourOverrideToDate("");
     setModalHourOverrideCalendar("gregory");
@@ -2548,35 +3007,29 @@ export default function DashboardEmployees() {
     setModalLeaveNote(String((x as any).leaveNote || ""));
     setEmploymentEndDate(normalizeLeaveUntil((x as any).employmentEndDate));
     setSelectedAttendanceZoneId(resolveAttendanceZoneId(x));
-    const currentScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(x as any, todayIso());
-    const initialUseCustomWorkingHours = currentScheduleSnapshot.snapshot
-      ? currentScheduleSnapshot.snapshot.useCustomWorkingHours
-      : !!(x as any).useCustomWorkingHours;
-    const initialCustomWorkingHours = normalizeWorkingHours(
-      currentScheduleSnapshot.snapshot?.customWorkingHours || (x as any).customWorkingHours
-    );
-    const initialWeeklyOffDays = initialUseCustomWorkingHours
-      ? WEEKDAY_OPTIONS.filter(
-          (day) => initialCustomWorkingHours[day.key]?.enabled === false
-        ).map((day) => day.key)
-      : currentScheduleSnapshot.hasHistoricalVersion
-        ? normalizeExceptionalLeaveWeekdays(currentScheduleSnapshot.weeklyOffDays)
-        : resolveStaffWeeklyOffDays(x);
-    const alignedInitialWorkingHours = initialUseCustomWorkingHours
-      ? initialCustomWorkingHours
-      : WEEKDAY_OPTIONS.reduce((next, day) => {
-          next[day.key] = {
-            ...initialCustomWorkingHours[day.key],
-            enabled: !initialWeeklyOffDays.includes(day.key),
-          };
-          return next;
-        }, { ...initialCustomWorkingHours });
-    setModalExceptionalLeaveWeekdays(initialWeeklyOffDays);
-    setModalUseCustomWorkingHours(initialUseCustomWorkingHours);
-    setModalCustomWorkingHours(alignedInitialWorkingHours);
+    const switchingScheduleEmployee =
+      cleanText(editId) !==
+      cleanText(x.id);
+
+    if (switchingScheduleEmployee) {
+      setCoreScheduleRows([]);
+      setCoreScheduleLoadedEmployeeId("");
+      setCoreScheduleError("");
+      setCoreScheduleVersionCount(0);
+      setCoreScheduleLoading(true);
+
+      setModalExceptionalLeaveWeekdays([]);
+      setModalUseCustomWorkingHours(true);
+
+      setModalCustomWorkingHours(
+        emptyCoreScheduleEditorRows()
+      );
+    }
+
     setModalCustomHourOverrides(
-      normalizeWorkingHourOverrides((x as any).customWorkingHourOverrides)
+      []
     );
+
     setModalScheduleEffectiveFrom(todayIso());
     setModalScheduleChangeReason("");
     setModalHourOverrideFromDate("");
@@ -2658,6 +3111,167 @@ export default function DashboardEmployees() {
     setIsOpen(true);
     if (updateRoute) navigate(`/dashboard/employees/${encodeURIComponent(x.id)}/basic`);
   };
+
+  useEffect(() => {
+    const employeeId =
+      cleanText(editId);
+
+    if (!employeeId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setCoreScheduleLoading(true);
+    setCoreScheduleError("");
+
+    void Promise.all([
+      CoreHrService
+        .getEmployee(
+          employeeId
+        ),
+
+      CoreHrService
+        .listScheduleExceptions({
+          employeeId,
+        }),
+    ])
+      .then(([
+        employee,
+        exceptionRows,
+      ]) => {
+        if (cancelled) {
+          return;
+        }
+
+        const schedules =
+          Array.isArray(
+            employee.schedules
+          )
+            ? employee.schedules
+            : [];
+
+        const scheduleExceptions =
+          Array.isArray(
+            exceptionRows
+          )
+            ? exceptionRows
+            : [];
+
+        const projectedOverrides =
+          projectCoreScheduleExceptionsToOverrides(
+            scheduleExceptions
+          );
+
+        const workingRows =
+          resolveCoreScheduleEditorRows(
+            schedules,
+            todayIso()
+          );
+
+        const weeklyOffDays =
+          WEEKDAY_OPTIONS
+            .filter(
+              (day) =>
+                workingRows[
+                  day.key
+                ]?.enabled ===
+                false
+            )
+            .map(
+              (day) =>
+                day.key
+            );
+
+        setCoreScheduleRows(
+          schedules
+        );
+
+        setCoreScheduleExceptionRows(
+          scheduleExceptions
+        );
+
+        setCoreScheduleLoadedEmployeeId(
+          employeeId
+        );
+
+        setCoreScheduleVersionCount(
+          countCoreScheduleVersions(
+            schedules
+          )
+        );
+
+        // The canonical editor now represents
+        // explicit Core HR schedules.
+        setModalUseCustomWorkingHours(
+          true
+        );
+
+        setModalCustomWorkingHours(
+          workingRows
+        );
+
+        setModalExceptionalLeaveWeekdays(
+          weeklyOffDays
+        );
+
+        setModalCustomHourOverrides(
+          projectedOverrides
+        );
+
+        setCoreScheduleError("");
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        const message =
+          "\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u062c\u062f\u0648\u0644 \u0627\u0644\u062f\u0648\u0627\u0645 \u0645\u0646 Malikat Core: " +
+          cleanText(
+            (error as any)?.message ||
+            error
+          );
+
+        // Fail closed. Never hydrate from
+        // staff_public schedule fields.
+        setCoreScheduleRows([]);
+        setCoreScheduleExceptionRows([]);
+        setCoreScheduleLoadedEmployeeId("");
+        setCoreScheduleVersionCount(0);
+
+        setModalCustomWorkingHours(
+          emptyCoreScheduleEditorRows()
+        );
+
+        setModalExceptionalLeaveWeekdays(
+          []
+        );
+
+        setModalCustomHourOverrides(
+          []
+        );
+
+        setCoreScheduleError(
+          message
+        );
+
+        setErrorMsg(
+          message
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCoreScheduleLoading(
+            false
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editId]);
 
   useEffect(() => {
     if (closingEmployeeDetailRef.current || !routeEmployeeId || !list.length) return;
@@ -3684,6 +4298,98 @@ export default function DashboardEmployees() {
     }
   };
 
+
+  useEffect(() => {
+    const employeeId =
+      cleanText(
+        editId
+      );
+
+    if (!employeeId) {
+      return;
+    }
+
+    const refreshCoreExceptionsAfterTemporaryWeeklyOff =
+      (
+        event: Event
+      ) => {
+        const detail =
+          (
+            event as CustomEvent<{
+              employeeId?: string;
+            }>
+          ).detail;
+
+        if (
+          cleanText(
+            detail?.employeeId
+          ) !==
+          employeeId
+        ) {
+          return;
+        }
+
+        void CoreHrService
+          .listScheduleExceptions({
+            employeeId,
+          })
+          .then(
+            (rows) => {
+              const canonicalRows =
+                Array.isArray(
+                  rows
+                )
+                  ? rows
+                  : [];
+
+              setCoreScheduleExceptionRows(
+                canonicalRows
+              );
+
+              setModalCustomHourOverrides(
+                projectCoreScheduleExceptionsToOverrides(
+                  canonicalRows
+                )
+              );
+
+              setCoreScheduleError(
+                ""
+              );
+            }
+          )
+          .catch(
+            (error) => {
+              const message =
+                "Failed to reload canonical schedule exceptions after temporary weekly-off update: " +
+                cleanText(
+                  (error as any)?.message ||
+                  error
+                );
+
+              setCoreScheduleError(
+                message
+              );
+
+              setErrorMsg(
+                message
+              );
+            }
+          );
+      };
+
+    window.addEventListener(
+      TEMP_WEEKLY_OFF_SYNC_EVENT,
+      refreshCoreExceptionsAfterTemporaryWeeklyOff
+    );
+
+    return () => {
+      window.removeEventListener(
+        TEMP_WEEKLY_OFF_SYNC_EVENT,
+        refreshCoreExceptionsAfterTemporaryWeeklyOff
+      );
+    };
+  }, [editId]);
+
   const save = async () => {
     if (!ensureCanManage()) return;
     const cleanName = name.trim();
@@ -3752,50 +4458,117 @@ export default function DashboardEmployees() {
       setErrorMsg(`اختاري شفتًا لأيام العمل التالية: ${missingShiftDays.map((day) => day.label).join("، ")}`);
       return;
     }
-    const scheduleEffectiveFrom = normalizeScheduleDateKey(modalScheduleEffectiveFrom);
-    const previousEffectiveSchedule = resolveDateEffectiveScheduleSnapshot(
-      editingStaff as any,
-      scheduleEffectiveFrom || todayIso()
-    );
-    const previousScheduleSnapshot = previousEffectiveSchedule.snapshot || {
-      useCustomWorkingHours: !!(editingStaff as any)?.useCustomWorkingHours,
-      customWorkingHours: normalizeWorkingHours((editingStaff as any)?.customWorkingHours),
-    };
-    const nextScheduleSnapshot = {
-      useCustomWorkingHours: !!modalUseCustomWorkingHours,
-      customWorkingHours: normalizedCustomWorkingHours,
-    };
-    const scheduleChanged =
+    const scheduleEffectiveFrom =
+      coreScheduleDate(
+        modalScheduleEffectiveFrom
+      );
+
+    if (
       shouldValidateSchedule &&
-      (!editId || !scheduleSnapshotsEqual(previousScheduleSnapshot, nextScheduleSnapshot));
-    let scheduleChangeReason = cleanText(modalScheduleChangeReason);
-    if (scheduleChanged && !scheduleEffectiveFrom) {
-      setErrorMsg("حددي تاريخ بدء تطبيق جدول الدوام الجديد.");
+      editId &&
+      coreScheduleLoading
+    ) {
+      setErrorMsg(
+        "\u064a\u062a\u0645 \u062a\u062d\u0645\u064a\u0644 \u062c\u062f\u0648\u0644 \u0627\u0644\u062f\u0648\u0627\u0645 \u0645\u0646 Malikat Core. \u0623\u0639\u064a\u062f\u064a \u0627\u0644\u062d\u0641\u0638 \u0628\u0639\u062f \u0627\u0643\u062a\u0645\u0627\u0644 \u0627\u0644\u062a\u062d\u0645\u064a\u0644."
+      );
       return;
     }
-    if (editId && scheduleChanged && !scheduleChangeReason) {
-      const changedClosedDays = WEEKDAY_OPTIONS.filter((day) => {
-        const previousEnabled = previousScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
-        const nextEnabled = nextScheduleSnapshot.customWorkingHours[day.key]?.enabled !== false;
-        return previousEnabled !== nextEnabled;
-      }).map((day) => day.label);
 
-      scheduleChangeReason = changedClosedDays.length
-        ? `تعديل الإجازة الأسبوعية: ${changedClosedDays.join("، ")}`
-        : "تحديث جدول دوام الموظفة";
-
-      setModalScheduleChangeReason(scheduleChangeReason);
+    if (
+      shouldValidateSchedule &&
+      editId &&
+      coreScheduleError
+    ) {
+      setErrorMsg(
+        coreScheduleError
+      );
+      return;
     }
-    let workingScheduleVersions = normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions);
-    if (scheduleChanged) {
-      workingScheduleVersions = appendDateEffectiveScheduleVersion({
-        versions: workingScheduleVersions,
-        effectiveFrom: scheduleEffectiveFrom,
-        next: nextScheduleSnapshot,
-        previous: editId ? previousScheduleSnapshot : null,
-        changeReason: scheduleChangeReason || "إنشاء جدول الموظفة",
-        createdByUid: cleanText(authUser?.uid),
-      });
+
+    if (
+      shouldValidateSchedule &&
+      editId &&
+      coreScheduleLoadedEmployeeId !==
+        cleanText(editId)
+    ) {
+      setErrorMsg(
+        "\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u0641\u0638 \u062c\u062f\u0648\u0644 \u0627\u0644\u062f\u0648\u0627\u0645 \u0642\u0628\u0644 \u062a\u062d\u0645\u064a\u0644 \u0645\u0635\u062f\u0631 Malikat Core \u0627\u0644\u0645\u0639\u062a\u0645\u062f."
+      );
+      return;
+    }
+
+    const previousCoreWorkingHours =
+      editId
+        ? resolveCoreScheduleEditorRows(
+            coreScheduleRows,
+            scheduleEffectiveFrom ||
+              todayIso()
+          )
+        : emptyCoreScheduleEditorRows();
+
+    const scheduleChanged =
+      shouldValidateSchedule &&
+      (
+        !editId ||
+        !coreScheduleEditorRowsEqual(
+          previousCoreWorkingHours,
+          normalizedCustomWorkingHours
+        )
+      );
+
+    let scheduleChangeReason =
+      cleanText(
+        modalScheduleChangeReason
+      );
+
+    if (
+      scheduleChanged &&
+      !scheduleEffectiveFrom
+    ) {
+      setErrorMsg(
+        "\u062d\u062f\u062f\u064a \u062a\u0627\u0631\u064a\u062e \u0628\u062f\u0621 \u062a\u0637\u0628\u064a\u0642 \u062c\u062f\u0648\u0644 \u0627\u0644\u062f\u0648\u0627\u0645 \u0627\u0644\u062c\u062f\u064a\u062f."
+      );
+      return;
+    }
+
+    if (
+      editId &&
+      scheduleChanged &&
+      !scheduleChangeReason
+    ) {
+      const changedClosedDays =
+        WEEKDAY_OPTIONS
+          .filter(
+            (day) => {
+              const previousEnabled =
+                previousCoreWorkingHours[
+                  day.key
+                ]?.enabled !== false;
+
+              const nextEnabled =
+                normalizedCustomWorkingHours[
+                  day.key
+                ]?.enabled !== false;
+
+              return (
+                previousEnabled !==
+                nextEnabled
+              );
+            }
+          )
+          .map(
+            (day) =>
+              day.label
+          );
+
+      scheduleChangeReason =
+        changedClosedDays.length
+          ? `\u062a\u0639\u062f\u064a\u0644 \u0627\u0644\u0625\u062c\u0627\u0632\u0629 \u0627\u0644\u0623\u0633\u0628\u0648\u0639\u064a\u0629: ${changedClosedDays.join("\u060c ")}`
+          : "\u062a\u062d\u062f\u064a\u062b \u062c\u062f\u0648\u0644 \u062f\u0648\u0627\u0645 \u0627\u0644\u0645\u0648\u0638\u0641\u0629";
+
+      setModalScheduleChangeReason(
+        scheduleChangeReason
+      );
     }
 
     setSaving(true);
@@ -3808,11 +4581,6 @@ export default function DashboardEmployees() {
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
-    const normalizedExceptionalWeekdays = modalUseCustomWorkingHours
-      ? WEEKDAY_OPTIONS.filter(
-          (day) => normalizedCustomWorkingHours[day.key]?.enabled === false
-        ).map((day) => day.key)
-      : normalizeExceptionalLeaveWeekdays(modalExceptionalLeaveWeekdays);
     const normalizedExceptionalDates = editId
       ? normalizeExceptionalLeaveDates((editingStaff as any)?.exceptionalLeaveDates)
       : [];
@@ -3849,6 +4617,32 @@ export default function DashboardEmployees() {
       hasLinkedUid: !!linkedUidForSave,
     });
 
+
+    const coreExceptionBaselineReady =
+      !editId ||
+      coreScheduleLoadedEmployeeId ===
+        targetEmployeeId;
+
+    if (!coreExceptionBaselineReady) {
+      setErrorMsg(
+        "Canonical schedule exceptions are not loaded for this employee. Reload the employee and try again."
+      );
+      return;
+    }
+
+    const expectedCoreCustomHourOverrides =
+      editId
+        ? projectCoreScheduleExceptionsToOverrides(
+            coreScheduleExceptionRows
+          )
+        : [];
+
+    const workingHourOverridesChanged =
+      !workingHourOverridesEqual(
+        expectedCoreCustomHourOverrides,
+        normalizedCustomHourOverrides
+      );
+
     const payload: StaffPublicDoc = {
       uid: cleanText((editingStaff as any)?.uid || linkedUidForSave),
       linkedUid: linkedUidForSave,
@@ -3879,11 +4673,6 @@ export default function DashboardEmployees() {
       leaveRequestId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.leaveRequestId) : "",
       coreLeaveId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.coreLeaveId) : "",
       exceptionalLeaveDates: normalizedExceptionalDates,
-      exceptionalLeaveWeekdays: normalizedExceptionalWeekdays,
-      useCustomWorkingHours: !!modalUseCustomWorkingHours,
-      customWorkingHours: normalizedCustomWorkingHours,
-      workingScheduleVersions,
-      customWorkingHourOverrides: normalizedCustomHourOverrides,
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
       attendanceZoneId: normalizedAttendanceZoneId,
       assignedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -3934,6 +4723,216 @@ export default function DashboardEmployees() {
       employment: attendanceZoneProfilePatch,
     };
     try {
+      await CoreHrService.saveEmployee({
+        id:
+          targetEmployeeId,
+
+        name:
+          cleanName,
+
+        firebaseUid:
+          cleanText(
+            payload.linkedUid ||
+            payload.uid ||
+            payload.linkedUserId
+          ),
+
+        email:
+          cleanText(
+            payload.email
+          ),
+
+        phone:
+          cleanText(
+            payload.phone
+          ),
+
+        status:
+          active
+            ? "active"
+            : "inactive",
+
+        employment: {
+          employmentStatus:
+            active
+              ? "active"
+              : "inactive",
+
+          allowedZoneIds:
+            normalizedAttendanceZoneId
+              ? [
+                  normalizedAttendanceZoneId,
+                ]
+              : [],
+        },
+      });
+
+      if (workingHourOverridesChanged) {
+        const workingHourSync =
+          await CoreHrService
+            .syncWorkingHourScheduleExceptions({
+              employeeId:
+                targetEmployeeId,
+
+              expectedOverrides:
+                expectedCoreCustomHourOverrides.map(
+                  (row) => ({
+                    ...row,
+                  })
+                ),
+
+              desiredOverrides:
+                normalizedCustomHourOverrides.map(
+                  (row) => ({
+                    ...row,
+                  })
+                ),
+            });
+
+        employeeSaveDebug(
+          "core working-hour exceptions sync success",
+          {
+            employeeId:
+              targetEmployeeId,
+
+            createdCount:
+              workingHourSync.createdCount,
+
+            cancelledCount:
+              workingHourSync.cancelledCount,
+          }
+        );
+      }
+
+      await CoreStaffService
+        .update(
+          targetEmployeeId,
+          {
+            name:
+              cleanName,
+
+            firebaseUid:
+              cleanText(
+                payload.linkedUid ||
+                payload.uid ||
+                payload.linkedUserId
+              ),
+
+            phone:
+              cleanText(
+                payload.phone
+              ),
+
+            active:
+              !!active,
+
+            employmentStatus:
+              active
+                ? "active"
+                : "inactive",
+
+            showOnBooking:
+              !!active &&
+              effectiveShowOnBooking,
+
+            specialties:
+              specialtiesFixed,
+
+            avatarUrl:
+              avatarUrl.trim(),
+
+            leaveStartDate:
+              effectiveModalOnLeave
+                ? normalizedModalLeaveFrom
+                : "",
+
+            leaveEndDate:
+              effectiveModalOnLeave
+                ? normalizedModalLeaveUntil
+                : "",
+
+            leaveNote:
+              effectiveModalOnLeave
+                ? String(
+                    modalLeaveNote ||
+                    ""
+                  ).trim()
+                : "",
+          }
+        )
+        .catch(
+          (staffSyncError) => {
+            console.warn(
+              "Core staff booking sync failed after employee save:",
+              staffSyncError
+            );
+          }
+        );
+
+      if (scheduleChanged) {
+        const versionDate =
+          scheduleEffectiveFrom ||
+          todayIso();
+
+        await CoreHrService
+          .replaceSchedules(
+            targetEmployeeId,
+
+            WEEKDAY_OPTIONS.map(
+              (day) => {
+                const scheduleDay =
+                  normalizedCustomWorkingHours[
+                    day.key
+                  ] || {
+                    enabled: false,
+                  };
+
+                const enabled =
+                  scheduleDay.enabled !==
+                  false;
+
+                return {
+                  id:
+                    `${targetEmployeeId}-${day.key}-${versionDate}`,
+
+                  salonId:
+                    SALON_ID,
+
+                  employeeId:
+                    targetEmployeeId,
+
+                  weekday:
+                    CORE_WEEKDAY_NUMBER[
+                      day.key
+                    ],
+
+                  shiftTemplateId:
+                    enabled
+                      ? cleanText(
+                          scheduleDay
+                            .shiftTemplateId
+                        )
+                      : null,
+
+                  active:
+                    enabled,
+
+                  scheduleSource:
+                    enabled
+                      ? "shift_template"
+                      : "weekly_off",
+
+                  effectiveFrom:
+                    versionDate,
+
+                  effectiveTo:
+                    null,
+                };
+              }
+            )
+          );
+      }
+
       if (!editId) {
         await setDoc(staffPublicDoc(targetEmployeeId), {
           ...payload,
@@ -4013,81 +5012,66 @@ export default function DashboardEmployees() {
         employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
       }
 
-      const weekdayNumbers: Record<WeekdayKey, number> = {
-        sun: 0,
-        mon: 1,
-        tue: 2,
-        wed: 3,
-        thu: 4,
-        fri: 5,
-        sat: 6,
-      };
-      let coreSyncWarning = "";
-      try {
-        await CoreHrService.saveEmployee({
-          id: targetEmployeeId,
-          name: cleanName,
-          firebaseUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
-          email: cleanText(payload.email),
-          phone: cleanText(payload.phone),
-          status: active ? "active" : "inactive",
-          employment: {
-            employmentStatus: active ? "active" : "inactive",
-            weeklyOffDays: normalizedExceptionalWeekdays,
-            allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
-          },
-        });
-        await CoreStaffService.update(targetEmployeeId, {
-          name: cleanName,
-          firebaseUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
-          phone: cleanText(payload.phone),
-          active: !!active,
-          employmentStatus: active ? "active" : "inactive",
-          showOnBooking: !!active && effectiveShowOnBooking,
-          specialties: specialtiesFixed,
-          avatarUrl: avatarUrl.trim(),
-          leaveStartDate: effectiveModalOnLeave ? normalizedModalLeaveFrom : "",
-          leaveEndDate: effectiveModalOnLeave ? normalizedModalLeaveUntil : "",
-          leaveNote: effectiveModalOnLeave ? String(modalLeaveNote || "").trim() : "",
-        }).catch((staffSyncError) => {
-          console.warn("Core staff booking sync failed after employee save:", staffSyncError);
-        });
-        if (scheduleChanged) {
-          await CoreHrService.replaceSchedules(
-            targetEmployeeId,
-            WEEKDAY_OPTIONS.map((day) => {
-              const scheduleDay = normalizedCustomWorkingHours[day.key] || { enabled: false };
-              const enabled = scheduleDay.enabled !== false;
-              return {
-                id: `${targetEmployeeId}-${day.key}`,
-                salonId: SALON_ID,
-                employeeId: targetEmployeeId,
-                weekday: weekdayNumbers[day.key],
-                shiftTemplateId: enabled ? cleanText(scheduleDay.shiftTemplateId) : null,
-                active: enabled,
-                scheduleSource: enabled ? "shift_template" : "weekly_off",
-                effectiveFrom: scheduleEffectiveFrom || todayIso(),
-                effectiveTo: null,
-              };
-            })
+      const refreshedCoreEmployee =
+        await CoreHrService
+          .getEmployee(
+            targetEmployeeId
           );
-        }
-      employeeSaveDebug("core sync success", {
-        employeeId: targetEmployeeId,
-        scheduleChanged,
-      });
 
-      } catch (coreSyncError) {
-        coreSyncWarning = toFirestoreErrorMessage(coreSyncError, "تعذرت مزامنة Core HR بعد حفظ Firestore.");
-        employeeSaveDebug("core sync failed", {
-          employeeId: targetEmployeeId,
-          message: coreSyncWarning,
-        });
-        console.warn(
-          "Core HR sync failed after employee Firestore save:",
-          coreSyncError
-        );
-      }
+
+      const refreshedCoreExceptionRows =
+        await CoreHrService
+          .listScheduleExceptions({
+            employeeId:
+              targetEmployeeId,
+          });
+
+      const refreshedCoreSchedules =
+        Array.isArray(
+          refreshedCoreEmployee
+            .schedules
+        )
+          ? refreshedCoreEmployee
+              .schedules
+          : [];
+
+      setCoreScheduleRows(
+        refreshedCoreSchedules
+      );
+
+      setCoreScheduleExceptionRows(
+        refreshedCoreExceptionRows
+      );
+
+      setModalCustomHourOverrides(
+        projectCoreScheduleExceptionsToOverrides(
+          refreshedCoreExceptionRows
+        )
+      );
+
+      setCoreScheduleLoadedEmployeeId(
+        targetEmployeeId
+      );
+
+      setCoreScheduleVersionCount(
+        countCoreScheduleVersions(
+          refreshedCoreSchedules
+        )
+      );
+
+      setCoreScheduleError("");
+      setCoreScheduleLoading(false);
+
+      employeeSaveDebug(
+        "core sync success",
+        {
+          employeeId:
+            targetEmployeeId,
+
+          scheduleChanged,
+        }
+      );
+
       selectedEmployeeIdentityRef.current = {
         id: targetEmployeeId,
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
@@ -4184,14 +5168,19 @@ export default function DashboardEmployees() {
       selectedEmployeeIdentityRef.current = employeeIdentityOf(reloadedEmployee);
       window.dispatchEvent(new Event("queens:staff-updated"));
       setSaveMessage(
-        coreSyncWarning
-          ? `تم حفظ التغييرات بنجاح، لكن تعذرت مزامنة Core HR: ${coreSyncWarning}`
-          : "تم حفظ التغييرات بنجاح"
+        "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0628\u0646\u062c\u0627\u062d"
       );
-      employeeSaveDebug("completed", {
-        employeeId: targetEmployeeId,
-        coreSynced: !coreSyncWarning,
-      });
+
+      employeeSaveDebug(
+        "completed",
+        {
+          employeeId:
+            targetEmployeeId,
+
+          coreSynced:
+            true,
+        }
+      );
     } catch (e) {
       console.error("save employee profile failed", {
         staffPublicPath: `salons/${SALON_ID}/staff_public/${targetEmployeeId}`,
@@ -5377,29 +6366,33 @@ export default function DashboardEmployees() {
     const normalizeServiceIds = (value: unknown) =>
       canonicalizeSpecialties(value, serviceOptions).slice().sort((a, b) => a.localeCompare(b));
 
-    const todayScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(editingStaff as any, todayIso());
-    const savedUseCustomWorkingHours = todayScheduleSnapshot.snapshot
-      ? todayScheduleSnapshot.snapshot.useCustomWorkingHours
-      : !!(editingStaff as any).useCustomWorkingHours;
-    const savedCustomWorkingHours = normalizeWorkingHours(
-      todayScheduleSnapshot.snapshot?.customWorkingHours || (editingStaff as any).customWorkingHours
-    );
-    const savedWeeklyOffDays = savedUseCustomWorkingHours
-      ? WEEKDAY_OPTIONS.filter(
-          (day) => savedCustomWorkingHours[day.key]?.enabled === false
-        ).map((day) => day.key)
-      : todayScheduleSnapshot.hasHistoricalVersion
-        ? normalizeExceptionalLeaveWeekdays(todayScheduleSnapshot.weeklyOffDays)
-        : resolveStaffWeeklyOffDays(editingStaff);
-    const savedAlignedWorkingHours = savedUseCustomWorkingHours
-      ? savedCustomWorkingHours
-      : WEEKDAY_OPTIONS.reduce((next, day) => {
-          next[day.key] = {
-            ...savedCustomWorkingHours[day.key],
-            enabled: !savedWeeklyOffDays.includes(day.key),
-          };
-          return next;
-        }, { ...savedCustomWorkingHours });
+    const savedCoreWorkingHours =
+      resolveCoreScheduleEditorRows(
+        coreScheduleRows,
+        todayIso()
+      );
+
+    const coreScheduleReady =
+      coreScheduleLoadedEmployeeId ===
+      cleanText(
+        editingStaff.id
+      );
+
+    const scheduleDirty =
+      coreScheduleReady &&
+      !coreScheduleEditorRowsEqual(
+        savedCoreWorkingHours,
+        modalCustomWorkingHours
+      );
+
+    const workingHourOverridesDirty =
+      coreScheduleReady &&
+      !workingHourOverridesEqual(
+        projectCoreScheduleExceptionsToOverrides(
+          coreScheduleExceptionRows
+        ),
+        modalCustomHourOverrides
+      );
 
     const saved = {
       basic: {
@@ -5422,9 +6415,6 @@ export default function DashboardEmployees() {
       booking: {
         employmentEndDate: normalizeLeaveUntil((editingStaff as any).employmentEndDate),
         attendanceZoneId: resolveAttendanceZoneId(editingStaff),
-        useCustomWorkingHours: savedUseCustomWorkingHours,
-        customWorkingHours: normalizeWorkingHours(savedAlignedWorkingHours),
-        customWorkingHourOverrides: normalizeWorkingHourOverrides((editingStaff as any).customWorkingHourOverrides),
       },
     };
 
@@ -5449,28 +6439,31 @@ export default function DashboardEmployees() {
       booking: {
         employmentEndDate: normalizeLeaveUntil(employmentEndDate),
         attendanceZoneId: cleanText(selectedAttendanceZoneId),
-        useCustomWorkingHours: !!modalUseCustomWorkingHours,
-        customWorkingHours: normalizeWorkingHours(modalCustomWorkingHours),
-        customWorkingHourOverrides: normalizeWorkingHourOverrides(modalCustomHourOverrides),
       },
     };
 
-    return JSON.stringify(saved) !== JSON.stringify(current);
+    return (
+      JSON.stringify(saved) !==
+        JSON.stringify(current) ||
+      scheduleDirty ||
+      workingHourOverridesDirty
+    );
   }, [
     active,
     avatarUrl,
     bio,
     cvUrl,
     editingStaff,
+    coreScheduleExceptionRows,
+    coreScheduleLoadedEmployeeId,
+    coreScheduleRows,
     employmentEndDate,
     includeInEmployeeManagement,
     modalCustomHourOverrides,
     modalCustomWorkingHours,
-    modalUseCustomWorkingHours,
     name,
     rating,
     resolveAttendanceZoneId,
-    resolveStaffWeeklyOffDays,
     reviewsCount,
     selectedAttendanceZoneId,
     serviceOptions,
@@ -6996,15 +7989,15 @@ export default function DashboardEmployees() {
               />
               <BookingSettingsSection
                 isVisible={(!editingStaff && modalTab === "booking") || (!!editingStaff && activeTab === "booking")}
-                busy={busy}
-                loading={loading}
+                busy={busy || coreScheduleLoading}
+                loading={loading || coreScheduleLoading}
                 employmentEndDate={employmentEndDate}
                 modalUseCustomWorkingHours={modalUseCustomWorkingHours}
                 modalCustomWorkingHours={modalCustomWorkingHours}
                 modalExceptionalLeaveWeekdays={modalExceptionalLeaveWeekdays}
                 scheduleEffectiveFrom={modalScheduleEffectiveFrom}
                 scheduleChangeReason={modalScheduleChangeReason}
-                scheduleVersionCount={normalizeStaffScheduleVersions((editingStaff as any)?.workingScheduleVersions).length}
+                scheduleVersionCount={coreScheduleVersionCount}
                 attendanceZones={attendanceZones}
                 attendanceZonesLoading={attendanceZonesLoading}
                 selectedAttendanceZoneId={selectedAttendanceZoneId}

@@ -446,7 +446,7 @@ if (!errors.length) {
     },
     {
       label: "success message",
-      needle: "setSaveMessage(\n        coreSyncWarning",
+      needle: "employeeSaveDebug(\n        \"completed\"",
     },
   ]);
 }

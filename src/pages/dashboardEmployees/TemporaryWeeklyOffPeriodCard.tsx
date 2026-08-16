@@ -14,6 +14,7 @@ import {
   removeTemporaryWeeklyOff,
   saveTemporaryWeeklyOff,
   TEMP_WEEKLY_OFF_PREFIX,
+  TEMP_WEEKLY_OFF_SYNC_EVENT,
   type TemporaryWeeklyOffOverride,
 } from "../../services/temporaryWeeklyOffService";
 import {
@@ -52,7 +53,6 @@ type TemporaryWeeklyOffPeriodCardProps = {
 };
 
 const TEMP_WEEKLY_OFF_PATTERN = /^\[TEMP_WEEKLY_OFF:(sat|sun|mon|tue|wed|thu|fri):(sat|sun|mon|tue|wed|thu|fri|none):(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\]/;
-const TEMP_WEEKLY_OFF_SYNC_EVENT = "queens:temporary-weekly-off-updated";
 const WEEKDAY_INDEX: Record<WeekdayKey, number> = {
   sun: 0,
   mon: 1,
@@ -303,7 +303,6 @@ export default function TemporaryWeeklyOffPeriodCard({
       await removeTemporaryWeeklyOff({
         employeeId,
         token: group.token,
-        nextOverrides,
       });
       onOverridesChange(nextOverrides);
       notifyTemporaryWeeklyOffUpdated({

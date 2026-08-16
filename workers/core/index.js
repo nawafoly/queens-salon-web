@@ -150,6 +150,7 @@ import {
   resolveEmployeeShiftsBatch,
   saveShiftPayrollPeriodLock,
   saveShiftTemplate,
+  syncWorkingHourScheduleExceptions,
   updateScheduleException,
   updateShiftAssignment,
 } from './repositories/shift-control.js';
@@ -1280,6 +1281,19 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "schedule-exceptions":
       requirePermission(ctx, "employees.schedule.manage");
+
+      if (
+        method === "PUT" &&
+        route.id === "working-hours-sync"
+      ) {
+        return syncWorkingHourScheduleExceptions(
+          db,
+          ctx.salonId,
+          body,
+          actorInfo
+        );
+      }
+
       if (method === "GET") return listScheduleExceptions(db, ctx.salonId, query);
       if (method === "POST") return createScheduleException(db, ctx.salonId, body, actorInfo);
       if (method === "PATCH" && route.id) return updateScheduleException(db, ctx.salonId, route.id, body, actorInfo);
