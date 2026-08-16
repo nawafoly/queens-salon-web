@@ -1,7 +1,7 @@
 // src/services/firestoreStaffPublic.ts
 import { db } from "./firebase";
 import { collection, getDocs } from "firebase/firestore";
-import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
+import { isStaffOperationallyActiveForDate } from "../helpers/staffOperationalStatus";
 import { isRemovedFromStaffRecord } from "./staffAccountLinkService";
 
 export type StaffPublicDoc = {

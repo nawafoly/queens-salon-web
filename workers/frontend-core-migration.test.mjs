@@ -330,14 +330,19 @@ test("Core refunds are exposed as negative revenue and excluded from expenses", 
   assert.match(cleanupMigration, /DELETE FROM expense_entries/i);
 });
 
-test("dashboard reports read finance, staff and settings from explicit Core D1 sources", () => {
+test("dashboard reports read finance and payroll from explicit Malikat Core sources", () => {
   const reports = readFileSync("src/pages/DashboardReports.tsx", "utf8");
   assert.match(reports, /listCoreBookings\(\)/);
   assert.match(reports, /listAllIncomeCore\(\)/);
   assert.match(reports, /listAllExpensesCore\(\)/);
-  assert.match(reports, /CoreHrService\.listEmployees\(\)/);
-  assert.match(reports, /CoreSettingsService\.get<any>\("app"\)/);
-  assert.match(reports, /normalizeCoreStaffPayrollRows/);
+  assert.match(reports, /CoreHrService\.listPayrollEntries\(\)/);
+  assert.match(reports, /generatePayrollEntriesForMonths/);
+  assert.match(reports, /projectCorePayrollEntriesToFinancialRows/);
+
+  assert.doesNotMatch(reports, /CoreHrService\.listEmployees\(\)/);
+  assert.doesNotMatch(reports, /CoreSettingsService/);
+  assert.doesNotMatch(reports, /normalizeCoreStaffPayrollRows/);
+  assert.doesNotMatch(reports, /helpers\/staffPayroll/);
   assert.match(reports, /return Number\(item\.amount \|\| 0\)/);
   assert.doesNotMatch(reports, /firebase\/firestore/);
   assert.doesNotMatch(reports, /services\/firebase/);

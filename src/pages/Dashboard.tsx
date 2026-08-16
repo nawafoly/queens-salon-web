@@ -119,7 +119,7 @@ import { readVerifiedUserAccess } from "../services/authAccess";
 import { AppSettingsService } from "../services/AppSettingsService";
 
 import { resolveServiceName } from "../services/serviceResolver";
-import { isStaffOperationallyActiveForDate } from "../helpers/staffAvailability";
+import { isStaffOperationallyActiveForDate } from "../helpers/staffOperationalStatus";
 import { normalizeTimeToHHMM, timeToMinutes } from "../helpers/timeContract";
 import {
   formatLocalDateISO,

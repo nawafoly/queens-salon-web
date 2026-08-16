@@ -20,7 +20,6 @@ import {
 
 // ✅ generate same time slots list used by Booking page
 import { generateSalonTimeSlots, filterSlotsByServiceEnd } from "../helpers/timeSlots";
-import { isStaffAvailableForDate } from "../helpers/staffAvailability";
 
 // ✅ read slotStep/buffer from settings/app (source of truth)
 import { AppSettingsService } from "./AppSettingsService";
@@ -35,6 +34,7 @@ import { PackageOperationsService } from "./PackageOperationsService";
 import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { coreD1BookingDataSource } from "./bookingDataSources/coreD1BookingDataSource";
 import { CoreBookingService } from "./CoreBookingService";
+import { CoreAvailabilityService } from "./CoreAvailabilityService";
 import { CoreAuditService } from "./CoreAuditService";
 import { coreBookingToLegacy } from "./coreBookingMappers";
 
@@ -603,25 +603,70 @@ async function assertEmployeeCanAcceptBooking(args: {
   dateISO: string;
   channel?: BookingChannel;
 }) {
-  const employeeId = String(args.employeeId || "").trim();
-  const dateISO = normalizeISODate(args.dateISO) || localISODate();
-  if (!employeeId) throw employeeRequiredError();
+  const employeeId =
+    String(
+      args.employeeId ||
+      ""
+    ).trim();
 
-  const staffRef = doc(db, "salons", SALON_ID, "staff_public", employeeId);
-  const staffSnap = await getDoc(staffRef);
-  if (!staffSnap.exists()) {
-    throw employeeUnavailableError("EMPLOYEE_NOT_FOUND");
+  const dateISO =
+    normalizeISODate(
+      args.dateISO
+    ) ||
+    localISODate();
+
+  if (!employeeId) {
+    throw employeeRequiredError();
   }
 
-  const staff = staffSnap.data() as any;
-  const requireShowOnBooking = String(args.channel || "").trim().toLowerCase() === "client";
-  const available = isStaffAvailableForDate(staff, dateISO, {
-    requireShowOnBooking,
-  });
+  const availability =
+    await CoreAvailabilityService.getStaffDay({
+      staffId: employeeId,
+      date: dateISO,
+      forceFresh: true,
+    });
+
+  const requireShowOnBooking =
+    String(
+      args.channel ||
+      ""
+    )
+      .trim()
+      .toLowerCase() ===
+    "client";
+
+  /*
+   * Core availableForDate intentionally includes public visibility.
+   * Internal/admin validation therefore uses the canonical HR booking-day
+   * facts directly: active employee + dated HR schedule window + no
+   * full-day leave/absence/off/no_hr_schedule reason.
+   */
+  const operationalForDate =
+    Boolean(
+      availability.active &&
+      Array.isArray(
+        availability.scheduleWindows
+      ) &&
+      availability.scheduleWindows.length > 0 &&
+      !String(
+        availability.unavailableReason ||
+        ""
+      ).trim()
+    );
+
+  const available =
+    requireShowOnBooking
+      ? Boolean(
+          operationalForDate &&
+          availability.showOnBooking
+        )
+      : operationalForDate;
 
   if (!available) {
     throw employeeUnavailableError(
-      requireShowOnBooking ? "EMPLOYEE_NOT_PUBLICLY_BOOKABLE" : "EMPLOYEE_NOT_OPERATIONAL"
+      requireShowOnBooking
+        ? "EMPLOYEE_NOT_PUBLICLY_BOOKABLE"
+        : "EMPLOYEE_NOT_OPERATIONAL"
     );
   }
 }
