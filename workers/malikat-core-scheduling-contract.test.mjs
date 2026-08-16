@@ -80,3 +80,57 @@ test("Attendance discipline must not reconstruct scheduling outside Malikat Core
     );
   }
 });
+
+
+test("DashboardReports payroll expenses use Malikat Core only", () => {
+  const source =
+    readFileSync(
+      "src/pages/DashboardReports.tsx",
+      "utf8"
+    );
+
+  const forbidden = [
+    "buildPayrollExpenseRowsForMonths",
+    "normalizeCoreStaffPayrollRows",
+    "normalizeBookingPayrollRows",
+    "WEEKDAY_KEY_BY_NUMBER",
+    "employee?.schedules",
+    "customWorkingHours",
+    "customWorkingHourOverrides",
+    "staffRows",
+    "CoreSettingsService",
+    "appSettings",
+    "effectiveAutoPayrollExpenses",
+    "autoPayrollExpenses",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(
+      source.includes(token),
+      false,
+      "DashboardReports must not contain legacy payroll runtime: " + token
+    );
+  }
+
+  assert.equal(
+    source.includes(
+      "generatePayrollEntriesForMonths"
+    ),
+    true,
+    "DashboardReports must calculate payroll through CorePayrollService"
+  );
+
+  assert.equal(
+    source.includes(
+      "calculatedPayrollExpenses"
+    ),
+    true
+  );
+
+  assert.equal(
+    source.includes(
+      "recordedPayrollExpenses"
+    ),
+    true
+  );
+});
