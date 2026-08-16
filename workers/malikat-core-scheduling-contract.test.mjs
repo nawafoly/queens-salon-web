@@ -54,3 +54,29 @@ test("Payroll must not own a second scheduling runtime", () => {
     );
   }
 });
+
+
+test("Attendance discipline must not reconstruct scheduling outside Malikat Core", () => {
+  const source = read("src/pages/DashboardAttendanceSecurity.tsx");
+
+  assert.match(
+    source,
+    /CoreHrService\.resolveEmployeeShift/,
+    "Attendance discipline must consume the canonical shift resolver"
+  );
+
+  const forbidden = [
+    "resolveApprovedScheduleForDate",
+    "DEFAULT_ATTENDANCE_SHIFT_START",
+    "DEFAULT_ATTENDANCE_SHIFT_END",
+    "fallbackSchedule",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(
+      source.includes(token),
+      false,
+      `Attendance discipline contains local scheduling fallback: ${token}`
+    );
+  }
+});
