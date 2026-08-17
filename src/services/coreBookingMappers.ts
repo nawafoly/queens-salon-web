@@ -86,9 +86,6 @@ export function mapCoreStaff(row: Record<string, unknown>): CoreStaff {
     avatar_url: "avatarUrl",
     show_on_booking: "showOnBooking",
     specialties_json: "specialtiesJson",
-    leave_start_date: "leaveStartDate",
-    leave_end_date: "leaveEndDate",
-    leave_note: "leaveNote",
     created_at: "createdAt",
     updated_at: "updatedAt",
   });
@@ -317,10 +314,6 @@ export function coreStaffToLegacy(
     avatarUrl: staff.avatarUrl || undefined,
     showOnBooking: staff.showOnBooking !== false,
     // Runtime booking schedule comes only from Core availability / HR resolver.
-    useCustomWorkingHours: false,
-    onLeave: Boolean(staff.leaveStartDate || staff.leaveEndDate),
-    leaveUntil: staff.leaveEndDate || undefined,
-    leaveNote: staff.leaveNote || undefined,
   };
 }
 

@@ -116,12 +116,6 @@ export type StaffPublicDoc = {
   leaveNote?: string;
   leaveRequestId?: string;
   coreLeaveId?: string;
-  exceptionalLeaveDates?: string[];
-  exceptionalLeaveWeekdays?: string[];
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
-
-  customWorkingHourOverrides?: StaffWorkingHourOverride[];
   allowedAttendanceZoneId?: string;
   attendanceZoneId?: string;
   attendanceScopeId?: string;

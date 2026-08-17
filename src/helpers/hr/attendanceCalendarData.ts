@@ -252,29 +252,10 @@ export function buildApprovedLeaveSpecialDays(input: {
 }) {
   const days = new Map<string, AttendanceSpecialDay>();
   const profile = input.profile || {};
-  const todayDateKey = normalizeDateKey(input.todayDateKey) || new Date().toISOString().slice(0, 10);
 
-  const exceptionalDates = Array.isArray(profile.exceptionalLeaveDates)
-    ? profile.exceptionalLeaveDates
-    : [];
-  exceptionalDates.forEach((date) => {
-    addSpecialDate(days, {
-      date: normalizeDateKey(date),
-      kind: "leave",
-      label: LABEL_LEAVE,
-      source: "profile_exceptional_leave_date",
-    });
-  });
-
-  if (profile.onLeave) {
-    const leaveStart = normalizeDateKey(profile.leaveStartDate || profile.leaveFrom || profile.leaveFromDate) || todayDateKey;
-    const leaveUntil = normalizeDateKey(profile.leaveUntil || profile.leaveTo || profile.leaveToDate) || leaveStart;
-    addSpecialDateRange(days, leaveStart, leaveUntil, {
-      kind: "leave",
-      label: LABEL_LEAVE,
-      source: "profile_leave",
-    });
-  }
+  // Staff-profile leave mirrors are identity compatibility only.
+  // Attendance calendar decisions come from approved canonical
+  // leave requests/records below.
 
   (input.leaveRequests || [])
     .filter((request) => isApprovedStatus(request.status ?? request.state, false))

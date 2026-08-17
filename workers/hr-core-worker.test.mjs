@@ -179,8 +179,20 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   }, actor);
   const approved = await decideLeave(db, 'main', leave.id, { status: 'approved', hrNote: 'Approved' }, actor);
   assert.equal(approved.status, 'approved');
-  const staff = await db.prepare("SELECT leave_start_date, leave_end_date FROM staff WHERE id='emp-1'").first();
-  assert.equal(staff.leave_start_date, '2026-08-01');
+  const canonicalLeave = await db
+    .prepare("SELECT status, start_date, end_date FROM employee_leaves WHERE id='leave-1'")
+    .first();
+
+  assert.equal(canonicalLeave.status, 'approved');
+  assert.equal(canonicalLeave.start_date, '2026-08-01');
+  assert.equal(canonicalLeave.end_date, '2026-08-02');
+
+  const staffLeaveMirror = await db
+    .prepare("SELECT leave_start_date, leave_end_date FROM staff WHERE id='emp-1'")
+    .first();
+
+  assert.equal(staffLeaveMirror.leave_start_date, null);
+  assert.equal(staffLeaveMirror.leave_end_date, null);
 
   const absence = await createAbsence(db, 'main', { id: 'absence-1', employeeId: 'emp-1', date: '2026-07-15', type: 'half_day' }, actor);
   assert.equal(absence.absence_type, 'half_day');

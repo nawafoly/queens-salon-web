@@ -1,6 +1,6 @@
 ﻿import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -1290,5 +1290,530 @@ test("Partner Portal operational day is a Malikat Core RPC projection only", () 
   assert.match(
     devScript,
     /name:\s*"core-api"[\s\S]*wrangler\.core\.jsonc/
+  );
+});
+
+
+test("Stage 2 residual scheduling legacy is removed from active runtime", () => {
+  assert.equal(
+    existsSync(
+      "scripts/set-employee-weekly-off.mjs"
+    ),
+    false,
+    "Dual-write weekly-off CLI must never return"
+  );
+
+  const attendanceResolver =
+    read(
+      "src/helpers/hr/attendanceShiftResolver.ts"
+    );
+
+  for (
+    const token
+    of [
+      "AttendanceScheduleInput",
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "workingScheduleVersions",
+      "exceptionalLeaveWeekdays",
+      "exceptionalLeaveDates",
+    ]
+  ) {
+    assert.equal(
+      attendanceResolver.includes(
+        token
+      ),
+      false,
+      "Attendance resolver contains Legacy schedule input: " +
+        token
+    );
+  }
+
+  assert.doesNotMatch(
+    attendanceResolver,
+    /\bweeklyOffDay\s*\??\s*:/,
+    "Attendance resolver must not accept a legacy weeklyOffDay input"
+  );
+
+  const attendanceCalendar =
+    read(
+      "src/helpers/hr/attendanceCalendarData.ts"
+    );
+
+  for (
+    const pattern
+    of [
+      /profile\.exceptionalLeaveDates/,
+      /profile\.onLeave/,
+      /profile\.leaveStartDate/,
+      /profile\.leaveUntil/,
+      /profile_exceptional_leave_date/,
+      /source:\s*"profile_leave"/,
+    ]
+  ) {
+    assert.doesNotMatch(
+      attendanceCalendar,
+      pattern,
+      "Attendance calendar must not create operational days from profile mirrors"
+    );
+  }
+
+  const directory =
+    read(
+      "src/services/employeeDirectory.ts"
+    );
+
+  for (
+    const token
+    of [
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "workingScheduleVersions",
+      "exceptionalLeaveWeekdays",
+      "exceptionalLeaveDates",
+    ]
+  ) {
+    assert.equal(
+      directory.includes(
+        token
+      ),
+      false,
+      "Employee Directory still transports scheduling Legacy: " +
+        token
+    );
+  }
+
+  const builderStart =
+    directory.indexOf(
+      "export function buildPartnerMemberOperationalProfile"
+    );
+
+  const builderEnd =
+    directory.indexOf(
+      "\nexport async function listEmployeeDirectory",
+      builderStart
+    );
+
+  assert.ok(
+    builderStart >= 0 &&
+    builderEnd > builderStart
+  );
+
+  const partnerProfileBuilder =
+    directory.slice(
+      builderStart,
+      builderEnd
+    );
+
+  for (
+    const token
+    of [
+      "showOnBooking",
+      "onLeave",
+      "leaveUntil",
+      "employmentEndDate",
+      "customWorkingHours",
+      "exceptionalLeave",
+    ]
+  ) {
+    assert.equal(
+      partnerProfileBuilder.includes(
+        token
+      ),
+      false,
+      "Partner profile builder contains operational Legacy: " +
+        token
+    );
+  }
+
+  const partnerTypes =
+    read(
+      "src/types/partner.ts"
+    );
+
+  const profileStart =
+    partnerTypes.indexOf(
+      "export type PartnerMemberOperationalProfile"
+    );
+
+  const profileEnd =
+    partnerTypes.indexOf(
+      "\nexport type PartnerAuditFields",
+      profileStart
+    );
+
+  assert.ok(
+    profileStart >= 0 &&
+    profileEnd > profileStart
+  );
+
+  const profileType =
+    partnerTypes.slice(
+      profileStart,
+      profileEnd
+    );
+
+  for (
+    const token
+    of [
+      "showOnBooking",
+      "onLeave",
+      "leaveUntil",
+      "employmentEndDate",
+      "useCustomWorkingHours",
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "exceptionalLeaveDates",
+      "exceptionalLeaveWeekdays",
+    ]
+  ) {
+    assert.equal(
+      profileType.includes(
+        token
+      ),
+      false,
+      "Partner operational profile type contains Legacy field: " +
+        token
+    );
+  }
+
+  const partnerWorker =
+    read(
+      "workers/partners-worker.js"
+    );
+
+  const normalizeStart =
+    partnerWorker.indexOf(
+      "function normalizeOperationalProfile"
+    );
+
+  const normalizeEnd =
+    partnerWorker.indexOf(
+      "\nfunction allowedOrigins",
+      normalizeStart
+    );
+
+  assert.ok(
+    normalizeStart >= 0 &&
+    normalizeEnd > normalizeStart
+  );
+
+  const normalizedProfile =
+    partnerWorker.slice(
+      normalizeStart,
+      normalizeEnd
+    );
+
+  for (
+    const token
+    of [
+      "showOnBooking: raw",
+      "onLeave: raw",
+      "leaveUntil:",
+      "employmentEndDate:",
+      "useCustomWorkingHours",
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "exceptionalLeaveDates",
+      "exceptionalLeaveWeekdays",
+    ]
+  ) {
+    assert.equal(
+      normalizedProfile.includes(
+        token
+      ),
+      false,
+      "Partners Worker normalizer contains Legacy operational field: " +
+        token
+    );
+  }
+
+  const dashboard =
+    read(
+      "src/pages/DashboardEmployees.tsx"
+    );
+
+  const summaryStart =
+    dashboard.indexOf(
+      "const staffScheduleSummary = useMemo"
+    );
+
+  const summaryEnd =
+    dashboard.indexOf(
+      "\n  const editingStaff = useMemo",
+      summaryStart
+    );
+
+  assert.ok(
+    summaryStart >= 0 &&
+    summaryEnd > summaryStart
+  );
+
+  const summary =
+    dashboard.slice(
+      summaryStart,
+      summaryEnd
+    );
+
+  for (
+    const token
+    of [
+      "exceptionalLeaveDates",
+      "(staff as any).onLeave",
+      "(staff as any).leaveUntil",
+      "(staff as any).employmentEndDate",
+      "workingScheduleVersions",
+      "(staff as any).customWorkingHours",
+      "(staff as any).customWorkingHourOverrides",
+      "(staff as any).useCustomWorkingHours",
+    ]
+  ) {
+    assert.equal(
+      summary.includes(
+        token
+      ),
+      false,
+      "Dashboard schedule summary contains non-Core operational source: " +
+        token
+    );
+  }
+
+  assert.equal(
+    dashboard.includes(
+      "exceptionalLeaveDates:"
+    ),
+    false,
+    "Dashboard must not preserve/write legacy exceptional leave-date mirrors"
+  );
+
+  const firestoreStaff =
+    read(
+      "src/services/firestoreStaffPublic.ts"
+    );
+
+  for (
+    const token
+    of [
+      "customWorkingHours",
+      "customWorkingHourOverrides",
+      "exceptionalLeaveWeekdays",
+      "exceptionalLeaveDates",
+      "useCustomWorkingHours",
+    ]
+  ) {
+    assert.equal(
+      firestoreStaff.includes(
+        token
+      ),
+      false,
+      "Firestore staff DTO still transports schedule Legacy: " +
+        token
+    );
+  }
+
+  const staffRepository =
+    read(
+      "workers/core/repositories/staff.js"
+    );
+
+  assert.doesNotMatch(
+    staffRepository,
+    /export function staffIsAvailableForDate/
+  );
+
+  assert.doesNotMatch(
+    staffRepository,
+    /Array\.isArray\(row\?\.schedules\)/
+  );
+
+  const coreMapper =
+    read(
+      "src/services/coreBookingMappers.ts"
+    );
+
+  assert.doesNotMatch(
+    coreMapper,
+    /useCustomWorkingHours:\s*false/
+  );
+
+  const scripts =
+    readdirSync(
+      "scripts",
+      {
+        withFileTypes: true,
+      }
+    )
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          /\.(?:js|mjs|cjs)$/.test(
+            entry.name
+          )
+      )
+      .map(
+        (entry) =>
+          entry.name
+      )
+      .filter(
+        (name) =>
+          !/^(?:migrate|audit|check)-/.test(
+            name
+          )
+      );
+
+  for (
+    const name
+    of scripts
+  ) {
+    const source =
+      read(
+        "scripts/" +
+          name
+      );
+
+    const firestoreMutation =
+      /firestore\.googleapis\.com|firebase\/firestore|print-access-token/.test(
+        source
+      );
+
+    const scheduleMirror =
+      /customWorkingHours|customWorkingHourOverrides|workingScheduleVersions|exceptionalLeaveWeekdays|exceptionalLeaveDates/.test(
+        source
+      );
+
+    assert.equal(
+      firestoreMutation &&
+        scheduleMirror,
+      false,
+      "Operational CLI writes scheduling mirrors to Firestore: scripts/" +
+        name
+    );
+  }
+});
+
+
+test("Stage 2 canonical leave authority never mirrors operational leave into staff", () => {
+  const leaves =
+    read(
+      "workers/core/repositories/leaves.js"
+    );
+
+  assert.doesNotMatch(
+    leaves,
+    /UPDATE staff[\s\S]{0,240}?leave_start_date/
+  );
+
+  assert.doesNotMatch(
+    leaves,
+    /UPDATE staff[\s\S]{0,240}?leave_end_date/
+  );
+
+  const staff =
+    read(
+      "workers/core/repositories/staff.js"
+    );
+
+  assert.doesNotMatch(
+    staff,
+    /leave_start_date\s*:/
+  );
+
+  assert.doesNotMatch(
+    staff,
+    /leave_end_date\s*:/
+  );
+
+  const mapper =
+    read(
+      "src/services/coreBookingMappers.ts"
+    );
+
+  assert.doesNotMatch(
+    mapper,
+    /leave_start_date:\s*"leaveStartDate"/
+  );
+
+  assert.doesNotMatch(
+    mapper,
+    /onLeave:\s*Boolean\(staff\.leaveStartDate/
+  );
+
+  const coreHr =
+    read(
+      "src/services/CoreHrService.ts"
+    );
+
+  assert.doesNotMatch(
+    coreHr,
+    /CORE_STAFF_LEAVE_FIELDS/
+  );
+
+  const dashboard =
+    read(
+      "src/pages/DashboardEmployees.tsx"
+    );
+
+  const syncStart =
+    dashboard.indexOf(
+      "await CoreStaffService"
+    );
+
+  const syncEnd =
+    dashboard.indexOf(
+      ".catch(",
+      syncStart
+    );
+
+  assert.ok(
+    syncStart >= 0 &&
+    syncEnd > syncStart
+  );
+
+  const staffSync =
+    dashboard.slice(
+      syncStart,
+      syncEnd
+    );
+
+  assert.doesNotMatch(
+    staffSync,
+    /leaveStartDate\s*:/
+  );
+
+  assert.doesNotMatch(
+    staffSync,
+    /leaveEndDate\s*:/
+  );
+
+  const coreTypes =
+    read(
+      "src/types/coreApi.ts"
+    );
+
+  const coreStaffStart =
+    coreTypes.indexOf(
+      "export type CoreStaff ="
+    );
+
+  const coreStaffEnd =
+    coreTypes.indexOf(
+      "\nexport type CoreBookingItem",
+      coreStaffStart
+    );
+
+  assert.ok(
+    coreStaffStart >= 0 &&
+    coreStaffEnd > coreStaffStart
+  );
+
+  const coreStaffType =
+    coreTypes.slice(
+      coreStaffStart,
+      coreStaffEnd
+    );
+
+  assert.doesNotMatch(
+    coreStaffType,
+    /leaveStartDate|leaveEndDate|leaveNote/
   );
 });

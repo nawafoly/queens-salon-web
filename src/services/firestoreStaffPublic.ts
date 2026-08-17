@@ -45,31 +45,6 @@ export type StaffPublicDoc = {
   leaveNote?: string;
   leaveRequestId?: string;
   coreLeaveId?: string;
-  exceptionalLeaveDates?: string[];
-  exceptionalLeaveWeekdays?: string[];
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Partial<
-    Record<
-      "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri",
-      {
-        enabled?: boolean;
-        start?: string;
-        end?: string;
-        shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-        windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-        periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-      }
-    >
-  >;
-  customWorkingHourOverrides?: Array<{
-    date?: string;
-    enabled?: boolean;
-    start?: string;
-    end?: string;
-    shifts?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-    windows?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-    periods?: Array<{ enabled?: boolean; start?: string; end?: string }>;
-  }>;
   source?: "staff_public" | "employees" | string;
   employeeId?: string;
   employeeDocId?: string;
@@ -229,13 +204,6 @@ function extractSpecialties(raw: any): string[] {
   );
 }
 
-function normalizeIsoDates(v: any): string[] {
-  const rows = Array.isArray(v) ? v : [];
-  return rows
-    .map((x) => String(x || "").trim())
-    .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
-}
-
 function resolveEmploymentEndDate(raw: any): string {
   const candidates = [
     raw?.employmentEndDate,
@@ -247,109 +215,6 @@ function resolveEmploymentEndDate(raw: any): string {
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   }
   return "";
-}
-
-function normalizeWeekdays(v: any): string[] {
-  const rows = Array.isArray(v) ? v : [];
-  const allowed = new Set(["sat", "sun", "mon", "tue", "wed", "thu", "fri"]);
-  return Array.from(
-    new Set(
-      rows
-        .map((x) => String(x || "").trim().toLowerCase())
-        .filter((x) => allowed.has(x))
-    )
-  );
-}
-
-function normalizeTimeHHMM(v: any): string {
-  const s = String(v || "").trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return "";
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return "";
-  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "";
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-function normalizeSplitWindows(v: any) {
-  const rows = Array.isArray(v) ? v : [];
-  return rows
-    .map((row: any) => ({
-      enabled: row?.enabled !== false,
-      start: normalizeTimeHHMM(row?.start) || "10:00",
-      end: normalizeTimeHHMM(row?.end) || "22:00",
-    }))
-    .filter((row) => row.start !== row.end);
-}
-
-function normalizeWorkingHours(v: any) {
-  const out: Record<
-    string,
-    {
-      enabled: boolean;
-      start: string;
-      end: string;
-      shifts?: Array<{ enabled: boolean; start: string; end: string }>;
-      windows?: Array<{ enabled: boolean; start: string; end: string }>;
-      periods?: Array<{ enabled: boolean; start: string; end: string }>;
-    }
-  > = {};
-  const src = v && typeof v === "object" ? v : {};
-  const keys = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"];
-  keys.forEach((k) => {
-    const row = (src as any)?.[k];
-    if (!row || typeof row !== "object") return;
-    const next: {
-      enabled: boolean;
-      start: string;
-      end: string;
-      shifts?: Array<{ enabled: boolean; start: string; end: string }>;
-      windows?: Array<{ enabled: boolean; start: string; end: string }>;
-      periods?: Array<{ enabled: boolean; start: string; end: string }>;
-    } = {
-      enabled: row.enabled !== false,
-      start: normalizeTimeHHMM(row.start) || "10:00",
-      end: normalizeTimeHHMM(row.end) || "22:00",
-    };
-    const shifts = normalizeSplitWindows((row as any)?.shifts);
-    const windows = normalizeSplitWindows((row as any)?.windows);
-    const periods = normalizeSplitWindows((row as any)?.periods);
-    if (shifts.length) next.shifts = shifts;
-    if (windows.length) next.windows = windows;
-    if (periods.length) next.periods = periods;
-    out[k] = next;
-  });
-  return out;
-}
-
-function normalizeWorkingHourOverrides(v: any) {
-  const rows = Array.isArray(v) ? v : [];
-  return rows
-    .map((row: any) => {
-      const next: {
-        date: string;
-        enabled: boolean;
-        start: string;
-        end: string;
-        shifts?: Array<{ enabled: boolean; start: string; end: string }>;
-        windows?: Array<{ enabled: boolean; start: string; end: string }>;
-        periods?: Array<{ enabled: boolean; start: string; end: string }>;
-      } = {
-        date: String(row?.date || "").trim(),
-        enabled: row?.enabled !== false,
-        start: normalizeTimeHHMM(row?.start) || "10:00",
-        end: normalizeTimeHHMM(row?.end) || "22:00",
-      };
-      const shifts = normalizeSplitWindows((row as any)?.shifts);
-      const windows = normalizeSplitWindows((row as any)?.windows);
-      const periods = normalizeSplitWindows((row as any)?.periods);
-      if (shifts.length) next.shifts = shifts;
-      if (windows.length) next.windows = windows;
-      if (periods.length) next.periods = periods;
-      return next;
-    })
-    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
 }
 
 function resolveStaffName(data: any) {
@@ -479,11 +344,6 @@ function normalizeStaffRow(
     leaveNote: String(data?.leaveNote ?? (employeeProfile as any)?.leaveNote ?? "").trim(),
     leaveRequestId: String(data?.leaveRequestId ?? (employeeProfile as any)?.leaveRequestId ?? "").trim(),
     coreLeaveId: String(data?.coreLeaveId ?? (employeeProfile as any)?.coreLeaveId ?? "").trim(),
-    exceptionalLeaveDates: normalizeIsoDates(data?.exceptionalLeaveDates || (employeeProfile as any)?.exceptionalLeaveDates),
-    exceptionalLeaveWeekdays: normalizeWeekdays(data?.exceptionalLeaveWeekdays || data?.weeklyOffDays || data?.offWeekdays || (employeeProfile as any)?.exceptionalLeaveWeekdays),
-    useCustomWorkingHours: !!data?.useCustomWorkingHours || (employeeProfile as any)?.useCustomWorkingHours === true,
-    customWorkingHours: normalizeWorkingHours(data?.customWorkingHours || (employeeProfile as any)?.customWorkingHours),
-    customWorkingHourOverrides: normalizeWorkingHourOverrides(data?.customWorkingHourOverrides || (employeeProfile as any)?.customWorkingHourOverrides),
   } as StaffPublicWithId;
 }
 
@@ -558,11 +418,6 @@ function mergeStaffRow(current: StaffPublicWithId | undefined, next: StaffPublic
     leaveRequestId: current.leaveRequestId || next.leaveRequestId,
     coreLeaveId: current.coreLeaveId || next.coreLeaveId,
     employmentEndDate: current.employmentEndDate || next.employmentEndDate,
-    exceptionalLeaveDates: current.exceptionalLeaveDates?.length ? current.exceptionalLeaveDates : next.exceptionalLeaveDates,
-    exceptionalLeaveWeekdays: current.exceptionalLeaveWeekdays?.length ? current.exceptionalLeaveWeekdays : next.exceptionalLeaveWeekdays,
-    useCustomWorkingHours: current.useCustomWorkingHours === true || next.useCustomWorkingHours === true,
-    customWorkingHours: Object.keys(current.customWorkingHours || {}).length ? current.customWorkingHours : next.customWorkingHours,
-    customWorkingHourOverrides: current.customWorkingHourOverrides?.length ? current.customWorkingHourOverrides : next.customWorkingHourOverrides,
     source: primary.source || secondary.source,
   };
 }

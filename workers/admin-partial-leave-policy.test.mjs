@@ -40,29 +40,84 @@ class LeaveFakeD1 {
               const keys = [
                 "id", "salon_id", "employee_id", "employee_uid", "employee_name", "employee_email",
                 "status", "leave_type", "start_date", "end_date", "days_count", "duration_kind",
-                "partial_start_time", "partial_end_time", "request_id", "employee_note", "hr_note",
-                "decided_at", "decided_by_uid", "decided_by_email", "decided_by_name", "created_at", "updated_at",
+                "partial_start_time", "partial_end_time", "request_id",
+                "deduct_from_balance", "affects_payroll", "balance_adjustment_id",
+                "employee_note", "hr_note",
+                "decided_at", "decided_by_uid", "decided_by_email", "decided_by_name",
+                "created_at", "updated_at",
               ];
-              db.leaves.set(params[0], Object.fromEntries(keys.map((key, index) => [key, params[index]])));
+
+              db.leaves.set(
+                params[0],
+                Object.fromEntries(
+                  keys.map(
+                    (key, index) => [
+                      key,
+                      params[index],
+                    ]
+                  )
+                )
+              );
               return { meta: { changes: 1 } };
             }
 
-            if (normalized.startsWith("UPDATE employee_leaves SET status = ?")) {
-              const [status, hrNote, decidedAt, uid, email, name, updatedAt, salonId, id] = params;
-              const row = db.leaves.get(id);
-              if (row && row.salon_id === salonId) {
-                Object.assign(row, {
-                  status,
-                  hr_note: hrNote,
-                  decided_at: decidedAt,
-                  decided_by_uid: uid,
-                  decided_by_email: email,
-                  decided_by_name: name,
-                  updated_at: updatedAt,
-                });
-                return { meta: { changes: 1 } };
+            const simpleLeaveDecision =
+              normalized.match(
+                /^UPDATE employee_leaves SET status = '(approved|rejected)'/
+              );
+
+            if (
+              simpleLeaveDecision &&
+              !normalized.startsWith(
+                "UPDATE employee_leaves SET status = 'approved', balance_adjustment_id = ?"
+              )
+            ) {
+              const status =
+                simpleLeaveDecision[1];
+
+              const [
+                hrNote,
+                decidedAt,
+                uid,
+                email,
+                name,
+                updatedAt,
+                salonId,
+                id,
+              ] = params;
+
+              const row =
+                db.leaves.get(id);
+
+              if (
+                row &&
+                row.salon_id === salonId
+              ) {
+                Object.assign(
+                  row,
+                  {
+                    status,
+                    hr_note: hrNote,
+                    decided_at: decidedAt,
+                    decided_by_uid: uid,
+                    decided_by_email: email,
+                    decided_by_name: name,
+                    updated_at: updatedAt,
+                  }
+                );
+
+                return {
+                  meta: {
+                    changes: 1,
+                  },
+                };
               }
-              return { meta: { changes: 0 } };
+
+              return {
+                meta: {
+                  changes: 0,
+                },
+              };
             }
 
             if (normalized.startsWith("UPDATE staff SET leave_start_date = ?")) {
@@ -129,7 +184,7 @@ test("admin partial leave persists its time range and never becomes a full-day s
   assert.equal(db.staff.get("staff-1").leave_start_date, null);
 });
 
-test("full-day leave keeps the historical staff mirror behavior", async () => {
+test("full-day leave remains canonical and never writes a staff leave mirror", async () => {
   const db = new LeaveFakeD1();
   await createLeave(db, "main", {
     id: "full-1",
@@ -145,22 +200,41 @@ test("full-day leave keeps the historical staff mirror behavior", async () => {
     hrNote: "approved",
   }, { uid: "admin-1" });
 
-  assert.equal(db.staffMirrorWrites, 1);
-  assert.equal(db.staff.get("staff-1").leave_start_date, "2026-08-30");
+  assert.equal(db.staffMirrorWrites, 0);
+  assert.equal(db.staff.get("staff-1").leave_start_date, null);
 });
 
 test("admin UI and dashboard pass the partial leave contract end to end", () => {
   const modal = readFileSync("src/components/LeaveRequestModal.tsx", "utf8");
   const dashboard = readFileSync("src/pages/DashboardEmployees.tsx", "utf8");
-  const hub = readFileSync("src/services/employeeHub.ts", "utf8");
+  const canonicalLeaveBridge = readFileSync(
+    "src/services/canonicalEmployeeLeaveRequests.ts",
+    "utf8"
+  );
 
   assert.match(modal, /استئذان/);
   assert.match(modal, /partialStartTime/);
   assert.match(modal, /partialEndTime/);
   assert.match(dashboard, /durationKind,/);
   assert.match(dashboard, /partialStartTime: isPartialLeave/);
-  assert.equal(dashboard.includes("if (!isPartialLeave)"), true);
-  assert.equal(hub.includes('durationKind: cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",'), true);
-  assert.match(hub, /partialStartTime:/);
-  assert.match(hub, /partialEndTime:/);
+  assert.match(
+    dashboard,
+    /partialEndTime:\s*isPartialLeave/
+  );
+  assert.match(
+    canonicalLeaveBridge,
+    /durationKind:\s*request\.durationKind\s*===\s*"partial"[\s\S]{0,120}?\?\s*"partial"[\s\S]{0,120}?:\s*"full_day"/
+  );
+  assert.match(
+    canonicalLeaveBridge,
+    /partialStartTime:\s*request\.durationKind\s*===\s*"partial"/
+  );
+  assert.match(
+    canonicalLeaveBridge,
+    /partialEndTime:\s*request\.durationKind\s*===\s*"partial"/
+  );
+  assert.match(
+    canonicalLeaveBridge,
+    /CoreHrService\.createLeave\(\{/
+  );
 });

@@ -156,7 +156,6 @@ import {
   minutesToHHMM,
   monthKey,
   normalizeArabicName,
-  normalizeExceptionalLeaveDates,
   normalizeExceptionalLeaveWeekdays,
   normalizeLeaveUntil,
   normalizeSpecialties,
@@ -1299,7 +1298,6 @@ function buildEmployeeSaveVerificationSnapshot(
     leaveUntil: normalizeLeaveUntil(staff.leaveUntil),
     leaveType: normalizeManagedLeaveType(staff.leaveType),
     leaveNote: cleanText(staff.leaveNote),
-    exceptionalLeaveDates: normalizeExceptionalLeaveDates(staff.exceptionalLeaveDates),
     attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
     allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
     monthlySalary: safeNonNegativeNumber(staff.monthlySalary, 0),
@@ -3657,7 +3655,6 @@ export default function DashboardEmployees() {
             leaveNote: cleanText(combined?.leaveNote),
             leaveRequestId: cleanText(combined?.leaveRequestId),
             coreLeaveId: cleanText(combined?.coreLeaveId),
-            exceptionalLeaveDates: normalizeExceptionalLeaveDates(combined?.exceptionalLeaveDates),
 
             allowedAttendanceZoneId: resolveAttendanceZoneId(combined),
             attendanceZoneId: cleanText(combined?.attendanceZoneId),
@@ -4601,9 +4598,6 @@ export default function DashboardEmployees() {
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
     const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
     const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
-    const normalizedExceptionalDates = editId
-      ? normalizeExceptionalLeaveDates((editingStaff as any)?.exceptionalLeaveDates)
-      : [];
     const generatedEmployeeId = !editId
       ? cleanName
           .replace(/\s+/g, "_")
@@ -4692,7 +4686,6 @@ export default function DashboardEmployees() {
       leaveNote: effectiveModalOnLeave ? String(modalLeaveNote || "").trim() : "",
       leaveRequestId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.leaveRequestId) : "",
       coreLeaveId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.coreLeaveId) : "",
-      exceptionalLeaveDates: normalizedExceptionalDates,
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
       attendanceZoneId: normalizedAttendanceZoneId,
       assignedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -4861,23 +4854,6 @@ export default function DashboardEmployees() {
             avatarUrl:
               avatarUrl.trim(),
 
-            leaveStartDate:
-              effectiveModalOnLeave
-                ? normalizedModalLeaveFrom
-                : "",
-
-            leaveEndDate:
-              effectiveModalOnLeave
-                ? normalizedModalLeaveUntil
-                : "",
-
-            leaveNote:
-              effectiveModalOnLeave
-                ? String(
-                    modalLeaveNote ||
-                    ""
-                  ).trim()
-                : "",
           }
         )
         .catch(
@@ -5887,9 +5863,6 @@ export default function DashboardEmployees() {
             canonicalResolvedRecord.note
           );
 
-        const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
-        const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
-        const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
         const canonicalScheduleTarget =
           cleanText(staff.id) ===
           coreScheduleLoadedEmployeeId;
@@ -6028,7 +6001,6 @@ export default function DashboardEmployees() {
                 }.`
           : "لا يوجد استثناء يومي خاص بالموظفة اليوم.";
 
-        const leaveByDate = exceptionalDates.includes(today);
         const leaveByWeekday =
           canonicalSource === "weekly_schedule" &&
           canonicalOff;
@@ -6037,15 +6009,6 @@ export default function DashboardEmployees() {
           weekday
             ? exceptionalWeekdays.includes(weekday)
             : false;
-
-        const leaveByToggle =
-          !!(staff as any).onLeave && (!leaveUntil || leaveUntil >= today);
-
-        const leaveActiveToday =
-          leaveByDate ||
-          leaveByToggle;
-
-        const ended = !!employmentEndDate && today > employmentEndDate;
 
         const effectiveEnabled =
           canonicalEmployeeEnabled;
@@ -6059,172 +6022,200 @@ export default function DashboardEmployees() {
           salonClose;
 
         const hardBlockedToday =
-          ended ||
-          leaveActiveToday ||
           canonicalUnavailable ||
           canonicalOff;
-        const intersection =
-          !hardBlockedToday && salonEnabled && effectiveEnabled
-            ? intersectTimeWindows(salonOpen, salonClose, effectiveStart, effectiveEnd)
-            : null;
-        const nowInsideWindow =
-          !!intersection && isTimeInsideWindow(timeNow, intersection.start, intersection.end);
 
-        const actualNow = ended
-          ? "مستبعدة من الحجز (انتهى التوظيف)"
-          : leaveActiveToday
-            ? "متوقفة اليوم (إجازة)"
-            : canonicalUnavailable
-              ? "تعذر تحديد الدوام من Malikat Core"
-              : canonicalOff
-                ? canonicalSource === "exception"
-                  ? "متوقفة اليوم (إغلاق استثنائي)"
-                  : "راحة أسبوعية اليوم"
-                : !salonEnabled
-                  ? "الحجوزات مغلقة اليوم على مستوى الصالون"
-                  : !effectiveEnabled
-                    ? "لا يوجد دوام موظفة اليوم"
-                    : !intersection
-                      ? "لا يوجد تقاطع بين دوام الموظفة ودوام الحجوزات"
-                      : nowInsideWindow
-                        ? `تعمل الآن: ${formatWindow(intersection.start, intersection.end)}`
-                        : `خارج الدوام الآن: ${formatWindow(intersection.start, intersection.end)}`;
-        const statusTone: "good" | "warn" | "muted" =
-          nowInsideWindow && !!intersection && !ended && !leaveActiveToday
+        const intersection =
+          !hardBlockedToday &&
+          salonEnabled &&
+          effectiveEnabled
+            ? intersectTimeWindows(
+                salonOpen,
+                salonClose,
+                effectiveStart,
+                effectiveEnd
+              )
+            : null;
+
+        const nowInsideWindow =
+          !!intersection &&
+          isTimeInsideWindow(
+            timeNow,
+            intersection.start,
+            intersection.end
+          );
+
+        const actualNow =
+          canonicalUnavailable
+            ? "تعذر تحديد الدوام من Malikat Core"
+            : canonicalOff
+              ? canonicalSource === "exception"
+                ? "متوقفة اليوم (إغلاق استثنائي)"
+                : "راحة أسبوعية اليوم"
+              : !salonEnabled
+                ? "الصالون مغلق اليوم"
+                : !effectiveEnabled
+                  ? "لا يوجد دوام موظفة اليوم"
+                  : !intersection
+                    ? "لا يوجد تقاطع بين دوام الموظفة ودوام الصالون"
+                    : nowInsideWindow
+                      ? "تعمل الآن: " +
+                        formatWindow(
+                          intersection.start,
+                          intersection.end
+                        )
+                      : "خارج الدوام الآن: " +
+                        formatWindow(
+                          intersection.start,
+                          intersection.end
+                        );
+
+        const statusTone:
+          "good" |
+          "warn" |
+          "muted" =
+          nowInsideWindow &&
+          !!intersection
             ? "good"
-            : ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection
+            : !salonEnabled ||
+                !effectiveEnabled ||
+                !intersection
               ? "warn"
               : "muted";
-        const salonEffectiveDetails = ended
-          ? "الموظفة مستبعدة من الحجز بعد انتهاء التوظيف."
-          : leaveActiveToday
-            ? "الموظفة في إجازة اليوم، لذلك لا يظهر حجز فعلي لها."
-            : !salonEnabled
-              ? "الحجوزات مغلقة اليوم على مستوى الصالون."
-              : !effectiveEnabled
-                ? "دوام الموظفة مغلق اليوم."
-                : !intersection
-                  ? "لا يوجد وقت مشترك بين دوام الصالون ودوام الموظفة."
-                  : `المدى المتاح للحجز مع الموظفة: ${formatWindow(intersection.start, intersection.end)}.`;
 
-        const warnings: string[] = [];
-        if (leaveByDate) {
-          warnings.push(`اليوم ضمن إجازة استثنائية محددة بتاريخ ${todayDateLabel}.`);
-        }
-        if ((staff as any).onLeave) {
-          if (leaveUntil && leaveUntil >= today) {
-            warnings.push(`في إجازة من ${fmtIsoDate(today)} إلى ${fmtIsoDate(leaveUntil)}.`);
-          } else if (leaveUntil && leaveUntil < today) {
-            warnings.push(`انتهت إجازتها بتاريخ ${fmtIsoDate(leaveUntil)}.`);
-          } else {
-            warnings.push("في إجازة حالياً بدون تاريخ نهاية محدد.");
-          }
-        }
+        const salonEffectiveDetails =
+          canonicalUnavailable
+            ? "تعذر تحميل الدوام التشغيلي الحالي من Malikat Core."
+            : canonicalOff
+              ? "لا يوجد دوام تشغيلي للموظفة اليوم في Malikat Core."
+              : !salonEnabled
+                ? "الصالون مغلق اليوم على مستوى ساعات التشغيل."
+                : !effectiveEnabled
+                  ? "لا يوجد دوام تشغيلي للموظفة اليوم."
+                  : !intersection
+                    ? "لا يوجد وقت مشترك بين دوام الصالون ودوام الموظفة."
+                    : "نافذة الدوام المشتركة: " +
+                      formatWindow(
+                        intersection.start,
+                        intersection.end
+                      ) +
+                      ".";
 
-        const futureExceptional = exceptionalDates.filter((d) => d > today).sort((a, b) => a.localeCompare(b));
-        if (futureExceptional.length > 0) {
-          const start = futureExceptional[0];
-          let end = start;
-          for (let i = 1; i < futureExceptional.length; i++) {
-            const expectedNext = addDaysIso(end, 1);
-            if (futureExceptional[i] === expectedNext) {
-              end = futureExceptional[i];
-              continue;
-            }
-            break;
-          }
-          const diffDays = Math.max(
-            0,
-            Math.floor(
-              (new Date(`${start}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) /
-                86400000
-            )
+        const warnings: string[] =
+          [];
+
+        if (
+          exceptionalWeekdays.length >
+          0
+        ) {
+          const weeklyLabels =
+            exceptionalWeekdays.map(
+              (day) =>
+                weekdayLabel(day)
+            );
+
+          warnings.push(
+            "أيام الراحة الأسبوعية في الجدول المعتمد من Malikat Core: " +
+              weeklyLabels.join(" / ") +
+              "."
           );
-          const lead = diffDays <= 14 ? "إجازة قريبة" : "إجازة مجدولة";
-          warnings.push(`${lead} تبدأ ${fmtIsoDate(start)} وتنتهي ${fmtIsoDate(end)}.`);
         }
 
-        if (exceptionalWeekdays.length > 0) {
-          const weeklyLabels = exceptionalWeekdays.map((d) => weekdayLabel(d));
-          if (weeklyLabels.length === 1) {
-            warnings.push(`إجازة ثابتة كل ${weeklyLabels[0]}.`);
-          } else {
-            warnings.push(`إجازة ثابتة كل: ${weeklyLabels.join(" / ")}.`);
-          }
-        }
+        const leaveDaysLabel =
+          exceptionalWeekdays.length
+            ? exceptionalWeekdays
+                .map(
+                  (day) =>
+                    weekdayLabel(day)
+                )
+                .join(" / ")
+            : "-";
 
-        const leaveDaysLabel = exceptionalWeekdays.length
-          ? exceptionalWeekdays.map((d) => weekdayLabel(d)).join("طŒ ")
-          : "-";
-
-        const leaveDaysDetails = exceptionalWeekdays.length
-          ? baseWeeklyOffToday
-            ? canonicalSource === "exception" && !canonicalOff
-              ? "اليوم راحة أسبوعية في الجدول الأساسي، لكن استثناء Malikat Core يحوله إلى يوم عمل."
-              : "اليوم يقع ضمن الراحة الأسبوعية في الجدول الأساسي."
-            : "اليوم ليس ضمن الراحة الأسبوعية في الجدول الأساسي."
-          : "لا توجد أيام راحة أسبوعية ثابتة في الجدول الأساسي.";
+        const leaveDaysDetails =
+          exceptionalWeekdays.length
+            ? baseWeeklyOffToday
+              ? canonicalSource ===
+                  "exception" &&
+                !canonicalOff
+                ? "اليوم راحة في الجدول الأساسي، لكن استثناء Malikat Core يحوله إلى يوم عمل."
+                : "اليوم يقع ضمن الراحة الأسبوعية في الجدول الأساسي."
+              : "اليوم ليس ضمن الراحة الأسبوعية في الجدول الأساسي."
+            : "لا توجد أيام راحة أسبوعية ثابتة في الجدول الأساسي.";
 
         const weeklyOffTodayLabel =
           canonicalOff
-            ? canonicalSource === "exception"
+            ? canonicalSource ===
+              "exception"
               ? "راحة / إغلاق استثنائي اليوم حسب Malikat Core"
               : "راحة أسبوعية اليوم حسب Malikat Core"
             : "";
-        const finalWindowLabel = hardBlockedToday
-          ? leaveByWeekday
-            ? "اليوم راحة أسبوعية"
-            : "لا يوجد ساعات عمل اليوم"
-          : intersection
-            ? formatWindow(intersection.start, intersection.end)
-            : "مغلق اليوم";
-        const operationalState: "working" | "outside" | "closed" =
+
+        const finalWindowLabel =
+          hardBlockedToday
+            ? leaveByWeekday
+              ? "اليوم راحة أسبوعية"
+              : "لا توجد ساعات عمل اليوم"
+            : intersection
+              ? formatWindow(
+                  intersection.start,
+                  intersection.end
+                )
+              : "مغلق اليوم";
+
+        const operationalState:
+          "working" |
+          "outside" |
+          "closed" =
           canonicalUnavailable ||
           canonicalOff
             ? "closed"
-            : nowInsideWindow && !!intersection
+            : nowInsideWindow &&
+                !!intersection
               ? "working"
               : intersection
                 ? "outside"
                 : "closed";
-        const operationalStatusLabel = ended
-          ? "خارج الخدمة"
-          : leaveActiveToday
-            ? "متوقفة اليوم"
-            : canonicalUnavailable
-              ? "الحالة غير متاحة"
+
+        const operationalStatusLabel =
+          canonicalUnavailable
+            ? "الحالة غير متاحة"
+            : canonicalOff
+              ? canonicalSource ===
+                "exception"
+                ? "مغلقة باستثناء"
+                : "راحة أسبوعية"
+              : !intersection
+                ? "مغلقة اليوم"
+                : nowInsideWindow
+                  ? "تعمل الآن"
+                  : "خارج ساعات العمل";
+
+        const reasonLabel =
+          canonicalUnavailable
+            ? "مغلقة لتعذر تحميل الدوام من Malikat Core"
+            : !salonEnabled
+              ? activeSalonOverride?.mode ===
+                "closed"
+                ? "مغلقة بسبب إغلاق الصالون اليوم"
+                : "مغلقة وفق ساعات الصالون"
               : canonicalOff
-                ? canonicalSource === "exception"
-                  ? "مغلقة باستثناء"
-                  : "راحة أسبوعية"
+                ? canonicalSource ===
+                  "exception"
+                  ? "مغلقة بسبب استثناء معتمد في Malikat Core"
+                  : "راحة أسبوعية حسب الجدول المعتمد في Malikat Core"
                 : !intersection
-                  ? "مغلقة اليوم"
-                  : nowInsideWindow
-                    ? "تعمل الآن"
-                    : "خارج ساعات العمل";
-        const reasonLabel = ended
-          ? "مغلقة بسبب انتهاء التوظيف"
-          : leaveActiveToday
-            ? "مغلقة بسبب الإجازة"
-            : canonicalUnavailable
-              ? "مغلقة لتعذر تحميل الدوام من Malikat Core"
-              : !salonEnabled
-                ? activeSalonOverride?.mode === "closed"
-                  ? "مغلقة بسبب إغلاق الصالون اليوم"
-                  : "مغلقة وفق ساعات الصالون"
-                : canonicalOff
-                  ? canonicalSource === "exception"
-                    ? "مغلقة بسبب استثناء معتمد في Malikat Core"
-                    : "راحة أسبوعية حسب الجدول المعتمد في Malikat Core"
-                  : !intersection
-                    ? "مغلقة لعدم وجود وقت مشترك"
-                    : canonicalSource === "exception"
-                      ? "بناءً على استثناء معتمد في Malikat Core"
-                      : canonicalSource === "weekly_schedule"
-                        ? "بناءً على الجدول الأسبوعي المعتمد في Malikat Core"
-                        : canonicalSource === "assignment"
-                          ? "بناءً على تعيين الشفت المعتمد في Malikat Core"
-                          : "بناءً على Malikat Core";
+                  ? "مغلقة لعدم وجود وقت مشترك"
+                  : canonicalSource ===
+                    "exception"
+                    ? "بناءً على استثناء معتمد في Malikat Core"
+                    : canonicalSource ===
+                      "weekly_schedule"
+                      ? "بناءً على الجدول الأسبوعي المعتمد في Malikat Core"
+                      : canonicalSource ===
+                        "assignment"
+                        ? "بناءً على تعيين الشفت المعتمد في Malikat Core"
+                        : "بناءً على Malikat Core";
+
         const savedOverrideRows = overrideGroups.map((group, groupIndex) => {
           const tone = group.dates.includes(today)
             ? "active"
@@ -6275,62 +6266,71 @@ export default function DashboardEmployees() {
         const overrideTodayNote = overrideToday
           ? "استثناء Malikat Core المطبق اليوم موضح ضمن تفاصيل الحالة."
           : "لا يوجد استثناء Malikat Core مطبق على هذا اليوم.";
-        const hasClosureStatus = ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection;
-        const closureStatusValue = ended
-          ? "انتهى التوظيف"
-          : leaveActiveToday
-            ? "إجازة / توقف"
-            : canonicalUnavailable
-              ? "تعذر تحميل الدوام"
-              : canonicalOff
-                ? canonicalSource === "exception"
-                  ? "إغلاق استثنائي في Malikat Core"
-                  : "راحة أسبوعية"
-                : !salonEnabled
-                  ? "إغلاق على مستوى الصالون"
-                  : !effectiveEnabled
-                    ? "إغلاق على مستوى الموظفة"
-                    : !intersection
-                      ? "لا يوجد وقت مشترك"
-                      : "لا يوجد إغلاق اليوم";
-        const closureStatusNote = ended
-          ? "الموظفة غير متاحة للحجز بعد تاريخ انتهاء التوظيف."
-          : leaveActiveToday
-            ? "متوقفة اليوم بسبب الإجازة."
-            : canonicalUnavailable
-              ? "تعذر تحميل الدوام التشغيلي الحالي من Malikat Core."
-              : canonicalOff
-                ? canonicalSource === "exception"
-                  ? "يوجد استثناء معتمد في Malikat Core يغلق دوام الموظفة اليوم."
-                  : "اليوم راحة أسبوعية حسب الجدول المعتمد في Malikat Core."
-                : !salonEnabled
-                  ? "الحجوزات مغلقة اليوم على مستوى الصالون."
-                  : !effectiveEnabled
-                    ? "لا يوجد دوام تشغيلي للموظفة اليوم في Malikat Core."
-                    : !intersection
-                      ? "لا يوجد وقت مشترك بين دوام الموظفة وساعات الصالون."
-                      : undefined;
-        const reasonStatusValue = ended
-          ? "انتهاء التوظيف"
-          : leaveActiveToday
-            ? "إجازة"
-            : canonicalUnavailable
-              ? "Malikat Core غير متاح"
-              : canonicalOff
-                ? canonicalSource === "exception"
-                  ? "استثناء إغلاق في Malikat Core"
-                  : "راحة أسبوعية في Malikat Core"
-                : canonicalSource === "exception"
-                  ? "استثناء الموظفة في Malikat Core"
-                  : canonicalSource === "weekly_schedule"
-                    ? "الجدول الأسبوعي في Malikat Core"
-                    : canonicalSource === "assignment"
-                      ? "تعيين الشفت في Malikat Core"
-                      : "Malikat Core";
-        const bookingAvailabilityValue =
-          ended || leaveActiveToday || !salonEnabled || !effectiveEnabled || !intersection
-            ? "غير متاح اليوم"
+        const hasClosureStatus =
+          canonicalUnavailable ||
+          canonicalOff ||
+          !salonEnabled ||
+          !effectiveEnabled ||
+          !intersection;
+
+        const closureStatusValue =
+          canonicalUnavailable
+            ? "تعذر تحميل الدوام"
+            : canonicalOff
+              ? canonicalSource ===
+                "exception"
+                ? "إغلاق استثنائي في Malikat Core"
+                : "راحة أسبوعية"
+              : !salonEnabled
+                ? "إغلاق على مستوى الصالون"
+                : !effectiveEnabled
+                  ? "إغلاق على مستوى الموظفة"
+                  : !intersection
+                    ? "لا يوجد وقت مشترك"
+                    : "لا يوجد إغلاق اليوم";
+
+        const closureStatusNote =
+          canonicalUnavailable
+            ? "تعذر تحميل الدوام التشغيلي الحالي من Malikat Core."
+            : canonicalOff
+              ? canonicalSource ===
+                "exception"
+                ? "يوجد استثناء معتمد في Malikat Core يغلق دوام الموظفة اليوم."
+                : "اليوم راحة أسبوعية حسب الجدول المعتمد في Malikat Core."
+              : !salonEnabled
+                ? "الصالون مغلق اليوم على مستوى ساعات التشغيل."
+                : !effectiveEnabled
+                  ? "لا يوجد دوام تشغيلي للموظفة اليوم في Malikat Core."
+                  : !intersection
+                    ? "لا يوجد وقت مشترك بين دوام الموظفة وساعات الصالون."
+                    : undefined;
+
+        const reasonStatusValue =
+          canonicalUnavailable
+            ? "Malikat Core غير متاح"
+            : canonicalOff
+              ? canonicalSource ===
+                "exception"
+                ? "استثناء إغلاق في Malikat Core"
+                : "راحة أسبوعية في Malikat Core"
+              : canonicalSource ===
+                "exception"
+                ? "استثناء الموظفة في Malikat Core"
+                : canonicalSource ===
+                  "weekly_schedule"
+                  ? "الجدول الأسبوعي في Malikat Core"
+                  : canonicalSource ===
+                    "assignment"
+                    ? "تعيين الشفت في Malikat Core"
+                    : "Malikat Core";
+
+        const scheduleAvailabilityValue =
+          !salonEnabled ||
+          !effectiveEnabled ||
+          !intersection
+            ? "لا يوجد دوام متاح اليوم"
             : "متاح ضمن هذه الفترة";
+
         const statusRows = [
           {
             label: "السبب",
@@ -6338,13 +6338,18 @@ export default function DashboardEmployees() {
           },
           {
             label: "حالة الإغلاق",
-            value: hasClosureStatus ? closureStatusValue : "لا يوجد",
+            value:
+              hasClosureStatus
+                ? closureStatusValue
+                : "لا يوجد",
           },
           {
-            label: "إتاحة الحجز",
-            value: bookingAvailabilityValue,
+            label: "حالة الدوام",
+            value:
+              scheduleAvailabilityValue,
           },
         ];
+
         const canonicalFutureTarget =
           cleanText(staff.id) ===
           coreResolvedFutureEmployeeId;
@@ -6365,46 +6370,16 @@ export default function DashboardEmployees() {
 
         const upcomingReturn = (() => {
           if (
-            ended ||
             !!intersection
           ) {
             return null;
           }
 
-          if (!canonicalFutureTarget) {
+          if (
+            !canonicalFutureTarget
+          ) {
             return null;
           }
-
-          const ongoingLeaveWithoutEnd =
-            leaveByToggle &&
-            !leaveUntil;
-
-          if (ongoingLeaveWithoutEnd) {
-            return {
-              gregorianDate:
-                "غير محدد حتى الآن",
-              hijriDate:
-                "بانتظار تحديد نهاية الإجازة",
-              windowLabel:
-                "سيُحدد لاحقًا",
-              sourceLabel:
-                "بانتظار تحديد نهاية الإجازة",
-              availabilityLabel:
-                "الحجز غير متاح حتى يتم تحديد موعد العودة",
-              note:
-                "لا يمكن احتساب أول يوم عمل لأن الإجازة الحالية بلا تاريخ نهاية محدد.",
-              leaveEndsLabel: "",
-            };
-          }
-
-          const leaveEndsOn =
-            leaveByToggle &&
-            leaveUntil &&
-            leaveUntil >= today
-              ? leaveUntil
-              : leaveByDate
-                ? today
-                : "";
 
           if (
             canonicalFutureLoadingForStaff
@@ -6418,13 +6393,10 @@ export default function DashboardEmployees() {
               sourceLabel:
                 "Malikat Core",
               availabilityLabel:
-                "جارٍ احتساب أول يوم عودة",
+                "جارٍ احتساب الدوام القادم",
               note:
                 "يتم تحميل الدوام المستقبلي المعتمد من Malikat Core.",
-              leaveEndsLabel:
-                leaveEndsOn
-                  ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
-                  : "",
+              leaveEndsLabel: "",
             };
           }
 
@@ -6440,13 +6412,10 @@ export default function DashboardEmployees() {
               sourceLabel:
                 "Malikat Core",
               availabilityLabel:
-                "تعذر احتساب العودة",
+                "تعذر احتساب الدوام القادم",
               note:
                 canonicalFutureErrorForStaff,
-              leaveEndsLabel:
-                leaveEndsOn
-                  ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
-                  : "",
+              leaveEndsLabel: "",
             };
           }
 
@@ -6460,24 +6429,6 @@ export default function DashboardEmployees() {
               );
 
             if (!candidateDate) {
-              continue;
-            }
-
-            if (
-              employmentEndDate &&
-              candidateDate >
-                employmentEndDate
-            ) {
-              break;
-            }
-
-            // Leave data is separate from scheduling.
-            // Do not call a staff schedule fallback.
-            if (
-              exceptionalDates.includes(
-                candidateDate
-              )
-            ) {
               continue;
             }
 
@@ -6540,134 +6491,6 @@ export default function DashboardEmployees() {
               continue;
             }
 
-            // Salon opening hours remain an independent
-            // booking constraint. Employee scheduling comes
-            // exclusively from the resolved Core row above.
-            const targetDayKey =
-              weekdayFromIso(
-                candidateDate
-              ) || "sat";
-
-            const targetBusinessHours =
-              (businessHours as any)?.[
-                targetDayKey
-              ] || {
-                enabled: true,
-                start:
-                  DEFAULT_OPEN_TIME,
-                end:
-                  DEFAULT_CLOSE_TIME,
-              };
-
-            let targetSalonEnabled =
-              targetBusinessHours
-                ?.enabled !== false;
-
-            let targetSalonOpen =
-              normalizeTimeHHMM(
-                targetBusinessHours?.start
-              ) ||
-              DEFAULT_OPEN_TIME;
-
-            let targetSalonClose =
-              normalizeTimeHHMM(
-                targetBusinessHours?.end
-              ) ||
-              DEFAULT_CLOSE_TIME;
-
-            for (
-              let i =
-                bookingHourOverrides.length -
-                1;
-              i >= 0;
-              i--
-            ) {
-              const salonOverride =
-                bookingHourOverrides[i];
-
-              if (
-                candidateDate <
-                  salonOverride.fromDate ||
-                candidateDate >
-                  salonOverride.toDate
-              ) {
-                continue;
-              }
-
-              const includeDays =
-                Array.isArray(
-                  salonOverride
-                    ?.includeWeekdays
-                )
-                  ? (salonOverride.includeWeekdays as WeekdayKey[])
-                  : [];
-
-              if (
-                includeDays.length >
-                  0 &&
-                !includeDays.includes(
-                  targetDayKey
-                )
-              ) {
-                continue;
-              }
-
-              const blockedDays =
-                Array.isArray(
-                  salonOverride
-                    ?.blockedWeekdays
-                )
-                  ? (salonOverride.blockedWeekdays as WeekdayKey[])
-                  : [];
-
-              if (
-                blockedDays.includes(
-                  targetDayKey
-                ) ||
-                cleanText(
-                  salonOverride?.mode
-                ) === "closed"
-              ) {
-                targetSalonEnabled =
-                  false;
-              } else {
-                targetSalonEnabled =
-                  true;
-
-                targetSalonOpen =
-                  normalizeTimeHHMM(
-                    salonOverride.start
-                  ) ||
-                  targetSalonOpen;
-
-                targetSalonClose =
-                  normalizeTimeHHMM(
-                    salonOverride.end
-                  ) ||
-                  targetSalonClose;
-              }
-
-              break;
-            }
-
-            if (!targetSalonEnabled) {
-              continue;
-            }
-
-            const candidateIntersection =
-              intersectTimeWindows(
-                targetSalonOpen,
-                targetSalonClose,
-                candidateStart,
-                candidateEnd
-              );
-
-            if (
-              !candidateIntersection
-            ) {
-              continue;
-            }
-
             const sourceLabel =
               candidateSource ===
                 "exception"
@@ -6696,26 +6519,24 @@ export default function DashboardEmployees() {
                 ),
               windowLabel:
                 formatWindow(
-                  candidateIntersection.start,
-                  candidateIntersection.end
+                  candidateStart,
+                  candidateEnd
                 ),
               sourceLabel,
               availabilityLabel:
-                "الحجز سيكون متاحًا ابتداءً من هذا الوقت",
+                "يوجد دوام مجدول ابتداءً من هذا الوقت",
               note:
                 candidateNote
-                  ? `ملاحظة Malikat Core: ${candidateNote}`
-                  : "أول يوم عودة محسوب من الدوام التشغيلي المعتمد في Malikat Core.",
-              leaveEndsLabel:
-                leaveEndsOn
-                  ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
-                  : "",
+                  ? "ملاحظة Malikat Core: " +
+                    candidateNote
+                  : "أول يوم دوام قادم محسوب من الجدول التشغيلي المعتمد في Malikat Core.",
+              leaveEndsLabel: "",
             };
           }
 
           return {
             gregorianDate:
-              "لا توجد عودة مجدولة",
+              "لا يوجد دوام مجدول",
             hijriDate:
               "بحسب بيانات Malikat Core",
             windowLabel:
@@ -6723,13 +6544,10 @@ export default function DashboardEmployees() {
             sourceLabel:
               "Malikat Core",
             availabilityLabel:
-              "الحجز غير متاح حتى تتوفر ساعات عمل لاحقة",
+              "لا توجد ساعات عمل لاحقة ضمن النطاق",
             note:
-              "لم يتم العثور على يوم عمل قادم خلال 120 يومًا من الدوام التشغيلي المعتمد.",
-            leaveEndsLabel:
-              leaveEndsOn
-                ? `${fmtIsoDate(leaveEndsOn)} — ${fmtIsoDateHijri(leaveEndsOn)}`
-                : "",
+              "لم يتم العثور على يوم عمل قادم خلال 120 يومًا من الجدول التشغيلي المعتمد.",
+            leaveEndsLabel: "",
           };
         })();
         const detailRows = [
@@ -6762,12 +6580,16 @@ export default function DashboardEmployees() {
                 note: "لا يوجد إغلاق أو تعطيل يؤثر على الدوام اليوم.",
               },
           {
-            label: "إتاحة الحجز",
-            value: bookingAvailabilityValue,
+            label: "حالة الدوام",
+            value:
+              scheduleAvailabilityValue,
             note:
-              bookingAvailabilityValue === "متاح ضمن هذه الفترة"
-                ? `الحجز متاح ضمن ${finalWindowLabel}.`
-                : "الحجز غير متاح اليوم بحسب النتيجة النهائية أعلاه.",
+              scheduleAvailabilityValue ===
+              "متاح ضمن هذه الفترة"
+                ? "الدوام متاح ضمن " +
+                  finalWindowLabel +
+                  "."
+                : "لا توجد نافذة دوام متاحة اليوم بحسب Malikat Core.",
           },
         ].filter(Boolean);
 

@@ -75,11 +75,6 @@ export type EmployeeDirectoryEntry = {
   onLeave?: boolean;
   leaveUntil?: string;
   employmentEndDate?: string;
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Record<string, unknown>;
-  customWorkingHourOverrides?: Array<Record<string, unknown>>;
-  exceptionalLeaveDates?: string[];
-  exceptionalLeaveWeekdays?: string[];
   rating?: number;
   reviewsCount?: number;
   source?: "api" | "firestore";

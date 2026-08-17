@@ -61,15 +61,6 @@ export type PartnerMemberOperationalProfile = {
   specialties: string[];
   specialtyLabels: string[];
   bio?: string;
-  showOnBooking: boolean;
-  onLeave: boolean;
-  leaveUntil?: string;
-  employmentEndDate?: string;
-  useCustomWorkingHours: boolean;
-  customWorkingHours?: Record<string, unknown>;
-  customWorkingHourOverrides?: Array<Record<string, unknown>>;
-  exceptionalLeaveDates: string[];
-  exceptionalLeaveWeekdays: string[];
   resourceIds: string[];
   contractId?: string;
   rating?: number;

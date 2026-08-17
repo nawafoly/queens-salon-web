@@ -84,13 +84,6 @@ function cleanRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-function cleanRecordArray(value: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-    .map((item) => item as Record<string, unknown>);
-}
-
 function safeNumber(value: unknown): number | undefined {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : undefined;
@@ -200,13 +193,6 @@ function normalizeEntry(
     employmentEndDate:
       cleanText(raw.employmentEndDate || raw.lastWorkingDate || raw.resignationDate || "") ||
       undefined,
-    useCustomWorkingHours: raw.useCustomWorkingHours === true,
-    customWorkingHours: cleanRecord(raw.customWorkingHours),
-    customWorkingHourOverrides: cleanRecordArray(raw.customWorkingHourOverrides),
-    exceptionalLeaveDates: cleanStringArray(raw.exceptionalLeaveDates),
-    exceptionalLeaveWeekdays: cleanStringArray(
-      raw.exceptionalLeaveWeekdays || raw.weeklyOffDays || raw.offWeekdays
-    ),
     rating: safeNumber(raw.rating),
     reviewsCount: safeNumber(raw.reviewsCount || raw.reviewCount),
     source: "firestore",
@@ -282,18 +268,6 @@ function mergeEntry(
     onLeave: next.onLeave === true || current.onLeave === true,
     leaveUntil: next.leaveUntil || current.leaveUntil,
     employmentEndDate: next.employmentEndDate || current.employmentEndDate,
-    useCustomWorkingHours: next.useCustomWorkingHours === true || current.useCustomWorkingHours === true,
-    customWorkingHours: next.customWorkingHours || current.customWorkingHours,
-    customWorkingHourOverrides:
-      next.customWorkingHourOverrides?.length
-        ? next.customWorkingHourOverrides
-        : current.customWorkingHourOverrides,
-    exceptionalLeaveDates:
-      next.exceptionalLeaveDates?.length ? next.exceptionalLeaveDates : current.exceptionalLeaveDates,
-    exceptionalLeaveWeekdays:
-      next.exceptionalLeaveWeekdays?.length
-        ? next.exceptionalLeaveWeekdays
-        : current.exceptionalLeaveWeekdays,
     rating: next.rating ?? current.rating,
     reviewsCount: next.reviewsCount ?? current.reviewsCount,
     source: "firestore",
@@ -411,15 +385,6 @@ export function buildPartnerMemberOperationalProfile(
         ? cleanStringArray(employee.specialtyLabels)
         : cleanStringArray(employee.specialties),
     bio: cleanText(employee.bio) || undefined,
-    showOnBooking: employee.showOnBooking !== false,
-    onLeave: employee.onLeave === true,
-    leaveUntil: cleanText(employee.leaveUntil) || undefined,
-    employmentEndDate: cleanText(employee.employmentEndDate) || undefined,
-    useCustomWorkingHours: employee.useCustomWorkingHours === true,
-    customWorkingHours: cleanRecord(employee.customWorkingHours),
-    customWorkingHourOverrides: cleanRecordArray(employee.customWorkingHourOverrides),
-    exceptionalLeaveDates: cleanStringArray(employee.exceptionalLeaveDates),
-    exceptionalLeaveWeekdays: cleanStringArray(employee.exceptionalLeaveWeekdays),
     resourceIds:
       cleanStringArray(employee.resourceIds).length > 0
         ? cleanStringArray(employee.resourceIds)

@@ -106,7 +106,7 @@ export default function ScheduleSummarySection({
       ) : null}
 
       {upcomingReturn ? (
-        <WorkspaceCardV2 title="العودة القادمة" description="أقرب نافذة عودة متوقعة حسب الجدول والاستثناءات.">
+        <WorkspaceCardV2 title="الدوام القادم" description="أقرب نافذة دوام قادمة حسب Malikat Core.">
           <div className="dsv2-ew-metrics dsv2-ew-metrics--compact">
             <WorkspaceMetricV2
               label="نافذة العودة"
@@ -116,7 +116,7 @@ export default function ScheduleSummarySection({
             <WorkspaceMetricV2 label="الميلادي" value={upcomingReturn.gregorianDate || "غير محدد"} />
             <WorkspaceMetricV2 label="الهجري" value={upcomingReturn.hijriDate || "-"} />
             <WorkspaceMetricV2 label="المصدر" value={upcomingReturn.sourceLabel || "-"} />
-            <WorkspaceMetricV2 label="إتاحة الحجز" value={upcomingReturn.availabilityLabel || "-"} />
+            <WorkspaceMetricV2 label="حالة الدوام" value={upcomingReturn.availabilityLabel || "-"} />
             {upcomingReturn.leaveEndsLabel ? (
               <WorkspaceMetricV2 label="نهاية الحالة" value={upcomingReturn.leaveEndsLabel} tone="gold" />
             ) : null}

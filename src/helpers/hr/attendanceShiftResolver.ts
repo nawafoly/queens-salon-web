@@ -9,38 +9,6 @@ import {
 import { permissionIntervalsFromRequests, type PermissionIntervalInput } from "./permissionAttendance.ts";
 import type { CoreResolvedShift } from "../../types/hrCoreApi.ts";
 
-type AttendanceWorkingDay = {
-  enabled?: boolean;
-  shiftTemplateId?: string;
-  shiftName?: string;
-  start?: string;
-  end?: string;
-};
-
-export type AttendanceScheduleInput = ShiftSchedule & {
-  start?: string | null;
-  end?: string | null;
-  workStartTime?: string | null;
-  workEndTime?: string | null;
-  shiftStartTime?: string | null;
-  shiftEndTime?: string | null;
-  offDays?: unknown;
-  weeklyOffDay?: unknown;
-  exceptionalLeaveWeekdays?: unknown;
-  useCustomWorkingHours?: boolean;
-  customWorkingHours?: Record<string, AttendanceWorkingDay> | null;
-  customWorkingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workingHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workHourOverrides?: Array<{ date?: string; enabled?: boolean; start?: string; end?: string }> | null;
-  workingScheduleVersions?: Array<{
-    id?: string;
-    effectiveFrom?: string;
-    effectiveTo?: string;
-    useCustomWorkingHours?: boolean;
-    customWorkingHours?: Record<string, AttendanceWorkingDay>;
-  }> | null;
-};
-
 export type AttendanceShiftResolutionSource =
   | "core_resolved_shift"
   | "core_unavailable";
@@ -74,17 +42,6 @@ export type ResolvedAttendanceDay = {
   schedule: ShiftSchedule;
   computation: AttendanceDayComputation;
   status: AttendanceStatus;
-};
-
-const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const WEEKDAY_TO_OFF_KEY: Record<(typeof WEEKDAY_KEYS)[number], string> = {
-  sun: "sunday",
-  mon: "monday",
-  tue: "tuesday",
-  wed: "wednesday",
-  thu: "thursday",
-  fri: "friday",
-  sat: "saturday",
 };
 
 function cleanText(value: unknown) {
@@ -147,17 +104,6 @@ export function attendanceMonthDateKeys(monthKey: string) {
   const [year, month] = normalized.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return Array.from({ length: lastDay }, (_, index) => `${normalized}-${String(index + 1).padStart(2, "0")}`);
-}
-
-function weekdayKeyForDate(dateKey: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) return "sun";
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
-  return WEEKDAY_KEYS[date.getUTCDay()] || "sun";
-}
-
-function weeklyOffKeyForDate(dateKey: string) {
-  return WEEKDAY_TO_OFF_KEY[weekdayKeyForDate(dateKey)];
 }
 
 function parseJsonObject(value: unknown) {
@@ -329,7 +275,6 @@ function scheduleFromResolvedShift(dateKey: string, row: CoreResolvedShift | nul
   if (!row || !window) return null;
   const exceptionType = cleanText((row as Record<string, unknown>).exceptionType || (row as Record<string, unknown>).exception_type).toLowerCase();
   const active = readActiveState((row as Record<string, unknown>).active);
-  const weeklyOffDay = weeklyOffKeyForDate(dateKey);
   if (window.isOff) {
     return {
       schedule: {
@@ -339,7 +284,7 @@ function scheduleFromResolvedShift(dateKey: string, row: CoreResolvedShift | nul
         earlyLeaveGraceMinutes: 0,
         attendanceLockEnabled: false,
         attendanceLockAfterMinutes: 0,
-        weeklyOffDays: [weeklyOffDay],
+        weeklyOffDays: [],
       },
       startTime: "",
       endTime: "",
@@ -418,7 +363,6 @@ function buildResolution(input: {
 export function resolveAttendanceShiftForDate(input: {
   dateKey: string;
   row?: Record<string, unknown> | null;
-  schedule?: AttendanceScheduleInput | null;
   coreResolvedShift?: CoreResolvedShift | null;
   calculationTime?: string;
 }): AttendanceShiftResolution {
@@ -600,7 +544,6 @@ export function computeResolvedAttendanceDay(input: {
   dateKey: string;
   row?: Record<string, unknown> | null;
   records?: AttendanceRecord[];
-  schedule?: AttendanceScheduleInput | null;
   coreResolvedShift?: CoreResolvedShift | null;
   permissionIntervals?: PermissionIntervalInput[];
   permissionEntries?: unknown[];

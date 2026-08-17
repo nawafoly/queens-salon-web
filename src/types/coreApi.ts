@@ -66,9 +66,6 @@ export type CoreStaff = {
   showOnBooking?: boolean;
   specialties?: string[];
   schedules?: CoreStaffSchedule[];
-  leaveStartDate?: string | null;
-  leaveEndDate?: string | null;
-  leaveNote?: string | null;
   createdAt: string;
   updatedAt: string;
 };

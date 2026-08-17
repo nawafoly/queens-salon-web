@@ -163,3 +163,78 @@ test("cancelled leave request does not appear", () => {
 
   assert.deepEqual(keys, []);
 });
+
+
+test("profile scheduling/leave mirrors never create attendance special days", () => {
+  const days =
+    buildApprovedLeaveSpecialDays({
+      profile: {
+        ...profile,
+        exceptionalLeaveDates: [
+          dateKey,
+        ],
+        onLeave: true,
+        leaveStartDate:
+          "2026-08-01",
+        leaveUntil:
+          "2026-08-10",
+      },
+      todayDateKey:
+        dateKey,
+    });
+
+  assert.deepEqual(
+    days,
+    []
+  );
+});
+
+test("canonical approved leave still wins after profile mirrors are ignored", () => {
+  const days =
+    buildApprovedLeaveSpecialDays({
+      profile: {
+        ...profile,
+        exceptionalLeaveDates: [
+          "2026-08-20",
+        ],
+        onLeave: true,
+        leaveStartDate:
+          "2026-08-20",
+        leaveUntil:
+          "2026-08-22",
+      },
+      leaveRequests: [
+        {
+          id:
+            "core-leave-stage2",
+          employeeUid:
+            profile.uid,
+          employeeId:
+            profile.id,
+          type:
+            "annual",
+          fromDate:
+            dateKey,
+          toDate:
+            dateKey,
+          status:
+            "approved",
+        },
+      ],
+    });
+
+  assert.equal(
+    days.length,
+    1
+  );
+
+  assert.equal(
+    days[0].date,
+    dateKey
+  );
+
+  assert.equal(
+    days[0].source,
+    "leave_request"
+  );
+});

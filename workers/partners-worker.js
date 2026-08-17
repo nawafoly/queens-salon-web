@@ -172,25 +172,6 @@ function parseJsonObject(value) {
   }
 }
 
-function cleanPlainObject(value, maxLength = 30_000) {
-  const parsed = parseJsonObject(value);
-  try {
-    const serialized = JSON.stringify(parsed);
-    if (serialized.length > maxLength) return {};
-    return JSON.parse(serialized);
-  } catch {
-    return {};
-  }
-}
-
-function cleanPlainObjectArray(value, maxRows = 120) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .slice(0, maxRows)
-    .map((item) => cleanPlainObject(item, 8_000))
-    .filter((item) => Object.keys(item).length > 0);
-}
-
 function normalizeOperationalProfile(value) {
   const raw = parseJsonObject(value);
   const specialties = cleanStringList(raw.specialties).slice(0, 80);
@@ -204,15 +185,6 @@ function normalizeOperationalProfile(value) {
     specialties,
     specialtyLabels: specialtyLabels.length ? specialtyLabels : specialties,
     bio: optionalText(raw.bio) || undefined,
-    showOnBooking: raw.showOnBooking !== false,
-    onLeave: raw.onLeave === true,
-    leaveUntil: optionalText(raw.leaveUntil) || undefined,
-    employmentEndDate: optionalText(raw.employmentEndDate) || undefined,
-    useCustomWorkingHours: raw.useCustomWorkingHours === true,
-    customWorkingHours: cleanPlainObject(raw.customWorkingHours),
-    customWorkingHourOverrides: cleanPlainObjectArray(raw.customWorkingHourOverrides),
-    exceptionalLeaveDates: cleanStringList(raw.exceptionalLeaveDates).slice(0, 366),
-    exceptionalLeaveWeekdays: cleanStringList(raw.exceptionalLeaveWeekdays).slice(0, 14),
     resourceIds: cleanStringList(raw.resourceIds).slice(0, 100),
     contractId: optionalText(raw.contractId) || undefined,
     rating: optionalNumber(raw.rating, 0) ?? undefined,
