@@ -1282,20 +1282,6 @@ export async function generatePayrollEntriesForMonths(input: {
     return [];
   }
 
-  const employeeIdChunks: string[][] = [];
-
-  for (
-    let index = 0;
-    index < payrollEmployees.length;
-    index += 100
-  ) {
-    employeeIdChunks.push(
-      payrollEmployees
-        .slice(index, index + 100)
-        .map((employee) => employee.id)
-    );
-  }
-
   const resolvedShiftsByMonth = new Map<
     string,
     CoreResolvedShift[]
@@ -1307,19 +1293,20 @@ export async function generatePayrollEntriesForMonths(input: {
       const month = Number(payrollMonth.slice(5, 7));
       const bounds = payrollMonthBounds(year, month);
 
-      const batches = await Promise.all(
-        employeeIdChunks.map((employeeIds) =>
-          CoreHrService.resolveEmployeeShiftsBatch({
-            employeeIds,
-            dateFrom: bounds.monthStart,
-            dateTo: bounds.monthEnd,
-          })
-        )
-      );
+      const resolved =
+        await CoreHrService.resolveEmployeeShiftsRange({
+          employeeIds:
+            payrollEmployees.map(
+              (employee) =>
+                employee.id
+            ),
+          dateFrom: bounds.monthStart,
+          dateTo: bounds.monthEnd,
+        });
 
       resolvedShiftsByMonth.set(
         payrollMonth,
-        batches.flatMap((batch) => batch.rows)
+        resolved.rows
       );
     })
   );

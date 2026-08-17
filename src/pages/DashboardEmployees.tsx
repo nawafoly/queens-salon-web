@@ -5410,7 +5410,7 @@ export default function DashboardEmployees() {
     setCoreResolvedTodayError("");
 
     CoreHrService
-      .resolveEmployeeShiftsBatch({
+      .resolveEmployeeShiftsRange({
         employeeIds,
         dateFrom:
           coreResolvedTodayDateKey,
@@ -5546,22 +5546,10 @@ export default function DashboardEmployees() {
             1
           );
 
-    const firstRangeEnd =
+    const rangeEnd =
       addDaysIso(
         rangeStart,
-        61
-      );
-
-    const secondRangeStart =
-      addDaysIso(
-        firstRangeEnd,
-        1
-      );
-
-    const secondRangeEnd =
-      addDaysIso(
-        secondRangeStart,
-        57
+        119
       );
 
     let cancelled = false;
@@ -5570,32 +5558,20 @@ export default function DashboardEmployees() {
     setCoreResolvedFutureLoading(true);
     setCoreResolvedFutureError("");
 
-    Promise.all([
-      CoreHrService.resolveEmployeeShiftsBatch({
+    CoreHrService
+      .resolveEmployeeShiftsRange({
         employeeIds: [employeeId],
         dateFrom: rangeStart,
-        dateTo: firstRangeEnd,
-      }),
-      CoreHrService.resolveEmployeeShiftsBatch({
-        employeeIds: [employeeId],
-        dateFrom: secondRangeStart,
-        dateTo: secondRangeEnd,
-      }),
-    ])
+        dateTo: rangeEnd,
+      })
       .then(
-        ([
-          firstRange,
-          secondRange,
-        ]) => {
+        (range) => {
           if (cancelled) {
             return;
           }
 
           const rows =
-            [
-              ...firstRange.rows,
-              ...secondRange.rows,
-            ]
+            range.rows
               .filter(
                 (row) =>
                   cleanText(

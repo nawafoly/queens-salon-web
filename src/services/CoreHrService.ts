@@ -1,5 +1,6 @@
 // CORE D1 ONLY — do not add Firestore fallback.
 import { coreApiRequest } from "./coreApiClient";
+import { buildDateKeysInRange } from "../helpers/hr/workSchedule";
 import type {
   CoreAbsence,
   CoreAttendanceRecord,
@@ -209,6 +210,132 @@ export const CoreHrService = {
       rows,
     };
   },
+  async resolveEmployeeShiftsRange(input: {
+    employeeIds: string[];
+    dateFrom: string;
+    dateTo: string;
+  }) {
+    const employeeIds = Array.from(
+      new Set(
+        input.employeeIds
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const dateKeys =
+      buildDateKeysInRange(
+        input.dateFrom,
+        input.dateTo
+      );
+
+    if (!dateKeys.length) {
+      throw new Error(
+        "core_hr:invalid_resolved_shift_range"
+      );
+    }
+
+    if (!employeeIds.length) {
+      return {
+        dateFrom: dateKeys[0],
+        dateTo:
+          dateKeys[
+            dateKeys.length - 1
+          ],
+        employeesCount: 0,
+        daysCount: dateKeys.length,
+        rows: [] as CoreResolvedShift[],
+      };
+    }
+
+    const rows: CoreResolvedShift[] = [];
+
+    /*
+     * Core Worker hard limits:
+     * - maximum 100 employees/request
+     * - maximum 62 days/request
+     * - maximum 5000 employee-days/request
+     *
+     * Keep this orchestration here so consumers never
+     * implement their own scheduling batch policy.
+     */
+    for (
+      let dateOffset = 0;
+      dateOffset < dateKeys.length;
+      dateOffset += 62
+    ) {
+      const rangeKeys =
+        dateKeys.slice(
+          dateOffset,
+          dateOffset + 62
+        );
+
+      const employeeChunkSize =
+        Math.max(
+          1,
+          Math.min(
+            100,
+            Math.floor(
+              5000 /
+                rangeKeys.length
+            )
+          )
+        );
+
+      const batches = [];
+
+      for (
+        let employeeOffset = 0;
+        employeeOffset <
+        employeeIds.length;
+        employeeOffset +=
+          employeeChunkSize
+      ) {
+        batches.push(
+          CoreHrService.resolveEmployeeShiftsBatch({
+            employeeIds:
+              employeeIds.slice(
+                employeeOffset,
+                employeeOffset +
+                  employeeChunkSize
+              ),
+            dateFrom:
+              rangeKeys[0],
+            dateTo:
+              rangeKeys[
+                rangeKeys.length - 1
+              ],
+          })
+        );
+      }
+
+      const resolved =
+        await Promise.all(
+          batches
+        );
+
+      rows.push(
+        ...resolved.flatMap(
+          (batch) =>
+            batch.rows
+        )
+      );
+    }
+
+    return {
+      dateFrom: dateKeys[0],
+      dateTo:
+        dateKeys[
+          dateKeys.length - 1
+        ],
+      employeesCount:
+        employeeIds.length,
+      daysCount:
+        dateKeys.length,
+      rows,
+    };
+  },
+
   async previewShiftChange(input: Record<string, unknown>) {
     return camel<CoreShiftChangePreview>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-change-preview", { method: "POST", body: input }));
   },

@@ -663,7 +663,7 @@ test("temporary weekly off is Core-only and refreshes Dashboard canonical except
   // the canonical Malikat Core resolved shift.
   assert.match(
     dashboard,
-    /resolveEmployeeShiftsBatch\(\{[\s\S]*dateFrom:\s*coreResolvedTodayDateKey[\s\S]*dateTo:\s*coreResolvedTodayDateKey/
+    /resolveEmployeeShiftsRange\(\{[\s\S]*dateFrom:\s*coreResolvedTodayDateKey[\s\S]*dateTo:\s*coreResolvedTodayDateKey/
   );
 
   assert.match(
@@ -722,12 +722,17 @@ test("temporary weekly off is Core-only and refreshes Dashboard canonical except
 
   assert.match(
     dashboard,
-    /const firstRangeEnd =\s*addDaysIso\([\s\S]*rangeStart,[\s\S]*61/
+    /const rangeEnd =\s*addDaysIso\([\s\S]*rangeStart,[\s\S]*119/
   );
 
   assert.match(
     dashboard,
-    /const secondRangeEnd =\s*addDaysIso\([\s\S]*secondRangeStart,[\s\S]*57/
+    /resolveEmployeeShiftsRange\(\{[\s\S]*employeeIds:\s*\[employeeId\][\s\S]*dateFrom:\s*rangeStart[\s\S]*dateTo:\s*rangeEnd/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /firstRangeEnd|secondRangeStart|secondRangeEnd/
   );
 
   assert.match(
@@ -951,4 +956,127 @@ test("Dashboard schedule summary reads employee scheduling presentation from Mal
     source,
     /canonicalScheduleTarget[\s\S]*coreScheduleLoadedEmployeeId/
   );
+});
+test("StaffPerformance attendance discipline uses Malikat Core resolved shifts only", () => {
+  const performance = readFileSync(
+    "src/services/StaffPerformanceService.ts",
+    "utf8"
+  );
+
+  const coreHr = readFileSync(
+    "src/services/CoreHrService.ts",
+    "utf8"
+  );
+
+  assert.match(
+    performance,
+    /CoreHrService\.resolveEmployeeShiftsRange\(\{/
+  );
+
+  assert.match(
+    performance,
+    /resolveAttendanceShiftForDate\(\{[\s\S]*coreResolvedShift:/
+  );
+
+  assert.match(
+    performance,
+    /scheduledStart:\s*shiftResolution\.startTime/
+  );
+
+  assert.match(
+    performance,
+    /scheduledEnd:\s*shiftResolution\.endTime/
+  );
+
+  assert.match(
+    performance,
+    /lateGraceMinutes:\s*shiftResolution\.lateGraceMinutes/
+  );
+
+  assert.match(
+    performance,
+    /isScheduledWorkDay:\s*!shiftResolution\.isOff/
+  );
+
+  const forbidden = [
+    "staff.schedules",
+    "customWorkingHours",
+    "useCustomWorkingHours",
+    "DEFAULT_SHIFT_START",
+    "DEFAULT_SHIFT_END",
+    "function resolveSchedule",
+    "\"10:00\"",
+    "\"22:00\"",
+    "firestoreStaffPublic",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(
+      performance.includes(token),
+      false,
+      `StaffPerformance still owns legacy scheduling runtime: ${token}`
+    );
+  }
+
+  assert.match(
+    coreHr,
+    /async resolveEmployeeShiftsRange\(/
+  );
+
+  assert.match(
+    coreHr,
+    /dateOffset \+= 62/
+  );
+
+  assert.match(
+    coreHr,
+    /Math\.floor\(\s*5000\s*\/\s*rangeKeys\.length\s*\)/
+  );
+
+  assert.match(
+    coreHr,
+    /Math\.min\(\s*100,/
+  );
+});
+test("Core resolved shift batching policy is centralized in CoreHrService", () => {
+  const coreHr = readFileSync(
+    "src/services/CoreHrService.ts",
+    "utf8"
+  );
+
+  const consumers = [
+    "src/pages/DashboardEmployees.tsx",
+    "src/services/CorePayrollService.ts",
+    "src/services/StaffPerformanceService.ts",
+  ];
+
+  assert.match(
+    coreHr,
+    /async resolveEmployeeShiftsRange\(/
+  );
+
+  assert.match(
+    coreHr,
+    /CoreHrService\.resolveEmployeeShiftsBatch\(\{/
+  );
+
+  for (const file of consumers) {
+    const source = readFileSync(
+      file,
+      "utf8"
+    );
+
+    assert.equal(
+      source.includes(
+        "resolveEmployeeShiftsBatch"
+      ),
+      false,
+      `${file} must not own low-level Core shift batching`
+    );
+
+    assert.match(
+      source,
+      /resolveEmployeeShiftsRange/
+    );
+  }
 });
