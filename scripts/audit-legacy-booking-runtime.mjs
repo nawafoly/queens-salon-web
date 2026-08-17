@@ -41,7 +41,6 @@ const alwaysFirestoreFallbackFiles = new Set([
 // in Customer Booking, Internal V2 and the Core booking repositories.
 const compatibilityFiles = new Set([
   'src/helpers/bookingDateUtils.ts',
-  'src/helpers/hr/staffScheduleHistory.ts',
   'src/services/coreBookingMappers.ts',
   'workers/core/repositories/staff.js',
 ]);

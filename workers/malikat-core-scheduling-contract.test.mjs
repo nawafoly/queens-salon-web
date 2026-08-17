@@ -914,3 +914,41 @@ test("DashboardEmployees working-hour override save is Core-only", () => {
     "Core weekly schedule mutation must precede Firestore profile save"
   );
 });
+test("Dashboard schedule summary reads employee scheduling presentation from Malikat Core only", () => {
+  const source = readFileSync(
+    "src/pages/DashboardEmployees.tsx",
+    "utf8"
+  );
+
+  const forbidden = [
+    "staffScheduleHistory",
+    "workingScheduleVersions",
+    "resolveStaffWeeklyOffDays",
+    "(staff as any).customWorkingHours",
+    "(staff as any).customWorkingHourOverrides",
+    "(staff as any).useCustomWorkingHours",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(
+      source.includes(token),
+      false,
+      `Dashboard schedule summary still depends on legacy staff scheduling: ${token}`
+    );
+  }
+
+  assert.match(
+    source,
+    /resolveCoreScheduleEditorRows\(\s*coreScheduleRows,\s*today\s*\)/
+  );
+
+  assert.match(
+    source,
+    /projectCoreScheduleExceptionsToOverrides\(\s*coreScheduleExceptionRows\s*\)/
+  );
+
+  assert.match(
+    source,
+    /canonicalScheduleTarget[\s\S]*coreScheduleLoadedEmployeeId/
+  );
+});

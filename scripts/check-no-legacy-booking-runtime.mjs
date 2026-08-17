@@ -83,6 +83,10 @@ if (fs.existsSync(path.join(root, 'src/helpers/staffAvailability.ts'))) {
   failures.push('src/helpers/staffAvailability.ts: legacy local booking availability helper must be deleted');
 }
 
+if (fs.existsSync(path.join(root, 'src/helpers/hr/staffScheduleHistory.ts'))) {
+  failures.push('src/helpers/hr/staffScheduleHistory.ts: legacy employee schedule history runtime must be deleted');
+}
+
 forbid(
   'src/helpers/bookingDateUtils.ts',
   'staffScheduleHistory',

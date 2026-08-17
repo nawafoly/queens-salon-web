@@ -105,10 +105,7 @@ import {
   buildApprovedLeaveDateKeys,
   leaveRequestMatchesProfile,
 } from "../helpers/hr/attendanceCalendarData";
-import {
-  normalizeStaffScheduleVersions,
-  resolveDateEffectiveScheduleSnapshot,
-} from "../helpers/hr/staffScheduleHistory";
+
 import {
   normalizePayrollConfig,
   type StaffPayrollMethod,
@@ -936,12 +933,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     reviewsCount: Math.floor(pickEditableNumber("reviewsCount")),
     specialties: pickEditableArray("specialties", normalizeSpecialties),
     employmentEndDate: pickEditableText("employmentEndDate"),
-    useCustomWorkingHours: pickEditableBoolean("useCustomWorkingHours", false),
-    customWorkingHours: primaryIsStaffPublic
-      ? primary.customWorkingHours
-      : primary.customWorkingHours || fallback.customWorkingHours,
-    workingScheduleVersions: pickEditableArray("workingScheduleVersions", normalizeStaffScheduleVersions),
-    customWorkingHourOverrides: pickEditableArray("customWorkingHourOverrides", normalizeWorkingHourOverrides),
+
     allowedAttendanceZoneId: pickEditableText("allowedAttendanceZoneId"),
     attendanceZoneId: pickEditableText("attendanceZoneId"),
     attendanceScopeId: pickEditableText("attendanceScopeId"),
@@ -1646,18 +1638,7 @@ export default function DashboardEmployees() {
     setErrorMsg("ليست لديك صلاحية لإدارة رصيد الإجازات.");
     return false;
   }, [canManageLeaveBalance]);
-  const resolveStaffWeeklyOffDays = useCallback((staffLike: any): WeekdayKey[] => {
-    const sources = [
-      staffLike?.exceptionalLeaveWeekdays,
-      staffLike?.weeklyOffDays,
-      staffLike?.weeklyOffDay,
-      staffLike?.fixedWeeklyDayOff,
-      staffLike?.weeklyHoliday,
-      staffLike?.dayOff,
-    ];
-    const values = sources.flatMap((value) => (Array.isArray(value) ? value : value == null || value === "" ? [] : [value]));
-    return normalizeExceptionalLeaveWeekdays(values);
-  }, []);
+
 
   const resolveAttendanceZoneId = useCallback((staffLike: any): string => {
     const employment = staffLike?.employeeProfile?.employment || staffLike?.employment || {};
@@ -3677,11 +3658,7 @@ export default function DashboardEmployees() {
             leaveRequestId: cleanText(combined?.leaveRequestId),
             coreLeaveId: cleanText(combined?.coreLeaveId),
             exceptionalLeaveDates: normalizeExceptionalLeaveDates(combined?.exceptionalLeaveDates),
-            exceptionalLeaveWeekdays: resolveStaffWeeklyOffDays(combined),
-            useCustomWorkingHours: !!combined?.useCustomWorkingHours,
-            customWorkingHours: normalizeWorkingHours(combined?.customWorkingHours),
-            workingScheduleVersions: normalizeStaffScheduleVersions(combined?.workingScheduleVersions),
-            customWorkingHourOverrides: normalizeWorkingHourOverrides(combined?.customWorkingHourOverrides),
+
             allowedAttendanceZoneId: resolveAttendanceZoneId(combined),
             attendanceZoneId: cleanText(combined?.attendanceZoneId),
             assignedAttendanceZoneId: cleanText(combined?.assignedAttendanceZoneId),
@@ -3927,7 +3904,7 @@ export default function DashboardEmployees() {
         setLoading(false);
       }
     },
-    [canManageLeaveBalance, resolveAttendanceZoneId, resolveStaffWeeklyOffDays]
+    [canManageLeaveBalance, resolveAttendanceZoneId]
   );
 
   // ✅ Original logic for fixing bookings
@@ -5937,18 +5914,44 @@ export default function DashboardEmployees() {
         const leaveUntil = normalizeLeaveUntil((staff as any).leaveUntil);
         const employmentEndDate = normalizeLeaveUntil((staff as any).employmentEndDate);
         const exceptionalDates = normalizeExceptionalLeaveDates((staff as any).exceptionalLeaveDates);
-        const todayScheduleSnapshot = resolveDateEffectiveScheduleSnapshot(staff as any, today);
-        const overrides = normalizeWorkingHourOverrides((staff as any).customWorkingHourOverrides);
-        const overrideGroups = buildWorkingHourOverrideGroups(overrides);
-        const customWorkingHours = normalizeWorkingHours(
-          todayScheduleSnapshot.snapshot?.customWorkingHours || (staff as any).customWorkingHours
-        );
-        const useCustom = todayScheduleSnapshot.snapshot
-          ? todayScheduleSnapshot.snapshot.useCustomWorkingHours
-          : !!(staff as any).useCustomWorkingHours;
-        const exceptionalWeekdays = todayScheduleSnapshot.hasHistoricalVersion
-          ? normalizeExceptionalLeaveWeekdays(todayScheduleSnapshot.weeklyOffDays)
-          : resolveStaffWeeklyOffDays(staff);
+        const canonicalScheduleTarget =
+          cleanText(staff.id) ===
+          coreScheduleLoadedEmployeeId;
+
+        const coreWorkingHours =
+          canonicalScheduleTarget
+            ? resolveCoreScheduleEditorRows(
+                coreScheduleRows,
+                today
+              )
+            : emptyCoreScheduleEditorRows();
+
+        const exceptionalWeekdays =
+          canonicalScheduleTarget
+            ? WEEKDAY_OPTIONS
+                .filter(
+                  (day) =>
+                    coreWorkingHours[
+                      day.key
+                    ]?.enabled === false
+                )
+                .map(
+                  (day) =>
+                    day.key
+                )
+            : [];
+
+        const overrides =
+          canonicalScheduleTarget
+            ? projectCoreScheduleExceptionsToOverrides(
+                coreScheduleExceptionRows
+              )
+            : [];
+
+        const overrideGroups =
+          buildWorkingHourOverrideGroups(
+            overrides
+          );
         const overrideToday =
           canonicalSource === "exception"
             ? {
@@ -5964,7 +5967,7 @@ export default function DashboardEmployees() {
           overrideGroups.length && overrideGroups[overrideGroups.length - 1].toDate < today
             ? overrideGroups[overrideGroups.length - 1]
             : null;
-        const baseDay = weekday ? customWorkingHours[weekday] : undefined;
+
         const formatSavedOverrideGroup = (group: StaffWorkingHourOverrideGroup | null) => {
           if (!group) return null;
           const rangeGregorian = formatIsoDateRange(group.fromDate, group.toDate);
@@ -6834,6 +6837,9 @@ export default function DashboardEmployees() {
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [
     appSettings,
+    coreScheduleExceptionRows,
+    coreScheduleLoadedEmployeeId,
+    coreScheduleRows,
     coreResolvedFutureEmployeeId,
     coreResolvedFutureError,
     coreResolvedFutureLoading,
@@ -6843,7 +6849,6 @@ export default function DashboardEmployees() {
     coreResolvedTodayLoading,
     list,
     nowTick,
-    resolveStaffWeeklyOffDays,
   ]);
 
   const editingStaff = useMemo(

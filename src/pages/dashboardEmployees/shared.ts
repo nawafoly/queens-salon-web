@@ -48,16 +48,7 @@ export type StaffWorkingDay = {
   end?: string;
 };
 
-export type StaffScheduleVersion = {
-  id: string;
-  effectiveFrom: string;
-  effectiveTo?: string;
-  useCustomWorkingHours: boolean;
-  customWorkingHours: Partial<Record<WeekdayKey, StaffWorkingDay>>;
-  changeReason?: string;
-  createdAt?: string;
-  createdByUid?: string;
-};
+
 
 export type StaffWorkingHourOverride = {
   date: string;
@@ -129,7 +120,7 @@ export type StaffPublicDoc = {
   exceptionalLeaveWeekdays?: string[];
   useCustomWorkingHours?: boolean;
   customWorkingHours?: Partial<Record<WeekdayKey, StaffWorkingDay>>;
-  workingScheduleVersions?: StaffScheduleVersion[];
+
   customWorkingHourOverrides?: StaffWorkingHourOverride[];
   allowedAttendanceZoneId?: string;
   attendanceZoneId?: string;
