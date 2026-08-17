@@ -595,3 +595,75 @@ test("employee attendance uses the same Core absence facts as dashboard attendan
     "employee month view must not use attendance-row absence snapshots"
   );
 });
+test("dashboard attendance edit and delete mutations use the canonical employee profile identity", () => {
+  const source = readFileSync(
+    "src/pages/DashboardEmployees.tsx",
+    "utf8"
+  );
+
+  const editStart = source.indexOf(
+    "const saveAttendancePunchEditor"
+  );
+  const deleteStart = source.indexOf(
+    "const deleteAttendancePunch"
+  );
+
+  assert.ok(
+    editStart >= 0,
+    "saveAttendancePunchEditor must exist"
+  );
+  assert.ok(
+    deleteStart > editStart,
+    "deleteAttendancePunch must exist after saveAttendancePunchEditor"
+  );
+
+  const editBlock = source.slice(
+    editStart,
+    deleteStart
+  );
+
+  const deleteEnd = source.indexOf(
+    "const createEmergencyLeaveForAttendanceDay",
+    deleteStart
+  );
+
+  assert.ok(
+    deleteEnd > deleteStart,
+    "createEmergencyLeaveForAttendanceDay must exist after deleteAttendancePunch"
+  );
+
+  const deleteBlock = source.slice(
+    deleteStart,
+    deleteEnd
+  );
+
+  const canonicalIdentityPattern =
+    /resolveEmployeeAttendanceIdentity\(\s*employeeProfile,\s*selectedEmployeeId\s*\)/;
+
+  const brokenIdentityPattern =
+    /resolveEmployeeAttendanceIdentity\(\s*null,\s*selectedEmployeeId\s*\)/;
+
+  assert.match(
+    editBlock,
+    canonicalIdentityPattern,
+    "attendance edit must resolve identity from the selected employee profile"
+  );
+
+  assert.match(
+    deleteBlock,
+    canonicalIdentityPattern,
+    "attendance delete must resolve identity from the selected employee profile"
+  );
+
+  assert.doesNotMatch(
+    editBlock,
+    brokenIdentityPattern,
+    "attendance edit must never fall back to selectedEmployeeId as employeeUid"
+  );
+
+  assert.doesNotMatch(
+    deleteBlock,
+    brokenIdentityPattern,
+    "attendance delete must never fall back to selectedEmployeeId as employeeUid"
+  );
+});

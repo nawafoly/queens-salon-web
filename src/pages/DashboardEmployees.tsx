@@ -1929,7 +1929,7 @@ export default function DashboardEmployees() {
         ) ||
         { id: selectedEmployeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(employeeProfile, selectedEmployeeId);
 
       await adjustAttendanceDayFromWorker({
         employeeUid: attendanceIdentity.employeeUid,
@@ -2002,7 +2002,7 @@ export default function DashboardEmployees() {
         ) ||
         { id: selectedEmployeeId };
 
-      const attendanceIdentity = resolveEmployeeAttendanceIdentity(null, selectedEmployeeId);
+      const attendanceIdentity = resolveEmployeeAttendanceIdentity(employeeProfile, selectedEmployeeId);
 
       const clearResult = await clearAttendanceDayFromWorker({
         employeeUid: attendanceIdentity.employeeUid,
