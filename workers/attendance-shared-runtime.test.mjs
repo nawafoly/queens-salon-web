@@ -667,3 +667,39 @@ test("dashboard attendance edit and delete mutations use the canonical employee 
     "attendance delete must never fall back to selectedEmployeeId as employeeUid"
   );
 });
+test("attendance calendar helper contains leave facts only and no scheduling runtime", () => {
+  const source = readFileSync(
+    "src/helpers/hr/attendanceCalendarData.ts",
+    "utf8"
+  );
+
+  const forbidden = [
+    "staffScheduleHistory",
+    "resolveStaffScheduleVersionForDate",
+    "weeklyOffDaysFromScheduleSnapshot",
+    "profileWeeklyOffDaysForDate",
+    "getDayOverride",
+    "isWeeklyOffDateKey",
+    "customWorkingHourOverrides",
+    "workingScheduleVersions",
+    "buildAttendanceSpecialDayMap",
+  ];
+
+  for (const token of forbidden) {
+    assert.equal(
+      source.includes(token),
+      false,
+      `attendance calendar still contains scheduling runtime: ${token}`
+    );
+  }
+
+  assert.match(
+    source,
+    /export function buildApprovedLeaveSpecialDays/
+  );
+
+  assert.match(
+    source,
+    /export function buildApprovedLeaveDateKeys/
+  );
+});

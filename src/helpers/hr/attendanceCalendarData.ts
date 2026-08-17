@@ -1,5 +1,4 @@
-import { resolveStaffScheduleVersionForDate, weeklyOffDaysFromScheduleSnapshot } from "./staffScheduleHistory.ts";
-import { buildDateKeysInRange, isWeeklyOffDateKey } from "./workSchedule.ts";
+import { buildDateKeysInRange } from "./workSchedule.ts";
 
 type LeaveRequestLike = {
   id?: unknown;
@@ -48,8 +47,6 @@ export type AttendanceSpecialDay = {
 const LABEL_LEAVE = "\u0625\u062c\u0627\u0632\u0629";
 const LABEL_PARTIAL_LEAVE = "\u0627\u0633\u062a\u0626\u0630\u0627\u0646";
 const LABEL_REST = "\u0631\u0627\u062d\u0629";
-const LABEL_WEEKLY_OFF = "\u0625\u062c\u0627\u0632\u0629 \u0623\u0633\u0628\u0648\u0639\u064a\u0629";
-const LABEL_EXCEPTION_OFF = "\u0631\u0627\u062d\u0629 / \u064a\u0648\u0645 \u0627\u0633\u062a\u062b\u0646\u0627\u0626\u064a";
 const AR_APPROVED = "\u0645\u0639\u062a\u0645\u062f";
 const AR_REST = "\u0631\u0627\u062d\u0629";
 const AR_LEAVE = "\u0625\u062c\u0627\u0632\u0629";
@@ -354,130 +351,4 @@ export function buildApprovedLeaveDateKeys(input: {
   return buildApprovedLeaveSpecialDays(input)
     .filter((day) => day.kind !== "partial_leave")
     .map((day) => day.date);
-}
-
-function getDayOverride(dateKey: string, profile: Record<string, any>) {
-  const candidates = [
-    profile.customWorkingHourOverrides,
-    profile.workingHourOverrides,
-    profile.workHourOverrides,
-  ];
-  for (const value of candidates) {
-    const overrides = Array.isArray(value) ? value : [];
-    const match = overrides.find((override) => cleanText((override as Record<string, unknown>).date) === dateKey);
-    if (match) return match as Record<string, unknown>;
-  }
-  return null;
-}
-
-function profileWeeklyOffDaysForDate(profile: Record<string, any>, dateKey: string) {
-  const historicalVersion = resolveStaffScheduleVersionForDate(profile.workingScheduleVersions, dateKey);
-  if (historicalVersion) {
-    return weeklyOffDaysFromScheduleSnapshot({
-      useCustomWorkingHours: historicalVersion.useCustomWorkingHours,
-      customWorkingHours: historicalVersion.customWorkingHours,
-    });
-  }
-
-  const useCustomWorkingHours = profile.useCustomWorkingHours === true;
-  const customHours = (profile.customWorkingHours || {}) as Record<string, { enabled?: boolean }>;
-  const customOffDays = useCustomWorkingHours
-    ? Object.entries(customHours)
-        .filter(([, day]) => day?.enabled === false)
-        .map(([key]) => WEEKDAY_TO_OFF_KEY[key] || key)
-        .filter(Boolean)
-    : [];
-
-  return [
-    ...(Array.isArray(profile.weeklyOffDays) ? profile.weeklyOffDays : []),
-    ...(Array.isArray(profile.offDays) ? profile.offDays : []),
-    ...(Array.isArray(profile.exceptionalLeaveWeekdays) ? profile.exceptionalLeaveWeekdays : []),
-    ...(profile.weeklyOffDay ? [profile.weeklyOffDay] : []),
-    ...(profile.fixedWeeklyDayOff ? [profile.fixedWeeklyDayOff] : []),
-    ...(profile.weeklyHoliday ? [profile.weeklyHoliday] : []),
-    ...(profile.dayOff ? [profile.dayOff] : []),
-    ...customOffDays,
-  ];
-}
-
-function isCoreResolvedOff(value: unknown) {
-  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  return normalizeToken(row.exceptionType || row.exception_type) === "off";
-}
-
-export function buildAttendanceSpecialDayMap(input: {
-  profile?: Record<string, any> | null;
-  leaveRequests?: LeaveRequestLike[];
-  leaveEntries?: LeaveRequestLike[];
-  extraIds?: unknown[];
-  fromDate: string;
-  toDate: string;
-  todayDateKey?: string;
-  coreResolvedShifts?: Record<string, unknown> | Array<{ date?: unknown; dateKey?: unknown; resolvedShift?: unknown }>;
-}) {
-  const fromDate = normalizeDateKey(input.fromDate);
-  const toDate = normalizeDateKey(input.toDate) || fromDate;
-  const days = new Map<string, AttendanceSpecialDay>();
-  if (!fromDate || !toDate) return days;
-
-  buildApprovedLeaveSpecialDays(input)
-    .filter((day) => day.date >= fromDate && day.date <= toDate)
-    .forEach((day) => addSpecialDate(days, day));
-
-  const profile = input.profile || {};
-  buildDateKeysInRange(fromDate, toDate).forEach((date) => {
-    const override = getDayOverride(date, profile);
-    if (override?.enabled === false) {
-      addSpecialDate(days, {
-        date,
-        kind: "exception_off",
-        label: LABEL_EXCEPTION_OFF,
-        source: "custom_working_hour_override",
-      });
-      return;
-    }
-    if (override?.enabled === true) {
-      // An explicit working override re-opens a normally closed weekly-off day
-      // for this date only. Do not also label the same date as weekly off.
-      return;
-    }
-
-    if (isWeeklyOffDateKey(date, profileWeeklyOffDaysForDate(profile, date))) {
-      addSpecialDate(days, {
-        date,
-        kind: "weekly_off",
-        label: LABEL_WEEKLY_OFF,
-        source: "weekly_schedule",
-      });
-    }
-  });
-
-  const coreShifts = input.coreResolvedShifts;
-  if (Array.isArray(coreShifts)) {
-    coreShifts.forEach((item) => {
-      const date = normalizeDateKey(item.date || item.dateKey);
-      if (!date || date < fromDate || date > toDate || !isCoreResolvedOff(item.resolvedShift || item)) return;
-      if (days.get(date)?.kind === "weekly_off") return;
-      addSpecialDate(days, {
-        date,
-        kind: "exception_off",
-        label: LABEL_EXCEPTION_OFF,
-        source: "core_exception_off",
-      });
-    });
-  } else if (coreShifts && typeof coreShifts === "object") {
-    Object.entries(coreShifts).forEach(([dateValue, shift]) => {
-      const date = normalizeDateKey(dateValue);
-      if (!date || date < fromDate || date > toDate || !isCoreResolvedOff(shift)) return;
-      if (days.get(date)?.kind === "weekly_off") return;
-      addSpecialDate(days, {
-        date,
-        kind: "exception_off",
-        label: LABEL_EXCEPTION_OFF,
-        source: "core_exception_off",
-      });
-    });
-  }
-
-  return days;
 }
