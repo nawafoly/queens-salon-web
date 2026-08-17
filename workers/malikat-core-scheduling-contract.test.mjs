@@ -658,6 +658,106 @@ test("temporary weekly off is Core-only and refreshes Dashboard canonical except
     dashboard,
     /projectCoreScheduleExceptionsToOverrides\([\s\S]*canonicalRows/
   );
+
+  // Regression: today's Dashboard status must come from
+  // the canonical Malikat Core resolved shift.
+  assert.match(
+    dashboard,
+    /resolveEmployeeShiftsBatch\(\{[\s\S]*dateFrom:\s*coreResolvedTodayDateKey[\s\S]*dateTo:\s*coreResolvedTodayDateKey/
+  );
+
+  assert.match(
+    dashboard,
+    /const canonicalOff =[\s\S]*canonicalExceptionType === "off"/
+  );
+
+  assert.match(
+    dashboard,
+    /const overrideToday =[\s\S]*canonicalSource === "exception"/
+  );
+
+  assert.match(
+    dashboard,
+    /const effectiveEnabled =\s*canonicalEmployeeEnabled/
+  );
+
+  // TEMP_WORK must override an old/base weekly-off for today.
+  assert.match(
+    dashboard,
+    /const leaveByWeekday =\s*canonicalSource === "weekly_schedule" &&\s*canonicalOff/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /const overrideToday = overrides\.find\(\(x\) => x\.date === today\)/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /const leaveByWeekday = weekday \? exceptionalWeekdays\.includes\(weekday\) : false/
+  );
+
+  assert.match(
+    dashboard,
+    /weeklyOffToday:\s*canonicalOff \|\|\s*leaveByWeekday/
+  );
+
+  // The canonical schedule summary must actually render
+  // when an existing employee is open.
+  assert.match(
+    dashboard,
+    /ScheduleSummarySection[\s\S]*isVisible=\{!!editingStaff && modalTab === "basic"\}/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /ScheduleSummarySection[\s\S]*isVisible=\{!editingStaff && modalTab === "basic"\}/
+  );
+
+  // Upcoming return must use future Core resolution only.
+  assert.match(
+    dashboard,
+    /coreResolvedFutureRows/
+  );
+
+  assert.match(
+    dashboard,
+    /const firstRangeEnd =\s*addDaysIso\([\s\S]*rangeStart,[\s\S]*61/
+  );
+
+  assert.match(
+    dashboard,
+    /const secondRangeEnd =\s*addDaysIso\([\s\S]*secondRangeStart,[\s\S]*57/
+  );
+
+  assert.match(
+    dashboard,
+    /canonicalFutureRowsForStaff/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /const resolveOperationalDay =/
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /resolveOperationalDay\(cursor\)/
+  );
+
+  // Normal Core schedule saves must invalidate
+  // today's and future resolved-shift snapshots.
+  assert.match(
+    dashboard,
+    /if \(\s*scheduleChanged \|\|\s*workingHourOverridesChanged\s*\) \{[\s\S]*setCoreResolvedTodayRefreshVersion/
+  );
+
+  // Future Core state must participate in
+  // staffScheduleSummary memo dependencies.
+  assert.match(
+    dashboard,
+    /appSettings,[\s\S]*coreResolvedFutureEmployeeId,[\s\S]*coreResolvedFutureError,[\s\S]*coreResolvedFutureLoading,[\s\S]*coreResolvedFutureRows,[\s\S]*coreResolvedTodayByEmployeeId/
+  );
 });
 
 
