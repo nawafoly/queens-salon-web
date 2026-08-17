@@ -8,6 +8,7 @@ import {
   generatedId,
   normalizePhone,
   optionalText,
+  placeholders,
   requiredId,
   requiredText,
   rowNotFound,
@@ -191,6 +192,87 @@ export async function listStaff(db, salonId, query = {}) {
   }
 
   return filtered;
+}
+
+export async function listStaffByIds(
+  db,
+  salonId,
+  idValues = []
+) {
+  const ids =
+    Array.from(
+      new Set(
+        (Array.isArray(idValues)
+          ? idValues
+          : []
+        )
+          .map(cleanText)
+          .filter(Boolean)
+      )
+    ).map(
+      (value) =>
+        requiredId(
+          value,
+          "employeeId"
+        )
+    );
+
+  if (!ids.length) {
+    return [];
+  }
+
+  const wanted =
+    new Set(ids);
+
+  const rows =
+    db.__fakeD1
+      ? safeFakeRows(
+          db,
+          "staff"
+        ).filter(
+          (row) =>
+            row.salon_id ===
+              salonId &&
+            wanted.has(
+              cleanText(row.id)
+            )
+        )
+      : await dbAll(
+          db,
+          `SELECT * FROM staff
+            WHERE salon_id = ?
+              AND id IN (${placeholders(ids.length)})`,
+          [
+            salonId,
+            ...ids,
+          ]
+        );
+
+  const hrStatusMaps =
+    await hrStatusMapsForStaff(
+      db,
+      salonId
+    );
+
+  const byId =
+    new Map(
+      rows.map(
+        (row) => [
+          cleanText(row.id),
+          mergeHrStatus(
+            row,
+            hrStatusMaps
+          ),
+        ]
+      )
+    );
+
+  return ids
+    .map(
+      (id) =>
+        byId.get(id)
+    )
+    .filter(Boolean);
 }
 
 export async function getStaff(db, salonId, id) {

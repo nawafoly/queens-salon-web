@@ -18,7 +18,7 @@ test("Malikat scheduling runtime has one canonical shift resolver", () => {
 
   assert.match(
     bookingPolicy,
-    /import\s*\{\s*resolveEmployeeShift\s*\}\s*from\s*['"]\.\/shift-control\.js['"]/,
+    /import\s*\{[^}]*\bresolveEmployeeShift\b[^}]*\}\s*from\s*['"]\.\/shift-control\.js['"]/,
     "Booking policy must consume the canonical shift resolver"
   );
 
@@ -1079,4 +1079,216 @@ test("Core resolved shift batching policy is centralized in CoreHrService", () =
       /resolveEmployeeShiftsRange/
     );
   }
+});
+
+
+test("Partner Portal operational day is a Malikat Core RPC projection only", () => {
+  const portal = readFileSync(
+    "src/pages/PartnerPortal.tsx",
+    "utf8"
+  );
+
+  const partnerWorker = readFileSync(
+    "workers/partners-worker.js",
+    "utf8"
+  );
+
+  const coreProjection = readFileSync(
+    "workers/core/repositories/partner-operational-days.js",
+    "utf8"
+  );
+
+  const coreWorker = readFileSync(
+    "workers/core/worker.js",
+    "utf8"
+  );
+
+  const staffRepository = readFileSync(
+    "workers/core/repositories/staff.js",
+    "utf8"
+  );
+
+  const bookingPolicy = readFileSync(
+    "workers/core/repositories/booking-staff-policy.js",
+    "utf8"
+  );
+
+  const shiftControl = readFileSync(
+    "workers/core/repositories/shift-control.js",
+    "utf8"
+  );
+
+  const coreConfig = readFileSync(
+    "wrangler.core.jsonc",
+    "utf8"
+  );
+
+  const partnerConfig = readFileSync(
+    "wrangler.partners.jsonc",
+    "utf8"
+  );
+
+  const devScript = readFileSync(
+    "scripts/dev-with-partners.mjs",
+    "utf8"
+  );
+
+  assert.match(
+    coreProjection,
+    /resolveStaffBookingDaysBatch\(/
+  );
+
+  assert.match(
+    coreProjection,
+    /listStaffByIds\(/
+  );
+
+  assert.doesNotMatch(
+    coreProjection,
+    /\blistStaff\(/
+  );
+
+  assert.doesNotMatch(
+    coreProjection,
+    /resolveStaffBookingDay\(/
+  );
+
+  assert.doesNotMatch(
+    coreProjection,
+    /Promise\.all\(/
+  );
+
+  assert.match(
+    staffRepository,
+    /export async function listStaffByIds/
+  );
+
+  assert.match(
+    staffRepository,
+    /placeholders\(ids\.length\)/
+  );
+
+  assert.match(
+    bookingPolicy,
+    /export async function resolveStaffBookingDaysBatch/
+  );
+
+  assert.match(
+    bookingPolicy,
+    /resolveEmployeeShiftsBatch\(/
+  );
+
+  assert.match(
+    shiftControl,
+    /const \[\s*exceptions,\s*weeklySchedules,\s*assignments,?\s*\][\s\S]*await Promise\.all\(/
+  );
+
+  assert.match(
+    coreProjection,
+    /show_on_booking/
+  );
+
+  assert.doesNotMatch(
+    coreProjection,
+    /customWorkingHours|customWorkingHourOverrides|exceptionalLeaveWeekdays|exceptionalLeaveDates/
+  );
+
+  assert.match(
+    coreWorker,
+    /export class PartnerSchedulingEntrypoint extends WorkerEntrypoint/
+  );
+
+  assert.match(
+    coreWorker,
+    /resolvePartnerOperationalDays\(/
+  );
+
+  assert.match(
+    coreConfig,
+    /"main":\s*"workers\/core\/worker\.js"/
+  );
+
+  assert.match(
+    partnerConfig,
+    /"binding":\s*"MALIKAT_CORE_PARTNER"[\s\S]*"service":\s*"queens-salon-core-api"[\s\S]*"entrypoint":\s*"PartnerSchedulingEntrypoint"/
+  );
+
+  assert.match(
+    partnerWorker,
+    /MALIKAT_CORE_PARTNER\.resolveOperationalDays\(/
+  );
+
+  assert.match(
+    partnerWorker,
+    /offset \+= 100/
+  );
+
+  assert.match(
+    partnerWorker,
+    /employeeIds\.slice\([\s\S]*offset,[\s\S]*offset \+ 100/
+  );
+
+  assert.match(
+    partnerWorker,
+    /resolveOperationalDays\(\{[\s\S]*employeeIds:\s*chunk/
+  );
+
+  assert.match(
+    partnerWorker,
+    /operational-day RPC chunk failed/
+  );
+
+  assert.doesNotMatch(
+    partnerWorker,
+    /env\.CORE_DB/
+  );
+
+  assert.match(
+    partnerWorker,
+    /todayOperationalState/
+  );
+
+  assert.match(
+    portal,
+    /presentTodayOperationalState\([\s\S]*member\.todayOperationalState/
+  );
+
+  assert.match(
+    portal,
+    /todayOperationalState\?\.reason/
+  );
+
+  assert.match(
+    portal,
+    /todayOperationalState[\s\S]*showOnBooking/
+  );
+
+  const forbiddenPortalRuntime = [
+    "resolveTodaySchedule",
+    "collectWorkingWindows",
+    "DAY_KEYS",
+    "customWorkingHours",
+    "customWorkingHourOverrides",
+    "exceptionalLeaveDates",
+    "exceptionalLeaveWeekdays",
+    "employmentEndDate",
+    "operationalProfile?.showOnBooking",
+    "profile?.showOnBooking",
+    "operationalProfile?.onLeave",
+    "profile.onLeave",
+    "profile.leaveUntil",
+  ];
+
+  for (const token of forbiddenPortalRuntime) {
+    assert.equal(
+      portal.includes(token),
+      false,
+      `PartnerPortal still owns Legacy operational scheduling: ${token}`
+    );
+  }
+
+  assert.match(
+    devScript,
+    /name:\s*"core-api"[\s\S]*wrangler\.core\.jsonc/
+  );
 });

@@ -27,9 +27,9 @@ import { auth } from "../services/firebase";
 import { PartnerPortalService } from "../services/partnerPortalService";
 import type {
   PartnerContract,
-  PartnerMemberOperationalProfile,
   PartnerPortalMember,
   PartnerPortalOverview,
+  PartnerTodayOperationalState,
   RentalResource,
 } from "../types/partner";
 import "../styles/PartnerPortal.css";
@@ -53,23 +53,12 @@ const RESOURCE_LABELS: Record<string, string> = {
   custom: "مساحة مخصصة",
 };
 
-const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 type ActiveSection = "overview" | "contract" | "spaces" | "team" | "account";
 
 type ScheduleResult = {
   label: string;
   tone: "open" | "closed" | "leave" | "neutral";
 };
-
-function cleanText(value: unknown) {
-  return String(value || "").trim();
-}
-
-function localIsoDate() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-}
 
 function formatDate(value?: string) {
   if (!value) return "مفتوح";
@@ -102,82 +91,101 @@ function memberRoleLabel(member: PartnerPortalMember) {
   return "موظفة";
 }
 
-function collectWorkingWindows(day: Record<string, unknown> | undefined) {
-  if (!day || day.enabled === false) return [];
-
-  const nested = [day.shifts, day.windows, day.periods]
-    .flatMap((value) => (Array.isArray(value) ? value : []))
-    .filter((row) => row && typeof row === "object") as Array<Record<string, unknown>>;
-
-  const rows = nested.length ? nested : [day];
-  return rows
-    .filter((row) => row.enabled !== false)
-    .map((row) => {
-      const start = cleanText(row.start);
-      const end = cleanText(row.end);
-      return start && end ? `${start} — ${end}` : "";
-    })
-    .filter(Boolean);
-}
-
-function resolveTodaySchedule(profile?: PartnerMemberOperationalProfile): ScheduleResult {
-  if (!profile) return { label: "لم تتم المزامنة", tone: "neutral" };
-
-  const today = localIsoDate();
-  if (profile.employmentEndDate && profile.employmentEndDate <= today) {
-    return { label: "انتهى الارتباط", tone: "closed" };
-  }
-  if (profile.onLeave && (!profile.leaveUntil || profile.leaveUntil >= today)) {
+function presentTodayOperationalState(
+  state?: PartnerTodayOperationalState
+): ScheduleResult {
+  if (!state) {
     return {
-      label: profile.leaveUntil ? `إجازة حتى ${formatDate(profile.leaveUntil)}` : "في إجازة",
-      tone: "leave",
+      label: "تعذر تحميل الدوام المعتمد",
+      tone: "neutral",
     };
   }
-  if (profile.exceptionalLeaveDates.includes(today)) {
-    return { label: "إجازة اليوم", tone: "leave" };
+
+  const hasPartialLeave =
+    state.blockedRanges.some(
+      (range) =>
+        range.reason ===
+        "partial_leave"
+    );
+
+  if (
+    state.available &&
+    state.startTime &&
+    state.endTime
+  ) {
+    return {
+      label:
+        `${state.startTime} — ${state.endTime}` +
+        (hasPartialLeave
+          ? " · إجازة جزئية"
+          : ""),
+      tone: "open",
+    };
   }
 
-  const dayKey = DAY_KEYS[new Date().getDay()];
-  if (profile.exceptionalLeaveWeekdays.includes(dayKey)) {
-    return { label: "يوم إجازة أسبوعية", tone: "closed" };
-  }
+  switch (state.reason) {
+    case "approved_leave":
+      return {
+        label: "إجازة اليوم",
+        tone: "leave",
+      };
 
-  const overrides = Array.isArray(profile.customWorkingHourOverrides)
-    ? profile.customWorkingHourOverrides
-    : [];
-  const activeOverride = overrides.find((row) => {
-    const date = cleanText(row.date);
-    const from = cleanText(row.fromDate || row.startDate);
-    const to = cleanText(row.toDate || row.endDate || from);
-    if (date) return date === today;
-    return !!from && today >= from && today <= (to || from);
-  });
+    case "absence":
+      return {
+        label: "غياب اليوم",
+        tone: "closed",
+      };
 
-  if (activeOverride) {
-    if (activeOverride.enabled === false) {
-      return { label: "مغلقة اليوم باستثناء محفوظ", tone: "closed" };
-    }
-    const overrideWindows = collectWorkingWindows(activeOverride);
-    if (overrideWindows.length) {
-      return { label: overrideWindows.join(" · "), tone: "open" };
-    }
-  }
+    case "rest":
+      return {
+        label: "راحة اليوم",
+        tone: "closed",
+      };
 
-  if (!profile.useCustomWorkingHours) {
-    return { label: "حسب جدول الصالون", tone: "neutral" };
-  }
+    case "weekly_or_schedule_off":
+      return {
+        label: "إجازة أسبوعية",
+        tone: "closed",
+      };
 
-  const workingHours = profile.customWorkingHours || {};
-  const day = workingHours[dayKey];
-  if (!day || typeof day !== "object") {
-    return { label: "لا توجد ساعات محددة", tone: "neutral" };
-  }
+    case "inactive":
+      return {
+        label: "غير نشطة",
+        tone: "closed",
+      };
 
-  const windows = collectWorkingWindows(day as Record<string, unknown>);
-  if (!windows.length) {
-    return { label: "مغلقة اليوم", tone: "closed" };
+    case "employee_not_linked":
+      return {
+        label: "غير مرتبطة بموظفة Core",
+        tone: "neutral",
+      };
+
+    case "employee_not_found":
+    case "employee_not_resolved":
+      return {
+        label: "تعذر مطابقة الموظفة مع Malikat Core",
+        tone: "neutral",
+      };
+
+    case "no_hr_schedule":
+    case "no_working_window":
+      return {
+        label: "لا يوجد دوام معتمد",
+        tone: "neutral",
+      };
+
+    case "core_unavailable":
+      return {
+        label: "تعذر تحميل الدوام من Malikat Core",
+        tone: "neutral",
+      };
+
+    default:
+      return {
+        label: "غير متاحة اليوم",
+        tone: "closed",
+      };
   }
-  return { label: windows.join(" · "), tone: "open" };
 }
 
 function teamMemberTitle(member: PartnerPortalMember) {
@@ -268,8 +276,21 @@ export default function PartnerPortal() {
     return {
       active: team.filter((member) => member.status === "active").length,
       providers: team.filter((member) => member.canWorkAsProvider).length,
-      bookingVisible: team.filter((member) => member.operationalProfile?.showOnBooking).length,
-      onLeave: team.filter((member) => member.operationalProfile?.onLeave).length,
+      bookingVisible: team.filter(
+        (member) =>
+          member.todayOperationalState
+            ?.showOnBooking === true
+      ).length,
+      onLeave: team.filter(
+        (member) =>
+          member.todayOperationalState?.reason ===
+            "approved_leave" ||
+          member.todayOperationalState?.blockedRanges.some(
+            (range) =>
+              range.reason ===
+              "partial_leave"
+          )
+      ).length,
     };
   }, [overview?.team]);
 
@@ -388,7 +409,10 @@ export default function PartnerPortal() {
                 <div className="partner-team-profile-grid">
                   {overview.team.length ? overview.team.map((member) => {
                     const profile = member.operationalProfile;
-                    const schedule = resolveTodaySchedule(profile);
+                    const schedule =
+                      presentTodayOperationalState(
+                        member.todayOperationalState
+                      );
                     const serviceLabels = profile?.specialtyLabels?.length
                       ? profile.specialtyLabels
                       : profile?.specialties || [];
@@ -419,7 +443,16 @@ export default function PartnerPortal() {
                         <div className="partner-team-profile-card__facts">
                           <div><span>القسم</span><strong>{profile?.department || "غير محدد"}</strong></div>
                           <div><span>دوام اليوم</span><strong className={`is-${schedule.tone}`}>{schedule.label}</strong></div>
-                          <div><span>إتاحة الحجز</span><strong>{profile?.showOnBooking ? "ظاهرة للعملاء" : "غير ظاهرة"}</strong></div>
+                          <div>
+                            <span>إتاحة الحجز</span>
+                            <strong>
+                              {member.todayOperationalState?.showOnBooking === true
+                                ? "ظاهرة للعملاء"
+                                : member.todayOperationalState?.showOnBooking === false
+                                  ? "غير ظاهرة"
+                                  : "تعذر تحميل الإتاحة"}
+                            </strong>
+                          </div>
                           <div><span>حساب الدخول</span><strong>{member.hasLogin ? "مفعّل" : "غير مفعّل"}</strong></div>
                         </div>
 

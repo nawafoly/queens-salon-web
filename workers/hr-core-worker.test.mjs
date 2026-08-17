@@ -4,7 +4,11 @@ import test from 'node:test';
 import { Miniflare } from 'miniflare';
 
 import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-employees.js';
-import { saveShiftTemplate, resolveEmployeeShift } from './core/repositories/shift-control.js';
+import {
+  resolveEmployeeShift,
+  resolveEmployeeShiftsBatch,
+  saveShiftTemplate,
+} from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
 import {
@@ -1507,3 +1511,520 @@ test('Core leave API separates manager routes from employee self scope', async (
     /\/api\/core\/hr\/employee-portal\/leaves/
   );
 });
+
+
+test(
+  'real D1 batch shift resolution matches single canonical resolution',
+  async (t) => {
+    const { mf, db } =
+      await setup();
+
+    t.after(
+      () => mf.dispose()
+    );
+
+    const employeeId =
+      'emp-shift-batch-parity';
+
+    const noScheduleEmployeeId =
+      'emp-shift-batch-none';
+
+    const createdAt =
+      '2026-08-01T00:00:00.000Z';
+
+    await db.prepare(`
+      INSERT INTO hr_shift_templates (
+        id,
+        salon_id,
+        name,
+        code,
+        start_time,
+        end_time,
+        crosses_midnight,
+        break_minutes,
+        break_paid,
+        late_grace_minutes,
+        early_leave_grace_minutes,
+        attendance_lock_enabled,
+        attendance_lock_after_minutes,
+        overtime_after_minutes,
+        active,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'shift-parity-base',
+        'main',
+        'Parity Base',
+        'PARITY_BASE',
+        '09:00',
+        '17:00',
+        0,
+        45,
+        0,
+        7,
+        0,
+        1,
+        35,
+        60,
+        1,
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    await db.prepare(`
+      INSERT INTO hr_shift_templates (
+        id,
+        salon_id,
+        name,
+        code,
+        start_time,
+        end_time,
+        crosses_midnight,
+        break_minutes,
+        break_paid,
+        late_grace_minutes,
+        early_leave_grace_minutes,
+        attendance_lock_enabled,
+        attendance_lock_after_minutes,
+        overtime_after_minutes,
+        active,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'shift-parity-weekly',
+        'main',
+        'Parity Weekly',
+        'PARITY_WEEKLY',
+        '10:00',
+        '18:00',
+        0,
+        30,
+        0,
+        5,
+        0,
+        1,
+        40,
+        30,
+        1,
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    // Assignment fallback for the whole test window.
+    await db.prepare(`
+      INSERT INTO hr_shift_assignments (
+        id,
+        salon_id,
+        employee_id,
+        shift_template_id,
+        effective_from,
+        effective_to,
+        assignment_type,
+        status,
+        reason,
+        snapshot_json,
+        created_by_uid,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'assignment-parity',
+        'main',
+        ?,
+        'shift-parity-base',
+        '2026-08-01',
+        '2026-08-31',
+        'permanent',
+        'published',
+        'batch parity',
+        '{}',
+        'uid-test',
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        employeeId,
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    // Sunday: active weekly schedule must beat assignment.
+    await db.prepare(`
+      INSERT INTO hr_work_schedules (
+        id,
+        salon_id,
+        employee_id,
+        weekday,
+        start_time,
+        end_time,
+        active,
+        effective_from,
+        effective_to,
+        created_at,
+        updated_at,
+        shift_template_id,
+        schedule_source
+      )
+      VALUES (
+        'weekly-parity-active',
+        'main',
+        ?,
+        0,
+        '10:00',
+        '18:00',
+        1,
+        '2026-08-01',
+        NULL,
+        ?,
+        ?,
+        'shift-parity-weekly',
+        'shift_template'
+      )
+    `)
+      .bind(
+        employeeId,
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    // Monday: inactive weekly row must become weekly off and beat assignment.
+    await db.prepare(`
+      INSERT INTO hr_work_schedules (
+        id,
+        salon_id,
+        employee_id,
+        weekday,
+        start_time,
+        end_time,
+        active,
+        effective_from,
+        effective_to,
+        created_at,
+        updated_at,
+        shift_template_id,
+        schedule_source
+      )
+      VALUES (
+        'weekly-parity-off',
+        'main',
+        ?,
+        1,
+        NULL,
+        NULL,
+        0,
+        '2026-08-01',
+        NULL,
+        ?,
+        ?,
+        NULL,
+        'weekly_off'
+      )
+    `)
+      .bind(
+        employeeId,
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    // Tuesday: approved off exception wins even with enabled=0.
+    await db.prepare(`
+      INSERT INTO hr_schedule_exceptions (
+        id,
+        salon_id,
+        employee_id,
+        date_from,
+        date_to,
+        exception_type,
+        shift_template_id,
+        enabled,
+        start_time,
+        end_time,
+        note,
+        status,
+        approved_by_uid,
+        created_by_uid,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'exception-parity-off',
+        'main',
+        ?,
+        '2026-08-18',
+        '2026-08-18',
+        'off',
+        NULL,
+        0,
+        NULL,
+        NULL,
+        'off parity',
+        'approved',
+        'uid-test',
+        'uid-test',
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        employeeId,
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    // Wednesday: custom exception without template must inherit policy
+    // from the assignment while preserving its custom hours.
+    await db.prepare(`
+      INSERT INTO hr_schedule_exceptions (
+        id,
+        salon_id,
+        employee_id,
+        date_from,
+        date_to,
+        exception_type,
+        shift_template_id,
+        enabled,
+        start_time,
+        end_time,
+        note,
+        status,
+        approved_by_uid,
+        created_by_uid,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'exception-parity-custom',
+        'main',
+        ?,
+        '2026-08-19',
+        '2026-08-19',
+        'custom',
+        NULL,
+        1,
+        '12:00',
+        '20:00',
+        'custom parity',
+        'approved',
+        'uid-test',
+        'uid-test',
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        employeeId,
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const employeeIds = [
+      employeeId,
+      noScheduleEmployeeId,
+    ];
+
+    const batch =
+      await resolveEmployeeShiftsBatch(
+        db,
+        'main',
+        {
+          employeeIds,
+          dateFrom:
+            '2026-08-16',
+          dateTo:
+            '2026-08-21',
+        }
+      );
+
+    assert.equal(
+      batch.employees_count,
+      2
+    );
+
+    assert.equal(
+      batch.days_count,
+      6
+    );
+
+    assert.equal(
+      batch.rows.length,
+      12
+    );
+
+    const cases = [
+      {
+        label:
+          'active weekly schedule',
+        employeeId,
+        date:
+          '2026-08-16',
+        expectedSource:
+          'weekly_schedule',
+      },
+      {
+        label:
+          'weekly off',
+        employeeId,
+        date:
+          '2026-08-17',
+        expectedSource:
+          'weekly_schedule',
+        expectedExceptionType:
+          'off',
+      },
+      {
+        label:
+          'approved off exception',
+        employeeId,
+        date:
+          '2026-08-18',
+        expectedSource:
+          'exception',
+        expectedExceptionType:
+          'off',
+      },
+      {
+        label:
+          'custom exception without template',
+        employeeId,
+        date:
+          '2026-08-19',
+        expectedSource:
+          'exception',
+        expectedExceptionType:
+          'custom',
+      },
+      {
+        label:
+          'assignment fallback',
+        employeeId,
+        date:
+          '2026-08-20',
+        expectedSource:
+          'assignment',
+      },
+      {
+        label:
+          'no schedule',
+        employeeId:
+          noScheduleEmployeeId,
+        date:
+          '2026-08-21',
+        expectedSource:
+          'none',
+      },
+    ];
+
+    for (
+      const testCase
+      of cases
+    ) {
+      const single =
+        await resolveEmployeeShift(
+          db,
+          'main',
+          testCase.employeeId,
+          testCase.date
+        );
+
+      const batched =
+        batch.rows.find(
+          (row) =>
+            row.employee_id ===
+              testCase.employeeId &&
+            row.date ===
+              testCase.date
+        );
+
+      assert.ok(
+        batched,
+        `missing batch row: ${testCase.label}`
+      );
+
+      assert.deepEqual(
+        batched,
+        single,
+        `single/batch mismatch: ${testCase.label}`
+      );
+
+      assert.equal(
+        batched.source,
+        testCase.expectedSource,
+        `wrong source: ${testCase.label}`
+      );
+
+      if (
+        testCase.expectedExceptionType
+      ) {
+        assert.equal(
+          batched.exception_type,
+          testCase.expectedExceptionType,
+          `wrong exception type: ${testCase.label}`
+        );
+      }
+    }
+
+    const custom =
+      batch.rows.find(
+        (row) =>
+          row.employee_id ===
+            employeeId &&
+          row.date ===
+            '2026-08-19'
+      );
+
+    assert.equal(
+      custom.start_time,
+      '12:00'
+    );
+
+    assert.equal(
+      custom.end_time,
+      '20:00'
+    );
+
+    assert.equal(
+      custom.late_grace_minutes,
+      7
+    );
+
+    assert.equal(
+      custom.attendance_lock_enabled,
+      1
+    );
+
+    assert.equal(
+      custom.attendance_lock_after_minutes,
+      35
+    );
+
+    assert.equal(
+      custom.break_minutes,
+      45
+    );
+
+    assert.equal(
+      custom.overtime_after_minutes,
+      60
+    );
+  }
+);

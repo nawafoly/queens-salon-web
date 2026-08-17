@@ -125,6 +125,27 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function riyadhDateKey(now = new Date()) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone: "Asia/Riyadh",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    ).formatToParts(now);
+
+  const read = (type) =>
+    parts.find(
+      (part) =>
+        part.type === type
+    )?.value || "";
+
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
 function createId(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
@@ -1399,6 +1420,206 @@ async function getPortalSession(env, identity) {
   };
 }
 
+
+function unavailablePartnerOperationalState(
+  employeeId,
+  date,
+  reason = "core_unavailable"
+) {
+  return {
+    employeeId: cleanText(employeeId),
+    date,
+    available: false,
+    reason,
+    source: "malikat_core",
+    blockedRanges: [],
+  };
+}
+
+function normalizePartnerOperationalState(
+  row,
+  fallbackDate
+) {
+  const blockedRanges =
+    (Array.isArray(row?.blockedRanges)
+      ? row.blockedRanges
+      : []
+    )
+      .map((range) => ({
+        startTime:
+          cleanText(range?.startTime),
+        endTime:
+          cleanText(range?.endTime),
+        source:
+          cleanText(range?.source),
+        reason:
+          cleanText(range?.reason),
+        leaveId:
+          optionalText(range?.leaveId) ||
+          undefined,
+        leaveType:
+          optionalText(range?.leaveType) ||
+          undefined,
+      }))
+      .filter(
+        (range) =>
+          range.startTime &&
+          range.endTime
+      );
+
+  return {
+    employeeId:
+      cleanText(row?.employeeId),
+    date:
+      cleanText(row?.date) ||
+      fallbackDate,
+    available:
+      row?.available === true,
+    showOnBooking:
+      typeof row?.showOnBooking ===
+      "boolean"
+        ? row.showOnBooking
+        : undefined,
+    reason:
+      cleanText(row?.reason),
+    source:
+      cleanText(row?.source) ||
+      "malikat_core",
+    startTime:
+      optionalText(row?.startTime) ||
+      undefined,
+    endTime:
+      optionalText(row?.endTime) ||
+      undefined,
+    leaveType:
+      optionalText(row?.leaveType) ||
+      undefined,
+    absenceType:
+      optionalText(row?.absenceType) ||
+      undefined,
+    blockedRanges,
+  };
+}
+
+async function resolvePartnerOperationalStateMap(
+  env,
+  members,
+  date
+) {
+  const employeeIds =
+    Array.from(
+      new Set(
+        members
+          .map(
+            (member) =>
+              cleanText(
+                member.employeeId
+              )
+          )
+          .filter(Boolean)
+      )
+    );
+
+  if (!employeeIds.length) {
+    return new Map();
+  }
+
+  const unavailableForIds = (
+    ids,
+    reason = "core_unavailable"
+  ) =>
+    new Map(
+      ids.map(
+        (employeeId) => [
+          employeeId,
+          unavailablePartnerOperationalState(
+            employeeId,
+            date,
+            reason
+          ),
+        ]
+      )
+    );
+
+  if (!env.MALIKAT_CORE_PARTNER) {
+    return unavailableForIds(
+      employeeIds
+    );
+  }
+
+  const stateByEmployeeId =
+    new Map();
+
+  // Core intentionally caps this private capability at 100 employees.
+  // Partner teams are not capped, so resolve them in bounded chunks.
+  for (
+    let offset = 0;
+    offset < employeeIds.length;
+    offset += 100
+  ) {
+    const chunk =
+      employeeIds.slice(
+        offset,
+        offset + 100
+      );
+
+    try {
+      const result =
+        await env.MALIKAT_CORE_PARTNER.resolveOperationalDays({
+          employeeIds: chunk,
+          date,
+        });
+
+      const rows =
+        Array.isArray(result?.rows)
+          ? result.rows
+          : [];
+
+      for (const row of rows) {
+        const normalized =
+          normalizePartnerOperationalState(
+            row,
+            date
+          );
+
+        if (
+          normalized.employeeId
+        ) {
+          stateByEmployeeId.set(
+            normalized.employeeId,
+            normalized
+          );
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "[partners] Malikat Core operational-day RPC chunk failed",
+        {
+          offset,
+          count: chunk.length,
+          error,
+        }
+      );
+
+      for (
+        const [
+          employeeId,
+          state,
+        ] of unavailableForIds(
+          chunk
+        )
+      ) {
+        stateByEmployeeId.set(
+          employeeId,
+          state
+        );
+      }
+    }
+  }
+
+  return stateByEmployeeId;
+}
+
 async function getPortalOverview(env, identity) {
   const access = await resolvePartnerAccess(env, identity);
   const canViewFinancials = Number(access.memberRow.can_view_financials) === 1;
@@ -1443,12 +1664,56 @@ async function getPortalOverview(env, identity) {
     )
   );
 
+  const rawTeam =
+    membersResult.results.map(
+      sanitizePortalMember
+    );
+
+  const today =
+    riyadhDateKey();
+
+  const operationalStateByEmployeeId =
+    await resolvePartnerOperationalStateMap(
+      env,
+      rawTeam,
+      today
+    );
+
+  const team =
+    rawTeam.map((member) => {
+      const employeeId =
+        cleanText(
+          member.employeeId
+        );
+
+      const todayOperationalState =
+        employeeId
+          ? operationalStateByEmployeeId.get(
+              employeeId
+            ) ||
+            unavailablePartnerOperationalState(
+              employeeId,
+              today,
+              "employee_not_resolved"
+            )
+          : unavailablePartnerOperationalState(
+              "",
+              today,
+              "employee_not_linked"
+            );
+
+      return {
+        ...member,
+        todayOperationalState,
+      };
+    });
+
   return {
     partner: mapPartner(access.partnerRow),
     member: sanitizePortalMember(access.memberRow),
     contracts,
     resources: resourcesResult.results.map(mapResource),
-    team: membersResult.results.map(sanitizePortalMember),
+    team,
     permissions: {
       canManageTeam: Number(access.memberRow.can_manage_team) === 1,
       canManageInventory: Number(access.memberRow.can_manage_inventory) === 1,

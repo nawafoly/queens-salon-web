@@ -5,6 +5,20 @@ const npx = isWindows ? "npx.cmd" : "npx";
 
 const processes = [
   {
+    name: "core-api",
+    command: npx,
+    args: [
+      "wrangler",
+      "dev",
+      "--config",
+      "wrangler.core.jsonc",
+      "--local",
+      "--port",
+      "8807",
+      "--show-interactive-dev-session=false",
+    ],
+  },
+  {
     name: "partners-api",
     command: npx,
     args: [
@@ -47,7 +61,10 @@ function shouldHideLine(name, line) {
   const cleanLine = stripAnsi(line).trim();
 
   if (!cleanLine) return true;
-  if (name !== "partners-api") return false;
+  if (
+    name !== "partners-api" &&
+    name !== "core-api"
+  ) return false;
 
   return [
     /wrangler\s+\d/i,

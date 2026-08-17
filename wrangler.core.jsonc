@@ -1,7 +1,7 @@
 ﻿{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "queens-salon-core-api",
-  "main": "workers/core/index.js",
+  "main": "workers/core/worker.js",
   "compatibility_date": "2026-06-24",
   "observability": {
     "enabled": true

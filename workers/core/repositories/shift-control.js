@@ -9,6 +9,7 @@ import {
   integer,
   nowIso,
   optionalText,
+  placeholders,
   requiredId,
   requiredText,
   rowNotFound,
@@ -1542,83 +1543,545 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
 }
 
 
-export async function resolveEmployeeShiftsBatch(db, salonId, data = {}) {
-  const rawEmployeeIds = Array.isArray(data.employeeIds ?? data.employee_ids)
-    ? (data.employeeIds ?? data.employee_ids)
-    : [];
+function rowsByEmployeeId(rows) {
+  const grouped =
+    new Map();
 
-  const employeeIds = Array.from(
-    new Set(
-      rawEmployeeIds
-        .map((value) => cleanText(value))
-        .filter(Boolean)
+  for (const row of rows) {
+    const employeeId =
+      cleanText(
+        row?.employee_id
+      );
+
+    if (!employeeId) {
+      continue;
+    }
+
+    const current =
+      grouped.get(employeeId) ||
+      [];
+
+    current.push(row);
+    grouped.set(
+      employeeId,
+      current
+    );
+  }
+
+  return grouped;
+}
+
+function rowDateRangeContains(
+  row,
+  date,
+  fromField,
+  toField
+) {
+  const from =
+    cleanText(
+      row?.[fromField]
+    ) ||
+    "0000-01-01";
+
+  const to =
+    cleanText(
+      row?.[toField]
+    ) ||
+    "9999-12-31";
+
+  return (
+    from <= date &&
+    to >= date
+  );
+}
+
+function resolveEmployeeShiftFromBatchFacts(
+  employeeId,
+  date,
+  exceptionRows,
+  weeklyRows,
+  assignmentRows
+) {
+  const exception =
+    exceptionRows.find(
+      (row) =>
+        rowDateRangeContains(
+          row,
+          date,
+          "date_from",
+          "date_to"
+        )
+    ) ||
+    null;
+
+  const weeklySchedule =
+    weeklyRows.find(
+      (row) =>
+        Number(row.weekday) ===
+          weekdayNumber(date) &&
+        rowDateRangeContains(
+          row,
+          date,
+          "effective_from",
+          "effective_to"
+        )
+    ) ||
+    null;
+
+  const assignment =
+    assignmentRows.find(
+      (row) =>
+        rowDateRangeContains(
+          row,
+          date,
+          "effective_from",
+          "effective_to"
+        )
+    ) ||
+    null;
+
+  if (exception) {
+    const exceptionType =
+      cleanText(
+        exception.exception_type
+      );
+
+    if (
+      exceptionType ===
+        "custom" &&
+      !exception.shift_template_id
+    ) {
+      const base =
+        weeklySchedule &&
+        Number(
+          weeklySchedule.active
+        ) === 1
+          ? weeklySchedule
+          : assignment;
+
+      return {
+        source: "exception",
+        date,
+        ...exception,
+        late_grace_minutes:
+          base?.late_grace_minutes ??
+          0,
+        early_leave_grace_minutes:
+          0,
+        attendance_lock_enabled:
+          base?.attendance_lock_enabled ??
+          0,
+        attendance_lock_after_minutes:
+          base?.attendance_lock_after_minutes ??
+          30,
+        break_minutes:
+          base?.break_minutes ??
+          0,
+        overtime_after_minutes:
+          base?.overtime_after_minutes ??
+          0,
+      };
+    }
+
+    return {
+      source: "exception",
+      date,
+      ...exception,
+    };
+  }
+
+  if (weeklySchedule) {
+    if (
+      Number(
+        weeklySchedule.active
+      ) !== 1
+    ) {
+      return {
+        source:
+          "weekly_schedule",
+        date,
+        exception_type:
+          "off",
+        ...weeklySchedule,
+      };
+    }
+
+    return {
+      source:
+        "weekly_schedule",
+      date,
+      ...weeklySchedule,
+    };
+  }
+
+  return assignment
+    ? {
+        source:
+          "assignment",
+        date,
+        ...assignment,
+      }
+    : {
+        source:
+          "none",
+        date,
+        employee_id:
+          employeeId,
+      };
+}
+
+export async function resolveEmployeeShiftsBatch(
+  db,
+  salonId,
+  data = {}
+) {
+  const rawEmployeeIds =
+    Array.isArray(
+      data.employeeIds ??
+      data.employee_ids
     )
-  ).map((value) => requiredId(value, 'employeeId'));
+      ? (
+          data.employeeIds ??
+          data.employee_ids
+        )
+      : [];
+
+  const employeeIds =
+    Array.from(
+      new Set(
+        rawEmployeeIds
+          .map(
+            (value) =>
+              cleanText(value)
+          )
+          .filter(Boolean)
+      )
+    ).map(
+      (value) =>
+        requiredId(
+          value,
+          "employeeId"
+        )
+    );
 
   if (!employeeIds.length) {
-    throw Object.assign(new Error('employee_ids_required'), {
-      code: 'core_hr:employee_ids_required',
-    });
+    throw Object.assign(
+      new Error(
+        "employee_ids_required"
+      ),
+      {
+        code:
+          "core_hr:employee_ids_required",
+      }
+    );
   }
 
-  if (employeeIds.length > 100) {
-    throw Object.assign(new Error('employee_batch_too_large'), {
-      code: 'core_hr:employee_batch_too_large',
-    });
+  if (
+    employeeIds.length >
+    100
+  ) {
+    throw Object.assign(
+      new Error(
+        "employee_batch_too_large"
+      ),
+      {
+        code:
+          "core_hr:employee_batch_too_large",
+      }
+    );
   }
 
-  const dateFrom = dateKey(
-    data.dateFrom ?? data.date_from,
-    'dateFrom'
-  );
+  const dateFrom =
+    dateKey(
+      data.dateFrom ??
+        data.date_from,
+      "dateFrom"
+    );
 
-  const dateTo = dateKey(
-    data.dateTo ?? data.date_to ?? dateFrom,
-    'dateTo'
-  );
+  const dateTo =
+    dateKey(
+      data.dateTo ??
+        data.date_to ??
+        dateFrom,
+      "dateTo"
+    );
 
   if (dateTo < dateFrom) {
-    throw Object.assign(new Error('date_range_invalid'), {
-      code: 'core_hr:invalid_date_range',
-    });
+    throw Object.assign(
+      new Error(
+        "date_range_invalid"
+      ),
+      {
+        code:
+          "core_hr:invalid_date_range",
+      }
+    );
   }
 
-  const daysCount = daysBetweenInclusive(dateFrom, dateTo);
+  const daysCount =
+    daysBetweenInclusive(
+      dateFrom,
+      dateTo
+    );
 
   if (daysCount > 62) {
-    throw Object.assign(new Error('shift_resolution_range_too_large'), {
-      code: 'core_hr:shift_resolution_range_too_large',
-    });
+    throw Object.assign(
+      new Error(
+        "shift_resolution_range_too_large"
+      ),
+      {
+        code:
+          "core_hr:shift_resolution_range_too_large",
+      }
+    );
   }
 
-  if (employeeIds.length * daysCount > 5000) {
-    throw Object.assign(new Error('shift_resolution_batch_too_large'), {
-      code: 'core_hr:shift_resolution_batch_too_large',
-    });
+  if (
+    employeeIds.length *
+      daysCount >
+    5000
+  ) {
+    throw Object.assign(
+      new Error(
+        "shift_resolution_batch_too_large"
+      ),
+      {
+        code:
+          "core_hr:shift_resolution_batch_too_large",
+      }
+    );
   }
+
+  // FakeD1 exists only for repository tests.
+  // Production D1 always uses the true batched path below.
+  if (db?.__fakeD1) {
+    const rows = [];
+
+    for (
+      const employeeId
+      of employeeIds
+    ) {
+      for (
+        let offset = 0;
+        offset < daysCount;
+        offset += 1
+      ) {
+        rows.push(
+          await resolveEmployeeShift(
+            db,
+            salonId,
+            employeeId,
+            addDays(
+              dateFrom,
+              offset
+            )
+          )
+        );
+      }
+    }
+
+    return {
+      date_from:
+        dateFrom,
+      date_to:
+        dateTo,
+      employees_count:
+        employeeIds.length,
+      days_count:
+        daysCount,
+      rows,
+    };
+  }
+
+  const marks =
+    placeholders(
+      employeeIds.length
+    );
+
+  const [
+    exceptions,
+    weeklySchedules,
+    assignments,
+  ] =
+    await Promise.all([
+      dbAll(
+        db,
+        `SELECT e.*, t.name AS shift_name,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_schedule_exceptions e
+          LEFT JOIN hr_shift_templates t
+            ON t.id=e.shift_template_id
+          WHERE e.salon_id=?
+            AND e.employee_id IN (${marks})
+            AND e.status='approved'
+            AND (e.exception_type='off' OR e.enabled=1)
+            AND e.date_from<=?
+            AND e.date_to>=?
+          ORDER BY e.employee_id, e.created_at DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+
+      dbAll(
+        db,
+        `SELECT s.*, t.name AS shift_name,
+          t.code AS shift_code,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_work_schedules s
+          LEFT JOIN hr_shift_templates t
+            ON t.id=s.shift_template_id
+            AND t.salon_id=s.salon_id
+          WHERE s.salon_id=?
+            AND s.employee_id IN (${marks})
+            AND (
+              s.effective_from IS NULL OR
+              s.effective_from<=?
+            )
+            AND (
+              s.effective_to IS NULL OR
+              s.effective_to>=?
+            )
+          ORDER BY
+            s.employee_id,
+            COALESCE(
+              s.effective_from,
+              '0000-01-01'
+            ) DESC,
+            s.updated_at DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+
+      dbAll(
+        db,
+        `SELECT a.*, t.name AS shift_name,
+          t.start_time AS template_start_time,
+          t.end_time AS template_end_time,
+          t.crosses_midnight,
+          t.break_minutes,
+          t.late_grace_minutes,
+          0 AS early_leave_grace_minutes,
+          t.attendance_lock_enabled,
+          t.attendance_lock_after_minutes,
+          t.overtime_after_minutes
+          FROM hr_shift_assignments a
+          LEFT JOIN hr_shift_templates t
+            ON t.id=a.shift_template_id
+          WHERE a.salon_id=?
+            AND a.employee_id IN (${marks})
+            AND a.status='published'
+            AND a.effective_from<=?
+            AND (
+              a.effective_to IS NULL OR
+              a.effective_to>=?
+            )
+          ORDER BY
+            a.employee_id,
+            a.effective_from DESC`,
+        [
+          salonId,
+          ...employeeIds,
+          dateTo,
+          dateFrom,
+        ]
+      ),
+    ]);
+
+  const exceptionByEmployee =
+    rowsByEmployeeId(
+      exceptions
+    );
+
+  const weeklyByEmployee =
+    rowsByEmployeeId(
+      weeklySchedules
+    );
+
+  const assignmentByEmployee =
+    rowsByEmployeeId(
+      assignments
+    );
 
   const rows = [];
 
-  for (const employeeId of employeeIds) {
-    for (let offset = 0; offset < daysCount; offset += 1) {
-      const date = addDays(dateFrom, offset);
+  for (
+    const employeeId
+    of employeeIds
+  ) {
+    const exceptionRows =
+      exceptionByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    const weeklyRows =
+      weeklyByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    const assignmentRows =
+      assignmentByEmployee.get(
+        employeeId
+      ) ||
+      [];
+
+    for (
+      let offset = 0;
+      offset < daysCount;
+      offset += 1
+    ) {
+      const date =
+        addDays(
+          dateFrom,
+          offset
+        );
 
       rows.push(
-        await resolveEmployeeShift(
-          db,
-          salonId,
+        resolveEmployeeShiftFromBatchFacts(
           employeeId,
-          date
+          date,
+          exceptionRows,
+          weeklyRows,
+          assignmentRows
         )
       );
     }
   }
 
   return {
-    date_from: dateFrom,
-    date_to: dateTo,
-    employees_count: employeeIds.length,
-    days_count: daysCount,
+    date_from:
+      dateFrom,
+    date_to:
+      dateTo,
+    employees_count:
+      employeeIds.length,
+    days_count:
+      daysCount,
     rows,
   };
 }
