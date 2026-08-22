@@ -54,6 +54,8 @@ class FakeD1 {
       "employee_absences",
       "payroll_periods",
       "payroll_entries",
+      "salary_advances",
+      "salary_advance_installments",
       "employee_target_plans",
       "employee_target_tiers",
       "employee_target_assignments",
@@ -608,6 +610,30 @@ class FakeD1 {
           row.performed_date <= end
         );
     }
+    // FAKE_D1_CANONICAL_ADVANCE_DEDUCTIONS
+    if (normalized.startsWith("SELECT sa.employee_id, sai.payroll_month,") && normalized.includes("FROM salary_advance_installments sai") && normalized.includes("JOIN salary_advances sa")) {
+      const [salonId]=params; const grouped=new Map();
+      for (const installment of this.rows("salary_advance_installments")) {
+        if(installment.salon_id!==salonId || !["scheduled","deducted"].includes(String(installment.status||""))) continue;
+        const advance=this.rows("salary_advances").find((row)=>row.salon_id===salonId && row.id===installment.advance_id);
+        if(!advance) continue;
+        const key=`${advance.employee_id}\u0000${installment.payroll_month}`;
+        const current=grouped.get(key)||{employee_id:advance.employee_id,payroll_month:installment.payroll_month,amount_halalas:0};
+        current.amount_halalas+=Number(installment.amount_halalas||0); grouped.set(key,current);
+      }
+      return [...grouped.values()].sort((x,y)=>`${x.payroll_month}\u0000${x.employee_id}`.localeCompare(`${y.payroll_month}\u0000${y.employee_id}`));
+    }
+    if (normalized.startsWith("SELECT sai.advance_id, COALESCE(SUM(sai.amount_halalas), 0) AS amount_halalas") && normalized.includes("FROM salary_advance_installments sai") && normalized.includes("JOIN salary_advances sa")) {
+      const [salonId,employeeId,payrollMonth]=params; const grouped=new Map();
+      for(const installment of this.rows("salary_advance_installments")){
+        if(installment.salon_id!==salonId || installment.payroll_month!==payrollMonth || String(installment.status||"")!=="scheduled") continue;
+        const advance=this.rows("salary_advances").find((row)=>row.salon_id===salonId && row.id===installment.advance_id && row.employee_id===employeeId);
+        if(!advance) continue;
+        grouped.set(installment.advance_id,Number(grouped.get(installment.advance_id)||0)+Number(installment.amount_halalas||0));
+      }
+      return [...grouped.entries()].map(([advance_id,amount_halalas])=>({advance_id,amount_halalas}));
+    }
+
     if (normalized.startsWith("SELECT * FROM payroll_entries WHERE salon_id = ? AND id = ?")) {
       const [salonId, id] = params;
       return this.find("payroll_entries", salonId, id) ? [this.find("payroll_entries", salonId, id)] : [];
@@ -804,6 +830,19 @@ class FakeD1 {
 
   async run(sql, params = []) {
     const normalized = sql.replace(/\s+/g, " ").trim();
+
+    // FAKE_D1_LINK_SALARY_ADVANCE_INSTALLMENTS
+    if (normalized.startsWith("UPDATE salary_advance_installments SET payroll_entry_id = ?, updated_at = ?")) {
+      const [payrollEntryId,updatedAt,salonId,payrollMonth,advanceSalonId,employeeId]=params;
+      const advanceIds=new Set(this.rows("salary_advances").filter((row)=>row.salon_id===advanceSalonId && row.employee_id===employeeId).map((row)=>row.id));
+      let count=0;
+      for(const row of this.rows("salary_advance_installments")){
+        if(row.salon_id===salonId && row.payroll_month===payrollMonth && String(row.status||"")==="scheduled" && advanceIds.has(row.advance_id)){
+          this.seed("salary_advance_installments",{...row,payroll_entry_id:payrollEntryId,updated_at:updatedAt}); count+=1;
+        }
+      }
+      return {meta:{changes:count}};
+    }
     if (normalized.startsWith("INSERT INTO user_employee_links")) {
       const [
         id,

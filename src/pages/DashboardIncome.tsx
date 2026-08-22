@@ -21,7 +21,7 @@ import {
   listAllIncomeCore,
   removeIncomeCore,
   upsertIncomeCore,
-} from "../services/firestoreIncome";
+} from "../services/CoreIncomeService";
 import { listCoreBookings } from "../services/firestoreBookings";
 import { CoreBookingService } from "../services/CoreBookingService";
 import { CoreStaffService } from "../services/CoreStaffService";

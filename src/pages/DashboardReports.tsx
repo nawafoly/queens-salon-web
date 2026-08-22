@@ -14,8 +14,8 @@ import {
   type PayrollEntryView,
 } from "../services/CorePayrollService";
 import { listCoreBookings } from "../services/firestoreBookings";
-import { listAllIncomeCore } from "../services/firestoreIncome";
-import { listAllExpensesCore } from "../services/firestoreExpenses";
+import { listAllIncomeCore } from "../services/CoreIncomeService";
+import { listAllExpensesCore } from "../services/CoreExpenseService";
 import { exportFinancialOverviewReportExcel, exportFinancialOverviewReportPdf } from "../helpers/reports/exportFinancialOverviewReport";
 import type { PaymentMethod } from "../types/finance";
 import { financePaymentMethodLabel, formatFinanceNote } from "../helpers/financeDisplay";

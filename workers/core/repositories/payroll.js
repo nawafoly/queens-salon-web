@@ -4,6 +4,7 @@
 import {
   cleanText,
   dbAll,
+  dbBatch,
   dbFirst,
   dbRun,
   generatedId,
@@ -193,6 +194,29 @@ export async function getPayrollEntry(db, salonId, id) {
   return row;
 }
 
+export async function listPayrollAdvanceDeductions(db, salonId, query = {}) {
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const payrollMonth = cleanText(query.payrollMonth || query.payroll_month);
+  const rows = await dbAll(
+    db,
+    `SELECT sa.employee_id, sai.payroll_month,
+            COALESCE(SUM(sai.amount_halalas), 0) AS amount_halalas
+       FROM salary_advance_installments sai
+       JOIN salary_advances sa
+         ON sa.salon_id = sai.salon_id
+        AND sa.id = sai.advance_id
+      WHERE sai.salon_id = ?
+        AND sai.status IN ('scheduled', 'deducted')
+      GROUP BY sa.employee_id, sai.payroll_month
+      ORDER BY sai.payroll_month, sa.employee_id`,
+    [salonId]
+  );
+  return rows.filter((row) =>
+    (!employeeId || cleanText(row.employee_id) === employeeId) &&
+    (!payrollMonth || cleanText(row.payroll_month) === payrollMonth)
+  );
+}
+
 export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const payrollMonth = cleanText(data.payrollMonth || data.payroll_month);
@@ -227,6 +251,51 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
       if (!targetSchemaUnavailable(error)) throw error;
     }
   }
+  const submittedDeductions = Array.isArray(data.deductions)
+    ? data.deductions
+    : Array.isArray(data.salaryDeductions)
+      ? data.salaryDeductions
+      : parseJsonArray(data.deductions_json);
+  if (submittedDeductions.some((item) => cleanText(item?.kind) === 'advance')) {
+    throw new AppError(400, 'core_payroll:manual_advance_not_allowed');
+  }
+
+  const canonicalAdvanceRows = await listPayrollAdvanceDeductions(
+    db,
+    salonId,
+    { employeeId, payrollMonth }
+  );
+  const canonicalAdvanceHalalas = Math.max(
+    0,
+    Number(canonicalAdvanceRows[0]?.amount_halalas || 0)
+  );
+  const canonicalGrossSalaryHalalas =
+    intMoney(data.baseSalaryHalalas ?? data.base_salary_halalas) +
+    intMoney(data.allowancesHalalas ?? data.allowances_halalas) +
+    intMoney(data.manualAdditionsHalalas ?? data.manual_additions_halalas) +
+    intMoney(data.overtimeValueHalalas ?? data.overtime_value_halalas);
+  const canonicalTotalDeductionsHalalas =
+    intMoney(data.absenceDeductionHalalas ?? data.absence_deduction_halalas) +
+    intMoney(data.delayDeductionHalalas ?? data.delay_deduction_halalas) +
+    intMoney(data.insuranceDeductionHalalas ?? data.insurance_deduction_halalas) +
+    intMoney(data.otherDeductionsHalalas ?? data.other_deductions_halalas) +
+    intMoney(data.missingHoursDeductionHalalas ?? data.missing_hours_deduction_halalas) +
+    intMoney(data.manualDeductionsHalalas ?? data.manual_deductions_halalas) +
+    canonicalAdvanceHalalas;
+  const canonicalNetSalaryHalalas = Math.max(
+    0,
+    canonicalGrossSalaryHalalas - canonicalTotalDeductionsHalalas
+  );
+  data = {
+    ...data,
+    deductions: submittedDeductions,
+    advancesHalalas: canonicalAdvanceHalalas,
+    totalDeductionsHalalas: canonicalTotalDeductionsHalalas,
+    grossSalaryHalalas: canonicalGrossSalaryHalalas,
+    netSalaryHalalas: canonicalNetSalaryHalalas,
+    finalSalaryHalalas: canonicalNetSalaryHalalas,
+  };
+
   const overtimeEnabled = activeFlag(data.overtimeEnabled ?? data.overtime_enabled ?? existing?.overtime_enabled ?? 0);
   const auditLog = existing?.audit_log_json || jsonText([{ action: 'created', byUid: optionalText(actor.uid) || null, at: now }], []);
   const row = {
@@ -334,6 +403,24 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
       paid_at = excluded.paid_at, paid_by_uid = excluded.paid_by_uid, notes = excluded.notes,
       audit_log_json = excluded.audit_log_json, updated_at = excluded.updated_at`, Object.values(row));
   const saved = await dbFirst(db, 'SELECT * FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ? LIMIT 1', [salonId, employeeId, payrollMonth]);
+  if (saved?.id) {
+    await dbRun(
+      db,
+      `UPDATE salary_advance_installments
+          SET payroll_entry_id = ?, updated_at = ?
+        WHERE salon_id = ?
+          AND payroll_month = ?
+          AND status = 'scheduled'
+          AND advance_id IN (
+            SELECT id
+              FROM salary_advances
+             WHERE salon_id = ?
+               AND employee_id = ?
+          )`,
+      [saved.id, nowIso(), salonId, payrollMonth, salonId, employeeId]
+    );
+  }
+
   if (targetBonus?.targetSummary?.id && saved?.id) {
     await dbRun(
       db,
@@ -457,50 +544,110 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
   if (cleanText(existing.status) !== 'approved') throw new AppError(409, 'core_payroll:not_approved');
   assertPayrollSetupComplete(existing);
   const now = nowIso();
-  await dbRun(
-    db,
-    `UPDATE payroll_entries
-       SET status = 'paid',
-           approved_at = COALESCE(approved_at, ?),
-           approved_by_uid = COALESCE(approved_by_uid, ?),
-           paid_at = COALESCE(paid_at, ?), paid_by_uid = COALESCE(paid_by_uid, ?),
-           audit_log_json = ?, updated_at = ?
-     WHERE salon_id = ? AND id = ?`,
-    [
-      now,
-      optionalText(actor.uid) || null,
-      now,
-      optionalText(actor.uid) || null,
-      appendAudit(existing, 'paid', actor),
-      now,
-      salonId,
-      existing.id,
-    ]
-  );
   const installments = await dbAll(
     db,
-    `SELECT advance_id, SUM(amount_halalas) AS amount_halalas
-       FROM salary_advance_installments
-      WHERE salon_id = ? AND payroll_entry_id = ? AND status = 'scheduled'
-      GROUP BY advance_id`,
-    [salonId, existing.id]
+    `SELECT sai.advance_id, COALESCE(SUM(sai.amount_halalas), 0) AS amount_halalas
+       FROM salary_advance_installments sai
+       JOIN salary_advances sa
+         ON sa.salon_id = sai.salon_id
+        AND sa.id = sai.advance_id
+      WHERE sai.salon_id = ?
+        AND sa.employee_id = ?
+        AND sai.payroll_month = ?
+        AND sai.status = 'scheduled'
+      GROUP BY sai.advance_id`,
+    [salonId, existing.employee_id, existing.payroll_month]
   );
+  const scheduledAdvanceHalalas = installments.reduce(
+    (total, installment) => total + Math.max(0, Number(installment.amount_halalas || 0)),
+    0
+  );
+  if (scheduledAdvanceHalalas !== Math.max(0, Number(existing.advances_halalas || 0))) {
+    throw new AppError(409, 'core_payroll:advance_deduction_mismatch');
+  }
+
+  const statements = [
+    {
+      sql: `UPDATE payroll_entries
+               SET status = 'paid',
+                   approved_at = COALESCE(approved_at, ?),
+                   approved_by_uid = COALESCE(approved_by_uid, ?),
+                   paid_at = COALESCE(paid_at, ?),
+                   paid_by_uid = COALESCE(paid_by_uid, ?),
+                   audit_log_json = ?,
+                   updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND status = 'approved'`,
+      params: [
+        now,
+        optionalText(actor.uid) || null,
+        now,
+        optionalText(actor.uid) || null,
+        appendAudit(existing, 'paid', actor),
+        now,
+        salonId,
+        existing.id,
+      ],
+    },
+  ];
+
   for (const installment of installments) {
     const amount = Math.max(0, Number(installment.amount_halalas || 0));
-    await dbRun(
-      db,
-      `UPDATE salary_advance_installments SET status = 'deducted', deducted_at = ?, updated_at = ?
-        WHERE salon_id = ? AND payroll_entry_id = ? AND advance_id = ? AND status = 'scheduled'`,
-      [now, now, salonId, existing.id, installment.advance_id]
-    );
-    await dbRun(
-      db,
-      `UPDATE salary_advances SET paid_halalas = MIN(approved_halalas, paid_halalas + ?),
-       remaining_halalas = MAX(0, remaining_halalas - ?),
-       payment_status = CASE WHEN remaining_halalas <= ? THEN 'repaid' ELSE 'partially_repaid' END,
-       updated_at = ? WHERE salon_id = ? AND id = ?`,
-      [amount, amount, amount, now, salonId, installment.advance_id]
+    statements.push(
+      {
+        sql: `UPDATE salary_advances
+                 SET paid_halalas = MIN(approved_halalas, paid_halalas + ?),
+                     remaining_halalas = MAX(0, remaining_halalas - ?),
+                     payment_status = CASE
+                       WHEN remaining_halalas <= ? THEN 'repaid'
+                       ELSE 'partially_repaid'
+                     END,
+                     updated_at = ?
+               WHERE salon_id = ?
+                 AND id = ?
+                 AND EXISTS (
+                   SELECT 1
+                     FROM salary_advance_installments
+                    WHERE salon_id = ?
+                      AND advance_id = ?
+                      AND payroll_month = ?
+                      AND status = 'scheduled'
+                 )`,
+        params: [
+          amount,
+          amount,
+          amount,
+          now,
+          salonId,
+          installment.advance_id,
+          salonId,
+          installment.advance_id,
+          existing.payroll_month,
+        ],
+      },
+      {
+        sql: `UPDATE salary_advance_installments
+                 SET status = 'deducted',
+                     payroll_entry_id = ?,
+                     deducted_at = ?,
+                     updated_at = ?
+               WHERE salon_id = ?
+                 AND advance_id = ?
+                 AND payroll_month = ?
+                 AND status = 'scheduled'`,
+        params: [
+          existing.id,
+          now,
+          now,
+          salonId,
+          installment.advance_id,
+          existing.payroll_month,
+        ],
+      }
     );
   }
+
+  await dbBatch(db, statements);
   return getPayrollEntry(db, salonId, existing.id);
 }

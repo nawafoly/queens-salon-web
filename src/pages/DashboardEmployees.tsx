@@ -1,4 +1,4 @@
-﻿// src/pages/DashboardEmployees.tsx
+// src/pages/DashboardEmployees.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -541,6 +541,35 @@ function dateTimeLocalToIso(value: string) {
   return date.toISOString();
 }
 
+function attendanceDateTimeLocalToRiyadhIso(value: string) {
+  const clean = cleanText(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(clean);
+  if (!match) return "";
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const dateCheck = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    dateCheck.getUTCFullYear() !== year ||
+    dateCheck.getUTCMonth() !== month - 1 ||
+    dateCheck.getUTCDate() !== day ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return "";
+  }
+
+  return new Date(
+    Date.UTC(year, month - 1, day, hour - 3, minute, 0, 0)
+  ).toISOString();
+}
+
 function uniqueCleanTexts(values: unknown[]) {
   return Array.from(
     new Set(values.map(cleanText).filter(Boolean))
@@ -584,31 +613,35 @@ function resolveEmployeeAttendanceIdentity(
     selectedEmployeeId,
     (source as any).employeeKey,
   ]);
-  const docCandidates = uniqueCleanTexts([
-    (source as any).employeeDocId,
-    (source as any).linkedEmployeeDocId,
+  const primaryDocCandidates = uniqueCleanTexts([
     (source as any).employeeId,
     (source as any).id,
     selectedEmployeeId,
-    (source as any).employeeUid,
-    (source as any).linkedUid,
-    (source as any).authUid,
-    (source as any).uid,
-    (source as any).linkedUserId,
+    (source as any).employeeDocId,
+    (source as any).linkedEmployeeDocId,
+    (source as any).employeeKey,
+  ]);
+  const fallbackDocCandidates = uniqueCleanTexts([
+    (source as any).employeeDocId,
+    (source as any).linkedEmployeeDocId,
+    ...uidCandidates,
   ]);
   const fullUid = uidCandidates.find(isFullAttendanceIdentifier) || "";
-  const fullDocId = docCandidates.find(isFullAttendanceIdentifier) || "";
   const employeeUid =
-    fullUid || fullDocId || uidCandidates[0] || docCandidates[0] || "";
+    fullUid || uidCandidates[0] || primaryDocCandidates[0] || "";
   const employeeDocId =
-    fullDocId || fullUid || docCandidates[0] || employeeUid;
+    primaryDocCandidates.find((value) => value !== employeeUid) ||
+    fallbackDocCandidates.find((value) => value !== employeeUid) ||
+    primaryDocCandidates[0] ||
+    employeeUid;
 
   return {
     employeeUid,
     employeeDocId,
     allIds: uniqueCleanTexts([
       ...uidCandidates,
-      ...docCandidates,
+      ...primaryDocCandidates,
+      ...fallbackDocCandidates,
       employeeUid,
       employeeDocId,
     ]),
@@ -940,18 +973,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     allowedZoneIds: pickEditableArray("allowedZoneIds", (value) =>
       Array.isArray(value) ? value.map(cleanText).filter(Boolean) : []
     ),
-    monthlySalary: pickEditableNumber("monthlySalary"),
-    payrollMonthlyHours: pickEditableNumber("payrollMonthlyHours"),
-    payrollOvertimeEnabled: pickEditableBoolean("payrollOvertimeEnabled", false),
-    payrollOvertimeMultiplier: pickEditableNumber("payrollOvertimeMultiplier") || 1.5,
-    payrollDeductionMethod: pickEditableText("payrollDeductionMethod"),
-    overtimeMethod: pickEditableText("overtimeMethod") as StaffPayrollMethod,
-    overtimeDaysPerMonth: pickEditableNumber("overtimeDaysPerMonth"),
-    overtimeBaseHoursPerDay: pickEditableNumber("overtimeBaseHoursPerDay"),
-    overtimeSeasonBaseHoursPerDay: pickEditableNumber("overtimeSeasonBaseHoursPerDay"),
-    overtimeHoursBasis: pickEditableText("overtimeHoursBasis") as StaffOvertimeHoursBasis,
-    overtimePercent: pickEditableNumber("overtimePercent"),
-    overtimeInvoicePercent: pickEditableNumber("overtimeInvoicePercent"),
+
     profileIncomplete:
       primary.source !== "staff_public" && fallback.source !== "staff_public",
   };
@@ -1273,6 +1295,29 @@ function workingHourOverridesEqual(
   );
 }
 
+const LEGACY_PAYROLL_FIRESTORE_FIELDS = [
+  "monthlySalary",
+  "payrollMonthlyHours",
+  "payrollOvertimeEnabled",
+  "payrollOvertimeMultiplier",
+  "payrollDeductionMethod",
+  "overtimeMethod",
+  "overtimeDaysPerMonth",
+  "overtimeBaseHoursPerDay",
+  "overtimeSeasonBaseHoursPerDay",
+  "overtimeHoursBasis",
+  "overtimePercent",
+  "overtimeInvoicePercent",
+] as const;
+
+function withoutLegacyPayrollFirestoreFields(input: Record<string, any>) {
+  const next = { ...input };
+  for (const field of LEGACY_PAYROLL_FIRESTORE_FIELDS) {
+    delete next[field];
+  }
+  return next;
+}
+
 type EmployeeSaveVerificationSnapshot = Record<string, unknown>;
 
 function buildEmployeeSaveVerificationSnapshot(
@@ -1300,18 +1345,7 @@ function buildEmployeeSaveVerificationSnapshot(
     leaveNote: cleanText(staff.leaveNote),
     attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
     allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
-    monthlySalary: safeNonNegativeNumber(staff.monthlySalary, 0),
-    payrollMonthlyHours: safeNonNegativeNumber(staff.payrollMonthlyHours, 0),
-    payrollOvertimeEnabled: staff.payrollOvertimeEnabled === true,
-    payrollOvertimeMultiplier: safeNonNegativeNumber(staff.payrollOvertimeMultiplier, 0),
-    payrollDeductionMethod: cleanText(staff.payrollDeductionMethod),
-    overtimeMethod: cleanText(staff.overtimeMethod),
-    overtimeDaysPerMonth: safeNonNegativeNumber(staff.overtimeDaysPerMonth, 0),
-    overtimeBaseHoursPerDay: safeNonNegativeNumber(staff.overtimeBaseHoursPerDay, 0),
-    overtimeSeasonBaseHoursPerDay: safeNonNegativeNumber(staff.overtimeSeasonBaseHoursPerDay, 0),
-    overtimeHoursBasis: cleanText(staff.overtimeHoursBasis),
-    overtimePercent: safeNonNegativeNumber(staff.overtimePercent, 0),
-    overtimeInvoicePercent: safeNonNegativeNumber(staff.overtimeInvoicePercent, 0),
+
   };
 }
 
@@ -1843,7 +1877,9 @@ export default function DashboardEmployees() {
     const cleanDate = normalizeLeaveUntil(dateKey);
     if (!cleanDate) return;
     const row = employeeAttendanceRows.find((item) => item.date === cleanDate) || null;
-    const allowed = row ? canUpdateAttendance : canCreateAttendance;
+    const allowed = row
+      ? canUpdateAttendance || canDeleteAttendance
+      : canCreateAttendance;
     if (!allowed) {
       setErrorMsg(
         row
@@ -1853,12 +1889,15 @@ export default function DashboardEmployees() {
       return;
     }
     setAttendanceEditDate(cleanDate);
-    setAttendanceEditCheckIn(toDateTimeLocalValue(row?.checkInAtClient) || `${cleanDate}T09:00`);
+    setAttendanceEditCheckIn(
+      toDateTimeLocalValue(row?.checkInAtClient) ||
+        (row ? "" : `${cleanDate}T09:00`)
+    );
     setAttendanceEditCheckOut(toDateTimeLocalValue(row?.checkOutAtClient));
     setAttendanceEditNote(cleanText(row?.notes));
     setAttendanceEditOpen(true);
     setErrorMsg("");
-  }, [canCreateAttendance, canUpdateAttendance, employeeAttendanceRows]);
+  }, [canCreateAttendance, canDeleteAttendance, canUpdateAttendance, employeeAttendanceRows]);
 
   const closeAttendancePunchEditor = useCallback(() => {
     setAttendanceEditOpen(false);
@@ -1873,25 +1912,73 @@ export default function DashboardEmployees() {
       setErrorMsg("لم يتم تحديد الموظفة.");
       return;
     }
+
     const date = normalizeLeaveUntil(attendanceEditDate);
+    if (!date) {
+      setErrorMsg("اختر يومًا صحيحًا قبل حفظ تعديل البصمة.");
+      return;
+    }
+
     const existingRow = employeeAttendanceRows.find((item) => item.date === date) || null;
-    const allowed = existingRow ? canUpdateAttendance : canCreateAttendance;
-    if (!allowed) {
-      setErrorMsg(
-        existingRow
-          ? "ليست لديك صلاحية لتعديل بصمة الموظفة."
-          : "ليست لديك صلاحية لإضافة بصمة إدارية."
-      );
+    const requestedCheckInTime = attendanceEditCheckIn
+      ? attendanceEditCheckIn.slice(11, 16)
+      : "";
+    const requestedCheckOutTime = attendanceEditCheckOut
+      ? attendanceEditCheckOut.slice(11, 16)
+      : "";
+    const originalCheckInLocal = toDateTimeLocalValue(existingRow?.checkInAtClient);
+    const originalCheckOutLocal = toDateTimeLocalValue(existingRow?.checkOutAtClient);
+    const originalCheckInTime = originalCheckInLocal
+      ? originalCheckInLocal.slice(11, 16)
+      : "";
+    const originalCheckOutTime = originalCheckOutLocal
+      ? originalCheckOutLocal.slice(11, 16)
+      : "";
+    const clearCheckIn = Boolean(originalCheckInTime) && !requestedCheckInTime;
+    const clearCheckOut = Boolean(originalCheckOutTime) && !requestedCheckOutTime;
+    const checkInChanged = Boolean(requestedCheckInTime) && requestedCheckInTime !== originalCheckInTime;
+    const checkOutChanged = Boolean(requestedCheckOutTime) && requestedCheckOutTime !== originalCheckOutTime;
+
+    if (!existingRow && !canCreateAttendance) {
+      setErrorMsg("ليست لديك صلاحية لإضافة بصمة إدارية.");
       return;
     }
-    const checkInIso = dateTimeLocalToIso(attendanceEditCheckIn);
-    const checkOutIso = dateTimeLocalToIso(attendanceEditCheckOut);
-    if (!date || !checkInIso) {
-      setErrorMsg("اختر اليوم ووقت الحضور قبل حفظ تعديل البصمة.");
+    if (existingRow && (checkInChanged || checkOutChanged) && !canUpdateAttendance) {
+      setErrorMsg("ليست لديك صلاحية لتعديل بصمة الموظفة.");
       return;
     }
-    if (checkOutIso && Date.parse(checkOutIso) <= Date.parse(checkInIso)) {
+    if ((clearCheckIn || clearCheckOut) && !canDeleteAttendance) {
+      setErrorMsg("ليست لديك صلاحية لمسح وقت البصمة.");
+      return;
+    }
+    if (clearCheckIn && clearCheckOut) {
+      setErrorMsg("لمسح اليوم كاملًا استخدم إجراء حذف سجل اليوم بدل مسح الوقتين من نافذة التعديل.");
+      return;
+    }
+    if (!existingRow && !requestedCheckInTime) {
+      setErrorMsg("اختر وقت الحضور قبل إنشاء يوم حضور يدوي.");
+      return;
+    }
+
+    const checkInIso = attendanceDateTimeLocalToRiyadhIso(attendanceEditCheckIn);
+    const checkOutIso = attendanceDateTimeLocalToRiyadhIso(attendanceEditCheckOut);
+    if (
+      requestedCheckInTime &&
+      requestedCheckOutTime &&
+      (!checkInIso || !checkOutIso || Date.parse(checkOutIso) <= Date.parse(checkInIso))
+    ) {
       setErrorMsg("وقت الانصراف يجب أن يكون بعد وقت الحضور.");
+      return;
+    }
+
+    if (
+      existingRow &&
+      !checkInChanged &&
+      !checkOutChanged &&
+      !clearCheckIn &&
+      !clearCheckOut
+    ) {
+      closeAttendancePunchEditor();
       return;
     }
 
@@ -1914,26 +2001,50 @@ export default function DashboardEmployees() {
         employeeUid: attendanceIdentity.employeeUid,
         employeeId: attendanceIdentity.employeeDocId,
         date,
-        checkInTime:
-          attendanceEditCheckIn.slice(11, 16),
-        checkOutTime: attendanceEditCheckOut
-          ? attendanceEditCheckOut.slice(11, 16)
+        checkInTime: checkInChanged || !existingRow ? requestedCheckInTime || undefined : undefined,
+        checkOutTime: checkOutChanged || (!existingRow && requestedCheckOutTime)
+          ? requestedCheckOutTime || undefined
           : undefined,
+        clearCheckIn,
+        clearCheckOut,
         note: attendanceEditNote,
       });
-      void writeAuditLog({
+
+      await writeAuditLog({
         action: "attendance_updated",
         entityType: "attendance",
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
         description: "تعديل بصمة حضور الموظفة من الإدارة",
-        after: { date, checkInAtClient: checkInIso, checkOutAtClient: checkOutIso || "" },
+        before: {
+          date,
+          checkInAtClient: existingRow?.checkInAtClient || "",
+          checkOutAtClient: existingRow?.checkOutAtClient || "",
+        },
+        after: {
+          date,
+          checkInAtClient: clearCheckIn
+            ? ""
+            : checkInChanged || !existingRow
+              ? checkInIso
+              : existingRow?.checkInAtClient || "",
+          checkOutAtClient: clearCheckOut
+            ? ""
+            : checkOutChanged || (!existingRow && requestedCheckOutTime)
+              ? checkOutIso
+              : existingRow?.checkOutAtClient || "",
+        },
         meta: {
           staffId: selectedEmployeeId,
           employeeUid: attendanceIdentity.employeeUid,
           employeeDocId: attendanceIdentity.employeeDocId,
+          clearCheckIn,
+          clearCheckOut,
         },
+      }).catch((auditError) => {
+        console.warn("attendance audit log write failed", auditError);
       });
+
       closeAttendancePunchEditor();
       await loadSelectedEmployeeAttendance({ force: true });
     } catch (error) {
@@ -1946,10 +2057,8 @@ export default function DashboardEmployees() {
     attendanceEditCheckOut,
     attendanceEditDate,
     attendanceEditNote,
-    authUser?.displayName,
-    authUser?.email,
-    authUser?.uid,
     canCreateAttendance,
+    canDeleteAttendance,
     canUpdateAttendance,
     closeAttendancePunchEditor,
     employeeAttendanceRows,
@@ -1965,6 +2074,7 @@ export default function DashboardEmployees() {
     }
     const date = normalizeLeaveUntil(dateKey);
     if (!date) return;
+    const existingRow = employeeAttendanceRows.find((item) => item.date === date) || null;
     const ok = confirm(`سيتم مسح سجل البصمة ليوم ${date}. هل تريد المتابعة؟`);
     if (!ok) return;
 
@@ -2003,7 +2113,13 @@ export default function DashboardEmployees() {
         entityId: `${selectedEmployeeId}/${date}`,
         source: "dashboard",
         description: "مسح بصمة حضور الموظفة من الإدارة",
-        before: { date, clearedRecords },
+        before: {
+          date,
+          checkInAtClient: existingRow?.checkInAtClient || "",
+          checkOutAtClient: existingRow?.checkOutAtClient || "",
+          clearedRecords,
+        },
+        after: { date, checkInAtClient: "", checkOutAtClient: "" },
         meta: {
           staffId: selectedEmployeeId,
           employeeUid: attendanceIdentity.employeeUid,
@@ -2019,6 +2135,7 @@ export default function DashboardEmployees() {
     }
   }, [
     canDeleteAttendance,
+    employeeAttendanceRows,
     list,
     loadSelectedEmployeeAttendance,
     selectedEmployeeId,
@@ -3574,7 +3691,6 @@ export default function DashboardEmployees() {
 
           if (!employeeId) return;
 
-          const payrollCfg = normalizePayrollConfig(combined);
           const specialties = canonicalizeSpecialties(combined?.specialties, serviceLookup);
           const row: StaffPublicUi = {
             id: employeeId,
@@ -3663,18 +3779,7 @@ export default function DashboardEmployees() {
             allowedZoneIds: Array.isArray(combined?.allowedZoneIds)
               ? combined.allowedZoneIds.map(cleanText).filter(Boolean)
               : [],
-            monthlySalary: payrollCfg.monthlySalary,
-            payrollMonthlyHours: positiveNumberOrZero(combined?.payrollMonthlyHours ?? combined?.expectedWorkHours ?? combined?.expected_work_hours),
-            payrollOvertimeEnabled: booleanSetting(combined?.payrollOvertimeEnabled ?? combined?.payroll_overtime_enabled ?? combined?.overtimeEnabled),
-            payrollOvertimeMultiplier: positiveNumberOrZero(combined?.payrollOvertimeMultiplier ?? combined?.overtimeMultiplier) || 1.5,
-            payrollDeductionMethod: payrollDeductionMethodSetting(combined?.payrollDeductionMethod ?? combined?.payroll_deduction_method),
-            overtimeMethod: payrollCfg.method,
-            overtimeDaysPerMonth: payrollCfg.daysPerMonth,
-            overtimeBaseHoursPerDay: payrollCfg.baseHoursPerDay,
-            overtimeSeasonBaseHoursPerDay: payrollCfg.seasonBaseHoursPerDay,
-            overtimeHoursBasis: payrollCfg.hoursBasis,
-            overtimePercent: payrollCfg.overtimePercent,
-            overtimeInvoicePercent: payrollCfg.invoicePercent,
+
             specialties,
             bio: cleanText(combined?.bio),
             avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(combined)),
@@ -3829,6 +3934,43 @@ export default function DashboardEmployees() {
 
             return {
               ...row,
+
+              // Core D1 is the only payroll-profile runtime source.
+              monthlySalary:
+                positiveNumberOrZero(
+                  employment.base_salary_halalas ??
+                    employment.baseSalaryHalalas
+                ) / 100,
+              payrollMonthlyHours:
+                positiveNumberOrZero(
+                  employment.expected_work_hours ??
+                    employment.expectedWorkHours
+                ),
+              payrollOvertimeEnabled:
+                booleanSetting(
+                  employment.overtime_enabled ??
+                    employment.overtimeEnabled
+                ),
+              payrollOvertimeMultiplier:
+                positiveNumberOrZero(
+                  employment.overtime_multiplier ??
+                    employment.overtimeMultiplier
+                ) || 1.5,
+              payrollDeductionMethod:
+                payrollDeductionMethodSetting(
+                  employment.payroll_deduction_method ??
+                    employment.payrollDeductionMethod
+                ),
+              overtimeDaysPerMonth:
+                positiveNumberOrZero(
+                  employment.expected_work_days ??
+                    employment.expectedWorkDays
+                ),
+              overtimeBaseHoursPerDay:
+                positiveNumberOrZero(
+                  employment.daily_scheduled_hours ??
+                    employment.dailyScheduledHours
+                ),
 
               // Core D1 is the only leave-balance runtime source.
               leaveBalanceDays: canonicalLeaveBalance,
@@ -4282,7 +4424,7 @@ export default function DashboardEmployees() {
         employment,
       });
 
-      const compatibilityPatch = {
+      const payrollUiPatch = {
         monthlySalary: payrollSettingsPreview.baseSalaryRiyals,
         payrollMonthlyHours: monthlyHours || 0,
         payrollOvertimeEnabled,
@@ -4290,19 +4432,14 @@ export default function DashboardEmployees() {
         payrollDeductionMethod,
         overtimeDaysPerMonth: workDays || 0,
         overtimeBaseHoursPerDay: dailyHours || 0,
-        updatedAt: serverTimestamp(),
       };
-      await setDoc(staffPublicDoc(targetEmployeeId), compatibilityPatch, { merge: true }).catch((error) => {
-        console.warn("Saving payroll compatibility fields to staff_public failed:", error);
-      });
 
       setList((current) =>
         current.map((employee) =>
           employee.id === targetEmployeeId
             ? {
                 ...employee,
-                ...compatibilityPatch,
-                updatedAt: employee.updatedAt,
+                ...payrollUiPatch,
               }
             : employee
         )
@@ -4718,6 +4855,7 @@ export default function DashboardEmployees() {
       reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
       updatedAt: serverTimestamp(),
     };
+    const firestorePayload = withoutLegacyPayrollFirestoreFields(payload as any);
     const saveVerificationServiceOptions = serviceOptionsRef.current.length
       ? serviceOptionsRef.current
       : serviceOptions;
@@ -4759,6 +4897,26 @@ export default function DashboardEmployees() {
           cleanText(
             payload.phone
           ),
+        avatarUrl:
+          cleanText(payload.avatarUrl),
+
+        bio:
+          cleanText(payload.bio),
+
+        cvUrl:
+          cleanText(payload.cvUrl),
+
+        showOnAbout:
+          payload.showOnAbout !== false,
+
+        includeInEmployeeManagement:
+          payload.includeInEmployeeManagement !== false,
+
+        rating:
+          safeNonNegativeNumber(payload.rating, 0),
+
+        reviewsCount:
+          Math.floor(safeNonNegativeNumber(payload.reviewsCount, 0)),
 
         status:
           active
@@ -4766,6 +4924,26 @@ export default function DashboardEmployees() {
             : "inactive",
 
         employment: {
+          title:
+            cleanText(payload.title),
+
+          department:
+            cleanText(payload.department),
+
+          employmentSource:
+            cleanText(payload.employmentSource || "salon"),
+
+          partnerId:
+            cleanText(payload.partnerId),
+
+          partnerMemberId:
+            cleanText(payload.partnerMemberId),
+
+          contractId:
+            cleanText(payload.contractId),
+
+          employmentEndDate:
+            normalizeLeaveUntil(payload.employmentEndDate),
           employmentStatus:
             active
               ? "active"
@@ -4777,6 +4955,32 @@ export default function DashboardEmployees() {
                   normalizedAttendanceZoneId,
                 ]
               : [],
+
+          ...(canManagePayroll
+            ? {
+                baseSalaryHalalas:
+                  riyalsInputToHalalas(monthlySalary),
+                expectedWorkDays:
+                  payrollSettingsPreview.workDays > 0
+                    ? payrollSettingsPreview.workDays
+                    : null,
+                expectedWorkHours:
+                  payrollSettingsPreview.monthlyHours > 0
+                    ? payrollSettingsPreview.monthlyHours
+                    : null,
+                dailyScheduledHours:
+                  payrollSettingsPreview.dailyHours > 0
+                    ? payrollSettingsPreview.dailyHours
+                    : null,
+                overtimeEnabled:
+                  payrollOvertimeEnabled,
+                overtimeMultiplier:
+                  payrollOvertimeEnabled
+                    ? positiveNumberOrZero(payrollOvertimeMultiplier) || 1.5
+                    : 1.5,
+                payrollDeductionMethod,
+              }
+            : {}),
         },
       });
 
@@ -4931,7 +5135,7 @@ export default function DashboardEmployees() {
 
       if (!editId) {
         await setDoc(staffPublicDoc(targetEmployeeId), {
-          ...payload,
+          ...firestorePayload,
           employeeId: targetEmployeeId,
           employment: attendanceZoneProfilePatch,
           employeeProfile: employeeProfilePatch,
@@ -4956,18 +5160,14 @@ export default function DashboardEmployees() {
           attendanceScopeId: normalizedAttendanceZoneId,
           employment: attendanceZoneProfilePatch,
           employeeProfile: employeeProfilePatch,
-          monthlySalary: payload.monthlySalary,
-          payrollMonthlyHours: payload.payrollMonthlyHours,
-          payrollOvertimeEnabled: payload.payrollOvertimeEnabled,
-          payrollOvertimeMultiplier: payload.payrollOvertimeMultiplier,
-          payrollDeductionMethod: payload.payrollDeductionMethod,
+
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
         employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
       } else {
         await setDoc(staffPublicDoc(targetEmployeeId), {
-          ...(payload as any),
+          ...firestorePayload,
           employeeId: targetEmployeeId,
           employeeDocId: targetEmployeeId,
           linkedEmployeeDocId: targetEmployeeId,
@@ -4998,11 +5198,7 @@ export default function DashboardEmployees() {
           attendanceScopeId: normalizedAttendanceZoneId,
           employment: attendanceZoneProfilePatch,
           employeeProfile: employeeProfilePatch,
-          monthlySalary: payload.monthlySalary,
-          payrollMonthlyHours: payload.payrollMonthlyHours,
-          payrollOvertimeEnabled: payload.payrollOvertimeEnabled,
-          payrollOvertimeMultiplier: payload.payrollOvertimeMultiplier,
-          payrollDeductionMethod: payload.payrollDeductionMethod,
+
           updatedAt: serverTimestamp(),
         }, { merge: true });
         employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
@@ -8311,6 +8507,33 @@ export default function DashboardEmployees() {
                   );
                 }}
                 onSelectedDateChange={setEmployeeAttendanceSelectedDate}
+                onPunchCleared={async ({
+                  date,
+                  type,
+                  clearedRecords,
+                  employeeUid,
+                  employeeDocId,
+                  beforeTime,
+                }) => {
+                  await writeAuditLog({
+                    action: "attendance_updated",
+                    entityType: "attendance",
+                    entityId: `${selectedEmployeeId}/${date}`,
+                    source: "dashboard",
+                    description:
+                      type === "check_in"
+                        ? "مسح وقت حضور الموظفة من الإدارة"
+                        : "مسح وقت انصراف الموظفة من الإدارة",
+                    before: { date, punchType: type, time: beforeTime },
+                    after: { date, punchType: type, time: "" },
+                    meta: {
+                      staffId: selectedEmployeeId,
+                      employeeUid,
+                      employeeDocId,
+                      clearedRecords,
+                    },
+                  });
+                }}
                 onReload={() => {
                   void loadSelectedEmployeeAttendance({ force: true });
                 }}
@@ -8329,7 +8552,7 @@ export default function DashboardEmployees() {
                 open={
                   attendanceEditOpen &&
                   activeTab === "attendance" &&
-                  (canCreateAttendance || canUpdateAttendance)
+                  (canCreateAttendance || canUpdateAttendance || canDeleteAttendance)
                 }
                 onClose={closeAttendancePunchEditor}
                 title="تعديل البصمة"
@@ -8369,26 +8592,39 @@ export default function DashboardEmployees() {
                     label="وقت الحضور"
                     hint="اختاري ساعة ودقيقة الحضور فقط."
                   >
-                    <input
-                      id="employee-attendance-edit-check-in"
-                      className="dsv2-input"
-                      type="time"
-                      dir="ltr"
-                      step={300}
-                      value={
-                        attendanceEditCheckIn
-                          ? attendanceEditCheckIn.slice(11, 16)
-                          : ""
-                      }
-                      onChange={(event) =>
-                        setAttendanceEditCheckIn(
-                          event.target.value
-                            ? `${attendanceEditDate}T${event.target.value}`
+                    <div className="emp-attendance-edit-time-control-v2">
+                      <input
+                        id="employee-attendance-edit-check-in"
+                        className="dsv2-input"
+                        type="time"
+                        dir="ltr"
+                        step={300}
+                        value={
+                          attendanceEditCheckIn
+                            ? attendanceEditCheckIn.slice(11, 16)
                             : ""
-                        )
-                      }
-                      disabled={saving}
-                    />
+                        }
+                        onChange={(event) =>
+                          setAttendanceEditCheckIn(
+                            event.target.value
+                              ? `${attendanceEditDate}T${event.target.value}`
+                              : ""
+                          )
+                        }
+                        disabled={saving}
+                      />
+
+                      {attendanceEditCheckIn && canDeleteAttendance ? (
+                        <button
+                          type="button"
+                          className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                          onClick={() => setAttendanceEditCheckIn("")}
+                          disabled={saving}
+                        >
+                          مسح الوقت
+                        </button>
+                      ) : null}
+                    </div>
                   </DashboardFieldV2>
 
                   <DashboardFieldV2
@@ -8418,7 +8654,7 @@ export default function DashboardEmployees() {
                         disabled={saving}
                       />
 
-                      {attendanceEditCheckOut ? (
+                      {attendanceEditCheckOut && canDeleteAttendance ? (
                         <button
                           type="button"
                           className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"

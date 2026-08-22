@@ -102,11 +102,11 @@ import {
 } from "../services/firestoreBookings";
 
 import {
-  listAllExpensesFS,
-  countMonthlyExpensesMissingNotesFS,
-} from "../services/firestoreExpenses";
+  listAllExpensesCore,
+  countMonthlyExpensesMissingNotesCore,
+} from "../services/CoreExpenseService";
 
-import { listAllIncomeFS } from "../services/firestoreIncome";
+import { listAllIncomeCore } from "../services/CoreIncomeService";
 
 import {
   canAccessDashboard,
@@ -1199,9 +1199,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       let nextFinanceToday = emptyFinanceToday;
       let nextRecentFinanceTransactions: DashboardFinanceTransaction[] = [];
 
-      const incomes = canReadIncomeNow ? await listAllIncomeFS("main") : [];
+      const incomes = canReadIncomeNow ? await listAllIncomeCore() : [];
       if (requestId !== refreshRequestIdRef.current) return;
-      const expenses = canReadExpensesNow ? await listAllExpensesFS() : [];
+      const expenses = canReadExpensesNow ? await listAllExpensesCore() : [];
       if (requestId !== refreshRequestIdRef.current) return;
 
       const effectiveIncomeAmount = (x: any) =>
@@ -1341,7 +1341,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const load = async () => {
       try {
-        const n = await countMonthlyExpensesMissingNotesFS("main");
+        const n = await countMonthlyExpensesMissingNotesCore();
         if (alive) setMissingExpenseNotesCount(Number(n || 0));
       } catch {
         if (alive) setMissingExpenseNotesCount(0);

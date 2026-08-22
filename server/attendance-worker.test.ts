@@ -20,103 +20,180 @@ function createAttendanceClearFakeDb() {
   const records = new Map<string, Record<string, any>>();
   const state = new Map<string, Record<string, any>>();
 
-  const db = {
+  const db: any = {
     records,
     state,
     prepare(sql: string) {
       const normalizedSql = sql.replace(/\s+/g, " ").trim().toUpperCase();
-      return {
+      let boundValues: any[] = [];
+
+      const statement: any = {
         bind(...bindings: any[]) {
-          return {
-            async all() {
-              if (
-                normalizedSql.includes("SELECT ID FROM ATTENDANCE_RECORDS") &&
-                normalizedSql.includes("SERVER_TIME IN")
-              ) {
-                const [employeeUid, ...serverTimes] = bindings;
-                const timeSet = new Set(serverTimes);
-                return {
-                  results: Array.from(records.values())
-                    .filter(
-                      record =>
-                        record.employee_uid === employeeUid &&
-                        timeSet.has(record.server_time)
-                    )
-                    .map(record => ({ id: record.id })),
-                };
-              }
+          boundValues = bindings;
+          return statement;
+        },
 
-              if (
-                normalizedSql.includes("SELECT ID FROM ATTENDANCE_RECORDS") &&
-                normalizedSql.includes("SERVER_TIME >=")
-              ) {
-                const [employeeUid, dayStart, dayEnd] = bindings;
-                return {
-                  results: Array.from(records.values())
-                    .filter(
-                      record =>
-                        record.employee_uid === employeeUid &&
-                        record.server_time >= dayStart &&
-                        record.server_time < dayEnd
-                    )
-                    .map(record => ({ id: record.id })),
-                };
-              }
+        async all() {
+          if (
+            normalizedSql.includes("SELECT ID FROM ATTENDANCE_RECORDS") &&
+            normalizedSql.includes("ID IN")
+          ) {
+            const employeeUid = boundValues[0];
+            const dayStart = boundValues[boundValues.length - 2];
+            const dayEnd = boundValues[boundValues.length - 1];
+            const recordIds = new Set(boundValues.slice(1, -2));
+            return {
+              results: Array.from(records.values())
+                .filter(
+                  record =>
+                    record.employee_uid === employeeUid &&
+                    recordIds.has(record.id) &&
+                    record.server_time >= dayStart &&
+                    record.server_time < dayEnd
+                )
+                .map(record => ({ id: record.id })),
+            };
+          }
 
-              return { results: [] };
-            },
-            async run() {
-              if (
-                normalizedSql.startsWith("UPDATE ATTENDANCE_STATE") &&
-                normalizedSql.includes("LAST_RECORD_ID = NULL")
-              ) {
-                const [updatedAt, employeeUid, ...recordIds] = bindings;
-                const currentState = state.get(employeeUid);
-                if (
-                  currentState &&
-                  recordIds.includes(currentState.last_record_id)
-                ) {
-                  currentState.last_record_id = null;
-                  currentState.last_type = null;
-                  currentState.last_server_time = null;
-                  currentState.last_location_lat = null;
-                  currentState.last_location_lng = null;
-                  currentState.last_location_accuracy = null;
-                  currentState.last_zone_id = null;
-                  currentState.status = "checked_out";
-                  currentState.updated_at = updatedAt;
-                  return { meta: { changes: 1 } };
+          if (
+            normalizedSql.includes("SELECT ID FROM ATTENDANCE_RECORDS") &&
+            normalizedSql.includes("SERVER_TIME IN")
+          ) {
+            const employeeUid = boundValues[0];
+            const dayStart = boundValues[boundValues.length - 2];
+            const dayEnd = boundValues[boundValues.length - 1];
+            const serverTimes = new Set(boundValues.slice(1, -2));
+            return {
+              results: Array.from(records.values())
+                .filter(
+                  record =>
+                    record.employee_uid === employeeUid &&
+                    serverTimes.has(record.server_time) &&
+                    record.server_time >= dayStart &&
+                    record.server_time < dayEnd
+                )
+                .map(record => ({ id: record.id })),
+            };
+          }
+
+          if (
+            normalizedSql.includes("SELECT ID FROM ATTENDANCE_RECORDS") &&
+            normalizedSql.includes("SERVER_TIME >=")
+          ) {
+            const [employeeUid, dayStart, dayEnd] = boundValues;
+            return {
+              results: Array.from(records.values())
+                .filter(
+                  record =>
+                    record.employee_uid === employeeUid &&
+                    record.server_time >= dayStart &&
+                    record.server_time < dayEnd
+                )
+                .map(record => ({ id: record.id })),
+            };
+          }
+
+          return { results: [] };
+        },
+
+        async first() {
+          if (
+            normalizedSql.includes("FROM ATTENDANCE_RECORDS") &&
+            normalizedSql.includes("RESULT = 'ALLOWED'") &&
+            normalizedSql.includes("ORDER BY SERVER_TIME DESC")
+          ) {
+            const employeeUid = boundValues[0];
+            const latest = Array.from(records.values())
+              .filter(
+                record =>
+                  record.employee_uid === employeeUid &&
+                  record.result === "allowed"
+              )
+              .sort((left, right) =>
+                `${right.server_time}:${right.id}`.localeCompare(
+                  `${left.server_time}:${left.id}`
+                )
+              )[0];
+            return latest || null;
+          }
+
+          return null;
+        },
+
+        async run() {
+          if (
+            normalizedSql.startsWith("UPDATE ATTENDANCE_STATE") &&
+            normalizedSql.includes("LAST_RECORD_ID = NULL")
+          ) {
+            const [updatedAt, employeeUid, ...recordIds] = boundValues;
+            const currentState = state.get(employeeUid);
+            if (
+              currentState &&
+              recordIds.includes(currentState.last_record_id)
+            ) {
+              currentState.last_record_id = null;
+              currentState.last_type = null;
+              currentState.last_server_time = null;
+                currentState.last_location_lat = null;
+              currentState.last_location_lng = null;
+                currentState.last_location_accuracy = null;
+                currentState.last_zone_id = null;
+              currentState.status = "checked_out";
+              currentState.updated_at = updatedAt;
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 0 } };
+          }
+
+          if (normalizedSql.startsWith("DELETE FROM ATTENDANCE_RECORDS")) {
+            const employeeUid = boundValues[0];
+            const dayStart = boundValues[boundValues.length - 2];
+            const dayEnd = boundValues[boundValues.length - 1];
+            const recordIds = boundValues.slice(1, -2);
+            let changes = 0;
+
+            for (const recordId of recordIds) {
+              for (const row of state.values()) {
+                if (row.last_record_id === recordId) {
+                  throw new Error(
+                    "D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT_FOREIGNKEY"
+                  );
                 }
-                return { meta: { changes: 0 } };
               }
 
+              const record = records.get(recordId);
               if (
-                normalizedSql.startsWith("DELETE FROM ATTENDANCE_RECORDS")
+                record?.employee_uid === employeeUid &&
+                record.server_time >= dayStart &&
+                record.server_time < dayEnd
               ) {
-                const [employeeUid, ...recordIds] = bindings;
-                let changes = 0;
-                for (const recordId of recordIds) {
-                  for (const row of state.values()) {
-                    if (row.last_record_id === recordId) {
-                      throw new Error(
-                        "D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT_FOREIGNKEY"
-                      );
-                    }
-                  }
-                  const record = records.get(recordId);
-                  if (record?.employee_uid === employeeUid) {
-                    records.delete(recordId);
-                    changes += 1;
-                  }
-                }
-                return { meta: { changes } };
+                records.delete(recordId);
+                changes += 1;
               }
+            }
 
-              return { meta: { changes: 0 } };
-            },
-          };
+            return { meta: { changes } };
+          }
+
+          if (normalizedSql.startsWith("DELETE FROM ATTENDANCE_STATE")) {
+            const employeeUid = boundValues[0];
+            const deleted = state.delete(employeeUid);
+            return { meta: { changes: deleted ? 1 : 0 } };
+          }
+
+          return { meta: { changes: 0 } };
         },
       };
+
+      return statement;
+    },
+
+    async batch(statements: any[]) {
+      const results = [];
+      for (const statement of statements) {
+        results.push(await statement.run());
+      }
+      return results;
     },
   };
 
@@ -486,16 +563,7 @@ describe("attendance clear action", () => {
       clearedRecords: 1,
     });
     expect(db.records.has(recordId)).toBe(false);
-    expect(db.state.get(employeeUid)).toMatchObject({
-      status: "checked_out",
-      last_record_id: null,
-      last_type: null,
-      last_server_time: null,
-      last_location_lat: null,
-      last_location_lng: null,
-      last_location_accuracy: null,
-      last_zone_id: null,
-    });
+    expect(db.state.has(employeeUid)).toBe(false);
   });
 });
 

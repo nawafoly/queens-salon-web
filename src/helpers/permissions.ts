@@ -222,7 +222,7 @@ export const APP_PERMISSION_CATALOG: PermissionMeta[] = [
   { key: "employee_requests.complete", label: "إكمال الطلبات", hint: "تأكيد اكتمال التنفيذ.", group: "workforce", action: "manage", sensitive: true },
   { key: "employee_requests.internal_notes", label: "ملاحظات الطلب الداخلية", hint: "إضافة ملاحظات لا تظهر للموظفة.", group: "workforce", action: "manage", sensitive: true },
   { key: "employee_requests.resignation.execute", label: "تنفيذ إنهاء الاستقالة", hint: "تعطيل الحساب بعد إخلاء الطرف وفي الموعد الفعلي.", group: "workforce", action: "manage", sensitive: true },
-  { key: "employee_requests.salary_advance.approve", label: "اعتماد الصرف المعجل", hint: "اعتماد القيمة وجدولة الاستقطاع.", group: "finance", action: "manage", sensitive: true },
+  { key: "employee_requests.salary_advance.approve", label: "اعتماد السلفة", hint: "اعتماد قيمة السلفة وجدولة استقطاعها من مسير الراتب.", group: "finance", action: "manage", sensitive: true },
   { key: "employee_requests.attendance_correction.execute", label: "تنفيذ تصحيح الحضور", hint: "تعديل سجل الحضور الفعلي بعد الاعتماد.", group: "workforce", action: "manage", sensitive: true },
   { key: "employee_requests.reopen", label: "إعادة فتح الطلب", hint: "إعادة فتح طلب مرفوض أو ملغي للمراجعة.", group: "workforce", action: "manage", sensitive: true },
 

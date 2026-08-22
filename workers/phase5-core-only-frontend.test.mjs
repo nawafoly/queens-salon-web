@@ -198,12 +198,15 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
     false,
     "Dashboard reports must not read legacy staff_public"
   );
-  assert.match(dashboardReportsPage, /CoreHrService\.listEmployees\(\)/);
-  assert.match(
-    dashboardReportsPage,
-    /CoreSettingsService\.get<any>\("app"\)/
-  );
-  assert.match(dashboardReportsPage, /normalizeCoreStaffPayrollRows/);
+  assert.match(dashboardReportsPage, /listCoreBookings\(\)/);
+  assert.match(dashboardReportsPage, /listAllIncomeCore\(\)/);
+  assert.match(dashboardReportsPage, /listAllExpensesCore\(\)/);
+  assert.match(dashboardReportsPage, /CoreHrService\.listPayrollEntries\(\)/);
+  assert.match(dashboardReportsPage, /generatePayrollEntriesForMonths/);
+  assert.match(dashboardReportsPage, /projectCorePayrollEntriesToFinancialRows/);
+  assert.doesNotMatch(dashboardReportsPage, /CoreHrService\.listEmployees\(\)/);
+  assert.doesNotMatch(dashboardReportsPage, /CoreSettingsService/);
+  assert.doesNotMatch(dashboardReportsPage, /normalizeCoreStaffPayrollRows/);
 
   assert.equal(
     publicBookingPage.includes("firebase/firestore"),
@@ -246,7 +249,8 @@ test("Phase 5 package and booking frontend paths are Core-only", () => {
       `Internal booking V2 must not depend on ${forbidden}`
     );
   }
-  assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.getActiveStaff\(\)/);
+  assert.match(internalBookingV2, /listCoreBookableStaffForDate/);
+  assert.match(internalBookingV2, /getCoreStaffBookableStartSlots/);
   assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.getServiceSections\(\)/);
   assert.match(internalBookingV2, /resolveCoreBookingDataSource\(\)\.createBookingGroup/);
   assert.match(internalBookingV2, /CoreSettingsService\.get<InternalBookingAppSettings>\("app"\)/);

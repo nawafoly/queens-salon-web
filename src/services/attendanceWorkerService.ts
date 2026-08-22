@@ -972,8 +972,10 @@ export async function adjustAttendanceDayFromWorker(
     employeeUid: string;
     employeeId: string;
     date: string;
-    checkInTime: string;
+    checkInTime?: string;
     checkOutTime?: string;
+    clearCheckIn?: boolean;
+    clearCheckOut?: boolean;
     note?: string;
   }
 ) {
@@ -988,6 +990,8 @@ export async function adjustAttendanceDayFromWorker(
           date: cleanText(input.date),
           checkInTime: cleanText(input.checkInTime),
           checkOutTime: cleanText(input.checkOutTime),
+          clearCheckIn: input.clearCheckIn === true,
+          clearCheckOut: input.clearCheckOut === true,
           note: cleanText(input.note),
         }),
       }

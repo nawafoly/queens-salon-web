@@ -109,9 +109,19 @@ test("mixed package booking stores reservation references on Core booking items"
 });
 
 test("Phase 5 facades use the correct Core source strategy", () => {
+  const financeChecks = [
+    ["src/services/CoreIncomeService.ts", /CoreFinanceService/],
+    ["src/services/CoreExpenseService.ts", /CoreFinanceService/],
+  ];
+
+  for (const [file, servicePattern] of financeChecks) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, servicePattern);
+    assert.doesNotMatch(source, /firebase\/firestore/);
+    assert.doesNotMatch(source, /getDataSourceFlags/);
+  }
+
   const branchChecks = [
-    ["src/services/firestoreIncome.ts", /CoreFinanceService/],
-    ["src/services/firestoreExpenses.ts", /CoreFinanceService/],
     ["src/services/firestoreBookings.ts", /CoreBookingService/],
     ["src/services/logService.ts", /CoreAuditService/],
   ];
@@ -315,8 +325,8 @@ test("internal booking V2 keeps internal staff visible independently from public
 });
 
 test("Core refunds are exposed as negative revenue and excluded from expenses", () => {
-  const income = readFileSync("src/services/firestoreIncome.ts", "utf8");
-  const expenses = readFileSync("src/services/firestoreExpenses.ts", "utf8");
+  const income = readFileSync("src/services/CoreIncomeService.ts", "utf8");
+  const expenses = readFileSync("src/services/CoreExpenseService.ts", "utf8");
   const refundsRepo = readFileSync("workers/core/repositories/refunds.js", "utf8");
   const financeRepo = readFileSync("workers/core/repositories/finance.js", "utf8");
   const cleanupMigration = readFileSync("migrations/core/0009_remove_refund_expense_shadows.sql", "utf8");

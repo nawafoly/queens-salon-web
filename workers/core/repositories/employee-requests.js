@@ -57,7 +57,7 @@ const TYPE_TITLE = {
   attendance_correction: 'طلب تصحيح حضور',
   permission: 'طلب استئذان',
   overtime: 'طلب أوفرتايم',
-  salary_advance: 'صرف معجل للراتب',
+  salary_advance: 'طلب سلفة',
   exceptional_financial_payment: 'طلب تعويض مالي بدل إجازة',
   leave: 'طلب إجازة',
   exit_return: 'طلب خروج وعودة',
@@ -2258,6 +2258,26 @@ async function executeSalaryAdvance(db, salonId, row, payload, actor, input) {
   const approvedHalalas = positiveInteger(approvedHalalasRaw, 'approved_amount', 10_000_000);
   const firstMonth = cleanText(input.firstDeductionMonth) || new Date().toISOString().slice(0, 7);
   const count = payload.repaymentMethod === 'installments' ? payload.installmentCount : 1;
+  const deductionMonths = Array.from(
+    { length: count },
+    (_, index) => addMonths(firstMonth, index)
+  );
+  for (const payrollMonth of deductionMonths) {
+    const lockedPayroll = await dbFirst(
+      db,
+      `SELECT id, status
+         FROM payroll_entries
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND payroll_month = ?
+          AND status IN ('approved', 'paid')
+        LIMIT 1`,
+      [salonId, row.employee_id, payrollMonth]
+    );
+    if (lockedPayroll) {
+      throw new AppError(409, 'core_employee_request:salary_advance_payroll_locked');
+    }
+  }
   const id = generatedId('salary_advance');
   const now = nowIso();
   const statements = [{
@@ -2282,13 +2302,13 @@ async function executeSalaryAdvance(db, salonId, row, payload, actor, input) {
         (id, salon_id, advance_id, installment_number, payroll_month, amount_halalas,
          status, payroll_entry_id, deducted_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'scheduled', NULL, NULL, ?, ?)`,
-      params: [generatedId('advance_installment'), salonId, id, index + 1, addMonths(firstMonth, index), amount, now, now],
+      params: [generatedId('advance_installment'), salonId, id, index + 1, deductionMonths[index], amount, now, now],
     });
   }
   await dbBatch(db, statements);
   const payrollEntryIds = [];
   for (let index = 0; index < count; index += 1) {
-    const entryId = await refreshPayrollFinancials(db, salonId, row.employee_id, addMonths(firstMonth, index));
+    const entryId = await refreshPayrollFinancials(db, salonId, row.employee_id, deductionMonths[index]);
     if (entryId) payrollEntryIds.push(entryId);
   }
   return { sourceType: 'salary_advance', sourceId: id, before: null, after: { approvedHalalas, installmentCount: count, payrollEntryIds } };
@@ -2438,10 +2458,13 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
     }
     try {
       const effect = await executeEffects(db, salonId, row, actor, input, options);
+      const sourceType = cleanText(effect?.sourceType);
+      const sourceId = cleanText(effect?.sourceId);
+      if (!sourceType || !sourceId) throw new AppError(500, 'core_employee_request:execution_reference_missing');
       await dbRun(
         db,
         `UPDATE employee_requests SET source_reference_type = ?, source_reference_id = ?, external_reference = ?, updated_at = ? WHERE salon_id = ? AND id = ?`,
-        [effect.sourceType, effect.sourceId, optionalText(input.externalReference || input.financialReference) || null, nowIso(), salonId, row.id]
+        [sourceType, sourceId, optionalText(input.externalReference || input.financialReference) || null, nowIso(), salonId, row.id]
       );
       if (effect.deferCompletion) {
         const current = await getRow(db, salonId, row.id);
@@ -2452,7 +2475,7 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
       const current = await getRow(db, salonId, row.id);
       const completed = await updateStatus(db, salonId, current, 'completed', {
         ...input, version: current.version, eventType: 'execution_completed', before: effect.before, after: effect.after,
-        payload: { sourceType: effect.sourceType, sourceId: effect.sourceId },
+        payload: { sourceType, sourceId },
         idempotencyKey: `execution_completed:${current.version + 1}`,
       }, actor);
       await notifyEmployee(db, salonId, completed.updated, completed.eventId, `اكتمل تنفيذ طلبك ${completed.updated.request_number}`, 'تم تنفيذ الطلب وتسجيل أثره التشغيلي.', actor.uid);

@@ -45,6 +45,14 @@ type AttendanceSectionProps = {
   onReload: () => void;
   onEditPunch: (dateKey: string) => void;
   onDeletePunch: (dateKey: string) => void;
+  onPunchCleared?: (input: {
+    date: string;
+    type: "check_in" | "check_out";
+    clearedRecords: number;
+    employeeUid: string;
+    employeeDocId: string;
+    beforeTime: string;
+  }) => void | Promise<void>;
   onCreateEmergencyLeave?: (dateKey: string) => void;
   onCancelLeave?: (dateKey: string) => void;
 };
@@ -649,6 +657,7 @@ export default function AttendanceSection({
   onReload,
   onEditPunch,
   onDeletePunch,
+  onPunchCleared,
   onCreateEmergencyLeave,
   onCancelLeave,
 }: AttendanceSectionProps) {
@@ -1353,6 +1362,18 @@ export default function AttendanceSection({
         throw new Error(`لم يتم العثور على سجل ${label} قابل للمسح.`);
       }
       setPunchClearMessage(`تم مسح وقت ${label} فقط، وبقيت بقية سجلات اليوم كما هي.`);
+      try {
+        await onPunchCleared?.({
+          date,
+          type,
+          clearedRecords: Number(result.clearedRecords || 0),
+          employeeUid,
+          employeeDocId,
+          beforeTime: currentTime,
+        });
+      } catch (auditError) {
+        console.warn("attendance selective-clear audit failed", auditError);
+      }
       onReload();
     } catch (clearError) {
       setPunchClearError(cleanText((clearError as Error)?.message) || `تعذر مسح وقت ${label}.`);

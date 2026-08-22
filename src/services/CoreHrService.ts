@@ -448,9 +448,29 @@ export const CoreHrService = {
   async savePayrollPeriod(input: Record<string, unknown>) {
     return camel<CorePayrollPeriod>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-periods", { method: "POST", body: input }));
   },
+  async listMyPayrollEntries() {
+    const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/payroll-entries/mine");
+    return rows.map((row) => camel<CorePayrollEntry>(row));
+  },
+
   async listPayrollEntries(query: { employeeId?: string; payrollMonth?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/payroll-entries", { query });
     return rows.map((row) => camel<CorePayrollEntry>(row));
+  },
+  async listPayrollAdvanceDeductions(
+    query: { employeeId?: string; payrollMonth?: string } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-advance-deductions",
+      { query }
+    );
+    return rows.map((row) =>
+      camel<{
+        employeeId: string;
+        payrollMonth: string;
+        amountHalalas: number;
+      }>(row)
+    );
   },
   async getPayrollEntry(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}`);

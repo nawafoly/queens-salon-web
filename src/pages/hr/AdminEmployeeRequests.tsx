@@ -212,6 +212,7 @@ function roleLabel(role: EmployeeRequestAssignee["role"]) {
 function formatPayloadValue(key: string, value: unknown) {
   if (typeof value === "boolean") return value ? "نعم" : "لا";
   if (key.endsWith("Halalas")) return `${(Number(value || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`;
+  if (key === "leaveBalanceTreatment" && value === "deduct_on_execution") return "يُخصم من رصيد الإجازة عند التنفيذ";
   if (key === "leaveBalanceTreatment" && value === "not_deducted") return "لا يتم الخصم";
   if (key === "payrollTreatment" && value === "manual_addition") return "إضافة مالية في مسير الراتب";
   if (key === "calculationBasis" && value === "base_salary_divided_by_30") return "الراتب الأساسي ÷ 30 × عدد الأيام";
@@ -447,16 +448,11 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
         });
       }
       if (selected.request_type === "exceptional_financial_payment") {
-        if (!dialog.financialReference.trim()) {
-          setDialogError("مرجع عملية الصرف مطلوب.");
-          return;
-        }
         if (!/^\d{4}-\d{2}$/.test(dialog.payrollMonth)) {
           setDialogError("حدد شهر المسير الذي سيضاف إليه المبلغ.");
           return;
         }
         Object.assign(body, {
-          financialReference: dialog.financialReference.trim(),
           payrollMonth: dialog.payrollMonth,
         });
       }
@@ -681,18 +677,40 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
                 {selected.request_type === "exceptional_financial_payment" ? (
                   <>
                     <label className="employee-request-action-field">
-                      <span>المبلغ المحسوب</span>
-                      <input readOnly value={`${(Number(selected.payload.calculatedAmountHalalas || 0) / 100).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ريال`} />
+                      <span>المبلغ المستحق</span>
+                      <input
+                        readOnly
+                        dir="ltr"
+                        value={`${(Number(selected.payload.calculatedAmountHalalas || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س`}
+                      />
                     </label>
                     <label className="employee-request-action-field">
                       <span>شهر المسير</span>
-                      <input type="month" value={dialog.payrollMonth} onChange={(event) => setDialog({ ...dialog, payrollMonth: event.target.value })} />
+                      <input
+                        type="month"
+                        value={dialog.payrollMonth}
+                        onChange={(event) =>
+                          setDialog({
+                            ...dialog,
+                            payrollMonth: event.target.value,
+                          })
+                        }
+                      />
                     </label>
-                    <label className="employee-request-action-field">
-                      <span>مرجع عملية الصرف</span>
-                      <input value={dialog.financialReference} onChange={(event) => setDialog({ ...dialog, financialReference: event.target.value })} />
-                    </label>
-                    <div className="employee-request-action-confirmation"><span><FontAwesomeIcon icon={faLock} /> التنفيذ يضيف المبلغ إلى Payroll فقط، ولا يخصم أي يوم من رصيد الإجازة السنوية.</span></div>
+                    <div className="employee-request-action-confirmation">
+                      <span>
+                        <FontAwesomeIcon icon={faLock} /> سيتم إضافة مبلغ{" "}
+                        {(Number(selected.payload.calculatedAmountHalalas || 0) / 100).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        ر.س إلى شهر المسير المحدد، وخصم{" "}
+                        {Number(selected.payload.requestedDays || 0).toLocaleString("en-US", {
+                          maximumFractionDigits: 1,
+                        })}{" "}
+                        يوم من رصيد الإجازة السنوية للموظفة.
+                      </span>
+                    </div>
                   </>
                 ) : null}
                 {selected.request_type === "overtime" ? (
@@ -832,7 +850,7 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
               <div><dt>النوع</dt><dd>{EMPLOYEE_REQUEST_TYPE_LABELS[selected.request_type]}</dd></div>
               <div><dt>الأولوية</dt><dd>{EMPLOYEE_REQUEST_PRIORITY_LABELS[selected.priority] || selected.priority}</dd></div>
               <div><dt>المسؤول</dt><dd>{selected.assigned_to_name || "غير معيّن"}</dd></div>
-              <div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[selected.execution_status] || selected.execution_status}</dd></div>
+              <div><dt>التنفيذ</dt><dd>{EMPLOYEE_REQUEST_EXECUTION_LABELS[selected.execution_status] || selected.execution_status}</dd></div>{selected.execution_status === "failed" && selected.execution_error ? <div><dt>سبب تعثر التنفيذ</dt><dd>{employeeRequestExecutionErrorLabel(selected.execution_error)}</dd></div> : null}{selected.source_reference_id ? <div><dt>المرجع التشغيلي</dt><dd>{selected.source_reference_type ? `${selected.source_reference_type} • ` : ""}{selected.source_reference_id}</dd></div> : null}
               <div><dt>آخر تحديث</dt><dd>{formatDateTime(selected.updated_at)}</dd></div>
               {selected.status === "cancelled" ? <div><dt>وقت الإغلاق</dt><dd>{formatDateTime(selected.cancelled_at || closureEvent?.created_at || selected.updated_at)}</dd></div> : null}
             </dl>
@@ -862,6 +880,11 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
               {selected.status === "received" && can("employee_requests.manage") ? (
                 <button disabled={busy} onClick={() => void runAction("start-review")}>
                   <FontAwesomeIcon icon={faListCheck} /> بدء المراجعة
+                </button>
+              ) : null}
+              {selected.status === "needs_info" && can("employee_requests.manage") ? (
+                <button className="is-primary" disabled={busy} onClick={() => void runAction("start-review")}>
+                  <FontAwesomeIcon icon={faRotate} /> استئناف المراجعة
                 </button>
               ) : null}
               {["received", "under_review"].includes(selected.status) && can("employee_requests.request_info") ? (

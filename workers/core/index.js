@@ -118,6 +118,7 @@ import {
   approvePayrollEntry,
   getPayrollEntry,
   listPayrollEntries,
+  listPayrollAdvanceDeductions,
   listPayrollPeriods,
   markPayrollEntryPaid,
   reopenPayrollEntry,
@@ -485,6 +486,13 @@ function match(url, method) {
   const resolveShift = /^\/api\/core\/hr\/employees\/([^/]+)\/resolved-shift$/.exec(path);
   if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
+  if (path === "/api/core/hr/payroll-entries/mine" && method === "GET") return { name: "payroll-entries:mine" };
+  if (
+    path === "/api/core/hr/payroll-advance-deductions" &&
+    method === "GET"
+  ) {
+    return { name: "payroll-advance-deductions" };
+  }
   const payrollEntryAction = /^\/api\/core\/hr\/payroll-entries\/([^/]+)\/(adjustments|overtime|approve|paid|reopen)$/.exec(path);
   if (payrollEntryAction) return { name: `payroll-entry:${payrollEntryAction[2]}`, id: payrollEntryAction[1] };
   if (path === "/api/core/hr/employee-targets/mine" && method === "GET") return { name: "employee-targets:mine" };
@@ -1480,6 +1488,16 @@ async function dispatch(ctx, route, method, body, query, env) {
       if (method === "POST") return createAbsence(db, ctx.salonId, body, actorInfo);
       if (method === "DELETE" && route.id) return deleteAbsence(db, ctx.salonId, route.id);
       break;
+
+    case "payroll-entries:mine":
+      requirePermission(ctx, "workspace.employee_portal.view");
+      if (!ctx.employeeId) throw new AppError(403, "core_payroll:employee_link_required");
+      return (await listPayrollEntries(db, ctx.salonId, { employeeId: ctx.employeeId }))
+        .filter((row) => ["approved", "paid"].includes(cleanText(row.status || "").toLowerCase()));
+
+    case "payroll-advance-deductions":
+      requireAnyPermission(ctx, ["payroll.view", "payroll.manage"]);
+      return listPayrollAdvanceDeductions(db, ctx.salonId, query);
 
     case "payroll-periods":
       if (method === "GET") {

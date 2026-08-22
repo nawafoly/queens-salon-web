@@ -99,6 +99,7 @@ export type PayrollCalculationInput = {
   attendanceSummary: PayrollAttendanceSummarySnapshot;
   additions?: PayrollManualItem[];
   deductions?: PayrollManualItem[];
+  advancesHalalas?: number;
   overtimeEnabled?: boolean;
   overtimeMultiplier?: number;
   monthlyHoursSource?: PayrollMonthlyHoursSource | null;
@@ -310,11 +311,13 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     amountHalalas: money(item.amountHalalas),
     reason: String(item.reason || "").trim(),
   }));
-  const deductions = (input.deductions || []).map((item) => ({
-    ...item,
-    amountHalalas: money(item.amountHalalas),
-    reason: String(item.reason || "").trim(),
-  }));
+  const deductions = (input.deductions || [])
+    .filter((item) => item.kind !== "advance")
+    .map((item) => ({
+      ...item,
+      amountHalalas: money(item.amountHalalas),
+      reason: String(item.reason || "").trim(),
+    }));
 
   const manualAdditionsHalalas = additions.reduce(
     (total, item) => total + money(item.amountHalalas),
@@ -324,9 +327,7 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     (total, item) => total + money(item.amountHalalas),
     0
   );
-  const advancesHalalas = deductions
-    .filter((item) => item.kind === "advance")
-    .reduce((total, item) => total + money(item.amountHalalas), 0);
+  const advancesHalalas = money(input.advancesHalalas);
 
   const explicitAbsenceOverlapHours = input.attendanceSummary.absenceDeductionOverlapHours;
   const inferredAbsenceOverlapHours = hours(
@@ -365,7 +366,10 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     allowancesHalalas + manualAdditionsHalalas + overtimeValueHalalas;
   const grossSalaryHalalas = baseSalaryHalalas + totalAdditionsHalalas;
   const totalDeductionsHalalas =
-    absenceDeductionHalalas + missingHoursDeductionHalalas + manualDeductionsHalalas;
+    absenceDeductionHalalas +
+    missingHoursDeductionHalalas +
+    manualDeductionsHalalas +
+    advancesHalalas;
   const netSalaryHalalas = Math.max(0, grossSalaryHalalas - totalDeductionsHalalas);
 
   return {

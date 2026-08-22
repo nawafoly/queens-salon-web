@@ -112,7 +112,6 @@ const ADDITION_KINDS: Array<{ value: PayrollManualItemKind; label: string }> = [
 ];
 
 const DEDUCTION_KINDS: Array<{ value: PayrollManualItemKind; label: string }> = [
-  { value: "advance", label: "سلفة" },
   { value: "penalty", label: "جزاء" },
   { value: "manual_deduction", label: "خصم يدوي" },
   { value: "other_deduction", label: "استقطاع آخر" },
@@ -149,6 +148,7 @@ function rebuildEntry(entry: PayrollEntryView, patch: Partial<PayrollEntryView> 
     attendanceSummary: merged.attendanceSummary,
     additions: merged.additions,
     deductions: merged.deductions,
+    advancesHalalas: merged.advancesHalalas,
     overtimeEnabled: merged.overtimeEnabled,
     overtimeMultiplier: merged.overtimeMultiplier,
     status: merged.status as PayrollStatus,

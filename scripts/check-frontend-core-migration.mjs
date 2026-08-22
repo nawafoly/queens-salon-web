@@ -101,12 +101,12 @@ const requiredChecks = [
     ],
   },
   {
-    file: "src/services/firestoreIncome.ts",
-    required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreFinanceService/],
+    file: "src/services/CoreIncomeService.ts",
+    required: [/CoreFinanceService/, /CoreRefundService/, /listAllIncomeCore/, /upsertIncomeCore/, /removeIncomeCore/],
   },
   {
-    file: "src/services/firestoreExpenses.ts",
-    required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreFinanceService/],
+    file: "src/services/CoreExpenseService.ts",
+    required: [/CoreFinanceService/, /listAllExpensesCore/, /upsertExpenseCore/, /removeExpenseCore/, /countMonthlyExpensesMissingNotesCore/],
   },
   {
     file: "src/services/firestoreOffers.ts",

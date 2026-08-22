@@ -45,7 +45,7 @@ import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
 import AdminPermissionRequestsPage from "./hr/AdminPermissionRequests";
 import AdminEmployeeRequestsPage from "./hr/AdminEmployeeRequests";
-import { getPermissionPayrollSummary, listEmployeePermissionRequests } from "../services/employeePermissionRequests";
+import { listEmployeePermissionRequests } from "../services/employeePermissionRequests";
 import {
   listEmployeeRequestNotifications,
   markAllEmployeeRequestNotificationsRead,
@@ -56,7 +56,6 @@ import { listEmployeeDirectory } from "../services/employeeDirectory";
 import {
   createEmployeeAbsenceRecord,
   listEmployeeAbsences,
-  listEmployeeAbsencesByEmployee,
   listEmployeeFiles,
   listEmployeeLeaveRequests,
   listRecruitmentApplications,
@@ -83,27 +82,14 @@ import {
   getTodayAttendanceDateKey,
   type StaffAttendanceToday,
 } from "../services/firestoreAttendance";
+import { listAttendanceForEmployeesDateFromWorker } from "../services/attendanceWorkerService";
 import {
-  listAttendanceByDateRangeForEmployeeFromWorker,
-  listAttendanceForEmployeesDateFromWorker,
-} from "../services/attendanceWorkerService";
-import {
-  getShiftExpectedHours,
   getAttendanceDayStatus,
-  summarizeAttendanceForPayroll,
-  type AttendanceRecord,
 } from "../helpers/hr/attendanceCalculations";
 import {
-  buildDateKeysInRange,
-  buildWorkDateKeysInRange,
-} from "../helpers/hr/workSchedule";
-import { buildApprovedLeaveDateKeys } from "../helpers/hr/attendanceCalendarData";
-import {
-  buildEmployeePayrollMonthInput,
-  computeEmployeePayroll,
-  parseEmployeePayrollMonth,
-  type EmployeePayrollComputation,
-} from "../helpers/hr/employeePayroll";
+  generatePayrollEntriesForMonths,
+  payrollMonthBounds,
+} from "../services/CorePayrollService";
 
 const DashboardEmployees = lazy(() => import("./DashboardEmployees"));
 
@@ -114,26 +100,18 @@ type PayrollPreviewState = {
   payrollMonth: string;
   fromDate: string;
   toDate: string;
-  isCurrentMonthPartial: boolean;
   baseSalary: number;
   requiredWorkDays: number;
-  excludedWeeklyOffDays: number;
   approvedLeaveDays: number;
-  manualAbsenceDays: number;
   attendanceRecordedDays: number;
   daysWithoutAttendance: number;
   expectedWorkHours: number;
   actualWorkedHours: number;
   missingHours: number;
   overtimeHours: number;
-  hourlyRate: number;
-  absenceDays: number;
   absenceDeduction: number;
   missingHoursDeduction: number;
-  extraDeductions: number;
-  grossSalary: number;
   finalSalary: number;
-  computation: EmployeePayrollComputation;
 };
 
 type HrOverviewProps = {
@@ -373,32 +351,6 @@ function getRosterEmployeeUid(item: DirectoryEmployee) {
   return resolveRosterAttendanceIdentity(item).employeeUid;
 }
 
-function getEmployeeBaseSalary(item: DirectoryEmployee | null) {
-  if (!item) return 0;
-  const payroll = item.payroll || item.payrollConfig || item.salaryConfig || {};
-  const value =
-    item.baseSalary ??
-    item.monthlySalary ??
-    item.salary ??
-    item.basicSalary ??
-    payroll.baseSalary ??
-    payroll.monthlySalary ??
-    payroll.salary;
-  const parsed = Number(value || 0);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function getEmployeeSchedule(item: DirectoryEmployee | null) {
-  const payroll = item?.payroll || item?.payrollConfig || {};
-  return {
-    startTime: cleanText(item?.startTime || item?.workStartTime || item?.shiftStartTime || payroll.startTime || "09:00"),
-    endTime: cleanText(item?.endTime || item?.workEndTime || item?.shiftEndTime || payroll.endTime || "17:00"),
-    lateGraceMinutes: (item as any)?.lateGraceMinutes ?? (item as any)?.late_grace_minutes ?? payroll.lateGraceMinutes ?? payroll.late_grace_minutes,
-    earlyLeaveGraceMinutes: (item as any)?.earlyLeaveGraceMinutes ?? (item as any)?.early_leave_grace_minutes ?? payroll.earlyLeaveGraceMinutes ?? payroll.early_leave_grace_minutes,
-    weeklyOffDays: item?.weeklyOffDays || item?.offDays || payroll.weeklyOffDays || null,
-  };
-}
-
 function formatMoney(value: unknown) {
   return new Intl.NumberFormat("ar-SA", {
     minimumFractionDigits: 2,
@@ -468,8 +420,7 @@ function HrOverview({
   const [absenceMessage, setAbsenceMessage] = useState("");
   const [payrollForm, setPayrollForm] = useState({
     employeeKey: "",
-    payrollMonth: buildEmployeePayrollMonthInput(),
-    baseSalary: "0",
+    payrollMonth: getTodayAttendanceDateKey().slice(0, 7),
   });
   const [payrollPreview, setPayrollPreview] = useState<PayrollPreviewState | null>(null);
   const [payrollLoading, setPayrollLoading] = useState(false);
@@ -626,21 +577,17 @@ function HrOverview({
 
   useEffect(() => {
     if (!payrollForm.employeeKey && rosterSorted[0]) {
-      const employeeKey = getRosterAttendanceId(rosterSorted[0]);
       setPayrollForm((current) => ({
         ...current,
-        employeeKey,
-        baseSalary: String(getEmployeeBaseSalary(rosterSorted[0])),
+        employeeKey: getRosterAttendanceId(rosterSorted[0]),
       }));
     }
   }, [payrollForm.employeeKey, rosterSorted]);
 
   const handlePayrollEmployeeChange = (employeeKey: string) => {
-    const employee = rosterSorted.find((item) => getRosterAttendanceId(item) === cleanText(employeeKey)) || null;
     setPayrollForm((current) => ({
       ...current,
       employeeKey,
-      baseSalary: String(getEmployeeBaseSalary(employee)),
     }));
     setPayrollPreview(null);
     setPayrollMessage("");
@@ -681,6 +628,7 @@ function HrOverview({
 
   const handleCalculatePayrollPreview = async () => {
     if (payrollLoading) return;
+
     const selectedEmployee = rosterSorted.find(
       (item) => getRosterAttendanceId(item) === cleanText(payrollForm.employeeKey)
     );
@@ -689,145 +637,126 @@ function HrOverview({
       return;
     }
 
-    const parsedMonth = parseEmployeePayrollMonth(payrollForm.payrollMonth);
-    if (!parsedMonth) {
+    const payrollMonth = cleanText(payrollForm.payrollMonth);
+    const match = /^(\d{4})-(\d{2})$/.exec(payrollMonth);
+    if (!match) {
+      setPayrollMessage("Select a valid payroll month.");
+      return;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) {
       setPayrollMessage("Select a valid payroll month.");
       return;
     }
 
     const today = getTodayAttendanceDateKey();
-    if (parsedMonth.monthStart > today) {
+    if (payrollMonth > today.slice(0, 7)) {
       setPayrollPreview(null);
       setPayrollMessage("This month is in the future. Payroll preview is not calculated.");
       return;
     }
 
-    const calculationEndDate = parsedMonth.monthEnd > today ? today : parsedMonth.monthEnd;
-    if (calculationEndDate < parsedMonth.monthStart) {
-      setPayrollPreview(null);
-      setPayrollMessage("No payroll days are available for this month yet.");
-      return;
-    }
-
     setPayrollLoading(true);
     setPayrollMessage("");
+
     try {
       const employeeId = getRosterAttendanceId(selectedEmployee);
-      const employeeUid = getRosterEmployeeUid(selectedEmployee);
-      const schedule = getEmployeeSchedule(selectedEmployee);
-      const workDateKeys = buildWorkDateKeysInRange({
-        fromDate: parsedMonth.monthStart,
-        toDate: calculationEndDate,
-        weeklyOffDays: schedule.weeklyOffDays,
+      const entries = await generatePayrollEntriesForMonths({
+        monthKeys: [payrollMonth],
+        employeeId,
+        currentEntries: [],
       });
-      const calculationDateKeys = buildDateKeysInRange(parsedMonth.monthStart, calculationEndDate);
-      const approvedLeaveDateKeySet = new Set(
-        buildApprovedLeaveDateKeys({
-          profile: selectedEmployee,
-          leaveRequests,
-          extraIds: [employeeUid, employeeId],
-          todayDateKey: today,
-        }).filter((date) => date >= parsedMonth.monthStart && date <= calculationEndDate)
+
+      const entry = entries.find(
+        (row) => cleanText(row.employeeId) === employeeId
       );
-      const payableWorkDateKeys = workDateKeys.filter(
-        (date) => !approvedLeaveDateKeySet.has(date)
-      );
-      const payableWorkDateKeySet = new Set(payableWorkDateKeys);
 
-      const [attendanceRows, absenceRows, permissionSummary] = await Promise.all([
-        listAttendanceByDateRangeForEmployeeFromWorker({
-          employeeUid,
-          employeeId,
-          fromDate: parsedMonth.monthStart,
-          toDate: calculationEndDate,
-        }),
-        listEmployeeAbsencesByEmployee({
-          employeeId,
-          employeeUid,
-          fromDate: parsedMonth.monthStart,
-          toDate: calculationEndDate,
-        }),
-        getPermissionPayrollSummary({
-          employeeId,
-          fromDate: parsedMonth.monthStart,
-          toDate: calculationEndDate,
-        }),
-      ]);
+      if (!entry) {
+        setPayrollPreview(null);
+        setPayrollMessage("No canonical Core payroll preview is available for this employee.");
+        return;
+      }
 
-      const attendanceRecords: AttendanceRecord[] = [];
-      const attendanceDateKeys = new Set<string>();
-      attendanceRows.forEach((row: (typeof attendanceRows)[number]) => {
-        if (row.checkInAtClient) {
-          attendanceRecords.push({
-            id: `${row.id}-in`,
-            type: "check_in",
-            serverTime: row.checkInAtClient,
-          });
-          attendanceDateKeys.add(row.date);
-        }
-        if (row.checkOutAtClient) {
-          attendanceRecords.push({
-            id: `${row.id}-out`,
-            type: "check_out",
-            serverTime: row.checkOutAtClient,
-          });
-          attendanceDateKeys.add(row.date);
-        }
-      });
-      const attendanceRecordedWorkDateCount = Array.from(attendanceDateKeys)
-        .filter((date) => payableWorkDateKeySet.has(date)).length;
+      const bounds = payrollMonthBounds(year, month);
+      const yesterday = new Date(
+        Date.parse(`${today}T00:00:00Z`) - 86400000
+      ).toISOString().slice(0, 10);
+      const calculationEndDate =
+        bounds.monthEnd < today ? bounds.monthEnd : yesterday;
 
-      const attendanceSummary = summarizeAttendanceForPayroll(attendanceRecords, schedule, {
-        workDateKeys: payableWorkDateKeys,
-        todayDateKey: today,
-        approvedLeaveDateKeys: approvedLeaveDateKeySet,
-        permissionEntries: permissionSummary.entries,
-      });
-      const expectedWorkHours = payableWorkDateKeys.length * getShiftExpectedHours(schedule);
-      const actualWorkedHours = attendanceSummary.actualHours;
-      const computation = computeEmployeePayroll({
-        baseSalary: Number(payrollForm.baseSalary || 0),
-        expectedWorkDays: payableWorkDateKeys.length,
-        expectedWorkHours,
-        attendanceExpectedHours: expectedWorkHours,
-        actualWorkedHours,
-        attendanceOvertimeHours: attendanceSummary.overtimeHours,
-        absences: absenceRows,
-      });
+
+      if (calculationEndDate < bounds.monthStart) {
+        setPayrollPreview(null);
+        setPayrollMessage("No completed payroll days are available for this month yet.");
+        return;
+      }
+
+      const attendance = entry.attendanceSummary || {};
+
+
+
+
+
+
+
+
 
       setPayrollPreview({
-        employeeName: getEmployeeName(selectedEmployee),
-        payrollMonth: parsedMonth.payrollMonth,
-        fromDate: parsedMonth.monthStart,
+        employeeName: entry.employeeName || getEmployeeName(selectedEmployee),
+        payrollMonth: entry.payrollMonth,
+        fromDate: bounds.monthStart,
         toDate: calculationEndDate,
-        isCurrentMonthPartial: parsedMonth.monthStart <= today && parsedMonth.monthEnd > today,
-        baseSalary: computation.baseSalary,
-        requiredWorkDays: payableWorkDateKeys.length,
-        excludedWeeklyOffDays: Math.max(0, calculationDateKeys.length - workDateKeys.length),
-        approvedLeaveDays: Math.max(0, workDateKeys.length - payableWorkDateKeys.length),
-        manualAbsenceDays: computation.absenceDays,
-        attendanceRecordedDays: attendanceRecordedWorkDateCount,
-        daysWithoutAttendance: Math.max(0, payableWorkDateKeys.length - attendanceRecordedWorkDateCount),
-        expectedWorkHours,
-        actualWorkedHours,
-        missingHours: computation.missingHours,
-        overtimeHours: computation.overtimeHours,
-        hourlyRate: computation.hourlyRate,
-        absenceDays: computation.absenceDays,
-        absenceDeduction: computation.absenceDeduction,
-        missingHoursDeduction: computation.delayDeduction,
-        extraDeductions: computation.totalSalaryDeductions + computation.insuranceDeduction,
-        grossSalary: computation.grossSalary,
-        finalSalary: computation.finalSalary,
-        computation,
+
+
+
+
+
+
+        baseSalary: Number(entry.baseSalaryHalalas || 0) / 100,
+        requiredWorkDays: Number(entry.workDays || 0),
+        approvedLeaveDays: Number(attendance.approvedLeaveDays || 0),
+        attendanceRecordedDays: Number(attendance.attendanceDays || 0),
+        daysWithoutAttendance: Number(attendance.absentDays || 0),
+
+
+
+
+
+        expectedWorkHours: Number(attendance.totalScheduledHours || 0),
+        actualWorkedHours: Number(attendance.totalActualWorkedHours || 0),
+        missingHours: Number(attendance.totalMissingHours || 0),
+        overtimeHours: Number(entry.financialOvertimeHours || 0),
+
+
+
+
+        absenceDeduction: Number(entry.absenceDeductionHalalas || 0) / 100,
+        missingHoursDeduction:
+          Number(entry.missingHoursDeductionHalalas || 0) / 100,
+        finalSalary: Number(entry.finalSalaryHalalas || 0) / 100,
+
+
+
+
       });
     } catch (e) {
       setPayrollPreview(null);
-      setPayrollMessage(cleanText((e as any)?.message || "Failed to calculate payroll preview."));
+      setPayrollMessage(
+
+
+
+
+        cleanText((e as any)?.message || "Failed to calculate payroll preview.")
+      );
     } finally {
       setPayrollLoading(false);
     }
   };
+
+
+
 
   const selectedStatus = selected ? getStatusMeta(selected) : null;
   const selectedName = selected ? getEmployeeName(selected) : "اختر موظفًا";
@@ -1170,22 +1099,6 @@ function HrOverview({
                     setPayrollForm((current) => ({ ...current, payrollMonth: event.target.value }));
                     setPayrollPreview(null);
                     setPayrollMessage("");
-                  }}
-                />
-              </DashboardFieldV2>
-
-              <DashboardFieldV2 id="hr-overview-payroll-base" label="الراتب الأساسي">
-                <input
-                  id="hr-overview-payroll-base"
-                  className="dsv2-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={payrollForm.baseSalary}
-                  disabled={payrollLoading}
-                  onChange={(event) => {
-                    setPayrollForm((current) => ({ ...current, baseSalary: event.target.value }));
-                    setPayrollPreview(null);
                   }}
                 />
               </DashboardFieldV2>

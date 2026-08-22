@@ -22,7 +22,6 @@ import {
   sortEmployeeAbsences,
 } from "../helpers/hr/employeeAbsence";
 import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
-import { normalizeEmployeePayrollRecord } from "../helpers/hr/employeePayroll";
 import { CoreHrService } from "./CoreHrService";
 
 import {
@@ -172,27 +171,6 @@ export type EmployeeAbsence = {
   updatedAt?: any;
 };
 
-export type EmployeePayrollRecord = {
-  id: string;
-  employeeUid: string;
-  employeeId?: string;
-  monthKey: string;
-  baseSalary?: number;
-  overtime?: number;
-  delay?: number;
-  insurance?: number;
-  deductions?: number;
-  absencePenalties?: number;
-  total?: number;
-  salary?: number;
-  attachedDocumentUrl?: string;
-  attachedDocumentName?: string;
-  createdAt?: any;
-  updatedAt?: any;
-  createdByUid?: string;
-  createdByName?: string;
-};
-
 export type EmployeeNotification = {
   id: string;
   targetUid?: string;
@@ -324,10 +302,6 @@ export function employeeLeaveRequestsCol() {
 
 export function employeeAbsencesCol() {
   return hrCollection("employeeAbsences");
-}
-
-export function employeePayrollRecordsCol() {
-  return hrCollection("employeePayrollRecords");
 }
 
 export function notificationsCol() {
@@ -1062,64 +1036,6 @@ export async function reviewLeaveRequest(args: {
   }
 }
 
-export async function createPayrollRecord(input: {
-  employeeUid: string;
-  employeeId?: string;
-  monthKey: string;
-  baseSalary?: number;
-  overtime?: number;
-  delay?: number;
-  insurance?: number;
-  deductions?: number;
-  absencePenalties?: number;
-  total?: number;
-  salary?: number;
-  attachedDocumentUrl?: string;
-  attachedDocumentName?: string;
-  createdByUid?: string;
-  createdByName?: string;
-}) {
-  const id = `${cleanText(input.employeeUid)}__${cleanText(input.monthKey)}`;
-  await setDoc(
-    hrDoc("employeePayrollRecords", id),
-    {
-      employeeUid: cleanText(input.employeeUid),
-      employeeId: cleanText(input.employeeId || "") || undefined,
-      monthKey: cleanText(input.monthKey),
-      baseSalary: Number(input.baseSalary || 0),
-      overtime: Number(input.overtime || 0),
-      delay: Number(input.delay || 0),
-      insurance: Number(input.insurance || 0),
-      deductions: Number(input.deductions || 0),
-      absencePenalties: Number(input.absencePenalties || 0),
-      total: Number(input.total || 0),
-      salary: Number(input.salary || 0),
-      attachedDocumentUrl: cleanText(input.attachedDocumentUrl || "") || undefined,
-      attachedDocumentName: cleanText(input.attachedDocumentName || "") || undefined,
-      createdByUid: cleanText(input.createdByUid || "") || undefined,
-      createdByName: cleanText(input.createdByName || "") || undefined,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  if (cleanText(input.employeeUid)) {
-    await createEmployeeNotification({
-      targetUid: cleanText(input.employeeUid),
-      targetEmployeeId: cleanText(input.employeeId || "") || undefined,
-      type: "payroll",
-      title: `تم تحديث مسير الرواتب ${cleanText(input.monthKey)}`,
-      body: cleanText(
-        input.total != null
-          ? `تم حفظ تفاصيل الرواتب لهذا الشهر بقيمة ${Number(input.total || 0).toLocaleString("ar-SA")}.`
-          : "تمت إضافة أو تحديث مسير الرواتب."
-      ),
-      route: "/employee/payroll",
-    }).catch(() => {});
-  }
-}
-
 export async function listEmployeeNotifications(args: {
   targetUid?: string;
   targetEmployeeId?: string;
@@ -1298,42 +1214,6 @@ export async function createWeeklyReport(input: {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-}
-
-export async function listPayrollRecordsByEmployee(employeeUid: string, limitCount = 24) {
-  const snap = await getDocs(query(employeePayrollRecordsCol(), where("employeeUid", "==", cleanText(employeeUid))));
-
-  return snap.docs
-    .map((d) => {
-      const data = d.data() as any;
-      const normalized = normalizeEmployeePayrollRecord(d.id, {
-        ...data,
-        payrollMonth: data?.payrollMonth || data?.monthKey,
-        finalSalary: data?.finalSalary ?? data?.total ?? data?.salary,
-      });
-      return {
-        id: normalized.id,
-        employeeUid: cleanText(normalized.employeeUid || data?.employeeUid || ""),
-        employeeId: cleanText(normalized.employeeId || data?.employeeId || "") || undefined,
-        monthKey: cleanText(data?.monthKey || normalized.payrollMonth || ""),
-        baseSalary: Number(normalized.baseSalary || 0),
-        overtime: Number(data?.overtime ?? normalized.overtimeBonus ?? 0),
-        delay: Number(data?.delay ?? normalized.delayDeduction ?? 0),
-        insurance: Number(data?.insurance ?? normalized.insuranceDeduction ?? 0),
-        deductions: Number(data?.deductions ?? normalized.totalSalaryDeductions ?? 0),
-        absencePenalties: Number(data?.absencePenalties ?? normalized.absenceDeduction ?? 0),
-        total: Number(data?.total ?? normalized.finalSalary ?? 0),
-        salary: Number(data?.salary ?? normalized.finalSalary ?? 0),
-        attachedDocumentUrl: cleanText(data?.attachedDocumentUrl || normalized.mudadDocumentViewUrl || "") || undefined,
-        attachedDocumentName: cleanText(data?.attachedDocumentName || normalized.mudadDocument?.fileName || "") || undefined,
-        createdAt: normalized.createdAt ?? data?.createdAt,
-        updatedAt: data?.updatedAt,
-        createdByUid: cleanText(data?.createdByUid || "") || undefined,
-        createdByName: cleanText(data?.createdByName || "") || undefined,
-      } as EmployeePayrollRecord;
-    })
-    .sort((a, b) => cleanText(b.monthKey).localeCompare(cleanText(a.monthKey)) || toMillis(b.createdAt) - toMillis(a.createdAt))
-    .slice(0, limitCount);
 }
 
 function mapEmployeeLeaveRequestDoc(d: any): EmployeeLeaveRequest {

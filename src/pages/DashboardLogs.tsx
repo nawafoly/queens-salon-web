@@ -29,8 +29,8 @@ import {
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
 import { db } from "../services/firebase";
-import { upsertExpenseFS } from "../services/firestoreExpenses";
-import { upsertIncomeFS } from "../services/firestoreIncome";
+import { upsertExpenseCore } from "../services/CoreExpenseService";
+import { upsertIncomeCore } from "../services/CoreIncomeService";
 import { writeAuditLog } from "../services/logService";
 import type { Expense, IncomeItem, PaymentMethod } from "../types/finance";
 import "../styles/dashboard-v2/dashboard-v2.css";
@@ -1023,11 +1023,11 @@ export default function DashboardLogs() {
       if (kind === "income") {
         const payload = buildIncomeFromBefore(beforeData, row);
         if (!payload) throw new Error("RESTORE_INVALID");
-        await upsertIncomeFS(payload as IncomeItem, SALON_ID);
+        await upsertIncomeCore(payload as IncomeItem);
       } else {
         const payload = buildExpenseFromBefore(beforeData, row);
         if (!payload) throw new Error("RESTORE_INVALID");
-        await upsertExpenseFS(payload as Expense, SALON_ID);
+        await upsertExpenseCore(payload as Expense);
       }
 
       await writeAuditLog({

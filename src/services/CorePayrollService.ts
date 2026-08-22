@@ -967,6 +967,7 @@ function snapshotFromEmployee(input: {
   year: number;
   month: number;
   existing?: PayrollEntryView;
+  advancesHalalas?: number;
   resolvedShifts?: CoreResolvedShift[];
   preserveExistingSchedule?: boolean;
 }) {
@@ -1010,6 +1011,8 @@ function snapshotFromEmployee(input: {
     attendanceSummary: input.attendanceSummary,
     additions: input.existing?.additions || [],
     deductions: input.existing?.deductions || [],
+    advancesHalalas:
+      input.advancesHalalas ?? input.existing?.advancesHalalas ?? 0,
     overtimeEnabled: employeePayrollOvertimeEnabled(input.employee),
     overtimeMultiplier: employeeOvertimeMultiplier(input.employee),
     monthlyHoursSource,
@@ -1255,12 +1258,16 @@ export async function generatePayrollEntriesForMonths(input: {
     leaves,
     absences,
     savedEntries,
+    advanceDeductions,
   ] = await Promise.all([
     CoreHrService.listEmployees({ status: "active" }),
     CoreHrService.listAttendance(),
     CoreHrService.listLeaves({ status: "approved" }),
     CoreHrService.listAbsences(),
     input.currentEntries ? Promise.resolve(null) : CoreHrService.listPayrollEntries(),
+    CoreHrService.listPayrollAdvanceDeductions({
+      employeeId: input.employeeId,
+    }),
   ]);
 
   const currentEntries = input.currentEntries
@@ -1270,6 +1277,14 @@ export async function generatePayrollEntriesForMonths(input: {
     currentEntries
       .filter((entry) => monthKeySet.has(entry.payrollMonth))
       .map((entry) => [`${entry.payrollMonth}|${entry.employeeId}`, entry])
+  );
+  const advanceDeductionMap = new Map(
+    advanceDeductions
+      .filter((row) => monthKeySet.has(row.payrollMonth))
+      .map((row) => [
+        `${row.payrollMonth}|${row.employeeId}`,
+        numberValue(row.amountHalalas),
+      ])
   );
 
   const payrollEmployees = employees.filter(
@@ -1351,6 +1366,9 @@ export async function generatePayrollEntriesForMonths(input: {
           year,
           month,
           existing: existingMap.get(`${payrollMonth}|${employee.id}`),
+          advancesHalalas: numberValue(
+            advanceDeductionMap.get(`${payrollMonth}|${employee.id}`)
+          ),
           resolvedShifts: employeeResolvedShifts,
         });
       })

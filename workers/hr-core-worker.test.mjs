@@ -96,6 +96,8 @@ async function setup() {
     '0022_shift_attendance_policy.sql',
     '0023_exceptional_financial_payment_requests.sql',
     '0024_employee_leave_balance_ledger.sql',
+    '0025_employee_request_reference_integrity.sql',
+    '0026_employee_master_profile_fields.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -202,9 +204,10 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   }, actor);
   const payroll = await upsertPayrollEntry(db, 'main', {
     id: 'payroll-1', periodId: period.id, employeeId: 'emp-1', payrollMonth: '2026-07',
-    baseSalaryHalalas: 450000, allowancesHalalas: 50000, finalSalaryHalalas: 480000,
+    baseSalaryHalalas: 450000, allowancesHalalas: 50000, grossSalaryHalalas: 500000,
+    totalDeductionsHalalas: 0, finalSalaryHalalas: 500000,
   }, actor);
-  assert.equal(payroll.final_salary_halalas, 480000);
+  assert.equal(payroll.final_salary_halalas, 500000);
   await assert.rejects(
     () => approvePayrollEntry(db, 'main', payroll.id, actor),
     { code: 'core_payroll:setup_incomplete' }
@@ -1429,7 +1432,7 @@ test('booking reschedule atomically replaces slot locks', async (t) => {
   const booking = await createBooking(db, 'main', {
     id: 'booking-1', clientId: 'client-1', staffId: 'staff-1', bookingDate: '2026-08-20', startTime: '10:00',
     slotStepMin: 5, items: [{ id: 'item-1', serviceId: 'svc-1', staffId: 'staff-1' }],
-  }, 'uid-admin');
+  }, 'uid-admin', { allowPastDates: true });
   assert.equal(booking.start_time, '10:00');
   const moved = await rescheduleBooking(db, 'main', booking.id, { bookingDate: '2026-08-20', startTime: '11:00' });
   assert.equal(moved.start_time, '11:00');
@@ -2040,3 +2043,321 @@ test(
     );
   }
 );
+
+test('salary advance scheduled before payroll creation is canonically deducted and settled once', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO salary_advances
+    (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
+     repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
+     payment_status, financial_reference, approved_by_uid, approved_at, paid_at, created_at, updated_at)
+    VALUES ('advance-late','main','request-late','emp-late','uid-late',120000,120000,
+            'single',1,'2026-09',120000,0,'paid','ADV-LATE-001','uid-admin',
+            '2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z',
+            '2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z')`).run();
+
+  await db.prepare(`INSERT INTO salary_advance_installments
+    (id, salon_id, advance_id, installment_number, payroll_month, amount_halalas,
+     status, payroll_entry_id, deducted_at, created_at, updated_at)
+    VALUES ('advance-late-1','main','advance-late',1,'2026-09',120000,
+            'scheduled',NULL,NULL,'2026-08-20T10:00:00.000Z','2026-08-20T10:00:00.000Z')`).run();
+
+  const saved = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-late-1',
+    employeeId: 'emp-late',
+    employeeName: 'Late Advance Employee',
+    payrollMonth: '2026-09',
+    baseSalaryHalalas: 500000,
+    allowancesHalalas: 0,
+    workDays: 30,
+    monthlyHours: 240,
+    dailyRateHalalas: 16667,
+    hourlyRateHalalas: 2083,
+    absenceDeductionHalalas: 0,
+    missingHoursDeductionHalalas: 0,
+    manualDeductionsHalalas: 0,
+    advancesHalalas: 0,
+    totalDeductionsHalalas: 0,
+    grossSalaryHalalas: 500000,
+    netSalaryHalalas: 500000,
+    finalSalaryHalalas: 500000,
+    scheduleSnapshot: {
+      workDays: 30,
+      monthlyHours: 240,
+      dailyScheduledHours: 8,
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+    },
+    skipTargetBonus: true,
+  }, actor);
+
+  assert.equal(saved.advances_halalas, 120000);
+  assert.equal(saved.total_deductions_halalas, 120000);
+  assert.equal(saved.net_salary_halalas, 380000);
+  assert.equal(saved.final_salary_halalas, 380000);
+
+  let installment = await db.prepare(
+    "SELECT * FROM salary_advance_installments WHERE id='advance-late-1'"
+  ).first();
+  assert.equal(installment.status, 'scheduled');
+  assert.equal(installment.payroll_entry_id, saved.id);
+
+  await approvePayrollEntry(db, 'main', saved.id, actor);
+  const paid = await markPayrollEntryPaid(db, 'main', saved.id, actor);
+  assert.equal(paid.status, 'paid');
+
+  installment = await db.prepare(
+    "SELECT * FROM salary_advance_installments WHERE id='advance-late-1'"
+  ).first();
+  assert.equal(installment.status, 'deducted');
+  assert.equal(installment.payroll_entry_id, saved.id);
+  assert.ok(installment.deducted_at);
+
+  let advance = await db.prepare(
+    "SELECT * FROM salary_advances WHERE id='advance-late'"
+  ).first();
+  assert.equal(advance.paid_halalas, 120000);
+  assert.equal(advance.remaining_halalas, 0);
+  assert.equal(advance.payment_status, 'repaid');
+
+  await markPayrollEntryPaid(db, 'main', saved.id, actor);
+  advance = await db.prepare(
+    "SELECT * FROM salary_advances WHERE id='advance-late'"
+  ).first();
+  assert.equal(advance.paid_halalas, 120000);
+  assert.equal(advance.remaining_halalas, 0);
+});
+
+test('salary advance settlement rolls back payroll paid state when installment settlement fails', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO salary_advances
+    (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
+     repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
+     payment_status, financial_reference, approved_by_uid, approved_at, paid_at, created_at, updated_at)
+    VALUES ('advance-atomic','main','request-atomic','emp-atomic','uid-atomic',50000,50000,
+            'single',1,'2026-10',50000,0,'paid','ADV-ATOMIC-001','uid-admin',
+            '2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z',
+            '2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z')`).run();
+
+  await db.prepare(`INSERT INTO salary_advance_installments
+    (id, salon_id, advance_id, installment_number, payroll_month, amount_halalas,
+     status, payroll_entry_id, deducted_at, created_at, updated_at)
+    VALUES ('advance-atomic-1','main','advance-atomic',1,'2026-10',50000,
+            'scheduled',NULL,NULL,'2026-09-20T10:00:00.000Z','2026-09-20T10:00:00.000Z')`).run();
+
+  const saved = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-atomic-1',
+    employeeId: 'emp-atomic',
+    employeeName: 'Atomic Advance Employee',
+    payrollMonth: '2026-10',
+    baseSalaryHalalas: 400000,
+    allowancesHalalas: 0,
+    workDays: 30,
+    monthlyHours: 240,
+    dailyRateHalalas: 13333,
+    hourlyRateHalalas: 1667,
+    advancesHalalas: 0,
+    totalDeductionsHalalas: 0,
+    grossSalaryHalalas: 400000,
+    netSalaryHalalas: 400000,
+    finalSalaryHalalas: 400000,
+    scheduleSnapshot: {
+      workDays: 30,
+      monthlyHours: 240,
+      dailyScheduledHours: 8,
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+    },
+    skipTargetBonus: true,
+  }, actor);
+
+  await approvePayrollEntry(db, 'main', saved.id, actor);
+  await db.prepare(`CREATE TRIGGER fail_salary_advance_settlement
+    BEFORE UPDATE OF status ON salary_advance_installments
+    WHEN NEW.status = 'deducted'
+    BEGIN
+      SELECT RAISE(ABORT, 'forced_advance_settlement_failure');
+    END;`).run();
+
+  await assert.rejects(
+    () => markPayrollEntryPaid(db, 'main', saved.id, actor)
+  );
+
+  const payrollAfter = await db.prepare(
+    "SELECT * FROM payroll_entries WHERE id='payroll-atomic-1'"
+  ).first();
+  const installmentAfter = await db.prepare(
+    "SELECT * FROM salary_advance_installments WHERE id='advance-atomic-1'"
+  ).first();
+  const advanceAfter = await db.prepare(
+    "SELECT * FROM salary_advances WHERE id='advance-atomic'"
+  ).first();
+
+  assert.equal(payrollAfter.status, 'approved');
+  assert.equal(payrollAfter.paid_at, null);
+  assert.equal(installmentAfter.status, 'scheduled');
+  assert.equal(installmentAfter.deducted_at, null);
+  assert.equal(advanceAfter.paid_halalas, 0);
+  assert.equal(advanceAfter.remaining_halalas, 50000);
+  assert.equal(advanceAfter.payment_status, 'paid');
+});
+
+test('employee request needs-info can resume review without creating a replacement request', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-needs-info','main','uid-needs-info','Needs Info Employee',1,'active','2026-01-01','2026-01-01')`).run();
+  await upsertHrEmployee(db, 'main', {
+    id:'emp-needs-info', name:'Needs Info Employee', firebaseUid:'uid-needs-info',
+    employment:{ baseSalaryHalalas:400000, leaveBalance:10 },
+  }, actor);
+  const employeeActor={uid:'uid-needs-info',employeeId:'emp-needs-info',name:'Needs Info Employee',role:'employee'};
+  const adminActor={...actor,role:'admin'};
+  let request=await createEmployeeRequest(db,'main',{
+    requestType:'salary_advance',
+    payload:{amount:500,neededDate:'2026-09-15',repaymentMethod:'single',installmentCount:1,reason:'اختبار دورة مطلوب معلومات',acknowledgement:true},
+    idempotencyKey:'needs-info-cycle-1',
+  },employeeActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'receive',{version:request.version},adminActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'start-review',{version:request.version},adminActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'request-info',{version:request.version,note:'أرسل التوضيح المطلوب.'},adminActor);
+  assert.equal(request.status,'needs_info');
+  request=await transitionEmployeeRequest(db,'main',request.id,'answer-info',{version:request.version,note:'تم إرسال التوضيح.'},employeeActor,{ownOnly:true});
+  assert.equal(request.status,'under_review');
+  request=await transitionEmployeeRequest(db,'main',request.id,'request-info',{version:request.version,note:'توضيح إضافي.'},adminActor);
+  assert.equal(request.status,'needs_info');
+  request=await transitionEmployeeRequest(db,'main',request.id,'start-review',{version:request.version,note:'استئناف المراجعة إداريًا.'},adminActor);
+  assert.equal(request.status,'under_review');
+  const count=await db.prepare("SELECT COUNT(*) AS count FROM employee_requests WHERE salon_id='main' AND employee_id='emp-needs-info'").first();
+  assert.equal(Number(count.count),1);
+});
+
+test('exceptional financial payment recovers after balance top-up and retry stays idempotent', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-efp-retry','main','uid-efp-retry','EFP Retry Employee',1,'active','2026-01-01','2026-01-01')`).run();
+  await upsertHrEmployee(db,'main',{
+    id:'emp-efp-retry',name:'EFP Retry Employee',firebaseUid:'uid-efp-retry',
+    employment:{baseSalaryHalalas:450000,leaveBalance:5},
+  },actor);
+  const period=await upsertPayrollPeriod(db,'main',{
+    id:'period-efp-retry-2026-08',payrollMonth:'2026-08',monthStart:'2026-08-01',monthEnd:'2026-08-31',
+  },actor);
+  await upsertPayrollEntry(db,'main',{
+    id:'payroll-efp-retry-1',periodId:period.id,employeeId:'emp-efp-retry',payrollMonth:'2026-08',
+    baseSalaryHalalas:450000,allowancesHalalas:0,workDays:30,monthlyHours:240,dailyRateHalalas:15000,hourlyRateHalalas:1875,
+    grossSalaryHalalas:450000,netSalaryHalalas:450000,finalSalaryHalalas:450000,
+    scheduleSnapshot:{workDays:30,monthlyHours:240,dailyScheduledHours:8,payrollSetupComplete:true,payrollSetupMissing:[]},
+  },actor);
+  const employeeActor={uid:'uid-efp-retry',employeeId:'emp-efp-retry',name:'EFP Retry Employee',role:'employee'};
+  const adminActor={...actor,role:'admin'};
+  let request=await createEmployeeRequest(db,'main',{
+    requestType:'exceptional_financial_payment',
+    payload:{requestedDays:3,reason:'اختبار استرداد التنفيذ بعد زيادة الرصيد',acknowledgement:true,employeeSignatureDataUrl:`data:image/png;base64,${'r'.repeat(300)}`},
+    idempotencyKey:'efp-retry-after-balance-topup',
+  },employeeActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'receive',{version:request.version},adminActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'start-review',{version:request.version},adminActor);
+  request=await transitionEmployeeRequest(db,'main',request.id,'approve',{
+    version:request.version,payload:{reviewerSignatureDataUrl:`data:image/png;base64,${'s'.repeat(300)}`},
+  },adminActor);
+  await db.prepare("UPDATE employee_employment SET leave_balance=2 WHERE salon_id='main' AND employee_id='emp-efp-retry'").run();
+  await assert.rejects(()=>transitionEmployeeRequest(db,'main',request.id,'execute',{
+    version:request.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
+  },adminActor),{code:'core_employee_request:insufficient_annual_leave_balance'});
+  let failed=await db.prepare("SELECT * FROM employee_requests WHERE salon_id='main' AND id=?").bind(request.id).first();
+  assert.equal(failed.status,'executing'); assert.equal(failed.execution_status,'failed'); assert.equal(Number(failed.execution_attempts),1);
+  let count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
+  assert.equal(Number(count.count),0);
+  await db.prepare("UPDATE employee_employment SET leave_balance=5 WHERE salon_id='main' AND employee_id='emp-efp-retry'").run();
+  request=await transitionEmployeeRequest(db,'main',request.id,'execute',{
+    version:failed.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
+  },adminActor);
+  assert.equal(request.status,'completed'); assert.equal(request.execution_status,'completed');
+  assert.equal(request.source_reference_type,'employee_financial_payment'); assert.ok(request.source_reference_id);
+  let balance=await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
+  assert.equal(Number(balance.leave_balance),2);
+  count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
+  assert.equal(Number(count.count),1);
+  let ledgerCount=await db.prepare("SELECT COUNT(*) AS count FROM employee_leave_balance_ledger WHERE salon_id='main' AND source_type='exceptional_financial_payment' AND source_id=?").bind(request.id).first();
+  assert.equal(Number(ledgerCount.count),1);
+  let payroll=await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-efp-retry-1'").first();
+  let additions=JSON.parse(payroll.additions_json||'[]');
+  assert.equal(additions.filter((item)=>item.requestId===request.id).length,1);
+  assert.equal(Number(payroll.manual_additions_halalas),45000);
+
+  await db.prepare("UPDATE employee_requests SET status='executing',execution_status='failed',completed_at=NULL,execution_completed_at=NULL,version=version+1 WHERE salon_id='main' AND id=?").bind(request.id).run();
+  failed=await db.prepare("SELECT * FROM employee_requests WHERE salon_id='main' AND id=?").bind(request.id).first();
+  request=await transitionEmployeeRequest(db,'main',request.id,'execute',{
+    version:failed.version,payrollMonth:'2026-08',financialReference:'PAY-EFP-RETRY-001',
+  },adminActor);
+  assert.equal(request.status,'completed');
+  balance=await db.prepare("SELECT leave_balance FROM employee_employment WHERE salon_id='main' AND employee_id='emp-efp-retry'").first();
+  assert.equal(Number(balance.leave_balance),2);
+  count=await db.prepare("SELECT COUNT(*) AS count FROM employee_financial_payments WHERE salon_id='main' AND request_id=?").bind(request.id).first();
+  assert.equal(Number(count.count),1);
+  ledgerCount=await db.prepare("SELECT COUNT(*) AS count FROM employee_leave_balance_ledger WHERE salon_id='main' AND source_type='exceptional_financial_payment' AND source_id=?").bind(request.id).first();
+  assert.equal(Number(ledgerCount.count),1);
+  payroll=await db.prepare("SELECT * FROM payroll_entries WHERE salon_id='main' AND id='payroll-efp-retry-1'").first();
+  additions=JSON.parse(payroll.additions_json||'[]');
+  assert.equal(additions.filter((item)=>item.requestId===request.id).length,1);
+  assert.equal(Number(payroll.manual_additions_halalas),45000);
+});
+
+test('employee master profile fields round-trip through canonical Core D1', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const created = await upsertHrEmployee(db, 'main', {
+    id: 'emp-stage4a1-profile',
+    name: 'Stage 4A1 Employee',
+    firebaseUid: 'uid-stage4a1-profile',
+    email: 'stage4a1@example.com',
+    phone: '0501234567',
+    avatarUrl: 'https://example.com/avatar.jpg',
+    bio: 'Canonical employee biography',
+    cvUrl: 'https://example.com/cv.pdf',
+    showOnAbout: true,
+    includeInEmployeeManagement: true,
+    rating: 4.75,
+    reviewsCount: 19,
+    employment: {
+      title: 'Senior Stylist',
+      department: 'Salon',
+      employmentEndDate: '2027-12-31',
+      employmentStatus: 'active',
+    },
+  }, actor);
+
+  assert.equal(created.avatar_url, 'https://example.com/avatar.jpg');
+  assert.equal(created.bio, 'Canonical employee biography');
+  assert.equal(created.cv_url, 'https://example.com/cv.pdf');
+  assert.equal(Number(created.show_on_about), 1);
+  assert.equal(Number(created.include_in_employee_management), 1);
+  assert.equal(Number(created.rating), 4.75);
+  assert.equal(Number(created.reviews_count), 19);
+  assert.equal(created.employment.end_date, '2027-12-31');
+
+  const updated = await upsertHrEmployee(db, 'main', {
+    id: 'emp-stage4a1-profile',
+    name: 'Stage 4A1 Employee Updated',
+    bio: 'Updated canonical biography',
+    showOnAbout: false,
+  }, actor);
+
+  assert.equal(updated.name, 'Stage 4A1 Employee Updated');
+  assert.equal(updated.bio, 'Updated canonical biography');
+  assert.equal(Number(updated.show_on_about), 0);
+  assert.equal(updated.avatar_url, 'https://example.com/avatar.jpg');
+  assert.equal(updated.cv_url, 'https://example.com/cv.pdf');
+  assert.equal(Number(updated.include_in_employee_management), 1);
+  assert.equal(Number(updated.rating), 4.75);
+  assert.equal(Number(updated.reviews_count), 19);
+  assert.equal(updated.employment.end_date, '2027-12-31');
+});

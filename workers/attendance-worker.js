@@ -101,6 +101,116 @@ async function resolveCoreEmployeeId(directoryDb, salonId, requester, employeeRe
   return normalizeText(row?.id);
 }
 
+export async function resolveCanonicalAttendanceIdentity(directoryDb, salonId, input = {}) {
+  const requestedEmployeeUid = normalizeText(input?.employeeUid);
+  const requestedEmployeeDocId = normalizeText(input?.employeeDocId);
+  const candidates = Array.from(
+    new Set(
+      [
+        requestedEmployeeDocId,
+        requestedEmployeeUid,
+        ...(Array.isArray(input?.identityIds) ? input.identityIds : []),
+      ]
+        .map(normalizeText)
+        .filter(Boolean)
+    )
+  ).slice(0, 20);
+
+  const fallback = {
+    ok: true,
+    employeeUid: requestedEmployeeUid || requestedEmployeeDocId,
+    employeeDocId: requestedEmployeeDocId || requestedEmployeeUid,
+    aliases: candidates,
+  };
+
+  if (!candidates.length) return fallback;
+  if (!directoryDb) {
+    return {
+      ...fallback,
+      ok: false,
+      message: "attendance_employee_identity_resolution_unavailable",
+    };
+  }
+
+  const placeholders = candidates.map(() => "?").join(",");
+  try {
+    const result = await directoryDb
+      .prepare(
+        `SELECT id, firebase_uid, updated_at
+         FROM employee_profiles
+         WHERE salon_id = ?
+           AND (id IN (${placeholders}) OR firebase_uid IN (${placeholders}))
+         ORDER BY updated_at DESC`
+      )
+      .bind(salonId, ...candidates, ...candidates)
+      .all();
+
+    const rows = result.results || [];
+    const matches = (value) =>
+      rows.filter(
+        (row) =>
+          normalizeText(row.id) === value ||
+          normalizeText(row.firebase_uid) === value
+      );
+    const uidRows = requestedEmployeeUid ? matches(requestedEmployeeUid) : [];
+    const docRows = requestedEmployeeDocId ? matches(requestedEmployeeDocId) : [];
+
+    if (
+      uidRows.length &&
+      docRows.length &&
+      normalizeText(uidRows[0].id) !== normalizeText(docRows[0].id)
+    ) {
+      return {
+        ok: false,
+        message: "attendance_employee_identity_mismatch",
+        employeeUid: "",
+        employeeDocId: "",
+        aliases: candidates,
+      };
+    }
+
+    const row = docRows[0] || uidRows[0] || rows[0] || null;
+    if (!row) {
+      return {
+        ...fallback,
+        ok: false,
+        message: "attendance_employee_identity_not_found",
+      };
+    }
+
+    const employeeDocId =
+      normalizeText(row.id) || requestedEmployeeDocId || requestedEmployeeUid;
+    const employeeUid =
+      normalizeText(row.firebase_uid) || requestedEmployeeUid || employeeDocId;
+
+    return {
+      ok: true,
+      employeeUid,
+      employeeDocId,
+      aliases: Array.from(
+        new Set(
+          [
+            employeeUid,
+            employeeDocId,
+            requestedEmployeeUid,
+            requestedEmployeeDocId,
+            ...candidates,
+          ]
+            .map(normalizeText)
+            .filter(Boolean)
+        )
+      ),
+    };
+  } catch (error) {
+    console.warn("[attendance] canonical employee identity lookup failed", error);
+    return {
+      ...fallback,
+      ok: false,
+      message: "attendance_employee_identity_resolution_failed",
+    };
+  }
+}
+
 async function resolveAttendanceCheckInPolicy({ directoryDb, salonId, requester, employeeResolution, type, now }) {
   if (!directoryDb || type !== "check_in") {
     return { result: "allowed", rejectionReason: null, coreEmployeeId: "" };
@@ -260,7 +370,16 @@ export async function handleAttendanceRequest({
   }
 
   if (pathname === "/attendance/records" && request.method === "GET") {
-    const employeeUid = normalizeText(url.searchParams.get("employeeUid"));
+    const requestedEmployeeUid = normalizeText(url.searchParams.get("employeeUid"));
+    const requestedEmployeeDocId = normalizeText(url.searchParams.get("employeeDocId"));
+    const identity = await resolveCanonicalAttendanceIdentity(directoryDb, salonId, {
+      employeeUid: requestedEmployeeUid,
+      employeeDocId: requestedEmployeeDocId,
+    });
+    if (identity.ok === false) {
+      return json(400, { ok: false, message: identity.message });
+    }
+    const employeeUid = identity.employeeUid || requestedEmployeeUid;
     if (!canReadAttendanceRecords(requester.runtime, requester.uid, employeeUid)) {
       return json(403, {
         ok: false,
@@ -279,7 +398,7 @@ export async function handleAttendanceRequest({
         },
       });
     }
-    return listAttendanceRecords(url, db, directoryDb);
+    return listAttendanceRecords(url, db, directoryDb, salonId, identity);
   }
 
   if (pathname === "/attendance/monthly-summaries" && request.method === "GET") {
@@ -799,11 +918,59 @@ async function updateAttendanceSecurityEvent(request, db, requester, rawEventId)
   return json(200, { ok: true, id: eventId, status });
 }
 
-async function listAttendanceRecords(url, db, directoryDb) {
-  const parsed = parseAttendanceRecordsQuery(url.searchParams);
+async function listAttendanceRecords(
+  url,
+  db,
+  directoryDb,
+  salonId = "main",
+  resolvedIdentity = null
+) {
+  const params = new URLSearchParams(url.searchParams);
+  const requestedEmployeeUid = normalizeText(params.get("employeeUid"));
+  const requestedEmployeeDocId = normalizeText(params.get("employeeDocId"));
+  const identity =
+    resolvedIdentity ||
+    (requestedEmployeeUid || requestedEmployeeDocId
+      ? await resolveCanonicalAttendanceIdentity(directoryDb, salonId, {
+          employeeUid: requestedEmployeeUid,
+          employeeDocId: requestedEmployeeDocId,
+        })
+      : null);
+
+  if (identity?.ok === false) {
+    return json(400, { ok: false, message: identity.message });
+  }
+  const attendanceAliases = Array.from(
+    new Set(
+      [
+        requestedEmployeeUid,
+        requestedEmployeeDocId,
+        identity?.employeeUid,
+        identity?.employeeDocId,
+        ...(Array.isArray(identity?.aliases) ? identity.aliases : []),
+      ]
+        .map(normalizeText)
+        .filter(Boolean)
+    )
+  );
+
+  if (identity) {
+    params.delete("employeeUid");
+    params.delete("employeeDocId");
+  }
+
+  const parsed = parseAttendanceRecordsQuery(params);
   if (!parsed.ok) return parsed.response;
 
   const { filters, bindings, limit, offset, cursor } = parsed.value;
+
+  if (attendanceAliases.length) {
+    const placeholders = attendanceAliases.map(() => "?").join(", ");
+    filters.unshift(
+      `(employee_uid IN (${placeholders}) OR employee_doc_id IN (${placeholders}))`
+    );
+    bindings.unshift(...attendanceAliases, ...attendanceAliases);
+  }
   const cursorFilters = [...filters];
   const cursorBindings = [...bindings];
   if (cursor) {
@@ -1450,7 +1617,7 @@ function mapAttendanceRecordRow(row, employeeName, sharedDeviceUsage = null) {
   };
 }
 
-function parseRiyadhDateTime(value, time) {
+export function parseRiyadhDateTime(value, time) {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizeText(value));
   const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(normalizeText(time));
   if (!dateMatch || !timeMatch) return null;
@@ -1480,26 +1647,43 @@ function parseRiyadhDateTime(value, time) {
   ).toISOString();
 }
 
-async function adjustAttendanceRecords(request, db, directoryDb, salonId, requester) {
+export async function adjustAttendanceRecords(request, db, directoryDb, salonId, requester) {
   const input = await readJsonBody(request);
   if (!input.ok) return input.response;
 
-  const employeeUid = normalizeText(input.data?.employeeUid);
-  const employeeDocId = normalizeText(input.data?.employeeDocId) || employeeUid;
+  const requestedEmployeeUid = normalizeText(input.data?.employeeUid);
+  const requestedEmployeeDocId =
+    normalizeText(input.data?.employeeDocId) || requestedEmployeeUid;
   const date = normalizeText(input.data?.date);
   const checkInTime = normalizeText(input.data?.checkInTime);
   const checkOutTime = normalizeText(input.data?.checkOutTime);
+  const clearCheckIn = input.data?.clearCheckIn === true;
+  const clearCheckOut = input.data?.clearCheckOut === true;
   const clearRequested =
     input.data?.clear === true || normalizeText(input.data?.action) === "clear";
   const clearRecordIds = normalizeTextList(input.data?.recordIds);
   const clearServerTimes = normalizeTextList(input.data?.serverTimes);
   const note = clampText(input.data?.note, 500);
 
-  if (!employeeUid || !employeeDocId) {
+  if (!requestedEmployeeUid || !requestedEmployeeDocId) {
     return json(400, { ok: false, message: "invalid_employee" });
   }
   if (!parseRiyadhDateBoundary(date, false)) {
     return json(400, { ok: false, message: "invalid_attendance_date" });
+  }
+
+  const identity = await resolveCanonicalAttendanceIdentity(directoryDb, salonId, {
+    employeeUid: requestedEmployeeUid,
+    employeeDocId: requestedEmployeeDocId,
+  });
+  if (identity.ok === false) {
+    return json(400, { ok: false, message: identity.message });
+  }
+
+  const employeeUid = identity.employeeUid;
+  const employeeDocId = identity.employeeDocId;
+  if (!employeeUid || !employeeDocId) {
+    return json(400, { ok: false, message: "invalid_employee" });
   }
 
   if (clearRequested) {
@@ -1518,53 +1702,74 @@ async function adjustAttendanceRecords(request, db, directoryDb, salonId, reques
     });
   }
 
-  if (!checkInTime && !checkOutTime) {
+  if (clearCheckIn && clearCheckOut) {
+    return json(400, { ok: false, message: "full_day_clear_requires_explicit_action" });
+  }
+  if ((clearCheckIn && checkInTime) || (clearCheckOut && checkOutTime)) {
+    return json(400, { ok: false, message: "conflicting_attendance_side_mutation" });
+  }
+  if (!checkInTime && !checkOutTime && !clearCheckIn && !clearCheckOut) {
     return json(400, { ok: false, message: "missing_attendance_time" });
   }
 
-  const requested = [];
-  if (checkInTime) requested.push(["check_in", checkInTime]);
-  if (checkOutTime) requested.push(["check_out", checkOutTime]);
-
   const dayStart = parseRiyadhDateBoundary(date, false);
   const dayEnd = parseRiyadhDateBoundary(date, true);
-  const operations = [];
 
   try {
+    const existingResult = await db
+      .prepare(
+        `SELECT id, type, server_time
+         FROM attendance_records
+         WHERE employee_uid = ? AND result = 'allowed'
+           AND server_time >= ? AND server_time < ?
+         ORDER BY server_time ASC, id ASC`
+      )
+      .bind(employeeUid, dayStart, dayEnd)
+      .all();
+    const existingRows = existingResult.results || [];
+    const dayExists = existingRows.length > 0;
+
+    if (
+      (clearCheckIn || clearCheckOut) &&
+      !hasRuntimePermission(requester.runtime, "attendance.records.delete")
+    ) {
+      return forbidden("attendance.records.delete");
+    }
+
+    const requested = [];
+    if (checkInTime) requested.push(["check_in", checkInTime]);
+    if (checkOutTime) requested.push(["check_out", checkOutTime]);
+
+    if (requested.length) {
+      const requiredPermission = dayExists
+        ? "attendance.records.update"
+        : "attendance.records.create";
+      if (!hasRuntimePermission(requester.runtime, requiredPermission)) {
+        return forbidden(requiredPermission);
+      }
+    }
+
+    const operations = [];
     for (const [type, time] of requested) {
       const serverTime = parseRiyadhDateTime(date, time);
       if (!serverTime) {
         return json(400, { ok: false, message: "invalid_attendance_time" });
       }
 
-      const existing = await db
-        .prepare(
-          `
-          SELECT id
-          FROM attendance_records
-          WHERE employee_uid = ? AND type = ? AND result = 'allowed'
-            AND server_time >= ? AND server_time < ?
-          ORDER BY server_time ${type === "check_in" ? "ASC" : "DESC"}, id ASC
-          LIMIT 1
-        `
-        )
-        .bind(employeeUid, type, dayStart, dayEnd)
-        .first();
-
-      const action = existing?.id ? "update" : "create";
-      const requiredPermission =
-        action === "update"
-          ? "attendance.records.update"
-          : "attendance.records.create";
-
-      if (!hasRuntimePermission(requester.runtime, requiredPermission)) {
-        return forbidden(requiredPermission);
-      }
+      const candidates = existingRows
+        .filter((row) => normalizeText(row.type) === type)
+        .sort((left, right) =>
+          `${left.server_time}:${left.id}`.localeCompare(`${right.server_time}:${right.id}`)
+        );
+      const existing =
+        type === "check_out"
+          ? candidates[candidates.length - 1] || null
+          : candidates[0] || null;
 
       operations.push({
         type,
         serverTime,
-        action,
+        action: existing?.id ? "update" : "create",
         existingId: existing?.id || null,
       });
     }
@@ -1578,34 +1783,38 @@ async function adjustAttendanceRecords(request, db, directoryDb, salonId, reques
       adjustedByUid: requester.uid,
       adjustedByEmail: requester.email || null,
       adjustedAt: new Date().toISOString(),
+      canonicalEmployeeUid: employeeUid,
+      canonicalEmployeeId: employeeDocId,
     });
     const now = new Date().toISOString();
     const changed = [];
+    const statements = [];
 
     for (const operation of operations) {
       if (operation.action === "update") {
-        await db
-          .prepare(
-            `
-            UPDATE attendance_records
-            SET server_time = ?, client_time = ?, source = ?,
-                updated_at = ?, created_by_uid = ?, created_by_email = ?,
-                created_by_role = ?
-            WHERE id = ?
-          `
-          )
-          .bind(
-            operation.serverTime,
-            operation.serverTime,
-            source,
-            now,
-            requester.uid,
-            requester.email || null,
-            normalizeText(requester.runtime?.role) || "hr",
-            operation.existingId
-          )
-          .run();
-
+        statements.push(
+          db
+            .prepare(
+              `UPDATE attendance_records
+               SET employee_uid = ?, employee_doc_id = ?,
+                   server_time = ?, client_time = ?, source = ?,
+                   updated_at = ?, created_by_uid = ?, created_by_email = ?,
+                   created_by_role = ?
+               WHERE id = ?`
+            )
+            .bind(
+              employeeUid,
+              employeeDocId,
+              operation.serverTime,
+              operation.serverTime,
+              source,
+              now,
+              requester.uid,
+              requester.email || null,
+              normalizeText(requester.runtime?.role) || "hr",
+              operation.existingId
+            )
+        );
         changed.push({
           id: operation.existingId,
           type: operation.type,
@@ -1616,37 +1825,35 @@ async function adjustAttendanceRecords(request, db, directoryDb, salonId, reques
       }
 
       const id = crypto.randomUUID();
-      await db
-        .prepare(
-          `
-          INSERT INTO attendance_records (
-            id, employee_uid, employee_doc_id, type, server_time, client_time,
-            location_lat, location_lng, location_accuracy, zone_id, zone_name,
-            zone_type, allowed_zone_ids, distance_meters, result,
-            rejection_reason, accuracy_accepted, device_info, source,
-            created_by_uid, created_by_email, created_by_role, created_at,
-            updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, '[]',
-            NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)
-        `
-        )
-        .bind(
-          id,
-          employeeUid,
-          employeeDocId,
-          operation.type,
-          operation.serverTime,
-          operation.serverTime,
-          JSON.stringify({ adminAdjusted: true }),
-          source,
-          requester.uid,
-          requester.email || null,
-          normalizeText(requester.runtime?.role) || "hr",
-          now,
-          now
-        )
-        .run();
-
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO attendance_records (
+              id, employee_uid, employee_doc_id, type, server_time, client_time,
+              location_lat, location_lng, location_accuracy, zone_id, zone_name,
+              zone_type, allowed_zone_ids, distance_meters, result,
+              rejection_reason, accuracy_accepted, device_info, source,
+              created_by_uid, created_by_email, created_by_role, created_at,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, '[]',
+              NULL, 'allowed', NULL, 1, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            id,
+            employeeUid,
+            employeeDocId,
+            operation.type,
+            operation.serverTime,
+            operation.serverTime,
+            JSON.stringify({ adminAdjusted: true }),
+            source,
+            requester.uid,
+            requester.email || null,
+            normalizeText(requester.runtime?.role) || "hr",
+            now,
+            now
+          )
+      );
       changed.push({
         id,
         type: operation.type,
@@ -1655,16 +1862,72 @@ async function adjustAttendanceRecords(request, db, directoryDb, salonId, reques
       });
     }
 
+    const clearIds = existingRows
+      .filter((row) =>
+        (clearCheckIn && normalizeText(row.type) === "check_in") ||
+        (clearCheckOut && normalizeText(row.type) === "check_out")
+      )
+      .map((row) => normalizeText(row.id))
+      .filter(Boolean);
+
+    let deleteResultIndex = -1;
+    if (clearIds.length) {
+      const placeholders = clearIds.map(() => "?").join(", ");
+      statements.push(
+        db
+          .prepare(
+            `UPDATE attendance_state
+             SET last_record_id = NULL,
+                 last_type = NULL,
+                 last_server_time = NULL,
+                 last_location_lat = NULL,
+                 last_location_lng = NULL,
+                 last_location_accuracy = NULL,
+                 last_zone_id = NULL,
+                 status = 'checked_out',
+                 updated_at = ?
+             WHERE employee_uid = ? AND last_record_id IN (${placeholders})`
+          )
+          .bind(now, employeeUid, ...clearIds)
+      );
+      deleteResultIndex = statements.length;
+      statements.push(
+        db
+          .prepare(
+            `DELETE FROM attendance_records
+             WHERE employee_uid = ? AND id IN (${placeholders})
+               AND server_time >= ? AND server_time < ?`
+          )
+          .bind(employeeUid, ...clearIds, dayStart, dayEnd)
+      );
+    }
+
+    const batchResults = statements.length ? await db.batch(statements) : [];
+    const clearedRecords =
+      deleteResultIndex >= 0
+        ? Number(batchResults[deleteResultIndex]?.meta?.changes || 0)
+        : 0;
+
     await rebuildAttendanceState(db, employeeUid);
     if (operations.some((operation) => operation.type === "check_in")) {
-      const coreEmployeeId = await resolveCoreEmployeeId(directoryDb, salonId, requester, {
+      await clearAutomaticLockAbsence(
+        directoryDb,
+        salonId,
         employeeDocId,
-        linkedEmployeeId: employeeDocId,
-        identityIds: [employeeDocId, employeeUid],
-      }).catch(() => "");
-      await clearAutomaticLockAbsence(directoryDb, salonId, coreEmployeeId, date).catch(() => {});
+        date
+      ).catch(() => {});
     }
-    return json(200, { ok: true, records: changed });
+
+    return json(200, {
+      ok: true,
+      date,
+      records: changed,
+      clearedRecords,
+      clearedTypes: [
+        ...(clearCheckIn ? ["check_in"] : []),
+        ...(clearCheckOut ? ["check_out"] : []),
+      ],
+    });
   } catch (error) {
     return serverError("attendance_admin_adjustment_failed", error);
   }
@@ -1695,38 +1958,55 @@ export async function clearAttendanceRecordsForDay({
   try {
     const normalizedRecordIds = normalizeTextList(recordIds);
     const normalizedServerTimes = normalizeTextList(serverTimes);
-    let idsToClear = normalizedRecordIds;
+    const targetedSelection =
+      normalizedRecordIds.length > 0 || normalizedServerTimes.length > 0;
+    let idsToClear = [];
+
+    if (normalizedRecordIds.length) {
+      const placeholders = normalizedRecordIds.map(() => "?").join(", ");
+      const result = await db
+        .prepare(
+          `SELECT id
+           FROM attendance_records
+           WHERE employee_uid = ?
+             AND id IN (${placeholders})
+             AND server_time >= ? AND server_time < ?`
+        )
+        .bind(employeeUid, ...normalizedRecordIds, dayStart, dayEnd)
+        .all();
+      idsToClear = (result.results || [])
+        .map((row) => normalizeText(row.id))
+        .filter(Boolean);
+    }
 
     if (!idsToClear.length && normalizedServerTimes.length) {
       const placeholders = normalizedServerTimes.map(() => "?").join(", ");
       const result = await db
         .prepare(
-          `
-            SELECT id
-            FROM attendance_records
-            WHERE employee_uid = ? AND server_time IN (${placeholders})
-          `
+          `SELECT id
+           FROM attendance_records
+           WHERE employee_uid = ?
+             AND server_time IN (${placeholders})
+             AND server_time >= ? AND server_time < ?`
         )
-        .bind(employeeUid, ...normalizedServerTimes)
+        .bind(employeeUid, ...normalizedServerTimes, dayStart, dayEnd)
         .all();
       idsToClear = (result.results || [])
-        .map(row => normalizeText(row.id))
+        .map((row) => normalizeText(row.id))
         .filter(Boolean);
     }
 
-    if (!idsToClear.length && !normalizedServerTimes.length) {
+    if (!idsToClear.length && !targetedSelection) {
       const result = await db
         .prepare(
-          `
-            SELECT id
-            FROM attendance_records
-            WHERE employee_uid = ? AND server_time >= ? AND server_time < ?
-          `
+          `SELECT id
+           FROM attendance_records
+           WHERE employee_uid = ? AND server_time >= ? AND server_time < ?`
         )
         .bind(employeeUid, dayStart, dayEnd)
         .all();
       idsToClear = (result.results || [])
-        .map(row => normalizeText(row.id))
+        .map((row) => normalizeText(row.id))
         .filter(Boolean);
     }
 
@@ -1741,40 +2021,40 @@ export async function clearAttendanceRecordsForDay({
     }
 
     const idPlaceholders = idsToClear.map(() => "?").join(", ");
-    await db
-      .prepare(
-        `
-          UPDATE attendance_state
-          SET last_record_id = NULL,
-              last_type = NULL,
-              last_server_time = NULL,
-              last_location_lat = NULL,
-              last_location_lng = NULL,
-              last_location_accuracy = NULL,
-              last_zone_id = NULL,
-              status = 'checked_out',
-              updated_at = ?
-          WHERE employee_uid = ? AND last_record_id IN (${idPlaceholders})
-        `
-      )
-      .bind(new Date().toISOString(), employeeUid, ...idsToClear)
-      .run();
+    const now = new Date().toISOString();
+    const results = await db.batch([
+      db
+        .prepare(
+          `UPDATE attendance_state
+           SET last_record_id = NULL,
+               last_type = NULL,
+               last_server_time = NULL,
+               last_location_lat = NULL,
+               last_location_lng = NULL,
+               last_location_accuracy = NULL,
+               last_zone_id = NULL,
+               status = 'checked_out',
+               updated_at = ?
+           WHERE employee_uid = ? AND last_record_id IN (${idPlaceholders})`
+        )
+        .bind(now, employeeUid, ...idsToClear),
+      db
+        .prepare(
+          `DELETE FROM attendance_records
+           WHERE employee_uid = ? AND id IN (${idPlaceholders})
+             AND server_time >= ? AND server_time < ?`
+        )
+        .bind(employeeUid, ...idsToClear, dayStart, dayEnd),
+    ]);
 
-    const result = await db
-      .prepare(
-        `
-          DELETE FROM attendance_records
-          WHERE employee_uid = ? AND id IN (${idPlaceholders})
-        `
-      )
-      .bind(employeeUid, ...idsToClear)
-      .run();
+    const result = results[1];
+    await rebuildAttendanceState(db, employeeUid);
 
     return json(200, {
       ok: true,
       action: "clear",
       date,
-      clearedRecords: Number(result.meta?.changes || 0),
+      clearedRecords: Number(result?.meta?.changes || 0),
       source: safeJsonObject(source),
     });
   } catch (error) {

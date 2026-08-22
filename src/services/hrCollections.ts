@@ -1,4 +1,4 @@
-﻿import { collection, doc } from "firebase/firestore";
+import { collection, doc } from "firebase/firestore";
 
 import { db } from "./firebase";
 
@@ -19,7 +19,6 @@ export const HR_COLLECTIONS = {
   employeeFiles: ["salons", SALON_ID, "employee_files"],
   employeeLeaveRequests: ["salons", SALON_ID, "employee_leave_requests"],
   employeeAbsences: ["salons", SALON_ID, "employee_absences"],
-  employeePayrollRecords: ["salons", SALON_ID, "employee_payroll_records"],
   notifications: ["salons", SALON_ID, "notifications"],
   weeklyReports: ["salons", SALON_ID, "weekly_reports"],
   jobApplications: ["salons", SALON_ID, "job_applications"],

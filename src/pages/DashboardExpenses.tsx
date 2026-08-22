@@ -27,11 +27,11 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../services/firebase";
 import { usePermissions } from "../security/PermissionContext";
 import {
-  listAllExpensesFS,
-  removeExpenseFS,
-  upsertExpenseFS,
-  countMonthlyExpensesMissingNotesFS,
-} from "../services/firestoreExpenses";
+  listAllExpensesCore,
+  removeExpenseCore,
+  upsertExpenseCore,
+  countMonthlyExpensesMissingNotesCore,
+} from "../services/CoreExpenseService";
 import { exportExpensesReportExcel, exportExpensesReportPdf } from "../helpers/reports/exportExpensesReport";
 import {
   DashboardConfirmV2,
@@ -389,7 +389,7 @@ const DashboardExpenses: React.FC = () => {
   const loadExpenses = async () => {
     try {
       setLoading(true);
-      const data = await listAllExpensesFS();
+      const data = await listAllExpensesCore();
       const manualItems = Array.isArray(data) ? data : [];
       setItems(manualItems);
 
@@ -570,13 +570,13 @@ const DashboardExpenses: React.FC = () => {
       }
 
       try {
-        const n = await countMonthlyExpensesMissingNotesFS("main");
+        const n = await countMonthlyExpensesMissingNotesCore();
         setMissingNotesCountFS(Number(n || 0));
       } catch {
         setMissingNotesCountFS(0);
       }
     } catch (e) {
-      console.error("listAllExpensesFS error:", e);
+      console.error("listAllExpensesCore error:", e);
       setModalMsg(firebaseMsg(e));
       setItems([]);
       setAutoPayrollItems([]);
@@ -757,13 +757,13 @@ const DashboardExpenses: React.FC = () => {
 
     try {
       setLoading(true);
-      await upsertExpenseFS(expense);
+      await upsertExpenseCore(expense);
       await loadExpenses();
       resetForm();
       setAddOpen(false);
       setModalMsg("تمت إضافة المصروف بنجاح");
     } catch (e) {
-      console.error("upsertExpenseFS error:", e);
+      console.error("upsertExpenseCore error:", e);
       setModalMsg(firebaseMsg(e));
     } finally {
       setLoading(false);
@@ -782,10 +782,10 @@ const DashboardExpenses: React.FC = () => {
       onConfirm: async () => {
         try {
           setLoading(true);
-          await removeExpenseFS(id);
+          await removeExpenseCore(id);
           await loadExpenses();
         } catch (e) {
-          console.error("removeExpenseFS error:", e);
+          console.error("removeExpenseCore error:", e);
           setModalMsg(firebaseMsg(e));
         } finally {
           setLoading(false);
@@ -850,7 +850,7 @@ const DashboardExpenses: React.FC = () => {
 
     try {
       setLoading(true);
-      await upsertExpenseFS(updated);
+      await upsertExpenseCore(updated);
       await loadExpenses();
       setEditId(null);
       setModalMsg("تم التعديل ✅");
@@ -906,7 +906,7 @@ const DashboardExpenses: React.FC = () => {
               return;
             }
 
-            await Promise.all(toUpsert.map((x) => upsertExpenseFS(x)));
+            await Promise.all(toUpsert.map((x) => upsertExpenseCore(x)));
 
             localStorage.setItem(EXPENSES_MIGRATED_KEY, "1");
             localStorage.removeItem(LEGACY_EXPENSES_KEY);

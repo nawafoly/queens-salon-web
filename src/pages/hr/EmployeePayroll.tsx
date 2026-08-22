@@ -13,10 +13,10 @@ import {
 
 import {
   listEmployeeNotifications,
-  listPayrollRecordsByEmployee,
   markEmployeeNotificationsRead,
-  type EmployeePayrollRecord,
 } from "../../services/employeeHub";
+import { CoreHrService } from "../../services/CoreHrService";
+import type { CorePayrollEntry } from "../../types/hrCoreApi";
 import { cleanText, type HrSession } from "./shared";
 import {
   getMyEmployeeRequestPayrollImpact,
@@ -38,20 +38,58 @@ function monthLabel(monthKey: string) {
   return new Intl.DateTimeFormat("ar-SA", { year: "numeric", month: "long" }).format(new Date(year, month - 1, 1));
 }
 
+type EmployeePayrollView = {
+  id: string;
+  monthKey: string;
+  baseSalary: number;
+  overtime: number;
+  delay: number;
+  insurance: number;
+  deductions: number;
+  absencePenalties: number;
+  total: number;
+  salary: number;
+  attachedDocumentUrl?: string;
+  attachedDocumentName?: string;
+};
+
+function payrollRiyals(value: unknown) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount / 100 : 0;
+}
+
+function mapCorePayrollRecord(row: CorePayrollEntry): EmployeePayrollView {
+  const delay = payrollRiyals(row.delayDeductionHalalas);
+  const insurance = payrollRiyals(row.insuranceDeductionHalalas);
+  const absencePenalties = payrollRiyals(row.absenceDeductionHalalas);
+  const totalDeductions = payrollRiyals(row.totalDeductionsHalalas);
+  return {
+    id: cleanText(row.id),
+    monthKey: cleanText(row.payrollMonth),
+    baseSalary: payrollRiyals(row.baseSalaryHalalas),
+    overtime: payrollRiyals(row.overtimeValueHalalas ?? row.overtimeBonusHalalas),
+    delay,
+    insurance,
+    absencePenalties,
+    deductions: Math.max(0, totalDeductions - delay - insurance - absencePenalties),
+    total: payrollRiyals(row.finalSalaryHalalas),
+    salary: payrollRiyals(row.netSalaryHalalas ?? row.finalSalaryHalalas),
+  };
+}
+
 type Props = {
   session: HrSession;
   onPortalChange?: () => void | Promise<void>;
 };
 
 export default function EmployeePayrollPage({ session, onPortalChange }: Props) {
-  const [records, setRecords] = useState<EmployeePayrollRecord[]>([]);
+  const [records, setRecords] = useState<EmployeePayrollView[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [requestImpact, setRequestImpact] = useState<EmployeeRequestPayrollImpact>({ overtime: [], advances: [], installments: [], financialPayments: [] });
 
-  const profile = session.employeeDoc || session.staffDoc || session.userDoc || {};
-  const currentBaseSalary = Number(profile.baseSalary || profile.salary || 0);
+  const currentBaseSalary = 0;
 
   const load = useCallback(async () => {
     if (!session.uid) return;
@@ -59,10 +97,10 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
     setMessage("");
     try {
       const [rows, impact] = await Promise.all([
-        listPayrollRecordsByEmployee(session.uid),
+        CoreHrService.listMyPayrollEntries(),
         getMyEmployeeRequestPayrollImpact().catch(() => ({ overtime: [], advances: [], installments: [], financialPayments: [] })),
       ]);
-      setRecords(rows);
+      setRecords(rows.map(mapCorePayrollRecord).slice(0, 24));
       setRequestImpact(impact);
     } catch (error) {
       setMessage(cleanText((error as any)?.message || "تعذر تحميل سجلات الرواتب."));
