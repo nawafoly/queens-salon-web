@@ -186,7 +186,7 @@ export async function previewShiftChange(db, salonId, data) {
     WHERE salon_id=? AND employee_id=? AND status!='cancelled'
       AND effective_from<=? AND COALESCE(effective_to,'9999-12-31')>=?`, [salonId, employeeId, dateTo, dateFrom]);
   const overlappingExceptions = await dbAll(db, `SELECT id, date_from, date_to, status FROM hr_schedule_exceptions
-    WHERE salon_id=? AND employee_id=? AND status='approved' AND date_from<=? AND date_to>=?`, [salonId, employeeId, dateTo, dateFrom]);
+    WHERE salon_id=? AND employee_id=? AND status IN ('approved','active') AND date_from<=? AND date_to>=?`, [salonId, employeeId, dateTo, dateFrom]);
   return {
     employee_id: employeeId,
     change_type: changeType,
@@ -433,6 +433,29 @@ export async function cancelShiftAssignment(db, salonId, idValue, data = {}, act
   return updateShiftAssignment(db, salonId, idValue, payload, actor);
 }
 
+function isOperationalScheduleExceptionStatus(status) {
+  return status === 'approved' || status === 'active';
+}
+
+async function assertNoOperationalScheduleExceptionOverlap(db, salonId, employeeId, dateFrom, dateTo, excludeId = null) {
+  const overlap = await dbFirst(db,
+    `SELECT id, date_from, date_to, exception_type, status
+       FROM hr_schedule_exceptions
+      WHERE salon_id=? AND employee_id=? AND status IN ('approved','active')
+        ${excludeId ? 'AND id!=?' : ''}
+        AND date_from<=? AND date_to>=?
+      LIMIT 1`,
+    excludeId
+      ? [salonId, employeeId, excludeId, dateTo, dateFrom]
+      : [salonId, employeeId, dateTo, dateFrom]);
+  if (overlap) {
+    throw Object.assign(new Error('schedule_exception_conflict'), {
+      code: 'core_hr:schedule_exception_conflict',
+      details: { overlappingExceptionId: overlap.id },
+    });
+  }
+}
+
 export async function createScheduleException(db, salonId, data, actor = {}) {
   const now = nowIso();
   const id = requiredId(data.id || generatedId('schedule_exception'));
@@ -441,10 +464,14 @@ export async function createScheduleException(db, salonId, data, actor = {}) {
   const to = dateKey(data.dateTo || data.date_to || from, 'dateTo');
   if (to < from) throw Object.assign(new Error('exception_range_invalid'), { code: 'core_hr:invalid_date_range' });
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, from, to, data);
+  const status = cleanText(data.status || 'approved');
+  if (isOperationalScheduleExceptionStatus(status)) {
+    await assertNoOperationalScheduleExceptionOverlap(db, salonId, employeeId, from, to);
+  }
   const row = [id, salonId, employeeId, from, to, requiredText(data.exceptionType || data.exception_type, 'exceptionType'),
     optionalText(data.shiftTemplateId || data.shift_template_id) || null, activeFlag(data.enabled, 1),
     timeValue(data.startTime || data.start_time, 'startTime'), timeValue(data.endTime || data.end_time, 'endTime'),
-    optionalText(data.note) || null, cleanText(data.status || 'approved'), optionalText(data.approvedByUid || actor.uid) || null,
+    optionalText(data.note) || null, status, optionalText(data.approvedByUid || actor.uid) || null,
     optionalText(actor.uid) || null, now, now];
   await dbBatch(db, [{ sql: `INSERT INTO hr_schedule_exceptions
     (id,salon_id,employee_id,date_from,date_to,exception_type,shift_template_id,enabled,start_time,end_time,note,status,approved_by_uid,created_by_uid,created_at,updated_at)
@@ -473,6 +500,16 @@ export async function updateScheduleException(db, salonId, idValue, data, actor 
   const lockedPeriods = await assertUnlockedOrAdjustmentAllowed(db, salonId, before.date_from, before.date_to, data);
   const status = optionalText(data.status) || before.status;
   const enabled = data.enabled === undefined ? before.enabled : activeFlag(data.enabled, before.enabled);
+  if (isOperationalScheduleExceptionStatus(status)) {
+    await assertNoOperationalScheduleExceptionOverlap(
+      db,
+      salonId,
+      before.employee_id,
+      before.date_from,
+      before.date_to,
+      id
+    );
+  }
   await dbBatch(db, [{
     sql: `UPDATE hr_schedule_exceptions SET status=?, enabled=?, note=COALESCE(?, note), updated_at=? WHERE salon_id=? AND id=?`,
     params: [status, enabled, optionalText(data.note) || null, now, salonId, id],
@@ -1480,7 +1517,7 @@ export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateVal
     0 AS early_leave_grace_minutes, t.attendance_lock_enabled, t.attendance_lock_after_minutes,
     t.overtime_after_minutes
     FROM hr_schedule_exceptions e LEFT JOIN hr_shift_templates t ON t.id=e.shift_template_id
-    WHERE e.salon_id=? AND e.employee_id=? AND e.status='approved' AND (e.exception_type='off' OR e.enabled=1) AND e.date_from<=? AND e.date_to>=?
+    WHERE e.salon_id=? AND e.employee_id=? AND e.status IN ('approved','active') AND (e.exception_type='off' OR e.enabled=1) AND e.date_from<=? AND e.date_to>=?
     ORDER BY e.created_at DESC LIMIT 1`, [salonId, employeeId, date, date]);
 
   const weeklySchedule = await dbFirst(db, `SELECT s.*, t.name AS shift_name, t.code AS shift_code,
@@ -1921,7 +1958,7 @@ export async function resolveEmployeeShiftsBatch(
             ON t.id=e.shift_template_id
           WHERE e.salon_id=?
             AND e.employee_id IN (${marks})
-            AND e.status='approved'
+            AND e.status IN ('approved','active')
             AND (e.exception_type='off' OR e.enabled=1)
             AND e.date_from<=?
             AND e.date_to>=?

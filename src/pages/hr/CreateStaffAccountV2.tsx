@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   getAuth,
   signOut,
   updateProfile,
   type Auth,
+  type User,
 } from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -21,11 +23,9 @@ import {
   DashboardSelectV2,
 } from "../../components/dashboard-v2";
 import { auth } from "../../services/firebase";
-import {
-  createEmployeeNotification,
-  syncEmployeeRecordFromUser,
-  type EmployeeRole,
-} from "../../services/employeeHub";
+import { CoreAccountService, type CoreAccount } from "../../services/CoreAccountService";
+import { CoreHrService } from "../../services/CoreHrService";
+import { CoreWorkforceService } from "../../services/CoreWorkforceService";
 import { cleanText, type HrSession } from "./shared";
 
 type Props = {
@@ -33,6 +33,7 @@ type Props = {
 };
 
 type CreateRole = "staff" | "reception" | "admin" | "hr";
+type EmployeeRole = CreateRole | "owner";
 
 const CREATE_ROLE_OPTIONS: Array<{ value: CreateRole; label: string }> = [
   { value: "staff", label: "موظفة" },
@@ -104,6 +105,85 @@ function getFriendlyAuthError(error: unknown, fallback: string) {
   return fallback;
 }
 
+async function findCoreAccount(firebaseUid: string, email: string): Promise<CoreAccount | null> {
+  const uid = cleanText(firebaseUid);
+  const normalizedEmail = cleanText(email).toLowerCase();
+  const rows = await CoreAccountService.list(false, "internal");
+  return rows.find((row) =>
+    (uid && (cleanText(row.firebaseUid) === uid || cleanText(row.uid) === uid)) ||
+    (normalizedEmail && cleanText(row.email).toLowerCase() === normalizedEmail)
+  ) || null;
+}
+
+async function persistCoreStaffIdentity(input: {
+  firebaseUid: string;
+  employeeId: string;
+  email: string;
+  displayName: string;
+  phone?: string;
+  department?: string;
+  title?: string;
+  avatarUrl?: string;
+  bio?: string;
+  role: EmployeeRole;
+  active: boolean;
+}) {
+  const employeeId = cleanText(input.employeeId || input.firebaseUid);
+  const accountInput = {
+    firebaseUid: cleanText(input.firebaseUid),
+    email: cleanText(input.email).toLowerCase(),
+    phone: cleanText(input.phone || "") || undefined,
+    displayName: cleanText(input.displayName),
+    role: input.role,
+    status: input.active ? "active" as const : "disabled" as const,
+  };
+
+  const existingAccount = await findCoreAccount(accountInput.firebaseUid, accountInput.email);
+  const existingEmployee = await CoreHrService.getEmployee(employeeId).catch(() => null);
+  const account = existingAccount
+    ? await CoreAccountService.update(existingAccount.id, accountInput)
+    : await CoreAccountService.create(accountInput);
+  let employeeSaved = false;
+
+  try {
+    const employee = await CoreHrService.saveEmployee({
+      id: employeeId,
+      firebaseUid: accountInput.firebaseUid,
+      name: accountInput.displayName,
+      email: accountInput.email,
+      phone: cleanText(input.phone || "") || null,
+      department: cleanText(input.department || "") || null,
+      title: cleanText(input.title || "") || null,
+      avatarUrl: cleanText(input.avatarUrl || "") || null,
+      bio: cleanText(input.bio || "") || null,
+      showOnAbout: input.role === "staff",
+      includeInEmployeeManagement: true,
+      status: input.active ? "active" : "inactive",
+      employmentStatus: input.active ? "active" : "inactive",
+      employmentSource: "salon",
+    });
+    employeeSaved = true;
+
+    await CoreAccountService.linkEmployee(account.id, cleanText(employee.id) || employeeId);
+    return { account, employeeId: cleanText(employee.id) || employeeId };
+  } catch (error) {
+    if (!existingAccount) {
+      await CoreAccountService.remove(account.id).catch(() => {});
+    }
+    if (!existingEmployee && employeeSaved) {
+      await CoreHrService.saveEmployee({
+        id: employeeId,
+        name: accountInput.displayName,
+        status: "inactive",
+        employmentStatus: "inactive",
+        adminNotes: "Account provisioning rollback: Core account/employee link did not complete.",
+      }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+
 export default function CreateStaffAccountV2({ session }: Props) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -118,7 +198,6 @@ export default function CreateStaffAccountV2({ session }: Props) {
     avatarUrl: "",
     password: makeTempPassword(),
     role: "staff" as CreateRole,
-    specialties: "",
     bio: "",
   });
 
@@ -131,7 +210,6 @@ export default function CreateStaffAccountV2({ session }: Props) {
     department: "",
     title: "",
     avatarUrl: "",
-    specialties: "",
     bio: "",
     role: "staff" as EmployeeRole,
     active: true,
@@ -184,47 +262,43 @@ export default function CreateStaffAccountV2({ session }: Props) {
     setBusy(true);
     setMessage("");
     let secondary: Auth | null = null;
+    let createdUser: User | null = null;
     try {
       secondary = getSecondaryAuth();
       const cred = await createUserWithEmailAndPassword(secondary, email, password);
+      createdUser = cred.user;
       await updateProfile(cred.user, { displayName }).catch(() => {});
 
       const uid = cred.user.uid;
       const employeeId = cleanText(createForm.employeeId) || uid;
       const role = createForm.role;
 
-      await syncEmployeeRecordFromUser({
-        uid,
+      const persisted = await persistCoreStaffIdentity({
+        firebaseUid: uid,
+        employeeId,
         email,
         displayName,
         phone: createForm.phone,
-        employeeId,
-        department: cleanText(createForm.department),
-        title: cleanText(createForm.title),
-        avatarUrl: cleanText(createForm.avatarUrl),
+        department: createForm.department,
+        title: createForm.title,
+        avatarUrl: createForm.avatarUrl,
+        bio: createForm.bio,
         role,
         active: true,
-        linkedEmployeeDocId: employeeId,
-        specialties: createForm.specialties
-          ? createForm.specialties.split(",").map((x) => cleanText(x)).filter(Boolean)
-          : [],
-        bio: createForm.bio,
-        employeeProfileEnabled: true,
-        showOnAbout: role === "staff",
-        showOnBooking: role === "staff",
       });
 
-      await createEmployeeNotification({
+      await CoreWorkforceService.createNotification({
         targetUid: uid,
-        targetEmployeeId: employeeId,
+        targetEmployeeId: persisted.employeeId,
         type: "system",
         title: "تم إنشاء حساب الموظف",
         body: "يمكنك الآن الدخول إلى بوابة الموظف ومتابعة التنبيهات الخاصة بك.",
         route: "/employee/overview",
       }).catch(() => {});
 
-      const createdIdentity = employeeId && employeeId !== uid ? `${uid} / ${employeeId}` : uid;
-      setMessage(`تم إنشاء حساب الموظفة: ${displayName} (${createdIdentity}) بدور ${getRoleLabel(role)}.`);
+      const createdIdentity = persisted.employeeId !== uid ? `${uid} / ${persisted.employeeId}` : uid;
+      setMessage(`تم إنشاء حساب الموظفة وربطه بـ Core: ${displayName} (${createdIdentity}) بدور ${getRoleLabel(role)}.`);
+      createdUser = null;
       setCreateForm({
         displayName: "",
         email: "",
@@ -235,11 +309,13 @@ export default function CreateStaffAccountV2({ session }: Props) {
         avatarUrl: "",
         password: makeTempPassword(),
         role: "staff",
-        specialties: "",
-        bio: "",
+            bio: "",
       });
     } catch (error) {
-      setMessage(getFriendlyAuthError(error, "تعذر إنشاء حساب الموظفة. تأكد من الصلاحيات والبيانات ثم حاول مرة أخرى."));
+      if (createdUser) {
+        await deleteUser(createdUser).catch(() => {});
+      }
+      setMessage(getFriendlyAuthError(error, "تعذر إنشاء وربط حساب الموظفة في Core. لم يتم استخدام Firestore fallback."));
     } finally {
       if (secondary) await signOut(secondary).catch(() => {});
       setBusy(false);
@@ -253,48 +329,38 @@ export default function CreateStaffAccountV2({ session }: Props) {
     const displayName = cleanText(promoteForm.displayName);
     const email = cleanText(promoteForm.email).toLowerCase();
     if (!uid || !displayName || !email || !email.includes("@")) {
-      setMessage("معرّف المستخدم والاسم والبريد الإلكتروني مطلوبة لربط مستخدم موجود.");
+      setMessage("معرّف Firebase والاسم والبريد الإلكتروني مطلوبة لربط مستخدم موجود.");
       return;
     }
 
     setBusy(true);
     setMessage("");
     try {
-      await syncEmployeeRecordFromUser({
-        uid,
+      const persisted = await persistCoreStaffIdentity({
+        firebaseUid: uid,
+        employeeId: cleanText(promoteForm.employeeId) || uid,
         email,
         displayName,
         phone: promoteForm.phone,
-        employeeId: promoteForm.employeeId || uid,
         department: promoteForm.department,
         title: promoteForm.title,
         avatarUrl: promoteForm.avatarUrl,
+        bio: promoteForm.bio,
         role: promoteForm.role,
         active: promoteForm.active,
-        linkedEmployeeDocId: promoteForm.employeeId || uid,
-        specialties: promoteForm.specialties
-          ? promoteForm.specialties.split(",").map((x) => cleanText(x)).filter(Boolean)
-          : [],
-        bio: promoteForm.bio,
-        employeeProfileEnabled: true,
-        showOnAbout: promoteForm.role === "staff",
-        showOnBooking: promoteForm.role === "staff",
       });
 
-      await createEmployeeNotification({
+      await CoreWorkforceService.createNotification({
         targetUid: uid,
-        targetEmployeeId: uid,
+        targetEmployeeId: persisted.employeeId,
         type: "system",
         title: "تم تفعيل ملفك الوظيفي",
-        body: "تم ربط حسابك ببوابة الموظف. راجع التنبيهات والملفات والإجازات من هناك.",
+        body: "تم ربط حسابك ببوابة الموظف من خلال Core. راجع التنبيهات والملفات والطلبات من هناك.",
         route: "/employee/overview",
       }).catch(() => {});
 
-      const promotedIdentity =
-        promoteForm.employeeId && promoteForm.employeeId !== uid
-          ? `${uid} / ${promoteForm.employeeId}`
-          : uid;
-      setMessage(`تم ربط المستخدم: ${displayName} (${promotedIdentity}) بدور ${getRoleLabel(promoteForm.role)}.`);
+      const promotedIdentity = persisted.employeeId !== uid ? `${uid} / ${persisted.employeeId}` : uid;
+      setMessage(`تم ربط المستخدم في Core: ${displayName} (${promotedIdentity}) بدور ${getRoleLabel(promoteForm.role)}.`);
       setPromoteForm({
         uid: "",
         displayName: "",
@@ -304,13 +370,12 @@ export default function CreateStaffAccountV2({ session }: Props) {
         department: "",
         title: "",
         avatarUrl: "",
-        specialties: "",
-        bio: "",
+            bio: "",
         role: "staff",
         active: true,
       });
     } catch (error) {
-      setMessage(getFriendlyAuthError(error, "تعذر ربط المستخدم الموجود. تأكد من الصلاحيات والبيانات ثم حاول مرة أخرى."));
+      setMessage(getFriendlyAuthError(error, "تعذر ربط المستخدم الموجود في Core. لم يتم استخدام Firestore fallback."));
     } finally {
       setBusy(false);
     }
@@ -330,7 +395,7 @@ export default function CreateStaffAccountV2({ session }: Props) {
         <div className="admin-create-staff-v2-hero__copy">
           <span className="dsv2-badge">إدارة الحسابات</span>
           <h1>إنشاء وربط حساب موظفة</h1>
-          <p>أنشئ حساب Firebase جديدًا بدون التأثير على جلسة الإدارة، أو اربط مستخدمًا موجودًا بملف الموارد البشرية.</p>
+          <p>أنشئ حساب Firebase جديدًا بدون التأثير على جلسة الإدارة، أو اربط مستخدم Firebase موجودًا بحساب وملف موظفة Canonical داخل Core D1.</p>
         </div>
         <div className="admin-create-staff-v2-status">
           <span><FontAwesomeIcon icon={faShieldHalved} /> صلاحية الإدارة</span>
@@ -349,7 +414,7 @@ export default function CreateStaffAccountV2({ session }: Props) {
             <div>
               <span>حساب جديد</span>
               <h2>إنشاء موظفة جديدة</h2>
-              <p>ينشئ مستخدم Firebase ثانويًا ثم يربطه بسجل الموظفة دون تغيير جلسة الإدارة الحالية.</p>
+              <p>ينشئ مستخدم Firebase للمصادقة فقط، ثم ينشئ الحساب التشغيلي وربط الموظفة داخل Core D1 دون تغيير جلسة الإدارة الحالية. الخدمات والتخصصات تُدار لاحقًا من ملف الموظفة ولا تُخزن ضمن حساب الدخول.</p>
             </div>
           </header>
 
@@ -391,9 +456,6 @@ export default function CreateStaffAccountV2({ session }: Props) {
                   <span>توليد</span>
                 </button>
               </div>
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="create-staff-specialties" label="التخصصات" className="admin-create-staff-v2-field--wide">
-              <input id="create-staff-specialties" className="dsv2-input" value={createForm.specialties} onChange={(e) => setCreateForm((p) => ({ ...p, specialties: e.target.value }))} placeholder="شعر، صبغات، أظافر" />
             </DashboardFieldV2>
             <DashboardFieldV2 id="create-staff-bio" label="نبذة" className="admin-create-staff-v2-field--wide">
               <textarea id="create-staff-bio" className="dsv2-textarea" rows={4} value={createForm.bio} onChange={(e) => setCreateForm((p) => ({ ...p, bio: e.target.value }))} />
@@ -450,9 +512,6 @@ export default function CreateStaffAccountV2({ session }: Props) {
                 options={PROMOTE_ROLE_OPTIONS}
                 onChange={(value) => setPromoteForm((p) => ({ ...p, role: value as EmployeeRole }))}
               />
-            </DashboardFieldV2>
-            <DashboardFieldV2 id="promote-staff-specialties" label="التخصصات" className="admin-create-staff-v2-field--wide">
-              <input id="promote-staff-specialties" className="dsv2-input" value={promoteForm.specialties} onChange={(e) => setPromoteForm((p) => ({ ...p, specialties: e.target.value }))} placeholder="شعر، صبغات، أظافر" />
             </DashboardFieldV2>
             <DashboardFieldV2 id="promote-staff-bio" label="نبذة" className="admin-create-staff-v2-field--wide">
               <textarea id="promote-staff-bio" className="dsv2-textarea" rows={4} value={promoteForm.bio} onChange={(e) => setPromoteForm((p) => ({ ...p, bio: e.target.value }))} />

@@ -1,4 +1,6 @@
 
+import type { GosiSnapshot } from "./gosiPolicy.js";
+
 export function payrollMonthBounds(year: number, month: number) {
   const normalizedMonth = Math.max(1, Math.min(12, Math.trunc(Number(month) || 1)));
   const payYear = Math.trunc(Number(year) || new Date().getFullYear());
@@ -41,6 +43,17 @@ export type PayrollManualItem = {
   note?: string;
   addedBy?: string;
   addedAt: string;
+  sourceType?: "payroll_carryover" | string;
+  sourceId?: string | null;
+  sourcePayrollMonth?: string | null;
+  sourceDate?: string | null;
+  /** Structured metadata preserved for system-generated payroll items. */
+  type?: string | null;
+  label?: string | null;
+  requestId?: string | null;
+  requestNumber?: string | null;
+  requestedDays?: number | null;
+  financialReference?: string | null;
 };
 
 export type PayrollAttendanceSummarySnapshot = {
@@ -61,7 +74,9 @@ export type PayrollAttendanceSummarySnapshot = {
   approvedAbsenceDays?: number;
   absenceDeductionOverlapHours?: number;
   attendanceRecordCount?: number;
-  attendanceLinkStatus?: "confirmed" | "unlinked" | "not_ready";
+  attendanceLinkStatus?: "confirmed" | "unlinked" | "not_ready" | "exempt";
+  attendancePayrollMode?: "required" | "exempt";
+  attendancePayrollExemptionReason?: string | null;
   attendanceDeductionEligible?: boolean;
   attendanceDeductionNote?: string | null;
   attendanceNotes?: string[];
@@ -78,6 +93,7 @@ export type PayrollMonthlyHoursSource =
   | "configured_monthly_hours"
   | "configured_daily_hours"
   | "saved_snapshot"
+  | "not_required_attendance_exempt"
   | "missing";
 
 export type PayrollSetupSnapshot = {
@@ -103,6 +119,7 @@ export type PayrollCalculationInput = {
   overtimeEnabled?: boolean;
   overtimeMultiplier?: number;
   monthlyHoursSource?: PayrollMonthlyHoursSource | null;
+  gosiSnapshot?: GosiSnapshot | null;
   status?: PayrollStatus;
   notes?: string | null;
 };
@@ -130,6 +147,9 @@ export type PayrollSnapshot = {
   manualAdditionsHalalas: number;
   manualDeductionsHalalas: number;
   advancesHalalas: number;
+  insuranceDeductionHalalas: number;
+  employerGosiContributionHalalas: number;
+  gosiSnapshot: GosiSnapshot | null;
   absenceDeductionHalalas: number;
   missingHoursDeductionHalalas: number;
   grossSalaryHalalas: number;
@@ -205,6 +225,7 @@ export function evaluatePayrollSetup(input: {
   dailyScheduledHours?: unknown;
   overtimeMultiplier?: unknown;
   monthlyHoursSource?: PayrollMonthlyHoursSource | null;
+  attendancePayrollMode?: "required" | "exempt" | null;
 }): PayrollSetupSnapshot {
   const missing: PayrollSetupMissingKey[] = [];
   const employeeId = String(input.employeeId || "").trim();
@@ -212,22 +233,34 @@ export function evaluatePayrollSetup(input: {
   const workDays = hours(input.workDays);
   const monthlyHours = hours(input.monthlyHours);
   const dailyScheduledHours = hours(input.dailyScheduledHours);
+  const attendancePayrollMode =
+    input.attendancePayrollMode === "exempt" ? "exempt" : "required";
 
   if (!employeeId) missing.push("employeeId");
   if (baseSalaryHalalas <= 0) missing.push("baseSalary");
   if (workDays <= 0) missing.push("workDays");
-  if (monthlyHours <= 0 && dailyScheduledHours <= 0) missing.push("monthlyHours");
+  if (
+    attendancePayrollMode === "required" &&
+    monthlyHours <= 0 &&
+    dailyScheduledHours <= 0
+  ) {
+    missing.push("monthlyHours");
+  }
 
   const configuredSource =
-    input.monthlyHoursSource && input.monthlyHoursSource !== "missing"
+    input.monthlyHoursSource &&
+    input.monthlyHoursSource !== "missing" &&
+    input.monthlyHoursSource !== "not_required_attendance_exempt"
       ? input.monthlyHoursSource
       : null;
   const monthlyHoursSource: PayrollMonthlyHoursSource =
-    monthlyHours > 0
-      ? configuredSource || "configured_monthly_hours"
-      : dailyScheduledHours > 0
-        ? "configured_daily_hours"
-        : "missing";
+    attendancePayrollMode === "exempt"
+      ? "not_required_attendance_exempt"
+      : monthlyHours > 0
+        ? configuredSource || "configured_monthly_hours"
+        : dailyScheduledHours > 0
+          ? "configured_daily_hours"
+          : "missing";
 
   return {
     complete: missing.length === 0,
@@ -240,8 +273,15 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
   const baseSalaryHalalas = money(input.baseSalaryHalalas);
   const allowancesHalalas = money(input.allowancesHalalas);
   const workDays = hours(input.workDays);
-  const configuredMonthlyHours = hours(input.monthlyHours);
-  const explicitDailyScheduledHours = hours(input.dailyScheduledHours);
+  const attendancePayrollMode =
+    input.attendanceSummary.attendancePayrollMode === "exempt"
+      ? "exempt"
+      : "required";
+  const attendanceExempt = attendancePayrollMode === "exempt";
+  const configuredMonthlyHours = attendanceExempt ? 0 : hours(input.monthlyHours);
+  const explicitDailyScheduledHours = attendanceExempt
+    ? 0
+    : hours(input.dailyScheduledHours);
   const dailyScheduledHours =
     explicitDailyScheduledHours > 0
       ? explicitDailyScheduledHours
@@ -262,43 +302,78 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     dailyScheduledHours: explicitDailyScheduledHours,
     overtimeMultiplier: input.overtimeMultiplier,
     monthlyHoursSource: input.monthlyHoursSource,
+    attendancePayrollMode,
   });
   const dailyRateHalalas = workDays > 0 ? roundHalalas(baseSalaryHalalas / workDays) : 0;
-  const hourlyRateHalalas =
-    monthlyHours > 0
+  const hourlyRateHalalas = attendanceExempt
+    ? 0
+    : monthlyHours > 0
       ? roundHalalas(baseSalaryHalalas / monthlyHours)
       : dailyScheduledHours > 0
         ? roundHalalas(dailyRateHalalas / dailyScheduledHours)
         : 0;
 
-  const rawAttendanceMissingHours = hours(input.attendanceSummary.totalMissingHours);
+  const rawAttendanceMissingHours = attendanceExempt
+    ? 0
+    : hours(input.attendanceSummary.totalMissingHours);
   const maxDeductiblePeriodHours =
     monthlyHours > 0
       ? monthlyHours
       : hours(input.attendanceSummary.totalScheduledHours);
-  const attendanceDeductionEligible = input.attendanceSummary.attendanceDeductionEligible !== false;
+  const attendanceDeductionEligible =
+    !attendanceExempt &&
+    input.attendanceSummary.attendanceDeductionEligible !== false;
   const attendanceDeductionNote =
     input.attendanceSummary.attendanceDeductionNote ||
-    (attendanceDeductionEligible ? null : ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE);
+    (attendanceExempt
+      ? "معفى من البصمة للراتب؛ لا يطبق خصم حضور تلقائي."
+      : attendanceDeductionEligible
+        ? null
+        : ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE);
 
   const attendanceSummary: PayrollAttendanceSummarySnapshot = {
-    totalScheduledHours: hours(input.attendanceSummary.totalScheduledHours),
-    totalActualWorkedHours: hours(input.attendanceSummary.totalActualWorkedHours),
-    totalLateHours: hours(input.attendanceSummary.totalLateHours),
-    totalEarlyLeaveHours: hours(input.attendanceSummary.totalEarlyLeaveHours),
-    totalCompensatedLateHours: hours(input.attendanceSummary.totalCompensatedLateHours),
-    totalMissingHours: clampHours(rawAttendanceMissingHours, maxDeductiblePeriodHours),
-    totalExtraHours: hours(input.attendanceSummary.totalExtraHours),
-    attendanceDays: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceDays || 0))),
-    absentDays: days(input.attendanceSummary.absentDays),
-    incompleteDays: Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
+    totalScheduledHours: attendanceExempt
+      ? 0
+      : hours(input.attendanceSummary.totalScheduledHours),
+    totalActualWorkedHours: attendanceExempt
+      ? 0
+      : hours(input.attendanceSummary.totalActualWorkedHours),
+    totalLateHours: attendanceExempt ? 0 : hours(input.attendanceSummary.totalLateHours),
+    totalEarlyLeaveHours: attendanceExempt
+      ? 0
+      : hours(input.attendanceSummary.totalEarlyLeaveHours),
+    totalCompensatedLateHours: attendanceExempt
+      ? 0
+      : hours(input.attendanceSummary.totalCompensatedLateHours),
+    totalMissingHours: attendanceExempt
+      ? 0
+      : clampHours(rawAttendanceMissingHours, maxDeductiblePeriodHours),
+    totalExtraHours: attendanceExempt ? 0 : hours(input.attendanceSummary.totalExtraHours),
+    attendanceDays: attendanceExempt
+      ? 0
+      : Math.max(0, Math.round(Number(input.attendanceSummary.attendanceDays || 0))),
+    absentDays: attendanceExempt ? 0 : days(input.attendanceSummary.absentDays),
+    incompleteDays: attendanceExempt
+      ? 0
+      : Math.max(0, Math.round(Number(input.attendanceSummary.incompleteDays || 0))),
     approvedLeaveDays: days(input.attendanceSummary.approvedLeaveDays),
     approvedAbsenceDays: days(input.attendanceSummary.approvedAbsenceDays),
-    absenceDeductionOverlapHours: hours(input.attendanceSummary.absenceDeductionOverlapHours),
+    absenceDeductionOverlapHours: attendanceExempt
+      ? 0
+      : hours(input.attendanceSummary.absenceDeductionOverlapHours),
     attendanceRecordCount: Math.max(0, Math.round(Number(input.attendanceSummary.attendanceRecordCount || 0))),
     attendanceLinkStatus:
-      input.attendanceSummary.attendanceLinkStatus ||
-      (attendanceDeductionEligible ? "confirmed" : "unlinked"),
+      attendanceExempt
+        ? "exempt"
+        : input.attendanceSummary.attendanceLinkStatus ||
+          (attendanceDeductionEligible ? "confirmed" : "unlinked"),
+    attendancePayrollMode,
+    attendancePayrollExemptionReason:
+      attendanceExempt
+        ? String(
+            input.attendanceSummary.attendancePayrollExemptionReason || ""
+          ).trim() || null
+        : null,
     attendanceDeductionEligible,
     attendanceDeductionNote,
     attendanceNotes: Array.isArray(input.attendanceSummary.attendanceNotes)
@@ -352,6 +427,7 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
       : 0;
   const detectedExtraHours = attendanceSummary.totalExtraHours;
   const overtimeEnabled =
+    !attendanceExempt &&
     input.overtimeEnabled === true &&
     payrollSetup.complete &&
     detectedExtraHours > 0 &&
@@ -365,11 +441,19 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
   const totalAdditionsHalalas =
     allowancesHalalas + manualAdditionsHalalas + overtimeValueHalalas;
   const grossSalaryHalalas = baseSalaryHalalas + totalAdditionsHalalas;
+  const gosiSnapshot = input.gosiSnapshot || null;
+  const insuranceDeductionHalalas = money(
+    gosiSnapshot?.employee?.deductionHalalas
+  );
+  const employerGosiContributionHalalas = money(
+    gosiSnapshot?.employer?.contributionHalalas
+  );
   const totalDeductionsHalalas =
     absenceDeductionHalalas +
     missingHoursDeductionHalalas +
     manualDeductionsHalalas +
-    advancesHalalas;
+    advancesHalalas +
+    insuranceDeductionHalalas;
   const netSalaryHalalas = Math.max(0, grossSalaryHalalas - totalDeductionsHalalas);
 
   return {
@@ -395,6 +479,9 @@ export function calculatePayrollSnapshot(input: PayrollCalculationInput): Payrol
     manualAdditionsHalalas,
     manualDeductionsHalalas,
     advancesHalalas,
+    insuranceDeductionHalalas,
+    employerGosiContributionHalalas,
+    gosiSnapshot,
     absenceDeductionHalalas,
     missingHoursDeductionHalalas,
     grossSalaryHalalas,

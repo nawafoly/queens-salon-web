@@ -17,6 +17,16 @@ import {
   WorkspaceTabHeaderV2,
 } from "../../components/dashboard-v2/employee-workspace/EmployeeWorkspacePrimitivesV2";
 import { CoreHrService } from "../../services/CoreHrService";
+import {
+  SCHEDULE_EXCEPTION_CHANGED_EVENT,
+  buildScheduleExceptionRestorePayload,
+  filterScheduleExceptionsForView,
+  getScheduleExceptionAction,
+  getScheduleExceptionRestoreConfirmationMessage,
+  isCancelledScheduleException,
+  isOperationalScheduleException,
+  type ScheduleExceptionFilter,
+} from "./shiftExceptionRestore";
 import type {
   CoreResolvedShift,
   CoreScheduleException,
@@ -256,6 +266,15 @@ function isFullShiftIdentifier(value: unknown) {
   return /^[A-Za-z0-9_-]{20,}$/.test(cleanText(value));
 }
 
+function isCoreEmployeeIdentifier(value: unknown) {
+  const id = cleanText(value);
+  return Boolean(
+    id &&
+      !id.startsWith("app_user_") &&
+      /^[A-Za-z0-9_-]+$/.test(id)
+  );
+}
+
 function readAliasValue(row: unknown, camelKey: string, snakeKey: string = camelKey) {
   const record = (row || {}) as Record<string, unknown>;
   return record[camelKey] ?? record[snakeKey];
@@ -361,6 +380,7 @@ function statusLabel(value: unknown) {
   if (status === "draft") return "مسودة";
   if (status === "cancelled") return "ملغي";
   if (status === "approved") return "معتمد";
+  if (status === "active") return "نشط";
   return status || "غير محدد";
 }
 
@@ -450,6 +470,7 @@ export default function ShiftControlSection({
   const [templateForm, setTemplateForm] = useState<TemplateForm>(() => emptyTemplateForm());
   const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>(() => emptyAssignmentForm());
   const [exceptionForm, setExceptionForm] = useState<ExceptionForm>(() => emptyExceptionForm());
+  const [exceptionFilter, setExceptionFilter] = useState<ScheduleExceptionFilter>("current");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -463,7 +484,9 @@ export default function ShiftControlSection({
     }, 0);
   }, []);
 
-  const shiftEmployeeIdsKey = uniqueCleanTexts([employeeUid, ...employeeIds, employeeId]).join("|");
+  const shiftEmployeeIdsKey = uniqueCleanTexts([employeeUid, employeeId, ...employeeIds])
+    .filter(isCoreEmployeeIdentifier)
+    .join("|");
   const shiftEmployeeIds = useMemo(
     () => shiftEmployeeIdsKey.split("|").filter(Boolean),
     [shiftEmployeeIdsKey]
@@ -498,13 +521,17 @@ export default function ShiftControlSection({
     setLoading(true);
     setError("");
     try {
-      const [templateRows, assignmentGroups, exceptionGroups, lockRows, adjustmentGroups, resolvedRows] = await Promise.all([
+      const [templateRows, assignmentGroups, exceptionGroups, lockRows, adjustmentGroups, resolvedBatch] = await Promise.all([
         CoreHrService.listShiftTemplates({ active: "all" }),
         Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftAssignments({ employeeId: id }).catch(() => [] as CoreShiftAssignment[]))),
         Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listScheduleExceptions({ employeeId: id }).catch(() => [] as CoreScheduleException[]))),
         CoreHrService.listShiftPayrollPeriodLocks(),
         Promise.all(shiftEmployeeIds.map((id) => CoreHrService.listShiftPayrollAdjustments({ employeeId: id }).catch(() => [] as CoreShiftPayrollAdjustment[]))),
-        Promise.all(shiftEmployeeIds.map((id) => CoreHrService.resolveEmployeeShift(id, resolvedDate).catch(() => null))),
+        CoreHrService.resolveEmployeeShiftsRange({
+          employeeIds: shiftEmployeeIds,
+          dateFrom: resolvedDate,
+          dateTo: resolvedDate,
+        }).catch(() => ({ rows: [] as CoreResolvedShift[] })),
       ]);
 
       const mergeById = <T extends { id: string }>(groups: T[][]) => Array.from(
@@ -516,7 +543,7 @@ export default function ShiftControlSection({
       setExceptions(mergeById(exceptionGroups));
       setLocks(lockRows);
       setAdjustments(mergeById(adjustmentGroups));
-      setResolvedShift(pickBestResolvedShift(resolvedRows));
+      setResolvedShift(pickBestResolvedShift(resolvedBatch.rows));
 
       const firstTemplateId = templateRows.find((template) => boolish(template.active))?.id || templateRows[0]?.id || "";
       setAssignmentForm((current) => ({ ...current, shiftTemplateId: current.shiftTemplateId || firstTemplateId }));
@@ -811,6 +838,57 @@ export default function ShiftControlSection({
     }
   };
 
+  const restoreException = async (exception: CoreScheduleException) => {
+    if (!canManage) return;
+    if (!isCancelledScheduleException(exception)) {
+      setError("يمكن استعادة الاستثناءات الملغاة فقط.");
+      return;
+    }
+    const payload = buildScheduleExceptionRestorePayload(exception);
+    const confirmation = getScheduleExceptionRestoreConfirmationMessage(exception, todayKey());
+    if (!window.confirm(confirmation)) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await CoreHrService.createScheduleException({
+        ...payload,
+        allowLockedPeriodAdjustment,
+      });
+      await load();
+      window.dispatchEvent(
+        new CustomEvent(SCHEDULE_EXCEPTION_CHANGED_EVENT, {
+          detail: {
+            employeeId: payload.employeeId,
+            restoredFromExceptionId: exception.id,
+          },
+        })
+      );
+      setMessage("تمت استعادة الاستثناء كسجل Core نشط جديد.");
+    } catch (err) {
+      console.warn("restore exception failed", err);
+      const code = cleanText((err as { code?: string })?.code);
+      const detail = cleanText((err as Error)?.message);
+      setError(code.includes("schedule_exception_conflict")
+        ? "يوجد استثناء نشط آخر يتداخل مع هذا الاستثناء. راجعه أولًا قبل الاستعادة."
+        : detail.includes("securetoken") || detail.includes("auth/")
+          ? "تعذر استعادة الاستثناء لأن جلسة Firebase لا تستطيع تجديد الرمز. سجّل خروج ثم دخول أو أصلح قيود Firebase API Key."
+          : "تعذر استعادة الاستثناء من Core. راجع التداخلات أو الصلاحيات.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const visibleExceptions = useMemo(
+    () => filterScheduleExceptionsForView(exceptions, exceptionFilter),
+    [exceptionFilter, exceptions]
+  );
+  const exceptionFilterOptions: Array<{ value: ScheduleExceptionFilter; label: string }> = [
+    { value: "current", label: "الحالية" },
+    { value: "cancelled", label: "الملغاة" },
+    { value: "all", label: "الكل" },
+  ];
+
   if (!isVisible) return null;
 
   const source = cleanText(resolvedShift?.source);
@@ -832,7 +910,7 @@ export default function ShiftControlSection({
       ? "لا يوجد شفت Core"
       : "مطبق";
   const nextException = exceptions
-    .filter((exception) => cleanText(exception.status) !== "cancelled")
+    .filter(isOperationalScheduleException)
     .filter((exception) => cleanText(exception.dateFrom || (exception as Record<string, unknown>).date_from) >= todayKey())
     .sort((left, right) => cleanText(left.dateFrom || (left as Record<string, unknown>).date_from).localeCompare(cleanText(right.dateFrom || (right as Record<string, unknown>).date_from)))[0] || null;
   const activeOrUpcomingAssignments = assignments.filter((assignment) => {
@@ -1141,17 +1219,41 @@ export default function ShiftControlSection({
           <WorkspaceCardV2
             title="استثناءات الموظفة"
             description="الأولوية للاستثناء قبل الشفت الأساسي."
-            actions={<WorkspaceHelpButtonV2 label="شرح استثناءات الموظفة" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.exceptionsList)} />}
+            actions={
+              <div className="dsv2-cluster">
+                <div className="dsv2-ew-segmented" role="tablist" aria-label="فلتر الاستثناءات">
+                  {exceptionFilterOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={exceptionFilter === option.value ? "is-active" : ""}
+                      onClick={() => setExceptionFilter(option.value)}
+                      disabled={loading || saving}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <WorkspaceHelpButtonV2 label="شرح استثناءات الموظفة" onClick={() => setHelpTopic(SHIFT_CONTROL_HELP_TOPICS.exceptionsList)} />
+              </div>
+            }
           >
             <WorkspaceTableV2
               headers={["النوع", "الفترة", "الوقت", "الحالة", "الإجراء"]}
-              rows={exceptions.map((exception) => [
-                <strong key="type">{exceptionTypeLabel(exception.exceptionType)}</strong>,
-                `${exception.dateFrom} - ${exception.dateTo}`,
-                exception.exceptionType === "off" ? "راحة" : formatWindow(exception),
-                <WorkspaceStatusBadgeV2 key="status" tone={exception.status === "cancelled" ? "danger" : "success"}>{statusLabel(exception.status)}</WorkspaceStatusBadgeV2>,
-                <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving || exception.status === "cancelled"}>إلغاء</button>,
-              ])}
+              rows={visibleExceptions.map((exception) => {
+                const action = getScheduleExceptionAction(exception);
+                const isCancelled = isCancelledScheduleException(exception);
+                const mutedClass = isCancelled && exceptionFilter === "all" ? "dsv2-ew-muted-row" : undefined;
+                return [
+                  <strong key="type" className={mutedClass}>{exceptionTypeLabel(exception.exceptionType)}</strong>,
+                  <span key="range" className={mutedClass}>{exception.dateFrom} - {exception.dateTo}</span>,
+                  <span key="window" className={mutedClass}>{exception.exceptionType === "off" ? "راحة" : formatWindow(exception)}</span>,
+                  <WorkspaceStatusBadgeV2 key="status" tone={isCancelled ? "danger" : "success"}>{statusLabel(exception.status)}</WorkspaceStatusBadgeV2>,
+                  action.kind === "restore"
+                    ? <button key="restore" type="button" className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" onClick={() => void restoreException(exception)} disabled={!canManage || saving}>{action.label}</button>
+                    : <button key="cancel" type="button" className="dsv2-btn dsv2-btn--danger dsv2-btn--sm" onClick={() => void cancelException(exception)} disabled={!canManage || saving}>{action.label}</button>,
+                ];
+              })}
               emptyText="لا توجد استثناءات شفت لهذه الموظفة."
             />
           </WorkspaceCardV2>

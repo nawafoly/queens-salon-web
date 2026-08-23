@@ -43,24 +43,24 @@ import RecruitmentApplicationsPage from "./hr/RecruitmentApplications";
 import CreateStaffAccountPage from "./hr/CreateStaffAccount";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeFilesPage from "./hr/EmployeeFiles";
-import AdminPermissionRequestsPage from "./hr/AdminPermissionRequests";
 import AdminEmployeeRequestsPage from "./hr/AdminEmployeeRequests";
-import { listEmployeePermissionRequests } from "../services/employeePermissionRequests";
 import {
   listEmployeeRequestNotifications,
+  listEmployeeRequests,
   markAllEmployeeRequestNotificationsRead,
   markEmployeeRequestNotificationRead,
   type CoreEmployeeRequestNotification,
 } from "../services/employeeRequests";
 import { listEmployeeDirectory } from "../services/employeeDirectory";
+import { CoreHrService } from "../services/CoreHrService";
+import type { CoreLeave } from "../types/hrCoreApi";
+import { listCoreEmployeeFiles, type CoreEmployeeFile } from "../services/employeeFilesCore";
 import {
   createEmployeeAbsenceRecord,
   listEmployeeAbsences,
-  listEmployeeFiles,
   listEmployeeLeaveRequests,
   listRecruitmentApplications,
   type EmployeeAbsence,
-  type EmployeeFile,
   type EmployeeLeaveRequest,
   type RecruitmentApplication,
 } from "../services/employeeHub";
@@ -118,7 +118,8 @@ type HrOverviewProps = {
   roster: DirectoryEmployee[];
   applications: RecruitmentApplication[];
   leaveRequests: EmployeeLeaveRequest[];
-  employeeFiles: EmployeeFile[];
+  operationalLeaves: CoreLeave[];
+  employeeFiles: CoreEmployeeFile[];
   attendanceToday: StaffAttendanceToday[];
   absences: EmployeeAbsence[];
   loading: boolean;
@@ -289,7 +290,7 @@ function getLeaveBadgeTone(status: EmployeeLeaveRequest["status"]): StatusTone {
   return "neutral";
 }
 
-function getEmployeeFileBadgeTone(status: EmployeeFile["status"]): StatusTone {
+function getEmployeeFileBadgeTone(status: CoreEmployeeFile["status"]): StatusTone {
   const normalized = normalizeText(status || "active");
   if (normalized === "active" || normalized === "read") return "success";
   if (normalized === "replaced" || normalized === "archived") return "muted";
@@ -400,6 +401,7 @@ function HrOverview({
   roster,
   applications,
   leaveRequests,
+  operationalLeaves,
   employeeFiles,
   attendanceToday,
   absences,
@@ -426,10 +428,31 @@ function HrOverview({
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollMessage, setPayrollMessage] = useState("");
 
+  const currentFullDayLeaveEmployeeIds = useMemo(() => {
+    const today = getTodayAttendanceDateKey();
+    const ids = new Set<string>();
+
+    for (const leave of operationalLeaves) {
+      if (normalizeText(leave.status) !== "approved") continue;
+      if (normalizeText(leave.durationKind) === "partial") continue;
+      const employeeId = cleanText(leave.employeeId);
+      const fromDate = cleanText(leave.startDate);
+      const toDate = cleanText(leave.endDate || leave.startDate);
+      if (!employeeId || !fromDate || !toDate) continue;
+      if (fromDate <= today && today <= toDate) ids.add(employeeId);
+    }
+
+    return ids;
+  }, [operationalLeaves]);
+
   const rosterSorted = useMemo(() => {
     const uniqueRoster = new Map<string, DirectoryEmployee>();
 
-    for (const item of roster) {
+    for (const rawItem of roster) {
+      const item: DirectoryEmployee = {
+        ...rawItem,
+        onLeave: currentFullDayLeaveEmployeeIds.has(getRosterAttendanceId(rawItem)),
+      };
       const identity =
         getRosterAttendanceId(item) ||
         cleanText(item.id) ||
@@ -462,7 +485,7 @@ function HrOverview({
       if (aStatus.active !== bStatus.active) return Number(bStatus.active) - Number(aStatus.active);
       return getEmployeeName(a).localeCompare(getEmployeeName(b), "ar");
     });
-  }, [roster]);
+  }, [currentFullDayLeaveEmployeeIds, roster]);
 
   const employeeSelectOptions = useMemo(
     () =>
@@ -499,10 +522,7 @@ function HrOverview({
     () => rosterSorted.filter((item) => getStatusMeta(item).active).length,
     [rosterSorted]
   );
-  const leaveCount = useMemo(
-    () => rosterSorted.filter((item) => getStatusMeta(item).onLeave).length,
-    [rosterSorted]
-  );
+  const leaveCount = currentFullDayLeaveEmployeeIds.size;
   const trialCount = useMemo(
     () => rosterSorted.filter((item) => getStatusMeta(item).trial).length,
     [rosterSorted]
@@ -1163,9 +1183,11 @@ export default function AdminHrDashboard({
     let disposed = false;
     const refreshPermissionCount = async () => {
       try {
-        const rows = await listEmployeePermissionRequests(100);
+        const rows = await listEmployeeRequests({ type: "permission", limit: 100 });
         if (!disposed) {
-          setPendingPermissionCount(rows.filter((item) => item.status === "pending").length);
+          setPendingPermissionCount(
+            rows.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length
+          );
         }
       } catch {
         if (!disposed) setPendingPermissionCount(0);
@@ -1268,7 +1290,7 @@ export default function AdminHrDashboard({
         { to: "/dashboard/hr", label: "نظرة عامة", icon: faHouse, permission: "employees.view" as AppPermission },
         { to: "/dashboard/requests", label: "طلبات الموظفات", icon: faClipboardList, badge: requestNotificationCount, permission: "employee_requests.view" as AppPermission },
         { to: "/dashboard/employees", label: "إدارة الموظفين", icon: faUsers, permission: "employees.view" as AppPermission },
-        { to: "/dashboard/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "attendance.leaves.manage" as AppPermission },
+        { to: "/dashboard/permissions", label: "الاستئذانات", icon: faClock, badge: pendingPermissionCount, permission: "employee_requests.view" as AppPermission },
         { to: "/dashboard/recruitment-applications", label: "طلبات التوظيف", icon: faUserTie, permission: "recruitment.view" as AppPermission },
         { to: "/dashboard/messages", label: "الرسائل الداخلية", icon: faEnvelope, permission: "messages.manage" as AppPermission },
         { to: "/dashboard/files", label: "الملفات الداخلية", icon: faFileLines, permission: "employees.files.view" as AppPermission },
@@ -1379,7 +1401,8 @@ export default function AdminHrDashboard({
   const [roster, setRoster] = useState<DirectoryEmployee[]>([]);
   const [applications, setApplications] = useState<RecruitmentApplication[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
-  const [employeeFiles, setEmployeeFiles] = useState<EmployeeFile[]>([]);
+  const [operationalLeaves, setOperationalLeaves] = useState<CoreLeave[]>([]);
+  const [employeeFiles, setEmployeeFiles] = useState<CoreEmployeeFile[]>([]);
   const [attendanceToday, setAttendanceToday] = useState<StaffAttendanceToday[]>([]);
   const [absences, setAbsences] = useState<EmployeeAbsence[]>([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -1393,11 +1416,14 @@ export default function AdminHrDashboard({
     setLoadingData(true);
     setError("");
     try {
-      const [rosterRows, applicationRows, leaveRows, fileRows, absenceRows] = await Promise.all([
+      const [rosterRows, applicationRows, leaveRows, operationalLeaveRows, fileRows, absenceRows] = await Promise.all([
         hasPermission("employees.view") ? listEmployeeDirectory() : Promise.resolve([]),
         hasPermission("recruitment.view") ? listRecruitmentApplications() : Promise.resolve([]),
         hasPermission("attendance.leaves.manage") ? listEmployeeLeaveRequests() : Promise.resolve([]),
-        hasPermission("employees.files.view") ? listEmployeeFiles(40) : Promise.resolve([]),
+        hasPermission("attendance.leaves.manage")
+          ? CoreHrService.listLeaves({ status: "approved" })
+          : Promise.resolve([] as CoreLeave[]),
+        hasPermission("employees.files.view") ? listCoreEmployeeFiles(40) : Promise.resolve([]),
         hasPermission("attendance.absences.manage") ? listEmployeeAbsences(80) : Promise.resolve([]),
       ]);
       const attendanceEmployees = (
@@ -1425,6 +1451,7 @@ export default function AdminHrDashboard({
       setRoster(Array.isArray(rosterRows) ? rosterRows : []);
       setApplications(Array.isArray(applicationRows) ? applicationRows : []);
       setLeaveRequests(Array.isArray(leaveRows) ? leaveRows : []);
+      setOperationalLeaves(Array.isArray(operationalLeaveRows) ? operationalLeaveRows : []);
       setEmployeeFiles(Array.isArray(fileRows) ? fileRows : []);
       setAttendanceToday(Array.isArray(attendanceRows) ? attendanceRows : []);
       setAbsences(Array.isArray(absenceRows) ? absenceRows : []);
@@ -1692,6 +1719,7 @@ export default function AdminHrDashboard({
                     roster={roster}
                     applications={applications}
                     leaveRequests={leaveRequests}
+                    operationalLeaves={operationalLeaves}
                     employeeFiles={employeeFiles}
                     attendanceToday={attendanceToday}
                     absences={absences}
@@ -1714,8 +1742,8 @@ export default function AdminHrDashboard({
             <Route
               path="permissions"
               element={
-                <PermissionRoute permission="attendance.leaves.manage">
-                  <AdminPermissionRequestsPage session={session} />
+                <PermissionRoute permission="employee_requests.view">
+                  <AdminEmployeeRequestsPage session={session} initialType="permission" />
                 </PermissionRoute>
               }
             />

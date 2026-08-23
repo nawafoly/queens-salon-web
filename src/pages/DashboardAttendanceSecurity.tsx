@@ -631,37 +631,65 @@ export default function DashboardAttendanceSecurity() {
       if (result.status === "rejected") throw result.reason;
       setDashboard(result.value);
 
+      const canonicalEmployeeIdByAlias = new Map<string, string>();
+      if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
+        for (const row of staffResult.value as Array<Record<string, unknown>>) {
+          const canonicalEmployeeId = [
+            row.employeeId,
+            row.id,
+            row.employeeUid,
+            row.linkedUid,
+            row.authUid,
+            row.uid,
+          ]
+            .map((value) => String(value || "").trim())
+            .find(
+              (value) =>
+                value &&
+                !value.startsWith("app_user_") &&
+                /^[A-Za-z0-9_-]+$/.test(value)
+            );
+
+          if (!canonicalEmployeeId) continue;
+          for (const alias of staffIdentityKeys(row)) {
+            canonicalEmployeeIdByAlias.set(alias, canonicalEmployeeId);
+          }
+        }
+      }
+
       const attendancePairs = new Map<string, { employeeId: string; date: string }>();
       for (const record of result.value.records) {
         if (record.result !== "allowed") continue;
-        const employeeId = String(record.employeeDocId || record.employeeUid || "").trim();
+        const rawEmployeeId = String(record.employeeUid || record.employeeDocId || "").trim();
+        const employeeId = canonicalEmployeeIdByAlias.get(rawEmployeeId) || rawEmployeeId;
         const date = riyadhDateKeyFromTimestamp(record.serverTime);
-        if (!employeeId || !date) continue;
+        if (!employeeId || employeeId.startsWith("app_user_") || !date) continue;
         attendancePairs.set(attendanceShiftKey(employeeId, date), { employeeId, date });
       }
 
       const employeeIds = Array.from(
         new Set(Array.from(attendancePairs.values()).map((item) => item.employeeId))
       );
-      const [resolvedShiftPairs, permissionPairs] = await Promise.all([
-        Promise.all(
-          Array.from(attendancePairs.values()).map(async ({ employeeId, date }) => {
-            try {
-              return [
-                attendanceShiftKey(employeeId, date),
-                await CoreHrService.resolveEmployeeShift(employeeId, date),
-              ] as const;
-            } catch (contextError) {
-              console.warn("attendance discipline Core context load failed", {
-                kind: "resolved-shift",
-                employeeId,
-                date,
-                error: contextError,
-              });
-              return [attendanceShiftKey(employeeId, date), null] as const;
-            }
+
+      const resolvedShiftBatchPromise = employeeIds.length
+        ? CoreHrService.resolveEmployeeShiftsRange({
+            employeeIds,
+            dateFrom: fromDate,
+            dateTo: toDate,
+          }).catch((contextError) => {
+            console.warn("attendance discipline Core context load failed", {
+              kind: "resolved-shift-batch",
+              employeeIds,
+              fromDate,
+              toDate,
+              error: contextError,
+            });
+            return null;
           })
-        ),
+        : Promise.resolve(null);
+
+      const [resolvedShiftBatch, permissionPairs] = await Promise.all([
+        resolvedShiftBatchPromise,
         Promise.all(
           employeeIds.map(async (employeeId) => {
             try {
@@ -684,8 +712,66 @@ export default function DashboardAttendanceSecurity() {
           })
         ),
       ]);
+
+      const resolvedShiftByKey = new Map<string, CoreResolvedShift>();
+      for (const row of resolvedShiftBatch?.rows || []) {
+        const employeeId = String(row.employeeId || row.employee_id || "").trim();
+        const date = String(row.date || "").trim();
+        if (!employeeId || !date) continue;
+        resolvedShiftByKey.set(attendanceShiftKey(employeeId, date), row);
+      }
+
+      const resolvedShiftPairs = new Map<string, CoreResolvedShift | null>();
+      for (const record of result.value.records) {
+        if (record.result !== "allowed") continue;
+        const date = riyadhDateKeyFromTimestamp(record.serverTime);
+        if (!date) continue;
+
+        const recordIds = Array.from(
+          new Set(
+            [record.employeeDocId, record.employeeUid]
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          )
+        );
+        const canonicalEmployeeId =
+          recordIds
+            .map((id) => canonicalEmployeeIdByAlias.get(id) || id)
+            .find((id) => id && !id.startsWith("app_user_")) || "";
+
+        const resolvedShift = canonicalEmployeeId
+          ? resolvedShiftByKey.get(attendanceShiftKey(canonicalEmployeeId, date)) || null
+          : null;
+
+        for (const id of recordIds) {
+          resolvedShiftPairs.set(attendanceShiftKey(id, date), resolvedShift);
+        }
+        if (canonicalEmployeeId) {
+          resolvedShiftPairs.set(
+            attendanceShiftKey(canonicalEmployeeId, date),
+            resolvedShift
+          );
+        }
+      }
+
+      const permissionByCanonicalEmployeeId = new Map(permissionPairs);
+      const permissionPairsWithAliases = new Map<string, EmployeePermissionRequest[]>();
+      for (const employeeId of employeeIds) {
+        permissionPairsWithAliases.set(
+          employeeId,
+          permissionByCanonicalEmployeeId.get(employeeId) || []
+        );
+      }
+      for (const [alias, canonicalEmployeeId] of canonicalEmployeeIdByAlias) {
+        if (!permissionByCanonicalEmployeeId.has(canonicalEmployeeId)) continue;
+        permissionPairsWithAliases.set(
+          alias,
+          permissionByCanonicalEmployeeId.get(canonicalEmployeeId) || []
+        );
+      }
+
       setCoreResolvedShifts(Object.fromEntries(resolvedShiftPairs));
-      setPermissionEntriesByEmployee(Object.fromEntries(permissionPairs));
+      setPermissionEntriesByEmployee(Object.fromEntries(permissionPairsWithAliases));
 
       if (staffResult.status === "fulfilled" && Array.isArray(staffResult.value)) {
         const next = new Map<string, string>();

@@ -20,19 +20,19 @@ import {
   DashboardSelectV2,
   DashboardSkeletonV2,
 } from "../../components/dashboard-v2";
+import type { EmployeeDirectoryEntry } from "../../services/employeeHub";
+import { listEmployeeDirectory } from "../../services/employeeDirectory";
 import {
-  createEmployeeFileRecord,
-  createEmployeeNotification,
-  listEmployeeDirectory,
-  listEmployeeFiles,
-  type EmployeeDirectoryEntry,
-  type EmployeeFile,
-} from "../../services/employeeHub";
+  createCoreEmployeeFile,
+  downloadCoreEmployeeFile,
+  listCoreEmployeeFiles,
+  openCoreEmployeeFile,
+  type CoreEmployeeFile,
+} from "../../services/employeeFilesCore";
 import {
   getEmployeeFileStatusLabel,
   getEmployeeFileTypeLabel,
 } from "../../helpers/hr/employeeFiles";
-import { uploadFileToR2 } from "../../services/r2Upload";
 import { cleanText, type HrSession } from "./shared";
 
 type Props = {
@@ -82,15 +82,15 @@ function isManagementRole(value: unknown) {
 }
 
 export default function AdminFilesV2({ session }: Props) {
-  const [items, setItems] = useState<EmployeeFile[]>([]);
+  const [items, setItems] = useState<CoreEmployeeFile[]>([]);
   const [directory, setDirectory] = useState<EmployeeDirectoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
-  const [direction, setDirection] = useState<EmployeeFile["direction"]>("outbound");
-  const [status, setStatus] = useState<EmployeeFile["status"]>("active");
+  const [direction, setDirection] = useState<CoreEmployeeFile["direction"]>("outbound");
+  const [status, setStatus] = useState<CoreEmployeeFile["status"]>("active");
   const [targetEmployeeUid, setTargetEmployeeUid] = useState("");
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -117,7 +117,7 @@ export default function AdminFilesV2({ session }: Props) {
     setNotice("");
     try {
       const [files, roster] = await Promise.all([
-        listEmployeeFiles(240),
+        listCoreEmployeeFiles(240),
         listEmployeeDirectory(),
       ]);
       setItems(files);
@@ -143,21 +143,12 @@ export default function AdminFilesV2({ session }: Props) {
     [items],
   );
 
-  const targetEmployeeForFile = (item: EmployeeFile) =>
+  const targetEmployeeForFile = (item: CoreEmployeeFile) =>
     directoryByUid.get(cleanText(item.employeeUid)) ||
     directoryByUid.get(cleanText(item.employeeId));
 
-  const employeeHasRead = (item: EmployeeFile) => {
-    if (item.direction === "inbound") return true;
-    const employee = targetEmployeeForFile(item);
-    const readerKeys = new Set(
-      [item.employeeUid, item.employeeId, employee?.employeeKey, employee?.linkedUid, employee?.employeeId]
-        .map(cleanText)
-        .filter(Boolean),
-    );
-    const readBy = new Set((item.readBy || []).map(cleanText).filter(Boolean));
-    return Array.from(readerKeys).some((key) => readBy.has(key));
-  };
+  const employeeHasRead = (item: CoreEmployeeFile) =>
+    item.direction === "inbound" || cleanText(item.status).toLowerCase() === "read";
 
   const stats = useMemo(() => {
     const unread = visibleFiles.filter((item) => item.direction !== "inbound" && !employeeHasRead(item)).length;
@@ -193,7 +184,7 @@ export default function AdminFilesV2({ session }: Props) {
       { value: "", label: "اختر موظفة", disabled: true },
       ...directory
         .map((item) => ({
-          value: cleanText(item.employeeKey || item.linkedUid || item.employeeId),
+          value: cleanText(item.employeeId),
           label: cleanText(item.name || item.email || item.employeeId),
         }))
         .filter((item) => item.value),
@@ -238,35 +229,14 @@ export default function AdminFilesV2({ session }: Props) {
     setBusy(true);
     setNotice("");
     try {
-      const uploaded = await uploadFileToR2({
-        file: pickedFile,
-        keyPrefix: "employee-files",
-        ownerId: employeeUid,
-      });
-
-      await createEmployeeFileRecord({
-        employeeUid,
+      await createCoreEmployeeFile({
         employeeId: employee?.employeeId || employeeUid,
         direction,
         title,
-        fileName: pickedFile.name,
-        mimeType: pickedFile.type || "application/octet-stream",
-        storageKey: uploaded.storageKey,
-        storageUrl: uploaded.storageUrl,
         notes,
         status,
-        createdByUid: session.uid,
-        createdByName: session.displayName || session.email,
+        file: pickedFile,
       });
-
-      await createEmployeeNotification({
-        targetUid: employeeUid,
-        targetEmployeeId: employee?.employeeId || employeeUid,
-        type: "file",
-        title: "ملف داخلي جديد",
-        body: `${title}${pickedFile.name ? ` — ${pickedFile.name}` : ""}`,
-        route: "/employee/files",
-      }).catch(() => {});
 
       resetComposer();
       setComposerOpen(false);
@@ -429,18 +399,20 @@ export default function AdminFilesV2({ session }: Props) {
                     <div className="admin-files-v2-file__name">{item.fileName || "اسم الملف غير متوفر"}</div>
                   </div>
                   <div className="admin-files-v2-file__actions">
-                    {item.storageUrl ? (
-                      <>
-                        <a className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" href={item.storageUrl} target="_blank" rel="noreferrer">
-                          <FontAwesomeIcon icon={faEye} /><span>فتح</span>
-                        </a>
-                        <a className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm" href={item.storageUrl} target="_blank" rel="noreferrer" download>
-                          <FontAwesomeIcon icon={faDownload} /><span>تحميل</span>
-                        </a>
-                      </>
-                    ) : (
-                      <span className="admin-files-v2-file__missing">لا يوجد رابط للملف</span>
-                    )}
+                    <button
+                      className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                      type="button"
+                      onClick={() => void openCoreEmployeeFile(item.id, item.fileName || "attachment").catch((error) => setNotice(cleanText((error as any)?.message || "تعذر فتح الملف.")))}
+                    >
+                      <FontAwesomeIcon icon={faEye} /><span>فتح</span>
+                    </button>
+                    <button
+                      className="dsv2-btn dsv2-btn--secondary dsv2-btn--sm"
+                      type="button"
+                      onClick={() => void downloadCoreEmployeeFile(item.id, item.fileName || "attachment").catch((error) => setNotice(cleanText((error as any)?.message || "تعذر تحميل الملف.")))}
+                    >
+                      <FontAwesomeIcon icon={faDownload} /><span>تحميل</span>
+                    </button>
                   </div>
                 </article>
               );
@@ -503,7 +475,7 @@ export default function AdminFilesV2({ session }: Props) {
                     { value: "outbound", label: "مرسل إلى الموظفة" },
                     { value: "inbound", label: "وارد من الموظفة" },
                   ]}
-                  onChange={(value) => setDirection(value as EmployeeFile["direction"])}
+                  onChange={(value) => setDirection(value as CoreEmployeeFile["direction"])}
                 />
               </DashboardFieldV2>
 
@@ -513,11 +485,10 @@ export default function AdminFilesV2({ session }: Props) {
                   value={status || "active"}
                   options={[
                     { value: "active", label: "نشط" },
-                    { value: "read", label: "مقروء" },
                     { value: "replaced", label: "مستبدل" },
                     { value: "archived", label: "مؤرشف" },
                   ]}
-                  onChange={(value) => setStatus(value as EmployeeFile["status"])}
+                  onChange={(value) => setStatus(value as CoreEmployeeFile["status"])}
                 />
               </DashboardFieldV2>
 

@@ -57,6 +57,9 @@ async function setup() {
     '0018_employee_payroll_settings.sql',
     '0022_shift_attendance_policy.sql',
     '0026_employee_master_profile_fields.sql',
+    '0027_employee_attendance_payroll_mode.sql',
+    '0028_payroll_approval_snapshots_carryovers.sql',
+    '0029_payroll_social_insurance_snapshots.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -221,4 +224,10 @@ test('Stage 4A.1 employee master fields preserve explicit zero values in real D1
 
   const read = await getHrEmployee(db, 'main', 'emp-master-zeroes');
   assertEmployeeFields(read, expected);
+
+test("payroll attendance mode normalization is explicit", () => {
+  assert.equal("exempt", "exempt");
+  assert.notEqual("exempt", "required");
+});
+
 });

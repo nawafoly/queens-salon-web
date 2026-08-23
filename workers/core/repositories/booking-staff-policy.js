@@ -171,6 +171,11 @@ function resolveStaffBookingDayFromFacts(
         cleanText(
           fullLeave.id
         ),
+      leaveNote:
+        cleanText(
+          fullLeave.hr_note ||
+            fullLeave.employee_note
+        ),
       blockedRanges: [],
     };
   }

@@ -53,17 +53,24 @@ if (!errors.length) {
   }
 
   for (const marker of [
-    "syncEmployeeRecordFromUser",
+    "CoreHrService.saveMyEmployeeProfile",
     "uploadFileToR2",
     'keyPrefix: "employee-assets/avatars"',
     "employeeProfileEnabled",
     "showOnAbout",
-    "showOnBooking",
+    "البيانات الوظيفية وإعدادات الظهور تبقى للإدارة",
     "onPortalChange",
   ]) {
     if (!profile.includes(marker)) {
       errors.push(`EmployeeProfile.tsx is missing preserved behavior marker: ${marker}`);
     }
+  }
+
+  if (/syncEmployeeRecordFromUser|services\/employeeHub|firebase\/firestore/.test(profile)) {
+    errors.push("EmployeeProfile.tsx must persist self-editable profile fields through Core D1 only.");
+  }
+  if (/showOnBooking/.test(profile)) {
+    errors.push("Employee profile self-service must not own booking visibility; it is administration-managed.");
   }
 
   if (!/<progress\b/.test(profile)) {

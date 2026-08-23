@@ -58,7 +58,7 @@ import {
 } from "../../services/employeeRequests";
 import "../../styles/EmployeeRequests.css";
 
-type Props = { session: HrSession };
+type Props = { session: HrSession; initialType?: EmployeeRequestType | "" };
 type ActionDialogKind =
   | "assign"
   | "request-info"
@@ -242,14 +242,14 @@ function emptyDialog(kind: ActionDialogKind): DialogState {
   };
 }
 
-export default function AdminEmployeeRequestsPage({ session }: Props) {
+export default function AdminEmployeeRequestsPage({ session, initialType = "" }: Props) {
   const { hasPermission } = usePermissions();
   const [rows, setRows] = useState<EmployeeRequest[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [selected, setSelected] = useState<EmployeeRequest | null>(null);
   const [stats, setStats] = useState<Partial<Record<EmployeeRequestStatus, number>>>({});
   const [overdue, setOverdue] = useState(0);
-  const [type, setType] = useState<EmployeeRequestType | "">("");
+  const [type, setType] = useState<EmployeeRequestType | "">(initialType);
   const [status, setStatus] = useState<EmployeeRequestStatus | "">("");
   const [employeeId, setEmployeeId] = useState("");
   const [assignedToUid, setAssignedToUid] = useState("");
@@ -266,6 +266,10 @@ export default function AdminEmployeeRequestsPage({ session }: Props) {
   const [dialogError, setDialogError] = useState("");
   const [assignees, setAssignees] = useState<EmployeeRequestAssignee[]>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
+
+  useEffect(() => {
+    setType(initialType);
+  }, [initialType]);
 
   const loadList = useCallback(async () => {
     setLoading(true);

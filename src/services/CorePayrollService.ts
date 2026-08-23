@@ -6,6 +6,8 @@ import type {
   CoreResolvedShift,
   CorePayrollEntry,
   CorePayrollPeriod,
+  CorePayrollCarryoverAdjustment,
+  CorePayrollObligationDeduction,
 } from "../types/hrCoreApi.ts";
 import {
   permissionIntervalsFromAttendanceRecords,
@@ -25,6 +27,25 @@ import {
   summarizeAttendanceDisciplineMonth,
   type AttendanceDisciplineDaySummary,
 } from "../helpers/hr/attendanceDiscipline.ts";
+import {
+  payrollCarryoverItem,
+  payrollCarryoverNetHalalas,
+  previousPayrollMonth,
+  withoutPayrollCarryoverItems,
+} from "../helpers/hr/payrollCarryoverPolicy.js";
+import {
+  payrollApprovalReadiness,
+  payrollAttendanceReadiness,
+} from "../helpers/hr/payrollReadiness.js";
+import {
+  withoutPayrollObligationDeductionItems,
+} from "../helpers/hr/payrollObligationPolicy.js";
+import {
+  calculateGosi,
+  type GosiInsuranceCategory,
+  type GosiSnapshot,
+  type GosiWageMode,
+} from "../helpers/hr/gosiPolicy.js";
 import {
   ATTENDANCE_DEDUCTION_NOT_APPLIED_NOTE,
   calculatePayrollSnapshot,
@@ -57,6 +78,7 @@ export type PayrollEntryView = PayrollSnapshot & {
   paidAt?: string | null;
   paidByUid?: string | null;
   auditLog?: Array<Record<string, unknown>>;
+  carryoverAdjustments?: CorePayrollCarryoverAdjustment[];
 };
 
 export type PayrollAccrualView = {
@@ -351,15 +373,44 @@ export function payrollAccrualPeriodStatus(payrollMonth: string) {
   };
 }
 
+function payrollCalendarProgressRatio(
+  payrollMonth: string,
+  completedThroughDate: string | null
+) {
+  if (!completedThroughDate) return 0;
+  const [year, month] = String(payrollMonth || "").split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return 0;
+  const bounds = payrollMonthBounds(year, month);
+  if (completedThroughDate < bounds.monthStart) return 0;
+  const cappedDate =
+    completedThroughDate > bounds.monthEnd
+      ? bounds.monthEnd
+      : completedThroughDate;
+  const totalDays = dateKeysInRange(bounds.monthStart, bounds.monthEnd).length;
+  const completedDays = dateKeysInRange(bounds.monthStart, cappedDate).length;
+  return totalDays > 0
+    ? Math.min(1, Math.max(0, completedDays / totalDays))
+    : 0;
+}
+
 export function calculatePayrollAccrualView(entry: PayrollEntryView): PayrollAccrualView {
   const period = payrollAccrualPeriodStatus(entry.payrollMonth);
   const isPartial = period.isPartial;
+  const attendancePayrollMode =
+    entry.attendanceSummary?.attendancePayrollMode === "exempt"
+      ? "exempt"
+      : "required";
   const monthlyHours = positiveNumber(entry.monthlyHours);
   const scheduledHours = positiveNumber(entry.attendanceSummary?.totalScheduledHours);
   const progressRatio = isPartial
-    ? monthlyHours > 0
-      ? Math.min(1, Math.max(0, scheduledHours / monthlyHours))
-      : 0
+    ? attendancePayrollMode === "exempt"
+      ? payrollCalendarProgressRatio(
+          entry.payrollMonth,
+          period.completedThroughDate
+        )
+      : monthlyHours > 0
+        ? Math.min(1, Math.max(0, scheduledHours / monthlyHours))
+        : 0
     : 1;
 
   const baseAndAllowancesHalalas =
@@ -403,7 +454,13 @@ function isPayrollSetupMissingKey(value: string): value is PayrollSetupMissingKe
 }
 
 function asMonthlyHoursSource(value: string): PayrollMonthlyHoursSource | null {
-  return ["configured_monthly_hours", "configured_daily_hours", "saved_snapshot", "missing"].includes(value)
+  return [
+    "configured_monthly_hours",
+    "configured_daily_hours",
+    "saved_snapshot",
+    "not_required_attendance_exempt",
+    "missing",
+  ].includes(value)
     ? (value as PayrollMonthlyHoursSource)
     : null;
 }
@@ -634,6 +691,44 @@ function attendanceMetadata(
 
 function normalizeAttendanceSummaryMetadata(summary: PayrollAttendanceSummarySnapshot) {
   const recordCount = Math.max(0, Math.round(Number(summary.attendanceRecordCount || 0)));
+  const mode =
+    summary.attendancePayrollMode === "exempt"
+      ? "exempt"
+      : "required";
+  const exemptionReason =
+    mode === "exempt"
+      ? text(summary.attendancePayrollExemptionReason)
+      : "";
+
+  if (mode === "exempt") {
+    return {
+      ...summary,
+      totalScheduledHours: 0,
+      totalActualWorkedHours: 0,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalRawMissingHours: 0,
+      totalPermissionRequestedHours: 0,
+      totalPermissionCoveredHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 0,
+      absentDays: 0,
+      incompleteDays: 0,
+      absenceDeductionOverlapHours: 0,
+      attendancePayrollMode: "exempt" as const,
+      attendancePayrollExemptionReason:
+        exemptionReason || null,
+      attendanceRecordCount: recordCount,
+      attendanceLinkStatus: "exempt" as const,
+      attendanceDeductionEligible: false,
+      attendanceDeductionNote:
+        exemptionReason
+          ? `معفى من البصمة للراتب: ${exemptionReason}`
+          : "معفى من البصمة للراتب.",
+    };
+  }
   if (typeof summary.attendanceDeductionEligible === "boolean") {
     return {
       ...summary,
@@ -666,13 +761,137 @@ function employeeBaseSalary(employee: CoreHrEmployee) {
   return positiveNumber(employment.base_salary_halalas ?? employment.baseSalaryHalalas);
 }
 
-function employeeAllowances(employee: CoreHrEmployee) {
+function employeeHousingAllowance(employee: CoreHrEmployee) {
   const employment = employmentOf(employee);
-  return (
-    numberValue(employment.housing_allowance_halalas ?? employment.housingAllowanceHalalas) +
-    numberValue(employment.transportation_allowance_halalas ?? employment.transportationAllowanceHalalas) +
-    numberValue(employment.other_allowances_halalas ?? employment.otherAllowancesHalalas)
+  return Math.max(
+    0,
+    Math.round(
+      numberValue(
+        employment.housing_allowance_halalas ??
+          employment.housingAllowanceHalalas
+      )
+    )
   );
+}
+
+function employeeTransportationAllowance(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return Math.max(
+    0,
+    Math.round(
+      numberValue(
+        employment.transportation_allowance_halalas ??
+          employment.transportationAllowanceHalalas
+      )
+    )
+  );
+}
+
+function employeeOtherAllowances(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return Math.max(
+    0,
+    Math.round(
+      numberValue(
+        employment.other_allowances_halalas ??
+          employment.otherAllowancesHalalas
+      )
+    )
+  );
+}
+
+function employeeAllowances(employee: CoreHrEmployee) {
+  return (
+    employeeHousingAllowance(employee) +
+    employeeTransportationAllowance(employee) +
+    employeeOtherAllowances(employee)
+  );
+}
+
+export function isEmployeePayrollEligible(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  const profileStatus = text(employee.status).toLowerCase();
+  const employmentStatus = text(
+    employment.employment_status ?? employment.employmentStatus
+  ).toLowerCase();
+
+  if (profileStatus && profileStatus !== "active") return false;
+  if (employmentStatus && employmentStatus !== "active") return false;
+
+  return employeeBaseSalary(employee) > 0;
+}
+
+const GOSI_CATEGORIES = new Set([
+  "saudi_existing",
+  "saudi_new",
+  "gcc",
+  "non_saudi",
+]);
+
+function employeeGosiSnapshot(
+  employee: CoreHrEmployee,
+  payrollMonth: string
+): GosiSnapshot | null {
+  const employment = employmentOf(employee);
+  const category = text(
+    employment.social_insurance_category ??
+      employment.socialInsuranceCategory
+  ).toLowerCase();
+
+  // Missing classification remains explicitly unconfigured. We do not infer
+  // insurance policy from nationality or silently treat GCC as non-Saudi.
+  if (!GOSI_CATEGORIES.has(category) || category === "gcc") return null;
+
+  const payrollDate = payrollMonth + "-28";
+  const classificationEffectiveFrom = text(
+    employment.social_insurance_effective_from ??
+      employment.socialInsuranceEffectiveFrom
+  );
+
+  // A current classification must never leak backwards into an earlier payroll
+  // period. Historical periods remain blocked until a valid classification for
+  // that period exists.
+  if (
+    classificationEffectiveFrom &&
+    /^\d{4}-\d{2}-\d{2}$/.test(classificationEffectiveFrom) &&
+    payrollDate < classificationEffectiveFrom
+  ) {
+    return null;
+  }
+
+  const wageMode: GosiWageMode =
+    text(
+      employment.gosi_wage_mode ??
+        employment.gosiWageMode
+    ).toLowerCase() === "override"
+      ? "override"
+      : "derived";
+
+  try {
+    return calculateGosi({
+      insuranceCategory: category as GosiInsuranceCategory,
+      payrollDate,
+      basicSalaryHalalas: employeeBaseSalary(employee),
+      housingAllowanceHalalas: employeeHousingAllowance(employee),
+      transportationAllowanceHalalas:
+        employeeTransportationAllowance(employee),
+      otherAllowancesHalalas: employeeOtherAllowances(employee),
+      wageMode,
+      contributoryWageOverrideHalalas: numberValue(
+        employment.gosi_contributory_wage_override_halalas ??
+          employment.gosiContributoryWageOverrideHalalas
+      ),
+      overrideReason:
+        text(
+          employment.gosi_contributory_wage_override_reason ??
+            employment.gosiContributoryWageOverrideReason
+        ) || null,
+    });
+  } catch (error) {
+    const code = text((error as Error)?.message);
+    if (code.startsWith("gosi_")) return null;
+    throw error;
+  }
 }
 
 function employeeJobTitle(employee: CoreHrEmployee) {
@@ -761,6 +980,24 @@ function employeePayrollOvertimeEnabled(employee: CoreHrEmployee) {
   );
 }
 
+function employeeAttendancePayrollMode(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return text(
+    employment.attendance_payroll_mode ??
+      employment.attendancePayrollMode
+  ).toLowerCase() === "exempt"
+    ? "exempt"
+    : "required";
+}
+
+function employeeAttendancePayrollExemptionReason(employee: CoreHrEmployee) {
+  const employment = employmentOf(employee);
+  return text(
+    employment.attendance_payroll_exemption_reason ??
+      employment.attendancePayrollExemptionReason
+  );
+}
+
 export function buildPayrollAttendanceSummaryForEmployee(input: {
   employee: CoreHrEmployee;
   records: CoreAttendanceRecord[];
@@ -814,20 +1051,85 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
   const deductibleAbsenceUnits = mergePayrollDayUnits(recordedAbsenceUnits, unpaidLeaveUnits);
   const paidLeaveDays = totalPayrollDayUnits(paidLeaveUnits);
   const identity = resolvePayrollAttendanceIdentity(input.employee);
-  const dailyScheduledHours = explicitDailyScheduledHoursForMonth(
-    input.employee,
-    input.year,
-    input.month,
-    input.resolvedShifts
-  );
+  const attendancePayrollMode =
+    employeeAttendancePayrollMode(input.employee);
+  const attendancePayrollExemptionReason =
+    employeeAttendancePayrollExemptionReason(input.employee);
+  const dailyScheduledHours =
+    attendancePayrollMode === "exempt"
+      ? 0
+      : explicitDailyScheduledHoursForMonth(
+          input.employee,
+          input.year,
+          input.month,
+          input.resolvedShifts
+        );
   const payrollSetup = evaluatePayrollSetup({
     employeeId: input.employee.id,
     baseSalaryHalalas: employeeBaseSalary(input.employee),
     workDays: employeeWorkDays(input.employee),
-    monthlyHours: employeeMonthlyHours(input.employee),
+    monthlyHours:
+      attendancePayrollMode === "exempt"
+        ? 0
+        : employeeMonthlyHours(input.employee),
     dailyScheduledHours,
+    attendancePayrollMode,
   });
   const hasCoreEmployeeIdentity = Boolean(identity.employeeId);
+
+  if (attendancePayrollMode === "exempt" && hasCoreEmployeeIdentity) {
+    const punchRecordCount = periodRecords.filter(
+      (record) =>
+        record.recordType === "check_in" ||
+        record.recordType === "check_out"
+    ).length;
+    const approvedAbsenceDays =
+      totalPayrollDayUnits(deductibleAbsenceUnits);
+
+    return {
+      days,
+      summary: {
+        totalScheduledHours: 0,
+        totalActualWorkedHours: 0,
+        totalLateHours: 0,
+        totalEarlyLeaveHours: 0,
+        totalCompensatedLateHours: 0,
+        totalRawMissingHours: 0,
+        totalPermissionRequestedHours: 0,
+        totalPermissionCoveredHours: 0,
+        totalMissingHours: 0,
+        totalExtraHours: 0,
+        attendanceDays: 0,
+        absentDays: 0,
+        incompleteDays: 0,
+        approvedLeaveDays: paidLeaveDays,
+        approvedAbsenceDays,
+        absenceDeductionOverlapHours: 0,
+        attendanceRecordCount: punchRecordCount,
+        attendanceLinkStatus: "exempt" as const,
+        attendancePayrollMode: "exempt" as const,
+        attendancePayrollExemptionReason:
+          attendancePayrollExemptionReason || null,
+        attendanceDeductionEligible: false,
+        attendanceDeductionNote:
+          attendancePayrollExemptionReason
+            ? `معفى من البصمة للراتب: ${attendancePayrollExemptionReason}`
+            : "معفى من البصمة للراتب.",
+        attendanceNotes: [
+          "الموظف معفى من الحضور والانصراف للراتب؛ لا يتطلب جدول دوام أو بصمات، والراتب الشهري مستقل عن ساعات الحضور.",
+          ...(attendancePayrollExemptionReason
+            ? [`سبب الإعفاء: ${attendancePayrollExemptionReason}`]
+            : []),
+          ...(paidLeaveDays
+            ? [`${paidLeaveDays} يوم/أيام إجازة مدفوعة معتمدة.`]
+            : []),
+          ...(approvedAbsenceDays
+            ? [`${approvedAbsenceDays} يوم/أيام غياب/إجازة بدون راتب تدخل في الخصم اليومي الرسمي.`]
+            : []),
+        ],
+      },
+    };
+  }
 
   if (!hasCoreEmployeeIdentity || !payrollSetup.complete) {
     return {
@@ -957,8 +1259,50 @@ export function buildPayrollAttendanceSummaryForEmployee(input: {
         punchRecordCount,
         punchRecordCount > 0 ? "confirmed" : "unlinked"
       ),
+      attendancePayrollMode: "required" as const,
+      attendancePayrollExemptionReason: null,
     },
   };
+}
+
+
+function carryoverItemsFromAdjustments(adjustments: CorePayrollCarryoverAdjustment[] = []) {
+  const additions: PayrollManualItem[] = [];
+  const deductions: PayrollManualItem[] = [];
+  for (const adjustment of adjustments) {
+    if (!adjustment || Number(adjustment.amountHalalas || 0) <= 0) continue;
+    const item = payrollCarryoverItem(adjustment) as PayrollManualItem;
+    if (item.direction === "addition") additions.push(item);
+    else deductions.push(item);
+  }
+  return { additions, deductions };
+}
+
+function reconciliationSnapshotFromLockedEntry(
+  existing: PayrollEntryView,
+  attendanceSummary: PayrollAttendanceSummarySnapshot
+) {
+  return calculatePayrollSnapshot({
+    employeeId: existing.employeeId,
+    employeeName: existing.employeeName,
+    jobTitle: existing.jobTitle,
+    payrollMonth: existing.payrollMonth,
+    baseSalaryHalalas: existing.baseSalaryHalalas,
+    allowancesHalalas: existing.allowancesHalalas,
+    workDays: existing.workDays,
+    monthlyHours: existing.monthlyHours,
+    dailyScheduledHours: existing.dailyScheduledHours,
+    attendanceSummary,
+    gosiSnapshot: existing.gosiSnapshot || null,
+    additions: existing.additions || [],
+    deductions: existing.deductions || [],
+    advancesHalalas: existing.advancesHalalas,
+    overtimeEnabled: existing.overtimeEnabled,
+    overtimeMultiplier: existing.overtimeMultiplier,
+    monthlyHoursSource: existing.monthlyHoursSource || "saved_snapshot",
+    status: "draft",
+    notes: existing.notes || null,
+  });
 }
 
 function snapshotFromEmployee(input: {
@@ -970,47 +1314,96 @@ function snapshotFromEmployee(input: {
   advancesHalalas?: number;
   resolvedShifts?: CoreResolvedShift[];
   preserveExistingSchedule?: boolean;
+  carryoverAdjustments?: CorePayrollCarryoverAdjustment[];
+  obligationDeductions?: CorePayrollObligationDeduction[];
+  reconcileLockedFinancialSnapshot?: boolean;
 }) {
+  if (
+    input.reconcileLockedFinancialSnapshot &&
+    input.existing &&
+    isPayrollSnapshotLocked(input.existing.status)
+  ) {
+    return {
+      ...reconciliationSnapshotFromLockedEntry(
+        input.existing,
+        input.attendanceSummary
+      ),
+      id: input.existing.id,
+      periodId: input.existing.periodId,
+      saved: input.existing.saved,
+      approvedAt: input.existing.approvedAt,
+      approvedByUid: input.existing.approvedByUid,
+      paidAt: input.existing.paidAt,
+      paidByUid: input.existing.paidByUid,
+      auditLog: input.existing.auditLog || [],
+      carryoverAdjustments: input.existing.carryoverAdjustments || [],
+    } as PayrollEntryView;
+  }
+
+  const attendancePayrollMode =
+    employeeAttendancePayrollMode(input.employee);
+  const attendanceExempt = attendancePayrollMode === "exempt";
   const workDays = employeeWorkDays(input.employee);
-  const monthlyHours = employeeMonthlyHours(input.employee);
+  const monthlyHours = attendanceExempt
+    ? 0
+    : employeeMonthlyHours(input.employee);
   const preserveExistingSchedule =
+    !attendanceExempt &&
     input.preserveExistingSchedule &&
     Boolean(input.existing);
 
-  const dailyScheduledHours = preserveExistingSchedule
-    ? Math.max(
-        0,
-        numberValue(input.existing?.dailyScheduledHours)
-      )
-    : explicitDailyScheduledHoursForMonth(
-    input.employee,
-    input.year,
-    input.month,
-    input.resolvedShifts
-  );
+  const dailyScheduledHours = attendanceExempt
+    ? 0
+    : preserveExistingSchedule
+      ? Math.max(
+          0,
+          numberValue(input.existing?.dailyScheduledHours)
+        )
+      : explicitDailyScheduledHoursForMonth(
+          input.employee,
+          input.year,
+          input.month,
+          input.resolvedShifts
+        );
 
   const monthlyHoursSource: PayrollMonthlyHoursSource =
-    preserveExistingSchedule &&
-    input.existing?.monthlyHoursSource
-      ? input.existing.monthlyHoursSource
-      : monthlyHours > 0
-        ? "configured_monthly_hours"
-        : dailyScheduledHours > 0
-          ? "configured_daily_hours"
-          : "missing";
+    attendanceExempt
+      ? "not_required_attendance_exempt"
+      : preserveExistingSchedule && input.existing?.monthlyHoursSource
+        ? input.existing.monthlyHoursSource
+        : monthlyHours > 0
+          ? "configured_monthly_hours"
+          : dailyScheduledHours > 0
+            ? "configured_daily_hours"
+            : "missing";
+  const payrollMonth = payrollMonthKey(input.year, input.month);
+  const gosiSnapshot = employeeGosiSnapshot(
+    input.employee,
+    payrollMonth
+  );
   const next = calculatePayrollSnapshot({
     employeeId: input.employee.id,
     employeeName: input.employee.name,
     jobTitle: employeeJobTitle(input.employee),
-    payrollMonth: payrollMonthKey(input.year, input.month),
+    payrollMonth,
     baseSalaryHalalas: employeeBaseSalary(input.employee),
     allowancesHalalas: employeeAllowances(input.employee),
     workDays,
     monthlyHours,
     dailyScheduledHours,
     attendanceSummary: input.attendanceSummary,
-    additions: input.existing?.additions || [],
-    deductions: input.existing?.deductions || [],
+    gosiSnapshot,
+    additions: [
+      ...withoutPayrollCarryoverItems(input.existing?.additions || []),
+      ...carryoverItemsFromAdjustments(input.carryoverAdjustments).additions,
+    ],
+    deductions: [
+      ...withoutPayrollObligationDeductionItems(
+        withoutPayrollCarryoverItems(input.existing?.deductions || [])
+      ),
+      ...carryoverItemsFromAdjustments(input.carryoverAdjustments).deductions,
+      ...((input.obligationDeductions || []) as unknown as PayrollManualItem[]),
+    ],
     advancesHalalas:
       input.advancesHalalas ?? input.existing?.advancesHalalas ?? 0,
     overtimeEnabled: employeePayrollOvertimeEnabled(input.employee),
@@ -1029,6 +1422,7 @@ function snapshotFromEmployee(input: {
     paidAt: input.existing?.paidAt,
     paidByUid: input.existing?.paidByUid,
     auditLog: input.existing?.auditLog || [],
+    carryoverAdjustments: input.carryoverAdjustments || [],
   }) as PayrollEntryView;
 }
 
@@ -1087,8 +1481,12 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
   const deductions = withoutLegacyAttendancePenaltyCarryovers(rawDeductions);
   const baseSalaryHalalas = numberValue(row.baseSalaryHalalas);
   const workDays = numberValue(row.workDays, 0);
-  const monthlyHours = numberValue(row.monthlyHours, 0);
-  const dailyScheduledHours = scheduleDailyHours;
+  const attendanceExempt =
+    attendanceSummary.attendancePayrollMode === "exempt";
+  const monthlyHours = attendanceExempt
+    ? 0
+    : numberValue(row.monthlyHours, 0);
+  const dailyScheduledHours = attendanceExempt ? 0 : scheduleDailyHours;
   const setup = evaluatePayrollSetup({
     employeeId: row.employeeId,
     baseSalaryHalalas,
@@ -1096,19 +1494,36 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     monthlyHours,
     dailyScheduledHours,
     overtimeMultiplier: row.overtimeMultiplier,
-    monthlyHoursSource: scheduleMonthlyHoursSource || "saved_snapshot",
+    monthlyHoursSource: attendanceExempt
+      ? "not_required_attendance_exempt"
+      : scheduleMonthlyHoursSource || "saved_snapshot",
+    attendancePayrollMode: attendanceSummary.attendancePayrollMode,
   });
-  const payrollSetupMissing = scheduleSetupMissing || setup.missing;
-  const payrollSetupComplete =
-    scheduleSetupComplete === null ? payrollSetupMissing.length === 0 : scheduleSetupComplete;
-  const detectedExtraHours = numberValue(row.detectedExtraHours);
-  const overtimeEnabled = payrollSetupComplete && detectedExtraHours > 0
+  const savedSetupMissing = (scheduleSetupMissing || []).filter(
+    (key) => !(attendanceExempt && key === "monthlyHours")
+  );
+  const payrollSetupMissing = Array.from(
+    new Set([...savedSetupMissing, ...setup.missing])
+  );
+  const payrollSetupComplete = attendanceExempt
+    ? payrollSetupMissing.length === 0
+    : scheduleSetupComplete === null
+      ? payrollSetupMissing.length === 0
+      : scheduleSetupComplete;
+  const detectedExtraHours = attendanceExempt
+    ? 0
+    : numberValue(row.detectedExtraHours);
+  const overtimeEnabled = !attendanceExempt && payrollSetupComplete && detectedExtraHours > 0
     ? boolValue(row.overtimeEnabled)
     : false;
   const financialOvertimeHours = overtimeEnabled ? numberValue(row.financialOvertimeHours) : 0;
   const overtimeValueHalalas = overtimeEnabled
     ? numberValue(row.overtimeValueHalalas ?? row.overtimeBonusHalalas)
     : 0;
+  const gosiSnapshot = readJson<GosiSnapshot | null>(
+    row.gosiSnapshotJson,
+    null
+  );
 
   return {
     id: row.id,
@@ -1124,7 +1539,7 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     monthlyHours,
     dailyScheduledHours,
     dailyRateHalalas: numberValue(row.dailyRateHalalas),
-    hourlyRateHalalas: numberValue(row.hourlyRateHalalas),
+    hourlyRateHalalas: attendanceExempt ? 0 : numberValue(row.hourlyRateHalalas),
     attendanceSummary,
     detectedExtraHours,
     overtimeEnabled,
@@ -1136,6 +1551,15 @@ export function normalizePayrollEntry(row: CorePayrollEntry): PayrollEntryView {
     manualAdditionsHalalas: numberValue(row.manualAdditionsHalalas),
     manualDeductionsHalalas: Math.max(0, numberValue(row.manualDeductionsHalalas) - legacyCarryoverHalalas),
     advancesHalalas: numberValue(row.advancesHalalas),
+    insuranceDeductionHalalas: numberValue(
+      row.insuranceDeductionHalalas ??
+        gosiSnapshot?.employee?.deductionHalalas
+    ),
+    employerGosiContributionHalalas: numberValue(
+      row.employerGosiContributionHalalas ??
+        gosiSnapshot?.employer?.contributionHalalas
+    ),
+    gosiSnapshot,
     absenceDeductionHalalas: numberValue(row.absenceDeductionHalalas),
     missingHoursDeductionHalalas: numberValue(row.missingHoursDeductionHalalas),
     grossSalaryHalalas: numberValue(row.grossSalaryHalalas),
@@ -1187,8 +1611,22 @@ export function payrollEntryPayload(entry: PayrollEntryView) {
     overtimeValueHalalas: entry.overtimeValueHalalas,
     overtimeBonusHalalas: entry.overtimeValueHalalas,
     delayDeductionHalalas: 0,
-    insuranceDeductionHalalas: 0,
-    otherDeductionsHalalas: entry.manualDeductionsHalalas,
+    insuranceDeductionHalalas:
+      entry.insuranceDeductionHalalas,
+    gosiInsuranceCategory:
+      entry.gosiSnapshot?.insuranceCategory || null,
+    gosiPolicyVersion:
+      entry.gosiSnapshot?.policyVersion || null,
+    gosiContributoryWageHalalas:
+      entry.gosiSnapshot?.contributoryWage?.appliedHalalas || 0,
+    employerGosiContributionHalalas:
+      entry.employerGosiContributionHalalas,
+    gosiSnapshot: entry.gosiSnapshot,
+    gosiCalculatedAt:
+      entry.gosiSnapshot ? new Date().toISOString() : null,
+    // manualDeductionsHalalas is canonical; otherDeductionsHalalas is a legacy alias.
+    // Sending both as the same value would double-count the same money in older server paths.
+    otherDeductionsHalalas: 0,
     missingHoursDeductionHalalas: entry.missingHoursDeductionHalalas,
     additions: entry.additions,
     deductions: withoutLegacyAttendancePenaltyCarryovers(entry.deductions),
@@ -1206,6 +1644,10 @@ export function payrollEntryPayload(entry: PayrollEntryView) {
       payrollSetupComplete: entry.payrollSetupComplete,
       payrollSetupMissing: entry.payrollSetupMissing,
       monthlyHoursSource: entry.monthlyHoursSource,
+      attendancePayrollMode:
+        entry.attendanceSummary.attendancePayrollMode || "required",
+      attendancePayrollExemptionReason:
+        entry.attendanceSummary.attendancePayrollExemptionReason || null,
     },
     status: entry.status,
     notes: entry.notes || null,
@@ -1240,6 +1682,7 @@ export async function generatePayrollEntriesForMonths(input: {
   employeeId?: string;
   status?: string;
   currentEntries?: PayrollEntryView[];
+  reconcileLockedEntries?: boolean;
 }) {
   const monthKeys = Array.from(
     new Set(
@@ -1259,8 +1702,12 @@ export async function generatePayrollEntriesForMonths(input: {
     absences,
     savedEntries,
     advanceDeductions,
+    carryoverRowsByMonth,
+    obligationRowsByMonth,
   ] = await Promise.all([
-    CoreHrService.listEmployees({ status: "active" }),
+    CoreHrService.listEmployees(
+      input.reconcileLockedEntries ? {} : { status: "active" }
+    ),
     CoreHrService.listAttendance(),
     CoreHrService.listLeaves({ status: "approved" }),
     CoreHrService.listAbsences(),
@@ -1268,6 +1715,23 @@ export async function generatePayrollEntriesForMonths(input: {
     CoreHrService.listPayrollAdvanceDeductions({
       employeeId: input.employeeId,
     }),
+    Promise.all(
+      monthKeys.map((targetPayrollMonth) =>
+        CoreHrService.listPayrollCarryovers({
+          targetPayrollMonth,
+          employeeId: input.employeeId,
+          status: "active",
+        }).catch(() => [])
+      )
+    ),
+    Promise.all(
+      monthKeys.map((payrollMonth) =>
+        CoreHrService.listPayrollObligationDeductions({
+          payrollMonth,
+          employeeId: input.employeeId,
+        })
+      )
+    ),
   ]);
 
   const currentEntries = input.currentEntries
@@ -1286,24 +1750,59 @@ export async function generatePayrollEntriesForMonths(input: {
         numberValue(row.amountHalalas),
       ])
   );
+  const carryoverMap = new Map<string, CorePayrollCarryoverAdjustment[]>();
+  carryoverRowsByMonth.forEach((rows, monthIndex) => {
+    const targetPayrollMonth = monthKeys[monthIndex];
+    for (const row of rows || []) {
+      const key = `${targetPayrollMonth}|${row.employeeId}`;
+      const list = carryoverMap.get(key) || [];
+      list.push(row);
+      carryoverMap.set(key, list);
+    }
+  });
 
-  const payrollEmployees = employees.filter(
-    (employee) =>
-      !input.employeeId ||
-      employee.id === input.employeeId
-  );
+  const obligationMap = new Map<string, CorePayrollObligationDeduction[]>();
+  obligationRowsByMonth.forEach((rows, monthIndex) => {
+    const targetPayrollMonth = monthKeys[monthIndex];
+    for (const row of rows || []) {
+      const employeeId = text(row.employeeId);
+      if (!employeeId) continue;
+      const key = `${targetPayrollMonth}|${employeeId}`;
+      const list = obligationMap.get(key) || [];
+      list.push(row);
+      obligationMap.set(key, list);
+    }
+  });
 
-  if (!payrollEmployees.length) {
-    return [];
-  }
+  const payrollEmployees = employees.filter((employee) => {
+    if (input.employeeId && employee.id !== input.employeeId) return false;
+
+    if (input.reconcileLockedEntries) {
+      return monthKeys.some((payrollMonth) =>
+        existingMap.has(`${payrollMonth}|${employee.id}`)
+      );
+    }
+
+    return isEmployeePayrollEligible(employee);
+  });
+
+  const preservedLockedEntries = input.reconcileLockedEntries
+    ? []
+    : currentEntries.filter((entry) => {
+        if (!monthKeySet.has(entry.payrollMonth)) return false;
+        if (input.employeeId && entry.employeeId !== input.employeeId) return false;
+        if (!isPayrollSnapshotLocked(entry.status)) return false;
+        return !payrollEmployees.some((employee) => employee.id === entry.employeeId);
+      });
 
   const resolvedShiftsByMonth = new Map<
     string,
     CoreResolvedShift[]
   >();
 
-  await Promise.all(
-    monthKeys.map(async (payrollMonth) => {
+  if (payrollEmployees.length) {
+    await Promise.all(
+      monthKeys.map(async (payrollMonth) => {
       const year = Number(payrollMonth.slice(0, 4));
       const month = Number(payrollMonth.slice(5, 7));
       const bounds = payrollMonthBounds(year, month);
@@ -1319,14 +1818,15 @@ export async function generatePayrollEntriesForMonths(input: {
           dateTo: bounds.monthEnd,
         });
 
-      resolvedShiftsByMonth.set(
-        payrollMonth,
-        resolved.rows
-      );
-    })
-  );
+        resolvedShiftsByMonth.set(
+          payrollMonth,
+          resolved.rows
+        );
+      })
+    );
+  }
 
-  return monthKeys.flatMap((payrollMonth) => {
+  const generatedEntries = monthKeys.flatMap((payrollMonth) => {
     const year = Number(payrollMonth.slice(0, 4));
     const month = Number(payrollMonth.slice(5, 7));
     const bounds = payrollMonthBounds(year, month);
@@ -1335,7 +1835,26 @@ export async function generatePayrollEntriesForMonths(input: {
     );
 
     return payrollEmployees.map((employee) => {
-        const employeeWithCoreShifts = employee;
+        const existingEntry = existingMap.get(`${payrollMonth}|${employee.id}`);
+        const lockedAttendanceMode =
+          input.reconcileLockedEntries && existingEntry
+            ? existingEntry.attendanceSummary.attendancePayrollMode
+            : undefined;
+        const employeeWithCoreShifts =
+          lockedAttendanceMode
+            ? ({
+                ...employee,
+                employment: {
+                  ...(employee.employment || {}),
+                  attendancePayrollMode: lockedAttendanceMode,
+                  attendance_payroll_mode: lockedAttendanceMode,
+                  attendancePayrollExemptionReason:
+                    existingEntry?.attendanceSummary.attendancePayrollExemptionReason || null,
+                  attendance_payroll_exemption_reason:
+                    existingEntry?.attendanceSummary.attendancePayrollExemptionReason || null,
+                },
+              } as CoreHrEmployee)
+            : employee;
 
         const employeeResolvedShifts = (
           resolvedShiftsByMonth.get(payrollMonth) || []
@@ -1365,15 +1884,103 @@ export async function generatePayrollEntriesForMonths(input: {
           attendanceSummary: attendanceSnapshot.summary,
           year,
           month,
-          existing: existingMap.get(`${payrollMonth}|${employee.id}`),
+          existing: existingEntry,
           advancesHalalas: numberValue(
             advanceDeductionMap.get(`${payrollMonth}|${employee.id}`)
           ),
           resolvedShifts: employeeResolvedShifts,
+          carryoverAdjustments:
+            carryoverMap.get(`${payrollMonth}|${employee.id}`) || [],
+          obligationDeductions:
+            obligationMap.get(`${payrollMonth}|${employee.id}`) || [],
+          reconcileLockedFinancialSnapshot: input.reconcileLockedEntries === true,
         });
       })
       .filter((entry) => !input.status || entry.status === input.status);
   });
+
+  const preserved = preservedLockedEntries.filter(
+    (entry) => !input.status || entry.status === input.status
+  );
+
+  return [...generatedEntries, ...preserved].sort((left, right) => {
+    const monthCompare = left.payrollMonth.localeCompare(right.payrollMonth);
+    if (monthCompare !== 0) return monthCompare;
+    return left.employeeName.localeCompare(right.employeeName, "ar");
+  });
+}
+
+
+export async function reconcilePreviousPayrollCarryovers(input: {
+  year: number;
+  month: number;
+  employeeId?: string;
+}) {
+  const target = payrollMonthBounds(input.year, input.month);
+  const sourcePayrollMonth = previousPayrollMonth(target.payrollMonth);
+  if (!sourcePayrollMonth) {
+    return { sourcePayrollMonth: "", targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+
+  const sourceYear = Number(sourcePayrollMonth.slice(0, 4));
+  const sourceMonth = Number(sourcePayrollMonth.slice(5, 7));
+  const sourceBounds = payrollMonthBounds(sourceYear, sourceMonth);
+  const today = todayRiyadhDateKey();
+  if (sourceBounds.monthEnd >= today) {
+    return {
+      sourcePayrollMonth,
+      targetPayrollMonth: target.payrollMonth,
+      deferred: true,
+      reason: "source_period_not_closed",
+      results: [],
+    };
+  }
+
+  const CoreHrService = await coreHrService();
+  const sourceRows = await CoreHrService.listPayrollEntries({
+    payrollMonth: sourcePayrollMonth,
+    employeeId: input.employeeId,
+  });
+  const lockedSourceEntries = sourceRows
+    .map(normalizePayrollEntry)
+    .filter((entry) => ["approved", "paid"].includes(entry.status));
+  if (!lockedSourceEntries.length) {
+    return { sourcePayrollMonth, targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+
+  const recalculated = await generatePayrollEntriesForMonths({
+    monthKeys: [sourcePayrollMonth],
+    employeeId: input.employeeId,
+    currentEntries: lockedSourceEntries,
+    reconcileLockedEntries: true,
+  });
+  const recalculatedByEmployee = new Map(
+    recalculated.map((entry) => [entry.employeeId, entry])
+  );
+  const items = lockedSourceEntries.flatMap((sourceEntry) => {
+    const finalEntry = recalculatedByEmployee.get(sourceEntry.employeeId);
+    if (!sourceEntry.id || !finalEntry) return [];
+    return [{
+      sourcePayrollEntryId: sourceEntry.id,
+      targetPayrollMonth: target.payrollMonth,
+      recalculatedNetHalalas: finalEntry.netSalaryHalalas,
+      sourceDate: sourceBounds.monthEnd,
+      reason: `تسوية فرق مسيرة ${sourcePayrollMonth} بعد إقفال الفترة وإعادة احتساب الحضور والإجازات والخصومات النهائية.`,
+    }];
+  });
+  if (!items.length) {
+    return { sourcePayrollMonth, targetPayrollMonth: target.payrollMonth, results: [] };
+  }
+  const reconciled = await CoreHrService.reconcilePayrollCarryoversBatch({ items });
+  return {
+    sourcePayrollMonth,
+    targetPayrollMonth: target.payrollMonth,
+    results: reconciled.results || [],
+  };
+}
+
+export function payrollEntryCarryoverNetHalalas(entry: PayrollEntryView) {
+  return payrollCarryoverNetHalalas(entry.additions || [], entry.deductions || []);
 }
 
 export async function generatePayrollEntries(input: {
@@ -1424,6 +2031,21 @@ export function assertPayrollEntryReady(entry: PayrollEntryView) {
   if (!entry.payrollSetupComplete) {
     throw new Error("payroll_setup_incomplete");
   }
+
+  const attendanceReadiness = payrollAttendanceReadiness(
+    entry.attendanceSummary
+  );
+
+  if (!attendanceReadiness.ready) {
+    throw new Error(attendanceReadiness.code);
+  }
+}
+
+export function assertPayrollEntryApprovalReady(entry: PayrollEntryView) {
+  const readiness = payrollApprovalReadiness(entry as unknown as Record<string, unknown>);
+  if (!readiness.ready) {
+    throw new Error(readiness.code);
+  }
 }
 
 export async function updatePayrollEntryAdjustments(entry: PayrollEntryView) {
@@ -1445,8 +2067,8 @@ export async function togglePayrollOvertime(entry: PayrollEntryView) {
 }
 
 export async function approvePayrollEntry(entry: PayrollEntryView) {
-  assertPayrollEntryReady(entry);
-  const saved = entry.id ? entry : await savePayrollEntrySnapshot(entry);
+  assertPayrollEntryApprovalReady(entry);
+  const saved = await savePayrollEntrySnapshot(entry);
   const CoreHrService = await coreHrService();
   return normalizePayrollEntry(await CoreHrService.approvePayrollEntry(saved.id!));
 }

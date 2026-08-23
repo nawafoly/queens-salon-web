@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { getDocs, limit, orderBy, query } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
@@ -15,9 +14,8 @@ import {
 
 import {
   createEmployeeMessage,
-  createEmployeeNotification,
-  employeeMessagesCol,
   listEmployeeDirectory,
+  listEmployeeMessages,
   listEmployeeNotifications,
   markEmployeeThreadRead,
   markEmployeeNotificationsRead,
@@ -123,10 +121,10 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
     try {
       const [dir, msgSnap] = await Promise.all([
         listEmployeeDirectory(),
-        getDocs(query(employeeMessagesCol(), orderBy("createdAt", "desc"), limit(500))),
+        listEmployeeMessages(500),
       ]);
       setDirectory(dir.filter((item) => item.active !== false));
-      const rows = msgSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) })) as EmployeeMessage[];
+      const rows = msgSnap as EmployeeMessage[];
       setItems(rows);
 
       const notifications = await listEmployeeNotifications({
@@ -311,15 +309,6 @@ export default function EmployeeMessagesLegacy({ session, onPortalChange }: Prop
         body: text,
         kind,
       });
-
-      await createEmployeeNotification({
-        targetUid: toUid,
-        targetEmployeeId: target?.employeeId || target?.employeeKey || toUid,
-        type: "message",
-        title: canManage ? "رسالة جديدة من الموارد البشرية" : "رسالة داخلية جديدة",
-        body: text.slice(0, 140),
-        route: "/employee/messages",
-      }).catch(() => {});
 
       setBody("");
       setCreating(false);

@@ -4,8 +4,16 @@ export type CoreHrEmployee = {
   firebaseUid?: string | null;
   name: string;
   email?: string | null;
+  phone?: string | null;
   phoneNormalized?: string | null;
   avatarFileId?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  cvUrl?: string | null;
+  showOnAbout?: boolean | number | null;
+  includeInEmployeeManagement?: boolean | number | null;
+  rating?: number | null;
+  reviewsCount?: number | null;
   status: string;
   employment?: Record<string, unknown> | null;
   schedules?: CoreHrSchedule[];
@@ -158,6 +166,95 @@ export type CorePayrollPeriod = {
   updatedAt: string;
 };
 
+export type CorePayrollRecurringDeduction = {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  title: string;
+  deductionKind: string;
+  amountHalalas: number;
+  cadence: "monthly" | string;
+  startPayrollMonth: string;
+  endPayrollMonth?: string | null;
+  status: "active" | "paused" | "ended" | "cancelled" | string;
+  reason: string;
+  note?: string | null;
+  sourceType: string;
+  sourceRef?: string | null;
+  createdByUid?: string | null;
+  createdByEmail?: string | null;
+  updatedByUid?: string | null;
+  updatedByEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CorePayrollObligationInstallment = {
+  id: string;
+  obligationId: string;
+  sequenceNo: number;
+  targetPayrollMonth: string;
+  amountHalalas: number;
+  status: "scheduled" | "applied" | "deferred" | "cancelled" | string;
+  appliedPayrollEntryId?: string | null;
+  appliedAt?: string | null;
+  deferredFromInstallmentId?: string | null;
+  supersededByInstallmentId?: string | null;
+  decisionReason: string;
+  note?: string | null;
+  createdByUid?: string | null;
+  createdByEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CorePayrollObligation = {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  recurringDeductionId?: string | null;
+  obligationKind: string;
+  sourceType: string;
+  sourceRef?: string | null;
+  originalPayrollMonth: string;
+  originalAmountHalalas: number;
+  remainingAmountHalalas: number;
+  status: "open" | "scheduled" | "partially_settled" | "settled" | "cancelled" | string;
+  reason: string;
+  note?: string | null;
+  cancelledByUid?: string | null;
+  cancelledByEmail?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  createdByUid?: string | null;
+  createdByEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  installments: CorePayrollObligationInstallment[];
+};
+
+export type CorePayrollObligationDeduction = Record<string, unknown> & {
+  id: string;
+  employeeId: string;
+  kind: "payroll_obligation" | string;
+  obligationKind: string;
+  label: string;
+  amountHalalas: number;
+  direction: "deduction";
+  sourceType: "payroll_obligation" | string;
+  sourceRef: string;
+  obligationId: string;
+  installmentId: string;
+  recurringDeductionId?: string | null;
+  originalPayrollMonth: string;
+  targetPayrollMonth: string;
+  reason: string;
+  note?: string | null;
+  status?: string;
+  sequenceNo?: number;
+  synthetic?: boolean;
+};
+
 export type CorePayrollEntry = Record<string, unknown> & {
   id: string;
   salonId: string;
@@ -185,6 +282,13 @@ export type CorePayrollEntry = Record<string, unknown> & {
   manualAdditionsHalalas?: number;
   manualDeductionsHalalas?: number;
   advancesHalalas?: number;
+  insuranceDeductionHalalas?: number;
+  gosiInsuranceCategory?: string | null;
+  gosiPolicyVersion?: string | null;
+  gosiContributoryWageHalalas?: number;
+  employerGosiContributionHalalas?: number;
+  gosiSnapshotJson?: string | null;
+  gosiCalculatedAt?: string | null;
   missingHoursDeductionHalalas?: number;
   grossSalaryHalalas?: number;
   totalDeductionsHalalas?: number;
@@ -214,6 +318,9 @@ export type CoreFileMetadata = {
   sizeBytes?: number | null;
   status: string;
   visibility: string;
+  uploadedByUid?: string | null;
+  replacedByFileId?: string | null;
+  replacesFileId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -376,4 +483,25 @@ export type CoreShiftChangePreview = {
   requires_adjustment?: boolean;
   payrollMonths?: string[];
   payroll_months?: string[];
+};
+
+export type CorePayrollCarryoverAdjustment = Record<string, unknown> & {
+  id: string;
+  salonId: string;
+  employeeId: string;
+  sourcePayrollMonth: string;
+  targetPayrollMonth: string;
+  sourcePayrollEntryId: string;
+  sourceSnapshotId: string;
+  direction: "addition" | "deduction";
+  amountHalalas: number;
+  approvedNetHalalas: number;
+  recalculatedNetHalalas: number;
+  reason: string;
+  sourceDate?: string | null;
+  status: "pending" | "applied" | "void" | string;
+  targetPayrollEntryId?: string | null;
+  appliedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

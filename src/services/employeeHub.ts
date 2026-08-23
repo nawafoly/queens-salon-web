@@ -23,6 +23,14 @@ import {
 } from "../helpers/hr/employeeAbsence";
 import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
 import { CoreHrService } from "./CoreHrService";
+import { CoreWorkforceService } from "./CoreWorkforceService";
+import {
+  createManagedEmployeeRequest,
+  listEmployeeRequests as listCoreEmployeeRequests,
+  listMyEmployeeRequests,
+  type EmployeeRequest as CoreEmployeeRequest,
+} from "./employeeRequests";
+import { listEmployeeDirectory as listCoreEmployeeDirectory } from "./employeeDirectory";
 
 import {
   HR_COLLECTIONS,
@@ -155,6 +163,10 @@ export type EmployeeLeaveRequest = {
   createdAt?: any;
   updatedAt?: any;
   reviewedAt?: any;
+  requestNumber?: string;
+  coreStatus?: string;
+  coreVersion?: number;
+  coreLeaveId?: string;
 };
 
 export type EmployeeAbsence = {
@@ -328,65 +340,69 @@ export function adminUserDoc(id: string) {
   return hrDoc("adminUsers", cleanText(id));
 }
 
-export async function listEmployeeDirectory(limitCount = 300): Promise<EmployeeDirectoryEntry[]> {
-  const snap = await getDocs(query(employeesCol(), orderBy("name", "asc"), limit(limitCount)));
-  return snap.docs
-    .map((d) => normalizeDirectoryEntry(d.data(), d.id, "firestore"))
-    .filter((x) => !!x.employeeId);
+export async function listEmployeeDirectory(_limitCount = 300): Promise<EmployeeDirectoryEntry[]> {
+  return listCoreEmployeeDirectory();
 }
 
 export async function listRecruitmentApplications(limitCount = 100): Promise<RecruitmentApplication[]> {
-  const snap = await getDocs(query(jobApplicationsCol(), orderBy("createdAt", "desc"), limit(limitCount)));
-  return snap.docs.map((d) => {
-    const data = d.data() as any;
-    return {
-      id: d.id,
-      fullName: cleanText(data?.fullName || data?.name || ""),
-      email: cleanEmail(data?.email || ""),
-      phone: cleanText(data?.phone || ""),
-      roleApplied: cleanText(data?.roleApplied || data?.role || "") || undefined,
-      status: (cleanText(data?.status || "new").toLowerCase() as RecruitmentApplication["status"]) || "new",
-      notes: cleanText(data?.notes || "") || undefined,
-      message: cleanText(data?.message || "") || undefined,
-      createdAt: data?.createdAt,
-      updatedAt: data?.updatedAt,
-      reviewedAt: data?.reviewedAt,
-      reviewedByUid: cleanText(data?.reviewedByUid || "") || undefined,
-      hiredAt: data?.hiredAt,
-      hiredByUid: cleanText(data?.hiredByUid || "") || undefined,
-      hiredUid: cleanText(data?.hiredUid || "") || undefined,
-      hiredEmployeeId: cleanText(data?.hiredEmployeeId || "") || undefined,
-      source: cleanText(data?.source || "") || undefined,
-    };
-  });
+  const rows = await CoreWorkforceService.listRecruitment(limitCount);
+  return rows.map((row) => ({
+    id: row.id,
+    fullName: cleanText(row.full_name),
+    email: cleanEmail(row.email),
+    phone: cleanText(row.phone || "") || undefined,
+    roleApplied: cleanText(row.role_applied || "") || undefined,
+    status: row.status,
+    notes: cleanText(row.notes || "") || undefined,
+    message: cleanText(row.message || "") || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    reviewedAt: row.reviewed_at || undefined,
+    reviewedByUid: cleanText(row.reviewed_by_uid || "") || undefined,
+    hiredAt: row.hired_at || undefined,
+    hiredByUid: cleanText(row.hired_by_uid || "") || undefined,
+    hiredUid: cleanText(row.hired_uid || "") || undefined,
+    hiredEmployeeId: cleanText(row.hired_employee_id || "") || undefined,
+    source: cleanText(row.source || "") || undefined,
+  }));
 }
 
 export async function createRecruitmentApplication(
   input: Omit<RecruitmentApplication, "id" | "createdAt" | "updatedAt" | "reviewedAt" | "reviewedByUid">
 ) {
-  return addDoc(jobApplicationsCol(), {
-    fullName: cleanText(input.fullName),
-    email: cleanEmail(input.email),
-    phone: cleanText(input.phone || ""),
-    roleApplied: cleanText(input.roleApplied || ""),
+  const row = await CoreWorkforceService.createRecruitment({
+    fullName: input.fullName,
+    email: input.email,
+    phone: input.phone,
+    roleApplied: input.roleApplied,
     status: input.status || "new",
-    notes: cleanText(input.notes || ""),
-    message: cleanText(input.message || ""),
-    source: cleanText(input.source || "manual"),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    notes: input.notes,
+    message: input.message,
+    source: input.source || "manual",
   });
+  return { id: row.id };
 }
 
 export async function updateRecruitmentApplication(
   id: string,
   patch: Partial<RecruitmentApplication> & { reviewedByUid?: string }
 ) {
-  const ref = hrDoc("jobApplications", cleanText(id));
-  await updateDoc(ref, {
-    ...patch,
-    updatedAt: serverTimestamp(),
-  } as any);
+  await CoreWorkforceService.updateRecruitment(id, {
+    ...(patch.status !== undefined ? { status: patch.status } : {}),
+    ...(patch.fullName !== undefined ? { fullName: patch.fullName } : {}),
+    ...(patch.email !== undefined ? { email: patch.email } : {}),
+    ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+    ...(patch.roleApplied !== undefined ? { roleApplied: patch.roleApplied } : {}),
+    ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+    ...(patch.message !== undefined ? { message: patch.message } : {}),
+    ...(patch.source !== undefined ? { source: patch.source } : {}),
+    ...(patch.reviewedAt !== undefined ? { reviewedAt: patch.reviewedAt } : {}),
+    ...(patch.reviewedByUid !== undefined ? { reviewedByUid: patch.reviewedByUid } : {}),
+    ...(patch.hiredAt !== undefined ? { hiredAt: patch.hiredAt } : {}),
+    ...(patch.hiredByUid !== undefined ? { hiredByUid: patch.hiredByUid } : {}),
+    ...(patch.hiredUid !== undefined ? { hiredUid: patch.hiredUid } : {}),
+    ...(patch.hiredEmployeeId !== undefined ? { hiredEmployeeId: patch.hiredEmployeeId } : {}),
+  });
 }
 
 export async function syncEmployeeRecordFromUser(args: {
@@ -645,6 +661,24 @@ export async function linkExistingEmployeeRecordToPartner(args: {
   return { employeeId, employeeUid: employeeUid || undefined };
 }
 
+export async function listEmployeeMessages(limitCount = 500): Promise<EmployeeMessage[]> {
+  const rows = await CoreWorkforceService.listMessages(limitCount);
+  return rows.map((row) => ({
+    id: row.id,
+    conversationId: cleanText(row.conversation_id),
+    threadId: cleanText(row.thread_id || "") || undefined,
+    senderUid: cleanText(row.sender_uid),
+    senderName: cleanText(row.sender_name || "") || undefined,
+    recipientUid: cleanText(row.recipient_uid),
+    recipientName: cleanText(row.recipient_name || "") || undefined,
+    body: cleanText(row.body),
+    kind: row.kind,
+    readBy: normalizeReadBy(row.read_by),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
 export async function createEmployeeMessage(input: {
   conversationId: string;
   threadId?: string;
@@ -655,40 +689,21 @@ export async function createEmployeeMessage(input: {
   body: string;
   kind?: EmployeeMessage["kind"];
 }) {
-  return addDoc(employeeMessagesCol(), {
+  const row = await CoreWorkforceService.createMessage({
     conversationId: cleanText(input.conversationId),
     threadId: cleanText(input.threadId || input.conversationId),
-    senderUid: cleanText(input.senderUid),
-    senderName: cleanText(input.senderName || ""),
     recipientUid: cleanText(input.recipientUid),
     recipientName: cleanText(input.recipientName || ""),
     body: cleanText(input.body),
     kind: input.kind || "hr_to_employee",
-    readBy: [cleanText(input.senderUid)],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
   });
+  return { id: row.id };
 }
 
 export async function markEmployeeThreadRead(args: { conversationId: string; readerUid: string }) {
   const conversationId = cleanText(args.conversationId);
-  const readerUid = cleanText(args.readerUid);
-  if (!conversationId || !readerUid) return;
-
-  const snap = await getDocs(query(employeeMessagesCol(), where("conversationId", "==", conversationId)));
-  if (!snap.size) return;
-
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => {
-    const data = d.data() as any;
-    const readBy = normalizeReadBy(data?.readBy);
-    if (readBy.includes(readerUid)) return;
-    batch.update(d.ref, {
-      readBy: Array.from(new Set([...readBy, readerUid])),
-      updatedAt: serverTimestamp(),
-    });
-  });
-  await batch.commit();
+  if (!conversationId) return;
+  await CoreWorkforceService.markThreadRead(conversationId);
 }
 
 function normalizeEmployeeFileDirection(value: unknown): EmployeeFile["direction"] {
@@ -1041,47 +1056,21 @@ export async function listEmployeeNotifications(args: {
   targetEmployeeId?: string;
   limitCount?: number;
 }) {
-  const targetUid = cleanText(args.targetUid || "");
-  const targetEmployeeId = cleanText(args.targetEmployeeId || "");
-  const limitCount = Math.max(1, Number(args.limitCount || 50));
-
-  const mapDoc = (d: any): EmployeeNotification => {
-    const data = d.data() as any;
-    return {
-      id: d.id,
-      targetUid: cleanText(data?.targetUid || "") || undefined,
-      targetEmployeeId: cleanText(data?.targetEmployeeId || "") || undefined,
-      type: cleanText(data?.type || "system") as EmployeeNotification["type"],
-      title: cleanText(data?.title || ""),
-      body: cleanText(data?.body || "") || undefined,
-      route: cleanText(data?.route || "") || undefined,
-      isRead: normalizedBool(data?.isRead, false),
-      createdAt: data?.createdAt,
-      updatedAt: data?.updatedAt,
-      readAt: data?.readAt,
-      readBy: normalizeReadBy(data?.readBy),
-    } as EmployeeNotification;
-  };
-
-  if (targetUid || targetEmployeeId) {
-    const [uidSnap, employeeIdSnap] = await Promise.all([
-      targetUid ? getDocs(query(notificationsCol(), where("targetUid", "==", targetUid))) : Promise.resolve(null),
-      targetEmployeeId
-        ? getDocs(query(notificationsCol(), where("targetEmployeeId", "==", targetEmployeeId)))
-        : Promise.resolve(null),
-    ]);
-
-    const deduped = new Map<string, EmployeeNotification>();
-    uidSnap?.docs.forEach((d) => deduped.set(d.id, mapDoc(d)));
-    employeeIdSnap?.docs.forEach((d) => deduped.set(d.id, mapDoc(d)));
-
-    return Array.from(deduped.values())
-      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
-      .slice(0, limitCount);
-  }
-
-  const snap = await getDocs(query(notificationsCol(), orderBy("createdAt", "desc"), limit(limitCount)));
-  return snap.docs.map(mapDoc);
+  const rows = await CoreWorkforceService.listNotifications(Math.max(1, Number(args.limitCount || 50)));
+  return rows.map((row): EmployeeNotification => ({
+    id: row.id,
+    targetUid: cleanText(row.target_uid || "") || undefined,
+    targetEmployeeId: cleanText(row.target_employee_id || "") || undefined,
+    type: row.type,
+    title: cleanText(row.title),
+    body: cleanText(row.body || "") || undefined,
+    route: cleanText(row.route || "") || undefined,
+    isRead: Boolean(row.read_at),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    readAt: row.read_at || undefined,
+    readBy: row.read_by_uid ? [row.read_by_uid] : [],
+  }));
 }
 
 export async function createEmployeeNotification(input: {
@@ -1092,54 +1081,27 @@ export async function createEmployeeNotification(input: {
   body?: string;
   route?: string;
 }) {
-  return addDoc(notificationsCol(), {
+  const row = await CoreWorkforceService.createNotification({
     targetUid: cleanText(input.targetUid || "") || undefined,
     targetEmployeeId: cleanText(input.targetEmployeeId || "") || undefined,
     type: input.type || "system",
     title: cleanText(input.title),
     body: cleanText(input.body || "") || undefined,
     route: cleanText(input.route || "") || undefined,
-    isRead: false,
-    readBy: [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
   });
+  return { id: row.id };
 }
 
 export async function markEmployeeNotificationRead(args: { notificationId: string; readerUid: string }) {
   const notificationId = cleanText(args.notificationId);
-  const readerUid = cleanText(args.readerUid);
-  if (!notificationId || !readerUid) return;
-
-  await updateDoc(hrDoc("notifications", notificationId), {
-    isRead: true,
-    readAt: serverTimestamp(),
-    readBy: arrayUnion(readerUid),
-    updatedAt: serverTimestamp(),
-  } as any);
+  if (!notificationId) return;
+  await CoreWorkforceService.markNotificationRead(notificationId);
 }
 
 export async function markEmployeeNotificationsRead(args: { notificationIds: string[]; readerUid: string }) {
-  const readerUid = cleanText(args.readerUid);
-  const ids = Array.from(
-    new Set(
-      (Array.isArray(args.notificationIds) ? args.notificationIds : [])
-        .map((id) => cleanText(id))
-        .filter(Boolean)
-    )
-  );
-  if (!readerUid || !ids.length) return;
-
-  const batch = writeBatch(db);
-  ids.forEach((notificationId) => {
-    batch.update(hrDoc("notifications", notificationId), {
-      isRead: true,
-      readAt: serverTimestamp(),
-      readBy: arrayUnion(readerUid),
-      updatedAt: serverTimestamp(),
-    } as any);
-  });
-  await batch.commit();
+  const ids = Array.from(new Set((Array.isArray(args.notificationIds) ? args.notificationIds : []).map(cleanText).filter(Boolean)));
+  if (!ids.length) return;
+  await Promise.all(ids.map((id) => CoreWorkforceService.markNotificationRead(id)));
 }
 
 export async function markEmployeeFileRead(args: { fileId: string; readerUid: string }) {
@@ -1216,6 +1178,92 @@ export async function createWeeklyReport(input: {
   });
 }
 
+function coreLeaveRequestStatus(status: unknown): EmployeeLeaveRequest["status"] {
+  const normalized = cleanText(status).toLowerCase();
+  if (normalized === "rejected") return "rejected";
+  if (normalized === "cancelled") return "cancelled";
+  if (["approved", "executing", "completed"].includes(normalized)) return "approved";
+  return "pending";
+}
+
+function mapCoreLeaveRequest(row: CoreEmployeeRequest): EmployeeLeaveRequest {
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const fromDate = cleanText(payload.startDate || payload.fromDate);
+  const toDate = cleanText(payload.endDate || payload.toDate) || fromDate;
+  const explicitDays = Number(payload.days || payload.daysCount);
+  let days = Number.isFinite(explicitDays) && explicitDays > 0 ? explicitDays : undefined;
+  if (!days && fromDate && toDate) {
+    const start = Date.parse(`${fromDate}T12:00:00Z`);
+    const end = Date.parse(`${toDate}T12:00:00Z`);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      days = Math.floor((end - start) / 86400000) + 1;
+    }
+  }
+  return {
+    id: cleanText(row.id),
+    employeeUid: cleanText(row.employee_uid || ""),
+    employeeId: cleanText(row.employee_id || "") || undefined,
+    employeeName: cleanText(row.employee_name_snapshot || "") || undefined,
+    type: (cleanText(payload.leaveType || payload.type || "annual") || "annual") as EmployeeLeaveRequest["type"],
+    fromDate,
+    toDate,
+    days,
+    durationKind: cleanText(payload.durationKind).toLowerCase() === "partial" ? "partial" : "full_day",
+    partialStartTime: cleanText(payload.partialStartTime || "") || undefined,
+    partialEndTime: cleanText(payload.partialEndTime || "") || undefined,
+    note: cleanText(payload.reason || payload.note || "") || undefined,
+    status: coreLeaveRequestStatus(row.status),
+    createdAt: row.submitted_at,
+    updatedAt: row.updated_at,
+    reviewedAt: row.approved_at || row.rejected_at || undefined,
+    requestNumber: cleanText(row.request_number || "") || undefined,
+    coreStatus: cleanText(row.status || "") || undefined,
+    coreVersion: Number.isInteger(Number(row.version)) ? Number(row.version) : undefined,
+    coreLeaveId:
+      cleanText(row.source_reference_type || "") === "employee_leave"
+        ? cleanText(row.source_reference_id || "") || undefined
+        : undefined,
+  };
+}
+
+export async function createManagedLeaveRequest(input: {
+  employeeUid?: string;
+  employeeId: string;
+  employeeName?: string;
+  type?: EmployeeLeaveRequest["type"];
+  fromDate: string;
+  toDate: string;
+  note?: string;
+  days?: number;
+  durationKind?: "full_day" | "partial";
+  partialStartTime?: string;
+  partialEndTime?: string;
+}) {
+  const durationKind = cleanText(input.durationKind).toLowerCase() === "partial" ? "partial" : "full_day";
+  const row = await createManagedEmployeeRequest({
+    employeeId: cleanText(input.employeeId),
+    employeeUid: cleanText(input.employeeUid || "") || undefined,
+    employeeName: cleanText(input.employeeName || "") || undefined,
+    requestType: "leave",
+    title: "طلب إجازة",
+    payload: {
+      leaveType: cleanText(input.type || "annual") || "annual",
+      startDate: cleanText(input.fromDate),
+      endDate: cleanText(input.toDate),
+      durationKind,
+      ...(durationKind === "partial"
+        ? {
+            partialStartTime: cleanText(input.partialStartTime || ""),
+            partialEndTime: cleanText(input.partialEndTime || ""),
+          }
+        : {}),
+      reason: cleanText(input.note || "") || "تسجيل إجازة معتمدة من إدارة الموظفات",
+      ...(Number.isFinite(Number(input.days)) && Number(input.days) > 0 ? { days: Number(input.days) } : {}),
+    },
+  });
+  return mapCoreLeaveRequest(row);
+}
+
 function mapEmployeeLeaveRequestDoc(d: any): EmployeeLeaveRequest {
   const data = d.data() as any;
   const normalized = normalizeEmployeeLeaveRequest(d.id, {
@@ -1252,22 +1300,14 @@ function mapEmployeeLeaveRequestDoc(d: any): EmployeeLeaveRequest {
   };
 }
 
-export async function listLeaveRequestsByEmployee(employeeUid: string, limitCount = 24) {
-  const snap = await getDocs(query(employeeLeaveRequestsCol(), where("employeeUid", "==", cleanText(employeeUid))));
-
-  return snap.docs
-    .map(mapEmployeeLeaveRequestDoc)
-    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt) || cleanText(b.fromDate).localeCompare(cleanText(a.fromDate)))
-    .slice(0, limitCount);
+export async function listLeaveRequestsByEmployee(_employeeUid: string, limitCount = 24) {
+  const rows = await listMyEmployeeRequests({ type: "leave", limit: Math.max(1, Number(limitCount || 24)) });
+  return rows.map(mapCoreLeaveRequest);
 }
 
 export async function listEmployeeLeaveRequests(limitCount = 80): Promise<EmployeeLeaveRequest[]> {
-  const snap = await getDocs(query(employeeLeaveRequestsCol(), orderBy("createdAt", "desc"), limit(limitCount)));
-
-  return snap.docs
-    .map(mapEmployeeLeaveRequestDoc)
-    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt) || cleanText(b.fromDate).localeCompare(cleanText(a.fromDate)))
-    .slice(0, limitCount);
+  const rows = await listCoreEmployeeRequests({ type: "leave", limit: Math.max(1, Number(limitCount || 80)) });
+  return rows.map(mapCoreLeaveRequest);
 }
 
 export async function approveEmployeeLeaveRequest(args: {

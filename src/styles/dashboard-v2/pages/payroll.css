@@ -241,16 +241,6 @@
   vertical-align: top;
 }
 
-/* Detailed attendance and overtime belong in the details modal. */
-.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(4),
-.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(5),
-.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(6),
-.dashboard-v2 .dsv2-payroll-page .payroll-table td:nth-child(4),
-.dashboard-v2 .dsv2-payroll-page .payroll-table td:nth-child(5),
-.dashboard-v2 .dsv2-payroll-page .payroll-table td:nth-child(6) {
-  display: none;
-}
-
 .dashboard-v2 .dsv2-payroll-page .payroll-employee-cell {
   min-width: 210px;
 }
@@ -968,3 +958,693 @@
     margin-inline: var(--dsv2-space-4, 16px);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Payroll clarity pass — dense executive hierarchy + explicit readiness state
+   -------------------------------------------------------------------------- */
+.dashboard-v2 .dsv2-payroll-page {
+  gap: clamp(12px, 1.35vw, 20px);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-page-head {
+  align-items: center;
+  padding-block: 2px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-page-heading {
+  gap: 4px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-page-heading .dsv2-page-title {
+  line-height: 1.15;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-control-panel {
+  gap: 14px;
+  padding: clamp(14px, 1.6vw, 22px);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-filter-grid {
+  gap: 12px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-bar {
+  gap: 10px 14px;
+  padding-top: 14px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-period-banner,
+.dashboard-v2 .dsv2-payroll-page .payroll-alert {
+  padding: 11px 14px;
+  border-radius: 14px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-alert {
+  align-items: center;
+  line-height: 1.5;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--dsv2-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-overview,
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-summary {
+  overflow: hidden;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-xl, 22px);
+  background: var(--dsv2-surface);
+  box-shadow: var(--dsv2-shadow-xs);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-head,
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-head h2,
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-head h2 {
+  margin: 0;
+  color: var(--dsv2-text);
+  font-size: clamp(1rem, 1.2vw, 1.18rem);
+  font-weight: 950;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-source,
+.dashboard-v2 .dsv2-payroll-page .payroll-table-counts,
+.dashboard-v2 .dsv2-payroll-page .payroll-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-overview-source span {
+  padding: 6px 9px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface-soft);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--dsv2-divider);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card {
+  position: relative;
+  display: grid;
+  min-height: 118px;
+  align-content: center;
+  gap: 5px;
+  padding: 16px;
+  background: var(--dsv2-surface);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card::before {
+  content: "";
+  position: absolute;
+  inset-block: 16px;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: var(--dsv2-radius-pill);
+  background: var(--dsv2-border-strong);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-ready::before,
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-exempt::before {
+  background: var(--dsv2-green);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-setup::before {
+  background: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card.is-attendance::before {
+  background: var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > span {
+  color: var(--dsv2-text-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > strong {
+  color: var(--dsv2-text);
+  font-size: clamp(1.55rem, 2.2vw, 2.15rem);
+  line-height: 1;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-card > small {
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: 14px;
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item span {
+  color: var(--dsv2-muted);
+  font-size: 0.67rem;
+  font-weight: 850;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item strong {
+  color: var(--dsv2-text);
+  font-size: clamp(0.95rem, 1.2vw, 1.15rem);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item.is-positive strong,
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item.is-net strong {
+  color: var(--dsv2-green);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item.is-negative strong {
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-financial-item.is-accrued strong {
+  color: var(--dsv2-warning);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-status-strip {
+  padding: 0 16px 14px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-status-strip > span {
+  padding: 6px 10px;
+  border-radius: var(--dsv2-radius-pill);
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-status-strip strong {
+  margin-inline-start: 4px;
+  color: var(--dsv2-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table-section__head {
+  align-items: center;
+  padding: 16px 18px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table-wrap {
+  overflow-x: auto;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table {
+  min-width: 1180px;
+  table-layout: fixed;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table th,
+.dashboard-v2 .dsv2-payroll-page .payroll-table td {
+  display: table-cell;
+  padding: 13px 12px;
+  vertical-align: middle;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table th {
+  color: var(--dsv2-text-soft);
+  background: var(--dsv2-surface-soft);
+  font-size: 0.68rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(1) { width: 20%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(2) { width: 18%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(3) { width: 12%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(4) { width: 12%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(5) { width: 9%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(6) { width: 12%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(7) { width: 14%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(8) { width: 9%; }
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:nth-child(9) { width: 10%; }
+
+.dashboard-v2 .dsv2-payroll-page .payroll-row {
+  position: relative;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-row td:first-child {
+  box-shadow: inset -3px 0 0 transparent;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-row.is-ready td:first-child {
+  box-shadow: inset -3px 0 0 var(--dsv2-green);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-row.is-setup-blocked td:first-child {
+  box-shadow: inset -3px 0 0 var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-row.is-attendance-review td:first-child,
+.dashboard-v2 .dsv2-payroll-page .payroll-row.is-blocked td:first-child {
+  box-shadow: inset -3px 0 0 var(--dsv2-gold);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-employee-cell {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-employee-cell > strong {
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table td > small,
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-reason {
+  margin-top: 4px;
+  color: var(--dsv2-muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-cell {
+  display: table-cell;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-badge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--dsv2-border);
+  border-radius: var(--dsv2-radius-pill);
+  font-size: 0.64rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-badge.is-ready {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-badge.is-setup {
+  border-color: var(--dsv2-burgundy-border);
+  color: var(--dsv2-burgundy);
+  background: var(--dsv2-burgundy-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-badge.is-attendance {
+  border-color: var(--dsv2-border-gold);
+  color: var(--dsv2-warning);
+  background: var(--dsv2-gold-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-cell .payroll-mini-badge {
+  margin-inline-start: 5px;
+  margin-top: 5px;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-readiness-reason {
+  display: block;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-mini-badge.is-preview {
+  color: var(--dsv2-muted);
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-mini-badge.is-saved,
+.dashboard-v2 .dsv2-payroll-page .payroll-mini-badge.is-exempt {
+  border-color: var(--dsv2-green-border);
+  color: var(--dsv2-green);
+  background: var(--dsv2-green-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-money-cell,
+.dashboard-v2 .dsv2-payroll-page .payroll-net-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-money-cell > strong,
+.dashboard-v2 .dsv2-payroll-page .payroll-net-cell > strong {
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-money-cell.is-positive {
+  color: var(--dsv2-green);
+  font-weight: 900;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-money-cell.is-negative > strong {
+  color: var(--dsv2-burgundy);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-net-cell > strong {
+  color: var(--dsv2-green);
+  font-size: 0.9rem;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu > summary {
+  min-height: 34px;
+  padding-inline: 11px;
+}
+
+@media (max-width: 1199.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid,
+  .dashboard-v2 .dsv2-payroll-page .payroll-financial-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-overview-head,
+  .dashboard-v2 .dsv2-payroll-page .payroll-financial-head,
+  .dashboard-v2 .dsv2-payroll-page .payroll-table-section__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid,
+  .dashboard-v2 .dsv2-payroll-page .payroll-financial-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-card {
+    min-height: 106px;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-financial-grid {
+    padding: 12px;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table-wrap {
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table,
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody,
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tr,
+  .dashboard-v2 .dsv2-payroll-page .payroll-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table {
+    min-width: 0;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table thead {
+    display: none;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody tr {
+    overflow: hidden;
+    border: 1px solid var(--dsv2-border);
+    border-radius: 16px;
+    background: var(--dsv2-surface);
+    box-shadow: var(--dsv2-shadow-xs);
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td,
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-cell {
+    display: grid;
+    grid-template-columns: 106px minmax(0, 1fr);
+    gap: 10px;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--dsv2-divider);
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td::before {
+    color: var(--dsv2-muted);
+    font-size: 0.63rem;
+    font-weight: 950;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(1)::before { content: "الموظفة"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(2)::before { content: "الجاهزية"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(3)::before { content: "إعداد الراتب"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(4)::before { content: "الراتب الأساسي"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(5)::before { content: "الإضافات"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(6)::before { content: "الخصومات"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(7)::before { content: "المستحق / المتوقع"; }
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(8)::before { content: "الحالة"; }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(9) {
+    display: block;
+    border-bottom: 0;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table tbody td:nth-child(9)::before {
+    content: none;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-reason {
+    max-width: none;
+  }
+}
+
+@media (max-width: 479.98px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-readiness-grid,
+  .dashboard-v2 .dsv2-payroll-page .payroll-financial-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* MALIKAT PAYROLL TABLE CONTAINMENT — 2026-08-22 */
+/* Keep the employee payroll register inside its card after adding financial columns. */
+.dashboard-v2 .dsv2-payroll-page .payroll-table-section {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table {
+  width: 100%;
+  min-width: 1180px;
+  max-width: none;
+  margin: 0;
+  table-layout: fixed;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table th,
+.dashboard-v2 .dsv2-payroll-page .payroll-table td {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-employee-cell {
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu {
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-table {
+    min-width: 1120px;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-table-section__head {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-v2 .dsv2-payroll-page .payroll-table {
+    min-width: 1040px;
+  }
+}
+
+
+/* MALIKAT PAYROLL MODAL + STICKY ACTIONS FINAL — 2026-08-22 */
+/* Payroll dialogs are portaled to <body>; keep them above the sticky dashboard shell. */
+body > .payroll-modal-backdrop,
+body > .dashboard-v2.payroll-modal-backdrop {
+  z-index: 2147483000 !important;
+}
+
+body > .dashboard-v2.payroll-modal-backdrop {
+  --dsv2-text: #172033;
+  --dsv2-text-soft: #344054;
+  --dsv2-muted: #667085;
+  --dsv2-surface: #ffffff;
+  --dsv2-surface-soft: #f7f9fc;
+  --dsv2-border: #d8dfe8;
+  --dsv2-border-strong: #c8d1dc;
+  --dsv2-divider: #e6eaf0;
+  --dsv2-black: #101828;
+  --dsv2-on-dark: #ffffff;
+  --dsv2-gold: #c7a14a;
+  --dsv2-gold-softer: #fbf6e8;
+  --dsv2-green: #2f855a;
+  --dsv2-green-soft: #edf7f1;
+  --dsv2-green-border: #badcc8;
+  --dsv2-warning: #9b741c;
+  --dsv2-burgundy: #9f3348;
+  --dsv2-burgundy-soft: #faeff0;
+  --dsv2-burgundy-border: #e2bdc5;
+  --dsv2-radius-sm: 10px;
+  --dsv2-radius-md: 14px;
+  --dsv2-radius-lg: 18px;
+  --dsv2-radius-xl: 22px;
+  --dsv2-shadow-xs: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --dsv2-shadow-lg: 0 28px 70px rgba(5, 8, 13, 0.18);
+  --dsv2-space-1: 4px;
+  --dsv2-space-2: 8px;
+  --dsv2-space-3: 12px;
+  --dsv2-space-4: 16px;
+  --dsv2-space-5: 20px;
+  --dsv2-control-height-sm: 36px;
+}
+
+/* Keep the actions column reachable while the wide payroll register scrolls horizontally. */
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:last-child,
+.dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child {
+  position: sticky;
+  left: 0;
+  width: 126px;
+  min-width: 126px;
+  max-width: 126px;
+  box-sizing: border-box;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:last-child {
+  z-index: 8;
+  background: #f5f7fa;
+  box-shadow: 7px 0 14px -13px rgba(15, 23, 42, 0.7);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child {
+  z-index: 5;
+  background: var(--dsv2-surface, #ffffff);
+  box-shadow: 7px 0 14px -13px rgba(15, 23, 42, 0.5);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu > summary {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .dashboard-v2 .dsv2-payroll-page .payroll-table th:last-child,
+  .dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child {
+    width: 112px;
+    min-width: 112px;
+    max-width: 112px;
+  }
+}
+
+/* MALIKAT_PAYROLL_ACTIONS_DROPDOWN_LAYER_FIX_START */
+
+/*
+ * Keep the sticky actions column usable without allowing actions from
+ * lower payroll rows to paint above the currently-open actions menu.
+ */
+.dashboard-v2 .dsv2-payroll-page .payroll-table th:last-child {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 8;
+  background: var(--dsv2-surface-soft);
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 4;
+  overflow: visible;
+  background: var(--dsv2-surface);
+}
+
+/* The cell that owns the open menu must sit above every other sticky action cell. */
+.dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child:has(.payroll-actions-menu[open]) {
+  z-index: 60;
+}
+
+/* Create an explicit stacking context only for the active menu. */
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu {
+  z-index: 1;
+}
+
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu[open] {
+  z-index: 70;
+}
+
+/* The dropdown itself must be above all sticky cells from neighbouring rows. */
+.dashboard-v2 .dsv2-payroll-page .payroll-actions-menu[open] .payroll-row-actions {
+  z-index: 80;
+}
+
+/* Ensure hovered/focused closed buttons never jump above an open menu. */
+.dashboard-v2 .dsv2-payroll-page .payroll-table td:last-child:not(:has(.payroll-actions-menu[open])) {
+  z-index: 4;
+}
+
+/* MALIKAT_PAYROLL_ACTIONS_DROPDOWN_LAYER_FIX_END */

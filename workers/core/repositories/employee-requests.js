@@ -16,7 +16,7 @@ import {
   validTime,
 } from '../d1.js';
 import { AppError } from '../errors.js';
-import { permissionPayrollSummary } from './permissions.js';
+import { decidePermissionRequest, permissionPayrollSummary } from './permissions.js';
 import { createLeave, decideLeave } from './leaves.js';
 
 export const EMPLOYEE_REQUEST_TYPES = new Set([
@@ -37,7 +37,7 @@ const STATUS_TRANSITIONS = {
   needs_info: new Set(['under_review', 'rejected', 'cancelled']),
   approved: new Set(['executing', 'cancelled']),
   executing: new Set(['completed', 'cancelled']),
-  completed: new Set(),
+  completed: new Set(['cancelled']),
   rejected: new Set(['under_review']),
   cancelled: new Set(['under_review']),
 };
@@ -663,7 +663,7 @@ async function updateStatus(db, salonId, row, toStatus, input, actor) {
   if (toStatus === 'rejected') Object.assign(columns, { rejected_at: now, decided_by_uid: cleanText(actor.uid) || null, rejection_reason: requiredReason(input.reason || input.note, 'rejection_reason') });
   if (toStatus === 'executing') Object.assign(columns, { executing_at: now, execution_started_at: now, execution_status: 'running', execution_attempts: Number(row.execution_attempts || 0) + 1 });
   if (toStatus === 'completed') Object.assign(columns, { completed_at: now, execution_completed_at: now, execution_status: 'completed', execution_error: null });
-  if (toStatus === 'cancelled') Object.assign(columns, { cancelled_at: now, cancelled_by_uid: cleanText(actor.uid) || null, execution_status: row.execution_status === 'running' ? 'cancelled' : row.execution_status });
+  if (toStatus === 'cancelled') Object.assign(columns, { cancelled_at: now, cancelled_by_uid: cleanText(actor.uid) || null, execution_status: ['executing', 'completed'].includes(row.status) || row.execution_status === 'running' ? 'cancelled' : row.execution_status });
   const entries = Object.entries(columns);
   const updatedSnapshot = { ...row, ...columns };
   const snapshot = actorSnapshot(actor);
@@ -842,55 +842,54 @@ async function createLeaveEffect(
     [salonId, row.id]
   );
 
-  if (leave) {
-    const status = cleanText(
-      leave.status
-    ).toLowerCase();
+  const existingLeaveStatus = cleanText(
+    leave?.status
+  ).toLowerCase();
 
-    if (status === 'approved') {
-      return {
-        leaveId: leave.id,
-        permissionId: null,
-        days: Number(
-          leave.days_count || 0
-        ),
-      };
-    }
-
-    if (status !== 'pending') {
-      throw new AppError(
-        409,
-        'core_employee_request:leave_effect_invalid_status'
-      );
-    }
-  }
-
-
-  const overlap = await dbFirst(
-    db,
-    `SELECT id
-       FROM employee_leaves
-      WHERE salon_id = ?
-        AND employee_id = ?
-        AND status = 'approved'
-        AND NOT (
-          end_date < ?
-          OR start_date > ?
-        )
-      LIMIT 1`,
-    [
-      salonId,
-      row.employee_id,
-      payload.startDate,
-      payload.endDate,
-    ]
-  );
-
-  if (overlap) {
+  if (
+    leave &&
+    !['pending', 'approved'].includes(
+      existingLeaveStatus
+    )
+  ) {
     throw new AppError(
       409,
-      'core_employee_request:leave_overlap'
+      'core_employee_request:leave_effect_invalid_status'
     );
+  }
+
+  // A retry may arrive after the canonical leave was already
+  // approved but before a partial-leave permission effect was
+  // created. Do not return early: finish the missing idempotent
+  // permission effect below. For a fresh/pending leave, still
+  // enforce overlap before approval.
+  if (existingLeaveStatus !== 'approved') {
+    const overlap = await dbFirst(
+      db,
+      `SELECT id
+         FROM employee_leaves
+        WHERE salon_id = ?
+          AND employee_id = ?
+          AND status = 'approved'
+          AND NOT (
+            end_date < ?
+            OR start_date > ?
+          )
+        LIMIT 1`,
+      [
+        salonId,
+        row.employee_id,
+        payload.startDate,
+        payload.endDate,
+      ]
+    );
+
+    if (overlap) {
+      throw new AppError(
+        409,
+        'core_employee_request:leave_overlap'
+      );
+    }
   }
 
 
@@ -2353,6 +2352,92 @@ async function executeEffects(db, salonId, row, actor, input, options = {}) {
   }
 }
 
+
+async function cancelExecutedLeaveRequest(db, salonId, row, input, actor) {
+  const leave = await dbFirst(
+    db,
+    `SELECT * FROM employee_leaves
+      WHERE salon_id = ?
+        AND (
+          id = ?
+          OR request_id = ?
+        )
+      ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+      LIMIT 1`,
+    [salonId, cleanText(row.source_reference_id), row.id, cleanText(row.source_reference_id)]
+  );
+
+  if (!leave) {
+    if (row.status === 'completed') {
+      throw new AppError(409, 'core_employee_request:leave_effect_missing');
+    }
+    if (cleanText(row.execution_status) !== 'failed') {
+      throw new AppError(409, 'core_employee_request:leave_effect_missing');
+    }
+  } else {
+    await decideLeave(
+      db,
+      salonId,
+      leave.id,
+      {
+        status: 'rejected',
+        hrNote: optionalText(input.note || input.reason) || 'إلغاء طلب إجازة منفذ واسترجاع أثره التشغيلي',
+      },
+      actor
+    );
+  }
+
+  const permission = await dbFirst(
+    db,
+    `SELECT * FROM employee_permission_requests
+      WHERE salon_id = ?
+        AND employee_request_id = ?
+      LIMIT 1`,
+    [salonId, row.id]
+  );
+
+  if (permission && !['cancelled', 'rejected'].includes(cleanText(permission.status).toLowerCase())) {
+    await decidePermissionRequest(
+      db,
+      salonId,
+      permission.id,
+      {
+        status: 'cancelled',
+        financialEffect: permission.financial_effect,
+      },
+      actor
+    );
+  }
+
+  const result = await updateStatus(
+    db,
+    salonId,
+    row,
+    'cancelled',
+    {
+      ...input,
+      eventType: 'execution_reversed',
+      note: optionalText(input.note || input.reason) || 'تم إلغاء الإجازة بعد التنفيذ واسترجاع أثرها',
+      before: { sourceType: row.source_reference_type, sourceId: row.source_reference_id },
+      after: { reversed: true, leaveId: leave?.id || null, permissionId: permission?.id || null },
+      idempotencyKey: input.idempotencyKey || `execution_reversed:${row.version + 1}`,
+    },
+    actor
+  );
+
+  await notifyEmployee(
+    db,
+    salonId,
+    result.updated,
+    result.eventId,
+    `تم إلغاء الإجازة ${result.updated.request_number}`,
+    optionalText(input.note || input.reason) || 'تم استرجاع أثر الإجازة التشغيلي والمالي المرتبط بها.',
+    actor.uid
+  );
+
+  return requestSummary(result.updated);
+}
+
 export async function transitionEmployeeRequest(db, salonId, idValue, action, input = {}, actor = {}, options = {}) {
   let row = await getRow(db, salonId, idValue);
   if (options.ownOnly) assertOwner(row, actor);
@@ -2382,6 +2467,18 @@ export async function transitionEmployeeRequest(db, salonId, idValue, action, in
     });
     await notifyEmployee(db, salonId, row, eventId, `تم تعيين مسؤول للطلب ${row.request_number}`, `${assigneeName} سيتولى متابعة الطلب.`, actor.uid);
     return requestSummary(row);
+  }
+
+  if (actionKey === 'cancel' && row.status === 'cancelled') {
+    return requestSummary(row);
+  }
+
+  if (
+    actionKey === 'cancel' &&
+    row.request_type === 'leave' &&
+    ['executing', 'completed'].includes(row.status)
+  ) {
+    return cancelExecutedLeaveRequest(db, salonId, row, input, actor);
   }
 
   const actionStatus = {

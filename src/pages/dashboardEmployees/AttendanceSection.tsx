@@ -16,6 +16,7 @@ import {
   type EmployeeAttendanceRowLiveV2,
   type EmployeeAttendanceShiftInfoLiveV2,
 } from "../../components/dashboard-v2/employee-workspace/live";
+import { SCHEDULE_EXCEPTION_CHANGED_EVENT } from "./shiftExceptionRestore";
 
 const RESOLVED_SHIFT_CACHE: Record<string, CoreResolvedShift | null> = {};
 const RESOLVED_SHIFT_PENDING: Record<string, Promise<CoreResolvedShift | null> | undefined> = {};
@@ -63,6 +64,15 @@ function cleanText(value: unknown) {
 
 function uniqueCleanTexts(values: unknown[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
+}
+
+function isCoreEmployeeIdentifier(value: unknown) {
+  const id = cleanText(value);
+  return Boolean(
+    id &&
+      !id.startsWith("app_user_") &&
+      /^[A-Za-z0-9_-]+$/.test(id)
+  );
 }
 
 function resolvedShiftRank(row?: CoreResolvedShift | null) {
@@ -545,6 +555,18 @@ function toLiveAttendanceRow(
             0
           ),
 
+    pendingCompensationMinutes:
+      resolvedDay
+        ? Math.max(
+            0,
+            Math.round(
+              resolvedDay
+                .computation
+                .pendingCompensationMinutes
+            )
+          )
+        : 0,
+
     earlyLeaveMinutes:
       resolvedDay && date
         ? computeAttendanceEarlyLeaveMinutes({
@@ -707,8 +729,10 @@ export default function AttendanceSection({
     };
 
     window.addEventListener(TEMP_WEEKLY_OFF_SYNC_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
+    window.addEventListener(SCHEDULE_EXCEPTION_CHANGED_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
     return () => {
       window.removeEventListener(TEMP_WEEKLY_OFF_SYNC_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
+      window.removeEventListener(SCHEDULE_EXCEPTION_CHANGED_EVENT, handleTemporaryWeeklyOffUpdated as EventListener);
     };
   }, [employeeIdsKey, onReload]);
 
@@ -716,7 +740,7 @@ export default function AttendanceSection({
     const identityIds =
       employeeIdsKey
         .split("|")
-        .filter(Boolean);
+        .filter(isCoreEmployeeIdentifier);
 
     const dateKeys =
       monthDateKeys(monthKey);
@@ -737,53 +761,32 @@ export default function AttendanceSection({
     setCoreShiftLoading(true);
     setCoreShiftError("");
 
-    Promise.all(
-      dateKeys.map(async (date) => {
-        // Core is authoritative.
-        // Any failed identity/date lookup rejects the whole
-        // verification instead of silently becoming "no shift".
-        const attempts =
-          await Promise.allSettled(
-            identityIds.map((id) =>
-              CoreHrService.resolveEmployeeShift(
-                id,
-                date
-              )
-            )
-          );
-
-        const resolved =
-          attempts
-            .filter(
-              (attempt) =>
-                attempt.status ===
-                "fulfilled"
-            )
-            .map(
-              (attempt) =>
-                attempt.value
-            );
-
-        if (!resolved.length) {
-          throw new Error(
-            `core_shift_resolution_failed:${date}`
-          );
-        }
-
-        return [
-          date,
-          pickBestResolvedShift(
-            resolved
-          ),
-        ] as const;
-      })
-    )
-      .then((pairs) => {
+    CoreHrService.resolveEmployeeShiftsRange({
+      employeeIds: identityIds,
+      dateFrom: dateKeys[0],
+      dateTo: dateKeys[dateKeys.length - 1],
+    })
+      .then((batch) => {
         if (cancelled) return;
 
-        setCoreResolvedShiftsByDate(
-          Object.fromEntries(pairs)
-        );
+        const byDate = new Map<string, CoreResolvedShift[]>();
+        for (const row of batch.rows) {
+          const date = cleanText(row.date);
+          if (!date) continue;
+          const group = byDate.get(date) || [];
+          group.push(row);
+          byDate.set(date, group);
+        }
+
+        const pairs = dateKeys.map((date) => {
+          const resolved = byDate.get(date) || [];
+          if (!resolved.length) {
+            throw new Error(`core_shift_resolution_failed:${date}`);
+          }
+          return [date, pickBestResolvedShift(resolved)] as const;
+        });
+
+        setCoreResolvedShiftsByDate(Object.fromEntries(pairs));
       })
       .catch((loadError) => {
         if (cancelled) return;

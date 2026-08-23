@@ -20,6 +20,10 @@ import type {
   CoreMyLeaveBalanceState,
   CorePayrollEntry,
   CorePayrollPeriod,
+  CorePayrollCarryoverAdjustment,
+  CorePayrollRecurringDeduction,
+  CorePayrollObligation,
+  CorePayrollObligationDeduction,
 } from "../types/hrCoreApi";
 
 function camel<T>(row: Record<string, unknown>): T {
@@ -30,6 +34,90 @@ function camel<T>(row: Record<string, unknown>): T {
   return out as T;
 }
 
+type CoreResolvedShiftRangeResult = {
+  dateFrom: string;
+  dateTo: string;
+  employeesCount: number;
+  daysCount: number;
+  rows: CoreResolvedShift[];
+};
+
+type ResolvedShiftRangeCacheEntry = {
+  employeeIds: string[];
+  expiresAt: number;
+  value: CoreResolvedShiftRangeResult;
+};
+
+type ResolvedShiftRangeInFlightEntry = {
+  employeeIds: string[];
+  epoch: number;
+  promise: Promise<CoreResolvedShiftRangeResult>;
+};
+
+const RESOLVED_SHIFT_RANGE_CACHE_TTL_MS = 5_000;
+const RESOLVED_SHIFT_RANGE_CACHE_MAX_ENTRIES = 32;
+const resolvedShiftRangeCache = new Map<string, ResolvedShiftRangeCacheEntry>();
+const resolvedShiftRangeInFlight = new Map<string, ResolvedShiftRangeInFlightEntry>();
+let resolvedShiftRangeCacheEpoch = 0;
+
+function normalizeResolvedShiftEmployeeIds(values: readonly unknown[]) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function resolvedShiftRangeCacheKey(
+  employeeIds: readonly string[],
+  dateFrom: string,
+  dateTo: string
+) {
+  return JSON.stringify([dateFrom, dateTo, employeeIds]);
+}
+
+function pruneResolvedShiftRangeCache(now = Date.now()) {
+  for (const [key, entry] of resolvedShiftRangeCache) {
+    if (entry.expiresAt <= now) resolvedShiftRangeCache.delete(key);
+  }
+
+  while (resolvedShiftRangeCache.size > RESOLVED_SHIFT_RANGE_CACHE_MAX_ENTRIES) {
+    const oldestKey = resolvedShiftRangeCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    resolvedShiftRangeCache.delete(oldestKey);
+  }
+}
+
+function invalidateResolvedShiftRangeCache(employeeId?: string) {
+  resolvedShiftRangeCacheEpoch += 1;
+  const targetEmployeeId = String(employeeId || "").trim();
+
+  if (!targetEmployeeId) {
+    resolvedShiftRangeCache.clear();
+    resolvedShiftRangeInFlight.clear();
+    return;
+  }
+
+  for (const [key, entry] of resolvedShiftRangeCache) {
+    if (entry.employeeIds.includes(targetEmployeeId)) {
+      resolvedShiftRangeCache.delete(key);
+    }
+  }
+
+  // Epoch invalidation makes any request that started before this mutation
+  // retry once. Clear all in-flight keys so that retry can never join itself.
+  resolvedShiftRangeInFlight.clear();
+}
+
+export type CoreMyEmployeeProfileUpdate = {
+  name?: string;
+  phone?: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+};
+
 export const CoreHrService = {
   async listEmployees(query: { search?: string; status?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/employees", { query });
@@ -38,6 +126,29 @@ export const CoreHrService = {
   async getEmployee(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(id)}`);
     return { ...camel<CoreHrEmployee>(row), schedules: Array.isArray(row.schedules) ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>)) : [] };
+  },
+  async getMyEmployeeProfile() {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/employee-profile/mine"
+    );
+    return {
+      ...camel<CoreHrEmployee>(row),
+      schedules: Array.isArray(row.schedules)
+        ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>))
+        : [],
+    };
+  },
+  async saveMyEmployeeProfile(input: CoreMyEmployeeProfileUpdate) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/employee-profile/mine",
+      { method: "PATCH", body: input as Record<string, unknown> }
+    );
+    return {
+      ...camel<CoreHrEmployee>(row),
+      schedules: Array.isArray(row.schedules)
+        ? row.schedules.map((item) => camel<CoreHrSchedule>(item as Record<string, unknown>))
+        : [],
+    };
   },
   async saveEmployee(input: Record<string, unknown>) {
     const id = String(input.id || "").trim();
@@ -48,6 +159,7 @@ export const CoreHrService = {
   },
   async replaceSchedules(employeeId: string, schedules: CoreHrSchedule[]) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/schedules`, { method: "PUT", body: { schedules } });
+    invalidateResolvedShiftRangeCache(employeeId);
     return camel<CoreHrEmployee>(row);
   },
   async listShiftTemplates(query: { active?: "all" } = {}) {
@@ -60,6 +172,8 @@ export const CoreHrService = {
       method: id ? "PATCH" : "POST",
       body: input,
     });
+    // A template edit can affect every employee assigned to it.
+    invalidateResolvedShiftRangeCache();
     return camel<CoreShiftTemplate>(row);
   },
   async listShiftAssignments(query: { employeeId?: string } = {}) {
@@ -67,23 +181,33 @@ export const CoreHrService = {
     return rows.map((row) => camel<CoreShiftAssignment>(row));
   },
   async createShiftAssignment(input: Record<string, unknown>) {
-    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-assignments", { method: "POST", body: input }));
+    const row = camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/shift-assignments", { method: "POST", body: input }));
+    invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
+    return row;
   },
   async updateShiftAssignment(id: string, input: Record<string, unknown>) {
-    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+    const row = camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+    invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
+    return row;
   },
   async cancelShiftAssignment(id: string, reason: string, options: Record<string, unknown> = {}) {
-    return camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "DELETE", body: { reason, ...options } }));
+    const row = camel<CoreShiftAssignment>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/shift-assignments/${encodeURIComponent(id)}`, { method: "DELETE", body: { reason, ...options } }));
+    invalidateResolvedShiftRangeCache(String(row.employeeId || ""));
+    return row;
   },
   async listScheduleExceptions(query: { employeeId?: string } = {}) {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/hr/schedule-exceptions", { query });
     return rows.map((row) => camel<CoreScheduleException>(row));
   },
   async createScheduleException(input: Record<string, unknown>) {
-    return camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/schedule-exceptions", { method: "POST", body: input }));
+    const row = camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/schedule-exceptions", { method: "POST", body: input }));
+    invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
+    return row;
   },
   async updateScheduleException(id: string, input: Record<string, unknown>) {
-    return camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+    const row = camel<CoreScheduleException>(await coreApiRequest<Record<string, unknown>>(`/api/core/hr/schedule-exceptions/${encodeURIComponent(id)}`, { method: "PATCH", body: input }));
+    invalidateResolvedShiftRangeCache(String(row.employeeId || input.employeeId || ""));
+    return row;
   },
 
   async syncWorkingHourScheduleExceptions(input: {
@@ -99,6 +223,8 @@ export const CoreHrService = {
           body: input,
         }
       );
+
+    invalidateResolvedShiftRangeCache(input.employeeId);
 
     return {
       employeeId:
@@ -187,14 +313,11 @@ export const CoreHrService = {
     employeeIds: string[];
     dateFrom: string;
     dateTo: string;
-  }) {
-    const employeeIds = Array.from(
-      new Set(
+  }): Promise<CoreResolvedShiftRangeResult> {
+    const employeeIds =
+      normalizeResolvedShiftEmployeeIds(
         input.employeeIds
-          .map((value) => String(value || "").trim())
-          .filter(Boolean)
-      )
-    );
+      );
 
     const dateKeys =
       buildDateKeysInRange(
@@ -208,105 +331,196 @@ export const CoreHrService = {
       );
     }
 
+    const dateFrom = dateKeys[0];
+    const dateTo =
+      dateKeys[dateKeys.length - 1];
+
     if (!employeeIds.length) {
       return {
-        dateFrom: dateKeys[0],
-        dateTo:
-          dateKeys[
-            dateKeys.length - 1
-          ],
+        dateFrom,
+        dateTo,
         employeesCount: 0,
         daysCount: dateKeys.length,
         rows: [] as CoreResolvedShift[],
       };
     }
 
-    const rows: CoreResolvedShift[] = [];
+    const cacheKey =
+      resolvedShiftRangeCacheKey(
+        employeeIds,
+        dateFrom,
+        dateTo
+      );
 
-    /*
-     * Core Worker hard limits:
-     * - maximum 100 employees/request
-     * - maximum 62 days/request
-     * - maximum 5000 employee-days/request
-     *
-     * Keep this orchestration here so consumers never
-     * implement their own scheduling batch policy.
-     */
-    for (
-      let dateOffset = 0;
-      dateOffset < dateKeys.length;
-      dateOffset += 62
-    ) {
-      const rangeKeys =
-        dateKeys.slice(
-          dateOffset,
-          dateOffset + 62
-        );
+    const now = Date.now();
+    pruneResolvedShiftRangeCache(now);
 
-      const employeeChunkSize =
-        Math.max(
-          1,
-          Math.min(
-            100,
-            Math.floor(
-              5000 /
-                rangeKeys.length
-            )
-          )
-        );
+    const cached =
+      resolvedShiftRangeCache.get(
+        cacheKey
+      );
 
-      const batches = [];
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
 
+    const existingInFlight =
+      resolvedShiftRangeInFlight.get(
+        cacheKey
+      );
+
+    if (existingInFlight) {
+      return existingInFlight.promise;
+    }
+
+    const requestEpoch =
+      resolvedShiftRangeCacheEpoch;
+
+    let inFlightEntry:
+      ResolvedShiftRangeInFlightEntry;
+
+    const promise = (async () => {
+      const rows: CoreResolvedShift[] = [];
+
+      /*
+       * Core Worker hard limits:
+       * - maximum 100 employees/request
+       * - maximum 62 days/request
+       * - maximum 5000 employee-days/request
+       *
+       * Keep this orchestration here so consumers never
+       * implement their own scheduling batch policy.
+       */
       for (
-        let employeeOffset = 0;
-        employeeOffset <
-        employeeIds.length;
-        employeeOffset +=
-          employeeChunkSize
+        let dateOffset = 0;
+        dateOffset < dateKeys.length;
+        dateOffset += 62
       ) {
-        batches.push(
-          CoreHrService.resolveEmployeeShiftsBatch({
-            employeeIds:
-              employeeIds.slice(
-                employeeOffset,
-                employeeOffset +
-                  employeeChunkSize
-              ),
-            dateFrom:
-              rangeKeys[0],
-            dateTo:
-              rangeKeys[
-                rangeKeys.length - 1
-              ],
-          })
+        const rangeKeys =
+          dateKeys.slice(
+            dateOffset,
+            dateOffset + 62
+          );
+
+        const employeeChunkSize =
+          Math.max(
+            1,
+            Math.min(
+              100,
+              Math.floor(
+                5000 /
+                  rangeKeys.length
+              )
+            )
+          );
+
+        const batches = [];
+
+        for (
+          let employeeOffset = 0;
+          employeeOffset <
+          employeeIds.length;
+          employeeOffset +=
+            employeeChunkSize
+        ) {
+          batches.push(
+            CoreHrService.resolveEmployeeShiftsBatch({
+              employeeIds:
+                employeeIds.slice(
+                  employeeOffset,
+                  employeeOffset +
+                    employeeChunkSize
+                ),
+              dateFrom:
+                rangeKeys[0],
+              dateTo:
+                rangeKeys[
+                  rangeKeys.length - 1
+                ],
+            })
+          );
+        }
+
+        const resolved =
+          await Promise.all(
+            batches
+          );
+
+        rows.push(
+          ...resolved.flatMap(
+            (batch) =>
+              batch.rows
+          )
         );
       }
 
-      const resolved =
-        await Promise.all(
-          batches
-        );
+      const result: CoreResolvedShiftRangeResult = {
+        dateFrom,
+        dateTo,
+        employeesCount:
+          employeeIds.length,
+        daysCount:
+          dateKeys.length,
+        rows,
+      };
 
-      rows.push(
-        ...resolved.flatMap(
-          (batch) =>
-            batch.rows
-        )
+      // A schedule mutation may complete while this request is in flight.
+      // Never cache that pre-mutation response; transparently resolve again.
+      if (
+        requestEpoch !==
+        resolvedShiftRangeCacheEpoch
+      ) {
+        return CoreHrService
+          .resolveEmployeeShiftsRange({
+            employeeIds,
+            dateFrom,
+            dateTo,
+          });
+      }
+
+      resolvedShiftRangeCache.set(
+        cacheKey,
+        {
+          employeeIds,
+          expiresAt:
+            Date.now() +
+            RESOLVED_SHIFT_RANGE_CACHE_TTL_MS,
+          value: result,
+        }
       );
-    }
 
-    return {
-      dateFrom: dateKeys[0],
-      dateTo:
-        dateKeys[
-          dateKeys.length - 1
-        ],
-      employeesCount:
-        employeeIds.length,
-      daysCount:
-        dateKeys.length,
-      rows,
+      pruneResolvedShiftRangeCache();
+      return result;
+    })();
+
+    inFlightEntry = {
+      employeeIds,
+      epoch: requestEpoch,
+      promise,
     };
+
+    resolvedShiftRangeInFlight.set(
+      cacheKey,
+      inFlightEntry
+    );
+
+    try {
+      return await promise;
+    } finally {
+      if (
+        resolvedShiftRangeInFlight.get(
+          cacheKey
+        ) === inFlightEntry
+      ) {
+        resolvedShiftRangeInFlight.delete(
+          cacheKey
+        );
+      }
+    }
+  },
+
+  invalidateResolvedShiftRangeCache(employeeId?: string) {
+    invalidateResolvedShiftRangeCache(employeeId);
   },
 
   async previewShiftChange(input: Record<string, unknown>) {
@@ -471,6 +685,100 @@ export const CoreHrService = {
         amountHalalas: number;
       }>(row)
     );
+  },
+  async listPayrollRecurringDeductions(
+    query: { employeeId?: string; status?: string } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-recurring-deductions",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollRecurringDeduction>(row));
+  },
+  async savePayrollRecurringDeduction(input: Record<string, unknown>) {
+    const id = String(input.id || "").trim();
+    const row = await coreApiRequest<Record<string, unknown>>(
+      id
+        ? `/api/core/hr/payroll-recurring-deductions/${encodeURIComponent(id)}`
+        : "/api/core/hr/payroll-recurring-deductions",
+      { method: id ? "PATCH" : "POST", body: input }
+    );
+    return camel<CorePayrollRecurringDeduction>(row);
+  },
+  async listPayrollObligations(
+    query: { employeeId?: string; status?: string } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-obligations",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollObligation>(row));
+  },
+  async createPayrollObligation(input: Record<string, unknown>) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      "/api/core/hr/payroll-obligations",
+      { method: "POST", body: input }
+    );
+    return camel<CorePayrollObligation>(row);
+  },
+  async cancelPayrollObligation(id: string, reason: string) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-obligations/${encodeURIComponent(id)}/cancel`,
+      { method: "POST", body: { reason } }
+    );
+    return camel<CorePayrollObligation>(row);
+  },
+  async deferPayrollObligationInstallment(
+    id: string,
+    input: { targetPayrollMonth: string; reason: string; note?: string | null }
+  ) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/payroll-obligation-installments/${encodeURIComponent(id)}/defer`,
+      { method: "POST", body: input }
+    );
+    return camel<CorePayrollObligation>(row);
+  },
+  async listPayrollObligationDeductions(
+    query: { employeeId?: string; payrollMonth: string }
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-obligations/deductions",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollObligationDeduction>(row));
+  },
+  async listPayrollCarryovers(
+    query: {
+      employeeId?: string;
+      targetPayrollMonth?: string;
+      sourcePayrollMonth?: string;
+      status?: string;
+    } = {}
+  ) {
+    const rows = await coreApiRequest<Record<string, unknown>[]>(
+      "/api/core/hr/payroll-carryovers",
+      { query }
+    );
+    return rows.map((row) => camel<CorePayrollCarryoverAdjustment>(row));
+  },
+  async reconcilePayrollCarryoversBatch(input: {
+    items: Array<{
+      sourcePayrollEntryId: string;
+      targetPayrollMonth: string;
+      recalculatedNetHalalas: number;
+      sourceDate?: string;
+      reason?: string;
+    }>;
+  }) {
+    const result = await coreApiRequest<{ results?: Array<Record<string, unknown>> }>(
+      "/api/core/hr/payroll-reconciliations/batch",
+      { method: "POST", body: input }
+    );
+    return {
+      results: Array.isArray(result?.results)
+        ? result.results.map((row) => camel<Record<string, unknown>>(row))
+        : [],
+    };
   },
   async getPayrollEntry(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}`);

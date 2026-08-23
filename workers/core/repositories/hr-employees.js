@@ -78,6 +78,39 @@ function payrollDeductionMethod(value) {
   return clean === 'daily' ? 'daily' : 'hourly';
 }
 
+function attendancePayrollMode(value) {
+  return cleanText(value).toLowerCase() === 'exempt'
+    ? 'exempt'
+    : 'required';
+}
+
+function socialInsuranceCategory(value) {
+  const clean = cleanText(value).toLowerCase();
+  if (!clean) return null;
+  if (![
+    'saudi_existing',
+    'saudi_new',
+    'gcc',
+    'non_saudi',
+  ].includes(clean)) {
+    const error = new Error('invalid_social_insurance_category');
+    error.code = 'core_hr:invalid_social_insurance_category';
+    throw error;
+  }
+  return clean;
+}
+
+function gosiWageMode(value) {
+  return cleanText(value).toLowerCase() === 'override'
+    ? 'override'
+    : 'derived';
+}
+
+function optionalMoneyHalalas(value, field) {
+  if (value === null || value === undefined || value === '') return null;
+  return moneyHalalas(value, field);
+}
+
 async function employmentFor(db, salonId, employeeId) {
   return dbFirst(
     db,
@@ -189,6 +222,26 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     updated_at: now,
   };
   const employmentInput = data.employment || data;
+  const socialInsuranceKeys = [
+    'socialInsuranceCategory',
+    'social_insurance_category',
+    'socialInsuranceEffectiveFrom',
+    'social_insurance_effective_from',
+    'socialInsuranceClassificationNote',
+    'social_insurance_classification_note',
+    'gosiWageMode',
+    'gosi_wage_mode',
+    'gosiContributoryWageOverrideHalalas',
+    'gosi_contributory_wage_override_halalas',
+    'gosiContributoryWageOverrideReason',
+    'gosi_contributory_wage_override_reason',
+    'gccHomeCountryCode',
+    'gcc_home_country_code',
+  ];
+  const socialInsuranceTouched = socialInsuranceKeys.some((key) =>
+    Object.prototype.hasOwnProperty.call(employmentInput, key)
+  );
+
   const employment = {
     salon_id: salonId,
     employee_id: id,
@@ -297,6 +350,71 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         existingEmployment?.payroll_deduction_method ??
         'hourly'
     ),
+    attendance_payroll_mode: attendancePayrollMode(
+      employmentInput.attendancePayrollMode ??
+        employmentInput.attendance_payroll_mode ??
+        existingEmployment?.attendance_payroll_mode ??
+        'required'
+    ),
+    attendance_payroll_exemption_reason:
+      attendancePayrollMode(
+        employmentInput.attendancePayrollMode ??
+          employmentInput.attendance_payroll_mode ??
+          existingEmployment?.attendance_payroll_mode ??
+          'required'
+      ) === 'exempt'
+        ? optionalText(
+            employmentInput.attendancePayrollExemptionReason ??
+              employmentInput.attendance_payroll_exemption_reason ??
+              existingEmployment?.attendance_payroll_exemption_reason
+          ) || null
+        : null,
+    social_insurance_category: socialInsuranceCategory(
+      employmentInput.socialInsuranceCategory ??
+        employmentInput.social_insurance_category ??
+        existingEmployment?.social_insurance_category
+    ),
+    social_insurance_effective_from: optionalText(
+      employmentInput.socialInsuranceEffectiveFrom ??
+        employmentInput.social_insurance_effective_from ??
+        existingEmployment?.social_insurance_effective_from
+    ) || null,
+    social_insurance_classification_note: optionalText(
+      employmentInput.socialInsuranceClassificationNote ??
+        employmentInput.social_insurance_classification_note ??
+        existingEmployment?.social_insurance_classification_note
+    ) || null,
+    gosi_wage_mode: gosiWageMode(
+      employmentInput.gosiWageMode ??
+        employmentInput.gosi_wage_mode ??
+        existingEmployment?.gosi_wage_mode ??
+        'derived'
+    ),
+    gosi_contributory_wage_override_halalas: optionalMoneyHalalas(
+      employmentInput.gosiContributoryWageOverrideHalalas ??
+        employmentInput.gosi_contributory_wage_override_halalas ??
+        existingEmployment?.gosi_contributory_wage_override_halalas,
+      'gosiContributoryWageOverride'
+    ),
+    gosi_contributory_wage_override_reason: optionalText(
+      employmentInput.gosiContributoryWageOverrideReason ??
+        employmentInput.gosi_contributory_wage_override_reason ??
+        existingEmployment?.gosi_contributory_wage_override_reason
+    ) || null,
+    gcc_home_country_code: optionalText(
+      employmentInput.gccHomeCountryCode ??
+        employmentInput.gcc_home_country_code ??
+        existingEmployment?.gcc_home_country_code
+    ) || null,
+    social_insurance_updated_by_uid: socialInsuranceTouched
+      ? optionalText(actor.uid) || null
+      : existingEmployment?.social_insurance_updated_by_uid || null,
+    social_insurance_updated_by_email: socialInsuranceTouched
+      ? optionalText(actor.email) || null
+      : existingEmployment?.social_insurance_updated_by_email || null,
+    social_insurance_updated_at: socialInsuranceTouched
+      ? now
+      : existingEmployment?.social_insurance_updated_at || null,
     shift_start_time: optionalText(
       employmentInput.shiftStartTime ??
         employmentInput.shift_start_time ??
@@ -369,9 +487,14 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
          contract_id, start_date, end_date, leave_balance, base_salary_halalas, housing_allowance_halalas,
          transportation_allowance_halalas, other_allowances_halalas, expected_work_days, expected_work_hours,
          daily_scheduled_hours, overtime_enabled, overtime_multiplier, payroll_deduction_method,
+         attendance_payroll_mode, attendance_payroll_exemption_reason,
+         social_insurance_category, social_insurance_effective_from, social_insurance_classification_note,
+         gosi_wage_mode, gosi_contributory_wage_override_halalas, gosi_contributory_wage_override_reason,
+         gcc_home_country_code, social_insurance_updated_by_uid, social_insurance_updated_by_email,
+         social_insurance_updated_at,
          shift_start_time, shift_end_time, weekly_off_days_json, allowed_zone_ids_json, employment_status,
          employee_code, fingerprint_number, admin_notes, updated_by_uid, updated_by_email, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (${Object.keys(employment).map(() => '?').join(', ')})
        ON CONFLICT(salon_id, employee_id) DO UPDATE SET
         title = excluded.title, job_title = excluded.job_title, department = excluded.department,
         employment_source = excluded.employment_source, partner_id = excluded.partner_id,
@@ -386,6 +509,18 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         overtime_enabled = excluded.overtime_enabled,
         overtime_multiplier = excluded.overtime_multiplier,
         payroll_deduction_method = excluded.payroll_deduction_method,
+        attendance_payroll_mode = excluded.attendance_payroll_mode,
+        attendance_payroll_exemption_reason = excluded.attendance_payroll_exemption_reason,
+        social_insurance_category = excluded.social_insurance_category,
+        social_insurance_effective_from = excluded.social_insurance_effective_from,
+        social_insurance_classification_note = excluded.social_insurance_classification_note,
+        gosi_wage_mode = excluded.gosi_wage_mode,
+        gosi_contributory_wage_override_halalas = excluded.gosi_contributory_wage_override_halalas,
+        gosi_contributory_wage_override_reason = excluded.gosi_contributory_wage_override_reason,
+        gcc_home_country_code = excluded.gcc_home_country_code,
+        social_insurance_updated_by_uid = excluded.social_insurance_updated_by_uid,
+        social_insurance_updated_by_email = excluded.social_insurance_updated_by_email,
+        social_insurance_updated_at = excluded.social_insurance_updated_at,
         shift_start_time = excluded.shift_start_time, shift_end_time = excluded.shift_end_time,
         weekly_off_days_json = excluded.weekly_off_days_json, allowed_zone_ids_json = excluded.allowed_zone_ids_json,
         employment_status = excluded.employment_status, employee_code = excluded.employee_code,

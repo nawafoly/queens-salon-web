@@ -45,6 +45,7 @@ type EmployeePayrollView = {
   overtime: number;
   delay: number;
   insurance: number;
+  employerGosi: number;
   deductions: number;
   absencePenalties: number;
   total: number;
@@ -70,6 +71,7 @@ function mapCorePayrollRecord(row: CorePayrollEntry): EmployeePayrollView {
     overtime: payrollRiyals(row.overtimeValueHalalas ?? row.overtimeBonusHalalas),
     delay,
     insurance,
+    employerGosi: payrollRiyals(row.employerGosiContributionHalalas),
     absencePenalties,
     deductions: Math.max(0, totalDeductions - delay - insurance - absencePenalties),
     total: payrollRiyals(row.finalSalaryHalalas),
@@ -195,7 +197,7 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
         <article className="employee-kpi-card is-danger">
           <span>إجمالي الخصومات</span>
           <strong>{money(latestDeductions)} ر.س</strong>
-          <small>التأمين والتأخير والغياب والخصومات</small>
+          <small>يشمل GOSI والغياب وبقية الخصومات المحفوظة في المسير</small>
           <FontAwesomeIcon icon={faCircleMinus} />
         </article>
       </section>
@@ -234,6 +236,8 @@ export default function EmployeePayrollPage({ session, onPortalChange }: Props) 
                   <div><span>الأساسي</span><strong>{money(row.baseSalary)} ر.س</strong></div>
                   <div className="is-success"><span>الإضافي</span><strong>+ {money(row.overtime)} ر.س</strong></div>
                   <div className="is-danger"><span>الخصومات</span><strong>- {money(deductions)} ر.س</strong></div>
+                  <div className="is-danger"><span>خصم GOSI</span><strong>- {money(row.insurance)} ر.س</strong></div>
+                  <div><span>مساهمة المنشأة GOSI</span><strong>{money(row.employerGosi)} ر.س</strong><small>لا تخصم من صافي الراتب</small></div>
                   <div className="is-net"><span>الصافي</span><strong>{money(net)} ر.س</strong></div>
                 </div>
 

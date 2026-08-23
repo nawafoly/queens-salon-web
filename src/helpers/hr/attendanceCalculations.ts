@@ -1,5 +1,5 @@
 import { isWeeklyOffDateKey, type WorkScheduleWeekday } from "./workSchedule.ts";
-import { calculateAttendanceMinutePolicy } from "./attendancePolicyMath.js";
+import { calculateAttendanceLatePresentation } from "./attendancePolicyMath.js";
 import {
   calculatePermissionCoverage,
   permissionIntervalsFromAttendanceRecords,
@@ -35,6 +35,10 @@ export type AttendanceDayComputation = {
   expectedHours: number;
   actualHours: number;
   lateHours: number;
+  actualLateMinutes: number;
+  compensatedLateMinutes: number;
+  pendingCompensationMinutes: number;
+  lateGraceMinutes: number;
   rawMissingHours: number;
   permissionRequestedHours: number;
   permissionCoveredHours: number;
@@ -238,13 +242,6 @@ export function computeAttendanceDay(
     Number.isFinite(checkOutMs) && scheduleEndMs !== null
       ? Math.max(0, Math.round((scheduleEndMs - checkOutMs) / 60000))
       : 0;
-  const minutePolicy = calculateAttendanceMinutePolicy({
-    actualLateMinutes,
-    earlyLeaveMinutes: actualEarlyLeaveMinutes,
-    afterScheduleMinutes,
-  });
-  const lateHours = roundHours(minutePolicy.uncompensatedLateMinutes / 60);
-  const overtimeHours = isComplete ? roundHours(minutePolicy.extraMinutes / 60) : 0;
   const isBeforeScheduledEnd =
     !isComplete &&
     Number.isFinite(checkInMs) &&
@@ -252,6 +249,16 @@ export function computeAttendanceDay(
     scheduleEndMs !== null &&
     date === riyadhDateKey(new Date().toISOString()) &&
     Date.now() <= scheduleEndMs;
+  const minutePolicy = calculateAttendanceLatePresentation({
+    actualLateMinutes,
+    earlyLeaveMinutes: actualEarlyLeaveMinutes,
+    afterScheduleMinutes,
+    lateGraceMinutes: policyMinutes(schedule.lateGraceMinutes),
+    compensationWindowOpen: isBeforeScheduledEnd,
+    hasCheckOut: Number.isFinite(checkOutMs),
+  });
+  const lateHours = roundHours(minutePolicy.displayLateMinutes / 60);
+  const overtimeHours = isComplete ? roundHours(minutePolicy.extraMinutes / 60) : 0;
   const rawMissingMinutes = isComplete
     ? minutePolicy.missingMinutes
     : Math.max(0, Math.round(expectedHours * 60 - actualHours * 60));
@@ -276,6 +283,10 @@ export function computeAttendanceDay(
     expectedHours,
     actualHours,
     lateHours,
+    actualLateMinutes: minutePolicy.actualLateMinutes,
+    compensatedLateMinutes: minutePolicy.compensatedLateMinutes,
+    pendingCompensationMinutes: minutePolicy.pendingCompensationMinutes,
+    lateGraceMinutes: minutePolicy.lateGraceMinutes,
     rawMissingHours,
     permissionRequestedHours: roundPermissionHours(permissionCoverage.requestedMinutes),
     permissionCoveredHours: roundPermissionHours(permissionCoverage.coveredMissingMinutes),

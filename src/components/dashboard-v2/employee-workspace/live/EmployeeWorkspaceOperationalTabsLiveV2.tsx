@@ -30,6 +30,17 @@ function formatNumber(value: unknown) {
   return Number.isFinite(number) ? number.toLocaleString("ar-SA") : "0";
 }
 
+function positivePayrollAmount(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function formatPayrollMoney(value: unknown) {
+  const amount = Number(value || 0);
+  const safe = Number.isFinite(amount) ? amount : 0;
+  return `${safe.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س`;
+}
+
 function safeMonthKey(value: string) {
   const clean = cleanText(value);
   return /^\d{4}-\d{2}$/.test(clean) ? clean : new Date().toISOString().slice(0, 7);
@@ -137,6 +148,8 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
   const rawStatus = cleanText(row.status).toLowerCase();
   if (type === "leave") return "إجازة";
   if (type === "absent" || row.absentFullDay || rawStatus === "absent") return "غياب";
+  if (rawStatus === "partial" || rawStatus === "incomplete") return "بصمة ناقصة";
+  if (Number(row.pendingCompensationMinutes || 0) > 0) return "ضمن مهلة التعويض";
   if (Number(row.lateMinutes || 0) > 0) return "تأخير";
   if (Number(row.earlyLeaveMinutes || 0) > 0) return "خروج مبكر";
   if (cleanText(row.checkInAtClient || row.checkOutAtClient)) return "حضور";
@@ -147,7 +160,7 @@ function attendanceRowStatus(row?: EmployeeAttendanceRowLiveV2 | null) {
 function attendanceStatusTone(status: string): "default" | "gold" | "success" | "danger" {
   if (status === "حضور") return "success";
   if (status.startsWith("استئذان")) return "gold";
-  if (status === "تأخير" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
+  if (status === "تأخير" || status === "ضمن مهلة التعويض" || status === "بصمة ناقصة" || status === "خروج مبكر" || status === "إجازة" || status === "راحة" || status === "إجازة أسبوعية" || status === "راحة / يوم استثنائي") return "gold";
   if (status === "غياب") return "danger";
   return "default";
 }
@@ -159,6 +172,8 @@ function attendanceSurfaceTone(status: string): "neutral" | "gold" | "success" |
 
 function attendanceReviewText(status: string, row?: EmployeeAttendanceRowLiveV2 | null) {
   if (status === "غياب") return "يحتاج مراجعة";
+  if (status === "بصمة ناقصة") return "بصمة ناقصة — يجب مراجعتها قبل اعتماد الراتب";
+  if (status === "ضمن مهلة التعويض") return `تأخير ${formatNumber(row?.pendingCompensationMinutes || 0)} دقيقة — بانتظار التعويض عند الانصراف`;
   if (status === "تأخير") return `تأخير ${formatNumber(row?.lateMinutes || 0)} دقيقة`;
   if (status === "خروج مبكر") return `خروج مبكر ${formatNumber(row?.earlyLeaveMinutes || 0)} دقيقة`;
   if (status === "راحة") return "راحة معتمدة";
@@ -680,6 +695,7 @@ export type EmployeeAttendanceRowLiveV2 = {
   checkInAtClient?: string;
   checkOutAtClient?: string;
   lateMinutes?: number;
+  pendingCompensationMinutes?: number;
   earlyLeaveMinutes?: number;
   shiftName?: string;
   shiftSourceLabel?: string;
@@ -1177,60 +1193,148 @@ export function EmployeeAttendanceTabLiveV2({
 export type EmployeePayrollTabLiveV2Props = {
   readOnly: boolean;
   monthlySalary: string;
+  housingAllowance: string;
+  transportationAllowance: string;
+  otherAllowances: string;
+  socialInsuranceCategory: "" | "saudi_existing" | "saudi_new" | "gcc" | "non_saudi";
+  socialInsuranceEffectiveFrom: string;
+  socialInsuranceClassificationNote: string;
+  gosiWageMode: "derived" | "override";
+  gosiContributoryWageOverride: string;
+  gosiContributoryWageOverrideReason: string;
+  gccHomeCountryCode: string;
   workDays: string;
   dailyHours: string;
   monthlyHours: string;
   overtimeEnabled: boolean;
   overtimeMultiplier: string;
   deductionMethod: string;
+  attendancePayrollMode: "required" | "exempt";
+  attendancePayrollExemptionReason: string;
   savingSettings: boolean;
   settingsMessage?: string;
   onMonthlySalaryChange: (value: string) => void;
+  onHousingAllowanceChange: (value: string) => void;
+  onTransportationAllowanceChange: (value: string) => void;
+  onOtherAllowancesChange: (value: string) => void;
+  onSocialInsuranceCategoryChange: (value: string) => void;
+  onSocialInsuranceEffectiveFromChange: (value: string) => void;
+  onSocialInsuranceClassificationNoteChange: (value: string) => void;
+  onGosiWageModeChange: (value: string) => void;
+  onGosiContributoryWageOverrideChange: (value: string) => void;
+  onGosiContributoryWageOverrideReasonChange: (value: string) => void;
+  onGccHomeCountryCodeChange: (value: string) => void;
   onWorkDaysChange: (value: string) => void;
   onDailyHoursChange: (value: string) => void;
   onMonthlyHoursChange: (value: string) => void;
   onOvertimeEnabledChange: (value: boolean) => void;
   onOvertimeMultiplierChange: (value: string) => void;
   onDeductionMethodChange: (value: string) => void;
+  onAttendancePayrollModeChange: (
+    value: "required" | "exempt"
+  ) => void;
+  onAttendancePayrollExemptionReasonChange: (
+    value: string
+  ) => void;
   onSaveSettings: () => void;
 };
 
 export function EmployeePayrollTabLiveV2({
   readOnly,
   monthlySalary,
+  housingAllowance,
+  transportationAllowance,
+  otherAllowances,
+  socialInsuranceCategory,
+  socialInsuranceEffectiveFrom,
+  socialInsuranceClassificationNote,
+  gosiWageMode,
+  gosiContributoryWageOverride,
+  gosiContributoryWageOverrideReason,
+  gccHomeCountryCode,
   workDays,
   dailyHours,
   monthlyHours,
   overtimeEnabled,
   overtimeMultiplier,
   deductionMethod,
+  attendancePayrollMode,
+  attendancePayrollExemptionReason,
   savingSettings,
   settingsMessage,
   onMonthlySalaryChange,
+  onHousingAllowanceChange,
+  onTransportationAllowanceChange,
+  onOtherAllowancesChange,
+  onSocialInsuranceCategoryChange,
+  onSocialInsuranceEffectiveFromChange,
+  onSocialInsuranceClassificationNoteChange,
+  onGosiWageModeChange,
+  onGosiContributoryWageOverrideChange,
+  onGosiContributoryWageOverrideReasonChange,
+  onGccHomeCountryCodeChange,
   onWorkDaysChange,
   onDailyHoursChange,
   onMonthlyHoursChange,
   onOvertimeEnabledChange,
   onOvertimeMultiplierChange,
   onDeductionMethodChange,
+  onAttendancePayrollModeChange,
+  onAttendancePayrollExemptionReasonChange,
   onSaveSettings,
 }: EmployeePayrollTabLiveV2Props) {
+  const contractedMonthlySalary =
+    positivePayrollAmount(monthlySalary) +
+    positivePayrollAmount(housingAllowance) +
+    positivePayrollAmount(transportationAllowance) +
+    positivePayrollAmount(otherAllowances);
+  const gosiSetupIncomplete =
+    !cleanText(socialInsuranceCategory) ||
+    !cleanText(socialInsuranceEffectiveFrom) ||
+    (gosiWageMode === "override" &&
+      (positivePayrollAmount(gosiContributoryWageOverride) <= 0 ||
+        !cleanText(gosiContributoryWageOverrideReason))) ||
+    (socialInsuranceCategory === "gcc" && !cleanText(gccHomeCountryCode));
+
   return (
     <div className="dsv2-ew-tab-panel">
       <WorkspaceTabHeaderV2
         title="سجل الرواتب"
-        description="إعدادات راتب الموظفة واحتساب الساعات والإضافي."
+        description="هيكل الراتب، إعدادات الدوام، وتصنيف التأمينات التي يستخدمها مسير الرواتب."
         badge={<WorkspaceStatusBadgeV2 tone={overtimeEnabled ? "success" : "gold"}>{overtimeEnabled ? "الإضافي مفعّل" : "الإضافي متوقف"}</WorkspaceStatusBadgeV2>}
       />
 
+      <div className="dsv2-cluster">
+        <button
+          type="button"
+          className="dsv2-btn dsv2-btn--primary"
+          disabled={readOnly || savingSettings}
+          onClick={onSaveSettings}
+        >
+          {savingSettings ? "جاري الحفظ..." : "حفظ إعدادات الراتب والتأمينات"}
+        </button>
+      </div>
+
+      {settingsMessage ? (
+        <WorkspaceNoticeV2 title="حالة الحفظ" description={settingsMessage} tone="success" />
+      ) : null}
+
       <WorkspaceCardV2
-        title="إعدادات الراتب"
-        description="القيم التي تدخل في الحساب الشهري."
-        actions={<button type="button" className="dsv2-btn dsv2-btn--primary dsv2-btn--sm" disabled={readOnly || savingSettings} onClick={onSaveSettings}>{savingSettings ? "حفظ..." : "حفظ الإعدادات"}</button>}
+        title="هيكل الراتب والدوام"
+        description="الراتب الأساسي والبدلات محفوظة كعناصر مستقلة؛ إجمالي الراتب التعاقدي يُحسب تلقائيًا من مجموعها."
       >
         <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
-          <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الشهري">
+          <DashboardFieldV2 id="employee-live-v2-salary" label="الراتب الأساسي">
             <input id="employee-live-v2-salary" className="dsv2-input" type="number" min="0" value={monthlySalary} disabled={readOnly} onChange={(event) => onMonthlySalaryChange(event.target.value)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="employee-live-v2-housing-allowance" label="بدل السكن">
+            <input id="employee-live-v2-housing-allowance" className="dsv2-input" type="number" min="0" value={housingAllowance} disabled={readOnly} onChange={(event) => onHousingAllowanceChange(event.target.value)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="employee-live-v2-transportation-allowance" label="بدل النقل">
+            <input id="employee-live-v2-transportation-allowance" className="dsv2-input" type="number" min="0" value={transportationAllowance} disabled={readOnly} onChange={(event) => onTransportationAllowanceChange(event.target.value)} />
+          </DashboardFieldV2>
+          <DashboardFieldV2 id="employee-live-v2-other-allowances" label="بدلات أخرى">
+            <input id="employee-live-v2-other-allowances" className="dsv2-input" type="number" min="0" value={otherAllowances} disabled={readOnly} onChange={(event) => onOtherAllowancesChange(event.target.value)} />
           </DashboardFieldV2>
           <DashboardFieldV2 id="employee-live-v2-work-days" label="أيام العمل">
             <input id="employee-live-v2-work-days" className="dsv2-input" type="number" min="0" value={workDays} disabled={readOnly} onChange={(event) => onWorkDaysChange(event.target.value)} />
@@ -1244,6 +1348,64 @@ export function EmployeePayrollTabLiveV2({
           <DashboardFieldV2 id="employee-live-v2-overtime-multiplier" label="معامل الإضافي">
             <input id="employee-live-v2-overtime-multiplier" className="dsv2-input" type="number" min="0" step="0.1" value={overtimeMultiplier} disabled={readOnly || !overtimeEnabled} onChange={(event) => onOvertimeMultiplierChange(event.target.value)} />
           </DashboardFieldV2>
+          <DashboardFieldV2
+            id="employee-live-v2-attendance-payroll-mode"
+            label="سياسة الحضور للراتب"
+          >
+            <DashboardSelectV2
+              id="employee-live-v2-attendance-payroll-mode"
+              value={attendancePayrollMode}
+              disabled={readOnly}
+              options={[
+                {
+                  value: "required",
+                  label: "يعتمد على البصمة",
+                },
+                {
+                  value: "exempt",
+                  label: "معفى من البصمة — راتب حسب الجدول",
+                },
+              ]}
+              onChange={(value) =>
+                onAttendancePayrollModeChange(
+                  value === "exempt"
+                    ? "exempt"
+                    : "required"
+                )
+              }
+            />
+          </DashboardFieldV2>
+
+          {attendancePayrollMode === "exempt" ? (
+            <DashboardFieldV2
+              id="employee-live-v2-attendance-exemption-reason"
+              label="سبب الإعفاء"
+            >
+              <input
+                id="employee-live-v2-attendance-exemption-reason"
+                className="dsv2-input"
+                value={attendancePayrollExemptionReason}
+                disabled={readOnly}
+                placeholder="مثال: موظف إداري / إدارة"
+                onChange={(event) =>
+                  onAttendancePayrollExemptionReasonChange(
+                    event.target.value
+                  )
+                }
+              />
+            </DashboardFieldV2>
+          ) : null}
+
+          {attendancePayrollMode === "exempt" ? (
+            <div data-payroll-attendance-exempt-notice="true">
+              <WorkspaceNoticeV2
+                title="معفى من البصمة — الجدول يبقى معتمدًا"
+                description="الإعفاء يلغي شرط البصمة والتأخير والخروج المبكر من الراتب فقط. جدول الدوام الرسمي يبقى مصدر أيام وساعات العمل والفترة والإجازات والغياب المسجل."
+                tone="gold"
+              />
+            </div>
+          ) : null}
+
           <DashboardFieldV2 id="employee-live-v2-deduction" label="طريقة الخصم">
             <DashboardSelectV2
               id="employee-live-v2-deduction"
@@ -1259,6 +1421,18 @@ export function EmployeePayrollTabLiveV2({
           </DashboardFieldV2>
         </div>
 
+        <div className="dsv2-ew-metrics">
+          <WorkspaceMetricV2
+            label="إجمالي الراتب التعاقدي"
+            value={formatPayrollMoney(contractedMonthlySalary)}
+            tone={contractedMonthlySalary > 0 ? "success" : "neutral"}
+          />
+          <WorkspaceMetricV2
+            label="مكونات الراتب"
+            value="أساسي + سكن + نقل + بدلات أخرى"
+          />
+        </div>
+
         <WorkspaceSwitchV2
           checked={overtimeEnabled}
           disabled={readOnly}
@@ -1267,7 +1441,138 @@ export function EmployeePayrollTabLiveV2({
           onChange={onOvertimeEnabledChange}
         />
 
-        {settingsMessage ? <WorkspaceNoticeV2 title="حالة الحفظ" description={settingsMessage} tone="success" /> : null}
+      </WorkspaceCardV2>
+
+      <WorkspaceCardV2
+        title="التأمينات الاجتماعية (GOSI)"
+        description="التصنيف والسياسة محفوظان مع تاريخ السريان؛ الحساب المالي نفسه ينفذه محرك GOSI المركزي عند إنشاء المسير."
+      >
+        <div className="dsv2-ew-form-grid dsv2-ew-form-grid--3">
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-category" label="تصنيف التأمينات">
+            <DashboardSelectV2
+              id="employee-live-v2-social-insurance-category"
+              value={socialInsuranceCategory}
+              disabled={readOnly}
+              options={[
+                { value: "", label: "غير محدد" },
+                { value: "saudi_existing", label: "سعودي — مشترك بالنظام القائم" },
+                { value: "saudi_new", label: "سعودي — النظام الجديد" },
+                { value: "gcc", label: "خليجي — مد الحماية" },
+                { value: "non_saudi", label: "غير سعودي" },
+              ]}
+              onChange={onSocialInsuranceCategoryChange}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-effective-from" label="تاريخ سريان التصنيف">
+            <DashboardDatePickerV2
+              id="employee-live-v2-social-insurance-effective-from"
+              value={socialInsuranceEffectiveFrom}
+              disabled={readOnly}
+              clearable
+              onChange={onSocialInsuranceEffectiveFromChange}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="employee-live-v2-social-insurance-note" label="سبب / ملاحظة التصنيف">
+            <input
+              id="employee-live-v2-social-insurance-note"
+              className="dsv2-input"
+              value={socialInsuranceClassificationNote}
+              disabled={readOnly}
+              placeholder="مثال: حسب سجل الاشتراك أو مستند الموظفة"
+              onChange={(event) => onSocialInsuranceClassificationNoteChange(event.target.value)}
+            />
+          </DashboardFieldV2>
+
+          <DashboardFieldV2 id="employee-live-v2-gosi-wage-mode" label="طريقة أجر الاشتراك">
+            <DashboardSelectV2
+              id="employee-live-v2-gosi-wage-mode"
+              value={gosiWageMode}
+              disabled={readOnly}
+              options={[
+                { value: "derived", label: "تلقائي من العناصر النظامية" },
+                { value: "override", label: "أجر اشتراك معتمد يدويًا" },
+              ]}
+              onChange={onGosiWageModeChange}
+            />
+          </DashboardFieldV2>
+
+          {gosiWageMode === "override" ? (
+            <>
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override" label="أجر الاشتراك المعتمد">
+                <input
+                  id="employee-live-v2-gosi-wage-override"
+                  className="dsv2-input"
+                  type="number"
+                  min="0"
+                  value={gosiContributoryWageOverride}
+                  disabled={readOnly}
+                  onChange={(event) => onGosiContributoryWageOverrideChange(event.target.value)}
+                />
+              </DashboardFieldV2>
+              <DashboardFieldV2 id="employee-live-v2-gosi-wage-override-reason" label="سبب الأجر المعتمد">
+                <input
+                  id="employee-live-v2-gosi-wage-override-reason"
+                  className="dsv2-input"
+                  value={gosiContributoryWageOverrideReason}
+                  disabled={readOnly}
+                  placeholder="لماذا يختلف عن الاحتساب التلقائي؟"
+                  onChange={(event) => onGosiContributoryWageOverrideReasonChange(event.target.value)}
+                />
+              </DashboardFieldV2>
+            </>
+          ) : null}
+
+          {socialInsuranceCategory === "gcc" ? (
+            <DashboardFieldV2 id="employee-live-v2-gcc-country" label="دولة الموظفة الخليجية">
+              <input
+                id="employee-live-v2-gcc-country"
+                className="dsv2-input"
+                value={gccHomeCountryCode}
+                disabled={readOnly}
+                placeholder="مثال: KW / AE / BH / OM / QA"
+                onChange={(event) => onGccHomeCountryCodeChange(event.target.value)}
+              />
+            </DashboardFieldV2>
+          ) : null}
+        </div>
+
+        {gosiSetupIncomplete ? (
+          <WorkspaceNoticeV2
+            title="إعداد التأمينات غير مكتمل"
+            description="لن يمكن اعتماد مسير الراتب حتى يكتمل تصنيف التأمينات وتاريخ السريان وأي بيانات مطلوبة لأجر الاشتراك."
+            tone="danger"
+          />
+        ) : (
+          <WorkspaceNoticeV2
+            title="إعداد التأمينات مكتمل"
+            description="بيانات التصنيف وأجر الاشتراك جاهزة للحساب المركزي عند إنشاء مسير الرواتب."
+            tone="success"
+          />
+        )}
+
+        {gosiWageMode === "derived" ? (
+          <WorkspaceNoticeV2
+            title="أجر الاشتراك يُحسب تلقائيًا"
+            description="لا تدخل نسبة Pension أو SANED يدويًا. محرك GOSI المركزي يحدد السياسة الفعالة حسب تصنيف الموظفة وتاريخ المسير، ويحتفظ بالـSnapshot المستخدم."
+            tone="neutral"
+          />
+        ) : (
+          <WorkspaceNoticeV2
+            title="Override موثق"
+            description="استخدم الأجر المعتمد يدويًا فقط عندما يكون لديك أجر اشتراك موثق مختلف، ويجب تسجيل السبب حتى يمكن فهم الحركة مستقبلًا."
+            tone="gold"
+          />
+        )}
+
+        {socialInsuranceCategory === "gcc" ? (
+          <WorkspaceNoticeV2
+            title="الخليجي مستقل عن غير السعودي"
+            description="لن يحوله النظام إلى Non-Saudi تلقائيًا. يبقى اعتماد الراتب متوقفًا حتى تكتمل بيانات وسياسة مد الحماية."
+            tone="gold"
+          />
+        ) : null}
       </WorkspaceCardV2>
     </div>
   );

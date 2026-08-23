@@ -88,7 +88,7 @@ if (!errors.length) {
     "resolveAssignedAttendanceZoneId",
     "isCheckInWindowClosed",
     "CoreHrService.resolveEmployeeShift",
-    "CoreHrService.listLeaves",
+    "CoreHrService.listMyLeaves",
     "profile: {}",
     "buildApprovedLeaveDateKeys",
     "listPermissionRequestsByEmployee",

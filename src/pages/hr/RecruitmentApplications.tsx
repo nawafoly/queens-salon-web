@@ -31,6 +31,7 @@ import {
   type RecruitmentApplication,
 } from "../../services/employeeHub";
 import { cleanText, type HrSession } from "./shared";
+import { usePermissions } from "../../security/PermissionContext";
 
 type Props = {
   session: HrSession;
@@ -112,6 +113,8 @@ function initials(value: unknown) {
 
 export default function RecruitmentApplicationsPage({ session }: Props) {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission("recruitment.manage");
   const [items, setItems] = useState<RecruitmentApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -288,10 +291,12 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
             <FontAwesomeIcon icon={faRotate} spin={loading} />
             <span>{loading ? "جارٍ التحديث" : "تحديث"}</span>
           </button>
-          <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setCreateOpen(true)}>
-            <FontAwesomeIcon icon={faPlus} />
-            <span>طلب جديد</span>
-          </button>
+          {canManage ? (
+            <button className="dsv2-btn dsv2-btn--primary" type="button" onClick={() => setCreateOpen(true)}>
+              <FontAwesomeIcon icon={faPlus} />
+              <span>طلب جديد</span>
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -451,7 +456,8 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
                 </div>
               ) : null}
 
-              <footer className="recruitment-v2-actions">
+              {canManage ? (
+                <footer className="recruitment-v2-actions">
                 <button
                   type="button"
                   className="dsv2-btn dsv2-btn--secondary"
@@ -488,7 +494,8 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
                   <FontAwesomeIcon icon={faUserPlus} />
                   <span>تحويل إلى حساب موظف</span>
                 </button>
-              </footer>
+                </footer>
+              ) : null}
             </>
           ) : (
             <DashboardEmptyStateV2
@@ -502,7 +509,7 @@ export default function RecruitmentApplicationsPage({ session }: Props) {
       </section>
 
       <DashboardModalV2
-        open={createOpen}
+        open={canManage && createOpen}
         onClose={closeCreate}
         title="طلب توظيف جديد"
         description="أدخل بيانات التواصل والوظيفة المطلوبة."

@@ -48,9 +48,11 @@ import {
   TEMP_WEEKLY_OFF_SYNC_EVENT,
 } from "../services/temporaryWeeklyOffService";
 import type {
+  CoreHrEmployee,
   CoreHrSchedule,
   CoreResolvedShift,
   CoreScheduleException,
+  CoreLeave,
 } from "../types/hrCoreApi";
 import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
@@ -63,7 +65,7 @@ import {
   listAttendanceByDateRangeForEmployeeFromWorker,
 } from "../services/attendanceWorkerService";
 import {
-  createLeaveRequest,
+  createManagedLeaveRequest,
   createEmployeeNotification,
   listEmployeeLeaveRequests,
   type EmployeeLeaveRequest,
@@ -118,6 +120,11 @@ import {
 import {
   generatePayrollEntriesForMonths,
 } from "../services/CorePayrollService";
+import {
+  calculateGosi,
+  type GosiInsuranceCategory,
+  type GosiWageMode,
+} from "../helpers/hr/gosiPolicy.js";
 
 import {
   DEFAULT_CLOSE_TIME,
@@ -207,6 +214,36 @@ import {
 
 function cleanText(value: unknown) {
   return String(value || "").trim();
+}
+
+function canonicalDisplayLeaveForEmployee(
+  leaves: readonly CoreLeave[],
+  employeeIdValue: unknown,
+  todayDateKey: string
+) {
+  const employeeId = cleanText(employeeIdValue);
+  if (!employeeId) return null;
+
+  return (
+    leaves
+      .filter((leave) => {
+        if (cleanText(leave.employeeId) !== employeeId) return false;
+        if (cleanText(leave.status).toLowerCase() !== "approved") return false;
+        if (cleanText(leave.durationKind).toLowerCase() === "partial") return false;
+
+        const fromDate = normalizeLeaveUntil(leave.startDate);
+        const toDate = normalizeLeaveUntil(leave.endDate) || fromDate;
+        return !!fromDate && !!toDate && toDate >= todayDateKey;
+      })
+      .sort((left, right) => {
+        const leftFrom = normalizeLeaveUntil(left.startDate);
+        const rightFrom = normalizeLeaveUntil(right.startDate);
+        const leftCurrent = leftFrom <= todayDateKey;
+        const rightCurrent = rightFrom <= todayDateKey;
+        if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
+        return leftFrom.localeCompare(rightFrom);
+      })[0] || null
+  );
 }
 
 const CORE_WEEKDAY_NUMBER: Record<WeekdayKey, number> = {
@@ -509,6 +546,42 @@ function booleanSetting(value: unknown) {
 
 function payrollDeductionMethodSetting(value: unknown): "hourly" | "daily" {
   return cleanText(value).toLowerCase() === "daily" ? "daily" : "hourly";
+}
+
+function payrollAttendanceModeSetting(
+  value: unknown
+): "required" | "exempt" {
+  return cleanText(value).toLowerCase() === "exempt"
+    ? "exempt"
+    : "required";
+}
+
+type PayrollSocialInsuranceCategory = "" | GosiInsuranceCategory;
+
+function payrollSocialInsuranceCategorySetting(
+  value: unknown
+): PayrollSocialInsuranceCategory {
+  const category = cleanText(value).toLowerCase();
+  return [
+    "saudi_existing",
+    "saudi_new",
+    "gcc",
+    "non_saudi",
+  ].includes(category)
+    ? (category as GosiInsuranceCategory)
+    : "";
+}
+
+function payrollGosiWageModeSetting(value: unknown): GosiWageMode {
+  return cleanText(value).toLowerCase() === "override"
+    ? "override"
+    : "derived";
+}
+
+function payrollHalalasToInputRiyals(value: unknown) {
+  const halalas = Number(value ?? 0);
+  if (!Number.isFinite(halalas) || halalas <= 0) return "";
+  return String(roundPayrollNumber(halalas / 100));
 }
 
 function roundPayrollNumber(value: number) {
@@ -979,6 +1052,170 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
   };
 }
 
+function normalizeCoreEmployeeMasterPhone(value: unknown) {
+  const raw = cleanText(value);
+  if (!raw || /[A-Za-z]/.test(raw)) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = `966${digits.slice(5)}`;
+  if (digits.startsWith("9660")) digits = `966${digits.slice(4)}`;
+  if (/^05\d{8}$/.test(digits)) return digits;
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
+  if (/^9665\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
+  return "";
+}
+
+function coreEmployeeMasterBoolean(value: unknown, fallback: boolean) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function coreEmployeeMasterTextArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueCleanTexts(value);
+  }
+
+  if (typeof value === "string") {
+    const clean = value.trim();
+    if (!clean) return [];
+
+    try {
+      const parsed = JSON.parse(clean);
+      return Array.isArray(parsed)
+        ? uniqueCleanTexts(parsed)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function overlayCoreEmployeeMasterFields(
+  row: StaffPublicUi,
+  coreEmployee: CoreHrEmployee
+): StaffPublicUi {
+  const core = coreEmployee;
+  const employment = (core.employment || {}) as Record<string, unknown>;
+  const hasCoreField = (field: string) =>
+    Object.prototype.hasOwnProperty.call(core, field);
+  const hasEmploymentField = (field: string) =>
+    Object.prototype.hasOwnProperty.call(employment, field);
+
+  const includeInEmployeeManagement = hasCoreField("includeInEmployeeManagement")
+    ? coreEmployeeMasterBoolean(core.includeInEmployeeManagement, true)
+    : row.includeInEmployeeManagement !== false;
+
+  const hasCoreAllowedZoneIds =
+    hasEmploymentField("allowed_zone_ids_json") ||
+    hasEmploymentField("allowedZoneIds");
+
+  const coreAllowedZoneIds =
+    coreEmployeeMasterTextArray(
+      employment.allowed_zone_ids_json ??
+        employment.allowedZoneIds
+    );
+
+  const corePrimaryAttendanceZoneId =
+    coreAllowedZoneIds[0] || "";
+
+  return {
+    ...row,
+
+    // Stage 4A.1: Malikat Core is canonical for Employee Master fields.
+    // Booking/UI-only fields such as showOnBooking and specialties stay on row.
+    name: hasCoreField("name") ? cleanText(core.name) : cleanText(row.name),
+    email: hasCoreField("email") ? cleanText(core.email) : cleanText(row.email),
+    phone:
+      hasCoreField("phoneNormalized") || hasCoreField("phone")
+        ? normalizeCoreEmployeeMasterPhone(core.phoneNormalized ?? core.phone)
+        : cleanText(row.phone),
+    active: hasCoreField("status")
+      ? cleanText(core.status).toLowerCase() === "active"
+      : row.active,
+    avatarUrl: hasCoreField("avatarUrl")
+      ? cleanText(core.avatarUrl)
+      : cleanText(row.avatarUrl),
+    bio: hasCoreField("bio") ? cleanText(core.bio) : cleanText(row.bio),
+    cvUrl: hasCoreField("cvUrl") ? cleanText(core.cvUrl) : cleanText(row.cvUrl),
+    showOnAbout: hasCoreField("showOnAbout")
+      ? coreEmployeeMasterBoolean(core.showOnAbout, false)
+      : row.showOnAbout,
+    includeInEmployeeManagement,
+    employeeProfileEnabled: includeInEmployeeManagement,
+    rating: hasCoreField("rating")
+      ? Math.min(5, safeNonNegativeNumber(core.rating, 0))
+      : Math.min(5, safeNonNegativeNumber(row.rating, 0)),
+    reviewsCount: hasCoreField("reviewsCount")
+      ? Math.floor(safeNonNegativeNumber(core.reviewsCount, 0))
+      : Math.floor(safeNonNegativeNumber(row.reviewsCount, 0)),
+
+    // Core D1 employment fields overlay compatibility mirrors last.
+    department: hasEmploymentField("department")
+      ? cleanText(employment.department)
+      : cleanText(row.department),
+    title: hasEmploymentField("title")
+      ? cleanText(employment.title)
+      : cleanText(row.title),
+    employmentSource:
+      hasEmploymentField("employment_source") ||
+      hasEmploymentField("employmentSource")
+        ? cleanText(
+            employment.employment_source ??
+              employment.employmentSource
+          )
+        : cleanText(row.employmentSource),
+    partnerId:
+      hasEmploymentField("partner_id") ||
+      hasEmploymentField("partnerId")
+        ? cleanText(
+            employment.partner_id ??
+              employment.partnerId
+          )
+        : cleanText(row.partnerId),
+    partnerMemberId:
+      hasEmploymentField("partner_member_id") ||
+      hasEmploymentField("partnerMemberId")
+        ? cleanText(
+            employment.partner_member_id ??
+              employment.partnerMemberId
+          )
+        : cleanText(row.partnerMemberId),
+    contractId:
+      hasEmploymentField("contract_id") ||
+      hasEmploymentField("contractId")
+        ? cleanText(
+            employment.contract_id ??
+              employment.contractId
+          )
+        : cleanText(row.contractId),
+    ...(hasCoreAllowedZoneIds
+      ? {
+          allowedZoneIds:
+            coreAllowedZoneIds,
+          allowedAttendanceZoneId:
+            corePrimaryAttendanceZoneId,
+          attendanceZoneId:
+            corePrimaryAttendanceZoneId,
+          assignedAttendanceZoneId:
+            corePrimaryAttendanceZoneId,
+          attendanceScopeId:
+            corePrimaryAttendanceZoneId,
+        }
+      : {}),
+    employmentEndDate:
+      hasEmploymentField("end_date") ||
+      hasEmploymentField("endDate") ||
+      hasEmploymentField("employmentEndDate")
+        ? normalizeLeaveUntil(
+            employment.end_date ??
+              employment.endDate ??
+              employment.employmentEndDate
+          )
+        : normalizeLeaveUntil(row.employmentEndDate),
+  };
+}
+
 type EmployeeLoadOptions = {
   fromServer?: boolean;
   strict?: boolean;
@@ -1331,21 +1568,104 @@ function buildEmployeeSaveVerificationSnapshot(
     showOnAbout: staff.showOnAbout === true,
     showOnBooking: staff.showOnBooking === true,
     includeInEmployeeManagement: staff.includeInEmployeeManagement === true,
+    department: cleanText(staff.department),
+    title: cleanText(staff.title),
+    employmentSource: cleanText(staff.employmentSource || "salon"),
+    partnerId: cleanText(staff.partnerId),
+    partnerMemberId: cleanText(staff.partnerMemberId),
+    contractId: cleanText(staff.contractId),
     avatarUrl: resolveAvatarFromAssets(pickAvatarUrl(staff)),
     bio: cleanText(staff.bio),
     cvUrl: cleanText(staff.cvUrl),
     rating: Math.min(5, safeNonNegativeNumber(staff.rating, 0)),
-    reviewsCount: Math.floor(safeNonNegativeNumber(staff.reviewsCount || staff.reviewCount, 0)),
+    reviewsCount: Math.floor(safeNonNegativeNumber(staff.reviewsCount ?? staff.reviewCount, 0)),
     specialties: employeeVerificationSpecialties(staff.specialties, serviceOptions),
     employmentEndDate: normalizeLeaveUntil(staff.employmentEndDate),
-    onLeave: staff.onLeave === true,
-    leaveStartDate: normalizeLeaveUntil(staff.leaveStartDate),
-    leaveUntil: normalizeLeaveUntil(staff.leaveUntil),
-    leaveType: normalizeManagedLeaveType(staff.leaveType),
-    leaveNote: cleanText(staff.leaveNote),
     attendanceZoneId: employeeVerificationAttendanceZoneId(staff),
     allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
 
+  };
+}
+
+function buildExpectedCoreEmployeeMasterVerificationSnapshot(
+  staffLike: Partial<StaffPublicDoc> | Partial<StaffPublicUi>
+): EmployeeSaveVerificationSnapshot {
+  const staff = staffLike as any;
+  return {
+    name: cleanText(staff.name),
+    email: cleanText(staff.email),
+    phoneNormalized: normalizeCoreEmployeeMasterPhone(staff.phone),
+    active: staff.active === true,
+    avatarUrl: cleanText(staff.avatarUrl),
+    bio: cleanText(staff.bio),
+    cvUrl: cleanText(staff.cvUrl),
+    showOnAbout: staff.showOnAbout === true,
+    includeInEmployeeManagement: staff.includeInEmployeeManagement === true,
+    department: cleanText(staff.department),
+    title: cleanText(staff.title),
+    employmentSource: cleanText(staff.employmentSource || "salon"),
+    partnerId: cleanText(staff.partnerId),
+    partnerMemberId: cleanText(staff.partnerMemberId),
+    contractId: cleanText(staff.contractId),
+    allowedZoneIds: employeeVerificationAllowedZoneIds(staff),
+    rating: Math.min(5, safeNonNegativeNumber(staff.rating, 0)),
+    reviewsCount: Math.floor(
+      safeNonNegativeNumber(staff.reviewsCount ?? staff.reviewCount, 0)
+    ),
+    employmentEndDate: normalizeLeaveUntil(staff.employmentEndDate),
+  };
+}
+
+function buildCoreEmployeeMasterVerificationSnapshot(
+  coreEmployee: CoreHrEmployee
+): EmployeeSaveVerificationSnapshot {
+  const core = coreEmployee;
+  const employment = (core.employment || {}) as Record<string, unknown>;
+  return {
+    name: cleanText(core.name),
+    email: cleanText(core.email),
+    phoneNormalized: normalizeCoreEmployeeMasterPhone(
+      core.phoneNormalized ?? core.phone
+    ),
+    active: cleanText(core.status).toLowerCase() === "active",
+    avatarUrl: cleanText(core.avatarUrl),
+    bio: cleanText(core.bio),
+    cvUrl: cleanText(core.cvUrl),
+    showOnAbout: coreEmployeeMasterBoolean(core.showOnAbout, false),
+    includeInEmployeeManagement: coreEmployeeMasterBoolean(
+      core.includeInEmployeeManagement,
+      false
+    ),
+    department: cleanText(employment.department),
+    title: cleanText(employment.title),
+    employmentSource: cleanText(
+      employment.employment_source ??
+        employment.employmentSource ??
+        "salon"
+    ),
+    partnerId: cleanText(
+      employment.partner_id ??
+        employment.partnerId
+    ),
+    partnerMemberId: cleanText(
+      employment.partner_member_id ??
+        employment.partnerMemberId
+    ),
+    contractId: cleanText(
+      employment.contract_id ??
+        employment.contractId
+    ),
+    allowedZoneIds: coreEmployeeMasterTextArray(
+      employment.allowed_zone_ids_json ??
+        employment.allowedZoneIds
+    ),
+    rating: Math.min(5, safeNonNegativeNumber(core.rating, 0)),
+    reviewsCount: Math.floor(safeNonNegativeNumber(core.reviewsCount, 0)),
+    employmentEndDate: normalizeLeaveUntil(
+      employment.end_date ??
+        employment.endDate ??
+        employment.employmentEndDate
+    ),
   };
 }
 
@@ -1596,10 +1916,27 @@ export default function DashboardEmployees() {
   const [modalHourOverrideEditingDate, setModalHourOverrideEditingDate] = useState("");
   const [modalHourOverrideEditingGroupId, setModalHourOverrideEditingGroupId] = useState("");
   const [monthlySalary, setMonthlySalary] = useState("");
+  const [payrollHousingAllowance, setPayrollHousingAllowance] = useState("");
+  const [payrollTransportationAllowance, setPayrollTransportationAllowance] = useState("");
+  const [payrollOtherAllowances, setPayrollOtherAllowances] = useState("");
+  const [payrollSocialInsuranceCategory, setPayrollSocialInsuranceCategory] =
+    useState<PayrollSocialInsuranceCategory>("");
+  const [payrollSocialInsuranceEffectiveFrom, setPayrollSocialInsuranceEffectiveFrom] = useState("");
+  const [payrollSocialInsuranceClassificationNote, setPayrollSocialInsuranceClassificationNote] = useState("");
+  const [payrollGosiWageMode, setPayrollGosiWageMode] = useState<GosiWageMode>("derived");
+  const [payrollGosiContributoryWageOverride, setPayrollGosiContributoryWageOverride] = useState("");
+  const [payrollGosiContributoryWageOverrideReason, setPayrollGosiContributoryWageOverrideReason] = useState("");
+  const [payrollGccHomeCountryCode, setPayrollGccHomeCountryCode] = useState("");
   const [payrollMonthlyHours, setPayrollMonthlyHours] = useState("");
   const [payrollOvertimeEnabled, setPayrollOvertimeEnabled] = useState(false);
   const [payrollOvertimeMultiplier, setPayrollOvertimeMultiplier] = useState("1.5");
   const [payrollDeductionMethod, setPayrollDeductionMethod] = useState<"hourly" | "daily">("hourly");
+  const [payrollAttendanceMode, setPayrollAttendanceMode] =
+    useState<"required" | "exempt">("required");
+  const [
+    payrollAttendanceExemptionReason,
+    setPayrollAttendanceExemptionReason,
+  ] = useState("");
   const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
   const [payrollSettingsMessage, setPayrollSettingsMessage] = useState("");
   const [overtimeMethod, setOvertimeMethod] = useState<StaffPayrollMethod>("hours_from_salary");
@@ -1792,27 +2129,54 @@ export default function DashboardEmployees() {
         listEmployeeLeaveRequests(500),
       ]);
       if (requestId !== attendanceLoadRequestRef.current) return;
-      const shiftRows = await Promise.all(
-        rows.map(async (row) => {
-          const date = cleanText((row as any).date || (row as any).dateKey || (row as any).dayKey);
-          if (!date) return row;
-          try {
-            const resolvedShift = await CoreHrService.resolveEmployeeShift(employeeId, date);
-            return {
-              ...row,
-              resolvedShift,
-              shiftName: cleanText(resolvedShift.shiftName || resolvedShift.shift_name),
-              shiftStartTime: cleanText(resolvedShift.templateStartTime || resolvedShift.template_start_time || resolvedShift.startTime || resolvedShift.start_time),
-              shiftEndTime: cleanText(resolvedShift.templateEndTime || resolvedShift.template_end_time || resolvedShift.endTime || resolvedShift.end_time),
-              lateGraceMinutes: Number(resolvedShift.lateGraceMinutes ?? resolvedShift.late_grace_minutes ?? (row as any).lateGraceMinutes ?? 0),
-              earlyLeaveGraceMinutes: 0,
-            } as StaffAttendanceWithId;
-          } catch (shiftError) {
-            console.warn("employee attendance shift resolve failed", { employeeId, date, shiftError });
-            return row;
+      const shiftEmployeeId =
+        [employeeId, attendanceIdentity.employeeUid, attendanceIdentity.employeeDocId]
+          .map(cleanText)
+          .find(
+            (id) =>
+              id &&
+              !id.startsWith("app_user_") &&
+              /^[A-Za-z0-9_-]+$/.test(id)
+          ) || "";
+      const resolvedShiftsByDate = new Map<string, CoreResolvedShift>();
+
+      try {
+        const batch = await CoreHrService.resolveEmployeeShiftsRange({
+          employeeIds: [shiftEmployeeId],
+          dateFrom: monthStart,
+          dateTo: monthEnd,
+        });
+        for (const resolvedShift of batch.rows) {
+          const date = cleanText(resolvedShift.date);
+          if (date && !resolvedShiftsByDate.has(date)) {
+            resolvedShiftsByDate.set(date, resolvedShift);
           }
-        })
-      );
+        }
+      } catch (shiftError) {
+        console.warn("employee attendance shift batch resolve failed", {
+          employeeId: shiftEmployeeId,
+          month: monthKey,
+          shiftError,
+        });
+      }
+
+      const shiftRows = rows.map((row) => {
+        const date = cleanText((row as any).date || (row as any).dateKey || (row as any).dayKey);
+        if (!date) return row;
+
+        const resolvedShift = resolvedShiftsByDate.get(date);
+        if (!resolvedShift) return row;
+
+        return {
+          ...row,
+          resolvedShift,
+          shiftName: cleanText(resolvedShift.shiftName || resolvedShift.shift_name),
+          shiftStartTime: cleanText(resolvedShift.templateStartTime || resolvedShift.template_start_time || resolvedShift.startTime || resolvedShift.start_time),
+          shiftEndTime: cleanText(resolvedShift.templateEndTime || resolvedShift.template_end_time || resolvedShift.endTime || resolvedShift.end_time),
+          lateGraceMinutes: Number(resolvedShift.lateGraceMinutes ?? resolvedShift.late_grace_minutes ?? (row as any).lateGraceMinutes ?? 0),
+          earlyLeaveGraceMinutes: 0,
+        } as StaffAttendanceWithId;
+      });
       setEmployeeAttendanceRows(shiftRows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))));
       setSelectedEmployeeLeaveRequests(
         leaveRows.filter((request) =>
@@ -2343,35 +2707,8 @@ export default function DashboardEmployees() {
           requestTo >= (currentFrom || requestFrom));
 
       if (isCurrentProfileLeave) {
-        await CoreHrService.saveEmployee({
-          id: selectedEmployeeId,
-          leaveStartDate: null,
-          leaveEndDate: null,
-          leaveNote: null,
-        });
-        const profilePatch = {
-          onLeave: false,
-          leaveStartDate: "",
-          leaveUntil: "",
-          leaveType: "",
-          leaveNote: "",
-          leaveRequestId: "",
-          coreLeaveId: "",
-          employeeProfile: {
-            onLeave: false,
-            leaveStartDate: "",
-            leaveUntil: "",
-            leaveType: "",
-            leaveNote: "",
-            leaveRequestId: "",
-            coreLeaveId: "",
-          },
-          updatedAt: serverTimestamp(),
-        };
-        await Promise.all([
-          setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
-          setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
-        ]);
+        // Core employee_leaves is authoritative. Keep only local UI state here;
+        // load() below rehydrates the canonical leave window from Core D1.
         setList((current) =>
           current.map((item) =>
             item.id === selectedEmployeeId || employeeMatchesIdentity(item, employeeIdentityOf(employee))
@@ -2560,7 +2897,7 @@ export default function DashboardEmployees() {
         requestId = matchingRequest.id;
         requestForCanonical = matchingRequest;
       } else {
-        const requestRef = await createLeaveRequest({
+        const requestRecord = await createManagedLeaveRequest({
           employeeUid: employeeUidLocal,
           employeeId: employeeIdLocal,
           employeeName,
@@ -2571,48 +2908,15 @@ export default function DashboardEmployees() {
           durationKind,
           partialStartTime,
           partialEndTime,
-          note: payload.note || (isPartialLeave ? "تسجيل استئذان معتمد من إدارة الموظفات" : "تسجيل إجازة معتمدة من إدارة الموظفات"),
-          createdByUid: authUser.uid,
-          createdByName: authUser.displayName || authUser.email,
-        });
-        requestId = requestRef.id;
-        createdRequestId = requestRef.id;
-        await updateDoc(requestRef, {
-          source: "employee_profile_leave",
-          deductFromBalance: policy.deductFromBalance,
-          affectsPayroll: policy.affectsPayroll,
-          approvalMode: "admin_direct",
-          updatedAt: serverTimestamp(),
-        } as any);
-        requestForCanonical = {
-          id: requestId,
-          employeeUid: employeeUidLocal,
-          employeeId: employeeIdLocal,
-          employeeName,
-          type: leaveType,
-          fromDate,
-          toDate,
-          days,
-          durationKind,
-          partialStartTime:
-            isPartialLeave
-              ? partialStartTime
-              : undefined,
-          partialEndTime:
-            isPartialLeave
-              ? partialEndTime
-              : undefined,
           note:
             payload.note ||
             (isPartialLeave
               ? "تسجيل استئذان معتمد من إدارة الموظفات"
               : "تسجيل إجازة معتمدة من إدارة الموظفات"),
-          status: "pending",
-          createdByUid: authUser.uid,
-          createdByName:
-            authUser.displayName ||
-            authUser.email,
-        };
+        });
+        requestId = requestRecord.id;
+        createdRequestId = requestRecord.id;
+        requestForCanonical = requestRecord;
       }
 
       if (!requestForCanonical) {
@@ -2671,32 +2975,8 @@ export default function DashboardEmployees() {
 
       coreLeaveId =
         matchingCoreLeave.id;
-      // A partial leave is operationally authoritative in employee_leaves only.
-      // Never mirror it to profile/staff full-day leave fields, otherwise the
-      // employee disappears for the entire day instead of only the blocked range.
-      if (!isPartialLeave) {
-        const profilePatch = {
-          onLeave: true,
-          leaveStartDate: fromDate,
-          leaveUntil: toDate,
-          leaveType,
-          leaveNote: cleanText(payload.note),
-          leaveRequestId: requestId,
-          coreLeaveId,
-          updatedAt: serverTimestamp(),
-        };
-        await Promise.all([
-          setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
-          setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
-        ]);
-      }
-      if (requestId && coreLeaveId) {
-        await updateDoc(doc(db, "salons", SALON_ID, "employee_leave_requests", requestId), {
-          coreLeaveId,
-          updatedAt: serverTimestamp(),
-        } as any).catch(() => {});
-      }
-
+      // Core employee_leaves is the only operational leave source.
+      // Do not mirror full-day or partial leave state into Firestore staff/profile rows.
       if (!isPartialLeave) {
         setModalOnLeave(true);
         setModalLeaveFrom(fromDate);
@@ -2868,8 +3148,8 @@ export default function DashboardEmployees() {
           }
         );
 
-      // Every approved Firestore request must have a
-      // canonical Core operational record.
+      // Every approved Core employee request must have a
+      // canonical Core operational leave record.
       for (
         const request of
         matchingApprovedRequests
@@ -2891,8 +3171,8 @@ export default function DashboardEmployees() {
       }
 
       // A request-linked Core leave must also have its
-      // request mirror. Otherwise stop instead of creating
-      // another split-brain state.
+      // Core employee_request. Otherwise fail closed instead
+      // of accepting an orphan operational effect.
       for (
         const coreLeave of
         matchingCoreLeavesBeforeCancel
@@ -2951,39 +3231,9 @@ export default function DashboardEmployees() {
               )
           ),
       ]);
-      // Core availability keeps its own leave window on the staff row.
-      // Clear it explicitly after rejecting the leave so booking/schedule availability returns immediately.
-      await CoreHrService.saveEmployee({
-        id: selectedEmployeeId,
-        leaveStartDate: null,
-        leaveEndDate: null,
-        leaveNote: null,
-      });
-
-      const profilePatch = {
-        onLeave: false,
-        leaveStartDate: "",
-        leaveUntil: "",
-        leaveType: "",
-        leaveNote: "",
-        leaveRequestId: "",
-        coreLeaveId: "",
-        employeeProfile: {
-          onLeave: false,
-          leaveStartDate: "",
-          leaveUntil: "",
-          leaveType: "",
-          leaveNote: "",
-          leaveRequestId: "",
-          coreLeaveId: "",
-        },
-        updatedAt: serverTimestamp(),
-      };
-      await Promise.all([
-        setDoc(staffPublicDoc(selectedEmployeeId), profilePatch, { merge: true }),
-        setDoc(doc(db, "salons", SALON_ID, "employees", selectedEmployeeId), profilePatch, { merge: true }),
-      ]);
-
+      // Core cancellation above reverses the canonical employee_leaves effect.
+      // Keep Firestore compatibility rows untouched and update only local UI state;
+      // load() below rehydrates from Core D1.
       setList((current) =>
         current.map((item) =>
           item.id === selectedEmployeeId || employeeMatchesIdentity(item, employeeIdentityOf(employee))
@@ -3092,10 +3342,22 @@ export default function DashboardEmployees() {
     setModalHourOverrideEditingDate("");
     setModalHourOverrideEditingGroupId("");
     setMonthlySalary("");
+    setPayrollHousingAllowance("");
+    setPayrollTransportationAllowance("");
+    setPayrollOtherAllowances("");
+    setPayrollSocialInsuranceCategory("");
+    setPayrollSocialInsuranceEffectiveFrom("");
+    setPayrollSocialInsuranceClassificationNote("");
+    setPayrollGosiWageMode("derived");
+    setPayrollGosiContributoryWageOverride("");
+    setPayrollGosiContributoryWageOverrideReason("");
+    setPayrollGccHomeCountryCode("");
     setPayrollMonthlyHours("");
     setPayrollOvertimeEnabled(false);
     setPayrollOvertimeMultiplier("1.5");
     setPayrollDeductionMethod("hourly");
+    setPayrollAttendanceMode("required");
+    setPayrollAttendanceExemptionReason("");
     setPayrollSettingsMessage("");
     setOvertimeMethod("hours_from_salary");
     setOvertimeDaysPerMonth("");
@@ -3193,6 +3455,75 @@ export default function DashboardEmployees() {
     setModalHourOverrideEditingGroupId("");
     const payrollCfg = normalizePayrollConfig(x as any);
     setMonthlySalary(positiveInputString((x as any).monthlySalary ?? payrollCfg.monthlySalary));
+    setPayrollHousingAllowance(
+      positiveInputString(
+        (x as any).payrollHousingAllowance ??
+          (x as any).housingAllowance ??
+          (x as any).housing_allowance
+      )
+    );
+    setPayrollTransportationAllowance(
+      positiveInputString(
+        (x as any).payrollTransportationAllowance ??
+          (x as any).transportationAllowance ??
+          (x as any).transportation_allowance
+      )
+    );
+    setPayrollOtherAllowances(
+      positiveInputString(
+        (x as any).payrollOtherAllowances ??
+          (x as any).otherAllowances ??
+          (x as any).other_allowances
+      )
+    );
+    setPayrollSocialInsuranceCategory(
+      payrollSocialInsuranceCategorySetting(
+        (x as any).payrollSocialInsuranceCategory ??
+          (x as any).socialInsuranceCategory ??
+          (x as any).social_insurance_category
+      )
+    );
+    setPayrollSocialInsuranceEffectiveFrom(
+      cleanText(
+        (x as any).payrollSocialInsuranceEffectiveFrom ??
+          (x as any).socialInsuranceEffectiveFrom ??
+          (x as any).social_insurance_effective_from
+      )
+    );
+    setPayrollSocialInsuranceClassificationNote(
+      cleanText(
+        (x as any).payrollSocialInsuranceClassificationNote ??
+          (x as any).socialInsuranceClassificationNote ??
+          (x as any).social_insurance_classification_note
+      )
+    );
+    setPayrollGosiWageMode(
+      payrollGosiWageModeSetting(
+        (x as any).payrollGosiWageMode ??
+          (x as any).gosiWageMode ??
+          (x as any).gosi_wage_mode
+      )
+    );
+    setPayrollGosiContributoryWageOverride(
+      positiveInputString(
+        (x as any).payrollGosiContributoryWageOverride ??
+          (x as any).gosiContributoryWageOverride
+      )
+    );
+    setPayrollGosiContributoryWageOverrideReason(
+      cleanText(
+        (x as any).payrollGosiContributoryWageOverrideReason ??
+          (x as any).gosiContributoryWageOverrideReason ??
+          (x as any).gosi_contributory_wage_override_reason
+      )
+    );
+    setPayrollGccHomeCountryCode(
+      cleanText(
+        (x as any).payrollGccHomeCountryCode ??
+          (x as any).gccHomeCountryCode ??
+          (x as any).gcc_home_country_code
+      )
+    );
     setPayrollMonthlyHours(
       positiveInputString(
         (x as any).payrollMonthlyHours ??
@@ -3213,6 +3544,18 @@ export default function DashboardEmployees() {
     );
     setPayrollDeductionMethod(
       payrollDeductionMethodSetting((x as any).payrollDeductionMethod ?? (x as any).payroll_deduction_method)
+    );
+    setPayrollAttendanceMode(
+      payrollAttendanceModeSetting(
+        (x as any).attendancePayrollMode ??
+          (x as any).attendance_payroll_mode
+      )
+    );
+    setPayrollAttendanceExemptionReason(
+      cleanText(
+        (x as any).attendancePayrollExemptionReason ??
+          (x as any).attendance_payroll_exemption_reason
+      )
     );
     setPayrollSettingsMessage("");
     setOvertimeMethod(payrollCfg.method);
@@ -3502,9 +3845,60 @@ export default function DashboardEmployees() {
         const baseSalaryHalalas = positiveNumberOrZero(
           employment.base_salary_halalas ?? employment.baseSalaryHalalas
         );
-        if (baseSalaryHalalas > 0) {
-          setMonthlySalary(String(roundPayrollNumber(baseSalaryHalalas / 100)));
-        }
+        const housingAllowanceHalalas = positiveNumberOrZero(
+          employment.housing_allowance_halalas ?? employment.housingAllowanceHalalas
+        );
+        const transportationAllowanceHalalas = positiveNumberOrZero(
+          employment.transportation_allowance_halalas ?? employment.transportationAllowanceHalalas
+        );
+        const otherAllowancesHalalas = positiveNumberOrZero(
+          employment.other_allowances_halalas ?? employment.otherAllowancesHalalas
+        );
+        setMonthlySalary(payrollHalalasToInputRiyals(baseSalaryHalalas));
+        setPayrollHousingAllowance(payrollHalalasToInputRiyals(housingAllowanceHalalas));
+        setPayrollTransportationAllowance(payrollHalalasToInputRiyals(transportationAllowanceHalalas));
+        setPayrollOtherAllowances(payrollHalalasToInputRiyals(otherAllowancesHalalas));
+        setPayrollSocialInsuranceCategory(
+          payrollSocialInsuranceCategorySetting(
+            employment.social_insurance_category ??
+              employment.socialInsuranceCategory
+          )
+        );
+        setPayrollSocialInsuranceEffectiveFrom(
+          cleanText(
+            employment.social_insurance_effective_from ??
+              employment.socialInsuranceEffectiveFrom
+          )
+        );
+        setPayrollSocialInsuranceClassificationNote(
+          cleanText(
+            employment.social_insurance_classification_note ??
+              employment.socialInsuranceClassificationNote
+          )
+        );
+        setPayrollGosiWageMode(
+          payrollGosiWageModeSetting(
+            employment.gosi_wage_mode ?? employment.gosiWageMode
+          )
+        );
+        setPayrollGosiContributoryWageOverride(
+          payrollHalalasToInputRiyals(
+            employment.gosi_contributory_wage_override_halalas ??
+              employment.gosiContributoryWageOverrideHalalas
+          )
+        );
+        setPayrollGosiContributoryWageOverrideReason(
+          cleanText(
+            employment.gosi_contributory_wage_override_reason ??
+              employment.gosiContributoryWageOverrideReason
+          )
+        );
+        setPayrollGccHomeCountryCode(
+          cleanText(
+            employment.gcc_home_country_code ??
+              employment.gccHomeCountryCode
+          )
+        );
         setOvertimeDaysPerMonth(
           positiveInputString(employment.expected_work_days ?? employment.expectedWorkDays)
         );
@@ -3532,6 +3926,18 @@ export default function DashboardEmployees() {
         );
         setPayrollDeductionMethod(
           payrollDeductionMethodSetting(employment.payroll_deduction_method ?? employment.payrollDeductionMethod)
+        );
+        setPayrollAttendanceMode(
+          payrollAttendanceModeSetting(
+            employment.attendance_payroll_mode ??
+              employment.attendancePayrollMode
+          )
+        );
+        setPayrollAttendanceExemptionReason(
+          cleanText(
+            employment.attendance_payroll_exemption_reason ??
+              employment.attendancePayrollExemptionReason
+          )
         );
       })
       .catch((error) => {
@@ -3599,12 +4005,15 @@ export default function DashboardEmployees() {
       try {
         const linkedUserRoleByUid = new Map<string, string>();
         const readDocs = loadOptions.fromServer ? getDocsFromServer : getDocs;
-        const [userSnap, staffSnap, employeeSnap, coreAccounts, coreEmployees] = await Promise.all([
+        const [userSnap, staffSnap, employeeSnap, coreAccounts, coreEmployees, coreApprovedLeaves] = await Promise.all([
           readDocs(usersCol()).catch(() => null),
           readDocs(staffPublicCol()),
           readDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
           CoreAccountService.list(false, "internal").catch(() => []),
           CoreHrService.listEmployees(),
+          canManageLeaveBalance
+            ? CoreHrService.listLeaves({ status: "approved" })
+            : Promise.resolve([] as CoreLeave[]),
         ]);
 
         const userByUid = new Map<string, any>();
@@ -3786,7 +4195,7 @@ export default function DashboardEmployees() {
             cvUrl: cleanText(combined?.cvUrl),
             rating: safeNonNegativeNumber(combined?.rating, 0),
             reviewsCount: Math.floor(
-              safeNonNegativeNumber(combined?.reviewsCount || combined?.reviewCount, 0)
+              safeNonNegativeNumber(combined?.reviewsCount ?? combined?.reviewCount, 0)
             ),
             // Canonical leave balance is overlaid from Core D1 below.
             leaveBalanceDays: 0,
@@ -3932,8 +4341,42 @@ export default function DashboardEmployees() {
                 ? rawLeaveBalance
                 : 0;
 
+            const coreCanonicalRow = coreEmployee
+              ? overlayCoreEmployeeMasterFields(row, coreEmployee)
+              : row;
+
+            const canonicalLeave = canManageLeaveBalance
+              ? canonicalDisplayLeaveForEmployee(
+                  coreApprovedLeaves,
+                  coreEmployee?.id || row.employeeId || row.id,
+                  todayIso()
+                )
+              : null;
+
             return {
-              ...row,
+              ...coreCanonicalRow,
+
+              // Never consume legacy Firestore leave mirrors at runtime.
+              // When leave access is available, employee_leaves fully owns the UI state.
+              onLeave: Boolean(canonicalLeave),
+              leaveStartDate: canonicalLeave
+                ? normalizeLeaveUntil(canonicalLeave.startDate)
+                : "",
+              leaveUntil: canonicalLeave
+                ? normalizeLeaveUntil(canonicalLeave.endDate)
+                : "",
+              leaveType: canonicalLeave
+                ? normalizeManagedLeaveType(canonicalLeave.leaveType)
+                : "",
+              leaveNote: canonicalLeave
+                ? cleanText(canonicalLeave.employeeNote || canonicalLeave.hrNote)
+                : "",
+              leaveRequestId: canonicalLeave
+                ? cleanText(canonicalLeave.requestId)
+                : "",
+              coreLeaveId: canonicalLeave
+                ? cleanText(canonicalLeave.id)
+                : "",
 
               // Core D1 is the only payroll-profile runtime source.
               monthlySalary:
@@ -3941,6 +4384,55 @@ export default function DashboardEmployees() {
                   employment.base_salary_halalas ??
                     employment.baseSalaryHalalas
                 ) / 100,
+              payrollHousingAllowance:
+                positiveNumberOrZero(
+                  employment.housing_allowance_halalas ??
+                    employment.housingAllowanceHalalas
+                ) / 100,
+              payrollTransportationAllowance:
+                positiveNumberOrZero(
+                  employment.transportation_allowance_halalas ??
+                    employment.transportationAllowanceHalalas
+                ) / 100,
+              payrollOtherAllowances:
+                positiveNumberOrZero(
+                  employment.other_allowances_halalas ??
+                    employment.otherAllowancesHalalas
+                ) / 100,
+              payrollSocialInsuranceCategory:
+                payrollSocialInsuranceCategorySetting(
+                  employment.social_insurance_category ??
+                    employment.socialInsuranceCategory
+                ),
+              payrollSocialInsuranceEffectiveFrom:
+                cleanText(
+                  employment.social_insurance_effective_from ??
+                    employment.socialInsuranceEffectiveFrom
+                ),
+              payrollSocialInsuranceClassificationNote:
+                cleanText(
+                  employment.social_insurance_classification_note ??
+                    employment.socialInsuranceClassificationNote
+                ),
+              payrollGosiWageMode:
+                payrollGosiWageModeSetting(
+                  employment.gosi_wage_mode ?? employment.gosiWageMode
+                ),
+              payrollGosiContributoryWageOverride:
+                positiveNumberOrZero(
+                  employment.gosi_contributory_wage_override_halalas ??
+                    employment.gosiContributoryWageOverrideHalalas
+                ) / 100,
+              payrollGosiContributoryWageOverrideReason:
+                cleanText(
+                  employment.gosi_contributory_wage_override_reason ??
+                    employment.gosiContributoryWageOverrideReason
+                ),
+              payrollGccHomeCountryCode:
+                cleanText(
+                  employment.gcc_home_country_code ??
+                    employment.gccHomeCountryCode
+                ),
               payrollMonthlyHours:
                 positiveNumberOrZero(
                   employment.expected_work_hours ??
@@ -4387,6 +4879,46 @@ export default function DashboardEmployees() {
       return;
     }
 
+    if (
+      payrollAttendanceMode === "exempt" &&
+      !cleanText(payrollAttendanceExemptionReason)
+    ) {
+      setErrorMsg(
+        "اكتب سبب إعفاء الموظف من البصمة قبل حفظ إعدادات الراتب."
+      );
+      return;
+    }
+
+    if (!payrollSocialInsuranceCategory) {
+      setErrorMsg("حدد تصنيف التأمينات الاجتماعية للموظفة قبل حفظ إعدادات الراتب.");
+      return;
+    }
+    if (!cleanText(payrollSocialInsuranceEffectiveFrom)) {
+      setErrorMsg("حدد تاريخ سريان تصنيف التأمينات حتى يبقى السجل المالي واضحًا مستقبلًا.");
+      return;
+    }
+    if (
+      payrollGosiWageMode === "override" &&
+      positiveNumberOrZero(payrollGosiContributoryWageOverride) <= 0
+    ) {
+      setErrorMsg("اكتب أجر الاشتراك في GOSI عند استخدام الإدخال المعتمد يدويًا.");
+      return;
+    }
+    if (
+      payrollGosiWageMode === "override" &&
+      !cleanText(payrollGosiContributoryWageOverrideReason)
+    ) {
+      setErrorMsg("اكتب سبب استخدام أجر اشتراك GOSI مختلف عن الأساسي + بدل السكن.");
+      return;
+    }
+    if (
+      payrollSocialInsuranceCategory === "gcc" &&
+      !cleanText(payrollGccHomeCountryCode)
+    ) {
+      setErrorMsg("حدد دولة الموظفة الخليجية لإعداد مد الحماية دون معاملتها كغير سعودية.");
+      return;
+    }
+
     setPayrollSettingsSaving(true);
     setErrorMsg("");
     setPayrollSettingsMessage("");
@@ -4394,6 +4926,13 @@ export default function DashboardEmployees() {
       const existingCoreEmployee = await CoreHrService.getEmployee(targetEmployeeId).catch(() => null);
       const existingEmployment = (existingCoreEmployee?.employment || {}) as Record<string, unknown>;
       const baseSalaryHalalas = riyalsInputToHalalas(monthlySalary);
+      const housingAllowanceHalalas = riyalsInputToHalalas(payrollHousingAllowance);
+      const transportationAllowanceHalalas = riyalsInputToHalalas(payrollTransportationAllowance);
+      const otherAllowancesHalalas = riyalsInputToHalalas(payrollOtherAllowances);
+      const gosiContributoryWageOverrideHalalas =
+        payrollGosiWageMode === "override"
+          ? riyalsInputToHalalas(payrollGosiContributoryWageOverride)
+          : null;
       const workDays = payrollSettingsPreview.workDays > 0 ? payrollSettingsPreview.workDays : null;
       const dailyHours = payrollSettingsPreview.dailyHours > 0 ? payrollSettingsPreview.dailyHours : null;
       const monthlyHours = payrollSettingsPreview.monthlyHours > 0 ? payrollSettingsPreview.monthlyHours : null;
@@ -4407,12 +4946,34 @@ export default function DashboardEmployees() {
         department: cleanText((currentEmployee as any).department || existingEmployment.department),
         employmentStatus: active ? "active" : "inactive",
         baseSalaryHalalas,
+        housingAllowanceHalalas,
+        transportationAllowanceHalalas,
+        otherAllowancesHalalas,
+        socialInsuranceCategory: payrollSocialInsuranceCategory,
+        socialInsuranceEffectiveFrom: cleanText(payrollSocialInsuranceEffectiveFrom),
+        socialInsuranceClassificationNote:
+          cleanText(payrollSocialInsuranceClassificationNote) || null,
+        gosiWageMode: payrollGosiWageMode,
+        gosiContributoryWageOverrideHalalas,
+        gosiContributoryWageOverrideReason:
+          payrollGosiWageMode === "override"
+            ? cleanText(payrollGosiContributoryWageOverrideReason)
+            : null,
+        gccHomeCountryCode:
+          payrollSocialInsuranceCategory === "gcc"
+            ? cleanText(payrollGccHomeCountryCode)
+            : null,
         expectedWorkDays: workDays,
         expectedWorkHours: monthlyHours,
         dailyScheduledHours: dailyHours,
         overtimeEnabled: payrollOvertimeEnabled,
         overtimeMultiplier,
         payrollDeductionMethod,
+        attendancePayrollMode: payrollAttendanceMode,
+        attendancePayrollExemptionReason:
+          payrollAttendanceMode === "exempt"
+            ? cleanText(payrollAttendanceExemptionReason)
+            : null,
       };
       await CoreHrService.saveEmployee({
         id: targetEmployeeId,
@@ -4426,6 +4987,16 @@ export default function DashboardEmployees() {
 
       const payrollUiPatch = {
         monthlySalary: payrollSettingsPreview.baseSalaryRiyals,
+        payrollHousingAllowance: payrollSettingsPreview.housingAllowanceRiyals,
+        payrollTransportationAllowance: payrollSettingsPreview.transportationAllowanceRiyals,
+        payrollOtherAllowances: payrollSettingsPreview.otherAllowancesRiyals,
+        payrollSocialInsuranceCategory,
+        payrollSocialInsuranceEffectiveFrom: cleanText(payrollSocialInsuranceEffectiveFrom),
+        payrollSocialInsuranceClassificationNote: cleanText(payrollSocialInsuranceClassificationNote),
+        payrollGosiWageMode,
+        payrollGosiContributoryWageOverride: positiveNumberOrZero(payrollGosiContributoryWageOverride),
+        payrollGosiContributoryWageOverrideReason: cleanText(payrollGosiContributoryWageOverrideReason),
+        payrollGccHomeCountryCode: cleanText(payrollGccHomeCountryCode),
         payrollMonthlyHours: monthlyHours || 0,
         payrollOvertimeEnabled,
         payrollOvertimeMultiplier: overtimeMultiplier,
@@ -4587,17 +5158,6 @@ export default function DashboardEmployees() {
     const previousEditSnapshot = editId
       ? {
           active: !!editingStaff?.active,
-          onLeave: !!(editingStaff as any)?.onLeave,
-          leaveStartDate: normalizeLeaveUntil(
-            (editingStaff as any)?.leaveStartDate ||
-              (editingStaff as any)?.leaveFrom ||
-              (editingStaff as any)?.leaveFromDate
-          ),
-          leaveUntil: normalizeLeaveUntil((editingStaff as any)?.leaveUntil),
-          leaveType: normalizeManagedLeaveType((editingStaff as any)?.leaveType),
-          leaveNote: String((editingStaff as any)?.leaveNote || "").trim(),
-          leaveRequestId: cleanText((editingStaff as any)?.leaveRequestId),
-          coreLeaveId: cleanText((editingStaff as any)?.coreLeaveId),
           employmentEndDate: normalizeLeaveUntil((editingStaff as any)?.employmentEndDate),
         }
       : null;
@@ -4728,13 +5288,8 @@ export default function DashboardEmployees() {
     setSaving(true);
     setErrorMsg("");
     setSaveMessage("");
-    const normalizedModalLeaveFrom = normalizeLeaveUntil(modalLeaveFrom);
-    const normalizedModalLeaveUntil = normalizeLeaveUntil(modalLeaveUntil);
-    const normalizedModalLeaveType = normalizeManagedLeaveType(modalLeaveType);
     const normalizedEmploymentEndDate = normalizeLeaveUntil(employmentEndDate);
     const normalizedAttendanceZoneId = String(selectedAttendanceZoneId || "").trim();
-    const modalLeaveExpired = !!normalizedModalLeaveUntil && normalizedModalLeaveUntil < todayIso();
-    const effectiveModalOnLeave = modalOnLeave && !modalLeaveExpired;
     const generatedEmployeeId = !editId
       ? cleanName
           .replace(/\s+/g, "_")
@@ -4816,13 +5371,8 @@ export default function DashboardEmployees() {
       showOnAbout: !!showOnAbout,
       showOnBooking: effectiveShowOnBooking,
       employmentEndDate: normalizedEmploymentEndDate,
-      onLeave: effectiveModalOnLeave,
-      leaveStartDate: effectiveModalOnLeave ? normalizedModalLeaveFrom : "",
-      leaveUntil: effectiveModalOnLeave ? normalizedModalLeaveUntil : "",
-      leaveType: effectiveModalOnLeave ? normalizedModalLeaveType : "",
-      leaveNote: effectiveModalOnLeave ? String(modalLeaveNote || "").trim() : "",
-      leaveRequestId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.leaveRequestId) : "",
-      coreLeaveId: effectiveModalOnLeave ? cleanText((editingStaff as any)?.coreLeaveId) : "",
+      // Leave lifecycle is intentionally excluded from the employee profile save.
+      // It is owned by Core employee_requests -> employee_leaves.
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
       attendanceZoneId: normalizedAttendanceZoneId,
       assignedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -4863,6 +5413,8 @@ export default function DashboardEmployees() {
       payload,
       saveVerificationServiceOptions
     );
+    const expectedCoreEmployeeMasterSnapshot =
+      buildExpectedCoreEmployeeMasterVerificationSnapshot(payload);
     const attendanceZoneProfilePatch = {
       allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
       allowedAttendanceZoneId: normalizedAttendanceZoneId,
@@ -4960,6 +5512,32 @@ export default function DashboardEmployees() {
             ? {
                 baseSalaryHalalas:
                   riyalsInputToHalalas(monthlySalary),
+                housingAllowanceHalalas:
+                  riyalsInputToHalalas(payrollHousingAllowance),
+                transportationAllowanceHalalas:
+                  riyalsInputToHalalas(payrollTransportationAllowance),
+                otherAllowancesHalalas:
+                  riyalsInputToHalalas(payrollOtherAllowances),
+                socialInsuranceCategory:
+                  payrollSocialInsuranceCategory || null,
+                socialInsuranceEffectiveFrom:
+                  cleanText(payrollSocialInsuranceEffectiveFrom) || null,
+                socialInsuranceClassificationNote:
+                  cleanText(payrollSocialInsuranceClassificationNote) || null,
+                gosiWageMode:
+                  payrollGosiWageMode,
+                gosiContributoryWageOverrideHalalas:
+                  payrollGosiWageMode === "override"
+                    ? riyalsInputToHalalas(payrollGosiContributoryWageOverride)
+                    : null,
+                gosiContributoryWageOverrideReason:
+                  payrollGosiWageMode === "override"
+                    ? cleanText(payrollGosiContributoryWageOverrideReason) || null
+                    : null,
+                gccHomeCountryCode:
+                  payrollSocialInsuranceCategory === "gcc"
+                    ? cleanText(payrollGccHomeCountryCode) || null
+                    : null,
                 expectedWorkDays:
                   payrollSettingsPreview.workDays > 0
                     ? payrollSettingsPreview.workDays
@@ -4979,6 +5557,14 @@ export default function DashboardEmployees() {
                     ? positiveNumberOrZero(payrollOvertimeMultiplier) || 1.5
                     : 1.5,
                 payrollDeductionMethod,
+                attendancePayrollMode:
+                  payrollAttendanceMode,
+                attendancePayrollExemptionReason:
+                  payrollAttendanceMode === "exempt"
+                    ? cleanText(
+                        payrollAttendanceExemptionReason
+                      )
+                    : null,
               }
             : {}),
         },
@@ -5210,6 +5796,19 @@ export default function DashboardEmployees() {
             targetEmployeeId
           );
 
+      const persistedCoreEmployeeMasterSnapshot =
+        buildCoreEmployeeMasterVerificationSnapshot(
+          refreshedCoreEmployee
+        );
+      verifyEmployeeSaveSnapshot(
+        "core_employee_master",
+        expectedCoreEmployeeMasterSnapshot,
+        persistedCoreEmployeeMasterSnapshot
+      );
+      employeeSaveDebug(
+        "core employee master verify success",
+        { employeeId: targetEmployeeId }
+      );
 
       const refreshedCoreExceptionRows =
         await CoreHrService
@@ -5291,27 +5890,19 @@ export default function DashboardEmployees() {
       }
 
       if (previousEditSnapshot && editingStaff) {
-        const leaveChanged =
-          previousEditSnapshot.onLeave !== effectiveModalOnLeave ||
-          previousEditSnapshot.leaveStartDate !== normalizedModalLeaveFrom ||
-          previousEditSnapshot.leaveUntil !== normalizedModalLeaveUntil ||
-          previousEditSnapshot.leaveType !== normalizedModalLeaveType ||
-          previousEditSnapshot.leaveNote !== String(modalLeaveNote || "").trim();
         const employmentChanged =
           previousEditSnapshot.active !== !!active ||
           previousEditSnapshot.employmentEndDate !== normalizedEmploymentEndDate;
 
-        if (leaveChanged || employmentChanged) {
+        if (employmentChanged) {
           const target = resolveStaffNotificationTarget(editingStaff);
           await createEmployeeNotification({
             targetUid: target.targetUid || undefined,
             targetEmployeeId: target.targetEmployeeId || undefined,
-            type: leaveChanged ? "leave" : "system",
-            title: leaveChanged ? "تم تحديث حالة الإجازة" : "تم تحديث حالة الموظفة",
-            body: leaveChanged
-              ? `${effectiveModalOnLeave ? "في إجازة" : "متاحة للعمل"}${normalizedModalLeaveFrom ? ` من ${normalizedModalLeaveFrom}` : ""}${normalizedModalLeaveUntil ? ` حتى ${normalizedModalLeaveUntil}` : ""}${String(modalLeaveNote || "").trim() ? ` - ${String(modalLeaveNote || "").trim()}` : ""}`
-              : `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
-            route: leaveChanged ? "/employee/leave" : "/employee/profile",
+            type: "system",
+            title: "تم تحديث حالة الموظفة",
+            body: `${!!active ? "نشطة" : "غير نشطة"}${normalizedEmploymentEndDate ? ` - ينتهي التوظيف في ${normalizedEmploymentEndDate}` : ""}`,
+            route: "/employee/profile",
           }).catch((notificationError) => {
             console.warn("createEmployeeNotification after employee save failed:", notificationError);
           });
@@ -5325,17 +5916,29 @@ export default function DashboardEmployees() {
         staffPublicExists: savedStaffSnap.exists(),
       });
       if (!savedStaffSnap.exists()) {
-        throw new Error("تعذر قراءة ملف الموظفة من staff_public بعد الحفظ.");
+        console.warn(
+          "staff_public compatibility mirror is missing after canonical Core save.",
+          { employeeId: targetEmployeeId }
+        );
+      } else {
+        const persistedMirrorSnapshot = buildEmployeeSaveVerificationSnapshot(
+          savedStaffSnap.data() as Partial<StaffPublicDoc>,
+          saveVerificationServiceOptions
+        );
+        const mirrorMismatches = employeeSaveSnapshotMismatches(
+          expectedSaveSnapshot,
+          persistedMirrorSnapshot
+        );
+        if (mirrorMismatches.length) {
+          console.warn(
+            "staff_public compatibility mirror differs from canonical save.",
+            {
+              employeeId: targetEmployeeId,
+              mismatches: mirrorMismatches,
+            }
+          );
+        }
       }
-      const persistedSaveSnapshot = buildEmployeeSaveVerificationSnapshot(
-        savedStaffSnap.data() as Partial<StaffPublicDoc>,
-        saveVerificationServiceOptions
-      );
-      verifyEmployeeSaveSnapshot(
-        "staff_public",
-        expectedSaveSnapshot,
-        persistedSaveSnapshot
-      );
       const activeTabBeforeReload = activeTab;
       const modalTabBeforeReload = modalTab;
       const reloadedRows = await load(saveVerificationServiceOptions, {
@@ -5542,6 +6145,9 @@ export default function DashboardEmployees() {
 
   useEffect(() => {
     const handleCanonicalScheduleChange = () => {
+      // This event can originate outside CoreHrService (for example a
+      // temporary weekly-off workflow), so invalidate the shared short cache.
+      CoreHrService.invalidateResolvedShiftRangeCache();
       setCoreResolvedTodayRefreshVersion(
         (version) => version + 1
       );
@@ -6855,6 +7461,15 @@ export default function DashboardEmployees() {
   );
   const payrollSettingsPreview = useMemo(() => {
     const baseSalaryRiyals = positiveNumberOrZero(monthlySalary);
+    const housingAllowanceRiyals = positiveNumberOrZero(payrollHousingAllowance);
+    const transportationAllowanceRiyals = positiveNumberOrZero(payrollTransportationAllowance);
+    const otherAllowancesRiyals = positiveNumberOrZero(payrollOtherAllowances);
+    const contractedMonthlySalaryRiyals = roundPayrollNumber(
+      baseSalaryRiyals +
+        housingAllowanceRiyals +
+        transportationAllowanceRiyals +
+        otherAllowancesRiyals
+    );
     const workDays = positiveNumberOrZero(overtimeDaysPerMonth);
     const dailyHours = positiveNumberOrZero(overtimeBaseHoursPerDay);
     const manualMonthlyHours = positiveNumberOrZero(payrollMonthlyHours);
@@ -6868,24 +7483,122 @@ export default function DashboardEmployees() {
     if (baseSalaryRiyals <= 0) missing.push("الراتب الأساسي غير محدد");
     if (workDays <= 0) missing.push("أيام العمل غير محددة");
     if (computedMonthlyHours <= 0) missing.push("ساعات العمل غير محددة");
+    if (!payrollSocialInsuranceCategory) missing.push("تصنيف التأمينات غير محدد");
+    if (!cleanText(payrollSocialInsuranceEffectiveFrom)) {
+      missing.push("تاريخ سريان التأمينات غير محدد");
+    }
+    if (
+      payrollGosiWageMode === "override" &&
+      positiveNumberOrZero(payrollGosiContributoryWageOverride) <= 0
+    ) {
+      missing.push("أجر اشتراك GOSI المعتمد غير محدد");
+    }
+    if (
+      payrollGosiWageMode === "override" &&
+      !cleanText(payrollGosiContributoryWageOverrideReason)
+    ) {
+      missing.push("سبب تعديل أجر اشتراك GOSI غير محدد");
+    }
+    if (payrollSocialInsuranceCategory === "gcc") {
+      if (!cleanText(payrollGccHomeCountryCode)) {
+        missing.push("دولة الموظفة الخليجية غير محددة");
+      }
+      missing.push("سياسة مد الحماية الخليجية تحتاج إعدادًا قبل اعتماد الراتب");
+    }
+
     const dailyRateRiyals = baseSalaryRiyals > 0 && workDays > 0
       ? roundPayrollNumber(baseSalaryRiyals / workDays)
       : 0;
     const hourlyRateRiyals = baseSalaryRiyals > 0 && computedMonthlyHours > 0
       ? roundPayrollNumber(baseSalaryRiyals / computedMonthlyHours)
       : 0;
+
+    let gosiSnapshot = null;
+    let gosiPreviewError = "";
+    if (
+      payrollSocialInsuranceCategory &&
+      payrollSocialInsuranceCategory !== "gcc" &&
+      baseSalaryRiyals > 0
+    ) {
+      try {
+        gosiSnapshot = calculateGosi({
+          insuranceCategory: payrollSocialInsuranceCategory,
+          payrollDate: currentMonthKey() + "-28",
+          basicSalaryHalalas: riyalsInputToHalalas(baseSalaryRiyals),
+          housingAllowanceHalalas: riyalsInputToHalalas(housingAllowanceRiyals),
+          transportationAllowanceHalalas: riyalsInputToHalalas(transportationAllowanceRiyals),
+          otherAllowancesHalalas: riyalsInputToHalalas(otherAllowancesRiyals),
+          wageMode: payrollGosiWageMode,
+          contributoryWageOverrideHalalas:
+            payrollGosiWageMode === "override"
+              ? riyalsInputToHalalas(payrollGosiContributoryWageOverride)
+              : null,
+          overrideReason:
+            payrollGosiWageMode === "override"
+              ? cleanText(payrollGosiContributoryWageOverrideReason)
+              : null,
+        });
+      } catch (error) {
+        gosiPreviewError = cleanText((error as Error)?.message || error);
+      }
+    } else if (payrollSocialInsuranceCategory === "gcc") {
+      gosiPreviewError = "gosi_gcc_extension_policy_required";
+    }
+
     return {
       baseSalaryRiyals,
+      housingAllowanceRiyals,
+      transportationAllowanceRiyals,
+      otherAllowancesRiyals,
+      contractedMonthlySalaryRiyals,
       workDays,
       dailyHours,
       monthlyHours: computedMonthlyHours,
       monthlyHoursSource: manualMonthlyHours > 0 ? "manual" as const : computedMonthlyHours > 0 ? "computed" as const : "missing" as const,
       dailyRateRiyals,
       hourlyRateRiyals,
-      complete: missing.length === 0,
+      socialInsuranceCategory: payrollSocialInsuranceCategory,
+      socialInsuranceEffectiveFrom: cleanText(payrollSocialInsuranceEffectiveFrom),
+      gosiWageMode: payrollGosiWageMode,
+      gosiContributoryWageRiyals: gosiSnapshot
+        ? roundPayrollNumber(gosiSnapshot.contributoryWage.appliedHalalas / 100)
+        : 0,
+      gosiEmployeeDeductionRiyals: gosiSnapshot
+        ? roundPayrollNumber(gosiSnapshot.employee.deductionHalalas / 100)
+        : 0,
+      gosiEmployerContributionRiyals: gosiSnapshot
+        ? roundPayrollNumber(gosiSnapshot.employer.contributionHalalas / 100)
+        : 0,
+      gosiEmployeeRateBps: gosiSnapshot?.employee.totalRateBps || 0,
+      gosiEmployerRateBps: gosiSnapshot?.employer.totalRateBps || 0,
+      gosiPolicyVersion: gosiSnapshot?.policyVersion || "",
+      gosiWageSourceLabel:
+        gosiSnapshot?.contributoryWage.source === "basic_plus_housing"
+          ? "الراتب الأساسي + بدل السكن"
+          : gosiSnapshot?.contributoryWage.source === "verified_override"
+            ? "أجر اشتراك معتمد يدويًا مع سبب موثق"
+            : "غير محسوب",
+      gosiWasFloored: gosiSnapshot?.contributoryWage.wasFloored === true,
+      gosiWasCapped: gosiSnapshot?.contributoryWage.wasCapped === true,
+      gosiPreviewError,
+      complete: missing.length === 0 && !gosiPreviewError,
       missing,
     };
-  }, [monthlySalary, overtimeBaseHoursPerDay, overtimeDaysPerMonth, payrollMonthlyHours]);
+  }, [
+    monthlySalary,
+    overtimeBaseHoursPerDay,
+    overtimeDaysPerMonth,
+    payrollGccHomeCountryCode,
+    payrollGosiContributoryWageOverride,
+    payrollGosiContributoryWageOverrideReason,
+    payrollGosiWageMode,
+    payrollHousingAllowance,
+    payrollMonthlyHours,
+    payrollOtherAllowances,
+    payrollSocialInsuranceCategory,
+    payrollSocialInsuranceEffectiveFrom,
+    payrollTransportationAllowance,
+  ]);
   const modalPayrollCycleMonthKey = useMemo(() => {
     if (!editingStaff) {
       return "";
@@ -8423,6 +9136,7 @@ export default function DashboardEmployees() {
               />
               <EmployeeStatsSection
                 isVisible={!!editingStaff && ((activeTab === "payroll" && canViewPayroll) || (activeTab === "leave" && canManageLeaveBalance))}
+                employeeId={editingStaff?.id || ""}
                 busy={busy}
                 loading={loading}
                 canManagePayroll={canManagePayroll}
@@ -8434,23 +9148,57 @@ export default function DashboardEmployees() {
                 currentMonthKeyLabel={currentMonthKey()}
                 payroll={{
                   monthlySalary,
+                  housingAllowance: payrollHousingAllowance,
+                  transportationAllowance: payrollTransportationAllowance,
+                  otherAllowances: payrollOtherAllowances,
+                  socialInsuranceCategory: payrollSocialInsuranceCategory,
+                  socialInsuranceEffectiveFrom: payrollSocialInsuranceEffectiveFrom,
+                  socialInsuranceClassificationNote: payrollSocialInsuranceClassificationNote,
+                  gosiWageMode: payrollGosiWageMode,
+                  gosiContributoryWageOverride: payrollGosiContributoryWageOverride,
+                  gosiContributoryWageOverrideReason: payrollGosiContributoryWageOverrideReason,
+                  gccHomeCountryCode: payrollGccHomeCountryCode,
                   workDays: overtimeDaysPerMonth,
                   dailyHours: overtimeBaseHoursPerDay,
                   monthlyHours: payrollMonthlyHours,
                   overtimeEnabled: payrollOvertimeEnabled,
                   overtimeMultiplier: payrollOvertimeMultiplier,
                   deductionMethod: payrollDeductionMethod,
+                  attendancePayrollMode:
+                    payrollAttendanceMode,
+                  attendancePayrollExemptionReason:
+                    payrollAttendanceExemptionReason,
                   summary: modalPayrollMonthSummary,
                   setupPreview: payrollSettingsPreview,
                   savingSettings: payrollSettingsSaving,
                   settingsMessage: payrollSettingsMessage,
                   onMonthlySalaryChange: setMonthlySalary,
+                  onHousingAllowanceChange: setPayrollHousingAllowance,
+                  onTransportationAllowanceChange: setPayrollTransportationAllowance,
+                  onOtherAllowancesChange: setPayrollOtherAllowances,
+                  onSocialInsuranceCategoryChange: (value) =>
+                    setPayrollSocialInsuranceCategory(
+                      payrollSocialInsuranceCategorySetting(value)
+                    ),
+                  onSocialInsuranceEffectiveFromChange: setPayrollSocialInsuranceEffectiveFrom,
+                  onSocialInsuranceClassificationNoteChange: setPayrollSocialInsuranceClassificationNote,
+                  onGosiWageModeChange: (value) =>
+                    setPayrollGosiWageMode(
+                      payrollGosiWageModeSetting(value)
+                    ),
+                  onGosiContributoryWageOverrideChange: setPayrollGosiContributoryWageOverride,
+                  onGosiContributoryWageOverrideReasonChange: setPayrollGosiContributoryWageOverrideReason,
+                  onGccHomeCountryCodeChange: setPayrollGccHomeCountryCode,
                   onWorkDaysChange: setOvertimeDaysPerMonth,
                   onDailyHoursChange: setOvertimeBaseHoursPerDay,
                   onMonthlyHoursChange: setPayrollMonthlyHours,
                   onOvertimeEnabledChange: setPayrollOvertimeEnabled,
                   onOvertimeMultiplierChange: setPayrollOvertimeMultiplier,
                   onDeductionMethodChange: setPayrollDeductionMethod,
+                  onAttendancePayrollModeChange:
+                    setPayrollAttendanceMode,
+                  onAttendancePayrollExemptionReasonChange:
+                    setPayrollAttendanceExemptionReason,
                   onSaveSettings: () => {
                     void savePayrollSettings();
                   },

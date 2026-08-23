@@ -521,12 +521,12 @@ test("approved off schedule exceptions participate in canonical shift resolution
 
   assert.match(
     source,
-    /e\.status='approved' AND \(e\.exception_type='off' OR e\.enabled=1\) AND e\.date_from<=\?/
+    /e\.status IN \('approved','active'\) AND \(e\.exception_type='off' OR e\.enabled=1\) AND e\.date_from<=\?/
   );
 
   assert.doesNotMatch(
     source,
-    /e\.status='approved' AND e\.enabled=1 AND e\.date_from<=\?/
+    /e\.status(?:='approved'| IN \('approved','active'\)) AND e\.enabled=1 AND e\.date_from<=\?/
   );
 
   assert.match(

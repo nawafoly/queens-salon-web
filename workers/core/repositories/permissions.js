@@ -527,6 +527,7 @@ export async function decidePermissionRequest(db, salonId, idValue, decision, ac
   const updated = await getPermission(db, salonId, row.id);
   if (status === 'rejected' || status === 'cancelled') {
     await cancelPermissionBookingBlock(db, salonId, row.id, actor, status === 'cancelled' ? 'تم إلغاء الاستئذان' : 'تم رفض الاستئذان');
+    await refreshPayrollEntries(db, salonId, updated.employee_id, updated.date_key);
   }
   const title = status === 'rejected'
     ? 'تم رفض طلب الاستئذان'

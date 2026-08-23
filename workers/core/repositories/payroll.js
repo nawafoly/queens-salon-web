@@ -14,10 +14,20 @@ import {
   validDate,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import { payrollAttendanceReadiness } from '../../../src/helpers/hr/payrollReadiness.js';
+import {
+  payrollCarryoverDelta,
+  PAYROLL_CARRYOVER_SOURCE_TYPE,
+} from '../../../src/helpers/hr/payrollCarryoverPolicy.js';
 import {
   applyTargetBonusToPayrollData,
   approveEmployeeTargetSummary,
 } from './employee-targets.js';
+import {
+  assertPayrollObligationSnapshotCurrent,
+  canonicalizePayrollObligationDeductions,
+  payrollObligationPaidStatements,
+} from './payroll-obligations.js';
 
 function intMoney(value) {
   const number = Number(value ?? 0);
@@ -77,6 +87,13 @@ function parseJsonObject(value) {
   }
 }
 
+function deductionItemsTotal(items) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    const amount = Number(item?.amountHalalas ?? item?.amount_halalas ?? item?.amount ?? 0);
+    return sum + (Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0);
+  }, 0);
+}
+
 function cleanStatus(value) {
   const status = cleanText(value || 'draft');
   if (['draft', 'reviewed', 'approved', 'paid'].includes(status)) return status;
@@ -109,7 +126,7 @@ function appendAuditEntry(row, entry = {}) {
   return JSON.stringify(entries);
 }
 
-function payrollSetupMissing(row = {}) {
+function payrollSetupMissing(row = {}, attendancePayrollMode = 'required') {
   const missing = [];
   const scheduleSnapshot = parseJsonObject(row.schedule_snapshot_json);
   const scheduleMissing = Array.isArray(scheduleSnapshot.payrollSetupMissing)
@@ -119,23 +136,186 @@ function payrollSetupMissing(row = {}) {
     scheduleSnapshot.dailyScheduledHours ?? scheduleSnapshot.daily_scheduled_hours,
     0
   );
+  const attendanceExempt = attendancePayrollMode === 'exempt';
 
   if (!cleanText(row.employee_id)) missing.push('employeeId');
   if (numberValue(row.base_salary_halalas, 0) <= 0) missing.push('baseSalary');
   if (numberValue(row.work_days, 0) <= 0) missing.push('workDays');
-  if (numberValue(row.monthly_hours, 0) <= 0 && dailyScheduledHours <= 0) missing.push('monthlyHours');
+  if (
+    !attendanceExempt &&
+    numberValue(row.monthly_hours, 0) <= 0 &&
+    dailyScheduledHours <= 0
+  ) {
+    missing.push('monthlyHours');
+  }
 
   for (const key of scheduleMissing) {
     if (key === 'overtimeMultiplier') continue;
+    if (attendanceExempt && key === 'monthlyHours') continue;
     if (!missing.includes(key)) missing.push(key);
   }
   return missing;
 }
 
-function assertPayrollSetupComplete(row) {
-  const missing = payrollSetupMissing(row);
+function assertPayrollSetupComplete(row, attendancePayrollMode = 'required') {
+  const missing = payrollSetupMissing(row, attendancePayrollMode);
   if (missing.length) {
     throw new AppError(409, 'core_payroll:setup_incomplete');
+  }
+}
+
+async function assertPayrollApprovalReady(
+  db,
+  salonId,
+  row,
+  options = {}
+) {
+  const snapshot = parseJsonObject(
+    row?.attendance_summary_json
+  );
+  const snapshotMode =
+    cleanText(
+      snapshot.attendancePayrollMode ??
+        snapshot.attendance_payroll_mode
+    ).toLowerCase() === 'exempt'
+      ? 'exempt'
+      : 'required';
+  let effectiveMode = snapshotMode;
+
+  if (options.validateCanonicalPolicy !== false) {
+    const employment = await dbFirst(
+      db,
+      `SELECT attendance_payroll_mode,
+              attendance_payroll_exemption_reason,
+              employment_status,
+              base_salary_halalas,
+              social_insurance_category,
+              social_insurance_effective_from
+         FROM employee_employment
+        WHERE salon_id = ?
+          AND employee_id = ?
+        LIMIT 1`,
+      [salonId, row.employee_id]
+    );
+
+    if (
+      !employment ||
+      cleanText(employment.employment_status).toLowerCase() !== 'active'
+    ) {
+      throw new AppError(409, 'core_payroll:employee_not_active');
+    }
+
+    const canonicalBaseSalaryHalalas = intMoney(
+      employment.base_salary_halalas
+    );
+    if (canonicalBaseSalaryHalalas <= 0) {
+      throw new AppError(409, 'core_payroll:employee_not_payroll_eligible');
+    }
+
+    const canonicalMode =
+      cleanText(
+        employment?.attendance_payroll_mode
+      ).toLowerCase() === 'exempt'
+        ? 'exempt'
+        : 'required';
+
+    if (canonicalMode !== snapshotMode) {
+      throw new AppError(
+        409,
+        'core_payroll:attendance_policy_mismatch'
+      );
+    }
+
+    const canonicalInsuranceCategory = cleanText(
+      employment?.social_insurance_category
+    ).toLowerCase();
+    const canonicalInsuranceEffectiveFrom = cleanText(
+      employment?.social_insurance_effective_from
+    );
+    const payrollPolicyDate = /^\d{4}-\d{2}$/.test(cleanText(row.payroll_month))
+      ? `${cleanText(row.payroll_month)}-28`
+      : '';
+
+    if (
+      canonicalInsuranceEffectiveFrom &&
+      payrollPolicyDate &&
+      canonicalInsuranceEffectiveFrom > payrollPolicyDate
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:gosi_not_effective_for_payroll_period'
+      );
+    }
+
+    if (!canonicalInsuranceCategory) {
+      throw new AppError(
+        409,
+        'core_payroll:gosi_classification_required'
+      );
+    }
+    if (canonicalInsuranceCategory === 'gcc') {
+      throw new AppError(
+        409,
+        'core_payroll:gosi_gcc_extension_policy_required'
+      );
+    }
+
+    const gosiSnapshot = parseJsonObject(row?.gosi_snapshot_json);
+    if (!cleanText(gosiSnapshot.policyVersion)) {
+      throw new AppError(409, 'core_payroll:gosi_snapshot_required');
+    }
+    if (
+      cleanText(gosiSnapshot.insuranceCategory).toLowerCase() !==
+      canonicalInsuranceCategory
+    ) {
+      throw new AppError(409, 'core_payroll:gosi_policy_mismatch');
+    }
+    const snapshotEmployee =
+      gosiSnapshot.employee &&
+      typeof gosiSnapshot.employee === 'object' &&
+      !Array.isArray(gosiSnapshot.employee)
+        ? gosiSnapshot.employee
+        : {};
+    const snapshotEmployer =
+      gosiSnapshot.employer &&
+      typeof gosiSnapshot.employer === 'object' &&
+      !Array.isArray(gosiSnapshot.employer)
+        ? gosiSnapshot.employer
+        : {};
+    if (
+      intMoney(row.insurance_deduction_halalas) !==
+      intMoney(snapshotEmployee.deductionHalalas)
+    ) {
+      throw new AppError(409, 'core_payroll:gosi_employee_deduction_mismatch');
+    }
+    if (
+      intMoney(row.employer_gosi_contribution_halalas) !==
+      intMoney(snapshotEmployer.contributionHalalas)
+    ) {
+      throw new AppError(409, 'core_payroll:gosi_employer_contribution_mismatch');
+    }
+
+    effectiveMode = canonicalMode;
+    if (canonicalMode === 'exempt') {
+      snapshot.attendancePayrollExemptionReason =
+        optionalText(
+          employment?.attendance_payroll_exemption_reason
+        ) || null;
+      snapshot.attendanceLinkStatus = 'exempt';
+      snapshot.attendanceDeductionEligible = false;
+    }
+  }
+
+  assertPayrollSetupComplete(row, effectiveMode);
+
+  const attendanceReadiness =
+    payrollAttendanceReadiness(snapshot);
+
+  if (!attendanceReadiness.ready) {
+    throw new AppError(
+      409,
+      `core_payroll:${attendanceReadiness.code}`
+    );
   }
 }
 
@@ -217,6 +397,296 @@ export async function listPayrollAdvanceDeductions(db, salonId, query = {}) {
   );
 }
 
+
+function carryoverSchemaUnavailable(error) {
+  const message = cleanText(error?.message).toLowerCase();
+  return message.includes('no such table') || message.includes('unhandled fake d1');
+}
+
+function validPayrollMonthKey(value, field = 'payrollMonth') {
+  const payrollMonth = cleanText(value);
+  if (!/^\d{4}-\d{2}$/.test(payrollMonth)) {
+    throw new AppError(400, `core_payroll:invalid_${field}`);
+  }
+  return payrollMonth;
+}
+
+function carryoverSignedAmount(row) {
+  const amount = Math.max(0, Number(row?.amount_halalas || 0));
+  return cleanText(row?.direction) === 'addition' ? amount : -amount;
+}
+
+function carryoverSourceIds(row) {
+  return [...new Set([
+    ...parseJsonArray(row?.additions_json),
+    ...parseJsonArray(row?.deductions_json),
+  ]
+    .filter((item) => cleanText(item?.sourceType ?? item?.source_type) === PAYROLL_CARRYOVER_SOURCE_TYPE)
+    .map((item) => cleanText(item?.sourceId ?? item?.source_id))
+    .filter(Boolean))];
+}
+
+async function latestPayrollApprovalSnapshot(db, salonId, payrollEntryId) {
+  try {
+    return await dbFirst(
+      db,
+      `SELECT *
+         FROM payroll_approval_snapshots
+        WHERE salon_id = ?
+          AND payroll_entry_id = ?
+        ORDER BY approval_version DESC
+        LIMIT 1`,
+      [salonId, payrollEntryId]
+    );
+  } catch (error) {
+    if (carryoverSchemaUnavailable(error)) return null;
+    throw error;
+  }
+}
+
+async function nextApprovalSnapshotVersion(db, salonId, payrollEntryId) {
+  const row = await dbFirst(
+    db,
+    `SELECT COALESCE(MAX(approval_version), 0) AS version
+       FROM payroll_approval_snapshots
+      WHERE salon_id = ?
+        AND payroll_entry_id = ?`,
+    [salonId, payrollEntryId]
+  );
+  return Math.max(0, Number(row?.version || 0)) + 1;
+}
+
+async function buildApprovalSnapshotStatement(db, salonId, entry, actor = {}, approvedAt = nowIso()) {
+  const approvalVersion = await nextApprovalSnapshotVersion(db, salonId, entry.id);
+  const snapshotId = generatedId('payroll_approval_snapshot');
+  const approvedNetHalalas = Math.max(0, Number(entry.net_salary_halalas ?? entry.final_salary_halalas ?? 0));
+  const baseSalaryHalalas = Math.max(0, Number(entry.base_salary_halalas || 0));
+  const grossSalaryHalalas = Math.max(0, Number(entry.gross_salary_halalas || 0));
+  const totalAdditionsHalalas = Math.max(0, grossSalaryHalalas - baseSalaryHalalas);
+  const totalDeductionsHalalas = Math.max(0, Number(entry.total_deductions_halalas || 0));
+  return {
+    id: snapshotId,
+    sql: `INSERT INTO payroll_approval_snapshots
+      (id, salon_id, payroll_entry_id, employee_id, payroll_month, approval_version,
+       approved_at, approved_by_uid, approved_net_halalas, base_salary_halalas,
+       total_additions_halalas, total_deductions_halalas, attendance_summary_json,
+       gosi_snapshot_json, employer_gosi_contribution_halalas,
+       entry_snapshot_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      snapshotId,
+      salonId,
+      entry.id,
+      entry.employee_id,
+      entry.payroll_month,
+      approvalVersion,
+      approvedAt,
+      optionalText(actor.uid) || null,
+      approvedNetHalalas,
+      baseSalaryHalalas,
+      totalAdditionsHalalas,
+      totalDeductionsHalalas,
+      entry.attendance_summary_json || null,
+      entry.gosi_snapshot_json || null,
+      Math.max(0, Number(entry.employer_gosi_contribution_halalas || 0)),
+      JSON.stringify(entry),
+      approvedAt,
+    ],
+  };
+}
+
+async function ensureApprovalSnapshotExists(db, salonId, entry, actor = {}) {
+  const existingSnapshot = await latestPayrollApprovalSnapshot(db, salonId, entry.id);
+  if (existingSnapshot) return existingSnapshot;
+  const approvedAt = optionalText(entry.approved_at) || nowIso();
+  const statement = await buildApprovalSnapshotStatement(db, salonId, entry, actor, approvedAt);
+  await dbRun(db, statement.sql, statement.params);
+  return latestPayrollApprovalSnapshot(db, salonId, entry.id);
+}
+
+export async function listPayrollCarryoverAdjustments(db, salonId, query = {}) {
+  let rows;
+  try {
+    rows = await dbAll(
+      db,
+      `SELECT *
+         FROM payroll_carryover_adjustments
+        WHERE salon_id = ?
+        ORDER BY target_payroll_month DESC, employee_id, created_at`,
+      [salonId]
+    );
+  } catch (error) {
+    if (carryoverSchemaUnavailable(error)) return [];
+    throw error;
+  }
+  const employeeId = cleanText(query.employeeId || query.employee_id);
+  const targetPayrollMonth = cleanText(query.targetPayrollMonth || query.target_payroll_month);
+  const sourcePayrollMonth = cleanText(query.sourcePayrollMonth || query.source_payroll_month);
+  const status = cleanText(query.status);
+  return rows.filter((row) =>
+    (!employeeId || cleanText(row.employee_id) === employeeId) &&
+    (!targetPayrollMonth || cleanText(row.target_payroll_month) === targetPayrollMonth) &&
+    (!sourcePayrollMonth || cleanText(row.source_payroll_month) === sourcePayrollMonth) &&
+    (!status || status === 'active'
+      ? ['pending', 'applied'].includes(cleanText(row.status))
+      : cleanText(row.status) === status)
+  );
+}
+
+async function reconcilePayrollCarryover(db, salonId, data, actor = {}) {
+  const sourcePayrollEntryId = requiredId(
+    data.sourcePayrollEntryId || data.source_payroll_entry_id,
+    'sourcePayrollEntryId'
+  );
+  const targetPayrollMonth = validPayrollMonthKey(
+    data.targetPayrollMonth || data.target_payroll_month,
+    'target_month'
+  );
+  const recalculatedNetHalalas = intMoney(
+    data.recalculatedNetHalalas ?? data.recalculated_net_halalas
+  );
+  const sourceEntry = await getPayrollEntry(db, salonId, sourcePayrollEntryId);
+  if (!['approved', 'paid'].includes(cleanText(sourceEntry.status))) {
+    throw new AppError(409, 'core_payroll:carryover_source_not_approved');
+  }
+  if (targetPayrollMonth <= cleanText(sourceEntry.payroll_month)) {
+    throw new AppError(400, 'core_payroll:carryover_target_must_be_future');
+  }
+
+  const snapshot = await ensureApprovalSnapshotExists(db, salonId, sourceEntry, actor);
+  if (!snapshot) throw new AppError(409, 'core_payroll:approval_snapshot_missing');
+
+  const desired = payrollCarryoverDelta(
+    snapshot.approved_net_halalas,
+    recalculatedNetHalalas
+  );
+  const rows = await dbAll(
+    db,
+    `SELECT *
+       FROM payroll_carryover_adjustments
+      WHERE salon_id = ?
+        AND source_snapshot_id = ?
+        AND status <> 'void'
+      ORDER BY created_at`,
+    [salonId, snapshot.id]
+  );
+  const appliedSigned = rows
+    .filter((row) => cleanText(row.status) === 'applied')
+    .reduce((total, row) => total + carryoverSignedAmount(row), 0);
+  const pending = rows.find(
+    (row) => cleanText(row.status) === 'pending' && cleanText(row.target_payroll_month) === targetPayrollMonth
+  );
+  const residualSigned = desired.signedDeltaHalalas - appliedSigned;
+  const now = nowIso();
+  const sourceDate = optionalText(data.sourceDate || data.source_date) || null;
+  const reason = optionalText(data.reason) ||
+    `تسوية فرق مسيرة ${sourceEntry.payroll_month} بعد إعادة الاحتساب النهائي للحضور والإجازات والخصومات.`;
+
+  if (residualSigned === 0) {
+    if (pending) {
+      await dbRun(
+        db,
+        `UPDATE payroll_carryover_adjustments
+            SET status = 'void', amount_halalas = 0,
+                recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
+          WHERE salon_id = ? AND id = ? AND status = 'pending'`,
+        [recalculatedNetHalalas, reason, sourceDate, now, salonId, pending.id]
+      );
+    }
+    return {
+      sourcePayrollEntryId,
+      sourcePayrollMonth: sourceEntry.payroll_month,
+      targetPayrollMonth,
+      employeeId: sourceEntry.employee_id,
+      approvedNetHalalas: desired.approvedNetHalalas,
+      recalculatedNetHalalas: desired.recalculatedNetHalalas,
+      desiredSignedDeltaHalalas: desired.signedDeltaHalalas,
+      appliedSignedHalalas: appliedSigned,
+      residualSignedHalalas: 0,
+      adjustment: null,
+    };
+  }
+
+  const direction = residualSigned > 0 ? 'addition' : 'deduction';
+  const amountHalalas = Math.abs(residualSigned);
+  let adjustmentId = pending?.id || generatedId('payroll_carryover');
+  if (pending) {
+    await dbRun(
+      db,
+      `UPDATE payroll_carryover_adjustments
+          SET direction = ?, amount_halalas = ?, approved_net_halalas = ?,
+              recalculated_net_halalas = ?, reason = ?, source_date = ?, updated_at = ?
+        WHERE salon_id = ? AND id = ? AND status = 'pending'`,
+      [
+        direction,
+        amountHalalas,
+        desired.approvedNetHalalas,
+        recalculatedNetHalalas,
+        reason,
+        sourceDate,
+        now,
+        salonId,
+        pending.id,
+      ]
+    );
+  } else {
+    await dbRun(
+      db,
+      `INSERT INTO payroll_carryover_adjustments
+        (id, salon_id, employee_id, source_payroll_month, target_payroll_month,
+         source_payroll_entry_id, source_snapshot_id, direction, amount_halalas,
+         approved_net_halalas, recalculated_net_halalas, reason, source_date,
+         status, target_payroll_entry_id, applied_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
+      [
+        adjustmentId,
+        salonId,
+        sourceEntry.employee_id,
+        sourceEntry.payroll_month,
+        targetPayrollMonth,
+        sourceEntry.id,
+        snapshot.id,
+        direction,
+        amountHalalas,
+        desired.approvedNetHalalas,
+        recalculatedNetHalalas,
+        reason,
+        sourceDate,
+        now,
+        now,
+      ]
+    );
+  }
+
+  const adjustment = await dbFirst(
+    db,
+    `SELECT * FROM payroll_carryover_adjustments WHERE salon_id = ? AND id = ? LIMIT 1`,
+    [salonId, adjustmentId]
+  );
+  return {
+    sourcePayrollEntryId,
+    sourcePayrollMonth: sourceEntry.payroll_month,
+    targetPayrollMonth,
+    employeeId: sourceEntry.employee_id,
+    approvedNetHalalas: desired.approvedNetHalalas,
+    recalculatedNetHalalas: desired.recalculatedNetHalalas,
+    desiredSignedDeltaHalalas: desired.signedDeltaHalalas,
+    appliedSignedHalalas: appliedSigned,
+    residualSignedHalalas: residualSigned,
+    adjustment,
+  };
+}
+
+export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, actor = {}) {
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (items.length > 200) throw new AppError(400, 'core_payroll:carryover_batch_too_large');
+  const results = [];
+  for (const item of items) {
+    results.push(await reconcilePayrollCarryover(db, salonId, item, actor));
+  }
+  return { results };
+}
+
 export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const payrollMonth = cleanText(data.payrollMonth || data.payroll_month);
@@ -260,6 +730,20 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     throw new AppError(400, 'core_payroll:manual_advance_not_allowed');
   }
 
+  const obligationCanonical = await canonicalizePayrollObligationDeductions(
+    db,
+    salonId,
+    {
+      ...data,
+      employeeId,
+      payrollMonth,
+      deductions: submittedDeductions,
+    },
+    actor
+  );
+  const canonicalDeductions = obligationCanonical.deductions;
+  const canonicalManualDeductionsHalalas = deductionItemsTotal(canonicalDeductions);
+
   const canonicalAdvanceRows = await listPayrollAdvanceDeductions(
     db,
     salonId,
@@ -274,13 +758,26 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     intMoney(data.allowancesHalalas ?? data.allowances_halalas) +
     intMoney(data.manualAdditionsHalalas ?? data.manual_additions_halalas) +
     intMoney(data.overtimeValueHalalas ?? data.overtime_value_halalas);
+  const submittedOtherDeductionsHalalas = intMoney(
+    data.otherDeductionsHalalas ?? data.other_deductions_halalas
+  );
+  const submittedManualDeductionsHalalas = intMoney(
+    data.manualDeductionsHalalas ?? data.manual_deductions_halalas
+  );
+  // `other_deductions_halalas` was historically used as an alias of manual deductions
+  // by the web client. Equal values are one financial amount, not two deductions.
+  const canonicalLegacyOtherDeductionsHalalas =
+    submittedOtherDeductionsHalalas > 0 &&
+    submittedOtherDeductionsHalalas !== submittedManualDeductionsHalalas
+      ? submittedOtherDeductionsHalalas
+      : 0;
   const canonicalTotalDeductionsHalalas =
     intMoney(data.absenceDeductionHalalas ?? data.absence_deduction_halalas) +
     intMoney(data.delayDeductionHalalas ?? data.delay_deduction_halalas) +
     intMoney(data.insuranceDeductionHalalas ?? data.insurance_deduction_halalas) +
-    intMoney(data.otherDeductionsHalalas ?? data.other_deductions_halalas) +
+    canonicalLegacyOtherDeductionsHalalas +
     intMoney(data.missingHoursDeductionHalalas ?? data.missing_hours_deduction_halalas) +
-    intMoney(data.manualDeductionsHalalas ?? data.manual_deductions_halalas) +
+    canonicalManualDeductionsHalalas +
     canonicalAdvanceHalalas;
   const canonicalNetSalaryHalalas = Math.max(
     0,
@@ -288,7 +785,9 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   );
   data = {
     ...data,
-    deductions: submittedDeductions,
+    deductions: canonicalDeductions,
+    otherDeductionsHalalas: canonicalLegacyOtherDeductionsHalalas,
+    manualDeductionsHalalas: canonicalManualDeductionsHalalas,
     advancesHalalas: canonicalAdvanceHalalas,
     totalDeductionsHalalas: canonicalTotalDeductionsHalalas,
     grossSalaryHalalas: canonicalGrossSalaryHalalas,
@@ -327,6 +826,27 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     overtime_bonus_halalas: intMoney(data.overtimeBonusHalalas ?? data.overtime_bonus_halalas),
     delay_deduction_halalas: intMoney(data.delayDeductionHalalas ?? data.delay_deduction_halalas),
     insurance_deduction_halalas: intMoney(data.insuranceDeductionHalalas ?? data.insurance_deduction_halalas),
+    gosi_insurance_category: optionalText(
+      data.gosiInsuranceCategory ?? data.gosi_insurance_category
+    ) || null,
+    gosi_policy_version: optionalText(
+      data.gosiPolicyVersion ?? data.gosi_policy_version
+    ) || null,
+    gosi_contributory_wage_halalas: intMoney(
+      data.gosiContributoryWageHalalas ??
+        data.gosi_contributory_wage_halalas
+    ),
+    employer_gosi_contribution_halalas: intMoney(
+      data.employerGosiContributionHalalas ??
+        data.employer_gosi_contribution_halalas
+    ),
+    gosi_snapshot_json:
+      data.gosiSnapshot || data.gosi_snapshot
+        ? JSON.stringify(data.gosiSnapshot ?? data.gosi_snapshot)
+        : null,
+    gosi_calculated_at: optionalText(
+      data.gosiCalculatedAt ?? data.gosi_calculated_at
+    ) || (data.gosiSnapshot || data.gosi_snapshot ? now : null),
     other_deductions_halalas: intMoney(data.otherDeductionsHalalas ?? data.other_deductions_halalas),
     missing_hours_deduction_halalas: intMoney(data.missingHoursDeductionHalalas ?? data.missing_hours_deduction_halalas),
     additions_json: jsonText(data.additions ?? data.additions_json, []),
@@ -354,7 +874,14 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     updated_at: now,
   };
   if (['approved', 'paid'].includes(status)) {
-    assertPayrollSetupComplete(row);
+    await assertPayrollApprovalReady(
+      db,
+      salonId,
+      row,
+      {
+        validateCanonicalPolicy: true,
+      }
+    );
   }
   await dbRun(db, `INSERT INTO payroll_entries
     (id, salon_id, period_id, employee_id, payroll_month, employee_name, job_title,
@@ -363,13 +890,15 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
      actual_worked_hours, missing_hours, overtime_hours, attendance_summary_json,
      detected_extra_hours, overtime_enabled, financial_overtime_hours, overtime_multiplier,
      overtime_value_halalas, overtime_bonus_halalas, delay_deduction_halalas,
-     insurance_deduction_halalas, other_deductions_halalas, missing_hours_deduction_halalas,
+     insurance_deduction_halalas, gosi_insurance_category, gosi_policy_version,
+     gosi_contributory_wage_halalas, employer_gosi_contribution_halalas, gosi_snapshot_json,
+     gosi_calculated_at, other_deductions_halalas, missing_hours_deduction_halalas,
      additions_json, manual_additions_halalas, manual_deductions_halalas, advances_halalas,
      total_deductions_halalas, gross_salary_halalas, final_salary_halalas, net_salary_halalas,
      schedule_snapshot_json, absence_entries_json, deductions_json, mudad_file_id, status,
      approved_at, approved_by_uid, paid_at, paid_by_uid, notes, audit_log_json,
      created_by_uid, created_by_email, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (${Object.keys(row).map(() => '?').join(', ')})
     ON CONFLICT(salon_id, employee_id, payroll_month) DO UPDATE SET
       period_id = excluded.period_id, employee_name = excluded.employee_name, job_title = excluded.job_title,
       base_salary_halalas = excluded.base_salary_halalas,
@@ -387,6 +916,12 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
       overtime_bonus_halalas = excluded.overtime_bonus_halalas,
       delay_deduction_halalas = excluded.delay_deduction_halalas,
       insurance_deduction_halalas = excluded.insurance_deduction_halalas,
+      gosi_insurance_category = excluded.gosi_insurance_category,
+      gosi_policy_version = excluded.gosi_policy_version,
+      gosi_contributory_wage_halalas = excluded.gosi_contributory_wage_halalas,
+      employer_gosi_contribution_halalas = excluded.employer_gosi_contribution_halalas,
+      gosi_snapshot_json = excluded.gosi_snapshot_json,
+      gosi_calculated_at = excluded.gosi_calculated_at,
       other_deductions_halalas = excluded.other_deductions_halalas,
       missing_hours_deduction_halalas = excluded.missing_hours_deduction_halalas,
       additions_json = excluded.additions_json,
@@ -477,7 +1012,16 @@ export async function togglePayrollOvertime(db, salonId, id, data, actor = {}) {
 export async function approvePayrollEntry(db, salonId, id, actor = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
-  assertPayrollSetupComplete(existing);
+  if (cleanText(existing.status) === 'approved') return existing;
+  await assertPayrollApprovalReady(
+    db,
+    salonId,
+    existing,
+    {
+      validateCanonicalPolicy: true,
+    }
+  );
+  await assertPayrollObligationSnapshotCurrent(db, salonId, existing);
   const now = nowIso();
   try {
     await approveEmployeeTargetSummary(db, salonId, {
@@ -488,14 +1032,32 @@ export async function approvePayrollEntry(db, salonId, id, actor = {}) {
   } catch (error) {
     if (!targetSchemaUnavailable(error)) throw error;
   }
-  await dbRun(
-    db,
-    `UPDATE payroll_entries
-       SET status = 'approved', approved_at = COALESCE(approved_at, ?),
-           approved_by_uid = COALESCE(approved_by_uid, ?), audit_log_json = ?, updated_at = ?
-     WHERE salon_id = ? AND id = ?`,
-    [now, optionalText(actor.uid) || null, appendAudit(existing, 'approved', actor), now, salonId, existing.id]
-  );
+
+  const snapshotStatement = await buildApprovalSnapshotStatement(db, salonId, existing, actor, now);
+  const statements = [
+    { sql: snapshotStatement.sql, params: snapshotStatement.params },
+    {
+      sql: `UPDATE payroll_entries
+         SET status = 'approved', approved_at = COALESCE(approved_at, ?),
+             approved_by_uid = COALESCE(approved_by_uid, ?), audit_log_json = ?, updated_at = ?
+       WHERE salon_id = ? AND id = ?`,
+      params: [now, optionalText(actor.uid) || null, appendAudit(existing, 'approved', actor), now, salonId, existing.id],
+    },
+  ];
+
+  for (const carryoverId of carryoverSourceIds(existing)) {
+    statements.push({
+      sql: `UPDATE payroll_carryover_adjustments
+               SET status = 'applied', target_payroll_entry_id = ?, applied_at = ?, updated_at = ?
+             WHERE salon_id = ?
+               AND id = ?
+               AND target_payroll_month = ?
+               AND status = 'pending'`,
+      params: [existing.id, now, now, salonId, carryoverId, existing.payroll_month],
+    });
+  }
+
+  await dbBatch(db, statements);
   return getPayrollEntry(db, salonId, existing.id);
 }
 
@@ -542,7 +1104,15 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (cleanText(existing.status) === 'paid') return existing;
   if (cleanText(existing.status) !== 'approved') throw new AppError(409, 'core_payroll:not_approved');
-  assertPayrollSetupComplete(existing);
+  await assertPayrollApprovalReady(
+    db,
+    salonId,
+    existing,
+    {
+      validateCanonicalPolicy: false,
+    }
+  );
+  await ensureApprovalSnapshotExists(db, salonId, existing, actor);
   const now = nowIso();
   const installments = await dbAll(
     db,
@@ -565,6 +1135,13 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
   if (scheduledAdvanceHalalas !== Math.max(0, Number(existing.advances_halalas || 0))) {
     throw new AppError(409, 'core_payroll:advance_deduction_mismatch');
   }
+
+  const obligationStatements = await payrollObligationPaidStatements(
+    db,
+    salonId,
+    existing,
+    now
+  );
 
   const statements = [
     {
@@ -648,6 +1225,7 @@ export async function markPayrollEntryPaid(db, salonId, id, actor = {}) {
     );
   }
 
+  statements.push(...obligationStatements);
   await dbBatch(db, statements);
   return getPayrollEntry(db, salonId, existing.id);
 }

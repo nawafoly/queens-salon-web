@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   createEmployeeMessage,
-  createEmployeeNotification,
-  employeeMessagesCol,
+  listEmployeeMessages,
   markEmployeeThreadRead,
   type EmployeeMessage,
 } from "../../services/employeeHub";
@@ -115,8 +113,7 @@ export default function EmployeeMessagesSection({
     setLoading(true);
     setError("");
     try {
-      const snap = await getDocs(query(employeeMessagesCol(), orderBy("createdAt", "desc"), limit(500)));
-      const all = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) })) as EmployeeMessage[];
+      const all = await listEmployeeMessages(500);
       const visible = all
         .filter((item) => messageMatchesEmployee(item, employeeKeys))
         .sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt));
@@ -181,15 +178,6 @@ export default function EmployeeMessagesSection({
         kind: "hr_to_employee",
       });
 
-      await createEmployeeNotification({
-        targetUid,
-        targetEmployeeId: employeeId || targetUid,
-        type: "message",
-        title: "رسالة جديدة من الإدارة",
-        body: body.slice(0, 140),
-        route: "/employee/messages",
-      }).catch(() => {});
-
       setDraft("");
       setMessage("تم إرسال الرسالة.");
       await load();
@@ -208,7 +196,7 @@ export default function EmployeeMessagesSection({
     setSaving(true);
     setError("");
     try {
-      const ids = Array.from(new Set(rows.map((row) => cleanText(row.conversationId)).filter(Boolean)));
+      const ids: string[] = Array.from(new Set<string>(rows.map((row) => cleanText(row.conversationId)).filter(Boolean)));
       await Promise.all(ids.map((id) => markEmployeeThreadRead({ conversationId: id, readerUid: reader })));
       setMessage("تم تعليم المحادثة كمقروءة.");
       await load();

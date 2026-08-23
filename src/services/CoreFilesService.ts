@@ -25,6 +25,9 @@ function mapMetadata(row: Record<string, unknown>): CoreFileMetadata {
     sizeBytes: value("sizeBytes", "size_bytes") as number | null | undefined,
     status: String(row.status || "active"),
     visibility: String(row.visibility || "private"),
+    uploadedByUid: value("uploadedByUid", "uploaded_by_uid") as string | null | undefined,
+    replacedByFileId: value("replacedByFileId", "replaced_by_file_id") as string | null | undefined,
+    replacesFileId: value("replacesFileId", "replaces_file_id") as string | null | undefined,
     createdAt: String(value("createdAt", "created_at") || ""),
     updatedAt: String(value("updatedAt", "updated_at") || ""),
   };
@@ -52,9 +55,17 @@ export const CoreFilesService = {
     const rows = await coreApiRequest<Record<string, unknown>[]>("/api/core/files", { query });
     return rows.map(mapMetadata);
   },
+  async get(fileId: string) {
+    assertR2FilesEnabled();
+    return mapMetadata(await coreApiRequest<Record<string, unknown>>(`/api/core/files/${encodeURIComponent(fileId)}`));
+  },
   async createMetadata(input: Record<string, unknown>) {
     assertR2FilesEnabled();
     return mapMetadata(await coreApiRequest<Record<string, unknown>>("/api/core/files", { method: "POST", body: input }));
+  },
+  async updateMetadata(fileId: string, input: Record<string, unknown>) {
+    assertR2FilesEnabled();
+    return mapMetadata(await coreApiRequest<Record<string, unknown>>(`/api/core/files/${encodeURIComponent(fileId)}`, { method: "PATCH", body: input }));
   },
   async upload(fileId: string, file: Blob) {
     const response = await authorizedBinary(`/api/core/files/${encodeURIComponent(fileId)}/content`, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });

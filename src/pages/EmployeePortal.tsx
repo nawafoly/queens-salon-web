@@ -32,8 +32,6 @@ import EmployeeFilesPage from "./hr/EmployeeFiles";
 import EmployeeMessagesPage from "./hr/EmployeeMessages";
 import EmployeeNotificationsPage from "./hr/EmployeeNotifications";
 import EmployeeOverviewPage from "./hr/EmployeeOverview";
-import EmployeeLeavePage from "./hr/EmployeeLeave";
-import EmployeePermissionRequestsPage from "./hr/EmployeePermissionRequests";
 import EmployeeRequestsPage from "./hr/EmployeeRequests";
 import EmployeePayrollPage from "./hr/EmployeePayroll";
 import EmployeeTargetsPage from "./hr/EmployeeTargets";
@@ -404,8 +402,6 @@ export default function EmployeePortal() {
     { to: "/employee/overview", label: "الرئيسية", description: "ملخص يوم العمل", icon: faHouse, end: true, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/attendance", label: "الحضور والانصراف", description: "السجل الشهري", icon: faFingerprint, end: true, permission: "attendance.own.view" as AppPermission },
     { to: "/employee/requests", label: "طلباتي", description: "المتابعة والقرارات والتنفيذ", icon: faPaperPlane, permission: "employee_requests.own.view" as AppPermission },
-    { to: "/employee/leave", label: "الإجازات والطلبات", description: "الرصيد والطلبات", icon: faCalendarDays, badge: notificationCounts.leave, permission: "workspace.employee_portal.view" as AppPermission },
-    { to: "/employee/permission", label: "الاستئذانات", description: "الخروج المؤقت والعودة", icon: faTriangleExclamation, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/payroll", label: "الراتب", description: "التفاصيل المالية", icon: faWallet, badge: notificationCounts.payroll, permission: "workspace.employee_portal.view" as AppPermission },
     { to: "/employee/targets", label: "تارقتي", description: "المبيعات المؤهلة والبونص المتوقع", icon: faChartLine, permission: "targets.view_own" as AppPermission },
     { to: "/employee/messages", label: "الرسائل", description: "التواصل الداخلي", icon: faPaperPlane, badge: notificationCounts.messages, permission: "messages.view" as AppPermission },
@@ -607,8 +603,8 @@ export default function EmployeePortal() {
             <Route path="profile" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeProfilePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="messages" element={<PermissionRoute permission="messages.view"><EmployeeMessagesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="files" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeFilesPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
-            <Route path="leave" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeeLeavePage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
-            <Route path="permission" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePermissionRequestsPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
+            <Route path="leave" element={<Navigate to="/employee/requests?new=leave" replace />} />
+            <Route path="permission" element={<Navigate to="/employee/requests?new=permission" replace />} />
             <Route path="payroll" element={<PermissionRoute permission="workspace.employee_portal.view"><EmployeePayrollPage session={session} onPortalChange={loadNotifications} /></PermissionRoute>} />
             <Route path="targets" element={<PermissionRoute permission="targets.view_own"><EmployeeTargetsPage /></PermissionRoute>} />
             <Route path="*" element={<Navigate to="/employee/overview" replace />} />

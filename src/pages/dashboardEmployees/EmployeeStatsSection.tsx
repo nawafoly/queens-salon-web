@@ -19,6 +19,7 @@ import {
   type LeaveEntry,
   type WeekdayKey,
 } from "./shared";
+import PayrollObligationsPanel from "./PayrollObligationsPanel";
 import {
   getLeaveEntryActionType,
   getLeaveEntryBalanceAfter,
@@ -34,6 +35,23 @@ type PayrollSummary = {
 
 type PayrollSetupPreview = {
   baseSalaryRiyals: number;
+  housingAllowanceRiyals: number;
+  transportationAllowanceRiyals: number;
+  otherAllowancesRiyals: number;
+  contractedMonthlySalaryRiyals: number;
+  socialInsuranceCategory: "" | "saudi_existing" | "saudi_new" | "gcc" | "non_saudi";
+  socialInsuranceEffectiveFrom: string;
+  gosiWageMode: "derived" | "override";
+  gosiContributoryWageRiyals: number;
+  gosiEmployeeDeductionRiyals: number;
+  gosiEmployerContributionRiyals: number;
+  gosiEmployeeRateBps: number;
+  gosiEmployerRateBps: number;
+  gosiPolicyVersion: string;
+  gosiWageSourceLabel: string;
+  gosiWasFloored: boolean;
+  gosiWasCapped: boolean;
+  gosiPreviewError: string;
   workDays: number;
   dailyHours: number;
   monthlyHours: number;
@@ -48,6 +66,7 @@ type PayrollDeductionMethodLiveV2 = "hourly" | "daily";
 
 type EmployeeStatsSectionProps = {
   isVisible: boolean;
+  employeeId: string;
   busy: boolean;
   loading: boolean;
   canManagePayroll: boolean;
@@ -59,23 +78,51 @@ type EmployeeStatsSectionProps = {
   currentMonthKeyLabel: string;
   payroll: {
     monthlySalary: string;
+    housingAllowance: string;
+    transportationAllowance: string;
+    otherAllowances: string;
+    socialInsuranceCategory: "" | "saudi_existing" | "saudi_new" | "gcc" | "non_saudi";
+    socialInsuranceEffectiveFrom: string;
+    socialInsuranceClassificationNote: string;
+    gosiWageMode: "derived" | "override";
+    gosiContributoryWageOverride: string;
+    gosiContributoryWageOverrideReason: string;
+    gccHomeCountryCode: string;
     workDays: string;
     dailyHours: string;
     monthlyHours: string;
     overtimeEnabled: boolean;
     overtimeMultiplier: string;
     deductionMethod: PayrollDeductionMethodLiveV2;
+    attendancePayrollMode: "required" | "exempt";
+    attendancePayrollExemptionReason: string;
     summary: PayrollSummary;
     setupPreview: PayrollSetupPreview;
     savingSettings: boolean;
     settingsMessage?: string;
     onMonthlySalaryChange: (value: string) => void;
+    onHousingAllowanceChange: (value: string) => void;
+    onTransportationAllowanceChange: (value: string) => void;
+    onOtherAllowancesChange: (value: string) => void;
+    onSocialInsuranceCategoryChange: (value: string) => void;
+    onSocialInsuranceEffectiveFromChange: (value: string) => void;
+    onSocialInsuranceClassificationNoteChange: (value: string) => void;
+    onGosiWageModeChange: (value: string) => void;
+    onGosiContributoryWageOverrideChange: (value: string) => void;
+    onGosiContributoryWageOverrideReasonChange: (value: string) => void;
+    onGccHomeCountryCodeChange: (value: string) => void;
     onWorkDaysChange: (value: string) => void;
     onDailyHoursChange: (value: string) => void;
     onMonthlyHoursChange: (value: string) => void;
     onOvertimeEnabledChange: (value: boolean) => void;
     onOvertimeMultiplierChange: (value: string) => void;
     onDeductionMethodChange: (value: PayrollDeductionMethodLiveV2) => void;
+    onAttendancePayrollModeChange: (
+      value: "required" | "exempt"
+    ) => void;
+    onAttendancePayrollExemptionReasonChange: (
+      value: string
+    ) => void;
     onSaveSettings: () => void;
   };
   leave: {
@@ -110,6 +157,19 @@ function formatNumber(value: unknown) {
 function formatMoney(value: unknown) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? `${number.toLocaleString("ar-SA")} ر.س` : "غير محدد";
+}
+
+function formatMoneyIncludingZero(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0
+    ? `${number.toLocaleString("ar-SA")} ر.س`
+    : "غير محدد";
+}
+
+function formatRateBasisPoints(value: unknown) {
+  const bps = Number(value);
+  if (!Number.isFinite(bps) || bps < 0) return "غير محدد";
+  return `${Math.round(bps) / 100}%`;
 }
 
 function formatLeaveChange(entry: LeaveEntry) {
@@ -148,6 +208,7 @@ function isLeaveActiveNow(fromDate: string, toDate: string) {
 
 export default function EmployeeStatsSection({
   isVisible,
+  employeeId,
   busy,
   loading,
   canManagePayroll,
@@ -190,21 +251,53 @@ export default function EmployeeStatsSection({
         <EmployeePayrollTabLiveV2
           readOnly={readOnlyPayroll}
           monthlySalary={payroll.monthlySalary}
+          housingAllowance={payroll.housingAllowance}
+          transportationAllowance={payroll.transportationAllowance}
+          otherAllowances={payroll.otherAllowances}
+          socialInsuranceCategory={payroll.socialInsuranceCategory}
+          socialInsuranceEffectiveFrom={payroll.socialInsuranceEffectiveFrom}
+          socialInsuranceClassificationNote={payroll.socialInsuranceClassificationNote}
+          gosiWageMode={payroll.gosiWageMode}
+          gosiContributoryWageOverride={payroll.gosiContributoryWageOverride}
+          gosiContributoryWageOverrideReason={payroll.gosiContributoryWageOverrideReason}
+          gccHomeCountryCode={payroll.gccHomeCountryCode}
           workDays={payroll.workDays}
           dailyHours={payroll.dailyHours}
           monthlyHours={payroll.monthlyHours}
           overtimeEnabled={payroll.overtimeEnabled}
           overtimeMultiplier={payroll.overtimeMultiplier}
           deductionMethod={payroll.deductionMethod}
+          attendancePayrollMode={
+            payroll.attendancePayrollMode
+          }
+          attendancePayrollExemptionReason={
+            payroll.attendancePayrollExemptionReason
+          }
           savingSettings={payroll.savingSettings}
           settingsMessage={payroll.settingsMessage}
           onMonthlySalaryChange={payroll.onMonthlySalaryChange}
+          onHousingAllowanceChange={payroll.onHousingAllowanceChange}
+          onTransportationAllowanceChange={payroll.onTransportationAllowanceChange}
+          onOtherAllowancesChange={payroll.onOtherAllowancesChange}
+          onSocialInsuranceCategoryChange={payroll.onSocialInsuranceCategoryChange}
+          onSocialInsuranceEffectiveFromChange={payroll.onSocialInsuranceEffectiveFromChange}
+          onSocialInsuranceClassificationNoteChange={payroll.onSocialInsuranceClassificationNoteChange}
+          onGosiWageModeChange={payroll.onGosiWageModeChange}
+          onGosiContributoryWageOverrideChange={payroll.onGosiContributoryWageOverrideChange}
+          onGosiContributoryWageOverrideReasonChange={payroll.onGosiContributoryWageOverrideReasonChange}
+          onGccHomeCountryCodeChange={payroll.onGccHomeCountryCodeChange}
           onWorkDaysChange={payroll.onWorkDaysChange}
           onDailyHoursChange={payroll.onDailyHoursChange}
           onMonthlyHoursChange={payroll.onMonthlyHoursChange}
           onOvertimeEnabledChange={payroll.onOvertimeEnabledChange}
           onOvertimeMultiplierChange={payroll.onOvertimeMultiplierChange}
           onDeductionMethodChange={(value) => payroll.onDeductionMethodChange(value === "daily" ? "daily" : "hourly")}
+          onAttendancePayrollModeChange={
+            payroll.onAttendancePayrollModeChange
+          }
+          onAttendancePayrollExemptionReasonChange={
+            payroll.onAttendancePayrollExemptionReasonChange
+          }
           onSaveSettings={payroll.onSaveSettings}
         />
 
@@ -213,9 +306,78 @@ export default function EmployeeStatsSection({
           <WorkspaceMetricV2 label="حالة الإعداد" value={payrollSetup.complete ? "مكتمل" : "غير مكتمل"} tone={payrollSetup.complete ? "success" : "gold"} />
           <WorkspaceMetricV2 label="راتب اليوم" value={formatMoney(payrollSetup.dailyRateRiyals)} />
           <WorkspaceMetricV2 label="راتب الساعة" value={formatMoney(payrollSetup.hourlyRateRiyals)} />
+          <WorkspaceMetricV2 label="إجمالي الراتب التعاقدي" value={formatMoney(payrollSetup.contractedMonthlySalaryRiyals)} tone="success" />
           <WorkspaceMetricV2 label="إجمالي الشهر" value={formatMoney(payroll.summary?.totalAmount)} tone="success" />
           <WorkspaceMetricV2 label="الإيراد" value={formatMoney(payroll.summary?.invoiceRevenue)} />
         </div>
+
+        <div className="dsv2-ew-metrics dsv2-ew-metrics--payroll">
+          <WorkspaceMetricV2
+            label="أجر الاشتراك في GOSI"
+            value={
+              payrollSetup.socialInsuranceCategory && payrollSetup.gosiContributoryWageRiyals > 0
+                ? formatMoneyIncludingZero(payrollSetup.gosiContributoryWageRiyals)
+                : "غير محسوب"
+            }
+            tone={payrollSetup.gosiContributoryWageRiyals > 0 ? "success" : "gold"}
+          />
+          <WorkspaceMetricV2
+            label="خصم الموظفة GOSI"
+            value={
+              payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
+                ? formatMoneyIncludingZero(payrollSetup.gosiEmployeeDeductionRiyals)
+                : "غير محسوب"
+            }
+          />
+          <WorkspaceMetricV2
+            label="نسبة الموظفة"
+            value={
+              payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
+                ? formatRateBasisPoints(payrollSetup.gosiEmployeeRateBps)
+                : "غير محسوبة"
+            }
+          />
+          <WorkspaceMetricV2
+            label="مساهمة المنشأة GOSI"
+            value={
+              payrollSetup.socialInsuranceCategory && !payrollSetup.gosiPreviewError
+                ? formatMoneyIncludingZero(payrollSetup.gosiEmployerContributionRiyals)
+                : "غير محسوب"
+            }
+          />
+          <WorkspaceMetricV2
+            label="مصدر أجر الاشتراك"
+            value={payrollSetup.gosiWageSourceLabel || "غير محسوب"}
+          />
+          <WorkspaceMetricV2
+            label="سياسة GOSI"
+            value={payrollSetup.gosiPolicyVersion || "غير محسوبة"}
+          />
+        </div>
+
+        {payrollSetup.gosiPreviewError ? (
+          <WorkspaceNoticeV2
+            title="حساب GOSI غير جاهز"
+            description={
+              payrollSetup.gosiPreviewError === "gosi_gcc_extension_policy_required"
+                ? "الموظفة مصنفة خليجية. لا يتم تحويلها تلقائيًا إلى غير سعودية؛ يجب استكمال سياسة مد الحماية قبل اعتماد الراتب."
+                : "تعذر إنشاء معاينة GOSI: " + payrollSetup.gosiPreviewError
+            }
+            tone="gold"
+          />
+        ) : null}
+
+        {payrollSetup.gosiWasFloored || payrollSetup.gosiWasCapped ? (
+          <WorkspaceNoticeV2
+            title="تم تطبيق حد على أجر الاشتراك"
+            description={
+              payrollSetup.gosiWasFloored
+                ? "أجر الاشتراك المدخل أقل من الحد الأدنى المطبق في سياسة GOSI الحالية، لذلك استخدم المحرك الحد الأدنى."
+                : "أجر الاشتراك المدخل أعلى من الحد الأعلى المطبق في سياسة GOSI الحالية، لذلك استخدم المحرك الحد الأعلى."
+            }
+            tone="gold"
+          />
+        ) : null}
 
         {!payrollSetup.complete && payrollSetup.missing.length ? (
           <WorkspaceNoticeV2
@@ -224,6 +386,12 @@ export default function EmployeeStatsSection({
             tone="gold"
           />
         ) : null}
+
+        <PayrollObligationsPanel
+          employeeId={employeeId}
+          currentPayrollMonth={currentMonthKeyLabel}
+          readOnly={readOnlyPayroll}
+        />
       </div>
     );
   }

@@ -207,7 +207,7 @@ export async function getStaffAvailability(db, salonId, query = {}) {
     active: staffIsActive(staff),
     showOnBooking,
     onLeave,
-    leaveNote: onLeave ? cleanText(staff.leave_note) : "",
+    leaveNote: onLeave ? cleanText(bookingDay.leaveNote) : "",
     availableForDate: Boolean(bookingDay.available && showOnBooking),
     unavailableReason: bookingDay.available ? "" : cleanText(bookingDay.reason),
     availabilitySource: cleanText(bookingDay.source),

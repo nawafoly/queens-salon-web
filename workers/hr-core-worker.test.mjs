@@ -3,11 +3,14 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Miniflare } from 'miniflare';
 
+import { normalizeError } from './core/errors.js';
 import { upsertHrEmployee, replaceHrSchedules } from './core/repositories/hr-employees.js';
 import {
+  createScheduleException,
   resolveEmployeeShift,
   resolveEmployeeShiftsBatch,
   saveShiftTemplate,
+  updateScheduleException,
 } from './core/repositories/shift-control.js';
 import { getAttendanceState, recordAttendance } from './core/repositories/attendance.js';
 import { createLeave, decideLeave } from './core/repositories/leaves.js';
@@ -19,14 +22,36 @@ import {
 import { createAbsence } from './core/repositories/absences.js';
 import {
   approvePayrollEntry,
+  listPayrollCarryoverAdjustments,
   markPayrollEntryPaid,
+  reconcilePayrollCarryoversBatch,
   upsertPayrollEntry,
   upsertPayrollPeriod,
 } from './core/repositories/payroll.js';
+import {
+  createPayrollObligation,
+  deferPayrollObligationInstallment,
+  listPayrollObligationDeductions,
+  listPayrollObligations,
+  listPayrollRecurringDeductions,
+  savePayrollRecurringDeduction,
+} from './core/repositories/payroll-obligations.js';
+import { calculateGosi } from '../src/helpers/hr/gosiPolicy.js';
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
-import { createFileMetadata, getFileContent, putFileContent } from './core/repositories/files.js';
+import { createFileMetadata, getFileContent, patchFileMetadata, putFileContent } from './core/repositories/files.js';
 import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
 import { createEmployeeRequest, getEmployeeRequestPayrollImpact, getExceptionalFinancialPaymentPreview, transitionEmployeeRequest } from './core/repositories/employee-requests.js';
+import {
+  createEmployeeMessage,
+  createEmployeeNotification,
+  createRecruitmentApplication,
+  listEmployeeMessages,
+  listEmployeeNotifications,
+  listRecruitmentApplications,
+  markEmployeeNotificationRead,
+  markEmployeeThreadRead,
+  patchRecruitmentApplication,
+} from './core/repositories/workforce-communications.js';
 
 function splitMigrationStatements(sql) {
   const statements = [];
@@ -98,6 +123,11 @@ async function setup() {
     '0024_employee_leave_balance_ledger.sql',
     '0025_employee_request_reference_integrity.sql',
     '0026_employee_master_profile_fields.sql',
+    '0027_employee_attendance_payroll_mode.sql',
+    '0028_payroll_approval_snapshots_carryovers.sql',
+    '0029_payroll_social_insurance_snapshots.sql',
+    '0030_employee_payroll_obligations.sql',
+    '0031_workforce_communications_recruitment.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -113,6 +143,41 @@ async function setup() {
 
 const actor = { uid: 'uid-admin', email: 'admin@example.com', name: 'Admin' };
 
+function nonSaudiGosiPayrollFields({
+  payrollDate,
+  basicSalaryHalalas,
+  housingAllowanceHalalas = 0,
+}) {
+  const snapshot = calculateGosi({
+    insuranceCategory: 'non_saudi',
+    payrollDate,
+    basicSalaryHalalas,
+    housingAllowanceHalalas,
+    transportationAllowanceHalalas: 0,
+    otherAllowancesHalalas: 0,
+    wageMode: 'derived',
+  });
+  return {
+    insuranceDeductionHalalas: snapshot.employee.deductionHalalas,
+    employerGosiContributionHalalas: snapshot.employer.contributionHalalas,
+    gosiSnapshot: snapshot,
+  };
+}
+
+async function seedNonSaudiPayrollEmployment(db, employeeId, baseSalaryHalalas) {
+  const now = '2026-01-01T00:00:00.000Z';
+  await db.prepare(`INSERT INTO employee_employment
+    (salon_id, employee_id, base_salary_halalas, social_insurance_category, gosi_wage_mode, created_at, updated_at)
+    VALUES ('main', ?, ?, 'non_saudi', 'derived', ?, ?)
+    ON CONFLICT(salon_id, employee_id) DO UPDATE SET
+      base_salary_halalas = excluded.base_salary_halalas,
+      social_insurance_category = excluded.social_insurance_category,
+      gosi_wage_mode = excluded.gosi_wage_mode,
+      updated_at = excluded.updated_at`)
+    .bind(employeeId, baseSalaryHalalas, now, now)
+    .run();
+}
+
 test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', async (t) => {
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
@@ -122,7 +187,15 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
 
   const employee = await upsertHrEmployee(db, 'main', {
     id: 'emp-1', name: 'Employee 1', firebaseUid: 'uid-1', phone: '0500000001',
-    employment: { title: 'Stylist', baseSalaryHalalas: 450000, leaveBalance: 21 },
+    employment: {
+      title: 'Stylist',
+      baseSalaryHalalas: 450000,
+      leaveBalance: 21,
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-01-01',
+      socialInsuranceClassificationNote: 'Test non-Saudi payroll classification',
+      gosiWageMode: 'derived',
+    },
   }, actor);
   assert.equal(employee.employment.title, 'Stylist');
   assert.equal(employee.employment.base_salary_halalas, 450000);
@@ -206,6 +279,7 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     id: 'payroll-1', periodId: period.id, employeeId: 'emp-1', payrollMonth: '2026-07',
     baseSalaryHalalas: 450000, allowancesHalalas: 50000, grossSalaryHalalas: 500000,
     totalDeductionsHalalas: 0, finalSalaryHalalas: 500000,
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-07-28', basicSalaryHalalas: 450000 }),
   }, actor);
   assert.equal(payroll.final_salary_halalas, 500000);
   await assert.rejects(
@@ -227,6 +301,24 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     grossSalaryHalalas: 500000,
     finalSalaryHalalas: 500000,
     netSalaryHalalas: 500000,
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-08-28', basicSalaryHalalas: 450000 }),
+    attendanceSummary: {
+      totalScheduledHours: 8,
+      totalActualWorkedHours: 8,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 1,
+      absentDays: 0,
+      incompleteDays: 0,
+      attendanceRecordCount: 2,
+      attendanceLinkStatus: 'confirmed',
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+      attendanceNotes: [],
+    },
     scheduleSnapshot: {
       workDays: 26,
       monthlyHours: 208,
@@ -242,10 +334,402 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   );
   const approvedPayroll = await approvePayrollEntry(db, 'main', readyPayroll.id, actor);
   assert.equal(approvedPayroll.status, 'approved');
+
+  const approvalSnapshot = await db.prepare(
+    `SELECT approved_net_halalas, approval_version
+       FROM payroll_approval_snapshots
+      WHERE salon_id = 'main' AND payroll_entry_id = ?
+      ORDER BY approval_version DESC LIMIT 1`
+  ).bind(readyPayroll.id).first();
+  assert.equal(Number(approvalSnapshot.approved_net_halalas), 500000);
+  assert.equal(Number(approvalSnapshot.approval_version), 1);
+
+  const reconciled = await reconcilePayrollCarryoversBatch(db, 'main', {
+    items: [{
+      sourcePayrollEntryId: readyPayroll.id,
+      targetPayrollMonth: '2026-09',
+      recalculatedNetHalalas: 490000,
+      sourceDate: '2026-08-31',
+      reason: 'غياب ظهر بعد الاعتماد المبكر',
+    }],
+  }, actor);
+  assert.equal(reconciled.results.length, 1);
+  assert.equal(reconciled.results[0].residualSignedHalalas, -10000);
+  assert.equal(reconciled.results[0].adjustment.direction, 'deduction');
+  assert.equal(Number(reconciled.results[0].adjustment.amount_halalas), 10000);
+
+  const reconciledAgain = await reconcilePayrollCarryoversBatch(db, 'main', {
+    items: [{
+      sourcePayrollEntryId: readyPayroll.id,
+      targetPayrollMonth: '2026-09',
+      recalculatedNetHalalas: 490000,
+      sourceDate: '2026-08-31',
+    }],
+  }, actor);
+  assert.equal(reconciledAgain.results[0].adjustment.id, reconciled.results[0].adjustment.id);
+  const carryovers = await listPayrollCarryoverAdjustments(db, 'main', {
+    employeeId: 'emp-1',
+    targetPayrollMonth: '2026-09',
+    status: 'pending',
+  });
+  assert.equal(carryovers.length, 1);
+  assert.equal(Number(carryovers[0].amount_halalas), 10000);
+
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
   assert.equal(paidPayroll.status, 'paid');
 });
 
+test('payroll obligations API contract is canonical, traceable and settlement-safe', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-obligation','main','uid-obligation','Obligation Employee',1,'active','2026-01-01','2026-01-01')`).run();
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-obligation',
+    name: 'Obligation Employee',
+    firebaseUid: 'uid-obligation',
+    employment: {
+      baseSalaryHalalas: 500000,
+      expectedWorkDays: 30,
+      expectedWorkHours: 240,
+      dailyScheduledHours: 8,
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-01-01',
+      socialInsuranceClassificationNote: 'Stage 5.1 test classification',
+      gosiWageMode: 'derived',
+    },
+  }, actor);
+
+  await assert.rejects(
+    () => savePayrollRecurringDeduction(db, 'main', {
+      employeeId: 'emp-obligation',
+      title: 'Missing actor deduction',
+      deductionKind: 'loan',
+      amountHalalas: 10000,
+      startPayrollMonth: '2026-09',
+      reason: 'Must be audited',
+    }, {}),
+    { code: 'core_payroll:deduction_actor_required' }
+  );
+
+  const recurring = await savePayrollRecurringDeduction(db, 'main', {
+    employeeId: 'emp-obligation',
+    title: 'Fixed monthly deduction',
+    deductionKind: 'loan',
+    amountHalalas: 60000,
+    startPayrollMonth: '2026-09',
+    reason: 'Approved fixed monthly obligation',
+    sourceType: 'manual',
+  }, actor);
+  assert.equal(recurring.amountHalalas, 60000);
+  assert.equal((await listPayrollRecurringDeductions(db, 'main', {
+    employeeId: 'emp-obligation',
+  })).length, 1);
+
+  let septemberDeductions = await listPayrollObligationDeductions(db, 'main', {
+    employeeId: 'emp-obligation',
+    payrollMonth: '2026-09',
+  });
+  assert.equal(septemberDeductions.length, 1);
+  assert.equal(septemberDeductions[0].synthetic, true);
+  assert.equal(septemberDeductions[0].amountHalalas, 60000);
+
+  const installmentPlan = await createPayrollObligation(db, 'main', {
+    employeeId: 'emp-obligation',
+    kind: 'loan',
+    originalPayrollMonth: '2026-08',
+    amountHalalas: 120000,
+    reason: 'Three-month installment plan',
+    sourceType: 'manual',
+    installments: [
+      { targetPayrollMonth: '2026-09', amountHalalas: 40000 },
+      { targetPayrollMonth: '2026-10', amountHalalas: 40000 },
+      { targetPayrollMonth: '2026-11', amountHalalas: 40000 },
+    ],
+  }, actor);
+  assert.deepEqual(
+    installmentPlan.installments.map((item) => item.amountHalalas),
+    [40000, 40000, 40000]
+  );
+
+  const septemberInstallment = installmentPlan.installments.find(
+    (item) => item.targetPayrollMonth === '2026-09'
+  );
+  const deferredPlan = await deferPayrollObligationInstallment(
+    db,
+    'main',
+    septemberInstallment.id,
+    { targetPayrollMonth: '2026-12', reason: 'Employee-approved deferral' },
+    actor
+  );
+  assert.equal(
+    deferredPlan.installments.find((item) => item.id === septemberInstallment.id).status,
+    'deferred'
+  );
+  const replacement = deferredPlan.installments.find(
+    (item) => item.deferredFromInstallmentId === septemberInstallment.id
+  );
+  assert.equal(replacement.targetPayrollMonth, '2026-12');
+  assert.equal(replacement.amountHalalas, 40000);
+
+  await assert.rejects(
+    () => deferPayrollObligationInstallment(
+      db,
+      'main',
+      replacement.id,
+      { targetPayrollMonth: '2026-11', reason: 'Invalid backward move' },
+      actor
+    ),
+    { code: 'core_payroll:deferred_deduction_target_must_be_later' }
+  );
+
+  const octoberInstallment = installmentPlan.installments.find(
+    (item) => item.targetPayrollMonth === '2026-10'
+  );
+  const octoberPeriod = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-obligation-2026-10',
+    payrollMonth: '2026-10',
+    monthStart: '2026-10-01',
+    monthEnd: '2026-10-31',
+  }, actor);
+  const octoberDraft = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-obligation-2026-10',
+    periodId: octoberPeriod.id,
+    employeeId: 'emp-obligation',
+    employeeName: 'Obligation Employee',
+    payrollMonth: '2026-10',
+    baseSalaryHalalas: 500000,
+    allowancesHalalas: 0,
+    workDays: 30,
+    monthlyHours: 240,
+    dailyRateHalalas: 16667,
+    hourlyRateHalalas: 2083,
+    grossSalaryHalalas: 500000,
+    netSalaryHalalas: 460000,
+    finalSalaryHalalas: 460000,
+    attendanceSummary: {
+      totalScheduledHours: 8,
+      totalActualWorkedHours: 8,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 1,
+      absentDays: 0,
+      incompleteDays: 0,
+      attendanceRecordCount: 2,
+      attendanceLinkStatus: 'confirmed',
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+      attendanceNotes: [],
+    },
+    scheduleSnapshot: {
+      workDays: 30,
+      monthlyHours: 240,
+      dailyScheduledHours: 8,
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+      monthlyHoursSource: 'configured_monthly_hours',
+    },
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-10-28', basicSalaryHalalas: 500000 }),
+    skipTargetBonus: true,
+  }, actor);
+  assert.equal(Number(octoberDraft.manual_deductions_halalas), 100000);
+
+  await deferPayrollObligationInstallment(
+    db,
+    'main',
+    octoberInstallment.id,
+    { targetPayrollMonth: '2027-01', reason: 'Schedule changed before approval' },
+    actor
+  );
+  await assert.rejects(
+    () => approvePayrollEntry(db, 'main', octoberDraft.id, actor),
+    { code: 'core_payroll:obligation_snapshot_stale' }
+  );
+
+  await assert.rejects(
+    () => createPayrollObligation(db, 'main', {
+      employeeId: 'emp-obligation',
+      kind: 'gosi',
+      originalPayrollMonth: '2026-09',
+      amountHalalas: 10000,
+      reason: 'GOSI must stay statutory',
+    }, actor),
+    (error) => {
+      const normalized = normalizeError(error);
+      assert.equal(normalized.status, 400);
+      assert.equal(normalized.code, 'core_payroll:statutory_deduction_not_deferrable');
+      return true;
+    }
+  );
+
+  await assert.rejects(
+    () => createPayrollObligation(db, 'main', {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-13',
+      amountHalalas: 10000,
+      reason: 'Invalid month must be a client error',
+    }, actor),
+    (error) => {
+      const normalized = normalizeError(error);
+      assert.equal(normalized.status, 400);
+      assert.equal(normalized.code, 'core_payroll:payroll_month_invalid');
+      return true;
+    }
+  );
+
+  const idempotent = await createPayrollObligation(db, 'main', {
+    employeeId: 'emp-obligation',
+    kind: 'loan',
+    originalPayrollMonth: '2026-09',
+    amountHalalas: 50000,
+    reason: 'One-time request deduction',
+    sourceType: 'employee_request',
+    sourceRef: 'request-obligation-1',
+  }, actor);
+  const idempotentRetry = await createPayrollObligation(db, 'main', {
+    employeeId: 'emp-obligation',
+    kind: 'loan',
+    originalPayrollMonth: '2026-09',
+    amountHalalas: 50000,
+    reason: 'One-time request deduction',
+    sourceType: 'employee_request',
+    sourceRef: 'request-obligation-1',
+  }, actor);
+  assert.equal(idempotentRetry.id, idempotent.id);
+  await assert.rejects(
+    () => createPayrollObligation(db, 'main', {
+      employeeId: 'emp-obligation',
+      kind: 'loan',
+      originalPayrollMonth: '2026-09',
+      amountHalalas: 70000,
+      reason: 'One-time request deduction',
+      sourceType: 'employee_request',
+      sourceRef: 'request-obligation-1',
+    }, actor),
+    { code: 'core_payroll:obligation_idempotency_conflict' }
+  );
+
+  septemberDeductions = await listPayrollObligationDeductions(db, 'main', {
+    employeeId: 'emp-obligation',
+    payrollMonth: '2026-09',
+  });
+  assert.equal(
+    septemberDeductions.reduce((sum, item) => sum + Number(item.amountHalalas || 0), 0),
+    110000
+  );
+
+  const period = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-obligation-2026-09',
+    payrollMonth: '2026-09',
+    monthStart: '2026-09-01',
+    monthEnd: '2026-09-30',
+  }, actor);
+  const payroll = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-obligation-2026-09',
+    periodId: period.id,
+    employeeId: 'emp-obligation',
+    employeeName: 'Obligation Employee',
+    payrollMonth: '2026-09',
+    baseSalaryHalalas: 500000,
+    allowancesHalalas: 0,
+    workDays: 30,
+    monthlyHours: 240,
+    dailyRateHalalas: 16667,
+    hourlyRateHalalas: 2083,
+    grossSalaryHalalas: 500000,
+    netSalaryHalalas: 390000,
+    finalSalaryHalalas: 390000,
+    attendanceSummary: {
+      totalScheduledHours: 8,
+      totalActualWorkedHours: 8,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 1,
+      absentDays: 0,
+      incompleteDays: 0,
+      attendanceRecordCount: 2,
+      attendanceLinkStatus: 'confirmed',
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+      attendanceNotes: [],
+    },
+    scheduleSnapshot: {
+      workDays: 30,
+      monthlyHours: 240,
+      dailyScheduledHours: 8,
+      payrollSetupComplete: true,
+      payrollSetupMissing: [],
+      monthlyHoursSource: 'configured_monthly_hours',
+    },
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-09-28', basicSalaryHalalas: 500000 }),
+    skipTargetBonus: true,
+  }, actor);
+  assert.equal(Number(payroll.manual_deductions_halalas), 110000);
+  assert.equal(Number(payroll.total_deductions_halalas), 110000);
+  assert.equal(Number(payroll.net_salary_halalas), 390000);
+
+  const approved = await approvePayrollEntry(db, 'main', payroll.id, actor);
+  assert.equal(approved.status, 'approved');
+
+  await assert.rejects(
+    () => deferPayrollObligationInstallment(
+      db,
+      'main',
+      idempotent.installments[0].id,
+      { targetPayrollMonth: '2026-10', reason: 'Cannot edit approved payroll' },
+      actor
+    ),
+    { code: 'core_payroll:obligation_target_payroll_locked' }
+  );
+
+  const paid = await markPayrollEntryPaid(db, 'main', payroll.id, actor);
+  assert.equal(paid.status, 'paid');
+  let obligations = await listPayrollObligations(db, 'main', {
+    employeeId: 'emp-obligation',
+  });
+  const settledOneTime = obligations.find((item) => item.id === idempotent.id);
+  assert.equal(settledOneTime.status, 'settled');
+  assert.equal(settledOneTime.remainingAmountHalalas, 0);
+  assert.equal(settledOneTime.installments[0].status, 'applied');
+  const recurringSeptember = obligations.find(
+    (item) => item.recurringDeductionId === recurring.id && item.originalPayrollMonth === '2026-09'
+  );
+  assert.equal(recurringSeptember.status, 'settled');
+  assert.equal(recurringSeptember.remainingAmountHalalas, 0);
+
+  await markPayrollEntryPaid(db, 'main', payroll.id, actor);
+  obligations = await listPayrollObligations(db, 'main', {
+    employeeId: 'emp-obligation',
+  });
+  assert.equal(
+    obligations.find((item) => item.id === idempotent.id).remainingAmountHalalas,
+    0
+  );
+
+  const coreIndexSource = await readFile(new URL('./core/index.js', import.meta.url), 'utf8');
+  assert.match(
+    coreIndexSource,
+    /case "payroll-obligations":[\s\S]*?requireAnyPermission\(ctx, \["payroll\.view", "payroll\.manage"\]\)[\s\S]*?requirePermission\(ctx, "payroll\.manage"\)/
+  );
+  assert.match(
+    coreIndexSource,
+    /case "payroll-obligation-installment:defer":[\s\S]*?requirePermission\(ctx, "payroll\.manage"\)/
+  );
+  assert.match(
+    coreIndexSource,
+    /case "payroll-obligation-deductions":[\s\S]*?requireAnyPermission\(ctx, \["payroll\.view", "payroll\.manage"\]\)/
+  );
+});
 
 
 test('canonical leave balance ledger is atomic and idempotent', async (t) => {
@@ -1132,6 +1616,83 @@ test('Core employee leave request execution uses canonical leave ledger', async 
     Number(count.count),
     1
   );
+
+  request =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'cancel',
+      {
+        version: request.version,
+        note: 'Cancel completed leave and restore balance',
+      },
+      adminActor
+    );
+
+  assert.equal(request.status, 'cancelled');
+  assert.equal(request.execution_status, 'cancelled');
+
+  const cancelledLeave =
+    await db.prepare(`
+      SELECT *
+        FROM employee_leaves
+       WHERE salon_id = 'main'
+         AND request_id = ?
+       LIMIT 1
+    `)
+      .bind(request.id)
+      .first();
+
+  assert.equal(cancelledLeave.status, 'rejected');
+
+  const restoredEmployment =
+    await db.prepare(`
+      SELECT leave_balance
+        FROM employee_employment
+       WHERE salon_id = 'main'
+         AND employee_id = 'emp-request-leave'
+    `).first();
+
+  assert.equal(Number(restoredEmployment.leave_balance), 5);
+
+  const reversalCount =
+    await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'reversal'
+         AND source_id = ?
+    `)
+      .bind(leave.balance_adjustment_id)
+      .first();
+
+  assert.equal(Number(reversalCount.count), 1);
+
+  const repeatedCancel =
+    await transitionEmployeeRequest(
+      db,
+      'main',
+      request.id,
+      'cancel',
+      { version: request.version },
+      adminActor
+    );
+
+  assert.equal(repeatedCancel.status, 'cancelled');
+
+  const repeatedReversalCount =
+    await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM employee_leave_balance_ledger
+       WHERE salon_id = 'main'
+         AND source_type = 'reversal'
+         AND source_id = ?
+    `)
+      .bind(leave.balance_adjustment_id)
+      .first();
+
+  assert.equal(Number(repeatedReversalCount.count), 1);
 });
 
 test('annual leave cash compensation preview calculates from Core salary and leave balance', async (t) => {
@@ -1404,6 +1965,23 @@ test('Phase 6 settings and protected R2 file flow work without Firestore', async
   assert.equal(uploaded.size_bytes, 13);
   const response = await getFileContent(db, 'main', metadata.id, { FILES_BUCKET: bucket });
   assert.equal(await response.text(), 'contract-body');
+  const readMetadata = await patchFileMetadata(db, 'main', metadata.id, { status: 'read' });
+  assert.equal(readMetadata.status, 'read');
+});
+
+test('Core employee file metadata uses manager-write and self-read-only policy', async () => {
+  const source = await readFile(new URL('./core/index.js', import.meta.url), 'utf8');
+  const start = source.indexOf('    case "files": {');
+  const end = source.indexOf('    default:', start);
+  assert.ok(start >= 0 && end > start);
+  const block = source.slice(start, end);
+  assert.match(block, /const canViewFiles = hasAnyPermissionKey/);
+  assert.match(block, /const canManageFiles = hasAnyPermissionKey/);
+  assert.match(block, /if \(method === "POST"\)[\s\S]*if \(canManageFiles\)/);
+  assert.match(block, /if \(method === "PATCH" && route\.id\)/);
+  assert.match(block, /employee_internal_outbound/);
+  assert.match(block, /files_r2:self_update_read_only/);
+  assert.match(block, /status: "read"/);
 });
 
 test('booking reschedule atomically replaces slot locks', async (t) => {
@@ -1525,6 +2103,39 @@ test('Core leave API separates manager routes from employee self scope', async (
     source,
     /\/api\/core\/hr\/employee-portal\/leaves/
   );
+});
+
+
+test('employee self profile route is Core-bound and profile-only', async () => {
+  const source = await readFile(
+    new URL('./core/index.js', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(
+    source,
+    /\/api\/core\/hr\/employee-profile\/mine/
+  );
+
+  const start = source.indexOf(
+    '    case "employee-profile:mine":'
+  );
+  const end = source.indexOf(
+    '    case "hr-employees":',
+    start
+  );
+  assert.ok(start >= 0 && end > start);
+
+  const block = source.slice(start, end);
+  assert.match(block, /requirePermission\(ctx, "workspace\.employee_portal\.view"\)/);
+  assert.match(block, /id:\s*ctx\.employeeId/);
+  assert.match(block, /name:\s*has\("name"\)\s*\?\s*body\.name/);
+  assert.match(block, /phone:\s*has\("phone"\)\s*\?\s*body\.phone/);
+  assert.match(block, /avatarUrl:\s*has\("avatarUrl"\)\s*\?\s*body\.avatarUrl/);
+  assert.match(block, /bio:\s*has\("bio"\)\s*\?\s*body\.bio/);
+
+  assert.doesNotMatch(block, /\.\.\.body/);
+  assert.doesNotMatch(block, /body\.(?:employment|baseSalary|salary|socialInsurance|gosi|status|showOnAbout|includeInEmployeeManagement)/);
 });
 
 
@@ -2048,6 +2659,8 @@ test('salary advance scheduled before payroll creation is canonically deducted a
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
+  await seedNonSaudiPayrollEmployment(db, 'emp-late', 500000);
+
   await db.prepare(`INSERT INTO salary_advances
     (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
      repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
@@ -2082,6 +2695,24 @@ test('salary advance scheduled before payroll creation is canonically deducted a
     grossSalaryHalalas: 500000,
     netSalaryHalalas: 500000,
     finalSalaryHalalas: 500000,
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-09-28', basicSalaryHalalas: 500000 }),
+    attendanceSummary: {
+      totalScheduledHours: 8,
+      totalActualWorkedHours: 8,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 1,
+      absentDays: 0,
+      incompleteDays: 0,
+      attendanceRecordCount: 2,
+      attendanceLinkStatus: 'confirmed',
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+      attendanceNotes: [],
+    },
     scheduleSnapshot: {
       workDays: 30,
       monthlyHours: 240,
@@ -2133,6 +2764,8 @@ test('salary advance settlement rolls back payroll paid state when installment s
   const { mf, db } = await setup();
   t.after(() => mf.dispose());
 
+  await seedNonSaudiPayrollEmployment(db, 'emp-atomic', 400000);
+
   await db.prepare(`INSERT INTO salary_advances
     (id, salon_id, request_id, employee_id, employee_uid, requested_halalas, approved_halalas,
      repayment_method, installment_count, first_deduction_month, remaining_halalas, paid_halalas,
@@ -2164,6 +2797,24 @@ test('salary advance settlement rolls back payroll paid state when installment s
     grossSalaryHalalas: 400000,
     netSalaryHalalas: 400000,
     finalSalaryHalalas: 400000,
+    ...nonSaudiGosiPayrollFields({ payrollDate: '2026-10-28', basicSalaryHalalas: 400000 }),
+    attendanceSummary: {
+      totalScheduledHours: 8,
+      totalActualWorkedHours: 8,
+      totalLateHours: 0,
+      totalEarlyLeaveHours: 0,
+      totalCompensatedLateHours: 0,
+      totalMissingHours: 0,
+      totalExtraHours: 0,
+      attendanceDays: 1,
+      absentDays: 0,
+      incompleteDays: 0,
+      attendanceRecordCount: 2,
+      attendanceLinkStatus: 'confirmed',
+      attendanceDeductionEligible: true,
+      attendanceDeductionNote: null,
+      attendanceNotes: [],
+    },
     scheduleSnapshot: {
       workDays: 30,
       monthlyHours: 240,
@@ -2360,4 +3011,339 @@ test('employee master profile fields round-trip through canonical Core D1', asyn
   assert.equal(Number(updated.rating), 4.75);
   assert.equal(Number(updated.reviews_count), 19);
   assert.equal(updated.employment.end_date, '2027-12-31');
+});
+
+test('attendance payroll exemption is canonical, needs no schedule or punches, and approves monthly salary', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO staff
+    (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+    VALUES ('emp-admin-exempt','main','uid-admin-exempt','Admin Exempt',1,'active','2026-01-01','2026-01-01')`).run();
+
+  const employee = await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-admin-exempt',
+      name: 'Admin Exempt',
+      firebaseUid: 'uid-admin-exempt',
+      employment: {
+        baseSalaryHalalas: 400000,
+        expectedWorkDays: 30,
+        attendancePayrollMode: 'exempt',
+        attendancePayrollExemptionReason: 'موظف إداري / إدارة',
+        socialInsuranceCategory: 'non_saudi',
+        socialInsuranceEffectiveFrom: '2026-01-01',
+        socialInsuranceClassificationNote: 'Test non-Saudi payroll classification',
+        gosiWageMode: 'derived',
+      },
+    },
+    actor
+  );
+
+  assert.equal(
+    employee.employment.attendance_payroll_mode,
+    'exempt'
+  );
+  assert.equal(
+    employee.employment.attendance_payroll_exemption_reason,
+    'موظف إداري / إدارة'
+  );
+
+  const schedules = await db.prepare(
+    `SELECT COUNT(*) AS count
+       FROM hr_work_schedules
+      WHERE salon_id='main'
+        AND employee_id='emp-admin-exempt'`
+  ).first();
+  assert.equal(Number(schedules.count || 0), 0);
+
+  const period = await upsertPayrollPeriod(
+    db,
+    'main',
+    {
+      id: 'period-admin-exempt-2026-08',
+      payrollMonth: '2026-08',
+      monthStart: '2026-08-01',
+      monthEnd: '2026-08-31',
+    },
+    actor
+  );
+
+  const payroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: 'payroll-admin-exempt',
+      periodId: period.id,
+      employeeId: employee.id,
+      employeeName: employee.name,
+      payrollMonth: '2026-08',
+      baseSalaryHalalas: 400000,
+      workDays: 30,
+      monthlyHours: 0,
+      dailyRateHalalas: 13333,
+      hourlyRateHalalas: 0,
+      grossSalaryHalalas: 400000,
+      netSalaryHalalas: 400000,
+      finalSalaryHalalas: 400000,
+      ...nonSaudiGosiPayrollFields({ payrollDate: '2026-08-28', basicSalaryHalalas: 400000 }),
+      attendanceSummary: {
+        totalScheduledHours: 0,
+        totalActualWorkedHours: 0,
+        totalLateHours: 0,
+        totalCompensatedLateHours: 0,
+        totalMissingHours: 0,
+        totalExtraHours: 0,
+        attendanceDays: 0,
+        absentDays: 0,
+        incompleteDays: 0,
+        attendanceRecordCount: 0,
+        attendanceLinkStatus: 'exempt',
+        attendancePayrollMode: 'exempt',
+        attendancePayrollExemptionReason: 'موظف إداري / إدارة',
+        attendanceDeductionEligible: false,
+      },
+      scheduleSnapshot: {
+        workDays: 30,
+        monthlyHours: 0,
+        dailyScheduledHours: 0,
+        payrollSetupComplete: true,
+        payrollSetupMissing: [],
+        monthlyHoursSource: 'not_required_attendance_exempt',
+        attendancePayrollMode: 'exempt',
+        attendancePayrollExemptionReason: 'موظف إداري / إدارة',
+      },
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const approved = await approvePayrollEntry(
+    db,
+    'main',
+    payroll.id,
+    actor
+  );
+
+  assert.equal(approved.status, 'approved');
+  assert.equal(Number(approved.monthly_hours || 0), 0);
+  assert.equal(Number(approved.hourly_rate_halalas || 0), 0);
+  assert.equal(
+    JSON.parse(approved.attendance_summary_json)
+      .attendancePayrollMode,
+    'exempt'
+  );
+});
+
+test('schedule exception update enforces one operational overlapping exception per employee', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  const insertStaff = async (id) => {
+    await db.prepare(`INSERT INTO staff
+      (id, salon_id, firebase_uid, name, active, employment_status, created_at, updated_at)
+      VALUES (?,'main',?,?,1,'active','2026-01-01','2026-01-01')`)
+      .bind(id, `uid-${id}`, `Employee ${id}`)
+      .run();
+  };
+
+  await insertStaff('emp-update-conflict');
+  await createScheduleException(db, 'main', {
+    id: 'exc-update-approved-a',
+    employeeId: 'emp-update-conflict',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: true,
+    startTime: '10:00',
+    endTime: '18:00',
+    status: 'approved',
+  }, actor);
+  await createScheduleException(db, 'main', {
+    id: 'exc-update-cancelled-b',
+    employeeId: 'emp-update-conflict',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: false,
+    startTime: '15:00',
+    endTime: '23:00',
+    status: 'cancelled',
+  }, actor);
+
+  await assert.rejects(
+    () => updateScheduleException(db, 'main', 'exc-update-cancelled-b', {
+      status: 'approved',
+      enabled: true,
+      note: 'reactivate cancelled history',
+    }, actor),
+    (error) => {
+      const normalized = normalizeError(error);
+      assert.equal(normalized.status, 409);
+      assert.equal(normalized.code, 'core_hr:schedule_exception_conflict');
+      return true;
+    }
+  );
+
+  const noteOnly = await updateScheduleException(db, 'main', 'exc-update-approved-a', {
+    note: 'note-only update remains allowed',
+  }, actor);
+  assert.equal(noteOnly.status, 'approved');
+  assert.equal(noteOnly.note, 'note-only update remains allowed');
+
+  const cancelled = await updateScheduleException(db, 'main', 'exc-update-approved-a', {
+    status: 'cancelled',
+    enabled: false,
+    note: 'cancel operational exception',
+  }, actor);
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(Number(cancelled.enabled), 0);
+
+  await insertStaff('emp-cancelled-history');
+  const cancelledHistoryA = await createScheduleException(db, 'main', {
+    id: 'exc-history-cancelled-a',
+    employeeId: 'emp-cancelled-history',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: false,
+    startTime: '10:00',
+    endTime: '18:00',
+    status: 'cancelled',
+  }, actor);
+  const cancelledHistoryB = await createScheduleException(db, 'main', {
+    id: 'exc-history-cancelled-b',
+    employeeId: 'emp-cancelled-history',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: false,
+    startTime: '15:00',
+    endTime: '23:00',
+    status: 'cancelled',
+  }, actor);
+  assert.equal(cancelledHistoryA.status, 'cancelled');
+  assert.equal(cancelledHistoryB.status, 'cancelled');
+
+  await insertStaff('emp-active-conflict');
+  await createScheduleException(db, 'main', {
+    id: 'exc-active-a',
+    employeeId: 'emp-active-conflict',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: true,
+    startTime: '10:00',
+    endTime: '18:00',
+    status: 'active',
+  }, actor);
+  await createScheduleException(db, 'main', {
+    id: 'exc-active-cancelled-b',
+    employeeId: 'emp-active-conflict',
+    exceptionType: 'custom',
+    dateFrom: '2026-08-23',
+    dateTo: '2026-08-23',
+    enabled: false,
+    startTime: '15:00',
+    endTime: '23:00',
+    status: 'cancelled',
+  }, actor);
+
+  await assert.rejects(
+    () => updateScheduleException(db, 'main', 'exc-active-cancelled-b', {
+      status: 'active',
+      enabled: true,
+    }, actor),
+    (error) => {
+      const normalized = normalizeError(error);
+      assert.equal(normalized.status, 409);
+      assert.equal(normalized.code, 'core_hr:schedule_exception_conflict');
+      return true;
+    }
+  );
+});
+
+
+test('Core workforce communications, notifications and recruitment are D1-owned', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`INSERT INTO app_users
+    (id, firebase_uid, salon_id, email, display_name, primary_role, status, email_verified, created_at, updated_at)
+    VALUES
+      ('user-admin','uid-admin','main','admin@example.com','Admin','admin','active',1,'2026-01-01','2026-01-01'),
+      ('user-staff','uid-staff','main','staff@example.com','Staff','staff','active',1,'2026-01-01','2026-01-01')`).run();
+  await db.prepare(`INSERT INTO employee_profiles
+    (id, salon_id, firebase_uid, name, email, status, created_at, updated_at)
+    VALUES ('emp-staff','main','uid-staff','Staff','staff@example.com','active','2026-01-01','2026-01-01')`).run();
+  await db.prepare(`INSERT INTO user_employee_links
+    (id, salon_id, user_id, employee_id, link_status, linked_at, updated_at)
+    VALUES ('link-staff','main','user-staff','emp-staff','active','2026-01-01','2026-01-01')`).run();
+
+  const adminActor = { uid: 'uid-admin', name: 'Admin', role: 'admin' };
+  const staffActor = { uid: 'uid-staff', name: 'Staff', role: 'staff', employeeId: 'emp-staff' };
+
+  const message = await createEmployeeMessage(db, 'main', {
+    recipientUid: 'uid-staff',
+    recipientName: 'Staff',
+    body: 'Canonical message',
+    kind: 'hr_to_employee',
+  }, adminActor, { managementSender: true });
+  assert.equal(message.sender_uid, 'uid-admin');
+  assert.equal(message.recipient_uid, 'uid-staff');
+  assert.equal(message.conversation_id, 'uid-admin__uid-staff');
+  assert.equal(message.thread_id, 'uid-admin__uid-staff');
+
+  const staffMessages = await listEmployeeMessages(db, 'main', {}, staffActor, { manageAll: false });
+  assert.equal(staffMessages.length, 1);
+  assert.deepEqual(staffMessages[0].read_by, ['uid-admin']);
+
+  await markEmployeeThreadRead(db, 'main', message.conversation_id, staffActor);
+  const afterRead = await listEmployeeMessages(db, 'main', {}, staffActor, { manageAll: false });
+  assert.deepEqual(new Set(afterRead[0].read_by), new Set(['uid-admin', 'uid-staff']));
+
+  const notifications = await listEmployeeNotifications(db, 'main', {}, staffActor);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, 'message');
+  assert.equal(notifications[0].read_at, null);
+  await markEmployeeNotificationRead(db, 'main', notifications[0].id, staffActor);
+  const notificationsAfterRead = await listEmployeeNotifications(db, 'main', {}, staffActor);
+  assert.ok(notificationsAfterRead[0].read_at);
+
+  await createEmployeeNotification(db, 'main', {
+    targetEmployeeId: 'emp-staff',
+    type: 'system',
+    title: 'Profile updated',
+  }, adminActor);
+  assert.equal((await listEmployeeNotifications(db, 'main', {}, staffActor)).length, 2);
+
+  const staffReply = await createEmployeeMessage(db, 'main', {
+    recipientUid: 'uid-admin',
+    conversationId: 'spoofed-thread',
+    threadId: 'spoofed-thread',
+    body: 'Staff reply',
+    kind: 'hr_to_employee',
+  }, staffActor, { managementSender: false, createNotification: false });
+  assert.equal(staffReply.conversation_id, 'uid-admin__uid-staff');
+  assert.equal(staffReply.thread_id, 'uid-admin__uid-staff');
+  assert.equal(staffReply.kind, 'employee_to_employee');
+
+  const application = await createRecruitmentApplication(db, 'main', {
+    fullName: 'Candidate One',
+    email: 'candidate@example.com',
+    roleApplied: 'staff',
+    status: 'hired',
+    reviewedByUid: 'spoofed-reviewer',
+  }, adminActor);
+  assert.equal(application.status, 'new');
+  assert.equal(application.reviewed_by_uid, null);
+  const reviewed = await patchRecruitmentApplication(db, 'main', application.id, {
+    status: 'reviewing',
+    reviewedByUid: 'spoofed-reviewer',
+  }, adminActor);
+  assert.equal(reviewed.status, 'reviewing');
+  assert.equal(reviewed.reviewed_by_uid, 'uid-admin');
+  assert.equal((await listRecruitmentApplications(db, 'main')).length, 1);
 });
