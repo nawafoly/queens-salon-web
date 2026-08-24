@@ -27,7 +27,9 @@ test("employee payroll portal reads canonical Core payroll only", () => {
 test("employee payroll profile is Core-owned and never mirrored to Firestore", () => {
   const page = read("src/pages/DashboardEmployees.tsx");
   assert.match(page, /Core D1 is the only payroll-profile runtime source/);
-  assert.match(page, /withoutLegacyPayrollFirestoreFields/);
+  assert.match(page, /CoreHrService\.listEmployees/);
+  assert.match(page, /CoreStaffService\.list/);
+  assert.doesNotMatch(page, /firebase\/firestore|\bcollection\s*\(\s*db\b|\bget(?:Doc|Docs)\s*\(|\bsetDoc\s*\(|\bupdateDoc\s*\(|\baddDoc\s*\(|\bdeleteDoc\s*\(|\bwriteBatch\s*\(|\bonSnapshot\s*\(/);
   assert.match(page, /baseSalaryHalalas/);
   assert.match(page, /expectedWorkHours/);
   assert.match(page, /overtimeEnabled/);

@@ -21,7 +21,7 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { usePermissions } from "../security/PermissionContext";
-import { listActiveStaffAll } from "../services/bookingDataSourceCompat";
+import { CoreStaffService } from "../services/CoreStaffService";
 import { CoreHrService } from "../services/CoreHrService";
 import {
   getPermissionPayrollSummary,
@@ -352,6 +352,7 @@ function staffIdentityKeys(row: Record<string, unknown>) {
   const keys = [
     row.id,
     row.uid,
+    row.firebaseUid,
     row.employeeUid,
     row.employeeId,
     row.employeeDocId,
@@ -625,7 +626,7 @@ export default function DashboardAttendanceSecurity() {
           alertStatus: "open",
           limit: 200,
         }),
-        listActiveStaffAll(),
+        CoreStaffService.list({ activeOnly: true }),
       ]);
 
       if (result.status === "rejected") throw result.reason;
@@ -641,6 +642,7 @@ export default function DashboardAttendanceSecurity() {
             row.linkedUid,
             row.authUid,
             row.uid,
+    row.firebaseUid,
           ]
             .map((value) => String(value || "").trim())
             .find(

@@ -3,19 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  collection,
-  getDocs,
-  getDocFromServer,
-  getDocsFromServer,
-  doc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  query,
-  orderBy,
-  writeBatch,
-} from "firebase/firestore";
-import {
   adjustAttendanceDayFromWorker,
   clearAttendanceDayFromWorker,
 } from "../services/attendanceWorkerService";
@@ -30,11 +17,9 @@ import {
   faMoneyBillWave,
   faPlus,
   faRotateRight,
-  faScrewdriverWrench,
   faUserTie,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { db } from "../services/firebase";
 import {
   normalizeLeaveEntryType,
 } from "../helpers/hr/leaveBalanceEntry";
@@ -56,6 +41,7 @@ import type {
 } from "../types/hrCoreApi";
 import { createPermissionRequest, reviewPermissionRequest } from "../services/employeePermissionRequests";
 import { CoreStaffService } from "../services/CoreStaffService";
+import { CoreCatalogService } from "../services/CoreCatalogService";
 import { listWorkZones, type WorkZone } from "../services/attendanceSettingsService";
 import {
   getTodayAttendanceDateKey,
@@ -177,17 +163,13 @@ import {
   resolveAvatarFromAssets,
   safeKey,
   safeNonNegativeNumber,
-  servicesCol,
   shiftHijriMonthStartIso,
-  staffPublicCol,
-  staffPublicDoc,
   toArabicSectionLabel,
   toComparableTimestamp,
   toFirestoreErrorMessage,
   toHijriMonthYearLabel,
   todayIso,
   toMinutes,
-  usersCol,
   weekdayFromIso,
   type AuthUser,
   type BookingHourOverride,
@@ -781,7 +763,7 @@ function employeeCanonicalDocIdOf(staff: Partial<StaffPublicUi> | Record<string,
   const source = cleanText((staff as any)?.source);
   const sourceDocIsLinkedUid = !!sourceDocId && linkedUidSet.has(sourceDocId);
 
-  if (source === "staff_public" || cleanText((staff as any)?.staffPublicDocId)) {
+  if (source === "staff_public" || source === "core_staff" || cleanText((staff as any)?.staffPublicDocId)) {
     return sourceDocId && !sourceDocIsLinkedUid
       ? sourceDocId
       : explicitCanonicalDocId || sourceDocId || cleanText((staff as any)?.id);
@@ -900,7 +882,7 @@ function employeeIdentityKeys(staff: Partial<StaffPublicUi>, rawDocId = "") {
 }
 
 function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): StaffPublicUi {
-  const primaryIsStaffPublic = primary.source === "staff_public";
+  const primaryIsStaffPublic = primary.source === "staff_public" || primary.source === "core_staff";
   const hasPrimaryField = (field: keyof StaffPublicDoc) =>
     Object.prototype.hasOwnProperty.call(primary as any, field) &&
     (primary as any)?.[field] !== undefined &&
@@ -1048,7 +1030,7 @@ function mergeEmployeeRows(primary: StaffPublicUi, fallback: StaffPublicUi): Sta
     ),
 
     profileIncomplete:
-      primary.source !== "staff_public" && fallback.source !== "staff_public",
+      ![primary.source, fallback.source].some((source) => source === "staff_public" || source === "core_staff"),
   };
 }
 
@@ -1223,9 +1205,11 @@ type EmployeeLoadOptions = {
 
 const EMPLOYEE_SOURCE_PRIORITY: Record<string, number> = {
   core_accounts: 1,
-  users: 2,
-  employees: 3,
-  staff_public: 4,
+  users: 1,
+  employees: 2,
+  staff_public: 3,
+  core_hr: 4,
+  core_staff: 5,
 };
 
 function employeeSourcePriority(source: unknown) {
@@ -1288,13 +1272,13 @@ function savedEmployeeReloadScore(row: StaffPublicUi, targetEmployeeId: string) 
   let score = employeeSourcePriority(row.source);
   const sourceDocId = employeeSourceDocIdOf(row);
   const canonicalDocId = employeeCanonicalDocIdOf(row);
-  if (target && sourceDocId === target && row.source === "staff_public") score += 1000;
+  if (target && sourceDocId === target && (row.source === "staff_public" || row.source === "core_staff")) score += 1000;
   if (target && canonicalDocId === target) score += 600;
   if (target && cleanText((row as any).staffPublicDocId) === target) score += 400;
   if (target && cleanText(row.id) === target) score += 250;
   if (target && cleanText((row as any).employeeDocId) === target) score += 150;
   if (target && cleanText((row as any).employeeId) === target) score += 100;
-  if (row.source === "staff_public") score += 50;
+  if (row.source === "staff_public" || row.source === "core_staff") score += 50;
   score += employeeCanonicalDocScore(row);
   score += Math.min(employeeRowUpdatedAtMs(row) / 10000000000000, 1);
   return score;
@@ -1532,29 +1516,6 @@ function workingHourOverridesEqual(
   );
 }
 
-const LEGACY_PAYROLL_FIRESTORE_FIELDS = [
-  "monthlySalary",
-  "payrollMonthlyHours",
-  "payrollOvertimeEnabled",
-  "payrollOvertimeMultiplier",
-  "payrollDeductionMethod",
-  "overtimeMethod",
-  "overtimeDaysPerMonth",
-  "overtimeBaseHoursPerDay",
-  "overtimeSeasonBaseHoursPerDay",
-  "overtimeHoursBasis",
-  "overtimePercent",
-  "overtimeInvoicePercent",
-] as const;
-
-function withoutLegacyPayrollFirestoreFields(input: Record<string, any>) {
-  const next = { ...input };
-  for (const field of LEGACY_PAYROLL_FIRESTORE_FIELDS) {
-    delete next[field];
-  }
-  return next;
-}
-
 type EmployeeSaveVerificationSnapshot = Record<string, unknown>;
 
 function buildEmployeeSaveVerificationSnapshot(
@@ -1743,8 +1704,6 @@ export default function DashboardEmployees() {
   const [list, setList] = useState<StaffPublicUi[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
-  const [repairConfirmOpen, setRepairConfirmOpen] = useState(false);
-  const [repairMessage, setRepairMessage] = useState("");
   const busy = loading || saving;
 
   const [statsLoading, setStatsLoading] = useState(false);
@@ -3970,30 +3929,25 @@ export default function DashboardEmployees() {
 
   const loadServiceOptions = useCallback(async (): Promise<ServiceOption[]> => {
     try {
-      const qSrv = query(servicesCol(), orderBy("name", "asc"));
-      const snap = await getDocs(qSrv);
-
-      const opts: ServiceOption[] = snap.docs
-        .map((d) => {
-          const x = d.data() as any;
-          return {
-            id: d.id,
-            label: String(x?.name || d.id),
-            sectionId: String(x?.sectionId || ""),
-            categoryId: String(x?.categoryId || ""),
-            durationMin: safeNonNegativeNumber(x?.durationMin || x?.duration || x?.minutes, 0),
-            price: safeNonNegativeNumber(x?.price || x?.servicePrice || x?.amount, 0),
-            active: x?.active !== false,
-          };
-        })
-        .filter((s) => s.label.trim())
-        .filter((s) => s.active !== false);
+      const rows = await CoreCatalogService.listServices({ activeOnly: true });
+      const opts: ServiceOption[] = rows
+        .map((row) => ({
+          id: cleanText(row.id),
+          label: cleanText(row.name || row.id),
+          sectionId: cleanText(row.sectionId),
+          categoryId: cleanText(row.categoryId),
+          durationMin: safeNonNegativeNumber(row.durationMinutes, 0),
+          price: safeNonNegativeNumber(row.priceHalalas, 0) / 100,
+          active: row.active !== false,
+        }))
+        .filter((row) => row.id && row.label && row.active !== false)
+        .sort((a, b) => a.label.localeCompare(b.label, "ar"));
 
       setServiceOptions(opts);
       return opts;
     } catch (e) {
       setServiceOptions([]);
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الخدمات."));
+      setErrorMsg(toFirestoreErrorMessage(e, "تعذر تحميل الخدمات من Core."));
       return [];
     }
   }, []);
@@ -4003,28 +3957,31 @@ export default function DashboardEmployees() {
       setLoading(true);
       setErrorMsg("");
       try {
+        void loadOptions; // Core APIs are always authoritative; no Firestore/server-cache mode exists.
         const linkedUserRoleByUid = new Map<string, string>();
-        const readDocs = loadOptions.fromServer ? getDocsFromServer : getDocs;
-        const [userSnap, staffSnap, employeeSnap, coreAccounts, coreEmployees, coreApprovedLeaves] = await Promise.all([
-          readDocs(usersCol()).catch(() => null),
-          readDocs(staffPublicCol()),
-          readDocs(collection(db, "salons", SALON_ID, "employees")).catch(() => null),
+        const [coreAccounts, coreEmployees, coreStaff, coreApprovedLeaves] = await Promise.all([
           CoreAccountService.list(false, "internal").catch(() => []),
           CoreHrService.listEmployees(),
+          CoreStaffService.list({ activeOnly: false }),
           canManageLeaveBalance
             ? CoreHrService.listLeaves({ status: "approved" })
             : Promise.resolve([] as CoreLeave[]),
         ]);
 
         const userByUid = new Map<string, any>();
-        userSnap?.docs.forEach((userDoc) => {
-          const userData = userDoc.data() as any;
-          const uid = cleanText(userData?.uid || userDoc.id);
-          const role = cleanText(userData?.role).toLowerCase();
-          if (uid) {
-            userByUid.set(uid, { ...userData, uid });
-            if (role) linkedUserRoleByUid.set(uid, role);
-          }
+        coreAccounts.forEach((account) => {
+          const uid = cleanText(account.firebaseUid || account.uid);
+          const role = cleanText(account.role || account.primaryRole).toLowerCase();
+          if (!uid) return;
+          userByUid.set(uid, {
+            uid,
+            role,
+            displayName: cleanText(account.displayName),
+            email: cleanText(account.email),
+            phone: cleanText(account.phone),
+            includeInEmployeeManagement: Boolean(account.employeeLink?.employeeId),
+          });
+          if (role) linkedUserRoleByUid.set(uid, role);
         });
 
         const serviceLookup = optionsOverride ?? serviceOptionsRef.current;
@@ -4034,7 +3991,7 @@ export default function DashboardEmployees() {
         const upsertEmployeeRecord = (
           rawDocId: string,
           rawData: any,
-          source: "staff_public" | "employees" | "users" | "core_accounts"
+          source: "core_staff" | "core_hr" | "core_accounts"
         ) => {
           const data = rawData || {};
           if (isRemovedFromStaffRecord(data)) return;
@@ -4066,7 +4023,7 @@ export default function DashboardEmployees() {
               source,
               sourceDocId: rawDocId,
               id: rawDocId,
-              staffPublicDocId: source === "staff_public" ? rawDocId : combined?.staffPublicDocId,
+              staffPublicDocId: source === "core_staff" ? rawDocId : combined?.staffPublicDocId,
             },
             rawDocId
           );
@@ -4091,9 +4048,9 @@ export default function DashboardEmployees() {
               : undefined;
           const legacyOperationalDefault =
             role === "staff" ||
-            (!administrative && source === "staff_public") ||
+            (!administrative && source === "core_staff") ||
             (!administrative &&
-              source === "employees" &&
+              source === "core_hr" &&
               combined?.employeeProfileEnabled !== false);
           const includeInEmployeeManagement =
             recordVisibility ?? userVisibility ?? legacyOperationalDefault;
@@ -4104,7 +4061,7 @@ export default function DashboardEmployees() {
           const row: StaffPublicUi = {
             id: employeeId,
             sourceDocId: rawDocId,
-            staffPublicDocId: source === "staff_public" ? employeeId : cleanText(combined?.staffPublicDocId),
+            staffPublicDocId: source === "core_staff" ? employeeId : cleanText(combined?.staffPublicDocId),
             legacyEmployeeIds,
             uid: cleanText(
               combined?.uid ||
@@ -4157,16 +4114,16 @@ export default function DashboardEmployees() {
             employeeProfileEnabled: includeInEmployeeManagement,
             includeInEmployeeManagement,
             source,
-            profileIncomplete: source !== "staff_public",
+            profileIncomplete: source !== "core_staff",
             employeeKind: administrative
               ? "administrative"
               : "service",
             name: cleanText(combined?.name || combined?.displayName || combined?.fullName || combined?.email),
             active: combined?.active !== false && combined?.isActive !== false,
-            showOnAbout: source === "staff_public" ? combined?.showOnAbout !== false : false,
+            showOnAbout: source === "core_hr" ? combined?.showOnAbout !== false : false,
             showOnBooking:
               !administrative &&
-              source === "staff_public" &&
+              source === "core_staff" &&
               specialties.length > 0
                 ? combined?.showOnBooking !== false
                 : false,
@@ -4276,14 +4233,71 @@ export default function DashboardEmployees() {
             "core_accounts"
           );
         });
-        staffSnap.docs.forEach((staffDoc) =>
-          upsertEmployeeRecord(staffDoc.id, staffDoc.data(), "staff_public")
-        );
-        employeeSnap?.docs.forEach((employeeDoc) =>
-          upsertEmployeeRecord(employeeDoc.id, employeeDoc.data(), "employees")
-        );
-        userSnap?.docs.forEach((userDoc) =>
-          upsertEmployeeRecord(userDoc.id, userDoc.data(), "users")
+        coreEmployees.forEach((employee) => {
+          const employment = (employee.employment || {}) as Record<string, unknown>;
+          upsertEmployeeRecord(
+            employee.id,
+            {
+              employeeId: employee.id,
+              employeeDocId: employee.id,
+              linkedEmployeeDocId: employee.id,
+              uid: cleanText(employee.firebaseUid),
+              linkedUid: cleanText(employee.firebaseUid),
+              employeeUid: cleanText(employee.firebaseUid),
+              name: cleanText(employee.name),
+              email: cleanText(employee.email),
+              phone: cleanText(employee.phoneNormalized || employee.phone),
+              active: cleanText(employee.status).toLowerCase() === "active",
+              showOnAbout: employee.showOnAbout !== false && employee.showOnAbout !== 0,
+              includeInEmployeeManagement:
+                employee.includeInEmployeeManagement !== false && employee.includeInEmployeeManagement !== 0,
+              employeeProfileEnabled:
+                employee.includeInEmployeeManagement !== false && employee.includeInEmployeeManagement !== 0,
+              avatarUrl: cleanText(employee.avatarUrl),
+              bio: cleanText(employee.bio),
+              cvUrl: cleanText(employee.cvUrl),
+              rating: safeNonNegativeNumber(employee.rating, 0),
+              reviewsCount: safeNonNegativeNumber(employee.reviewsCount, 0),
+              department: cleanText(employment.department),
+              title: cleanText(employment.title ?? employment.job_title ?? employment.jobTitle),
+              employmentSource: cleanText(employment.employment_source ?? employment.employmentSource ?? "salon"),
+              partnerId: cleanText(employment.partner_id ?? employment.partnerId),
+              partnerMemberId: cleanText(employment.partner_member_id ?? employment.partnerMemberId),
+              contractId: cleanText(employment.contract_id ?? employment.contractId),
+              employmentEndDate: cleanText(employment.end_date ?? employment.endDate),
+              allowedZoneIds: coreEmployeeMasterTextArray(
+                employment.allowed_zone_ids_json ?? employment.allowedZoneIds
+              ),
+              createdAt: employee.createdAt,
+              updatedAt: employee.updatedAt,
+            },
+            "core_hr"
+          );
+        });
+
+        coreStaff.forEach((staff) =>
+          upsertEmployeeRecord(
+            staff.id,
+            {
+              employeeId: staff.id,
+              employeeDocId: staff.id,
+              linkedEmployeeDocId: staff.id,
+              uid: cleanText(staff.firebaseUid),
+              linkedUid: cleanText(staff.firebaseUid),
+              employeeUid: cleanText(staff.firebaseUid),
+              name: cleanText(staff.name),
+              phone: cleanText(staff.phoneNormalized),
+              active: staff.active !== false && cleanText(staff.employmentStatus || "active").toLowerCase() === "active",
+              showOnBooking: staff.showOnBooking !== false,
+              specialties: Array.isArray(staff.specialties) ? staff.specialties : [],
+              avatarUrl: cleanText(staff.avatarUrl),
+              includeInEmployeeManagement: true,
+              employeeProfileEnabled: true,
+              createdAt: staff.createdAt,
+              updatedAt: staff.updatedAt,
+            },
+            "core_staff"
+          )
         );
 
         const coreEmployeeByIdentity = new Map<
@@ -4538,55 +4552,6 @@ export default function DashboardEmployees() {
     [canManageLeaveBalance, resolveAttendanceZoneId]
   );
 
-  // ✅ Original logic for fixing bookings
-  const fixBookingsEmployeeUid = async () => {
-    if (!canFixBookings) {
-      setErrorMsg("ليست لديك صلاحية لإصلاح الحجوزات.");
-      return;
-    }
-    setRepairConfirmOpen(false);
-    setSaving(true);
-    setErrorMsg("");
-    setRepairMessage("");
-    try {
-      const staffSnap = await getDocs(staffPublicCol());
-      const uidByEmployeeId = new Map<string, string>();
-      staffSnap.docs.forEach((d) => {
-        const data: any = d.data();
-        const linkedUid = String(data?.linkedUid || "").trim();
-        if (linkedUid) uidByEmployeeId.set(d.id, linkedUid);
-      });
-      const bookingsRef = collection(db, "salons", SALON_ID, "bookings");
-      const bSnap = await getDocs(bookingsRef);
-      let batch = writeBatch(db);
-      let batchCount = 0;
-      for (const d of bSnap.docs) {
-        const b: any = d.data();
-        const employeeUid = String(b?.employeeUid || "").trim();
-        const employeeId = String(b?.employeeId || "").trim();
-        if (employeeUid || !employeeId) continue;
-        const linkedUid = uidByEmployeeId.get(employeeId) || "";
-        if (!linkedUid) continue;
-        batch.update(doc(db, "salons", SALON_ID, "bookings", d.id), {
-          employeeUid: linkedUid,
-          employeeKey: linkedUid,
-          updatedAt: serverTimestamp(),
-        });
-        batchCount++;
-        if (batchCount >= 450) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
-        }
-      }
-      await batch.commit();
-      setRepairMessage("تم إصلاح ربط الحجوزات القديمة بنجاح.");
-    } catch (e) {
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر إكمال إصلاح الحجوزات."));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const reloadData = useCallback(async (forceStatsRefresh = false) => {
     if (forceStatsRefresh) employeeBookingStatsCache = null;
@@ -5299,7 +5264,7 @@ export default function DashboardEmployees() {
     const targetEmployeeId = cleanText(
       editId
         ? (editingStaff as any)?.staffPublicDocId ||
-            ((editingStaff as any)?.source === "staff_public" ? (editingStaff as any)?.sourceDocId : "") ||
+            ((editingStaff as any)?.source === "core_staff" || (editingStaff as any)?.source === "staff_public" ? (editingStaff as any)?.sourceDocId : "") ||
             editId
         : generatedEmployeeId
     );
@@ -5403,9 +5368,8 @@ export default function DashboardEmployees() {
       cvUrl: cvUrl.trim(),
       rating: Math.min(5, safeNonNegativeNumber(rating, 0)),
       reviewsCount: Math.floor(safeNonNegativeNumber(reviewsCount, 0)),
-      updatedAt: serverTimestamp(),
+      updatedAt: new Date().toISOString(),
     };
-    const firestorePayload = withoutLegacyPayrollFirestoreFields(payload as any);
     const saveVerificationServiceOptions = serviceOptionsRef.current.length
       ? serviceOptionsRef.current
       : serviceOptions;
@@ -5415,16 +5379,6 @@ export default function DashboardEmployees() {
     );
     const expectedCoreEmployeeMasterSnapshot =
       buildExpectedCoreEmployeeMasterVerificationSnapshot(payload);
-    const attendanceZoneProfilePatch = {
-      allowedZoneIds: normalizedAttendanceZoneId ? [normalizedAttendanceZoneId] : [],
-      allowedAttendanceZoneId: normalizedAttendanceZoneId,
-      attendanceZoneId: normalizedAttendanceZoneId,
-      assignedAttendanceZoneId: normalizedAttendanceZoneId,
-      attendanceScopeId: normalizedAttendanceZoneId,
-    };
-    const employeeProfilePatch = {
-      employment: attendanceZoneProfilePatch,
-    };
     try {
       await CoreHrService.saveEmployee({
         id:
@@ -5568,6 +5522,17 @@ export default function DashboardEmployees() {
               }
             : {}),
         },
+
+        bookingStaff: {
+          name: cleanName,
+          firebaseUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
+          phone: cleanText(payload.phone),
+          active: !!active,
+          employmentStatus: active ? "active" : "inactive",
+          showOnBooking: !!active && effectiveShowOnBooking,
+          specialties: specialtiesFixed,
+          avatarUrl: avatarUrl.trim(),
+        },
       });
 
       if (workingHourOverridesChanged) {
@@ -5607,53 +5572,6 @@ export default function DashboardEmployees() {
         );
       }
 
-      await CoreStaffService
-        .update(
-          targetEmployeeId,
-          {
-            name:
-              cleanName,
-
-            firebaseUid:
-              cleanText(
-                payload.linkedUid ||
-                payload.uid ||
-                payload.linkedUserId
-              ),
-
-            phone:
-              cleanText(
-                payload.phone
-              ),
-
-            active:
-              !!active,
-
-            employmentStatus:
-              active
-                ? "active"
-                : "inactive",
-
-            showOnBooking:
-              !!active &&
-              effectiveShowOnBooking,
-
-            specialties:
-              specialtiesFixed,
-
-            avatarUrl:
-              avatarUrl.trim(),
-
-          }
-        )
-        .catch(
-          (staffSyncError) => {
-            console.warn(
-              "Core staff booking sync failed after employee save:",
-              staffSyncError
-            );
-          }
-        );
 
       if (scheduleChanged) {
         const versionDate =
@@ -5719,76 +5637,6 @@ export default function DashboardEmployees() {
           );
       }
 
-      if (!editId) {
-        await setDoc(staffPublicDoc(targetEmployeeId), {
-          ...firestorePayload,
-          employeeId: targetEmployeeId,
-          employment: attendanceZoneProfilePatch,
-          employeeProfile: employeeProfilePatch,
-          leaveBalanceDays: 0,
-          leaveEntitlementDate: "",
-          leaveEntries: [],
-          createdAt: serverTimestamp(),
-        });
-        employeeSaveDebug("firestore staff_public success", { employeeId: targetEmployeeId });
-        await setDoc(doc(db, "salons", SALON_ID, "employees", targetEmployeeId), {
-          employeeId: targetEmployeeId,
-          name: cleanName,
-          active: !!active,
-          employeeProfileEnabled: payload.employeeProfileEnabled,
-          includeInEmployeeManagement,
-          showOnAbout: !!showOnAbout,
-          showOnBooking: effectiveShowOnBooking,
-          employmentEndDate: normalizedEmploymentEndDate,
-          allowedAttendanceZoneId: normalizedAttendanceZoneId,
-          attendanceZoneId: normalizedAttendanceZoneId,
-          assignedAttendanceZoneId: normalizedAttendanceZoneId,
-          attendanceScopeId: normalizedAttendanceZoneId,
-          employment: attendanceZoneProfilePatch,
-          employeeProfile: employeeProfilePatch,
-
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-        employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
-      } else {
-        await setDoc(staffPublicDoc(targetEmployeeId), {
-          ...firestorePayload,
-          employeeId: targetEmployeeId,
-          employeeDocId: targetEmployeeId,
-          linkedEmployeeDocId: targetEmployeeId,
-          "employment.allowedZoneIds": attendanceZoneProfilePatch.allowedZoneIds,
-          "employment.allowedAttendanceZoneId": normalizedAttendanceZoneId,
-          "employment.attendanceZoneId": normalizedAttendanceZoneId,
-          "employment.assignedAttendanceZoneId": normalizedAttendanceZoneId,
-          "employment.attendanceScopeId": normalizedAttendanceZoneId,
-          "employeeProfile.employment.allowedZoneIds": attendanceZoneProfilePatch.allowedZoneIds,
-          "employeeProfile.employment.allowedAttendanceZoneId": normalizedAttendanceZoneId,
-          "employeeProfile.employment.attendanceZoneId": normalizedAttendanceZoneId,
-          "employeeProfile.employment.assignedAttendanceZoneId": normalizedAttendanceZoneId,
-          "employeeProfile.employment.attendanceScopeId": normalizedAttendanceZoneId,
-        }, { merge: true });
-        employeeSaveDebug("firestore staff_public success", { employeeId: targetEmployeeId });
-        await setDoc(doc(db, "salons", SALON_ID, "employees", targetEmployeeId), {
-          employeeId: targetEmployeeId,
-          name: cleanName,
-          active: !!active,
-          employeeProfileEnabled: payload.employeeProfileEnabled,
-          includeInEmployeeManagement,
-          showOnAbout: !!showOnAbout,
-          showOnBooking: effectiveShowOnBooking,
-          employmentEndDate: normalizedEmploymentEndDate,
-          allowedAttendanceZoneId: normalizedAttendanceZoneId,
-          attendanceZoneId: normalizedAttendanceZoneId,
-          assignedAttendanceZoneId: normalizedAttendanceZoneId,
-          attendanceScopeId: normalizedAttendanceZoneId,
-          employment: attendanceZoneProfilePatch,
-          employeeProfile: employeeProfilePatch,
-
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-        employeeSaveDebug("employees sync success", { employeeId: targetEmployeeId });
-      }
 
       const refreshedCoreEmployee =
         await CoreHrService
@@ -5909,36 +5757,6 @@ export default function DashboardEmployees() {
         }
       }
 
-      const savedStaffSnap = await getDocFromServer(staffPublicDoc(targetEmployeeId));
-      employeeSaveDebug("firestore verify", {
-        employeeId: targetEmployeeId,
-        fromServer: true,
-        staffPublicExists: savedStaffSnap.exists(),
-      });
-      if (!savedStaffSnap.exists()) {
-        console.warn(
-          "staff_public compatibility mirror is missing after canonical Core save.",
-          { employeeId: targetEmployeeId }
-        );
-      } else {
-        const persistedMirrorSnapshot = buildEmployeeSaveVerificationSnapshot(
-          savedStaffSnap.data() as Partial<StaffPublicDoc>,
-          saveVerificationServiceOptions
-        );
-        const mirrorMismatches = employeeSaveSnapshotMismatches(
-          expectedSaveSnapshot,
-          persistedMirrorSnapshot
-        );
-        if (mirrorMismatches.length) {
-          console.warn(
-            "staff_public compatibility mirror differs from canonical save.",
-            {
-              employeeId: targetEmployeeId,
-              mismatches: mirrorMismatches,
-            }
-          );
-        }
-      }
       const activeTabBeforeReload = activeTab;
       const modalTabBeforeReload = modalTab;
       const reloadedRows = await load(saveVerificationServiceOptions, {
@@ -5987,10 +5805,10 @@ export default function DashboardEmployees() {
       );
     } catch (e) {
       console.error("save employee profile failed", {
-        staffPublicPath: `salons/${SALON_ID}/staff_public/${targetEmployeeId}`,
-        employeePath: `salons/${SALON_ID}/employees/${targetEmployeeId}`,
+        employeeId: targetEmployeeId,
         editingSource: (editingStaff as any)?.source || null,
         linkedUid: cleanText(payload.linkedUid || payload.uid || payload.linkedUserId),
+        authority: "core_d1",
       }, e);
       setSaveMessage("");
       setErrorMsg(toFirestoreErrorMessage(e, "تعذر حفظ الموظفة."));
@@ -8991,17 +8809,6 @@ export default function DashboardEmployees() {
                     إضافة موظفة
                   </button>
                 ) : null}
-                {canFixBookings ? (
-                  <button
-                    className="dsv2-btn dsv2-btn--secondary"
-                    type="button"
-                    onClick={() => setRepairConfirmOpen(true)}
-                    title="إصلاح ربط الحجوزات"
-                  >
-                    <FontAwesomeIcon icon={faScrewdriverWrench} />
-                    إصلاح الملفات
-                  </button>
-                ) : null}
                 <button
                   className="dsv2-btn dsv2-btn--secondary"
                   onClick={() => void reloadData(true)}
@@ -9051,11 +8858,7 @@ export default function DashboardEmployees() {
           </div>
         ) : null}
 
-        {repairMessage ? (
-          <div className="employees-v2-alert employees-v2-alert--success" role="status">
-            {repairMessage}
-          </div>
-        ) : null}
+
 
         <div className={isEmployeeProfileRoute ? "employees-v2-profile-host" : "employees-v2-directory-host"}>
           {!isEmployeeProfileRoute ? (
@@ -9586,19 +9389,7 @@ export default function DashboardEmployees() {
         }}
       />
 
-      <DashboardConfirmV2
-        open={repairConfirmOpen}
-        onClose={() => setRepairConfirmOpen(false)}
-        onConfirm={fixBookingsEmployeeUid}
-        title="إصلاح ربط الحجوزات القديمة"
-        description="سيتم استكمال معرف الموظفة في الحجوزات القديمة التي ينقصها الربط فقط، دون حذف أي حجز."
-        tone="gold"
-        confirmLabel="بدء الإصلاح"
-        cancelLabel="إلغاء"
-        pendingLabel="جاري الإصلاح..."
-      >
-        <p className="employees-v2-confirm-note">يُنفذ هذا الإجراء عند وجود حجوزات قديمة غير مرتبطة بحساب الموظفة.</p>
-      </DashboardConfirmV2>
+
     </div>
   );
 }

@@ -1,7 +1,5 @@
-import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
-import { db } from "./firebase";
-
-const SALON_ID = "main";
+import { CoreHrService } from "./CoreHrService";
+import { CoreStaffService } from "./CoreStaffService";
 
 export type ArchiveEmployeeInput = {
   employeeId: string;
@@ -17,22 +15,20 @@ export async function archiveEmployee(input: ArchiveEmployeeInput) {
   const employeeId = clean(input.employeeId);
   if (!employeeId) throw new Error("معرّف الموظفة مفقود؛ لم تتم الأرشفة.");
 
-  const archivedPatch = {
-    active: false,
-    isActive: false,
-    showOnBooking: false,
-    showOnAbout: false,
-    archived: true,
-    deleted: true,
-    removedFromStaff: true,
-    employmentStatus: "deleted",
-    deletedAt: serverTimestamp(),
-    deletedBy: clean(input.deletedBy) || null,
-    updatedAt: serverTimestamp(),
-  };
-
-  const batch = writeBatch(db);
-  batch.set(doc(db, "salons", SALON_ID, "staff_public", employeeId), archivedPatch, { merge: true });
-  batch.set(doc(db, "salons", SALON_ID, "employees", employeeId), archivedPatch, { merge: true });
-  await batch.commit();
+  // HR and booking staff are both canonical Core D1 projections. No Firestore
+  // mirror is written; failures surface so a half-archived employee is visible.
+  await CoreHrService.saveEmployee({
+    id: employeeId,
+    status: "deleted",
+    employment: { employmentStatus: "deleted" },
+  });
+  try {
+    await CoreStaffService.update(employeeId, {
+      active: false,
+      employmentStatus: "deleted",
+      showOnBooking: false,
+    });
+  } catch (error: any) {
+    if (Number(error?.status) !== 404 && !String(error?.message || "").includes("not_found")) throw error;
+  }
 }

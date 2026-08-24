@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 import {
   DashboardEmptyStateV2,
   DashboardFieldV2,
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
+import { CoreAccountService } from "../services/CoreAccountService";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
@@ -20,9 +20,6 @@ type AdminProfileDoc = {
   photoURL: string;
   role: UiRole;
 };
-
-const SALON_ID = "main";
-const USERS_COLLECTION = ["salons", SALON_ID, "users"] as const;
 
 const ROLE_LABELS: Record<UiRole, string> = {
   owner: "المالك",
@@ -74,7 +71,8 @@ const DashboardAdminProfile: React.FC = () => {
   const [msg, setMsg] = useState("");
 
   const [uid, setUid] = useState(() => bootstrapSession?.uid || "");
-  const [docExists, setDocExists] = useState(() => Boolean(bootstrapSession?.uid));
+  const [accountId, setAccountId] = useState("");
+  const [docExists, setDocExists] = useState(false);
 
   const [profile, setProfile] = useState<AdminProfileDoc>(() =>
     bootstrapSession
@@ -101,155 +99,78 @@ const DashboardAdminProfile: React.FC = () => {
 
   useEffect(() => {
     let alive = true;
-
     const unsub = onAuthStateChanged(auth, async (user) => {
       const requestId = ++authRequestRef.current;
       setMsg("");
-
       try {
-        const localSession = readStoredAuthSession();
-
         if (!user) {
           if (!alive || requestId !== authRequestRef.current) return;
-
-          if (localSession?.uid && localSession?.role) {
-            setUid(localSession.uid);
-            setDocExists(true);
-            setProfile({
-              displayName: localSession.displayName || "",
-              phone: localSession.phone || "",
-              email: localSession.email || "",
-              photoURL: "",
-              role: localSession.role as UiRole,
-            });
-          } else {
-            setUid("");
-            setDocExists(false);
-            setProfile({
-              displayName: "",
-              phone: "",
-              email: "",
-              photoURL: "",
-              role: "guest",
-            });
-          }
-
-          return;
-        }
-
-        if (!alive || requestId !== authRequestRef.current) return;
-        setUid(user.uid);
-
-        const ref = doc(db, ...USERS_COLLECTION, user.uid);
-        const snap = await getDoc(ref);
-
-        if (!alive || requestId !== authRequestRef.current) return;
-
-        if (!snap.exists()) {
+          setUid("");
+          setAccountId("");
           setDocExists(false);
-          setProfile({
-            displayName: localSession?.displayName || user.displayName || "",
-            phone: localSession?.phone || "",
-            email: localSession?.email || user.email || "",
-            photoURL: user.photoURL || "",
-            role: normalizeRole(localSession?.role || "guest"),
-          });
-          setMsg("لم يتم العثور على ملف المستخدم الإداري في المسار المعتمد.");
+          setProfile({ displayName: "", phone: "", email: "", photoURL: "", role: "guest" });
           return;
         }
-
-        const data = snap.data() as any;
-        const role = normalizeRole(data?.role || localSession?.role);
-
-        setDocExists(true);
+        setUid(user.uid);
+        const result = await CoreAccountService.me();
+        if (!alive || requestId !== authRequestRef.current) return;
+        const account = result.user;
+        setAccountId(account.id);
+        setDocExists(Boolean(account.id));
         setProfile({
-          displayName: String(data?.displayName || data?.name || localSession?.displayName || user.displayName || ""),
-          phone: String(data?.phone || localSession?.phone || ""),
-          email: String(data?.email || localSession?.email || user.email || ""),
-          photoURL: String(data?.photoURL || user.photoURL || ""),
-          role,
+          displayName: String(account.displayName || user.displayName || ""),
+          phone: String(account.phone || ""),
+          email: String(account.email || user.email || ""),
+          photoURL: String(account.photoUrl || user.photoURL || ""),
+          role: normalizeRole(account.role || account.primaryRole),
         });
       } catch (e) {
         if (!alive || requestId !== authRequestRef.current) return;
-
-        console.error("Admin profile load error:", e);
-        const localSession = readStoredAuthSession();
-        setDocExists(Boolean(localSession?.uid || user?.uid));
-        setProfile({
-          displayName: localSession?.displayName || user?.displayName || "",
-          phone: localSession?.phone || "",
-          email: localSession?.email || user?.email || "",
-          photoURL: user?.photoURL || "",
-          role: normalizeRole(localSession?.role || "guest"),
-        });
-        setMsg("تعذر تحميل الملف الشخصي.");
+        console.error("Core admin profile load error:", e);
+        setAccountId("");
+        setDocExists(false);
+        setMsg("تعذر تحميل الملف الشخصي من Core.");
       } finally {
-        if (alive && requestId === authRequestRef.current) {
-          setAuthLoading(false);
-        }
+        if (alive && requestId === authRequestRef.current) setAuthLoading(false);
       }
     });
-
-    return () => {
-      alive = false;
-      unsub();
-    };
+    return () => { alive = false; unsub(); };
   }, []);
 
   const handleSave = async () => {
-    if (!uid || !docExists || !hasAdminPower) return;
-
+    if (!uid || !accountId || !docExists || !hasAdminPower) return;
     const displayName = String(profile.displayName || "").trim();
     const phone = String(profile.phone || "").trim();
     const photoURL = String(profile.photoURL || "").trim();
-
-    if (!displayName) {
-      setMsg("الاسم مطلوب.");
-      return;
-    }
-
+    if (!displayName) { setMsg("الاسم مطلوب."); return; }
     try {
       setSaving(true);
       setMsg("");
-
-      const ref = doc(db, ...USERS_COLLECTION, uid);
-      await updateDoc(ref, {
+      const updated = await CoreAccountService.update(accountId, {
         displayName,
-        name: displayName,
         phone,
-        photoURL,
-        updatedAt: serverTimestamp(),
+        photoUrl: photoURL || null,
       });
-
+      setProfile((current) => ({
+        ...current,
+        displayName: updated.displayName || displayName,
+        phone: updated.phone || phone,
+        photoURL: updated.photoUrl || photoURL,
+      }));
       try {
         const cached = JSON.parse(localStorage.getItem("user_profile_v1") || "null") || {};
-        const merged = { ...cached, uid, name: displayName, displayName, phone, email: profile.email, photoURL };
-        localStorage.setItem("user_profile_v1", JSON.stringify(merged));
+        localStorage.setItem("user_profile_v1", JSON.stringify({ ...cached, uid, name: displayName, displayName, phone, email: profile.email, photoURL }));
         localStorage.setItem("userName", displayName);
         localStorage.setItem("userPhone", phone);
-
         const authUserCached = JSON.parse(localStorage.getItem("auth_user") || "null") || {};
-        localStorage.setItem(
-          "auth_user",
-          JSON.stringify({
-            ...authUserCached,
-            uid,
-            email: profile.email,
-            role: profile.role,
-            displayName,
-          })
-        );
+        localStorage.setItem("auth_user", JSON.stringify({ ...authUserCached, uid, email: profile.email, role: profile.role, displayName }));
         window.dispatchEvent(new Event("authChanged"));
-      } catch {
-      }
-
+      } catch {}
       setMsg("تم حفظ الملف الشخصي بنجاح.");
     } catch (e) {
-      console.error("Admin profile save error:", e);
-      setMsg("تعذر حفظ الملف الشخصي.");
-    } finally {
-      setSaving(false);
-    }
+      console.error("Core admin profile save error:", e);
+      setMsg("تعذر حفظ الملف الشخصي في Core.");
+    } finally { setSaving(false); }
   };
 
   if (authLoading) {
@@ -297,7 +218,7 @@ const DashboardAdminProfile: React.FC = () => {
           <div className="admin-profile-v2-hero__badges">
             <span className="dsv2-badge dsv2-badge--success">{roleLabel}</span>
             <span className={`dsv2-badge ${docExists ? "dsv2-badge--success" : "dsv2-badge--danger"}`}>
-              {docExists ? "الملف مرتبط" : "المستند غير موجود"}
+              {docExists ? "الملف مرتبط" : "حساب Core غير موجود"}
             </span>
           </div>
         </div>
@@ -327,7 +248,7 @@ const DashboardAdminProfile: React.FC = () => {
         <article className={`dsv2-metric-card ${docExists ? "dsv2-metric-card--success" : "dsv2-metric-card--danger"}`}>
           <p className="dsv2-metric-card__label">مستند الحساب</p>
           <p className="dsv2-metric-card__value">{docExists ? "موجود" : "مفقود"}</p>
-          <p className="dsv2-metric-card__meta">salons/{SALON_ID}/users</p>
+          <p className="dsv2-metric-card__meta">Core D1 · app_users</p>
         </article>
 
         <article className="dsv2-metric-card dsv2-metric-card--dark">
@@ -413,12 +334,12 @@ const DashboardAdminProfile: React.FC = () => {
 
         <div className="admin-profile-v2-source">
           <span>مسار ملف الحساب</span>
-          <code dir="ltr">salons/{SALON_ID}/users/{uid || "—"}</code>
+          <code dir="ltr">Core D1 · app_users/{accountId || "—"}</code>
         </div>
 
         {!docExists ? (
           <div className="admin-profile-v2-note" role="alert">
-            لم يتم تفعيل الحفظ لأن مستند المستخدم غير موجود. هذه الصفحة تستخدم updateDoc فقط ولا تنشئ مستندًا جديدًا.
+            لم يتم تفعيل الحفظ لأن حساب المستخدم غير موجود في Core D1.
           </div>
         ) : null}
       </section>
@@ -439,7 +360,7 @@ const DashboardAdminProfile: React.FC = () => {
           type="button"
           onClick={handleSave}
           disabled={saving || !docExists}
-          title={!docExists ? "المستند غير موجود" : "حفظ الملف الشخصي"}
+          title={!docExists ? "حساب Core غير موجود" : "حفظ الملف الشخصي"}
         >
           {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
         </button>

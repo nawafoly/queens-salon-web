@@ -23,6 +23,7 @@ import {
 } from "../helpers/hr/employeeAbsence";
 import { normalizeEmployeeLeaveRequest } from "../helpers/hr/employeeLeave";
 import { CoreHrService } from "./CoreHrService";
+import { CoreAccountService } from "./CoreAccountService";
 import { CoreWorkforceService } from "./CoreWorkforceService";
 import {
   createManagedEmployeeRequest,
@@ -405,6 +406,36 @@ export async function updateRecruitmentApplication(
   });
 }
 
+async function ensureCoreEmployeeAccount(input: {
+  uid?: string;
+  email?: string;
+  displayName?: string;
+  phone?: string;
+  role?: string;
+  active?: boolean;
+  employeeId: string;
+}) {
+  const uid = cleanText(input.uid || "");
+  if (!uid) return null;
+  const accounts = await CoreAccountService.list(true, "internal");
+  const existing = accounts.find(
+    (account) => cleanText(account.firebaseUid || account.uid) === uid
+  );
+  const payload = {
+    firebaseUid: uid,
+    email: cleanEmail(input.email || ""),
+    phone: cleanText(input.phone || ""),
+    displayName: cleanText(input.displayName || ""),
+    role: normalizeRole(input.role || "staff"),
+    status: input.active === false ? ("disabled" as const) : ("active" as const),
+  };
+  const account = existing
+    ? await CoreAccountService.update(existing.id, payload)
+    : await CoreAccountService.create(payload);
+  await CoreAccountService.linkEmployee(account.id, input.employeeId);
+  return account;
+}
+
 export async function syncEmployeeRecordFromUser(args: {
   uid: string;
   email: string;
@@ -431,135 +462,56 @@ export async function syncEmployeeRecordFromUser(args: {
 }) {
   const uid = cleanText(args.uid);
   const employeeId = cleanText(args.employeeId || args.linkedEmployeeDocId || uid);
-  const email = cleanEmail(args.email);
-  const displayName = cleanText(args.displayName);
-  const phone = cleanText(args.phone || "");
+  if (!uid || !employeeId) throw new Error("employee_core:identity_required");
   const role = normalizeRole(args.role);
   const active = args.active !== false;
   const isStaffLike = ["owner", "admin", "hr", "reception", "staff"].includes(role);
-  const isPublicStaff = role === "staff";
-
-  const employeeProfileEnabled = args.employeeProfileEnabled ?? isStaffLike;
-  const showOnAbout = args.showOnAbout ?? isPublicStaff;
-  const showOnBooking = args.showOnBooking ?? isPublicStaff;
+  const showOnBooking = args.showOnBooking ?? role === "staff";
   const specialties = Array.isArray(args.specialties)
-    ? args.specialties.map((x) => cleanText(x)).filter(Boolean)
+    ? args.specialties.map((value) => cleanText(value)).filter(Boolean)
     : [];
-  const userRef = hrDoc("users", uid);
-  let shouldSetUserCreatedAt = true;
 
-  try {
-    const existingUser = await getDoc(userRef);
-    shouldSetUserCreatedAt = !existingUser.exists() || !(existingUser.data() as any)?.createdAt;
-  } catch {
-    shouldSetUserCreatedAt = true;
+  await CoreHrService.saveEmployee({
+    id: employeeId,
+    firebaseUid: uid,
+    name: cleanText(args.displayName),
+    email: cleanEmail(args.email),
+    phone: cleanText(args.phone || ""),
+    status: active ? "active" : "inactive",
+    avatarUrl: cleanText(args.avatarUrl || "") || null,
+    bio: cleanText(args.bio || "") || null,
+    employment: {
+      employmentStatus: active ? "active" : "inactive",
+      employmentSource: args.employmentSource || "salon",
+      partnerId: cleanText(args.partnerId || "") || null,
+      partnerMemberId: cleanText(args.partnerMemberId || "") || null,
+      contractId: cleanText(args.contractId || "") || null,
+      department: cleanText(args.department || "") || null,
+      jobTitle: cleanText(args.title || "") || null,
+    },
+    bookingStaff: {
+      firebaseUid: uid,
+      name: cleanText(args.displayName),
+      phone: cleanText(args.phone || ""),
+      active,
+      employmentStatus: active ? "active" : "inactive",
+      avatarUrl: cleanText(args.avatarUrl || "") || null,
+      showOnBooking,
+      specialties,
+    },
+  });
+
+  if (isStaffLike) {
+    await ensureCoreEmployeeAccount({
+      uid,
+      email: args.email,
+      displayName: args.displayName,
+      phone: args.phone,
+      role,
+      active,
+      employeeId,
+    });
   }
-
-  const employeeDocData = {
-    uid,
-    linkedUid: uid,
-    linkedUserId: uid,
-    employeeId,
-    linkedEmployeeDocId: employeeId,
-    email,
-    userEmail: email,
-    name: displayName,
-    displayName,
-    phone,
-    role,
-    active,
-    isActive: active,
-    employeeProfileEnabled,
-    showOnAbout,
-    showOnBooking,
-    removedFromStaff: false,
-    employmentStatus: active ? "active" : "inactive",
-    department: cleanText(args.department || "") || "",
-    title: cleanText(args.title || "") || "",
-    avatarUrl: cleanText(args.avatarUrl || "") || "",
-    specialties,
-    bio: cleanText(args.bio || "") || "",
-    employmentSource: args.employmentSource || "salon",
-    partnerId: cleanText(args.partnerId || "") || null,
-    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
-    partnerName: cleanText(args.partnerName || "") || null,
-    contractId: cleanText(args.contractId || "") || null,
-    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
-    updatedAt: serverTimestamp(),
-  };
-
-  const userDocData = {
-    uid,
-    email,
-    displayName,
-    name: displayName,
-    phone,
-    role,
-    active,
-    employeeId,
-    linkedEmployeeDocId: employeeId,
-    employeeProfileEnabled,
-    employmentSource: args.employmentSource || "salon",
-    partnerId: cleanText(args.partnerId || "") || null,
-    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
-    ...(shouldSetUserCreatedAt ? { createdAt: serverTimestamp() } : {}),
-    updatedAt: serverTimestamp(),
-  };
-
-  const staffPublicData = {
-    uid,
-    linkedUid: uid,
-    linkedUserId: uid,
-    email,
-    userEmail: email,
-    name: displayName,
-    displayName,
-    phone,
-    role,
-    active,
-    isActive: active,
-    showOnAbout,
-    showOnBooking,
-    employeeProfileEnabled,
-    removedFromStaff: false,
-    employmentStatus: active ? "active" : "inactive",
-    specialties,
-    bio: cleanText(args.bio || "") || "",
-    avatarUrl: cleanText(args.avatarUrl || "") || "",
-    employeeId,
-    employmentSource: args.employmentSource || "salon",
-    partnerId: cleanText(args.partnerId || "") || null,
-    partnerMemberId: cleanText(args.partnerMemberId || "") || null,
-    partnerName: cleanText(args.partnerName || "") || null,
-    contractId: cleanText(args.contractId || "") || null,
-    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
-    updatedAt: serverTimestamp(),
-  };
-
-  await Promise.all([
-    setDoc(userRef, userDocData, { merge: true }),
-    setDoc(hrDoc("employees", employeeId), employeeDocData, { merge: true }),
-    isStaffLike
-      ? setDoc(
-          hrDoc("adminUsers", uid),
-          {
-            uid,
-            email,
-            displayName,
-            phone,
-            role,
-            active,
-            employeeId,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        )
-      : Promise.resolve(),
-    setDoc(hrDoc("staffPublic", employeeId), staffPublicData, {
-      merge: true,
-    }),
-  ]);
-
   return { uid, employeeId, role, active };
 }
 
@@ -578,50 +530,47 @@ export async function syncPartnerEmployeeRecord(args: {
   const partnerId = cleanText(args.partnerId);
   const partnerMemberId = cleanText(args.partnerMemberId);
   if (!partnerId || !partnerMemberId) throw new Error("partner_employee:invalid_link");
-
   const employeeId = `partner-${partnerMemberId}`;
   const uid = cleanText(args.userUid || "");
   const active = args.active !== false;
-  const shared = {
-    employeeId,
-    employeeDocId: employeeId,
-    linkedEmployeeDocId: employeeId,
-    ...(uid ? { uid, linkedUid: uid, linkedUserId: uid, employeeUid: uid } : {}),
+
+  await CoreHrService.saveEmployee({
+    id: employeeId,
+    ...(uid ? { firebaseUid: uid } : {}),
     name: cleanText(args.displayName),
-    displayName: cleanText(args.displayName),
     email: cleanEmail(args.email || ""),
-    userEmail: cleanEmail(args.email || ""),
     phone: cleanText(args.phone || ""),
-    role: "staff",
-    active,
-    isActive: active,
-    employmentStatus: active ? "active" : "inactive",
-    employeeProfileEnabled: true,
-    showOnAbout: false,
-    showOnBooking: true,
-    removedFromStaff: false,
-    employmentSource: "partner",
-    partnerId,
-    partnerMemberId,
-    partnerName: cleanText(args.partnerName || "") || null,
-    contractId: cleanText(args.contractId || "") || null,
-    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
-    department: "فريق شريك",
-    title: "موظف شريك",
-    updatedAt: serverTimestamp(),
-  };
+    status: active ? "active" : "inactive",
+    employment: {
+      employmentStatus: active ? "active" : "inactive",
+      employmentSource: "partner",
+      partnerId,
+      partnerMemberId,
+      contractId: cleanText(args.contractId || "") || null,
+      department: "فريق شريك",
+      jobTitle: "موظف شريك",
+    },
+    bookingStaff: {
+      ...(uid ? { firebaseUid: uid } : {}),
+      name: cleanText(args.displayName),
+      phone: cleanText(args.phone || ""),
+      active,
+      employmentStatus: active ? "active" : "inactive",
+      showOnBooking: true,
+    },
+  });
 
-  await Promise.all([
-    setDoc(hrDoc("employees", employeeId), shared, { merge: true }),
-    setDoc(hrDoc("staffPublic", employeeId), shared, { merge: true }),
-    uid
-      ? Promise.all([
-          setDoc(hrDoc("users", uid), { ...shared, createdAt: serverTimestamp() }, { merge: true }),
-          setDoc(hrDoc("adminUsers", uid), shared, { merge: true }),
-        ])
-      : Promise.resolve(),
-  ]);
-
+  if (uid) {
+    await ensureCoreEmployeeAccount({
+      uid,
+      email: args.email,
+      displayName: args.displayName,
+      phone: args.phone,
+      role: "staff",
+      active,
+      employeeId,
+    });
+  }
   return { employeeId, uid: uid || undefined };
 }
 
@@ -642,22 +591,24 @@ export async function linkExistingEmployeeRecordToPartner(args: {
     throw new Error("partner_employee:invalid_existing_link");
   }
 
-  const patch = {
-    employmentSource: "partner",
-    partnerId,
-    partnerMemberId,
-    partnerName: cleanText(args.partnerName || "") || null,
-    contractId: cleanText(args.contractId || "") || null,
-    resourceIds: Array.isArray(args.resourceIds) ? args.resourceIds.map(cleanText).filter(Boolean) : [],
-    updatedAt: serverTimestamp(),
-  };
+  await CoreHrService.saveEmployee({
+    id: employeeId,
+    employment: {
+      employmentSource: "partner",
+      partnerId,
+      partnerMemberId,
+      contractId: cleanText(args.contractId || "") || null,
+    },
+  });
 
-  await Promise.all([
-    setDoc(hrDoc("employees", employeeId), patch, { merge: true }),
-    setDoc(hrDoc("staffPublic", employeeId), patch, { merge: true }),
-    employeeUid ? setDoc(hrDoc("users", employeeUid), { ...patch, employeeId }, { merge: true }) : Promise.resolve(),
-  ]);
-
+  if (employeeUid) {
+    const accounts = await CoreAccountService.list(true, "internal");
+    const account = accounts.find(
+      (candidate) => cleanText(candidate.firebaseUid || candidate.uid) === employeeUid
+    );
+    if (!account) throw new Error("partner_employee:core_account_not_found");
+    await CoreAccountService.linkEmployee(account.id, employeeId);
+  }
   return { employeeId, employeeUid: employeeUid || undefined };
 }
 

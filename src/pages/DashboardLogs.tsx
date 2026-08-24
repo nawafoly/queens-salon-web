@@ -1,15 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  startAfter,
-} from "firebase/firestore";
-
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faChevronDown,
@@ -28,7 +17,7 @@ import {
   DashboardSelectV2,
   DashboardSkeletonV2,
 } from "../components/dashboard-v2";
-import { db } from "../services/firebase";
+import { CoreAuditService } from "../services/CoreAuditService";
 import { upsertExpenseCore } from "../services/CoreExpenseService";
 import { upsertIncomeCore } from "../services/CoreIncomeService";
 import { writeAuditLog } from "../services/logService";
@@ -648,8 +637,6 @@ export default function DashboardLogs() {
   const [errMsg, setErrMsg] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsById, setDetailsById] = useState<Record<string, LogDetails>>({});
-  const [lastDoc, setLastDoc] = useState<any | null>(null);
-  const lastDocRef = useRef<any | null>(null);
   const [hasMore, setHasMore] = useState(true);
 
   const [qText, setQText] = useState("");
@@ -666,50 +653,49 @@ export default function DashboardLogs() {
   const [restoreErr, setRestoreErr] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<LogRow | null>(null);
 
-  const parseRow = useCallback((d: any) => {
-    const x: any = d.data();
-    const atMs = safeMs(x?.createdAt) || safeMs(x?.at) || safeMs(x?.eventAtMs) || safeMs(x?.meta?.eventAtMs);
-    const changesPreview = Array.isArray(x?.changesPreview) ? x.changesPreview : [];
-    const displayRaw = x?.display || x?.meta?.display;
-    const display =
-      displayRaw && typeof displayRaw === "object"
-        ? {
-            clientName: String(displayRaw?.clientName || "").trim() || undefined,
-            bookingPublicId: String(displayRaw?.bookingPublicId || "").trim() || undefined,
-            bookingShortId: String(displayRaw?.bookingShortId || "").trim() || undefined,
-            bookingId: String(displayRaw?.bookingId || "").trim() || undefined,
-          }
-        : undefined;
-
+  const parseRow = useCallback((x: any) => {
+    const parseJson = (value: unknown) => {
+      if (value && typeof value === "object") return value;
+      try { return value ? JSON.parse(String(value)) : undefined; } catch { return undefined; }
+    };
+    const before = parseJson(x?.beforeJson ?? x?.before_json ?? x?.before);
+    const after = parseJson(x?.afterJson ?? x?.after_json ?? x?.after);
+    const meta = parseJson(x?.metaJson ?? x?.meta_json ?? x?.meta);
+    const atMs = safeMs(x?.createdAt ?? x?.created_at ?? x?.at) || safeMs(meta?.eventAtMs);
+    const changesPreview = isObj(before) && isObj(after) ? buildChangesFromBeforeAfter(before, after) : [];
+    const displayRaw = meta?.display;
+    const display = displayRaw && typeof displayRaw === "object" ? {
+      clientName: String(displayRaw?.clientName || "").trim() || undefined,
+      bookingPublicId: String(displayRaw?.bookingPublicId || "").trim() || undefined,
+      bookingShortId: String(displayRaw?.bookingShortId || "").trim() || undefined,
+      bookingId: String(displayRaw?.bookingId || "").trim() || undefined,
+    } : undefined;
+    const id = String(x?.id || "");
     return {
-      id: d.id,
-      logId: String(x?.logId || d.id),
-      action: String(x?.action || x?.type || ""),
-      entityType: String(x?.entityType || x?.entity || ""),
-      entityId: String(x?.entityId || ""),
-      description: String(x?.description || x?.note || ""),
-      summary: String(x?.summary || ""),
-      userName: String(x?.userName || ""),
-      userUid: String(x?.userUid || x?.byUid || ""),
-      userRole: String(x?.userRole || x?.byRole || ""),
-      userEmail: String(x?.userEmail || x?.byEmail || ""),
+      id,
+      logId: id,
+      action: String(x?.action || ""),
+      entityType: String(x?.entityType ?? x?.entity_type ?? ""),
+      entityId: String(x?.entityId ?? x?.entity_id ?? ""),
+      description: String(x?.description || ""),
+      summary: String(meta?.summary || ""),
+      userName: String(x?.actorName ?? x?.actor_name ?? ""),
+      userUid: String(x?.actorUid ?? x?.actor_uid ?? ""),
+      userRole: String(meta?.actorRole || ""),
+      userEmail: String(x?.actorEmail ?? x?.actor_email ?? ""),
       source: String(x?.source || ""),
-      createdAt: x?.createdAt || x?.at,
-      before: x?.before,
-      after: x?.after,
-      meta: x?.meta,
-      sensitive: Boolean(x?.sensitive),
-      severity: (x?.severity as any) || undefined,
+      createdAt: x?.createdAt ?? x?.created_at,
+      before,
+      after,
+      meta,
+      sensitive: Boolean(meta?.sensitive),
+      severity: meta?.severity as any,
       display,
-      changedFields: Array.isArray(x?.changedFields) ? x.changedFields : [],
-      changesPreview: changesPreview.map((c: any) => ({
-        field: String(c?.field || ""),
-        before: String(c?.before ?? ""),
-        after: String(c?.after ?? ""),
-      })),
-      hasSnapshot: Boolean(x?.hasSnapshot || x?.snapshotId),
-      snapshotId: x?.snapshotId ? String(x.snapshotId) : x?.hasSnapshot ? String(x?.logId || d.id) : undefined,
-      restore: x?.restore && typeof x?.restore === "object" ? x.restore : undefined,
+      changedFields: changesPreview.map((item: any) => item.field),
+      changesPreview,
+      hasSnapshot: Boolean(before || after),
+      snapshotId: undefined,
+      restore: meta?.restore && typeof meta.restore === "object" ? meta.restore : undefined,
       atMs,
     } as LogRow;
   }, []);
@@ -717,43 +703,24 @@ export default function DashboardLogs() {
   const loadPage = useCallback(
     async (mode: "initial" | "more") => {
       if (!canManage) return;
-      if (mode === "initial") {
-        setLoading(true);
-        setErrMsg("");
-      } else {
-        setLoadingMore(true);
-      }
-
+      if (mode === "initial") { setLoading(true); setErrMsg(""); }
+      else setLoadingMore(true);
       try {
-        const colRef = collection(db, "salons", SALON_ID, "logs");
-        const constraints: any[] = [orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
-        const cursor = mode === "more" ? lastDocRef.current : null;
-        if (cursor) constraints.splice(1, 0, startAfter(cursor));
-        const q = query(colRef, ...constraints);
-        const snap = await getDocs(q);
-
-        const list = snap.docs.map(parseRow);
-        const nextLast = snap.docs[snap.docs.length - 1] ?? null;
-
-        setLastDoc(nextLast);
-        lastDocRef.current = nextLast;
-        setHasMore(snap.size === PAGE_SIZE);
-        setRows((prev) => (mode === "initial" ? list : [...prev, ...list]));
+        const requestedLimit = mode === "more" ? Math.min(1000, rows.length + PAGE_SIZE) : PAGE_SIZE;
+        const auditRows = await CoreAuditService.list({ limit: requestedLimit });
+        const list = auditRows.map(parseRow);
+        setHasMore(auditRows.length === requestedLimit && requestedLimit < 1000);
+        setRows(list);
       } catch (e: any) {
-        console.warn("DashboardLogs load error:", e);
-        const msg = String(e?.message || e);
-        setErrMsg(
-          msg.includes("Missing or insufficient permissions")
-            ? "⚠️ الصلاحيات تمنع قراءة السجل. لازم Rules تسمح فقط للأونر/الأدمن بقراءة salons/main/logs."
-            : "تعذر تحميل سجل العمليات:\n" + msg
-        );
+        console.warn("DashboardLogs Core audit load error:", e);
+        setErrMsg("تعذر تحميل سجل العمليات من Core:\n" + String(e?.message || e));
         if (mode === "initial") setRows([]);
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [canManage, parseRow]
+    [canManage, parseRow, rows.length]
   );
 
   useEffect(() => {
@@ -761,8 +728,6 @@ export default function DashboardLogs() {
     setRows([]);
     setDetailsById({});
     setExpandedId(null);
-    setLastDoc(null);
-    lastDocRef.current = null;
     setHasMore(true);
     void loadPage("initial");
   }, [canManage, loadPage]);
@@ -886,28 +851,9 @@ export default function DashboardLogs() {
       }));
 
       try {
-        const snapshotId = row.snapshotId || row.logId || row.id;
-        const snapRef = doc(db, "salons", SALON_ID, "log_snapshots", snapshotId);
-        const snap = await getDoc(snapRef);
-        if (!snap.exists()) {
-          setDetailsById((prev) => ({
-            ...prev,
-            [row.id]: {
-              loading: false,
-              error: "لا توجد بيانات snapshot لهذا السجل.",
-              changes: inlineChanges,
-              snapshot: null,
-              fullOpen: prev[row.id]?.fullOpen ?? false,
-              hasSnapshot,
-            },
-          }));
-          return;
-        }
-        const data = snap.data() as any;
-        const before = data?.before;
-        const after = data?.after;
-        const changes =
-          isObj(before) && isObj(after) ? buildChangesFromBeforeAfter(before, after) : inlineChanges;
+        const before = row.before;
+        const after = row.after;
+        const changes = isObj(before) && isObj(after) ? buildChangesFromBeforeAfter(before, after) : inlineChanges;
         setDetailsById((prev) => ({
           ...prev,
           [row.id]: {
@@ -994,24 +940,7 @@ export default function DashboardLogs() {
     try {
       let beforeData = row.before;
       if (!beforeData && row.hasSnapshot) {
-        const snapshotId = row.snapshotId || row.logId || row.id;
-        const snapRef = doc(db, "salons", SALON_ID, "log_snapshots", snapshotId);
-        const snap = await getDoc(snapRef);
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          beforeData = data?.before;
-          setDetailsById((prev) => ({
-            ...prev,
-            [row.id]: {
-              loading: false,
-              error: "",
-              changes: prev[row.id]?.changes ?? [],
-              snapshot: { before: data?.before, after: data?.after },
-              fullOpen: prev[row.id]?.fullOpen ?? false,
-              hasSnapshot: true,
-            },
-          }));
-        }
+        beforeData = detailsById[row.id]?.snapshot?.before || row.before;
       }
 
       if (!isObj(beforeData)) {
@@ -1047,7 +976,6 @@ export default function DashboardLogs() {
       setRestoreMsg("تم الاسترجاع وتسجيل العملية بنجاح.");
       setRestoreTarget(null);
       setRows([]);
-      setLastDoc(null);
       setHasMore(true);
       await loadPage("initial");
     } catch (e: any) {

@@ -87,8 +87,7 @@ import BookingInternalV2 from "../features/internal-booking-v2/BookingInternalV2
 import logo1 from "../assets/images/ssunnamed.png";
 
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
 import { readStoredAuthSession } from "../services/localAuthSession";
 import { logoutFirebase } from "../services/authService";
 
@@ -107,6 +106,8 @@ import {
 } from "../services/CoreExpenseService";
 
 import { listAllIncomeCore } from "../services/CoreIncomeService";
+import { CoreStaffService } from "../services/CoreStaffService";
+import { CoreAuditService } from "../services/CoreAuditService";
 
 import {
   canAccessDashboard,
@@ -1163,20 +1164,16 @@ const Dashboard: React.FC<DashboardProps> = ({
         return acc;
       }, {} as Record<string, string>);
 
-      step = "staff_public:getDocs";
-      const staffSnap = await getDocs(collection(db, "salons", "main", "staff_public"));
+      step = "core_staff:list";
+      const staffRows = await CoreStaffService.list({ activeOnly: false });
       if (requestId !== refreshRequestIdRef.current) return;
 
-      const nextStaffRows = staffSnap.docs.map((snap) => {
-        const data = snap.data() as any;
-        return {
-          id: String(snap.id || "").trim(),
-          name: String(data?.name || "").trim() || undefined,
-          linkedUid: String(data?.linkedUid || data?.uid || "").trim() || undefined,
-          active: data?.active !== false,
-          employmentEndDate: String(data?.employmentEndDate || "").trim() || undefined,
-        } as StaffOperationalRow;
-      });
+      const nextStaffRows = staffRows.map((data) => ({
+        id: String(data.id || "").trim(),
+        name: String(data.name || "").trim() || undefined,
+        linkedUid: String(data.firebaseUid || "").trim() || undefined,
+        active: data.active !== false && String(data.employmentStatus || "active").toLowerCase() === "active",
+      } as StaffOperationalRow));
 
       step = "bookings:mapFirestoreToUiBooking";
       const uiBookings = await Promise.all(docs.map(mapFirestoreToUiBooking));
@@ -1853,22 +1850,29 @@ const Dashboard: React.FC<DashboardProps> = ({
       setSelectedBookingActivityError("");
 
       try {
-        const snap = await getDocs(
-          collection(db, "salons", "main", "booking_logs", selectedBooking.id, "events")
-        );
+        const auditRows = await CoreAuditService.list({
+          entityType: "booking",
+          entityId: selectedBooking.id,
+          limit: 200,
+        });
 
         if (cancelled) return;
 
-        const mapped = snap.docs
-          .map((docSnap) =>
-            mapBookingActivityItem(
-              {
-                id: docSnap.id,
-                ...(docSnap.data() as Record<string, unknown>),
-              },
-              selectedBooking
-            )
-          )
+        const mapped = auditRows
+          .map((row) => {
+            let patch: Record<string, unknown> = {};
+            try { patch = JSON.parse(row.afterJson || row.metaJson || "{}"); } catch {}
+            return mapBookingActivityItem({
+              id: row.id,
+              type: row.action,
+              action: row.action,
+              note: row.description || "",
+              createdAt: row.createdAt,
+              actorName: row.actorName || row.actorEmail || "",
+              actorEmail: row.actorEmail || "",
+              patch,
+            }, selectedBooking);
+          })
           .sort((a, b) => b.sortMs - a.sortMs);
 
         const hasCreatedEvent = mapped.some((item) => item.title === "تم إنشاء الحجز");

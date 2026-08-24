@@ -295,6 +295,7 @@ export function serializeAccount(row, permissionBundle = null, link = null) {
     email: row.email || '',
     phone: row.phone || '',
     displayName: row.display_name || '',
+    photoUrl: row.photo_url || '',
     primaryRole: row.primary_role,
     role: row.primary_role,
     status,
@@ -438,6 +439,7 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
     email,
     phone: optionalText(data.phone) || null,
     display_name: optionalText(data.displayName || data.display_name || data.name) || email || firebaseUid,
+    photo_url: optionalText(data.photoUrl || data.photo_url) || null,
     primary_role: role,
     status,
     email_verified: boolInt(data.emailVerified || data.email_verified, 0),
@@ -452,9 +454,9 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
   await dbRun(
     db,
     `INSERT INTO app_users
-      (id, firebase_uid, salon_id, email, phone, display_name, primary_role, status,
+      (id, firebase_uid, salon_id, email, phone, display_name, photo_url, primary_role, status,
        email_verified, last_login_at, created_at, updated_at, deleted_at, legacy_source, legacy_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.firebase_uid,
@@ -462,6 +464,7 @@ export async function createAccount(db, salonId, data = {}, actor = {}) {
       row.email,
       row.phone,
       row.display_name,
+      row.photo_url,
       row.primary_role,
       row.status,
       row.email_verified,
@@ -521,6 +524,9 @@ export async function updateAccount(db, salonId, id, data = {}, actor = {}) {
   if (data.phone !== undefined) add('phone', optionalText(data.phone) || null);
   if (data.displayName !== undefined || data.display_name !== undefined || data.name !== undefined) {
     add('display_name', optionalText(data.displayName || data.display_name || data.name) || null);
+  }
+  if (data.photoUrl !== undefined || data.photo_url !== undefined) {
+    add('photo_url', optionalText(data.photoUrl || data.photo_url) || null);
   }
   if (nextRole !== target.primary_role) add('primary_role', nextRole);
   if (nextStatus !== target.status) {

@@ -1,10 +1,5 @@
 // src/services/AppSettingsService.ts
-import { db } from "./firebase";
-import { writeAuditLog } from "./logService";
-import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
-import { STRICT_FIREBASE } from "../config/strictFirebase";
 import { isSeasonEnabledForDate, pickEffectivePrice } from "../helpers/seasonPricing";
-import { getDataSourceFlags } from "../config/dataSourceFlags";
 import { CoreSettingsService } from "./CoreSettingsService";
 
 
@@ -481,20 +476,13 @@ function sanitize(input: any): AppSettings {
   };
 }
 
-function useCoreSettingsStore(): boolean {
-  const flags = getDataSourceFlags();
-  return flags.useSettingsD1 || flags.useCoreD1;
-}
-
 function cacheWrite(settings: AppSettings) {
-  if (STRICT_FIREBASE) return;
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(settings));
   } catch { }
 }
 
 function cacheRead(): AppSettings | null {
-  if (STRICT_FIREBASE) return null;
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
@@ -505,118 +493,51 @@ function cacheRead(): AppSettings | null {
 }
 
 /** ✅ إنشاء salons/main/settings/app مرة واحدة لو غير موجود */
-async function ensureRemoteExists() {
-  const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return;
 
-  const payload: AppSettings = sanitize({
-    ...defaultSettings,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await setDoc(ref, payload, { merge: true });
-  cacheWrite(payload);
-}
 
 export const AppSettingsService = {
-  /** ✅ مرجع ثابت للديفولت */
   getDefaults(): AppSettings {
     return defaultSettings;
   },
 
+  // First render only. This is not an operational fallback: every remote read
+  // still goes to Core and Core errors are surfaced.
   getCached(): AppSettings {
-    if (STRICT_FIREBASE) {
-      return defaultSettings; // مؤقت فقط للـ first render
-    }
     return cacheRead() || defaultSettings;
   },
 
   async fetchRemote(): Promise<AppSettings> {
-    if (useCoreSettingsStore()) {
-      const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
-      if (!setting) {
-        throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app was not migrated to Core D1.");
-      }
-      const remote = sanitize(setting.value);
-      cacheWrite(remote);
-      return remote;
+    const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
+    if (!setting) {
+      throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
     }
-    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
-
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      if (STRICT_FIREBASE) {
-        throw new Error("🔥 salons/main/settings/app does not exist in Firestore");
-      }
-
-      await ensureRemoteExists();
-      cacheWrite(defaultSettings);
-      return defaultSettings;
-    }
-
-    const remote = sanitize(snap.data());
+    const remote = sanitize(setting.value);
     cacheWrite(remote);
     return remote;
   },
 
   subscribe(cb: (settings: AppSettings) => void) {
-    if (useCoreSettingsStore()) {
-      let active = true;
-      const load = async () => {
-        try {
-          const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
-          if (!setting) throw new Error("SETTINGS_D1_NOT_FOUND");
-          const remote = sanitize(setting.value);
-          cacheWrite(remote);
-          if (active) cb(remote);
-        } catch (error) {
-          console.error("Core D1 settings subscription error:", error);
-          if (active) cb(cacheRead() || defaultSettings);
-        }
-      };
-      void load();
-      const timer = globalThis.setInterval(load, 60_000);
-      return () => {
-        active = false;
-        globalThis.clearInterval(timer);
-      };
-    }
-    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
-
-    const unsub = onSnapshot(
-      ref,
-      async (snap) => {
-        if (!snap.exists()) {
-          // ✅ إذا غير موجود: ننشئه ثم نرجع defaults
-          try {
-            await ensureRemoteExists();
-          } catch (e) {
-            console.error("ensureRemoteExists error:", e);
-          }
-
-          cb(defaultSettings);
-          cacheWrite(defaultSettings);
-          return;
-        }
-
-        const remote = sanitize(snap.data());
-        cacheWrite(remote);
-        cb(remote);
-      },
-      (err) => {
-        console.error("🔥 AppSettingsService subscribe error:", err);
-
-        if (STRICT_FIREBASE) {
-          throw err; // خل الصفحة تفشل بوضوح
-        }
-
-        const cached = cacheRead() || defaultSettings;
-        cb(cached);
-      }
-    );
-
-    return unsub;
+    let active = true;
+    const load = async () => {
+      const setting = await CoreSettingsService.get<AppSettings>(DOC_PATH.id);
+      if (!setting) throw new Error("SETTINGS_D1_NOT_FOUND: salons/main/settings/app is missing from Core D1.");
+      const remote = sanitize(setting.value);
+      cacheWrite(remote);
+      if (active) cb(remote);
+    };
+    const run = () => {
+      void load().catch((error) => {
+        console.error("Core D1 settings subscription failed closed:", error);
+        // No Firestore/cache fallback. Surface the failure to the application.
+        globalThis.setTimeout(() => { throw error; }, 0);
+      });
+    };
+    run();
+    const timer = globalThis.setInterval(run, 60_000);
+    return () => {
+      active = false;
+      globalThis.clearInterval(timer);
+    };
   },
 
   async saveRemote(settings: AppSettings) {
@@ -624,37 +545,10 @@ export const AppSettingsService = {
       ...settings,
       updatedAt: new Date().toISOString(),
     });
-    if (useCoreSettingsStore()) {
-      await CoreSettingsService.save(DOC_PATH.id, payload, "public");
-      cacheWrite(payload);
-      return payload;
-    }
-    const ref = doc(db, ...DOC_PATH.col, DOC_PATH.id);
-
-    // ✅ NEW: before snapshot (للتتبع)
-    const beforeSnap = await getDoc(ref);
-    const before = beforeSnap.exists() ? beforeSnap.data() : null;
-
-    await setDoc(ref, payload, { merge: true });
+    await CoreSettingsService.save(DOC_PATH.id, payload, "public");
     cacheWrite(payload);
     return payload;
-
-    // ✅ NEW: audit log
-    await writeAuditLog({
-      salonId: SALON_ID,
-      action: "settings_updated",
-      entityType: "settings",
-      entityId: DOC_PATH.id,
-      description: "تم تعديل الإعدادات العامة للنظام",
-      before,
-      after: payload,
-      source: "dashboard",
-    });
-
-    return payload;
   },
-
-
 };
 
 // =========================
@@ -681,6 +575,3 @@ export function getEffectiveServicePrice(
     dateISO: bookingDateISO,
   }).price;
 }
-
-
-

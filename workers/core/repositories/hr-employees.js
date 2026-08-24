@@ -177,6 +177,11 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
   const existingEmployment = existing
     ? await employmentFor(db, salonId, id)
     : null;
+  const existingStaff = await dbFirst(
+    db,
+    'SELECT * FROM staff WHERE salon_id = ? AND id = ? LIMIT 1',
+    [salonId, id]
+  );
   const personal = data.personal || {};
   const requestedProfileStatus = data.status ?? data.employment?.status;
   const profile = {
@@ -465,6 +470,55 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     updated_at: now,
   };
 
+  const bookingStaffInput = data.bookingStaff || data.booking_staff || data.staff || {};
+  const staff = {
+    id,
+    salon_id: salonId,
+    firebase_uid: optionalText(
+      bookingStaffInput.firebaseUid ?? bookingStaffInput.firebase_uid ?? profile.firebase_uid ?? existingStaff?.firebase_uid
+    ) || null,
+    name: requiredText(bookingStaffInput.name ?? profile.name ?? existingStaff?.name, 'name'),
+    phone_normalized:
+      bookingStaffInput.phone === undefined && bookingStaffInput.phoneNormalized === undefined
+        ? (profile.phone_normalized || existingStaff?.phone_normalized || null)
+        : (normalizePhone(bookingStaffInput.phoneNormalized || bookingStaffInput.phone) || null),
+    active: activeFlag(
+      bookingStaffInput.active ??
+        (profile.status === 'active' && employment.employment_status === 'active'),
+      1
+    ),
+    employment_status: cleanText(
+      bookingStaffInput.employmentStatus ??
+        bookingStaffInput.employment_status ??
+        employment.employment_status ??
+        existingStaff?.employment_status ??
+        'active'
+    ) || 'active',
+    avatar_url: optionalText(
+      bookingStaffInput.avatarUrl ?? bookingStaffInput.avatar_url ?? profile.avatar_url ?? existingStaff?.avatar_url
+    ) || null,
+    show_on_booking: activeFlag(
+      bookingStaffInput.showOnBooking ??
+        bookingStaffInput.show_on_booking ??
+        existingStaff?.show_on_booking,
+      0
+    ),
+    specialties_json: JSON.stringify(
+      Array.isArray(bookingStaffInput.specialties)
+        ? bookingStaffInput.specialties.map((value) => cleanText(value)).filter(Boolean)
+        : (() => {
+            try {
+              const parsed = JSON.parse(cleanText(existingStaff?.specialties_json) || '[]');
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          })()
+    ),
+    created_at: existingStaff?.created_at || now,
+    updated_at: now,
+  };
+
   await dbBatch(db, [
     {
       sql: `INSERT INTO employee_profiles
@@ -528,6 +582,16 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
         updated_by_uid = excluded.updated_by_uid, updated_by_email = excluded.updated_by_email,
         updated_at = excluded.updated_at`,
       params: Object.values(employment),
+    },
+    {
+      sql: `INSERT INTO staff
+        (id, salon_id, firebase_uid, name, phone_normalized, active, employment_status, avatar_url, show_on_booking, specialties_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+        firebase_uid = excluded.firebase_uid, name = excluded.name, phone_normalized = excluded.phone_normalized,
+        active = excluded.active, employment_status = excluded.employment_status, avatar_url = excluded.avatar_url,
+        show_on_booking = excluded.show_on_booking, specialties_json = excluded.specialties_json, updated_at = excluded.updated_at`,
+      params: Object.values(staff),
     },
   ]);
   return getHrEmployee(db, salonId, id);

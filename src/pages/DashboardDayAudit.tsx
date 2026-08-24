@@ -10,13 +10,11 @@ import {
   faScaleBalanced,
   faUnlockKeyhole,
 } from "@fortawesome/free-solid-svg-icons";
-import { collection, onSnapshot } from "firebase/firestore";
 import { DashboardDatePickerV2, DashboardSkeletonV2 } from "../components/dashboard-v2";
-import { db } from "../services/firebase";
-import { FirestoreReadStats } from "../services/firestoreReadStats";
+import { CoreBookingService } from "../services/CoreBookingService";
+import { listAllIncomeCore } from "../services/CoreIncomeService";
 import "../styles/dashboard-v2/dashboard-v2.css";
 
-const SALON_ID = "main";
 const LOCK_KEY = "dashboard_day_audit_lock_v1";
 
 type LockSnapshot = {
@@ -327,91 +325,68 @@ export default function DashboardDayAudit() {
   }, []);
 
   useEffect(() => {
-    const bookingsCol = collection(db, "salons", SALON_ID, "bookings");
-    let first = true;
-    const unsub = onSnapshot(bookingsCol, (snap) => {
-      const source = "DashboardDayAudit.bookings.onSnapshot";
-      const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
-      docs.forEach((d) => {
-        if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
-      });
-      first = false;
+    let active = true;
+    let timer: number | null = null;
 
-      const next: Record<string, string> = {};
-      snap.docs.forEach((d) => {
-        const raw = d.data() as Record<string, unknown>;
-        const iso = normalizeIsoDateLoose(raw?.date);
-        if (iso) next[String(d.id || "").trim()] = iso;
-      });
-      setBookingDateById(next);
-    });
-    return () => unsub();
-  }, []);
+    const loadCoreAuditData = async () => {
+      try {
+        const [bookings, incomeRows] = await Promise.all([
+          CoreBookingService.list({ date: todayKey }),
+          listAllIncomeCore(),
+        ]);
+        if (!active) return;
 
-  useEffect(() => {
-    const incomeCol = collection(db, "salons", SALON_ID, "income");
-    let first = true;
-    const unsub = onSnapshot(
-      incomeCol,
-      (snap) => {
-        const source = "DashboardDayAudit.income.onSnapshot";
-        const docs = first ? snap.docs : snap.docChanges().map((c) => c.doc);
-        docs.forEach((d) => {
-          if (d?.ref?.path) FirestoreReadStats.bump(d.ref.path, source, "onSnapshot");
-        });
-        first = false;
+        const bookingDates: Record<string, string> = {};
+        for (const booking of bookings) {
+          const date = String(booking.bookingDate || "").slice(0, 10);
+          if (booking.id && date) bookingDates[booking.id] = date;
+        }
+        setBookingDateById(bookingDates);
 
         let total = 0;
         let cash = 0;
         let card = 0;
         let transfer = 0;
-        const dedupRows = new Map<
-          string,
-          { amount: number; method: PaymentChannel; sortMs: number }
-        >();
-
-        snap.docs.forEach((d) => {
-          const x = d.data() as Record<string, unknown>;
-          if (!isBookingIncomeRow(x)) return;
-          if (isVoidedIncomeStatus(x?.status)) return;
-          const docId = String(d.id || "").trim();
+        const dedupRows = new Map<string, { amount: number; method: PaymentChannel; sortMs: number }>();
+        for (const x of incomeRows as any[]) {
+          if (!isBookingIncomeRow(x)) continue;
+          if (isVoidedIncomeStatus(x?.status)) continue;
+          const docId = String(x?.id || "").trim();
           const source = normalizeIncomeSource(x?.source);
           const bookingId = resolveIncomeBookingId(x, docId);
-          const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDateById[bookingId] : "";
-          if (resolveIncomeDateForAudit(x, bookingDate) !== todayKey) return;
-
+          const bookingDate = isSystemBookingSource(source) && bookingId ? bookingDates[bookingId] : "";
+          if (resolveIncomeDateForAudit(x, bookingDate) !== todayKey) continue;
           const amount = Math.round(toNum(x?.amount) * 100) / 100;
-          if (!Number.isFinite(amount) || amount === 0) return;
-
+          if (!Number.isFinite(amount) || amount === 0) continue;
           const method = normalizeAuditPaymentMethod(x?.method ?? x?.paymentMethod, x?.note);
           const identity = resolveIncomeAuditIdentity(x, docId, amount);
           const sortMs = Math.max(toMillisSafe(x?.updatedAt), toMillisSafe(x?.createdAt));
-          const prev = dedupRows.get(identity);
-          if (!prev || sortMs >= prev.sortMs) {
-            dedupRows.set(identity, { amount, method, sortMs });
-          }
-        });
-
+          const previous = dedupRows.get(identity);
+          if (!previous || sortMs >= previous.sortMs) dedupRows.set(identity, { amount, method, sortMs });
+        }
         dedupRows.forEach((row) => {
-          if (row.method === "cash") {
-            cash += row.amount;
-            total += row.amount;
-          } else if (row.method === "card") {
-            card += row.amount;
-            total += row.amount;
-          } else {
-            // transfer is informational only and does not enter day lock totals
-            transfer += row.amount;
-          }
+          if (row.method === "cash") { cash += row.amount; total += row.amount; }
+          else if (row.method === "card") { card += row.amount; total += row.amount; }
+          else transfer += row.amount;
         });
-
         setRevenueLive({ total, cash, card, transfer });
         setLoadedDateKey(todayKey);
-      },
-      () => setLoadedDateKey(todayKey)
-    );
-    return () => unsub();
-  }, [todayKey, bookingDateById]);
+      } catch (error) {
+        console.error("Core day audit load failed:", error);
+        if (active) {
+          setErrorText("تعذر تحميل جرد اليوم من Core.");
+          setLoadedDateKey(todayKey);
+        }
+      }
+    };
+
+    void loadCoreAuditData();
+    timer = window.setInterval(() => void loadCoreAuditData(), 30_000);
+    return () => {
+      active = false;
+      if (timer !== null) window.clearInterval(timer);
+    };
+  }, [todayKey]);
 
   const dateLabel = useMemo(() => {
     const m = todayKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);

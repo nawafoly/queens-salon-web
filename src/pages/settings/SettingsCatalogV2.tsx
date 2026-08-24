@@ -1,17 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-
-import {
   DashboardDatePickerV2,
   DashboardEmptyStateV2,
   DashboardModalV2,
@@ -19,17 +7,14 @@ import {
   DashboardSkeletonV2,
 } from "../../components/dashboard-v2";
 import { AppSettingsService } from "../../services/AppSettingsService";
-import { db } from "../../services/firebase";
+import { CoreAdminCatalogService } from "../../services/CoreAdminCatalogService";
+import { CoreCatalogService } from "../../services/CoreCatalogService";
 import {
   PackageService,
   normalizePackageServiceIds,
 } from "../../services/PackageService";
 import "../../styles/dashboard-v2/dashboard-v2.css";
 
-const SALON_ID = "main";
-const SECTIONS = ["salons", SALON_ID, "service_sections"] as const;
-const CATEGORIES = ["salons", SALON_ID, "service_categories"] as const;
-const SERVICES = ["salons", SALON_ID, "services"] as const;
 const DEFAULT_PACKAGE_SESSIONS = 1;
 
 type SectionRow = {
@@ -430,51 +415,50 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
       setSrvLoading(true);
       setPkgLoading(true);
 
-      const [secSnap, catSnap, srvSnap, packageRows] = await Promise.all([
-        getDocs(query(collection(db, ...SECTIONS), orderBy("order", "asc"))),
-        getDocs(query(collection(db, ...CATEGORIES), orderBy("order", "asc"))),
-        getDocs(query(collection(db, ...SERVICES), orderBy("name", "asc"))),
+      const [sectionRows, categoryRows, serviceRows, packageRows] = await Promise.all([
+        CoreAdminCatalogService.listSections(false),
+        CoreAdminCatalogService.listCategories(false),
+        CoreCatalogService.listServices({ activeOnly: false }),
         PackageService.getAll(),
       ]);
 
-      setSections(secSnap.docs
-        .map((snapshot) => ({ id: snapshot.id, ...(snapshot.data() as any) }))
+      setSections(sectionRows
         .map((row: any) => ({
-          id: row.id,
-          name: String(row?.name || ""),
-          active: row?.active !== false,
-          order: clampInt(row?.order ?? 0, 0),
-          createdAt: row?.createdAt,
-          updatedAt: row?.updatedAt,
+          id: String(row.id || ""),
+          name: String(row.name || ""),
+          active: row.active !== false,
+          order: clampInt(row.sortOrder ?? 0, 0),
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
         }))
         .filter((row: SectionRow) => row.name.trim()));
 
-      setCategories(catSnap.docs
-        .map((snapshot) => ({ id: snapshot.id, ...(snapshot.data() as any) }))
+      setCategories(categoryRows
         .map((row: any) => ({
-          id: row.id,
-          sectionId: String(row?.sectionId || ""),
-          name: String(row?.name || ""),
-          active: row?.active !== false,
-          order: clampInt(row?.order ?? 0, 0),
-          createdAt: row?.createdAt,
-          updatedAt: row?.updatedAt,
+          id: String(row.id || ""),
+          sectionId: String(row.sectionId || ""),
+          name: String(row.name || ""),
+          active: row.active !== false,
+          order: clampInt(row.sortOrder ?? 0, 0),
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
         }))
         .filter((row: CategoryRow) => row.name.trim()));
 
-      setServices(srvSnap.docs
-        .map((snapshot) => ({ id: snapshot.id, ...(snapshot.data() as any) }))
+      setServices(serviceRows
         .map((row: any) => ({
-          id: row.id,
-          sectionId: String(row?.sectionId || ""),
-          categoryId: String(row?.categoryId || ""),
-          name: String(row?.name || ""),
-          durationMin: clampInt(row?.durationMin ?? 60, 5),
-          price: Number(row?.price || 0),
-          seasonPrice: row?.seasonPrice === null || row?.seasonPrice === undefined ? null : Number(row.seasonPrice),
-          active: row?.active !== false,
-          createdAt: row?.createdAt,
-          updatedAt: row?.updatedAt,
+          id: String(row.id || ""),
+          sectionId: String(row.sectionId || ""),
+          categoryId: String(row.categoryId || ""),
+          name: String(row.name || ""),
+          durationMin: clampInt(row.durationMinutes ?? 60, 5),
+          price: Math.max(0, Number(row.priceHalalas || 0) / 100),
+          seasonPrice: row.seasonPriceHalalas === null || row.seasonPriceHalalas === undefined
+            ? null
+            : Math.max(0, Number(row.seasonPriceHalalas || 0) / 100),
+          active: row.active !== false,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
         }))
         .filter((row: ServiceRow) => row.name.trim()));
 
@@ -567,69 +551,36 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
 
   const saveSectionRow = async (row: SectionRow) => {
     const name = String(row.name || "").trim();
-    if (!name) {
-      showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000);
-      return false;
-    }
+    if (!name) { showMsg("❌ اسم القسم لا يمكن يكون فارغ", 2000); return false; }
     try {
       setSecLoading(true);
-      await setDoc(doc(db, ...SECTIONS, row.id), {
-        name,
-        active: row.active !== false,
-        order: Number(row.order || 0),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      await CoreAdminCatalogService.patchSection(row.id, { name, active: row.active !== false, sortOrder: Number(row.order || 0) });
       showMsg("✅ تم حفظ القسم");
       return true;
     } catch (error) {
-      console.error("saveSectionRow error:", error);
-      showMsg("❌ تعذر حفظ القسم", 2500);
-      return false;
-    } finally {
-      setSecLoading(false);
-    }
+      console.error("saveSectionRow error:", error); showMsg("❌ تعذر حفظ القسم", 2500); return false;
+    } finally { setSecLoading(false); }
   };
 
   const saveServiceRow = async (row: ServiceRow) => {
     const name = String(row.name || "").trim();
-    if (!name) {
-      showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000);
-      return false;
-    }
+    if (!name) { showMsg("❌ اسم الخدمة لا يمكن يكون فارغ", 2000); return false; }
     const categoryId = String(row.categoryId || "").trim();
-    if (!categoryId) {
-      showMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف", 2000);
-      return false;
-    }
     const category = categories.find((item) => item.id === categoryId);
     const sectionId = String(category?.sectionId || "").trim();
-    if (!sectionId) {
-      showMsg("❌ التصنيف المختار غير مربوط بقسم", 2000);
-      return false;
-    }
+    if (!categoryId || !sectionId) { showMsg("❌ الخدمة لازم تكون مرتبطة بتصنيف وقسم", 2000); return false; }
     try {
       setSrvLoading(true);
-      await setDoc(doc(db, ...SERVICES, row.id), {
-        categoryId,
-        sectionId,
-        name,
-        durationMin: Math.max(5, Number(row.durationMin || 0)),
-        price: Math.max(0, Number(row.price || 0)),
-        seasonPrice: row.seasonPrice === null || row.seasonPrice === undefined || String(row.seasonPrice) === ""
-          ? null
-          : Math.max(0, Number(row.seasonPrice)),
+      await CoreCatalogService.patchService(row.id, {
+        categoryId, sectionId, name, durationMinutes: Math.max(5, Number(row.durationMin || 0)),
+        priceHalalas: Math.round(Math.max(0, Number(row.price || 0)) * 100),
+        seasonPriceHalalas: row.seasonPrice == null || String(row.seasonPrice) === "" ? null : Math.round(Math.max(0, Number(row.seasonPrice)) * 100),
         active: row.active !== false,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      });
       showMsg("✅ تم حفظ الخدمة");
       return true;
-    } catch (error) {
-      console.error("saveServiceRow error:", error);
-      showMsg("❌ تعذر حفظ الخدمة", 2500);
-      return false;
-    } finally {
-      setSrvLoading(false);
-    }
+    } catch (error) { console.error("saveServiceRow error:", error); showMsg("❌ تعذر حفظ الخدمة", 2500); return false; }
+    finally { setSrvLoading(false); }
   };
 
   const createSection = async () => {
@@ -639,52 +590,23 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
     if (!id) return showMsg("❌ تعذر توليد ID للقسم", 2200);
     try {
       setSecLoading(true);
-      const reference = doc(db, ...SECTIONS, id);
-      if ((await getDoc(reference)).exists()) return showMsg("❌ القسم موجود مسبقًا", 2500);
-      await setDoc(reference, {
-        name,
-        active: newSection.active !== false,
-        order: Number(newSection.order || 0),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      showMsg(`✅ تم إنشاء القسم (id: ${id})`);
-      await loadCatalog();
-      setActiveListMode("sections");
-      setSelectedId(id);
-      setComposerMode(null);
-      setNewSection({ name: "", order: nextSectionOrder, active: true });
-    } catch (error) {
-      console.error("createSection error:", error);
-      showMsg("❌ تعذر إنشاء القسم", 2500);
-    } finally {
-      setSecLoading(false);
-    }
+      await CoreAdminCatalogService.createSection({ id, name, active: newSection.active !== false, sortOrder: Number(newSection.order || 0) });
+      showMsg(`✅ تم إنشاء القسم (id: ${id})`); await loadCatalog(); setActiveListMode("sections"); setSelectedId(id); setComposerMode(null); setNewSection({ name: "", order: nextSectionOrder, active: true });
+    } catch (error) { console.error("createSection error:", error); showMsg("❌ تعذر إنشاء القسم", 2500); }
+    finally { setSecLoading(false); }
   };
 
   const deleteSection = async (id: string) => {
-    const linkedServices = services.filter((service) => String(service.sectionId || "").trim() === id).length;
-    if (linkedServices > 0) return showMsg("❌ لا يمكن حذف القسم لأن عليه خدمات. انقليها أولًا.", 3200);
-    const linkedCategories = categories.filter((category) => String(category.sectionId || "").trim() === id).length;
-    if (linkedCategories > 0) return showMsg("❌ لا يمكن حذف القسم لأن عليه تصنيفات.", 3200);
+    if (services.some((service) => String(service.sectionId || "").trim() === id)) return showMsg("❌ لا يمكن حذف القسم لأن عليه خدمات. انقليها أولًا.", 3200);
+    if (categories.some((category) => String(category.sectionId || "").trim() === id)) return showMsg("❌ لا يمكن حذف القسم لأن عليه تصنيفات.", 3200);
     if (!window.confirm("هل أنت متأكد من حذف هذا القسم؟")) return;
-    try {
-      setSecLoading(true);
-      await deleteDoc(doc(db, ...SECTIONS, id));
-      showMsg("✅ تم حذف القسم");
-      await loadCatalog();
-      setSelectedId(null);
-    } catch (error) {
-      console.error("deleteSection error:", error);
-      showMsg("❌ تعذر حذف القسم", 2500);
-    } finally {
-      setSecLoading(false);
-    }
+    try { setSecLoading(true); await CoreAdminCatalogService.removeSection(id); showMsg("✅ تم حذف القسم"); await loadCatalog(); setSelectedId(null); }
+    catch (error) { console.error("deleteSection error:", error); showMsg("❌ تعذر حذف القسم", 2500); }
+    finally { setSecLoading(false); }
   };
 
   const createCategory = async () => {
-    const sectionId = selectedSectionId;
-    const name = newCategoryName.trim();
+    const sectionId = selectedSectionId; const name = newCategoryName.trim();
     if (!sectionId) return showMsg("❌ اختر قسمًا أولًا", 2200);
     if (!name) return showMsg("❌ اسم التصنيف مطلوب", 2200);
     const id = buildId(`${sectionId}_${name}`);
@@ -692,62 +614,25 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
       setCatLoading(true);
       const rows = categories.filter((row) => String(row.sectionId || "").trim() === sectionId);
       const nextOrder = rows.length ? Math.max(...rows.map((row) => Number(row.order || 0))) + 1 : 1;
-      await setDoc(doc(db, ...CATEGORIES, id), {
-        sectionId,
-        name,
-        active: true,
-        order: nextOrder,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      showMsg("✅ تم إضافة التصنيف");
-      setNewCategoryName("");
-      await loadCatalog();
-      setActiveCategoryId(id);
-    } catch (error) {
-      console.error("createCategory error:", error);
-      showMsg("❌ تعذر إضافة التصنيف", 2500);
-    } finally {
-      setCatLoading(false);
-    }
+      await CoreAdminCatalogService.createCategory({ id, sectionId, name, active: true, sortOrder: nextOrder });
+      showMsg("✅ تم إضافة التصنيف"); setNewCategoryName(""); await loadCatalog(); setActiveCategoryId(id);
+    } catch (error) { console.error("createCategory error:", error); showMsg("❌ تعذر إضافة التصنيف", 2500); }
+    finally { setCatLoading(false); }
   };
 
   const saveCategory = async (row: CategoryRow) => {
-    const name = row.name.trim();
-    if (!name) return showMsg("❌ اسم التصنيف لا يمكن يكون فارغ", 2000);
-    try {
-      setCatLoading(true);
-      await setDoc(doc(db, ...CATEGORIES, row.id), {
-        name,
-        active: row.active !== false,
-        order: Number(row.order || 0),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-      showMsg("✅ تم حفظ التصنيف");
-      await loadCatalog();
-    } catch (error) {
-      console.error("saveCategory error:", error);
-      showMsg("❌ تعذر حفظ التصنيف", 2500);
-    } finally {
-      setCatLoading(false);
-    }
+    const name = row.name.trim(); if (!name) return showMsg("❌ اسم التصنيف لا يمكن يكون فارغ", 2000);
+    try { setCatLoading(true); await CoreAdminCatalogService.patchCategory(row.id, { name, active: row.active !== false, sortOrder: Number(row.order || 0) }); showMsg("✅ تم حفظ التصنيف"); await loadCatalog(); }
+    catch (error) { console.error("saveCategory error:", error); showMsg("❌ تعذر حفظ التصنيف", 2500); }
+    finally { setCatLoading(false); }
   };
 
   const deleteCategory = async (id: string) => {
-    const linkedServices = services.filter((service) => String(service.categoryId || "").trim() === id).length;
-    if (linkedServices > 0) return showMsg("❌ لا يمكن حذف التصنيف لأن عليه خدمات.", 3000);
+    if (services.some((service) => String(service.categoryId || "").trim() === id)) return showMsg("❌ لا يمكن حذف التصنيف لأن عليه خدمات.", 3000);
     if (!window.confirm("هل أنت متأكد من حذف هذا التصنيف؟")) return;
-    try {
-      setCatLoading(true);
-      await deleteDoc(doc(db, ...CATEGORIES, id));
-      showMsg("✅ تم حذف التصنيف");
-      await loadCatalog();
-    } catch (error) {
-      console.error("deleteCategory error:", error);
-      showMsg("❌ تعذر حذف التصنيف", 2500);
-    } finally {
-      setCatLoading(false);
-    }
+    try { setCatLoading(true); await CoreAdminCatalogService.removeCategory(id); showMsg("✅ تم حذف التصنيف"); await loadCatalog(); }
+    catch (error) { console.error("deleteCategory error:", error); showMsg("❌ تعذر حذف التصنيف", 2500); }
+    finally { setCatLoading(false); }
   };
 
   const startServiceComposer = (sectionId?: string, categoryId?: string) => {
@@ -774,60 +659,23 @@ export default function SettingsCatalogV2({ hasAdminPower }: SettingsCatalogV2Pr
   };
 
   const createService = async () => {
-    const name = newService.name.trim();
-    const categoryId = String(newService.categoryId || "").trim();
-    if (!name) return showMsg("❌ اسم الخدمة مطلوب", 2000);
-    if (!categoryId) return showMsg("❌ اختر تصنيفًا أولًا", 2200);
-    const category = categories.find((row) => row.id === categoryId);
-    const sectionId = String(category?.sectionId || "").trim();
-    if (!sectionId) return showMsg("❌ التصنيف المختار غير صالح", 2200);
-    const id = buildId(`${categoryId}_${name}`);
+    const name = newService.name.trim(); const categoryId = String(newService.categoryId || "").trim();
+    if (!name) return showMsg("❌ اسم الخدمة مطلوب", 2000); if (!categoryId) return showMsg("❌ اختر تصنيفًا أولًا", 2200);
+    const category = categories.find((row) => row.id === categoryId); const sectionId = String(category?.sectionId || "").trim();
+    if (!sectionId) return showMsg("❌ التصنيف المختار غير صالح", 2200); const id = buildId(`${categoryId}_${name}`);
     try {
       setSrvLoading(true);
-      await setDoc(doc(db, ...SERVICES, id), {
-        categoryId,
-        sectionId,
-        name,
-        durationMin: Math.max(5, Number(newService.durationMin || 60)),
-        price: Math.max(0, Number(newService.price || 0)),
-        seasonPrice: newService.seasonPrice === null || newService.seasonPrice === undefined || String(newService.seasonPrice) === ""
-          ? null
-          : Math.max(0, Number(newService.seasonPrice)),
-        active: newService.active !== false,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      showMsg(`✅ تم إضافة الخدمة (id: ${id})`);
-      await loadCatalog();
-      setComposerMode(null);
-      setActiveCategoryId(categoryId);
-      setOpenedServiceId(id);
-      setNewService({ sectionId: "", categoryId: "", name: "", durationMin: 60, price: 0, seasonPrice: null, active: true });
-    } catch (error) {
-      console.error("createService error:", error);
-      showMsg("❌ تعذر إضافة الخدمة", 2500);
-    } finally {
-      setSrvLoading(false);
-    }
+      await CoreCatalogService.createService({ id, categoryId, sectionId, name, durationMinutes: Math.max(5, Number(newService.durationMin || 60)), priceHalalas: Math.round(Math.max(0, Number(newService.price || 0)) * 100), seasonPriceHalalas: newService.seasonPrice == null || String(newService.seasonPrice) === "" ? null : Math.round(Math.max(0, Number(newService.seasonPrice)) * 100), active: newService.active !== false });
+      showMsg(`✅ تم إضافة الخدمة (id: ${id})`); await loadCatalog(); setComposerMode(null); setActiveCategoryId(categoryId); setOpenedServiceId(id); setNewService({ sectionId: "", categoryId: "", name: "", durationMin: 60, price: 0, seasonPrice: null, active: true });
+    } catch (error) { console.error("createService error:", error); showMsg("❌ تعذر إضافة الخدمة", 2500); }
+    finally { setSrvLoading(false); }
   };
 
   const deleteService = async (id: string, clearSelection = false) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه الخدمة؟")) return false;
-    try {
-      setSrvLoading(true);
-      await deleteDoc(doc(db, ...SERVICES, id));
-      showMsg("✅ تم حذف الخدمة");
-      await loadCatalog();
-      if (clearSelection) setSelectedId(null);
-      if (openedServiceId === id) setOpenedServiceId(null);
-      return true;
-    } catch (error) {
-      console.error("deleteService error:", error);
-      showMsg("❌ تعذر حذف الخدمة", 2500);
-      return false;
-    } finally {
-      setSrvLoading(false);
-    }
+    if (!window.confirm("هل أنت متأكد من أرشفة هذه الخدمة؟")) return false;
+    try { setSrvLoading(true); await CoreCatalogService.archiveService(id); showMsg("✅ تم أرشفة الخدمة"); await loadCatalog(); if (clearSelection) setSelectedId(null); if (openedServiceId === id) setOpenedServiceId(null); return true; }
+    catch (error) { console.error("deleteService error:", error); showMsg("❌ تعذر أرشفة الخدمة", 2500); return false; }
+    finally { setSrvLoading(false); }
   };
 
   const saveSelected = async () => {

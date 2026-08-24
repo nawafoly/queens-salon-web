@@ -39,7 +39,7 @@ import {
 import { calculateGosi } from '../src/helpers/hr/gosiPolicy.js';
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, patchFileMetadata, putFileContent } from './core/repositories/files.js';
-import { createBooking, rescheduleBooking } from './core/repositories/bookings.js';
+import { createBooking, getPublicBookingTrack, rescheduleBooking } from './core/repositories/bookings.js';
 import { createEmployeeRequest, getEmployeeRequestPayrollImpact, getExceptionalFinancialPaymentPreview, transitionEmployeeRequest } from './core/repositories/employee-requests.js';
 import {
   createEmployeeMessage,
@@ -128,6 +128,8 @@ async function setup() {
     '0029_payroll_social_insurance_snapshots.sql',
     '0030_employee_payroll_obligations.sql',
     '0031_workforce_communications_recruitment.sql',
+    '0032_service_season_price.sql',
+    '0033_app_user_profile_photo.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -166,13 +168,30 @@ function nonSaudiGosiPayrollFields({
 
 async function seedNonSaudiPayrollEmployment(db, employeeId, baseSalaryHalalas) {
   const now = '2026-01-01T00:00:00.000Z';
+  await db.prepare(`INSERT INTO employee_profiles
+    (id, salon_id, name, status, created_at, updated_at)
+    VALUES (?, 'main', ?, 'active', ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = 'active',
+      updated_at = excluded.updated_at`)
+    .bind(employeeId, `Payroll ${employeeId}`, now, now)
+    .run();
   await db.prepare(`INSERT INTO employee_employment
-    (salon_id, employee_id, base_salary_halalas, social_insurance_category, gosi_wage_mode, created_at, updated_at)
-    VALUES ('main', ?, ?, 'non_saudi', 'derived', ?, ?)
+    (salon_id, employee_id, base_salary_halalas, expected_work_days, expected_work_hours,
+     daily_scheduled_hours, attendance_payroll_mode, attendance_payroll_exemption_reason,
+     social_insurance_category, gosi_wage_mode, created_at, updated_at)
+    VALUES ('main', ?, ?, 30, 240, 8, 'exempt', 'Payroll settlement fixture isolates non-attendance behavior',
+            'non_saudi', 'derived', ?, ?)
     ON CONFLICT(salon_id, employee_id) DO UPDATE SET
       base_salary_halalas = excluded.base_salary_halalas,
+      expected_work_days = excluded.expected_work_days,
+      expected_work_hours = excluded.expected_work_hours,
+      daily_scheduled_hours = excluded.daily_scheduled_hours,
+      attendance_payroll_mode = excluded.attendance_payroll_mode,
+      attendance_payroll_exemption_reason = excluded.attendance_payroll_exemption_reason,
       social_insurance_category = excluded.social_insurance_category,
       gosi_wage_mode = excluded.gosi_wage_mode,
+      employment_status = 'active',
       updated_at = excluded.updated_at`)
     .bind(employeeId, baseSalaryHalalas, now, now)
     .run();
@@ -190,6 +209,7 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     employment: {
       title: 'Stylist',
       baseSalaryHalalas: 450000,
+      housingAllowanceHalalas: 50000,
       leaveBalance: 21,
       socialInsuranceCategory: 'non_saudi',
       socialInsuranceEffectiveFrom: '2026-01-01',
@@ -287,6 +307,26 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     { code: 'core_payroll:setup_incomplete' }
   );
 
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-1',
+    name: 'Employee 1 Updated',
+    employment: {
+      expectedWorkDays: 26,
+      expectedWorkHours: 208,
+      dailyScheduledHours: 8,
+    },
+  }, actor);
+  for (const date of ['2026-08-09', '2026-08-16', '2026-08-23', '2026-08-30']) {
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-1', employeeUid: 'uid-1', type: 'check_in', date,
+      recordedAt: `${date}T09:00:00.000Z`, idempotencyKey: `emp-1-${date}-in`,
+    }, actor);
+    await recordAttendance(db, 'main', {
+      employeeId: 'emp-1', employeeUid: 'uid-1', type: 'check_out', date,
+      recordedAt: `${date}T17:00:00.000Z`, idempotencyKey: `emp-1-${date}-out`,
+    }, actor);
+  }
+
   const readyPayroll = await upsertPayrollEntry(db, 'main', {
     id: 'payroll-ready',
     periodId: period.id,
@@ -344,6 +384,14 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
   assert.equal(Number(approvalSnapshot.approved_net_halalas), 500000);
   assert.equal(Number(approvalSnapshot.approval_version), 1);
 
+  await createAbsence(db, 'main', {
+    id: 'absence-after-approval',
+    employeeId: 'emp-1',
+    date: '2026-08-10',
+    type: 'full_day',
+  }, actor);
+  const expectedCarryoverDeductionHalalas = Number(approvedPayroll.daily_rate_halalas);
+
   const reconciled = await reconcilePayrollCarryoversBatch(db, 'main', {
     items: [{
       sourcePayrollEntryId: readyPayroll.id,
@@ -354,9 +402,19 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     }],
   }, actor);
   assert.equal(reconciled.results.length, 1);
-  assert.equal(reconciled.results[0].residualSignedHalalas, -10000);
+  assert.equal(
+    reconciled.results[0].recalculatedNetHalalas,
+    500000 - expectedCarryoverDeductionHalalas
+  );
+  assert.equal(
+    reconciled.results[0].residualSignedHalalas,
+    -expectedCarryoverDeductionHalalas
+  );
   assert.equal(reconciled.results[0].adjustment.direction, 'deduction');
-  assert.equal(Number(reconciled.results[0].adjustment.amount_halalas), 10000);
+  assert.equal(
+    Number(reconciled.results[0].adjustment.amount_halalas),
+    expectedCarryoverDeductionHalalas
+  );
 
   const reconciledAgain = await reconcilePayrollCarryoversBatch(db, 'main', {
     items: [{
@@ -373,7 +431,10 @@ test('Phase 6 HR employee, attendance, leave, absence and payroll use Core D1', 
     status: 'pending',
   });
   assert.equal(carryovers.length, 1);
-  assert.equal(Number(carryovers[0].amount_halalas), 10000);
+  assert.equal(
+    Number(carryovers[0].amount_halalas),
+    expectedCarryoverDeductionHalalas
+  );
 
   const paidPayroll = await markPayrollEntryPaid(db, 'main', readyPayroll.id, actor);
   assert.equal(paidPayroll.status, 'paid');
@@ -396,6 +457,8 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
       expectedWorkDays: 30,
       expectedWorkHours: 240,
       dailyScheduledHours: 8,
+      attendancePayrollMode: 'exempt',
+      attendancePayrollExemptionReason: 'Obligation test isolates deduction snapshot behavior',
       socialInsuranceCategory: 'non_saudi',
       socialInsuranceEffectiveFrom: '2026-01-01',
       socialInsuranceClassificationNote: 'Stage 5.1 test classification',
@@ -547,9 +610,14 @@ test('payroll obligations API contract is canonical, traceable and settlement-sa
     { targetPayrollMonth: '2027-01', reason: 'Schedule changed before approval' },
     actor
   );
-  await assert.rejects(
-    () => approvePayrollEntry(db, 'main', octoberDraft.id, actor),
-    { code: 'core_payroll:obligation_snapshot_stale' }
+  const octoberApproved = await approvePayrollEntry(db, 'main', octoberDraft.id, actor);
+  assert.equal(octoberApproved.status, 'approved');
+  assert.equal(Number(octoberApproved.manual_deductions_halalas), 60000);
+  assert.equal(
+    JSON.parse(String(octoberApproved.deductions_json || '[]'))
+      .filter((item) => String(item?.sourceType || item?.source_type || '') === 'payroll_obligation')
+      .reduce((sum, item) => sum + Number(item?.amountHalalas ?? item?.amount_halalas ?? item?.amount ?? 0), 0),
+    60000
   );
 
   await assert.rejects(
@@ -1738,7 +1806,15 @@ test('annual leave cash compensation pays daily value and deducts the same leave
     VALUES ('emp-fin','main','uid-fin','Financial Employee','0500000099',1,'active','2026-01-01','2026-01-01')`).run();
   await upsertHrEmployee(db, 'main', {
     id: 'emp-fin', name: 'Financial Employee', firebaseUid: 'uid-fin', phone: '0500000099',
-    employment: { title: 'Stylist', baseSalaryHalalas: 450000, leaveBalance: 21 },
+    employment: {
+      title: 'Stylist',
+      baseSalaryHalalas: 450000,
+      leaveBalance: 21,
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-01-01',
+      socialInsuranceClassificationNote: 'Financial compensation test classification',
+      gosiWageMode: 'derived',
+    },
   }, actor);
 
   const period = await upsertPayrollPeriod(db, 'main', {
@@ -1982,6 +2058,215 @@ test('Core employee file metadata uses manager-write and self-read-only policy',
   assert.match(block, /employee_internal_outbound/);
   assert.match(block, /files_r2:self_update_read_only/);
   assert.match(block, /status: "read"/);
+});
+
+test('Core payroll ignores forged browser financial and attendance authority and approval recalculates canonical employment', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-forged-payroll',
+    name: 'Canonical Payroll Employee',
+    status: 'active',
+    employment: {
+      employmentStatus: 'active',
+      baseSalaryHalalas: 400000,
+      housingAllowanceHalalas: 100000,
+      expectedWorkDays: 30,
+      expectedWorkHours: 240,
+      dailyScheduledHours: 8,
+      attendancePayrollMode: 'exempt',
+      attendancePayrollExemptionReason: 'Canonical payroll authority test',
+      socialInsuranceCategory: 'non_saudi',
+      socialInsuranceEffectiveFrom: '2026-01-01',
+      socialInsuranceClassificationNote: 'Canonical test classification',
+      gosiWageMode: 'derived',
+      overtimeEnabled: true,
+      overtimeMultiplier: 1.5,
+    },
+  }, actor);
+
+  const period = await upsertPayrollPeriod(db, 'main', {
+    id: 'period-forged-2026-08',
+    payrollMonth: '2026-08',
+    monthStart: '2026-08-01',
+    monthEnd: '2026-08-31',
+  }, actor);
+
+  const forged = await upsertPayrollEntry(db, 'main', {
+    id: 'payroll-forged-client',
+    periodId: period.id,
+    employeeId: 'emp-forged-payroll',
+    payrollMonth: '2026-08',
+    baseSalaryHalalas: 1,
+    allowancesHalalas: 1,
+    workDays: 1,
+    monthlyHours: 1,
+    dailyRateHalalas: 1,
+    hourlyRateHalalas: 1,
+    grossSalaryHalalas: 1,
+    finalSalaryHalalas: 1,
+    netSalaryHalalas: 1,
+    insuranceDeductionHalalas: 999999,
+    employerGosiContributionHalalas: 999999,
+    gosiSnapshot: {
+      policyVersion: 'forged-browser-policy',
+      insuranceCategory: 'saudi_existing',
+      employee: { deductionHalalas: 999999 },
+      employer: { contributionHalalas: 999999 },
+    },
+    attendanceSummary: {
+      attendancePayrollMode: 'required',
+      totalScheduledHours: 999,
+      totalActualWorkedHours: 0,
+      totalMissingHours: 999,
+      totalExtraHours: 999,
+      attendanceDays: 0,
+      absentDays: 31,
+      incompleteDays: 0,
+      attendanceRecordCount: 0,
+      attendanceLinkStatus: 'not_ready',
+      attendanceDeductionEligible: true,
+    },
+    overtimeEnabled: false,
+    overtimeMultiplier: 99,
+    overtimeValueHalalas: 999999,
+  }, actor);
+
+  const expectedGosi = calculateGosi({
+    insuranceCategory: 'non_saudi',
+    payrollDate: '2026-08-28',
+    basicSalaryHalalas: 400000,
+    housingAllowanceHalalas: 100000,
+    transportationAllowanceHalalas: 0,
+    otherAllowancesHalalas: 0,
+    wageMode: 'derived',
+  });
+  const forgedAttendance = JSON.parse(forged.attendance_summary_json);
+  assert.equal(Number(forged.base_salary_halalas), 400000);
+  assert.equal(Number(forged.allowances_halalas), 100000);
+  assert.equal(forgedAttendance.attendancePayrollMode, 'exempt');
+  assert.equal(Number(forgedAttendance.totalMissingHours || 0), 0);
+  assert.equal(Number(forged.insurance_deduction_halalas), expectedGosi.employee.deductionHalalas);
+  assert.equal(Number(forged.employer_gosi_contribution_halalas), expectedGosi.employer.contributionHalalas);
+  assert.notEqual(forged.gosi_policy_version, 'forged-browser-policy');
+  assert.equal(Number(forged.gross_salary_halalas), 500000);
+  assert.equal(Number(forged.final_salary_halalas), 500000 - expectedGosi.employee.deductionHalalas);
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-forged-payroll',
+    name: 'Canonical Payroll Employee',
+    employment: { baseSalaryHalalas: 600000 },
+  }, actor);
+
+  const approved = await approvePayrollEntry(db, 'main', forged.id, actor);
+  const updatedExpectedGosi = calculateGosi({
+    insuranceCategory: 'non_saudi',
+    payrollDate: '2026-08-28',
+    basicSalaryHalalas: 600000,
+    housingAllowanceHalalas: 100000,
+    transportationAllowanceHalalas: 0,
+    otherAllowancesHalalas: 0,
+    wageMode: 'derived',
+  });
+  assert.equal(approved.status, 'approved');
+  assert.equal(Number(approved.base_salary_halalas), 600000);
+  assert.equal(Number(approved.gross_salary_halalas), 700000);
+  assert.equal(Number(approved.final_salary_halalas), 700000 - updatedExpectedGosi.employee.deductionHalalas);
+  const audit = JSON.parse(approved.audit_log_json || '[]');
+  assert.ok(audit.some((entry) => entry.action === 'canonical_recalculation_before_approval'));
+});
+
+test('HR employee save atomically creates canonical booking staff row without Firestore mirror', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await upsertHrEmployee(db, 'main', {
+    id: 'emp-atomic-staff',
+    firebaseUid: 'uid-atomic-staff',
+    name: 'Atomic Staff',
+    email: 'atomic@example.com',
+    phone: '0500000099',
+    status: 'active',
+    employment: {
+      employmentStatus: 'active',
+      baseSalaryHalalas: 350000,
+    },
+    bookingStaff: {
+      firebaseUid: 'uid-atomic-staff',
+      name: 'Atomic Staff',
+      phone: '0500000099',
+      active: true,
+      employmentStatus: 'active',
+      showOnBooking: true,
+      specialties: ['svc-a'],
+    },
+  }, actor);
+
+  const profile = await db.prepare("SELECT id, firebase_uid, name, status FROM employee_profiles WHERE salon_id='main' AND id='emp-atomic-staff'").first();
+  const staff = await db.prepare("SELECT id, firebase_uid, name, active, employment_status, show_on_booking FROM staff WHERE salon_id='main' AND id='emp-atomic-staff'").first();
+  assert.equal(profile.firebase_uid, 'uid-atomic-staff');
+  assert.equal(profile.status, 'active');
+  assert.equal(staff.firebase_uid, 'uid-atomic-staff');
+  assert.equal(staff.name, 'Atomic Staff');
+  assert.equal(Number(staff.active), 1);
+  assert.equal(staff.employment_status, 'active');
+  assert.equal(Number(staff.show_on_booking), 1);
+});
+
+test('public booking tracking returns sanitized Core data without client PII', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+  for (const statement of [
+    `INSERT INTO clients (id,salon_id,name,phone_normalized,email,status,created_at,updated_at)
+     VALUES ('client-public-track','main','Secret Client','0501234567','secret@example.com','active','2026-01-01','2026-01-01')`,
+    `INSERT INTO service_sections (id,salon_id,name,active,sort_order,created_at,updated_at)
+     VALUES ('section-track','main','Hair',1,0,'2026-01-01','2026-01-01')`,
+    `INSERT INTO service_categories (id,salon_id,section_id,name,active,sort_order,created_at,updated_at)
+     VALUES ('category-track','main','section-track','Color',1,0,'2026-01-01','2026-01-01')`,
+    `INSERT INTO services (id,salon_id,section_id,category_id,name,duration_minutes,price_halalas,active,sort_order,created_at,updated_at)
+     VALUES ('svc-track','main','section-track','category-track','Track Service',30,5000,1,0,'2026-01-01','2026-01-01')`,
+    `INSERT INTO staff (id,salon_id,name,active,employment_status,created_at,updated_at)
+     VALUES ('staff-track','main','Track Staff',1,'active','2026-01-01','2026-01-01')`,
+    `INSERT INTO staff_services (salon_id,staff_id,service_id,active)
+     VALUES ('main','staff-track','svc-track',1)`,
+  ]) {
+    await db.prepare(statement).run();
+  }
+  await upsertHrEmployee(db, 'main', {
+    id: 'staff-track',
+    name: 'Track Staff',
+    employment: { employmentStatus: 'active' },
+  }, actor);
+  const shift = await saveShiftTemplate(db, 'main', {
+    id: 'shift-public-track', name: 'Public track shift', startTime: '09:00', endTime: '18:00',
+  }, actor);
+  await replaceHrSchedules(db, 'main', 'staff-track', [
+    { id: 'sched-public-track', weekday: 4, shiftTemplateId: shift.id, active: true, effectiveFrom: '2026-08-01' },
+  ]);
+  const booking = await createBooking(db, 'main', {
+    id: 'booking-public-track',
+    clientId: 'client-public-track',
+    clientName: 'Secret Client',
+    clientPhone: '0501234567',
+    staffId: 'staff-track',
+    bookingDate: '2026-08-20',
+    startTime: '12:00',
+    items: [{ id: 'item-public-track', serviceId: 'svc-track', staffId: 'staff-track' }],
+  }, 'uid-admin', { allowPastDates: true });
+  assert.match(String(booking.public_id || ''), /^MK-\d{3,}$/);
+
+  const publicTrack = await getPublicBookingTrack(db, 'main', booking.public_id);
+  assert.equal(publicTrack.public_id, booking.public_id);
+  assert.equal(publicTrack.client_name, undefined);
+  assert.equal(publicTrack.client_phone, undefined);
+  assert.equal(publicTrack.email, undefined);
+  assert.equal(publicTrack.total_halalas, undefined);
+  assert.equal(publicTrack.items.length, 1);
+  assert.equal(publicTrack.items[0].service_name_snapshot, 'Track Service');
+  assert.equal(publicTrack.items[0].staff_name, 'Track Staff');
+  assert.equal(publicTrack.items[0].section_name, 'Hair');
+  assert.equal(publicTrack.items[0].category_name, 'Color');
 });
 
 test('booking reschedule atomically replaces slot locks', async (t) => {
@@ -2895,7 +3180,14 @@ test('exceptional financial payment recovers after balance top-up and retry stay
     VALUES ('emp-efp-retry','main','uid-efp-retry','EFP Retry Employee',1,'active','2026-01-01','2026-01-01')`).run();
   await upsertHrEmployee(db,'main',{
     id:'emp-efp-retry',name:'EFP Retry Employee',firebaseUid:'uid-efp-retry',
-    employment:{baseSalaryHalalas:450000,leaveBalance:5},
+    employment:{
+      baseSalaryHalalas:450000,
+      leaveBalance:5,
+      socialInsuranceCategory:'non_saudi',
+      socialInsuranceEffectiveFrom:'2026-01-01',
+      socialInsuranceClassificationNote:'Exceptional payment retry test classification',
+      gosiWageMode:'derived',
+    },
   },actor);
   const period=await upsertPayrollPeriod(db,'main',{
     id:'period-efp-retry-2026-08',payrollMonth:'2026-08',monthStart:'2026-08-01',monthEnd:'2026-08-31',

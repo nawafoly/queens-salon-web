@@ -35,6 +35,7 @@ import {
   createBooking,
   deleteBooking,
   getBooking,
+  getPublicBookingTrack,
   listBookings,
   patchBooking,
   rescheduleBooking,
@@ -123,6 +124,7 @@ import {
   listPayrollCarryoverAdjustments,
   reconcilePayrollCarryoversBatch,
   markPayrollEntryPaid,
+  previewPayrollEntry,
   reopenPayrollEntry,
   togglePayrollOvertime,
   updatePayrollEntryAdjustments,
@@ -307,7 +309,7 @@ function salonId(data, env) {
 function isPublicRoute(route, method) {
   return (
     (method === "GET" &&
-      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health"].includes(route.name)) ||
+      ["services", "staff", "availability", "discounts", "sections", "categories", "settings", "health", "booking:public-track"].includes(route.name)) ||
     (method === "POST" &&
       ["clients", "bookings", "discount:use"].includes(route.name))
   );
@@ -389,6 +391,10 @@ function match(url, method) {
   const loyaltyAdjustment = /^\/api\/core\/clients\/([^/]+)\/loyalty-adjustments$/.exec(path);
   if (loyaltyAdjustment && method === "POST") {
     return { name: "client:loyalty-adjustment", id: loyaltyAdjustment[1] };
+  }
+
+  if (path === "/api/core/public/booking-track" && method === "GET") {
+    return { name: "booking:public-track" };
   }
 
   if (path === "/api/core/internal/bookings" && method === "POST") {
@@ -526,6 +532,7 @@ function match(url, method) {
   if (resolveShift && method === "GET") return { name: "hr-shift:resolve", id: resolveShift[1] };
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
   if (path === "/api/core/hr/payroll-entries/mine" && method === "GET") return { name: "payroll-entries:mine" };
+  if (path === "/api/core/hr/payroll-preview" && method === "POST") return { name: "payroll-preview" };
   if (
     path === "/api/core/hr/payroll-advance-deductions" &&
     method === "GET"
@@ -876,6 +883,10 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       break;
 
+    case "booking:public-track":
+      if (method === "GET") return getPublicBookingTrack(db, ctx.salonId, query.publicId || query.public_id || query.code);
+      break;
+
     case "bookings":
       if (method === "GET" && route.id) {
         return getBooking(db, ctx.salonId, route.id);
@@ -1028,6 +1039,7 @@ async function dispatch(ctx, route, method, body, query, env) {
       break;
 
     case "audit":
+      requireAnyPermission(ctx, ["audit.read", "logs.view"]);
       if (method === "GET") return listAudit(db, ctx.salonId, query);
       if (method === "POST") return recordAudit(db, ctx.salonId, body, actorInfo);
       break;
@@ -1678,8 +1690,12 @@ async function dispatch(ctx, route, method, body, query, env) {
 
     case "payroll-reconciliations:batch":
       requirePermission(ctx, "payroll.manage");
-      if (method === "POST") return reconcilePayrollCarryoversBatch(db, ctx.salonId, body, actorInfo);
+      if (method === "POST") return reconcilePayrollCarryoversBatch(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
+
+    case "payroll-preview":
+      requirePermission(ctx, "payroll.manage");
+      return previewPayrollEntry(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
 
     case "payroll-entries:mine":
       requirePermission(ctx, "workspace.employee_portal.view");
@@ -1754,23 +1770,23 @@ async function dispatch(ctx, route, method, body, query, env) {
       }
       if (method === "POST") {
         requirePermission(ctx, "payroll.manage");
-        return upsertPayrollEntry(db, ctx.salonId, body, actorInfo);
+        return upsertPayrollEntry(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       }
       break;
 
     case "payroll-entry:adjustments":
       requirePermission(ctx, "payroll.manage");
-      if (method === "PATCH" || method === "POST") return updatePayrollEntryAdjustments(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "PATCH" || method === "POST") return updatePayrollEntryAdjustments(db, ctx.salonId, route.id, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:overtime":
       requirePermission(ctx, "payroll.manage");
-      if (method === "PATCH" || method === "POST") return togglePayrollOvertime(db, ctx.salonId, route.id, body, actorInfo);
+      if (method === "PATCH" || method === "POST") return togglePayrollOvertime(db, ctx.salonId, route.id, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:approve":
       requirePermission(ctx, "payroll.manage");
-      if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo);
+      if (method === "POST") return approvePayrollEntry(db, ctx.salonId, route.id, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
       break;
 
     case "payroll-entry:reopen":
@@ -1944,6 +1960,7 @@ export async function handleRequest(request, env) {
   const allowGuest = isPublicRoute(route, request.method);
   const ctx = await actor(request, env, body, allowGuest, {
     touchLogin: route.name === "auth:me",
+    allowBlockedAccount: route.name === "auth:me",
   });
   if (rawContentRoute) {
     const fileMetadata = await assertFileAccess(ctx, route.id, request.method === "PUT");

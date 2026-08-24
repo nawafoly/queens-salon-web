@@ -765,7 +765,7 @@ export const CoreHrService = {
     items: Array<{
       sourcePayrollEntryId: string;
       targetPayrollMonth: string;
-      recalculatedNetHalalas: number;
+      recalculatedNetHalalas?: number;
       sourceDate?: string;
       reason?: string;
     }>;
@@ -783,6 +783,9 @@ export const CoreHrService = {
   async getPayrollEntry(id: string) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/payroll-entries/${encodeURIComponent(id)}`);
     return camel<CorePayrollEntry>(row);
+  },
+  async previewPayrollEntry(input: Record<string, unknown>) {
+    return camel<CorePayrollEntry>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-preview", { method: "POST", body: input }));
   },
   async savePayrollEntry(input: Record<string, unknown>) {
     return camel<CorePayrollEntry>(await coreApiRequest<Record<string, unknown>>("/api/core/hr/payroll-entries", { method: "POST", body: input }));

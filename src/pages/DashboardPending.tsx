@@ -4,12 +4,9 @@ void React;
 
 import { useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { auth } from "../services/firebase";
+import { CoreAccountService } from "../services/CoreAccountService";
 import { resolveDashboardLandingPath } from "../helpers/routePaths";
-
-const SALON_ID = "main";
-const USERS_COL = ["salons", SALON_ID, "users"] as const;
 
 type AdminRole = "owner" | "admin" | "hr" | "reception" | "staff" | "pending";
 type PendingPageMode = "pending" | "disabled";
@@ -37,19 +34,6 @@ function normalizeAdminRole(raw: any): AdminRole {
   return "pending";
 }
 
-function getBlockedStatus(data: any, role: AdminRole) {
-  const employmentStatus = String(data?.employmentStatus || "").trim().toLowerCase();
-  if (data?.deleted === true || Boolean(data?.deletedAt) || employmentStatus === "deleted") {
-    return "deleted" as const;
-  }
-  if (data?.archived === true || data?.removedFromStaff === true || employmentStatus === "archived") {
-    return "archived" as const;
-  }
-  if (role === "pending") return "active" as const;
-  const active = data?.active !== false && data?.isActive !== false;
-  return active ? "active" as const : "disabled" as const;
-}
-
 type DashboardPendingProps = {
   mode?: PendingPageMode;
 };
@@ -64,123 +48,74 @@ export default function DashboardPending({ mode = "pending" }: DashboardPendingP
   );
 
   useEffect(() => {
-    let unsubUserDoc: null | (() => void) = null;
-    let unsubAuth: null | (() => void) = null;
+    let active = true;
+    let timer: number | null = null;
+    let unsubscribeAuth: (() => void) | null = null;
 
-    const startWatch = (uid: string) => {
-      if (!uid) return;
+    const refresh = async () => {
+      if (!auth.currentUser || !active) return;
+      try {
+        const result = await CoreAccountService.me();
+        if (!active) return;
+        const account = result.user;
+        const role = normalizeAdminRole(account.role || account.primaryRole);
+        const status = String(account.status || "pending").toLowerCase();
 
-      if (unsubUserDoc) {
-        try {
-          unsubUserDoc();
-        } catch {
-          // ignore duplicate unsubscribe
+        if (status === "disabled" || status === "deleted") {
+          if (!isDisabledMode) {
+            navigate("/account-disabled", { replace: true });
+            return;
+          }
+          setStatusText(
+            status === "deleted"
+              ? "تم حذف حساب الدخول منطقيًا من إدارة الحسابات."
+              : "حساب الدخول معطل حاليًا من إدارة الحسابات."
+          );
+          return;
         }
-      }
 
-      const userRef = doc(db, ...USERS_COL, uid);
-
-      unsubUserDoc = onSnapshot(
-        userRef,
-        (snap) => {
-          if (!snap.exists()) {
-            setStatusText("تم إنشاء الحساب وبانتظار إضافته أو تفعيله من الإدارة...");
-            return;
-          }
-
-          const data: any = snap.data();
-          const active = data?.active !== false && data?.isActive !== false;
-          const role: AdminRole = normalizeAdminRole(data?.role);
-          const blockedStatus = getBlockedStatus(data, role);
-
-          if (blockedStatus !== "active") {
-            if (!isDisabledMode) {
-              navigate("/account-disabled", { replace: true });
-              return;
-            }
-
-            const reason =
-              blockedStatus === "deleted"
-                ? "تم حذف حساب الدخول منطقيًا من إدارة الحسابات."
-                : blockedStatus === "archived"
-                  ? "حساب الدخول مؤرشف أو مربوط بحالة إزالة قديمة."
-                  : "حساب الدخول معطل حاليًا.";
-            setStatusText(`${reason} لا يتم التعامل مع هذه الحالة كحساب بانتظار التفعيل.`);
-            return;
-          }
-
-          if (isDisabledMode && role === "pending") {
+        if (status === "pending" || role === "pending") {
+          if (isDisabledMode) {
             navigate("/dashboard-pending", { replace: true });
             return;
           }
+          setStatusText("تم تسجيل دخولك، وحسابك ما زال بانتظار التفعيل من الإدارة.");
+          return;
+        }
 
-          if (role !== "pending" && active) {
-            localStorage.setItem("userRole", role);
-
-            try {
-              const old = JSON.parse(
-                localStorage.getItem("auth_user") || "{}",
-              );
-              const displayName = String(
-                data?.displayName ||
-                  data?.name ||
-                  old?.displayName ||
-                  localStorage.getItem("userName") ||
-                  "",
-              ).trim();
-
-              if (displayName) localStorage.setItem("userName", displayName);
-
-              localStorage.setItem(
-                "auth_user",
-                JSON.stringify({
-                  ...old,
-                  uid,
-                  role,
-                  displayName: displayName || old?.displayName || "",
-                  email:
-                    old?.email || data?.email || auth.currentUser?.email || "",
-                }),
-              );
-            } catch {
-              // ignore malformed cache
-            }
-
-            window.dispatchEvent(new Event("authChanged"));
-            navigate(resolveDashboardLandingPath(role), { replace: true });
-            return;
-          }
-
-          setStatusText(
-            "تم تسجيل دخولك، وحسابك ما زال بانتظار التفعيل من الإدارة.",
-          );
-        },
-        (err) => {
-          console.error("Pending onSnapshot error:", err);
-          setStatusText("تعذر التحقق من حالة التفعيل الآن. حاول تحديث الصفحة.");
-        },
-      );
+        localStorage.setItem("userRole", role);
+        localStorage.setItem("userUid", account.firebaseUid || auth.currentUser.uid);
+        if (account.displayName) localStorage.setItem("userName", account.displayName);
+        try {
+          const previous = JSON.parse(localStorage.getItem("auth_user") || "{}");
+          localStorage.setItem("auth_user", JSON.stringify({
+            ...previous,
+            uid: account.firebaseUid || auth.currentUser.uid,
+            role,
+            displayName: account.displayName || previous.displayName || "",
+            email: account.email || auth.currentUser.email || previous.email || "",
+          }));
+        } catch {}
+        window.dispatchEvent(new Event("authChanged"));
+        navigate(resolveDashboardLandingPath(role), { replace: true });
+      } catch (error) {
+        if (!active) return;
+        console.error("Core account status check failed:", error);
+        setStatusText("تعذر التحقق من حالة الحساب من Core الآن. حاول تحديث الصفحة.");
+      }
     };
 
-    const uidLS = String(localStorage.getItem("userUid") || "").trim();
-    if (uidLS) startWatch(uidLS);
-
-    unsubAuth = onAuthStateChanged(auth, (u) => {
-      const uid = u?.uid || uidLS;
-      if (uid) startWatch(uid);
+    unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (!user || !active) return;
+      void refresh();
+      if (timer !== null) window.clearInterval(timer);
+      timer = window.setInterval(() => void refresh(), 5000);
     });
 
     return () => {
-      try {
-        if (unsubUserDoc) unsubUserDoc();
-      } catch {
-        // ignore
-      }
-      try {
-        if (unsubAuth) unsubAuth();
-      } catch {
-        // ignore
-      }
+      active = false;
+      if (timer !== null) window.clearInterval(timer);
+      unsubscribeAuth?.();
     };
   }, [isDisabledMode, navigate]);
 

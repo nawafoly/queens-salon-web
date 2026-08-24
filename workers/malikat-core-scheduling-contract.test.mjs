@@ -896,27 +896,21 @@ test("DashboardEmployees working-hour override save is Core-only", () => {
       ".syncWorkingHourScheduleExceptions("
     );
 
-  const scheduleIndex =
-    saveSource.indexOf(
-      ".replaceSchedules("
-    );
-
-  const firestoreIndex =
-    saveSource.indexOf(
-      "await setDoc(staffPublicDoc(targetEmployeeId)"
-    );
-
   assert.ok(
-    coreSyncIndex >= 0 &&
-    firestoreIndex >= 0 &&
-    coreSyncIndex < firestoreIndex,
-    "Core exception sync must precede Firestore profile save"
+    coreSyncIndex >= 0,
+    "Working-hour overrides must be persisted through the Core schedule exception sync"
   );
 
-  assert.ok(
-    scheduleIndex < 0 ||
-    scheduleIndex < firestoreIndex,
-    "Core weekly schedule mutation must precede Firestore profile save"
+  assert.doesNotMatch(
+    saveSource,
+    /\b(?:setDoc|updateDoc|writeBatch)\s*\(/,
+    "DashboardEmployees save must not persist any Firestore profile mirror after the Core cutover"
+  );
+
+  assert.doesNotMatch(
+    saveSource,
+    /staffPublicDoc\s*\(|salons[\s\S]{0,120}employees/,
+    "DashboardEmployees save must not write staff_public/employees Firestore mirrors"
   );
 });
 test("Dashboard schedule summary reads employee scheduling presentation from Malikat Core only", () => {
@@ -1044,9 +1038,8 @@ test("Core resolved shift batching policy is centralized in CoreHrService", () =
     "utf8"
   );
 
-  const consumers = [
+  const rangeConsumers = [
     "src/pages/DashboardEmployees.tsx",
-    "src/services/CorePayrollService.ts",
     "src/services/StaffPerformanceService.ts",
   ];
 
@@ -1060,7 +1053,7 @@ test("Core resolved shift batching policy is centralized in CoreHrService", () =
     /CoreHrService\.resolveEmployeeShiftsBatch\(\{/
   );
 
-  for (const file of consumers) {
+  for (const file of rangeConsumers) {
     const source = readFileSync(
       file,
       "utf8"
@@ -1079,6 +1072,17 @@ test("Core resolved shift batching policy is centralized in CoreHrService", () =
       /resolveEmployeeShiftsRange/
     );
   }
+
+  const payroll = readFileSync(
+    "src/services/CorePayrollService.ts",
+    "utf8"
+  );
+
+  assert.doesNotMatch(
+    payroll,
+    /resolveEmployeeShifts(?:Batch|Range)/,
+    "Frontend payroll must not resolve scheduling; canonical payroll authority now lives in Core"
+  );
 });
 
 
@@ -1289,7 +1293,12 @@ test("Partner Portal operational day is a Malikat Core RPC projection only", () 
 
   assert.match(
     devScript,
-    /name:\s*"core-api"[\s\S]*wrangler\.core\.jsonc/
+    /name:\s*"core-api"[\s\S]*wrangler\.core(?:\.dev)?\.jsonc/
+  );
+
+  assert.match(
+    devScript,
+    /name:\s*"partners-api"[\s\S]*wrangler\.partners(?:\.dev)?\.jsonc/
   );
 });
 
@@ -1753,36 +1762,44 @@ test("Stage 2 canonical leave authority never mirrors operational leave into sta
       "src/pages/DashboardEmployees.tsx"
     );
 
-  const syncStart =
-    dashboard.indexOf(
-      "await CoreStaffService"
-    );
-
-  const syncEnd =
-    dashboard.indexOf(
-      ".catch(",
-      syncStart
-    );
+  const saveStart = dashboard.indexOf(
+    "await CoreHrService.saveEmployee({"
+  );
+  const saveEnd = dashboard.indexOf(
+    "if (workingHourOverridesChanged)",
+    saveStart
+  );
 
   assert.ok(
-    syncStart >= 0 &&
-    syncEnd > syncStart
+    saveStart >= 0 &&
+    saveEnd > saveStart,
+    "Dashboard employee master must save through CoreHrService"
   );
 
-  const staffSync =
-    dashboard.slice(
-      syncStart,
-      syncEnd
-    );
+  const employeeMasterSave = dashboard.slice(
+    saveStart,
+    saveEnd
+  );
 
-  assert.doesNotMatch(
-    staffSync,
-    /leaveStartDate\s*:/
+  assert.match(
+    employeeMasterSave,
+    /\.saveEmployee\(\{/
+  );
+
+  assert.match(
+    employeeMasterSave,
+    /bookingStaff:\s*\{/
   );
 
   assert.doesNotMatch(
-    staffSync,
-    /leaveEndDate\s*:/
+    employeeMasterSave,
+    /leaveStartDate\s*:|leaveEndDate\s*:|leaveNote\s*:/
+  );
+
+  assert.doesNotMatch(
+    employeeMasterSave,
+    /CoreStaffService\s*\.\s*(?:create|update|upsert)/,
+    "Booking staff synchronization must be part of the canonical Core HR save, not a second frontend write"
   );
 
   const coreTypes =

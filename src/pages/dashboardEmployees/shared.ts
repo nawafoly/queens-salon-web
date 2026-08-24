@@ -1,7 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { collection, doc } from "firebase/firestore";
-
-import { db } from "../../services/firebase";
 import { type BookingStatus } from "../../services/firestoreBookings";
 import {
   type StaffOvertimeHoursBasis,
@@ -101,7 +98,7 @@ export type StaffPublicDoc = {
   resourceIds?: string[];
   employeeProfileEnabled?: boolean;
   includeInEmployeeManagement?: boolean;
-  source?: "staff_public" | "employees" | "users" | "core_accounts";
+  source?: "staff_public" | "employees" | "users" | "core_accounts" | "core_staff" | "core_hr";
   profileIncomplete?: boolean;
   employeeKind?: "service" | "administrative";
   name: string;
@@ -339,22 +336,6 @@ export function getNameInitials(name: string): string {
   const parts = clean.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
   return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`.toUpperCase();
-}
-
-export function staffPublicCol() {
-  return collection(db, "salons", SALON_ID, "staff_public");
-}
-
-export function staffPublicDoc(id: string) {
-  return doc(db, "salons", SALON_ID, "staff_public", id);
-}
-
-export function servicesCol() {
-  return collection(db, "salons", SALON_ID, "services");
-}
-
-export function usersCol() {
-  return collection(db, "salons", SALON_ID, "users");
 }
 
 export function normalizeRoleText(v: any) {

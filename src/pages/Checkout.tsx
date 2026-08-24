@@ -7,7 +7,6 @@ import {
 } from "../services/checkoutCoreBookingService";
 import { buildBookingSlotId } from "../helpers/bookingSlotId";
 import { incrementOfferUsage } from "../services/firestoreOffers";
-import { incrementPackageUsage } from "../services/firestorePackages";
 
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -429,15 +428,6 @@ export default function Checkout() {
       try {
         if (view.offerId) {
           await incrementOfferUsage(SALON_ID, view.offerId);
-        }
-        const packageIdRaw = String((view as any)?.packageId || "").trim();
-        if (packageIdRaw) {
-          const packageId = packageIdRaw.toLowerCase().startsWith("package:")
-            ? packageIdRaw.slice("package:".length).trim()
-            : packageIdRaw;
-          if (packageId && !packageId.toLowerCase().startsWith("offer:")) {
-            await incrementPackageUsage(SALON_ID, packageId);
-          }
         }
       } catch (e) {
         console.warn("usage counter update failed:", e);

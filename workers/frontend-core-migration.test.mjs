@@ -92,6 +92,12 @@ test("Core availability service caches per staff day and supports invalidation",
   assert.match(source, /invalidate\(/);
 });
 
+test("checkout never increments legacy Firestore package usage after Core booking", () => {
+  const checkout = readFileSync("src/pages/Checkout.tsx", "utf8");
+  assert.doesNotMatch(checkout, /firestorePackages|incrementPackageUsage/);
+  assert.match(checkout, /checkoutCoreBookingService/);
+});
+
 test("mixed package booking stores reservation references on Core booking items", () => {
   const saga = readFileSync(
     "src/services/packageBookingSaga.ts",
@@ -121,15 +127,15 @@ test("Phase 5 facades use the correct Core source strategy", () => {
     assert.doesNotMatch(source, /getDataSourceFlags/);
   }
 
-  const branchChecks = [
+  const coreOnlyChecks = [
     ["src/services/firestoreBookings.ts", /CoreBookingService/],
     ["src/services/logService.ts", /CoreAuditService/],
   ];
 
-  for (const [file, servicePattern] of branchChecks) {
+  for (const [file, servicePattern] of coreOnlyChecks) {
     const source = readFileSync(file, "utf8");
-    assert.match(source, /getDataSourceFlags\(\)\.useCoreD1/);
     assert.match(source, servicePattern);
+    assert.doesNotMatch(source, /getDataSourceFlags|useCoreD1|useBookingsD1/);
   }
 
   const offers = readFileSync("src/services/firestoreOffers.ts", "utf8");
@@ -187,47 +193,22 @@ test("Core and package migrations share client canonicalization policy", () => {
   assert.match(shared, /client_alias_conflict/);
 });
 
-test("dashboard bookings uses Core D1 without touching Firestore in Core mode", () => {
+test("dashboard bookings uses Core D1 without an operational Firestore switch", () => {
   const service = readFileSync("src/services/firestoreBookings.ts", "utf8");
   const dashboard = readFileSync("src/pages/DashboardBookings.tsx", "utf8");
 
   const listStart = service.indexOf("export async function listBookings");
-  const listEnd = service.indexOf("function watchFirestoreBookings", listStart);
+  const listEnd = service.indexOf("export function watchAllBookings", listStart);
   const listBlock = service.slice(listStart, listEnd);
-  const coreListBranch = listBlock.match(
-    /if \(getDataSourceFlags\(\)\.useCoreD1\) \{([\s\S]*?)\n\s*\}/
-  )?.[1] || "";
-  assert.match(coreListBranch, /return listCoreBookings\(scope\)/);
-  assert.doesNotMatch(coreListBranch, /readFirestoreBookings/);
+  assert.match(listBlock, /return listCoreBookings\(scope\)/);
+  assert.doesNotMatch(listBlock, /getDataSourceFlags|readFirestoreBookings/);
 
   const watchStart = service.indexOf("export function watchAllBookings");
-  assert.ok(watchStart >= 0, "watchAllBookings must exist");
-
-  const possibleWatchEnds = [
-    service.indexOf("export async function listUserBookings", watchStart),
-    service.indexOf("export function listUserBookings", watchStart),
-    service.indexOf("export async function getBookingById", watchStart),
-  ].filter((index) => index > watchStart);
-  const watchEnd = possibleWatchEnds.length
-    ? Math.min(...possibleWatchEnds)
-    : service.length;
+  const watchEnd = service.indexOf("export async function listUserBookings", watchStart);
   const watchBlock = service.slice(watchStart, watchEnd);
-
-  assert.match(watchBlock, /getDataSourceFlags\(\)\.useCoreD1/);
   assert.match(watchBlock, /const rows = await listCoreBookings\(scope\)/);
   assert.match(watchBlock, /setInterval\(loadCore,\s*8_000\)/);
-
-  const coreRowsIndex = watchBlock.indexOf(
-    "const rows = await listCoreBookings(scope)"
-  );
-  const firestoreWatcherIndex = watchBlock.indexOf(
-    "return watchFirestoreBookings"
-  );
-  assert.ok(coreRowsIndex >= 0, "Core watcher must load bookings from Core D1");
-  assert.ok(
-    firestoreWatcherIndex < 0 || coreRowsIndex < firestoreWatcherIndex,
-    "Core D1 watcher must be selected before the legacy Firestore watcher"
-  );
+  assert.doesNotMatch(watchBlock, /getDataSourceFlags|watchFirestoreBookings/);
 
   assert.match(dashboard, /CoreBookingService\.list\(\)/);
   assert.match(dashboard, /setInterval\(\(\) => void loadCoreBookings\(\), 8_000\)/);
@@ -795,7 +776,9 @@ test("public catalog surfaces never require Firestore authentication", () => {
   }
 
   const settings = readFileSync("src/services/AppSettingsService.ts", "utf8");
-  assert.match(settings, /flags\.useSettingsD1 \|\| flags\.useCoreD1/);
+  assert.match(settings, /CoreSettingsService\.get/);
+  assert.match(settings, /CoreSettingsService\.save/);
+  assert.doesNotMatch(settings, /firebase\/firestore|getDataSourceFlags|useSettingsD1|useCoreD1/);
 });
 test("public booking staff loading is Core-only and cannot keep a stale spinner", () => {
   const source = readFileSync("src/pages/Booking.tsx", "utf8");

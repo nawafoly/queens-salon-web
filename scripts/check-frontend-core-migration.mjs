@@ -248,11 +248,11 @@ const requiredChecks = [
   },
   {
     file: "src/services/firestoreBookings.ts",
-    required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreBookingService/, /CoreAuditService/],
+    required: [/CoreBookingService/, /CoreAuditService/],
   },
   {
     file: "src/services/logService.ts",
-    required: [/getDataSourceFlags\(\)\.useCoreD1/, /CoreAuditService/],
+    required: [/CoreAuditService/],
   },
   {
     file: "src/pages/DashboardBookings.tsx",
@@ -287,9 +287,9 @@ const requiredChecks = [
   {
     file: "src/services/AppSettingsService.ts",
     required: [
-      /function useCoreSettingsStore/,
-      /flags\.useSettingsD1\s*\|\|\s*flags\.useCoreD1/,
       /CoreSettingsService/,
+      /fetchRemote\(\)/,
+      /saveRemote\(settings/,
     ],
   },
   {

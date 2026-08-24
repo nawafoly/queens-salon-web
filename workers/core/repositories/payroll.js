@@ -14,11 +14,17 @@ import {
   validDate,
 } from '../d1.js';
 import { AppError } from '../errors.js';
+import { calculateGosi } from '../../../src/helpers/hr/gosiPolicy.js';
+import { listAttendance } from './attendance.js';
+import { listLeaves } from './leaves.js';
+import { listAbsences } from './absences.js';
+import { resolveEmployeeShiftsBatch } from './shift-control.js';
 import { payrollAttendanceReadiness } from '../../../src/helpers/hr/payrollReadiness.js';
 import {
   payrollCarryoverDelta,
   PAYROLL_CARRYOVER_SOURCE_TYPE,
 } from '../../../src/helpers/hr/payrollCarryoverPolicy.js';
+import { withoutPayrollObligationDeductionItems } from '../../../src/helpers/hr/payrollObligationPolicy.js';
 import {
   applyTargetBonusToPayrollData,
   approveEmployeeTargetSummary,
@@ -26,8 +32,468 @@ import {
 import {
   assertPayrollObligationSnapshotCurrent,
   canonicalizePayrollObligationDeductions,
+  listPayrollObligationDeductions,
   payrollObligationPaidStatements,
 } from './payroll-obligations.js';
+
+const PAYROLL_DAY_MS = 24 * 60 * 60 * 1000;
+const PAYROLL_RIYADH_ZONE = 'Asia/Riyadh';
+
+function payrollPad(value) {
+  return String(value).padStart(2, '0');
+}
+
+function payrollDateFromKey(value) {
+  const [year, month, day] = cleanText(value).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
+function payrollDateKey(date) {
+  return `${date.getUTCFullYear()}-${payrollPad(date.getUTCMonth() + 1)}-${payrollPad(date.getUTCDate())}`;
+}
+
+function payrollMonthBoundsCanonical(payrollMonth) {
+  const match = /^(\d{4})-(\d{2})$/.exec(cleanText(payrollMonth));
+  if (!match) throw new AppError(400, 'core_payroll:invalid_month');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const monthStart = `${year}-${payrollPad(month)}-01`;
+  const monthEnd = payrollDateKey(new Date(Date.UTC(year, month, 0, 12)));
+  return { payrollMonth: `${year}-${payrollPad(month)}`, monthStart, monthEnd };
+}
+
+function payrollRiyadhTodayKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PAYROLL_RIYADH_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const read = (type) => parts.find((part) => part.type === type)?.value || '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
+function payrollCompletedThrough(bounds) {
+  const today = payrollRiyadhTodayKey();
+  if (bounds.monthEnd < today) return bounds.monthEnd;
+  const previous = new Date(payrollDateFromKey(today).getTime() - PAYROLL_DAY_MS);
+  const previousKey = payrollDateKey(previous);
+  return previousKey > bounds.monthEnd ? bounds.monthEnd : previousKey;
+}
+
+function payrollDateKeys(start, end) {
+  if (!start || !end || start > end) return [];
+  const rows = [];
+  for (let cursor = payrollDateFromKey(start); cursor.getTime() <= payrollDateFromKey(end).getTime(); cursor = new Date(cursor.getTime() + PAYROLL_DAY_MS)) {
+    rows.push(payrollDateKey(cursor));
+  }
+  return rows;
+}
+
+function payrollTimeMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(cleanText(value));
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function payrollHoursBetween(start, end) {
+  const startMinutes = payrollTimeMinutes(start);
+  let endMinutes = payrollTimeMinutes(end);
+  if (startMinutes == null || endMinutes == null) return 0;
+  if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+  return Math.max(0, Math.round(((endMinutes - startMinutes) / 60) * 100) / 100);
+}
+
+const PAYROLL_RIYADH_DATE_TIME = new Intl.DateTimeFormat('en-CA', {
+  timeZone: PAYROLL_RIYADH_ZONE,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+function payrollTimestampOffsetMinutes(value, dateKey) {
+  const date = new Date(cleanText(value));
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = PAYROLL_RIYADH_DATE_TIME.formatToParts(date);
+  const read = (type) => parts.find((part) => part.type === type)?.value || '';
+  const eventKey = `${read('year')}-${read('month')}-${read('day')}`;
+  const base = payrollDateFromKey(dateKey).getTime();
+  const event = payrollDateFromKey(eventKey).getTime();
+  const hour = Number(read('hour'));
+  const minute = Number(read('minute'));
+  if (!Number.isFinite(base) || !Number.isFinite(event) || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return Math.round((event - base) / PAYROLL_DAY_MS) * 24 * 60 + hour * 60 + minute;
+}
+
+function payrollRoundHours(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function payrollRoundMoney(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function payrollAbsenceUnit(type) {
+  const normalized = cleanText(type).toLowerCase();
+  if (normalized === 'half_day') return 0.5;
+  if (normalized === 'full_day') return 1;
+  return 0;
+}
+
+function payrollLeaveIsPartial(row) {
+  return cleanText(row?.duration_kind).toLowerCase() === 'partial';
+}
+
+function payrollLeaveIsUnpaid(row) {
+  return cleanText(row?.leave_type).toLowerCase() === 'unpaid';
+}
+
+function payrollLeaveCoversDate(row, dateKey) {
+  return cleanText(row?.status).toLowerCase() === 'approved' &&
+    cleanText(row?.start_date) <= dateKey && cleanText(row?.end_date) >= dateKey;
+}
+
+function payrollShiftSchedule(row) {
+  if (!row) return { enabled: false, start: null, end: null, lateGraceMinutes: 0, earlyLeaveGraceMinutes: 0 };
+  const source = cleanText(row.source).toLowerCase();
+  const exceptionType = cleanText(row.exception_type ?? row.exceptionType).toLowerCase();
+  const active = row.active;
+  if (source === 'none' || exceptionType === 'off' || active === 0 || active === '0' || active === false) {
+    return { enabled: false, start: null, end: null, lateGraceMinutes: 0, earlyLeaveGraceMinutes: 0 };
+  }
+  const start = cleanText(row.template_start_time ?? row.start_time ?? row.templateStartTime ?? row.startTime);
+  const end = cleanText(row.template_end_time ?? row.end_time ?? row.templateEndTime ?? row.endTime);
+  if (!start || !end) return { enabled: false, start: null, end: null, lateGraceMinutes: 0, earlyLeaveGraceMinutes: 0 };
+  return {
+    enabled: true,
+    start,
+    end,
+    lateGraceMinutes: Math.max(0, Number(row.late_grace_minutes ?? row.lateGraceMinutes ?? 0) || 0),
+    earlyLeaveGraceMinutes: Math.max(0, Number(row.early_leave_grace_minutes ?? row.earlyLeaveGraceMinutes ?? 0) || 0),
+  };
+}
+
+function payrollPermissionMinutesForDate(rows, dateKey) {
+  let paid = 0;
+  let unpaid = 0;
+  for (const row of rows || []) {
+    if (cleanText(row.date_key) !== dateKey) continue;
+    const status = cleanText(row.status).toLowerCase();
+    if (!['approved', 'out', 'returned'].includes(status)) continue;
+    const start = cleanText(row.actual_exit_time || row.requested_exit_time);
+    const end = cleanText(row.actual_return_time || row.expected_return_time);
+    const hours = payrollHoursBetween(start, end);
+    if (hours <= 0) continue;
+    const minutes = Math.round(hours * 60);
+    if (cleanText(row.financial_effect).toLowerCase() === 'unpaid') unpaid += minutes;
+    else paid += minutes;
+  }
+  return { paid, unpaid };
+}
+
+async function canonicalEmployment(db, salonId, employeeId) {
+  const employment = await dbFirst(
+    db,
+    `SELECT e.*, p.name AS employee_name, p.status AS profile_status
+       FROM employee_employment e
+       JOIN employee_profiles p ON p.salon_id=e.salon_id AND p.id=e.employee_id
+      WHERE e.salon_id=? AND e.employee_id=?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+  if (!employment || cleanText(employment.profile_status).toLowerCase() !== 'active' || cleanText(employment.employment_status).toLowerCase() !== 'active') {
+    throw new AppError(409, 'core_payroll:employee_not_active');
+  }
+  if (Number(employment.base_salary_halalas || 0) <= 0) {
+    throw new AppError(409, 'core_payroll:employee_not_payroll_eligible');
+  }
+  return employment;
+}
+
+function canonicalGosiFromEmployment(employment, payrollMonth) {
+  const category = cleanText(employment.social_insurance_category).toLowerCase();
+  if (!category) throw new AppError(409, 'core_payroll:gosi_classification_required');
+  if (category === 'gcc') throw new AppError(409, 'core_payroll:gosi_gcc_extension_policy_required');
+  if (!['saudi_existing', 'saudi_new', 'non_saudi'].includes(category)) {
+    throw new AppError(409, 'core_payroll:gosi_classification_required');
+  }
+  const payrollDate = `${payrollMonth}-28`;
+  const effectiveFrom = cleanText(employment.social_insurance_effective_from);
+  if (effectiveFrom && effectiveFrom > payrollDate) {
+    throw new AppError(409, 'core_payroll:gosi_not_effective_for_payroll_period');
+  }
+  try {
+    return calculateGosi({
+      insuranceCategory: category,
+      payrollDate,
+      basicSalaryHalalas: payrollRoundMoney(employment.base_salary_halalas),
+      housingAllowanceHalalas: payrollRoundMoney(employment.housing_allowance_halalas),
+      transportationAllowanceHalalas: payrollRoundMoney(employment.transportation_allowance_halalas),
+      otherAllowancesHalalas: payrollRoundMoney(employment.other_allowances_halalas),
+      wageMode: cleanText(employment.gosi_wage_mode).toLowerCase() === 'override' ? 'override' : 'derived',
+      contributoryWageOverrideHalalas: payrollRoundMoney(employment.gosi_contributory_wage_override_halalas),
+      overrideReason: optionalText(employment.gosi_contributory_wage_override_reason) || null,
+    });
+  } catch (error) {
+    throw new AppError(409, cleanText(error?.message) || 'core_payroll:gosi_calculation_failed');
+  }
+}
+
+async function buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollMonth, employment, options = {}) {
+  const bounds = payrollMonthBoundsCanonical(payrollMonth);
+  const completedThrough = payrollCompletedThrough(bounds);
+  const attendanceMode = cleanText(employment.attendance_payroll_mode).toLowerCase() === 'exempt' ? 'exempt' : 'required';
+  const [attendanceRows, leaveRows, absenceRows, permissionRows, shiftBatch] = await Promise.all([
+    listAttendance(db, salonId, { employeeId }, options.externalAttendanceDb || null),
+    listLeaves(db, salonId, { employeeId, status: 'approved' }),
+    listAbsences(db, salonId, { employeeId }),
+    dbAll(db, `SELECT * FROM employee_permission_requests WHERE salon_id=? AND employee_id=? AND date_key BETWEEN ? AND ? ORDER BY date_key, created_at`, [salonId, employeeId, bounds.monthStart, bounds.monthEnd]).catch(() => []),
+    resolveEmployeeShiftsBatch(db, salonId, { employeeIds: [employeeId], dateFrom: bounds.monthStart, dateTo: bounds.monthEnd }),
+  ]);
+
+  const periodAttendance = (attendanceRows || []).filter((row) => cleanText(row.date_key) >= bounds.monthStart && cleanText(row.date_key) <= bounds.monthEnd);
+  const punchRecordCount = periodAttendance.filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase())).length;
+  const paidFullDayLeaveDates = new Set();
+  let approvedLeaveDays = 0;
+  let approvedAbsenceDays = 0;
+  for (const leave of leaveRows || []) {
+    if (payrollLeaveIsPartial(leave)) continue;
+    const from = cleanText(leave.start_date) < bounds.monthStart ? bounds.monthStart : cleanText(leave.start_date);
+    const to = cleanText(leave.end_date) > bounds.monthEnd ? bounds.monthEnd : cleanText(leave.end_date);
+    if (!from || !to || from > to) continue;
+    for (const dateKey of payrollDateKeys(from, to)) {
+      if (payrollLeaveIsUnpaid(leave)) approvedAbsenceDays += 1;
+      else {
+        approvedLeaveDays += 1;
+        paidFullDayLeaveDates.add(dateKey);
+      }
+    }
+  }
+  for (const absence of absenceRows || []) {
+    const dateKey = cleanText(absence.date_key);
+    if (dateKey < bounds.monthStart || dateKey > bounds.monthEnd) continue;
+    approvedAbsenceDays += payrollAbsenceUnit(absence.absence_type);
+  }
+  approvedLeaveDays = payrollRoundHours(approvedLeaveDays);
+  approvedAbsenceDays = payrollRoundHours(approvedAbsenceDays);
+
+  if (attendanceMode === 'exempt') {
+    return {
+      summary: {
+        totalScheduledHours: 0,
+        totalActualWorkedHours: 0,
+        totalLateHours: 0,
+        totalEarlyLeaveHours: 0,
+        totalCompensatedLateHours: 0,
+        totalRawMissingHours: 0,
+        totalPermissionRequestedHours: 0,
+        totalPermissionCoveredHours: 0,
+        totalMissingHours: 0,
+        totalExtraHours: 0,
+        attendanceDays: 0,
+        absentDays: 0,
+        incompleteDays: 0,
+        approvedLeaveDays,
+        approvedAbsenceDays,
+        absenceDeductionOverlapHours: 0,
+        attendanceRecordCount: punchRecordCount,
+        attendanceLinkStatus: 'exempt',
+        attendancePayrollMode: 'exempt',
+        attendancePayrollExemptionReason: optionalText(employment.attendance_payroll_exemption_reason) || null,
+        attendanceDeductionEligible: false,
+        attendanceDeductionNote: optionalText(employment.attendance_payroll_exemption_reason)
+          ? `معفى من البصمة للراتب: ${cleanText(employment.attendance_payroll_exemption_reason)}`
+          : 'معفى من البصمة للراتب.',
+        attendanceNotes: ['Canonical Core attendance exemption applied.'],
+      },
+      dailyScheduledHours: 0,
+    };
+  }
+
+  const shiftsByDate = new Map((shiftBatch?.rows || []).map((row) => [cleanText(row.date), row]));
+  const recordsByDate = new Map();
+  for (const row of periodAttendance) {
+    const dateKey = cleanText(row.date_key);
+    const list = recordsByDate.get(dateKey) || [];
+    list.push(row);
+    recordsByDate.set(dateKey, list);
+  }
+  let totalScheduledMinutes = 0;
+  let totalActualMinutes = 0;
+  let totalLateMinutes = 0;
+  let totalEarlyMinutes = 0;
+  let totalMissingMinutes = 0;
+  let totalExtraMinutes = 0;
+  let totalPermissionRequestedMinutes = 0;
+  let totalPermissionCoveredMinutes = 0;
+  let absenceDeductionOverlapHours = 0;
+  let attendanceDays = 0;
+  let absentDays = 0;
+  let incompleteDays = 0;
+  const scheduleHours = [];
+
+  if (completedThrough >= bounds.monthStart) {
+    for (const dateKey of payrollDateKeys(bounds.monthStart, completedThrough)) {
+      const schedule = payrollShiftSchedule(shiftsByDate.get(dateKey));
+      if (!schedule.enabled) continue;
+      const scheduledHours = payrollHoursBetween(schedule.start, schedule.end);
+      if (scheduledHours <= 0) continue;
+      const scheduledMinutes = Math.round(scheduledHours * 60);
+      scheduleHours.push(scheduledHours);
+      totalScheduledMinutes += scheduledMinutes;
+
+      if (paidFullDayLeaveDates.has(dateKey)) continue;
+
+      const fullUnpaidLeave = (leaveRows || []).some((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsUnpaid(row) && !payrollLeaveIsPartial(row));
+      const recordedAbsenceUnit = (absenceRows || [])
+        .filter((row) => cleanText(row.date_key) === dateKey)
+        .reduce((total, row) => Math.max(total, payrollAbsenceUnit(row.absence_type)), 0);
+      const absenceUnit = Math.max(fullUnpaidLeave ? 1 : 0, recordedAbsenceUnit);
+      if (absenceUnit > 0) absenceDeductionOverlapHours += scheduledHours * absenceUnit;
+
+      const records = (recordsByDate.get(dateKey) || [])
+        .filter((row) => ['check_in', 'check_out'].includes(cleanText(row.record_type).toLowerCase()))
+        .sort((a, b) => cleanText(a.recorded_at).localeCompare(cleanText(b.recorded_at)));
+      const firstIn = records.find((row) => cleanText(row.record_type).toLowerCase() === 'check_in');
+      const lastOut = [...records].reverse().find((row) => cleanText(row.record_type).toLowerCase() === 'check_out');
+      if (!firstIn && !lastOut) {
+        absentDays += 1;
+        const permission = payrollPermissionMinutesForDate(permissionRows, dateKey);
+        totalPermissionRequestedMinutes += permission.paid + permission.unpaid;
+        const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
+          .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
+        const cover = Math.min(scheduledMinutes, permission.paid + partialPaidMinutes);
+        totalPermissionCoveredMinutes += cover;
+        totalMissingMinutes += Math.max(0, scheduledMinutes - cover);
+        continue;
+      }
+      if (!firstIn || !lastOut) {
+        incompleteDays += 1;
+        continue;
+      }
+      attendanceDays += 1;
+      const checkIn = payrollTimestampOffsetMinutes(firstIn.recorded_at, dateKey);
+      let checkOut = payrollTimestampOffsetMinutes(lastOut.recorded_at, dateKey);
+      const scheduleStart = payrollTimeMinutes(schedule.start);
+      let scheduleEnd = payrollTimeMinutes(schedule.end);
+      if (checkIn == null || checkOut == null || scheduleStart == null || scheduleEnd == null) {
+        incompleteDays += 1;
+        continue;
+      }
+      if (scheduleEnd <= scheduleStart) scheduleEnd += 24 * 60;
+      if (checkOut < checkIn) checkOut += 24 * 60;
+      const workedMinutes = Math.max(0, checkOut - checkIn);
+      totalActualMinutes += workedMinutes;
+      const lateMinutes = Math.max(0, checkIn - scheduleStart - Math.round(schedule.lateGraceMinutes));
+      const earlyMinutes = Math.max(0, scheduleEnd - checkOut - Math.round(schedule.earlyLeaveGraceMinutes));
+      totalLateMinutes += lateMinutes;
+      totalEarlyMinutes += earlyMinutes;
+      const rawMissing = Math.max(0, scheduledMinutes - workedMinutes);
+      const permission = payrollPermissionMinutesForDate(permissionRows, dateKey);
+      totalPermissionRequestedMinutes += permission.paid + permission.unpaid;
+      const partialPaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && !payrollLeaveIsUnpaid(row))
+        .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
+      const partialUnpaidMinutes = (leaveRows || []).filter((row) => payrollLeaveCoversDate(row, dateKey) && payrollLeaveIsPartial(row) && payrollLeaveIsUnpaid(row))
+        .reduce((sum, row) => sum + Math.round(payrollHoursBetween(row.partial_start_time, row.partial_end_time) * 60), 0);
+      if (partialUnpaidMinutes > 0) absenceDeductionOverlapHours += Math.min(scheduledHours, partialUnpaidMinutes / 60);
+      const covered = Math.min(rawMissing, permission.paid + partialPaidMinutes);
+      totalPermissionCoveredMinutes += covered;
+      totalMissingMinutes += Math.max(0, rawMissing - covered);
+      totalExtraMinutes += Math.max(0, workedMinutes - scheduledMinutes);
+    }
+  }
+
+  const dailyScheduledHours = scheduleHours.length
+    ? payrollRoundHours(scheduleHours.reduce((sum, value) => sum + value, 0) / scheduleHours.length)
+    : payrollRoundHours(employment.daily_scheduled_hours);
+  const deductionEligible = punchRecordCount > 0;
+  return {
+    summary: {
+      totalScheduledHours: payrollRoundHours(totalScheduledMinutes / 60),
+      totalActualWorkedHours: payrollRoundHours(totalActualMinutes / 60),
+      totalLateHours: payrollRoundHours(totalLateMinutes / 60),
+      totalEarlyLeaveHours: payrollRoundHours(totalEarlyMinutes / 60),
+      totalCompensatedLateHours: 0,
+      totalRawMissingHours: payrollRoundHours(totalMissingMinutes / 60),
+      totalPermissionRequestedHours: payrollRoundHours(totalPermissionRequestedMinutes / 60),
+      totalPermissionCoveredHours: payrollRoundHours(totalPermissionCoveredMinutes / 60),
+      totalMissingHours: deductionEligible ? payrollRoundHours(totalMissingMinutes / 60) : 0,
+      totalExtraHours: payrollRoundHours(totalExtraMinutes / 60),
+      attendanceDays,
+      absentDays,
+      incompleteDays,
+      approvedLeaveDays,
+      approvedAbsenceDays,
+      absenceDeductionOverlapHours: payrollRoundHours(absenceDeductionOverlapHours),
+      attendanceRecordCount: punchRecordCount,
+      attendanceLinkStatus: deductionEligible ? 'confirmed' : 'unlinked',
+      attendancePayrollMode: 'required',
+      attendancePayrollExemptionReason: null,
+      attendanceDeductionEligible: deductionEligible,
+      attendanceDeductionNote: deductionEligible ? null : 'لم يتم تطبيق خصم ساعات تلقائي لأن سجلات الحضور غير مرتبطة أو غير متاحة.',
+      attendanceNotes: ['Canonical Core D1 attendance summary.'],
+    },
+    dailyScheduledHours,
+  };
+}
+
+async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMonth, data = {}, options = {}) {
+  const employment = await canonicalEmployment(db, salonId, employeeId);
+  const attendance = await buildCanonicalAttendanceSummary(db, salonId, employeeId, payrollMonth, employment, options);
+  const summary = attendance.summary;
+  const baseSalaryHalalas = payrollRoundMoney(employment.base_salary_halalas);
+  const allowancesHalalas = payrollRoundMoney(employment.housing_allowance_halalas) + payrollRoundMoney(employment.transportation_allowance_halalas) + payrollRoundMoney(employment.other_allowances_halalas);
+  const workDays = Math.max(0, Number(employment.expected_work_days || 0) || 0);
+  const configuredMonthlyHours = summary.attendancePayrollMode === 'exempt' ? 0 : Math.max(0, Number(employment.expected_work_hours || 0) || 0);
+  const dailyScheduledHours = summary.attendancePayrollMode === 'exempt' ? 0 : (attendance.dailyScheduledHours || Math.max(0, Number(employment.daily_scheduled_hours || 0) || 0));
+  const monthlyHours = configuredMonthlyHours > 0 ? configuredMonthlyHours : (workDays > 0 && dailyScheduledHours > 0 ? Math.round(workDays * dailyScheduledHours * 100) / 100 : 0);
+  const dailyRateHalalas = workDays > 0 ? Math.round(baseSalaryHalalas / workDays) : 0;
+  const hourlyRateHalalas = summary.attendancePayrollMode === 'exempt' ? 0 : (monthlyHours > 0 ? Math.round(baseSalaryHalalas / monthlyHours) : (dailyScheduledHours > 0 ? Math.round(dailyRateHalalas / dailyScheduledHours) : 0));
+  const setupMissing = [];
+  if (!employeeId) setupMissing.push('employeeId');
+  if (baseSalaryHalalas <= 0) setupMissing.push('baseSalary');
+  if (workDays <= 0) setupMissing.push('workDays');
+  if (summary.attendancePayrollMode !== 'exempt' && monthlyHours <= 0) setupMissing.push('monthlyHours');
+  const payrollSetupComplete = setupMissing.length === 0;
+  const absenceDeductionHalalas = payrollSetupComplete ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas) : 0;
+  const absenceCoveredMissingHours = Math.min(Number(summary.totalMissingHours || 0), Number(summary.absenceDeductionOverlapHours || 0));
+  const attendanceMissingHours = Math.max(0, Number(summary.totalMissingHours || 0) - absenceCoveredMissingHours);
+  const missingHoursDeductionHalalas = summary.attendanceDeductionEligible && payrollSetupComplete ? Math.round(attendanceMissingHours * hourlyRateHalalas) : 0;
+  const overtimeEnabled = activeFlag(employment.overtime_enabled);
+  const overtimeMultiplier = Math.max(0, Number(employment.overtime_multiplier || 1.5) || 1.5);
+  const detectedExtraHours = Math.max(0, Number(summary.totalExtraHours || 0) || 0);
+  const financialOvertimeHours = overtimeEnabled && payrollSetupComplete ? detectedExtraHours : 0;
+  const overtimeValueHalalas = Math.round(financialOvertimeHours * hourlyRateHalalas * overtimeMultiplier);
+  const gosiSnapshot = canonicalGosiFromEmployment(employment, payrollMonth);
+  const insuranceDeductionHalalas = payrollRoundMoney(gosiSnapshot?.employee?.deductionHalalas);
+  const employerGosiContributionHalalas = payrollRoundMoney(gosiSnapshot?.employer?.contributionHalalas);
+  return {
+    employment,
+    summary,
+    baseSalaryHalalas,
+    allowancesHalalas,
+    workDays,
+    monthlyHours,
+    dailyScheduledHours,
+    dailyRateHalalas,
+    hourlyRateHalalas,
+    absenceDeductionHalalas,
+    missingHoursDeductionHalalas,
+    detectedExtraHours,
+    overtimeEnabled,
+    financialOvertimeHours,
+    overtimeMultiplier,
+    overtimeValueHalalas,
+    gosiSnapshot,
+    insuranceDeductionHalalas,
+    employerGosiContributionHalalas,
+    payrollSetupComplete,
+    payrollSetupMissing: setupMissing,
+    monthlyHoursSource: summary.attendancePayrollMode === 'exempt' ? 'not_required_attendance_exempt' : configuredMonthlyHours > 0 ? 'configured_monthly_hours' : dailyScheduledHours > 0 ? 'configured_daily_hours' : 'missing',
+  };
+}
 
 function intMoney(value) {
   const number = Number(value ?? 0);
@@ -533,7 +999,69 @@ export async function listPayrollCarryoverAdjustments(db, salonId, query = {}) {
   );
 }
 
-async function reconcilePayrollCarryover(db, salonId, data, actor = {}) {
+async function canonicalRecalculatedNetForLockedEntry(db, salonId, sourceEntry, options = {}) {
+  const sourceAttendance = parseJsonObject(sourceEntry.attendance_summary_json);
+  const employment = await canonicalEmployment(db, salonId, sourceEntry.employee_id);
+  const employmentForPeriod = {
+    ...employment,
+    attendance_payroll_mode:
+      cleanText(sourceAttendance.attendancePayrollMode ?? sourceAttendance.attendance_payroll_mode).toLowerCase() === 'exempt'
+        ? 'exempt'
+        : 'required',
+    attendance_payroll_exemption_reason:
+      optionalText(sourceAttendance.attendancePayrollExemptionReason ?? sourceAttendance.attendance_payroll_exemption_reason) ||
+      optionalText(employment.attendance_payroll_exemption_reason) || null,
+  };
+  const attendance = await buildCanonicalAttendanceSummary(
+    db,
+    salonId,
+    sourceEntry.employee_id,
+    sourceEntry.payroll_month,
+    employmentForPeriod,
+    options
+  );
+  const summary = attendance.summary;
+  const dailyRateHalalas = intMoney(sourceEntry.daily_rate_halalas);
+  const hourlyRateHalalas = intMoney(sourceEntry.hourly_rate_halalas);
+  const absenceDeductionHalalas = payrollRoundMoney(
+    Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas
+  );
+  const missingHours = Math.max(
+    0,
+    payrollRoundHours(
+      Number(summary.totalMissingHours || 0) - Number(summary.absenceDeductionOverlapHours || 0)
+    )
+  );
+  const missingHoursDeductionHalalas = payrollRoundMoney(missingHours * hourlyRateHalalas);
+  const detectedExtraHours = Math.max(0, payrollRoundHours(summary.totalExtraHours || 0));
+  const overtimeEnabled = activeFlag(sourceEntry.overtime_enabled) === 1;
+  const overtimeMultiplier = Math.max(0, numberValue(sourceEntry.overtime_multiplier, 1.5));
+  const financialOvertimeHours = overtimeEnabled ? detectedExtraHours : 0;
+  const overtimeValueHalalas = payrollRoundMoney(
+    financialOvertimeHours * hourlyRateHalalas * overtimeMultiplier
+  );
+  const grossSalaryHalalas =
+    intMoney(sourceEntry.base_salary_halalas) +
+    intMoney(sourceEntry.allowances_halalas) +
+    intMoney(sourceEntry.manual_additions_halalas) +
+    overtimeValueHalalas;
+  const totalDeductionsHalalas =
+    absenceDeductionHalalas +
+    missingHoursDeductionHalalas +
+    intMoney(sourceEntry.insurance_deduction_halalas) +
+    intMoney(sourceEntry.manual_deductions_halalas) +
+    intMoney(sourceEntry.advances_halalas) +
+    intMoney(sourceEntry.other_deductions_halalas);
+  return {
+    netSalaryHalalas: Math.max(0, grossSalaryHalalas - totalDeductionsHalalas),
+    attendanceSummary: summary,
+    absenceDeductionHalalas,
+    missingHoursDeductionHalalas,
+    overtimeValueHalalas,
+  };
+}
+
+async function reconcilePayrollCarryover(db, salonId, data, actor = {}, options = {}) {
   const sourcePayrollEntryId = requiredId(
     data.sourcePayrollEntryId || data.source_payroll_entry_id,
     'sourcePayrollEntryId'
@@ -542,13 +1070,17 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}) {
     data.targetPayrollMonth || data.target_payroll_month,
     'target_month'
   );
-  const recalculatedNetHalalas = intMoney(
-    data.recalculatedNetHalalas ?? data.recalculated_net_halalas
-  );
   const sourceEntry = await getPayrollEntry(db, salonId, sourcePayrollEntryId);
   if (!['approved', 'paid'].includes(cleanText(sourceEntry.status))) {
     throw new AppError(409, 'core_payroll:carryover_source_not_approved');
   }
+  const canonicalRecalculation = await canonicalRecalculatedNetForLockedEntry(
+    db,
+    salonId,
+    sourceEntry,
+    options
+  );
+  const recalculatedNetHalalas = canonicalRecalculation.netSalaryHalalas;
   if (targetPayrollMonth <= cleanText(sourceEntry.payroll_month)) {
     throw new AppError(400, 'core_payroll:carryover_target_must_be_future');
   }
@@ -677,17 +1209,17 @@ async function reconcilePayrollCarryover(db, salonId, data, actor = {}) {
   };
 }
 
-export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, actor = {}) {
+export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, actor = {}, options = {}) {
   const items = Array.isArray(data.items) ? data.items : [];
   if (items.length > 200) throw new AppError(400, 'core_payroll:carryover_batch_too_large');
   const results = [];
   for (const item of items) {
-    results.push(await reconcilePayrollCarryover(db, salonId, item, actor));
+    results.push(await reconcilePayrollCarryover(db, salonId, item, actor, options));
   }
   return { results };
 }
 
-export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
+export async function upsertPayrollEntry(db, salonId, data, actor = {}, options = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const payrollMonth = cleanText(data.payrollMonth || data.payroll_month);
   if (!/^\d{4}-\d{2}$/.test(payrollMonth)) {
@@ -730,18 +1262,28 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     throw new AppError(400, 'core_payroll:manual_advance_not_allowed');
   }
 
-  const obligationCanonical = await canonicalizePayrollObligationDeductions(
-    db,
-    salonId,
-    {
-      ...data,
-      employeeId,
-      payrollMonth,
-      deductions: submittedDeductions,
-    },
-    actor
-  );
-  const canonicalDeductions = obligationCanonical.deductions;
+  const obligationCanonical = options.previewOnly === true
+    ? (() => null)()
+    : await canonicalizePayrollObligationDeductions(
+        db,
+        salonId,
+        {
+          ...data,
+          employeeId,
+          payrollMonth,
+          deductions: submittedDeductions,
+        },
+        actor
+      );
+  const previewObligationDeductions = options.previewOnly === true
+    ? await listPayrollObligationDeductions(db, salonId, { employeeId, payrollMonth })
+    : [];
+  const canonicalDeductions = options.previewOnly === true
+    ? [
+        ...withoutPayrollObligationDeductionItems(submittedDeductions),
+        ...previewObligationDeductions,
+      ]
+    : obligationCanonical.deductions;
   const canonicalManualDeductionsHalalas = deductionItemsTotal(canonicalDeductions);
 
   const canonicalAdvanceRows = await listPayrollAdvanceDeductions(
@@ -753,30 +1295,28 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
     0,
     Number(canonicalAdvanceRows[0]?.amount_halalas || 0)
   );
+  const authority = await buildCanonicalPayrollAuthority(
+    db,
+    salonId,
+    employeeId,
+    payrollMonth,
+    data,
+    options
+  );
+  const submittedAdditions = Array.isArray(data.additions)
+    ? data.additions
+    : parseJsonArray(data.additions_json);
+  const canonicalManualAdditionsHalalas = deductionItemsTotal(submittedAdditions);
   const canonicalGrossSalaryHalalas =
-    intMoney(data.baseSalaryHalalas ?? data.base_salary_halalas) +
-    intMoney(data.allowancesHalalas ?? data.allowances_halalas) +
-    intMoney(data.manualAdditionsHalalas ?? data.manual_additions_halalas) +
-    intMoney(data.overtimeValueHalalas ?? data.overtime_value_halalas);
-  const submittedOtherDeductionsHalalas = intMoney(
-    data.otherDeductionsHalalas ?? data.other_deductions_halalas
-  );
-  const submittedManualDeductionsHalalas = intMoney(
-    data.manualDeductionsHalalas ?? data.manual_deductions_halalas
-  );
-  // `other_deductions_halalas` was historically used as an alias of manual deductions
-  // by the web client. Equal values are one financial amount, not two deductions.
-  const canonicalLegacyOtherDeductionsHalalas =
-    submittedOtherDeductionsHalalas > 0 &&
-    submittedOtherDeductionsHalalas !== submittedManualDeductionsHalalas
-      ? submittedOtherDeductionsHalalas
-      : 0;
+    authority.baseSalaryHalalas +
+    authority.allowancesHalalas +
+    canonicalManualAdditionsHalalas +
+    authority.overtimeValueHalalas;
+  const canonicalLegacyOtherDeductionsHalalas = 0;
   const canonicalTotalDeductionsHalalas =
-    intMoney(data.absenceDeductionHalalas ?? data.absence_deduction_halalas) +
-    intMoney(data.delayDeductionHalalas ?? data.delay_deduction_halalas) +
-    intMoney(data.insuranceDeductionHalalas ?? data.insurance_deduction_halalas) +
-    canonicalLegacyOtherDeductionsHalalas +
-    intMoney(data.missingHoursDeductionHalalas ?? data.missing_hours_deduction_halalas) +
+    authority.absenceDeductionHalalas +
+    authority.missingHoursDeductionHalalas +
+    authority.insuranceDeductionHalalas +
     canonicalManualDeductionsHalalas +
     canonicalAdvanceHalalas;
   const canonicalNetSalaryHalalas = Math.max(
@@ -785,17 +1325,58 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   );
   data = {
     ...data,
+    employeeName: cleanText(authority.employment.employee_name) || data.employeeName || data.employee_name,
+    jobTitle: cleanText(authority.employment.job_title || authority.employment.title) || data.jobTitle || data.job_title,
+    baseSalaryHalalas: authority.baseSalaryHalalas,
+    allowancesHalalas: authority.allowancesHalalas,
+    workDays: authority.workDays,
+    monthlyHours: authority.monthlyHours,
+    dailyRateHalalas: authority.dailyRateHalalas,
+    hourlyRateHalalas: authority.hourlyRateHalalas,
+    absenceDays: Number(authority.summary.approvedAbsenceDays || 0),
+    absenceDeductionHalalas: authority.absenceDeductionHalalas,
+    expectedWorkHours: Number(authority.summary.totalScheduledHours || 0),
+    actualWorkedHours: Number(authority.summary.totalActualWorkedHours || 0),
+    missingHours: Number(authority.summary.totalMissingHours || 0),
+    overtimeHours: authority.financialOvertimeHours,
+    attendanceSummary: authority.summary,
+    detectedExtraHours: authority.detectedExtraHours,
+    overtimeEnabled: Boolean(authority.overtimeEnabled),
+    financialOvertimeHours: authority.financialOvertimeHours,
+    overtimeMultiplier: authority.overtimeMultiplier,
+    overtimeValueHalalas: authority.overtimeValueHalalas,
+    overtimeBonusHalalas: authority.overtimeValueHalalas,
+    delayDeductionHalalas: 0,
+    insuranceDeductionHalalas: authority.insuranceDeductionHalalas,
+    gosiInsuranceCategory: authority.gosiSnapshot?.insuranceCategory || null,
+    gosiPolicyVersion: authority.gosiSnapshot?.policyVersion || null,
+    gosiContributoryWageHalalas: authority.gosiSnapshot?.contributoryWage?.appliedHalalas || 0,
+    employerGosiContributionHalalas: authority.employerGosiContributionHalalas,
+    gosiSnapshot: authority.gosiSnapshot,
+    gosiCalculatedAt: now,
     deductions: canonicalDeductions,
     otherDeductionsHalalas: canonicalLegacyOtherDeductionsHalalas,
+    manualAdditionsHalalas: canonicalManualAdditionsHalalas,
     manualDeductionsHalalas: canonicalManualDeductionsHalalas,
     advancesHalalas: canonicalAdvanceHalalas,
+    missingHoursDeductionHalalas: authority.missingHoursDeductionHalalas,
     totalDeductionsHalalas: canonicalTotalDeductionsHalalas,
     grossSalaryHalalas: canonicalGrossSalaryHalalas,
     netSalaryHalalas: canonicalNetSalaryHalalas,
     finalSalaryHalalas: canonicalNetSalaryHalalas,
+    scheduleSnapshot: {
+      workDays: authority.workDays,
+      monthlyHours: authority.monthlyHours,
+      dailyScheduledHours: authority.dailyScheduledHours,
+      payrollSetupComplete: authority.payrollSetupComplete,
+      payrollSetupMissing: authority.payrollSetupMissing,
+      monthlyHoursSource: authority.monthlyHoursSource,
+      attendancePayrollMode: authority.summary.attendancePayrollMode || 'required',
+      attendancePayrollExemptionReason: authority.summary.attendancePayrollExemptionReason || null,
+    },
   };
 
-  const overtimeEnabled = activeFlag(data.overtimeEnabled ?? data.overtime_enabled ?? existing?.overtime_enabled ?? 0);
+  const overtimeEnabled = activeFlag(data.overtimeEnabled);
   const auditLog = existing?.audit_log_json || jsonText([{ action: 'created', byUid: optionalText(actor.uid) || null, at: now }], []);
   const row = {
     id: existing?.id || requiredId(data.id || generatedId('payroll')),
@@ -883,6 +1464,10 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
       }
     );
   }
+  if (options.previewOnly === true) {
+    return { ...row, preview: true };
+  }
+
   await dbRun(db, `INSERT INTO payroll_entries
     (id, salon_id, period_id, employee_id, payroll_month, employee_name, job_title,
      base_salary_halalas, allowances_halalas, work_days, monthly_hours, daily_rate_halalas,
@@ -971,7 +1556,17 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}) {
   return saved;
 }
 
-export async function updatePayrollEntryAdjustments(db, salonId, id, data, actor = {}) {
+export async function previewPayrollEntry(db, salonId, data, actor = {}, options = {}) {
+  return upsertPayrollEntry(db, salonId, {
+    ...data,
+    skipTargetBonus: true,
+  }, actor, {
+    ...options,
+    previewOnly: true,
+  });
+}
+
+export async function updatePayrollEntryAdjustments(db, salonId, id, data, actor = {}, options = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (lockedStatus(existing.status)) throw new AppError(409, 'core_payroll:locked_entry');
   return upsertPayrollEntry(db, salonId, {
@@ -987,32 +1582,45 @@ export async function updatePayrollEntryAdjustments(db, salonId, id, data, actor
       byEmail: optionalText(actor.email) || null,
       at: nowIso(),
     }),
-  }, actor);
+  }, actor, options);
 }
 
-export async function togglePayrollOvertime(db, salonId, id, data, actor = {}) {
+export async function togglePayrollOvertime(db, salonId, id, data, actor = {}, options = {}) {
   const existing = await getPayrollEntry(db, salonId, id);
   if (lockedStatus(existing.status)) throw new AppError(409, 'core_payroll:locked_entry');
-  return upsertPayrollEntry(db, salonId, {
-    ...data,
+  // Overtime eligibility and multiplier are canonical employee-employment policy.
+  // A payroll-entry toggle would create a second source of truth, so the legacy
+  // endpoint fails closed instead of pretending a browser flag is authoritative.
+  throw new AppError(409, 'core_payroll:overtime_policy_managed_on_employment');
+}
+
+export async function approvePayrollEntry(db, salonId, id, actor = {}, options = {}) {
+  let existing = await getPayrollEntry(db, salonId, id);
+  if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
+  if (cleanText(existing.status) === 'approved') return existing;
+
+  // Approval is a hard authority boundary: refresh every derived financial and
+  // attendance field from canonical Core D1 immediately before locking. Browser
+  // snapshots are never sufficient evidence for approval.
+  existing = await upsertPayrollEntry(db, salonId, {
+    ...existing,
     id: existing.id,
     employeeId: existing.employee_id,
+    employeeName: existing.employee_name,
     payrollMonth: existing.payroll_month,
     periodId: existing.period_id,
     status: existing.status || 'draft',
+    additions: parseJsonArray(existing.additions_json),
+    deductions: parseJsonArray(existing.deductions_json),
+    notes: existing.notes,
     auditLog: parseJsonArray(existing.audit_log_json).concat({
-      action: activeFlag(data.overtimeEnabled ?? data.overtime_enabled) ? 'overtime_enabled' : 'overtime_disabled',
+      action: 'canonical_recalculation_before_approval',
       byUid: optionalText(actor.uid) || null,
       byEmail: optionalText(actor.email) || null,
       at: nowIso(),
     }),
-  }, actor);
-}
+  }, actor, options);
 
-export async function approvePayrollEntry(db, salonId, id, actor = {}) {
-  const existing = await getPayrollEntry(db, salonId, id);
-  if (cleanText(existing.status) === 'paid') throw new AppError(409, 'core_payroll:already_paid');
-  if (cleanText(existing.status) === 'approved') return existing;
   await assertPayrollApprovalReady(
     db,
     salonId,

@@ -33,17 +33,15 @@ import {
   payrollAccrualPeriodStatus,
   payrollEntryCarryoverNetHalalas,
   reconcilePreviousPayrollCarryovers,
-  rebuildPayrollEntryFromEmployeeSettings,
   reopenPayrollEntry,
   savePayrollDrafts,
-  togglePayrollOvertime,
   updatePayrollEntryAdjustments,
+  previewPayrollEntrySnapshot,
   type PayrollEntryView,
 } from "../services/CorePayrollService";
 import type { CoreHrEmployee } from "../types/hrCoreApi";
 import {
   assertManualPayrollItem,
-  calculatePayrollSnapshot,
   formatPayrollMoney,
   isPayrollSnapshotLocked,
   riyalsToHalalas,
@@ -145,41 +143,6 @@ function replaceEntry(list: PayrollEntryView[], next: PayrollEntryView) {
     return replaced;
   }
   return [...list, next];
-}
-
-function rebuildEntry(entry: PayrollEntryView, patch: Partial<PayrollEntryView> = {}) {
-  const merged = { ...entry, ...patch };
-  const snapshot = calculatePayrollSnapshot({
-    employeeId: merged.employeeId,
-    employeeName: merged.employeeName,
-    jobTitle: merged.jobTitle,
-    payrollMonth: merged.payrollMonth,
-    baseSalaryHalalas: merged.baseSalaryHalalas,
-    allowancesHalalas: merged.allowancesHalalas,
-    workDays: merged.workDays,
-    monthlyHours: merged.monthlyHours,
-    dailyScheduledHours: merged.dailyScheduledHours,
-    attendanceSummary: merged.attendanceSummary,
-    gosiSnapshot: merged.gosiSnapshot || null,
-    additions: merged.additions,
-    deductions: merged.deductions,
-    advancesHalalas: merged.advancesHalalas,
-    overtimeEnabled: merged.overtimeEnabled,
-    overtimeMultiplier: merged.overtimeMultiplier,
-    monthlyHoursSource: merged.monthlyHoursSource,
-    status: merged.status as PayrollStatus,
-    notes: merged.notes,
-  });
-  return {
-    ...merged,
-    ...snapshot,
-    id: entry.id,
-    periodId: entry.periodId,
-    saved: entry.saved,
-    approvedAt: entry.approvedAt,
-    paidAt: entry.paidAt,
-    auditLog: entry.auditLog,
-  };
 }
 
 function statusClass(status: string) {
@@ -411,17 +374,10 @@ export default function DashboardPayroll() {
       ]);
       const eligibleEmployeeRows = employeeRows.filter(isEmployeePayrollEligible);
       const excludedEmployeeCount = employeeRows.length - eligibleEmployeeRows.length;
-      const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
-      const hydratedSavedEntries = payroll.entries.map((entry) => {
-        const employee = employeesById.get(entry.employeeId);
-        return employee
-          ? rebuildPayrollEntryFromEmployeeSettings({ entry, employee, year, month })
-          : entry;
-      });
       const previewEntries = await generatePayrollEntries({
         year,
         month,
-        currentEntries: hydratedSavedEntries,
+        currentEntries: payroll.entries,
       });
       const savedCount = previewEntries.filter((entry) => entry.saved).length;
       const previewCount = previewEntries.length - savedCount;
@@ -657,31 +613,6 @@ export default function DashboardPayroll() {
     }
   };
 
-  const handleToggleOvertime = async (entry: PayrollEntryView, checked: boolean) => {
-    if (!canManage || isPayrollSnapshotLocked(entry.status)) return;
-    if (checked && !entry.payrollSetupComplete) {
-      setError("لا يمكن احتساب الأوفر تايم قبل إكمال بيانات الراتب.");
-      return;
-    }
-    if (checked && entry.detectedExtraHours <= 0) {
-      setError("لا توجد ساعات زائدة مكتشفة لهذا السجل.");
-      return;
-    }
-    const next = rebuildEntry(entry, { overtimeEnabled: checked });
-    setEntries((current) => replaceEntry(current, next));
-    if (!entry.id) return;
-    setBusy(`ot:${entry.id}`);
-    try {
-      const saved = await togglePayrollOvertime(next);
-      setEntries((current) => replaceEntry(current, saved));
-      setMessage("تم حفظ خيار احتساب الساعات الإضافية لهذا السجل.");
-    } catch (actionError: any) {
-      setError(String(actionError?.message || "تعذر تحديث خيار الساعات الإضافية."));
-    } finally {
-      setBusy("");
-    }
-  };
-
   const openAdjustment = (entry: PayrollEntryView, mode: AdjustmentMode) => {
     setAdjustment({
       mode,
@@ -707,12 +638,15 @@ export default function DashboardPayroll() {
     };
     try {
       assertManualPayrollItem(item);
-      const next = rebuildEntry(adjustment.entry, {
+      const next = {
+        ...adjustment.entry,
         additions: adjustment.mode === "addition" ? [...adjustment.entry.additions, item] : adjustment.entry.additions,
         deductions: adjustment.mode === "deduction" ? [...adjustment.entry.deductions, item] : adjustment.entry.deductions,
-      });
+      };
       setBusy("adjustment");
-      const saved = next.id ? await updatePayrollEntryAdjustments(next) : next;
+      const saved = next.id
+        ? await updatePayrollEntryAdjustments(next)
+        : await previewPayrollEntrySnapshot(next);
       setEntries((current) => replaceEntry(current, saved));
       setSelectedEntry((current) => (current?.employeeId === saved.employeeId ? saved : current));
       setAdjustment(null);

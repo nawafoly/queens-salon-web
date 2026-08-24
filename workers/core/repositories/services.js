@@ -158,6 +158,14 @@ export async function createService(db, salonId, data) {
       "priceHalalas",
       { min: 0, max: 10_000_000 }
     ),
+    season_price_halalas:
+      data.seasonPriceHalalas === undefined && data.season_price_halalas === undefined
+        ? null
+        : integer(
+            data.seasonPriceHalalas ?? data.season_price_halalas,
+            "seasonPriceHalalas",
+            { min: 0, max: 10_000_000 }
+          ),
     active: activeFlag(data.active, 1),
     image_url: optionalText(data.imageUrl || data.image_url) || null,
     sort_order: integer(
@@ -172,8 +180,8 @@ export async function createService(db, salonId, data) {
   await dbRun(
     db,
     `INSERT INTO services
-      (id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, active, image_url, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, salon_id, name, section_id, category_id, description, duration_minutes, price_halalas, season_price_halalas, active, image_url, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.salon_id,
@@ -183,6 +191,7 @@ export async function createService(db, salonId, data) {
       row.description,
       row.duration_minutes,
       row.price_halalas,
+      row.season_price_halalas,
       row.active,
       row.image_url,
       row.sort_order,
@@ -229,6 +238,17 @@ export async function patchService(db, salonId, id, data) {
             "priceHalalas",
             { min: 0, max: 10_000_000 }
           ),
+    season_price_halalas:
+      data.seasonPriceHalalas === undefined &&
+      data.season_price_halalas === undefined
+        ? undefined
+        : data.seasonPriceHalalas === null || data.season_price_halalas === null
+          ? null
+          : integer(
+              data.seasonPriceHalalas ?? data.season_price_halalas,
+              "seasonPriceHalalas",
+              { min: 0, max: 10_000_000 }
+            ),
     active:
       data.active === undefined
         ? undefined
