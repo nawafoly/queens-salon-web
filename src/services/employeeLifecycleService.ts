@@ -1,10 +1,9 @@
 import { CoreHrService } from "./CoreHrService";
-import { CoreStaffService } from "./CoreStaffService";
 
 export type ArchiveEmployeeInput = {
   employeeId: string;
-  linkedUids?: Array<string | null | undefined>;
-  deletedBy?: string | null;
+  endDate: string;
+  reason: string;
 };
 
 function clean(value: unknown) {
@@ -13,22 +12,13 @@ function clean(value: unknown) {
 
 export async function archiveEmployee(input: ArchiveEmployeeInput) {
   const employeeId = clean(input.employeeId);
-  if (!employeeId) throw new Error("معرّف الموظفة مفقود؛ لم تتم الأرشفة.");
+  const endDate = clean(input.endDate);
+  const reason = clean(input.reason);
+  if (!employeeId) throw new Error("معرّف الموظفة مفقود؛ لم يتم إنهاء الخدمة.");
+  if (!endDate) throw new Error("تاريخ آخر يوم عمل مطلوب.");
+  if (!reason) throw new Error("سبب إنهاء الخدمة مطلوب.");
 
-  // HR and booking staff are both canonical Core D1 projections. No Firestore
-  // mirror is written; failures surface so a half-archived employee is visible.
-  await CoreHrService.saveEmployee({
-    id: employeeId,
-    status: "deleted",
-    employment: { employmentStatus: "deleted" },
-  });
-  try {
-    await CoreStaffService.update(employeeId, {
-      active: false,
-      employmentStatus: "deleted",
-      showOnBooking: false,
-    });
-  } catch (error: any) {
-    if (Number(error?.status) !== 404 && !String(error?.message || "").includes("not_found")) throw error;
-  }
+  // The browser sends lifecycle intent only. Core owns account/link revocation,
+  // staff projection, schedule closure, booking blockers and audit logging.
+  return CoreHrService.offboardEmployee(employeeId, { endDate, reason });
 }

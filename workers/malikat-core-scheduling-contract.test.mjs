@@ -1184,7 +1184,7 @@ test("Partner Portal operational day is a Malikat Core RPC projection only", () 
 
   assert.match(
     shiftControl,
-    /const \[\s*exceptions,\s*weeklySchedules,\s*assignments,?\s*\][\s\S]*await Promise\.all\(/
+    /const \[\s*exceptions,\s*weeklySchedules,\s*assignments,\s*employmentRows,?\s*\]\s*=\s*await Promise\.all\(/
   );
 
   assert.match(

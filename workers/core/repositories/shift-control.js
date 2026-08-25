@@ -1509,9 +1509,76 @@ export async function syncWorkingHourScheduleExceptions(
   };
 }
 
+function employeeOperationalOnDate(row, date) {
+  // Canonical staff resources predate the HR projection and remain a supported
+  // booking resource when no HR row exists. Absence of an HR projection is not
+  // evidence of inactivity; once HR lifecycle evidence exists it is authoritative.
+  if (!row) return true;
+  const hasProfile =
+    Number(row.has_profile) === 1 ||
+    cleanText(row.profile_status) !== "";
+  const hasEmployment =
+    Number(row.has_employment) === 1 ||
+    cleanText(row.employment_status) !== "" ||
+    cleanText(row.end_date) !== "";
+
+  if (!hasProfile && !hasEmployment) return true;
+  if (!hasProfile || !hasEmployment) return false;
+
+  const profileStatus = cleanText(row.profile_status).toLowerCase();
+  const employmentStatus = cleanText(row.employment_status).toLowerCase();
+  return profileStatus === 'active' &&
+    employmentStatus === 'active' &&
+    (!cleanText(row.end_date) || date <= cleanText(row.end_date));
+}
+
+function inactiveShiftResult(employeeId, date) {
+  return {
+    source: 'none',
+    date,
+    employee_id: employeeId,
+    operational: false,
+    blocked_reason: 'employee_not_active',
+  };
+}
+
 export async function resolveEmployeeShift(db, salonId, employeeIdValue, dateValue) {
   const employeeId = requiredId(employeeIdValue, 'employeeId');
   const date = dateKey(dateValue, 'date');
+  const employeeState = await dbFirst(
+    db,
+    `SELECT employee_id,
+            MAX(has_profile) AS has_profile,
+            MAX(has_employment) AS has_employment,
+            MAX(profile_status) AS profile_status,
+            MAX(employment_status) AS employment_status,
+            MAX(end_date) AS end_date
+       FROM (
+         SELECT p.id AS employee_id,
+                1 AS has_profile,
+                0 AS has_employment,
+                p.status AS profile_status,
+                NULL AS employment_status,
+                NULL AS end_date
+           FROM employee_profiles p
+          WHERE p.salon_id=? AND p.id=?
+         UNION ALL
+         SELECT e.employee_id AS employee_id,
+                0 AS has_profile,
+                1 AS has_employment,
+                NULL AS profile_status,
+                e.employment_status AS employment_status,
+                e.end_date AS end_date
+           FROM employee_employment e
+          WHERE e.salon_id=? AND e.employee_id=?
+       ) lifecycle
+      GROUP BY employee_id
+      LIMIT 1`,
+    [salonId, employeeId, salonId, employeeId]
+  );
+  if (!employeeOperationalOnDate(employeeState, date)) {
+    return inactiveShiftResult(employeeId, date);
+  }
   const exception = await dbFirst(db, `SELECT e.*, t.name AS shift_name, t.start_time AS template_start_time,
     t.end_time AS template_end_time, t.crosses_midnight, t.break_minutes, t.late_grace_minutes,
     0 AS early_leave_grace_minutes, t.attendance_lock_enabled, t.attendance_lock_after_minutes,
@@ -1939,6 +2006,7 @@ export async function resolveEmployeeShiftsBatch(
     exceptions,
     weeklySchedules,
     assignments,
+    employmentRows,
   ] =
     await Promise.all([
       dbAll(
@@ -2046,6 +2114,36 @@ export async function resolveEmployeeShiftsBatch(
           dateFrom,
         ]
       ),
+      dbAll(
+        db,
+        `SELECT employee_id,
+                MAX(has_profile) AS has_profile,
+                MAX(has_employment) AS has_employment,
+                MAX(profile_status) AS profile_status,
+                MAX(employment_status) AS employment_status,
+                MAX(end_date) AS end_date
+           FROM (
+             SELECT p.id AS employee_id,
+                    1 AS has_profile,
+                    0 AS has_employment,
+                    p.status AS profile_status,
+                    NULL AS employment_status,
+                    NULL AS end_date
+               FROM employee_profiles p
+              WHERE p.salon_id=? AND p.id IN (${marks})
+             UNION ALL
+             SELECT e.employee_id AS employee_id,
+                    0 AS has_profile,
+                    1 AS has_employment,
+                    NULL AS profile_status,
+                    e.employment_status AS employment_status,
+                    e.end_date AS end_date
+               FROM employee_employment e
+              WHERE e.salon_id=? AND e.employee_id IN (${marks})
+           ) lifecycle
+          GROUP BY employee_id`,
+        [salonId, ...employeeIds, salonId, ...employeeIds]
+      ),
     ]);
 
   const exceptionByEmployee =
@@ -2062,6 +2160,9 @@ export async function resolveEmployeeShiftsBatch(
     rowsByEmployeeId(
       assignments
     );
+  const employmentByEmployee = new Map(
+    employmentRows.map((row) => [cleanText(row.employee_id), row])
+  );
 
   const rows = [];
 
@@ -2097,6 +2198,12 @@ export async function resolveEmployeeShiftsBatch(
           dateFrom,
           offset
         );
+
+      const employeeState = employmentByEmployee.get(employeeId) || null;
+      if (!employeeOperationalOnDate(employeeState, date)) {
+        rows.push(inactiveShiftResult(employeeId, date));
+        continue;
+      }
 
       rows.push(
         resolveEmployeeShiftFromBatchFacts(

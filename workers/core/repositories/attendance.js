@@ -114,6 +114,25 @@ export async function recordAttendance(db, salonId, data, actor = {}) {
   const dateKey = validDate(data.date || data.dateKey || data.date_key || recordedAt.slice(0, 10), 'date');
   const idempotencyKey = optionalText(data.idempotencyKey || data.idempotency_key) || null;
 
+  const employment = await dbFirst(
+    db,
+    `SELECT p.status AS profile_status, e.employment_status, e.end_date
+       FROM employee_profiles p
+       LEFT JOIN employee_employment e
+         ON e.salon_id = p.salon_id AND e.employee_id = p.id
+      WHERE p.salon_id = ? AND p.id = ?
+      LIMIT 1`,
+    [salonId, employeeId]
+  );
+  if (
+    !employment ||
+    cleanText(employment.profile_status).toLowerCase() !== 'active' ||
+    cleanText(employment.employment_status).toLowerCase() !== 'active' ||
+    (cleanText(employment.end_date) && dateKey > cleanText(employment.end_date))
+  ) {
+    throw new AppError(409, 'core_attendance:employee_not_active');
+  }
+
   if (idempotencyKey) {
     const existing = await dbFirst(
       db,

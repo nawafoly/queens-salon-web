@@ -94,6 +94,7 @@ import {
   replaceHrSchedules,
   upsertHrEmployee,
 } from './repositories/hr-employees.js';
+import { offboardHrEmployee } from './repositories/employee-offboarding.js';
 import {
   getAttendanceState,
   listAttendance,
@@ -426,6 +427,10 @@ function match(url, method) {
 
   if (path === "/api/core/hr/employee-profile/mine" && ["GET", "PATCH"].includes(method)) {
     return { name: "employee-profile:mine" };
+  }
+  const employeeOffboard = /^\/api\/core\/hr\/employees\/([^/]+)\/offboard$/.exec(path);
+  if (employeeOffboard && method === "POST") {
+    return { name: "hr-employee:offboard", id: employeeOffboard[1] };
   }
 
   if (path === "/api/core/hr/employee-request-payroll-impact/mine" && method === "GET") return { name: "employee-request:payroll-impact-mine" };
@@ -1289,6 +1294,10 @@ async function dispatch(ctx, route, method, body, query, env) {
       );
     }
 
+    case "hr-employee:offboard":
+      requirePermission(ctx, "employees.delete");
+      return offboardHrEmployee(db, ctx.salonId, route.id, body, actorInfo);
+
     case "hr-employees":
       if (method === "GET") {
         requireAnyPermission(ctx, [
@@ -1998,6 +2007,7 @@ export default {
         ok: false,
         error: normalized.code,
         message: normalized.message,
+        ...(normalized.details !== undefined ? { details: normalized.details } : {}),
       });
     }
   },

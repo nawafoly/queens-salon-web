@@ -29,8 +29,9 @@ assert.equal(nonSaudi.employer.occupationalHazardContributionHalalas, 5000);
 
 assert.match(math, /advancesHalalas\s*\+\s*insuranceDeductionHalalas/);
 assert.doesNotMatch(math, /grossSalaryHalalas\s*-\s*employerGosiContributionHalalas/);
-assert.match(service, /function employeeGosiSnapshot/);
-assert.match(service, /insuranceDeductionHalalas:\s*\n?\s*entry\.insuranceDeductionHalalas/);
+assert.match(service, /const gosiSnapshot = readJson<GosiSnapshot \| null>\(\s*row\.gosiSnapshotJson/);
+assert.match(service, /insuranceDeductionHalalas:\s*numberValue\([\s\S]*row\.insuranceDeductionHalalas\s*\?\?[\s\S]*gosiSnapshot\?\.employee\?\.deductionHalalas/);
+assert.match(service, /employerGosiContributionHalalas:\s*numberValue\([\s\S]*row\.employerGosiContributionHalalas\s*\?\?[\s\S]*gosiSnapshot\?\.employer\?\.contributionHalalas/);
 assert.match(repo, /gosi_employee_deduction_mismatch/);
 assert.match(repo, /employer_gosi_contribution_halalas/);
 assert.match(employeeRepo, /social_insurance_category/);

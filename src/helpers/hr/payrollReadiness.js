@@ -124,7 +124,6 @@ export function payrollAttendanceReadiness(summary = {}) {
     incompleteDays: 0,
   };
 }
-
 function objectValue(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -186,5 +185,93 @@ export function payrollApprovalReadiness(entry = {}) {
     code: "",
     message: "",
     stage: "ready",
+  };
+}
+
+/**
+ * Stage 11 canonical readiness classification.
+ * This mirrors Core payroll precedence; it does not calculate money.
+ * INACTIVE has absolute precedence. EXEMPT means only that the attendance gate
+ * is exempt and documented; any salary/setup/GOSI blocker still yields BLOCKED.
+ */
+export function classifyStage11PayrollReadiness(input = {}) {
+  const source = objectValue(input);
+  const employment = objectValue(source.employment ?? source);
+  const profileStatus = cleanText(source.profileStatus ?? source.profile_status ?? 'active').toLowerCase();
+  const employmentStatus = cleanText(
+    employment.employmentStatus ?? employment.employment_status ?? source.employmentStatus ?? source.employment_status
+  ).toLowerCase();
+  const mode = attendancePayrollMode(employment);
+  const blockers = [];
+  const add = (stage, code, field) => blockers.push({ stage, code, ...(field ? { field } : {}) });
+
+  if (profileStatus !== 'active' || employmentStatus !== 'active') {
+    return {
+      classification: 'INACTIVE',
+      attendancePayrollMode: mode,
+      ready: false,
+      code: 'core_payroll:employee_not_active',
+      blockers: [{ stage: 'employment', code: 'core_payroll:employee_not_active' }],
+    };
+  }
+
+  const baseSalary = Number(employment.baseSalaryHalalas ?? employment.base_salary_halalas ?? 0);
+  const workDays = Number(employment.expectedWorkDays ?? employment.expected_work_days ?? 0);
+  const monthlyHours = Number(employment.expectedWorkHours ?? employment.expected_work_hours ?? 0);
+  const dailyHours = Number(employment.dailyScheduledHours ?? employment.daily_scheduled_hours ?? 0);
+  if (!Number.isFinite(baseSalary) || baseSalary <= 0) {
+    add('salary', 'core_payroll:employee_not_payroll_eligible', 'baseSalary');
+  }
+  if (!Number.isFinite(workDays) || workDays <= 0) {
+    add('setup', 'core_payroll:setup_incomplete', 'workDays');
+  }
+  if (mode !== 'exempt' && (!(monthlyHours > 0) && !(workDays > 0 && dailyHours > 0))) {
+    add('setup', 'core_payroll:setup_incomplete', 'monthlyHours');
+  }
+
+  const category = cleanText(
+    employment.socialInsuranceCategory ?? employment.social_insurance_category
+  ).toLowerCase();
+  const effectiveFrom = cleanText(
+    employment.socialInsuranceEffectiveFrom ?? employment.social_insurance_effective_from
+  );
+  if (!category) {
+    add('gosi', 'core_payroll:gosi_classification_required', 'socialInsuranceCategory');
+  } else if (category === 'gcc') {
+    add('gosi', 'core_payroll:gosi_gcc_extension_policy_required', 'socialInsuranceCategory');
+  } else if (!effectiveFrom) {
+    add('gosi', 'core_payroll:gosi_effective_date_required', 'socialInsuranceEffectiveFrom');
+  } else {
+    const payrollMonth = cleanText(source.payrollMonth ?? source.payroll_month);
+    const policyDate = /^\d{4}-\d{2}$/.test(payrollMonth) ? `${payrollMonth}-28` : '';
+    if (policyDate && effectiveFrom > policyDate) {
+      add('gosi', 'core_payroll:gosi_not_effective_for_payroll_period', 'socialInsuranceEffectiveFrom');
+    }
+  }
+
+  const attendance = payrollAttendanceReadiness(
+    objectValue(source.attendanceSummary ?? source.attendance_summary ?? employment)
+  );
+  if (!attendance.ready) {
+    add('attendance', `core_payroll:${attendance.code}`);
+  }
+
+  const gccBlocked = blockers.some((item) => item.code === 'core_payroll:gosi_gcc_extension_policy_required');
+  if (blockers.length) {
+    return {
+      classification: gccBlocked ? 'GCC_POLICY_BLOCKED' : 'BLOCKED',
+      attendancePayrollMode: mode,
+      ready: false,
+      code: blockers[0].code,
+      blockers,
+    };
+  }
+
+  return {
+    classification: mode === 'exempt' ? 'EXEMPT' : 'READY',
+    attendancePayrollMode: mode,
+    ready: true,
+    code: '',
+    blockers: [],
   };
 }

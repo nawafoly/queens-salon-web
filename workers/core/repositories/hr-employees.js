@@ -17,6 +17,7 @@ import {
   rowNotFound,
   validDate,
 } from '../d1.js';
+import { AppError } from '../errors.js';
 
 function moneyHalalas(value, field) {
   if (value === undefined || value === null || value === '') return 0;
@@ -470,6 +471,21 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     updated_at: now,
   };
 
+  if (employment.social_insurance_effective_from) {
+    employment.social_insurance_effective_from = validDate(
+      employment.social_insurance_effective_from,
+      'socialInsuranceEffectiveFrom'
+    );
+  }
+  if (
+    profile.status === 'active' &&
+    employment.employment_status === 'active' &&
+    employment.social_insurance_category &&
+    !employment.social_insurance_effective_from
+  ) {
+    throw new AppError(409, 'core_hr:gosi_effective_date_required');
+  }
+
   const bookingStaffInput = data.bookingStaff || data.booking_staff || data.staff || {};
   const staff = {
     id,
@@ -518,6 +534,41 @@ export async function upsertHrEmployee(db, salonId, data, actor = {}) {
     created_at: existingStaff?.created_at || now,
     updated_at: now,
   };
+
+  const offboardingFence = await dbFirst(
+    db,
+    `SELECT status, end_date
+       FROM employee_offboarding_fences
+      WHERE salon_id = ? AND employee_id = ? AND status = 'offboarded'
+      LIMIT 1`,
+    [salonId, id]
+  );
+  if (offboardingFence) {
+    const targetOperational =
+      cleanText(profile.status).toLowerCase() === 'active' ||
+      cleanText(employment.employment_status).toLowerCase() === 'active' ||
+      Number(staff.active) === 1 ||
+      Number(staff.show_on_booking) === 1 ||
+      cleanText(staff.employment_status).toLowerCase() === 'active';
+
+    if (targetOperational) {
+      throw new AppError(409, 'core_hr:employee_rehire_requires_lifecycle_operation');
+    }
+
+    const startDateChanged = Boolean(
+      existingEmployment &&
+      cleanText(employment.start_date) !== cleanText(existingEmployment.start_date)
+    );
+    const endDateChanged =
+      cleanText(employment.end_date) !== cleanText(offboardingFence.end_date);
+    if (startDateChanged || endDateChanged) {
+      throw new AppError(
+        409,
+        'core_hr:offboarding_lifecycle_fields_locked',
+        'Offboarded employment lifecycle dates require a dedicated lifecycle operation'
+      );
+    }
+  }
 
   await dbBatch(db, [
     {

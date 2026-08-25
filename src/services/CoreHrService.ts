@@ -157,6 +157,14 @@ export const CoreHrService = {
     const row = await coreApiRequest<Record<string, unknown>>(id ? `/api/core/hr/employees/${encodeURIComponent(id)}` : "/api/core/hr/employees", { method: id ? "PATCH" : "POST", body: hrInput });
     return camel<CoreHrEmployee>(row);
   },
+  async offboardEmployee(employeeId: string, input: { endDate: string; reason: string }) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/employees/${encodeURIComponent(employeeId)}/offboard`,
+      { method: "POST", body: input }
+    );
+    invalidateResolvedShiftRangeCache(employeeId);
+    return camel<Record<string, unknown>>(row);
+  },
   async replaceSchedules(employeeId: string, schedules: CoreHrSchedule[]) {
     const row = await coreApiRequest<Record<string, unknown>>(`/api/core/hr/employees/${encodeURIComponent(employeeId)}/schedules`, { method: "PUT", body: { schedules } });
     invalidateResolvedShiftRangeCache(employeeId);

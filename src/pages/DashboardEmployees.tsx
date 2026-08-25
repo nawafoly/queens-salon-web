@@ -1757,6 +1757,11 @@ export default function DashboardEmployees() {
   const [leaveModalDefaultType, setLeaveModalDefaultType] = useState("emergency");
   const [leaveModalEmployeeName, setLeaveModalEmployeeName] = useState("");
   const [employmentEndDate, setEmploymentEndDate] = useState("");
+  const [offboardingEmployee, setOffboardingEmployee] = useState<StaffPublicUi | null>(null);
+  const [offboardingEndDate, setOffboardingEndDate] = useState("");
+  const [offboardingReason, setOffboardingReason] = useState("");
+  const [offboardingError, setOffboardingError] = useState("");
+  const [offboardingBookingBlocker, setOffboardingBookingBlocker] = useState<{ kind: "future" | "history"; count: number; bookingIds: string[] } | null>(null);
   const [attendanceZones, setAttendanceZones] = useState<WorkZone[]>([]);
   const [attendanceZonesLoading, setAttendanceZonesLoading] = useState(false);
   const [selectedAttendanceZoneId, setSelectedAttendanceZoneId] = useState("");
@@ -5820,18 +5825,46 @@ export default function DashboardEmployees() {
   const remove = async (id: string) => {
     if (!ensureCanDelete()) return;
     const target = list.find((row) => row.id === id);
-    if (!confirm(`هل تريد أرشفة الموظفة "${target?.name || id}"؟\nستختفي من الحجوزات الجديدة مع بقاء الحجوزات التاريخية.`)) return;
+    if (!target) return;
+    setOffboardingEmployee(target);
+    setOffboardingEndDate("");
+    setOffboardingReason("");
+    setOffboardingError("");
+    setOffboardingBookingBlocker(null);
+  };
+
+  const closeOffboardingModal = () => {
+    if (saving) return;
+    setOffboardingEmployee(null);
+    setOffboardingEndDate("");
+    setOffboardingReason("");
+    setOffboardingError("");
+    setOffboardingBookingBlocker(null);
+  };
+
+  const submitOffboarding = async () => {
+    const target = offboardingEmployee;
+    if (!target) return;
+    if (!offboardingEndDate) {
+      setOffboardingError("تاريخ آخر يوم عمل مطلوب.");
+      return;
+    }
+    if (!offboardingReason.trim()) {
+      setOffboardingError("سبب إنهاء الخدمة مطلوب.");
+      return;
+    }
     setSaving(true);
     setErrorMsg("");
-    const previousList = list;
+    setOffboardingError("");
+    setOffboardingBookingBlocker(null);
     try {
-      setList((rows) => rows.filter((row) => row.id !== id));
       await archiveEmployee({
-        employeeId: id,
-        linkedUids: [target?.linkedUid, target?.uid, target?.linkedUserId, target?.employeeUid],
-        deletedBy: authUser?.uid,
+        employeeId: target.id,
+        endDate: offboardingEndDate,
+        reason: offboardingReason.trim(),
       });
-      if (selectedEmployeeId === id) {
+      setList((rows) => rows.filter((row) => row.id !== target.id));
+      if (selectedEmployeeId === target.id) {
         setSelectedEmployeeId(null);
         setEditId(null);
         setIsOpen(false);
@@ -5839,13 +5872,33 @@ export default function DashboardEmployees() {
       }
       setBookingStats((stats) => {
         const next = { ...stats };
-        delete next[id];
+        delete next[target.id];
         return next;
       });
       window.dispatchEvent(new Event("queens:staff-updated"));
-    } catch (e) {
-      setList(previousList);
-      setErrorMsg(toFirestoreErrorMessage(e, "تعذر حذف الموظفة."));
+      setOffboardingEmployee(null);
+    } catch (e: any) {
+      const code = String(e?.code || "");
+      const details = e?.details && typeof e.details === "object" ? e.details : {};
+      const bookingDetails = {
+        count: Number((details as any).count || 0),
+        bookingIds: Array.isArray((details as any).bookingIds) ? (details as any).bookingIds.map(String) : [],
+      };
+      if (code === "core_hr:offboarding_future_bookings_require_reassignment") {
+        setOffboardingBookingBlocker({ kind: "future", ...bookingDetails });
+        setOffboardingError("لا يمكن إنهاء الخدمة قبل إعادة تعيين الحجوزات التشغيلية القادمة المرتبطة بالموظفة.");
+      } else if (code === "core_hr:offboarding_post_end_date_activity_conflict") {
+        setOffboardingBookingBlocker({ kind: "history", ...bookingDetails });
+        setOffboardingError("تاريخ آخر يوم عمل يتعارض مع نشاط أو حجز نهائي مسجل بعد هذا التاريخ. يلزم مراجعة الدليل التشغيلي قبل المتابعة.");
+      } else if (code === "core_hr:offboarding_future_end_date_not_supported") {
+        setOffboardingError("إنهاء الخدمة الفوري لا يقبل تاريخًا مستقبليًا. استخدم تاريخ اليوم أو تاريخًا سابقًا مثبتًا.");
+      } else if (code === "core_hr:offboarding_privileged_account_requires_manual_review") {
+        setOffboardingError("الحساب المرتبط يملك صلاحيات إدارية/مميزة ويحتاج مراجعة وصول مستقلة قبل إنهاء الخدمة.");
+      } else if (code === "core_hr:offboarding_account_identity_conflict") {
+        setOffboardingError("هوية الحساب مرتبطة حاليًا بموظف آخر؛ تم إيقاف العملية لحماية الحساب من التعطيل الخاطئ.");
+      } else {
+        setOffboardingError(toFirestoreErrorMessage(e, "تعذر إنهاء خدمة الموظفة."));
+      }
     } finally {
       setSaving(false);
     }
@@ -9099,6 +9152,70 @@ export default function DashboardEmployees() {
                   void cancelLeaveForAttendanceDay(dateKey);
                 }}
               />
+              <DashboardModalV2
+                open={Boolean(offboardingEmployee)}
+                onClose={closeOffboardingModal}
+                title="إنهاء خدمة الموظفة"
+                description={offboardingEmployee ? `إنهاء خدمة ${offboardingEmployee.name || offboardingEmployee.id}` : ""}
+                eyebrow="Employee Offboarding"
+                size="md"
+                tone="danger"
+                closeOnBackdrop={!saving}
+                closeOnEscape={!saving}
+                footer={
+                  <>
+                    <button type="button" className="dsv2-btn dsv2-btn--secondary" onClick={closeOffboardingModal} disabled={saving}>
+                      إلغاء
+                    </button>
+                    <button type="button" className="dsv2-btn dsv2-btn--danger" onClick={() => void submitOffboarding()} disabled={saving}>
+                      {saving ? "جارٍ إنهاء الخدمة..." : "تأكيد إنهاء الخدمة"}
+                    </button>
+                  </>
+                }
+              >
+                <div className="dsv2-ew-dialog-grid dsv2-ew-dialog-grid--2">
+                  <DashboardFieldV2 id="employee-offboarding-end-date" label="آخر يوم عمل" required>
+                    <input
+                      id="employee-offboarding-end-date"
+                      className="dsv2-input"
+                      type="date"
+                      max={todayIso()}
+                      value={offboardingEndDate}
+                      onChange={(event) => setOffboardingEndDate(event.target.value)}
+                      disabled={saving}
+                    />
+                  </DashboardFieldV2>
+                  <DashboardFieldV2
+                    id="employee-offboarding-reason"
+                    label="سبب إنهاء الخدمة"
+                    required
+                    className="dsv2-ew-form-wide"
+                    hint="لن يُنشئ النظام تاريخًا أو سببًا تلقائيًا، ولن يعيد تعيين الحجوزات تلقائيًا."
+                  >
+                    <textarea
+                      id="employee-offboarding-reason"
+                      className="dsv2-textarea"
+                      value={offboardingReason}
+                      onChange={(event) => setOffboardingReason(event.target.value)}
+                      disabled={saving}
+                      rows={4}
+                    />
+                  </DashboardFieldV2>
+                  {offboardingError ? <p className="dsv2-ew-form-wide dsv2-field__error">{offboardingError}</p> : null}
+                  {offboardingBookingBlocker ? (
+                    <div className="dsv2-ew-form-wide dsv2-alert dsv2-alert--danger">
+                      <strong>
+                        {offboardingBookingBlocker.kind === "future"
+                          ? `توجد ${offboardingBookingBlocker.count} حجوزات تشغيلية قادمة تحتاج إعادة تعيين.`
+                          : `توجد ${offboardingBookingBlocker.count} حجوزات/أنشطة بعد تاريخ النهاية وتحتاج مراجعة يدوية.`}
+                      </strong>
+                      {offboardingBookingBlocker.bookingIds.length ? (
+                        <p>المراجع: {offboardingBookingBlocker.bookingIds.join("، ")}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </DashboardModalV2>
               <DashboardModalV2
                 open={
                   attendanceEditOpen &&

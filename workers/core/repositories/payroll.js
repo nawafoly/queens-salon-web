@@ -221,7 +221,10 @@ function canonicalGosiFromEmployment(employment, payrollMonth) {
   }
   const payrollDate = `${payrollMonth}-28`;
   const effectiveFrom = cleanText(employment.social_insurance_effective_from);
-  if (effectiveFrom && effectiveFrom > payrollDate) {
+  if (!effectiveFrom) {
+    throw new AppError(409, 'core_payroll:gosi_effective_date_required');
+  }
+  if (effectiveFrom > payrollDate) {
     throw new AppError(409, 'core_payroll:gosi_not_effective_for_payroll_period');
   }
   try {
@@ -702,17 +705,6 @@ async function assertPayrollApprovalReady(
       ? `${cleanText(row.payroll_month)}-28`
       : '';
 
-    if (
-      canonicalInsuranceEffectiveFrom &&
-      payrollPolicyDate &&
-      canonicalInsuranceEffectiveFrom > payrollPolicyDate
-    ) {
-      throw new AppError(
-        409,
-        'core_payroll:gosi_not_effective_for_payroll_period'
-      );
-    }
-
     if (!canonicalInsuranceCategory) {
       throw new AppError(
         409,
@@ -723,6 +715,21 @@ async function assertPayrollApprovalReady(
       throw new AppError(
         409,
         'core_payroll:gosi_gcc_extension_policy_required'
+      );
+    }
+    if (!canonicalInsuranceEffectiveFrom) {
+      throw new AppError(
+        409,
+        'core_payroll:gosi_effective_date_required'
+      );
+    }
+    if (
+      payrollPolicyDate &&
+      canonicalInsuranceEffectiveFrom > payrollPolicyDate
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:gosi_not_effective_for_payroll_period'
       );
     }
 

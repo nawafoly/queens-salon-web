@@ -105,6 +105,44 @@ function resolveAccountStatus(row) {
   return 'pending';
 }
 
+const EMPLOYEE_OFFBOARDING_AUTO_DISABLE_ROLES = new Set(['staff', 'pending']);
+const EMPLOYEE_OFFBOARDING_MANUAL_REVIEW_ROLES = new Set([
+  'owner',
+  'admin',
+  'hr',
+  'accountant',
+  'reception',
+]);
+
+/**
+ * Account lifecycle policy used by the Core-owned employee offboarding use-case.
+ * Reuses canonical account role/status normalization and deliberately does not
+ * grant the browser account-management authority.
+ */
+export function planEmployeeOffboardingAccountAccess(account) {
+  const role = normalizeAccountRole(account?.primary_role, 'guest');
+  const status = resolveAccountStatus(account);
+  if (status === 'disabled' || status === 'deleted') {
+    return { mode: 'preserve', role, status };
+  }
+  if (EMPLOYEE_OFFBOARDING_AUTO_DISABLE_ROLES.has(role) && ['active', 'pending'].includes(status)) {
+    return { mode: 'disable', role, status };
+  }
+  if (EMPLOYEE_OFFBOARDING_MANUAL_REVIEW_ROLES.has(role) || ['active', 'pending'].includes(status)) {
+    return { mode: 'manual_review', role, status };
+  }
+  return { mode: 'preserve', role, status };
+}
+
+export function employeeOffboardingAccountDisableStatement(salonId, accountId, now) {
+  return {
+    sql: `UPDATE app_users
+             SET status = 'disabled', updated_at = ?
+           WHERE salon_id = ? AND id = ? AND status IN ('active','pending')`,
+    params: [now, salonId, requiredId(accountId, 'accountId')],
+  };
+}
+
 function boolInt(value, fallback = 0) {
   if (value === undefined || value === null || value === '') return fallback ? 1 : 0;
   return value === true || value === 1 || value === '1' || value === 'true' ? 1 : 0;

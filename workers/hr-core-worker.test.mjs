@@ -130,6 +130,7 @@ async function setup() {
     '0031_workforce_communications_recruitment.sql',
     '0032_service_season_price.sql',
     '0033_app_user_profile_photo.sql',
+    '0034_employee_offboarding_invariants.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -179,9 +180,9 @@ async function seedNonSaudiPayrollEmployment(db, employeeId, baseSalaryHalalas) 
   await db.prepare(`INSERT INTO employee_employment
     (salon_id, employee_id, base_salary_halalas, expected_work_days, expected_work_hours,
      daily_scheduled_hours, attendance_payroll_mode, attendance_payroll_exemption_reason,
-     social_insurance_category, gosi_wage_mode, created_at, updated_at)
+     social_insurance_category, social_insurance_effective_from, gosi_wage_mode, created_at, updated_at)
     VALUES ('main', ?, ?, 30, 240, 8, 'exempt', 'Payroll settlement fixture isolates non-attendance behavior',
-            'non_saudi', 'derived', ?, ?)
+            'non_saudi', '2026-01-01', 'derived', ?, ?)
     ON CONFLICT(salon_id, employee_id) DO UPDATE SET
       base_salary_halalas = excluded.base_salary_halalas,
       expected_work_days = excluded.expected_work_days,
@@ -190,6 +191,7 @@ async function seedNonSaudiPayrollEmployment(db, employeeId, baseSalaryHalalas) 
       attendance_payroll_mode = excluded.attendance_payroll_mode,
       attendance_payroll_exemption_reason = excluded.attendance_payroll_exemption_reason,
       social_insurance_category = excluded.social_insurance_category,
+      social_insurance_effective_from = excluded.social_insurance_effective_from,
       gosi_wage_mode = excluded.gosi_wage_mode,
       employment_status = 'active',
       updated_at = excluded.updated_at`)
