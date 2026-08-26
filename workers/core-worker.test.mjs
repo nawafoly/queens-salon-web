@@ -797,6 +797,23 @@ class FakeD1 {
           return String(b.created_at || "").localeCompare(String(a.created_at || ""));
         });
     }
+    if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND employee_id = ? AND source_type = 'attendance' AND source_ref = ? AND status <> 'cancelled' ORDER BY created_at, id")) {
+      const [salonId, employeeId, sourceRef] = params;
+      return this.rows("employee_payroll_obligations")
+        .filter((row) =>
+          row.salon_id === salonId &&
+          row.employee_id === employeeId &&
+          row.source_type === "attendance" &&
+          row.source_ref === sourceRef &&
+          row.status !== "cancelled"
+        )
+        .sort((a, b) => {
+          const byCreatedAt = String(a.created_at || "").localeCompare(String(b.created_at || ""));
+          if (byCreatedAt !== 0) return byCreatedAt;
+          return String(a.id || "").localeCompare(String(b.id || ""));
+        });
+    }
+
     if (normalized.startsWith("SELECT * FROM employee_payroll_obligations WHERE salon_id = ? AND employee_id = ? AND source_type = ? AND source_ref = ?")) {
       const [salonId, employeeId, sourceType, sourceRef] = params;
       return this.rows("employee_payroll_obligations")

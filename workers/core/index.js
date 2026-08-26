@@ -118,6 +118,7 @@ import {
 import { createAbsence, deleteAbsence, listAbsences } from './repositories/absences.js';
 import {
   approvePayrollEntry,
+  deferAttendanceDeduction,
   getPayrollEntry,
   listPayrollEntries,
   listPayrollAdvanceDeductions,
@@ -541,6 +542,12 @@ function match(url, method) {
   if (path === "/api/core/hr/shift-change-preview" && method === "POST") return { name: "shift-change-preview" };
   if (path === "/api/core/hr/payroll-entries/mine" && method === "GET") return { name: "payroll-entries:mine" };
   if (path === "/api/core/hr/payroll-preview" && method === "POST") return { name: "payroll-preview" };
+  if (
+    path === "/api/core/hr/payroll-attendance-deductions/defer" &&
+    method === "POST"
+  ) {
+    return { name: "payroll-attendance-deduction:defer" };
+  }
   if (
     path === "/api/core/hr/payroll-advance-deductions" &&
     method === "GET"
@@ -1712,6 +1719,16 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-preview":
       requirePermission(ctx, "payroll.manage");
       return previewPayrollEntry(db, ctx.salonId, body, actorInfo, { externalAttendanceDb: env.ATTENDANCE_DB || null });
+
+    case "payroll-attendance-deduction:defer":
+      requirePermission(ctx, "payroll.manage");
+      return deferAttendanceDeduction(
+        db,
+        ctx.salonId,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "payroll-entries:mine":
       requirePermission(ctx, "workspace.employee_portal.view");

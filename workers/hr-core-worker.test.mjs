@@ -22,6 +22,7 @@ import {
 import { createAbsence } from './core/repositories/absences.js';
 import {
   approvePayrollEntry,
+  deferAttendanceDeduction,
   listPayrollCarryoverAdjustments,
   markPayrollEntryPaid,
   reconcilePayrollCarryoversBatch,
@@ -133,6 +134,7 @@ async function setup() {
     '0033_app_user_profile_photo.sql',
     '0034_employee_offboarding_invariants.sql',
     '0035_salary_advance_installment_deferrals.sql',
+    '0036_attendance_deduction_deferral_integrity.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -4682,3 +4684,351 @@ test(
     assert.equal(Number(target.advances_halalas), 15000);
   }
 );
+
+
+test('Stage 11 attendance deduction deferral preserves origin and collects once in target month', async (t) => {
+  const { mf, db } = await setup();
+  t.after(() => mf.dispose());
+
+  await db.prepare(`
+    INSERT INTO staff
+      (
+        id, salon_id, firebase_uid, name,
+        active, employment_status,
+        created_at, updated_at
+      )
+    VALUES
+      (
+        'emp-att-deferral',
+        'main',
+        'uid-att-deferral',
+        'Attendance Deferral Employee',
+        1,
+        'active',
+        '2026-01-01',
+        '2026-01-01'
+      )
+  `).run();
+
+  await upsertHrEmployee(
+    db,
+    'main',
+    {
+      id: 'emp-att-deferral',
+      name: 'Attendance Deferral Employee',
+      firebaseUid: 'uid-att-deferral',
+      employment: {
+        title: 'Stylist',
+        baseSalaryHalalas: 300000,
+        expectedWorkDays: 30,
+        expectedWorkHours: 240,
+        dailyScheduledHours: 8,
+        attendancePayrollMode: 'required',
+        socialInsuranceCategory: 'non_saudi',
+        socialInsuranceEffectiveFrom: '2026-01-01',
+        socialInsuranceClassificationNote:
+          'Stage 11 attendance deferral test',
+        gosiWageMode: 'derived',
+      },
+    },
+    actor
+  );
+
+  const shift = await saveShiftTemplate(
+    db,
+    'main',
+    {
+      id: 'shift-att-deferral',
+      name: 'Attendance Deferral Shift',
+      startTime: '09:00',
+      endTime: '17:00',
+      lateGraceMinutes: 0,
+      earlyLeaveGraceMinutes: 0,
+      attendanceLockEnabled: true,
+      attendanceLockAfterMinutes: 30,
+    },
+    actor
+  );
+
+  await replaceHrSchedules(
+    db,
+    'main',
+    'emp-att-deferral',
+    [{
+      id: 'sched-att-deferral',
+      weekday: 0,
+      shiftTemplateId: shift.id,
+      active: true,
+      effectiveFrom: '2026-08-01',
+    }]
+  );
+
+  for (const date of [
+    '2026-08-02',
+    '2026-08-09',
+    '2026-08-16',
+    '2026-08-23',
+  ]) {
+    await recordAttendance(
+      db,
+      'main',
+      {
+        employeeId: 'emp-att-deferral',
+        employeeUid: 'uid-att-deferral',
+        type: 'check_in',
+        date,
+        recordedAt: `${date}T09:00:00.000Z`,
+        idempotencyKey: `att-deferral-${date}-in`,
+      },
+      actor
+    );
+
+    await recordAttendance(
+      db,
+      'main',
+      {
+        employeeId: 'emp-att-deferral',
+        employeeUid: 'uid-att-deferral',
+        type: 'check_out',
+        date,
+        recordedAt:
+          date === '2026-08-23'
+            ? `${date}T16:00:00.000Z`
+            : `${date}T17:00:00.000Z`,
+        idempotencyKey: `att-deferral-${date}-out`,
+      },
+      actor
+    );
+  }
+
+  const augustBefore = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      employeeId: 'emp-att-deferral',
+      payrollMonth: '2026-08',
+    },
+    actor
+  );
+
+  const originalDeduction = Number(
+    augustBefore.missing_hours_deduction_halalas || 0
+  );
+
+  assert.ok(originalDeduction > 0);
+  assert.equal(augustBefore.status, 'draft');
+
+  await assert.rejects(
+    () =>
+      createPayrollObligation(
+        db,
+        'main',
+        {
+          employeeId: 'emp-att-deferral',
+          kind: 'attendance_missing_hours',
+          originalPayrollMonth: '2026-08',
+          targetPayrollMonth: '2026-09',
+          amountHalalas: originalDeduction,
+          reason: 'Forged attendance authority',
+          sourceType: 'attendance',
+          sourceRef: 'forged',
+        },
+        actor
+      ),
+    {
+      code:
+        'core_payroll:attendance_obligation_requires_canonical_path',
+    }
+  );
+
+  const deferred = await deferAttendanceDeduction(
+    db,
+    'main',
+    {
+      employeeId: 'emp-att-deferral',
+      originalPayrollMonth: '2026-08',
+      targetPayrollMonth: '2026-09',
+      reason:
+        'Collect August attendance deduction in September',
+      note:
+        'Stage 11 canonical attendance deferral',
+    },
+    actor
+  );
+
+  assert.equal(deferred.amountHalalas, originalDeduction);
+  assert.equal(deferred.originalPayrollMonth, '2026-08');
+  assert.equal(deferred.targetPayrollMonth, '2026-09');
+  assert.equal(deferred.sourceType, 'attendance');
+
+  const retry = await deferAttendanceDeduction(
+    db,
+    'main',
+    {
+      employeeId: 'emp-att-deferral',
+      originalPayrollMonth: '2026-08',
+      targetPayrollMonth: '2026-09',
+      reason:
+        'Collect August attendance deduction in September',
+      note:
+        'Stage 11 canonical attendance deferral',
+    },
+    actor
+  );
+
+  assert.equal(
+    retry.obligation.id,
+    deferred.obligation.id
+  );
+
+  const augustAfter = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      employeeId: 'emp-att-deferral',
+      payrollMonth: '2026-08',
+    },
+    actor
+  );
+
+  assert.equal(
+    Number(
+      augustAfter.missing_hours_deduction_halalas || 0
+    ),
+    0
+  );
+
+  const summary = JSON.parse(
+    String(augustAfter.attendance_summary_json || '{}')
+  );
+
+  assert.equal(
+    Number(
+      summary.attendanceDerivedMissingHoursDeductionHalalas || 0
+    ),
+    originalDeduction
+  );
+
+  assert.equal(
+    Number(
+      summary.attendanceDeferredMissingHoursDeductionHalalas || 0
+    ),
+    originalDeduction
+  );
+
+  assert.equal(
+    Number(
+      summary.attendanceCollectedMissingHoursDeductionHalalas || 0
+    ),
+    0
+  );
+
+  assert.equal(
+    summary.attendanceDeductionDeferral.originalPayrollMonth,
+    '2026-08'
+  );
+
+  assert.equal(
+    summary.attendanceDeductionDeferral.targetPayrollMonth,
+    '2026-09'
+  );
+
+  const obligations = await listPayrollObligations(
+    db,
+    'main',
+    { employeeId: 'emp-att-deferral' }
+  );
+
+  const attendanceObligations = obligations.filter(
+    (item) =>
+      item.sourceType === 'attendance' &&
+      item.originalPayrollMonth === '2026-08'
+  );
+
+  assert.equal(attendanceObligations.length, 1);
+
+  assert.equal(
+    attendanceObligations[0].originalAmountHalalas,
+    originalDeduction
+  );
+
+  const septemberItems =
+    await listPayrollObligationDeductions(
+      db,
+      'main',
+      {
+        employeeId: 'emp-att-deferral',
+        payrollMonth: '2026-09',
+      }
+    );
+
+  const attendanceSeptember =
+    septemberItems.filter(
+      (item) =>
+        item.trace?.sourceType === 'attendance' &&
+        item.originalPayrollMonth === '2026-08'
+    );
+
+  assert.equal(attendanceSeptember.length, 1);
+
+  assert.equal(
+    attendanceSeptember[0].amountHalalas,
+    originalDeduction
+  );
+
+  assert.equal(
+    attendanceSeptember[0].targetPayrollMonth,
+    '2026-09'
+  );
+
+  const septemberPayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      employeeId: 'emp-att-deferral',
+      payrollMonth: '2026-09',
+    },
+    actor
+  );
+
+  assert.equal(septemberPayroll.status, 'draft');
+
+  assert.equal(
+    Number(
+      septemberPayroll.manual_deductions_halalas || 0
+    ),
+    originalDeduction
+  );
+
+  const final = await db.prepare(`
+    SELECT
+      payroll_month,
+      status,
+      approved_at,
+      paid_at,
+      missing_hours_deduction_halalas,
+      manual_deductions_halalas
+    FROM payroll_entries
+    WHERE salon_id = 'main'
+      AND employee_id = 'emp-att-deferral'
+      AND payroll_month IN ('2026-08', '2026-09')
+    ORDER BY payroll_month
+  `).all();
+
+  assert.equal(final.results.length, 2);
+
+  assert.deepEqual(
+    final.results.map((row) => row.status),
+    ['draft', 'draft']
+  );
+
+  assert.equal(
+    final.results.filter((row) => row.approved_at).length,
+    0
+  );
+
+  assert.equal(
+    final.results.filter((row) => row.paid_at).length,
+    0
+  );
+});

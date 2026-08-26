@@ -32,6 +32,8 @@ import {
 import {
   assertPayrollObligationSnapshotCurrent,
   canonicalizePayrollObligationDeductions,
+  createCanonicalAttendanceDeductionObligation,
+  getCanonicalAttendanceDeductionDeferral,
   listPayrollObligationDeductions,
   payrollObligationPaidStatements,
 } from './payroll-obligations.js';
@@ -460,10 +462,84 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
   if (workDays <= 0) setupMissing.push('workDays');
   if (summary.attendancePayrollMode !== 'exempt' && monthlyHours <= 0) setupMissing.push('monthlyHours');
   const payrollSetupComplete = setupMissing.length === 0;
-  const absenceDeductionHalalas = payrollSetupComplete ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas) : 0;
-  const absenceCoveredMissingHours = Math.min(Number(summary.totalMissingHours || 0), Number(summary.absenceDeductionOverlapHours || 0));
-  const attendanceMissingHours = Math.max(0, Number(summary.totalMissingHours || 0) - absenceCoveredMissingHours);
-  const missingHoursDeductionHalalas = summary.attendanceDeductionEligible && payrollSetupComplete ? Math.round(attendanceMissingHours * hourlyRateHalalas) : 0;
+  const absenceDeductionHalalas = payrollSetupComplete
+    ? Math.round(Number(summary.approvedAbsenceDays || 0) * dailyRateHalalas)
+    : 0;
+
+  const absenceCoveredMissingHours = Math.min(
+    Number(summary.totalMissingHours || 0),
+    Number(summary.absenceDeductionOverlapHours || 0)
+  );
+
+  const attendanceMissingHours = Math.max(
+    0,
+    Number(summary.totalMissingHours || 0) -
+      absenceCoveredMissingHours
+  );
+
+  const rawMissingHoursDeductionHalalas =
+    summary.attendanceDeductionEligible && payrollSetupComplete
+      ? Math.round(attendanceMissingHours * hourlyRateHalalas)
+      : 0;
+
+  const attendanceDeductionDeferral =
+    await getCanonicalAttendanceDeductionDeferral(
+      db,
+      salonId,
+      {
+        employeeId,
+        originalPayrollMonth: payrollMonth,
+        canonicalAmountHalalas:
+          rawMissingHoursDeductionHalalas,
+      }
+    );
+
+  const missingHoursDeductionHalalas =
+    attendanceDeductionDeferral
+      ? 0
+      : rawMissingHoursDeductionHalalas;
+
+  const activeAttendanceDeferralInstallment =
+    attendanceDeductionDeferral?.installments?.find(
+      (item) =>
+        ['scheduled', 'applied'].includes(
+          cleanText(item?.status)
+        )
+    ) || null;
+
+  summary.attendanceDerivedMissingHoursDeductionHalalas =
+    rawMissingHoursDeductionHalalas;
+
+  summary.attendanceDeferredMissingHoursDeductionHalalas =
+    attendanceDeductionDeferral
+      ? rawMissingHoursDeductionHalalas
+      : 0;
+
+  summary.attendanceCollectedMissingHoursDeductionHalalas =
+    missingHoursDeductionHalalas;
+
+  summary.attendanceDeductionDeferral =
+    attendanceDeductionDeferral
+      ? {
+          obligationId:
+            attendanceDeductionDeferral.id,
+          sourceType:
+            attendanceDeductionDeferral.sourceType,
+          sourceRef:
+            attendanceDeductionDeferral.sourceRef,
+          originalPayrollMonth:
+            attendanceDeductionDeferral.originalPayrollMonth,
+          targetPayrollMonth:
+            activeAttendanceDeferralInstallment
+              ?.targetPayrollMonth || null,
+          amountHalalas:
+            attendanceDeductionDeferral
+              .originalAmountHalalas,
+          status:
+            attendanceDeductionDeferral.status,
+        }
+      : null;
+
   const overtimeEnabled = activeFlag(employment.overtime_enabled);
   const overtimeMultiplier = Math.max(0, Number(employment.overtime_multiplier || 1.5) || 1.5);
   const detectedExtraHours = Math.max(0, Number(summary.totalExtraHours || 0) || 0);
@@ -483,7 +559,9 @@ async function buildCanonicalPayrollAuthority(db, salonId, employeeId, payrollMo
     dailyRateHalalas,
     hourlyRateHalalas,
     absenceDeductionHalalas,
+    rawMissingHoursDeductionHalalas,
     missingHoursDeductionHalalas,
+    attendanceDeductionDeferral,
     detectedExtraHours,
     overtimeEnabled,
     financialOvertimeHours,
@@ -1654,6 +1732,223 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     });
   }
   return saved;
+}
+
+
+export async function deferAttendanceDeduction(
+  db,
+  salonId,
+  data = {},
+  actor = {},
+  options = {}
+) {
+  const employeeId = requiredId(
+    data.employeeId || data.employee_id,
+    'employeeId'
+  );
+
+  let originalPayrollMonth;
+  let targetPayrollMonth;
+
+  try {
+    originalPayrollMonth =
+      payrollMonthBoundsCanonical(
+        data.originalPayrollMonth ||
+          data.original_payroll_month ||
+          data.payrollMonth ||
+          data.payroll_month
+      ).payrollMonth;
+
+    targetPayrollMonth =
+      payrollMonthBoundsCanonical(
+        data.targetPayrollMonth ||
+          data.target_payroll_month
+      ).payrollMonth;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+
+    throw new AppError(
+      400,
+      'core_payroll:invalid_month'
+    );
+  }
+
+  if (targetPayrollMonth <= originalPayrollMonth) {
+    throw new AppError(
+      400,
+      'core_payroll:attendance_deferral_target_must_be_future'
+    );
+  }
+
+  const reason = cleanText(data.reason);
+
+  if (!reason) {
+    throw new AppError(
+      400,
+      'core_payroll:deduction_reason_required'
+    );
+  }
+
+  const sourceEntry = await dbFirst(
+    db,
+    `SELECT id, status
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+      LIMIT 1`,
+    [
+      salonId,
+      employeeId,
+      originalPayrollMonth,
+    ]
+  );
+
+  if (
+    sourceEntry &&
+    ['approved', 'paid'].includes(
+      cleanText(sourceEntry.status).toLowerCase()
+    )
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_source_payroll_locked'
+    );
+  }
+
+  const targetEntry = await dbFirst(
+    db,
+    `SELECT id, status
+       FROM payroll_entries
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND payroll_month = ?
+      LIMIT 1`,
+    [
+      salonId,
+      employeeId,
+      targetPayrollMonth,
+    ]
+  );
+
+  if (
+    targetEntry &&
+    ['approved', 'paid'].includes(
+      cleanText(targetEntry.status).toLowerCase()
+    )
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_target_payroll_locked'
+    );
+  }
+
+  const lockedPeriodStatuses = new Set([
+    'closed',
+    'approved',
+    'paid',
+    'locked',
+    'posted',
+    'posted_to_payroll',
+  ]);
+
+  for (const month of [
+    originalPayrollMonth,
+    targetPayrollMonth,
+  ]) {
+    const period = await dbFirst(
+      db,
+      `SELECT status
+         FROM payroll_periods
+        WHERE salon_id = ?
+          AND payroll_month = ?
+        LIMIT 1`,
+      [salonId, month]
+    );
+
+    if (
+      period &&
+      lockedPeriodStatuses.has(
+        cleanText(period.status || 'open')
+          .toLowerCase()
+      )
+    ) {
+      throw new AppError(
+        409,
+        'core_payroll:attendance_deferral_period_locked'
+      );
+    }
+  }
+
+  const authority =
+    await buildCanonicalPayrollAuthority(
+      db,
+      salonId,
+      employeeId,
+      originalPayrollMonth,
+      {},
+      options
+    );
+
+  const amountHalalas = Number(
+    authority.rawMissingHoursDeductionHalalas || 0
+  );
+
+  if (amountHalalas <= 0) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deduction_not_present'
+    );
+  }
+
+  const obligation =
+    await createCanonicalAttendanceDeductionObligation(
+      db,
+      salonId,
+      {
+        employeeId,
+        originalPayrollMonth,
+        targetPayrollMonth,
+        amountHalalas,
+        reason,
+        note: data.note,
+      },
+      actor
+    );
+
+  const scheduled = obligation.installments.find(
+    (item) =>
+      cleanText(item.status) === 'scheduled' &&
+      cleanText(item.targetPayrollMonth) ===
+        targetPayrollMonth &&
+      Number(item.amountHalalas || 0) ===
+        amountHalalas
+  );
+
+  if (!scheduled) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_idempotency_conflict'
+    );
+  }
+
+  return {
+    employeeId,
+    originalPayrollMonth,
+    targetPayrollMonth,
+    amountHalalas,
+    sourceType: 'attendance',
+    sourceRef: obligation.sourceRef,
+    obligation,
+    attendanceAuthority: {
+      totalMissingHours: Number(
+        authority.summary?.totalMissingHours || 0
+      ),
+      rawMissingHoursDeductionHalalas:
+        amountHalalas,
+      collectedInOriginalPayrollHalalas: 0,
+    },
+  };
 }
 
 export async function previewPayrollEntry(db, salonId, data, actor = {}, options = {}) {

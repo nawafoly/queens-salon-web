@@ -26,6 +26,7 @@ import {
 
 const RECURRING_STATUSES = new Set(['active', 'paused', 'ended', 'cancelled']);
 const OBLIGATION_OPEN_STATUSES = new Set(['open', 'scheduled', 'partially_settled']);
+const RESERVED_CANONICAL_OBLIGATION_SOURCE_TYPES = new Set(['attendance']);
 
 function money(value, field = 'amount') {
   const number = Number(value ?? 0);
@@ -417,7 +418,170 @@ function initialInstallmentRows(input, actor) {
   return [{ targetPayrollMonth, amountHalalas, decisionReason: reason }];
 }
 
-export async function createPayrollObligation(db, salonId, data = {}, actor = {}) {
+
+export function attendanceDeductionSourceRef(
+  employeeIdValue,
+  originalPayrollMonthValue
+) {
+  const employeeId = requiredId(employeeIdValue, 'employeeId');
+  const originalPayrollMonth = payrollMonthValue(originalPayrollMonthValue);
+
+  return `attendance_missing_hours:${employeeId}:${originalPayrollMonth}`;
+}
+
+export async function getCanonicalAttendanceDeductionDeferral(
+  db,
+  salonId,
+  query = {}
+) {
+  const employeeId = requiredId(
+    query.employeeId || query.employee_id,
+    'employeeId'
+  );
+
+  const originalPayrollMonth = payrollMonthValue(
+    query.originalPayrollMonth ||
+      query.original_payroll_month ||
+      query.payrollMonth ||
+      query.payroll_month
+  );
+
+  const canonicalAmountHalalas = money(
+    query.canonicalAmountHalalas ??
+      query.canonical_amount_halalas ??
+      0,
+    'attendance_deduction_amount'
+  );
+
+  const sourceRef = attendanceDeductionSourceRef(
+    employeeId,
+    originalPayrollMonth
+  );
+
+  const rows = await dbAll(
+    db,
+    `SELECT *
+       FROM employee_payroll_obligations
+      WHERE salon_id = ?
+        AND employee_id = ?
+        AND source_type = 'attendance'
+        AND source_ref = ?
+        AND status <> 'cancelled'
+      ORDER BY created_at, id`,
+    [salonId, employeeId, sourceRef]
+  );
+
+  if (rows.length > 1) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_duplicate_authority'
+    );
+  }
+
+  if (!rows.length) return null;
+
+  const row = rows[0];
+
+  if (
+    cleanText(row.obligation_kind) !== 'attendance_missing_hours' ||
+    cleanText(row.original_payroll_month) !== originalPayrollMonth
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_identity_mismatch'
+    );
+  }
+
+  if (
+    Number(row.original_amount_halalas || 0) !==
+    canonicalAmountHalalas
+  ) {
+    throw new AppError(
+      409,
+      'core_payroll:attendance_deferral_snapshot_stale'
+    );
+  }
+
+  const installmentRows = await dbAll(
+    db,
+    `SELECT *
+       FROM employee_payroll_obligation_installments
+      WHERE salon_id = ?
+        AND obligation_id = ?
+      ORDER BY sequence_no, created_at, id`,
+    [salonId, row.id]
+  );
+
+  return obligationDto(
+    row,
+    installmentRows.map(installmentDto)
+  );
+}
+
+export async function createCanonicalAttendanceDeductionObligation(
+  db,
+  salonId,
+  data = {},
+  actor = {}
+) {
+  const employeeId = requiredId(
+    data.employeeId || data.employee_id,
+    'employeeId'
+  );
+
+  const originalPayrollMonth = payrollMonthValue(
+    data.originalPayrollMonth || data.original_payroll_month
+  );
+
+  const targetPayrollMonth = payrollMonthValue(
+    data.targetPayrollMonth || data.target_payroll_month
+  );
+
+  if (targetPayrollMonth <= originalPayrollMonth) {
+    throw new AppError(
+      400,
+      'core_payroll:attendance_deferral_target_must_be_future'
+    );
+  }
+
+  const amountHalalas = money(
+    data.amountHalalas ??
+      data.amount_halalas ??
+      data.originalAmountHalalas ??
+      data.original_amount_halalas,
+    'attendance_deduction_amount'
+  );
+
+  if (amountHalalas <= 0) {
+    throw new AppError(
+      400,
+      'core_payroll:attendance_deduction_amount_required'
+    );
+  }
+
+  return createPayrollObligation(
+    db,
+    salonId,
+    {
+      employeeId,
+      kind: 'attendance_missing_hours',
+      originalPayrollMonth,
+      targetPayrollMonth,
+      amountHalalas,
+      reason: data.reason,
+      note: data.note,
+      sourceType: 'attendance',
+      sourceRef: attendanceDeductionSourceRef(
+        employeeId,
+        originalPayrollMonth
+      ),
+    },
+    actor,
+    { canonicalSourceType: 'attendance' }
+  );
+}
+
+export async function createPayrollObligation(db, salonId, data = {}, actor = {}, options = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const kind = deferrableDeductionKind(data.kind || data.obligationKind || data.obligation_kind);
   const originalPayrollMonth = payrollMonthValue(data.originalPayrollMonth || data.original_payroll_month);
@@ -427,6 +591,20 @@ export async function createPayrollObligation(db, salonId, data = {}, actor = {}
   const note = optionalText(data.note) || null;
   const sourceType = optionalText(data.sourceType || data.source_type) || 'manual';
   const sourceRef = optionalText(data.sourceRef || data.source_ref) || null;
+
+  const normalizedSourceType = cleanText(sourceType).toLowerCase();
+  const allowedCanonicalSourceType = cleanText(options.canonicalSourceType).toLowerCase();
+
+  if (
+    RESERVED_CANONICAL_OBLIGATION_SOURCE_TYPES.has(normalizedSourceType) &&
+    allowedCanonicalSourceType !== normalizedSourceType
+  ) {
+    throw new AppError(
+      403,
+      'core_payroll:attendance_obligation_requires_canonical_path'
+    );
+  }
+
   if (sourceRef) {
     const idempotentExisting = await dbFirst(
       db,
