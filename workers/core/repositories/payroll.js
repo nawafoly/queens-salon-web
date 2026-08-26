@@ -1226,6 +1226,128 @@ export async function reconcilePayrollCarryoversBatch(db, salonId, data = {}, ac
   return { results };
 }
 
+const PAYROLL_ENTRY_MUTATION_COLUMNS = [
+  'id',
+  'salon_id',
+  'period_id',
+  'employee_id',
+  'payroll_month',
+  'employee_name',
+  'job_title',
+  'base_salary_halalas',
+  'allowances_halalas',
+  'work_days',
+  'monthly_hours',
+  'daily_rate_halalas',
+  'hourly_rate_halalas',
+  'absence_days',
+  'absence_deduction_halalas',
+  'expected_work_hours',
+  'actual_worked_hours',
+  'missing_hours',
+  'overtime_hours',
+  'attendance_summary_json',
+  'detected_extra_hours',
+  'overtime_enabled',
+  'financial_overtime_hours',
+  'overtime_multiplier',
+  'overtime_value_halalas',
+  'overtime_bonus_halalas',
+  'delay_deduction_halalas',
+  'insurance_deduction_halalas',
+  'gosi_insurance_category',
+  'gosi_policy_version',
+  'gosi_contributory_wage_halalas',
+  'employer_gosi_contribution_halalas',
+  'gosi_snapshot_json',
+  'gosi_calculated_at',
+  'other_deductions_halalas',
+  'missing_hours_deduction_halalas',
+  'additions_json',
+  'manual_additions_halalas',
+  'manual_deductions_halalas',
+  'advances_halalas',
+  'total_deductions_halalas',
+  'gross_salary_halalas',
+  'final_salary_halalas',
+  'net_salary_halalas',
+  'schedule_snapshot_json',
+  'absence_entries_json',
+  'deductions_json',
+  'mudad_file_id',
+  'status',
+  'approved_at',
+  'approved_by_uid',
+  'paid_at',
+  'paid_by_uid',
+  'notes',
+  'audit_log_json',
+  'created_by_uid',
+  'created_by_email',
+  'created_at',
+  'updated_at',
+];
+
+export function buildPayrollEntryMutationStatement(row) {
+  return {
+    sql: `INSERT INTO payroll_entries
+      (id, salon_id, period_id, employee_id, payroll_month, employee_name, job_title,
+       base_salary_halalas, allowances_halalas, work_days, monthly_hours, daily_rate_halalas,
+       hourly_rate_halalas, absence_days, absence_deduction_halalas, expected_work_hours,
+       actual_worked_hours, missing_hours, overtime_hours, attendance_summary_json,
+       detected_extra_hours, overtime_enabled, financial_overtime_hours, overtime_multiplier,
+       overtime_value_halalas, overtime_bonus_halalas, delay_deduction_halalas,
+       insurance_deduction_halalas, gosi_insurance_category, gosi_policy_version,
+       gosi_contributory_wage_halalas, employer_gosi_contribution_halalas, gosi_snapshot_json,
+       gosi_calculated_at, other_deductions_halalas, missing_hours_deduction_halalas,
+       additions_json, manual_additions_halalas, manual_deductions_halalas, advances_halalas,
+       total_deductions_halalas, gross_salary_halalas, final_salary_halalas, net_salary_halalas,
+       schedule_snapshot_json, absence_entries_json, deductions_json, mudad_file_id, status,
+       approved_at, approved_by_uid, paid_at, paid_by_uid, notes, audit_log_json,
+       created_by_uid, created_by_email, created_at, updated_at)
+      VALUES (${PAYROLL_ENTRY_MUTATION_COLUMNS.map(() => '?').join(', ')})
+      ON CONFLICT(salon_id, employee_id, payroll_month) DO UPDATE SET
+        period_id = excluded.period_id, employee_name = excluded.employee_name, job_title = excluded.job_title,
+        base_salary_halalas = excluded.base_salary_halalas,
+        allowances_halalas = excluded.allowances_halalas, work_days = excluded.work_days,
+        monthly_hours = excluded.monthly_hours, daily_rate_halalas = excluded.daily_rate_halalas,
+        hourly_rate_halalas = excluded.hourly_rate_halalas, absence_days = excluded.absence_days,
+        absence_deduction_halalas = excluded.absence_deduction_halalas,
+        expected_work_hours = excluded.expected_work_hours, actual_worked_hours = excluded.actual_worked_hours,
+        missing_hours = excluded.missing_hours, overtime_hours = excluded.overtime_hours,
+        attendance_summary_json = excluded.attendance_summary_json,
+        detected_extra_hours = excluded.detected_extra_hours, overtime_enabled = excluded.overtime_enabled,
+        financial_overtime_hours = excluded.financial_overtime_hours,
+        overtime_multiplier = excluded.overtime_multiplier,
+        overtime_value_halalas = excluded.overtime_value_halalas,
+        overtime_bonus_halalas = excluded.overtime_bonus_halalas,
+        delay_deduction_halalas = excluded.delay_deduction_halalas,
+        insurance_deduction_halalas = excluded.insurance_deduction_halalas,
+        gosi_insurance_category = excluded.gosi_insurance_category,
+        gosi_policy_version = excluded.gosi_policy_version,
+        gosi_contributory_wage_halalas = excluded.gosi_contributory_wage_halalas,
+        employer_gosi_contribution_halalas = excluded.employer_gosi_contribution_halalas,
+        gosi_snapshot_json = excluded.gosi_snapshot_json,
+        gosi_calculated_at = excluded.gosi_calculated_at,
+        other_deductions_halalas = excluded.other_deductions_halalas,
+        missing_hours_deduction_halalas = excluded.missing_hours_deduction_halalas,
+        additions_json = excluded.additions_json,
+        manual_additions_halalas = excluded.manual_additions_halalas,
+        manual_deductions_halalas = excluded.manual_deductions_halalas,
+        advances_halalas = excluded.advances_halalas,
+        total_deductions_halalas = excluded.total_deductions_halalas,
+        gross_salary_halalas = excluded.gross_salary_halalas, final_salary_halalas = excluded.final_salary_halalas,
+        net_salary_halalas = excluded.net_salary_halalas,
+        schedule_snapshot_json = excluded.schedule_snapshot_json,
+        absence_entries_json = excluded.absence_entries_json, deductions_json = excluded.deductions_json,
+        mudad_file_id = excluded.mudad_file_id, status = excluded.status,
+        approved_at = excluded.approved_at, approved_by_uid = excluded.approved_by_uid,
+        paid_at = excluded.paid_at, paid_by_uid = excluded.paid_by_uid, notes = excluded.notes,
+        audit_log_json = excluded.audit_log_json, updated_at = excluded.updated_at`,
+    params: PAYROLL_ENTRY_MUTATION_COLUMNS.map((column) => row[column]),
+  };
+}
+
 export async function upsertPayrollEntry(db, salonId, data, actor = {}, options = {}) {
   const employeeId = requiredId(data.employeeId || data.employee_id, 'employeeId');
   const payrollMonth = cleanText(data.payrollMonth || data.payroll_month);
@@ -1293,15 +1415,38 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     : obligationCanonical.deductions;
   const canonicalManualDeductionsHalalas = deductionItemsTotal(canonicalDeductions);
 
-  const canonicalAdvanceRows = await listPayrollAdvanceDeductions(
-    db,
-    salonId,
-    { employeeId, payrollMonth }
+  const hasInternalCanonicalAdvance = Object.prototype.hasOwnProperty.call(
+    options,
+    'internalCanonicalAdvanceHalalas'
   );
-  const canonicalAdvanceHalalas = Math.max(
-    0,
-    Number(canonicalAdvanceRows[0]?.amount_halalas || 0)
-  );
+  if (hasInternalCanonicalAdvance && options.previewOnly !== true) {
+    throw new AppError(
+      500,
+      'core_payroll:internal_advance_override_requires_preview'
+    );
+  }
+
+  let canonicalAdvanceHalalas = 0;
+  if (hasInternalCanonicalAdvance) {
+    const internalAdvance = Number(options.internalCanonicalAdvanceHalalas);
+    if (!Number.isSafeInteger(internalAdvance) || internalAdvance < 0) {
+      throw new AppError(
+        500,
+        'core_payroll:invalid_internal_advance_override'
+      );
+    }
+    canonicalAdvanceHalalas = internalAdvance;
+  } else {
+    const canonicalAdvanceRows = await listPayrollAdvanceDeductions(
+      db,
+      salonId,
+      { employeeId, payrollMonth }
+    );
+    canonicalAdvanceHalalas = Math.max(
+      0,
+      Number(canonicalAdvanceRows[0]?.amount_halalas || 0)
+    );
+  }
   const authority = await buildCanonicalPayrollAuthority(
     db,
     salonId,
@@ -1475,60 +1620,8 @@ export async function upsertPayrollEntry(db, salonId, data, actor = {}, options 
     return { ...row, preview: true };
   }
 
-  await dbRun(db, `INSERT INTO payroll_entries
-    (id, salon_id, period_id, employee_id, payroll_month, employee_name, job_title,
-     base_salary_halalas, allowances_halalas, work_days, monthly_hours, daily_rate_halalas,
-     hourly_rate_halalas, absence_days, absence_deduction_halalas, expected_work_hours,
-     actual_worked_hours, missing_hours, overtime_hours, attendance_summary_json,
-     detected_extra_hours, overtime_enabled, financial_overtime_hours, overtime_multiplier,
-     overtime_value_halalas, overtime_bonus_halalas, delay_deduction_halalas,
-     insurance_deduction_halalas, gosi_insurance_category, gosi_policy_version,
-     gosi_contributory_wage_halalas, employer_gosi_contribution_halalas, gosi_snapshot_json,
-     gosi_calculated_at, other_deductions_halalas, missing_hours_deduction_halalas,
-     additions_json, manual_additions_halalas, manual_deductions_halalas, advances_halalas,
-     total_deductions_halalas, gross_salary_halalas, final_salary_halalas, net_salary_halalas,
-     schedule_snapshot_json, absence_entries_json, deductions_json, mudad_file_id, status,
-     approved_at, approved_by_uid, paid_at, paid_by_uid, notes, audit_log_json,
-     created_by_uid, created_by_email, created_at, updated_at)
-    VALUES (${Object.keys(row).map(() => '?').join(', ')})
-    ON CONFLICT(salon_id, employee_id, payroll_month) DO UPDATE SET
-      period_id = excluded.period_id, employee_name = excluded.employee_name, job_title = excluded.job_title,
-      base_salary_halalas = excluded.base_salary_halalas,
-      allowances_halalas = excluded.allowances_halalas, work_days = excluded.work_days,
-      monthly_hours = excluded.monthly_hours, daily_rate_halalas = excluded.daily_rate_halalas,
-      hourly_rate_halalas = excluded.hourly_rate_halalas, absence_days = excluded.absence_days,
-      absence_deduction_halalas = excluded.absence_deduction_halalas,
-      expected_work_hours = excluded.expected_work_hours, actual_worked_hours = excluded.actual_worked_hours,
-      missing_hours = excluded.missing_hours, overtime_hours = excluded.overtime_hours,
-      attendance_summary_json = excluded.attendance_summary_json,
-      detected_extra_hours = excluded.detected_extra_hours, overtime_enabled = excluded.overtime_enabled,
-      financial_overtime_hours = excluded.financial_overtime_hours,
-      overtime_multiplier = excluded.overtime_multiplier,
-      overtime_value_halalas = excluded.overtime_value_halalas,
-      overtime_bonus_halalas = excluded.overtime_bonus_halalas,
-      delay_deduction_halalas = excluded.delay_deduction_halalas,
-      insurance_deduction_halalas = excluded.insurance_deduction_halalas,
-      gosi_insurance_category = excluded.gosi_insurance_category,
-      gosi_policy_version = excluded.gosi_policy_version,
-      gosi_contributory_wage_halalas = excluded.gosi_contributory_wage_halalas,
-      employer_gosi_contribution_halalas = excluded.employer_gosi_contribution_halalas,
-      gosi_snapshot_json = excluded.gosi_snapshot_json,
-      gosi_calculated_at = excluded.gosi_calculated_at,
-      other_deductions_halalas = excluded.other_deductions_halalas,
-      missing_hours_deduction_halalas = excluded.missing_hours_deduction_halalas,
-      additions_json = excluded.additions_json,
-      manual_additions_halalas = excluded.manual_additions_halalas,
-      manual_deductions_halalas = excluded.manual_deductions_halalas,
-      advances_halalas = excluded.advances_halalas,
-      total_deductions_halalas = excluded.total_deductions_halalas,
-      gross_salary_halalas = excluded.gross_salary_halalas, final_salary_halalas = excluded.final_salary_halalas,
-      net_salary_halalas = excluded.net_salary_halalas,
-      schedule_snapshot_json = excluded.schedule_snapshot_json,
-      absence_entries_json = excluded.absence_entries_json, deductions_json = excluded.deductions_json,
-      mudad_file_id = excluded.mudad_file_id, status = excluded.status,
-      approved_at = excluded.approved_at, approved_by_uid = excluded.approved_by_uid,
-      paid_at = excluded.paid_at, paid_by_uid = excluded.paid_by_uid, notes = excluded.notes,
-      audit_log_json = excluded.audit_log_json, updated_at = excluded.updated_at`, Object.values(row));
+  const payrollMutation = buildPayrollEntryMutationStatement(row);
+  await dbRun(db, payrollMutation.sql, payrollMutation.params);
   const saved = await dbFirst(db, 'SELECT * FROM payroll_entries WHERE salon_id = ? AND employee_id = ? AND payroll_month = ? LIMIT 1', [salonId, employeeId, payrollMonth]);
   if (saved?.id) {
     await dbRun(

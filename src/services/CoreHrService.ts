@@ -746,6 +746,21 @@ export const CoreHrService = {
     );
     return camel<CorePayrollObligation>(row);
   },
+  async deferSalaryAdvanceInstallment(
+    id: string,
+    input: {
+      targetPayrollMonth: string;
+      reason: string;
+      note?: string | null;
+      idempotencyKey: string;
+    }
+  ) {
+    const row = await coreApiRequest<Record<string, unknown>>(
+      `/api/core/hr/salary-advance-installments/${encodeURIComponent(id)}/defer`,
+      { method: "POST", body: input }
+    );
+    return camel<Record<string, unknown>>(row);
+  },
   async listPayrollObligationDeductions(
     query: { employeeId?: string; payrollMonth: string }
   ) {

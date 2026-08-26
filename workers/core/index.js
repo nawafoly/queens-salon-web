@@ -142,6 +142,9 @@ import {
   savePayrollRecurringDeduction,
 } from './repositories/payroll-obligations.js';
 import {
+  deferSalaryAdvanceInstallment,
+} from './repositories/salary-advance-deferrals.js';
+import {
   createTargetAdjustment,
   getEmployeeTargetDetails,
   listEmployeeTargetDashboard,
@@ -564,6 +567,10 @@ function match(url, method) {
   const payrollObligationInstallmentDefer = /^\/api\/core\/hr\/payroll-obligation-installments\/([^/]+)\/defer$/.exec(path);
   if (payrollObligationInstallmentDefer && method === "POST") {
     return { name: "payroll-obligation-installment:defer", id: payrollObligationInstallmentDefer[1] };
+  }
+  const salaryAdvanceInstallmentDefer = /^\/api\/core\/hr\/salary-advance-installments\/([^/]+)\/defer$/.exec(path);
+  if (salaryAdvanceInstallmentDefer && method === "POST") {
+    return { name: "salary-advance-installment:defer", id: salaryAdvanceInstallmentDefer[1] };
   }
   if (path === "/api/core/hr/payroll-carryovers" && method === "GET") return { name: "payroll-carryovers" };
   if (path === "/api/core/hr/payroll-reconciliations/batch" && method === "POST") return { name: "payroll-reconciliations:batch" };
@@ -1756,6 +1763,17 @@ async function dispatch(ctx, route, method, body, query, env) {
     case "payroll-obligation-installment:defer":
       requirePermission(ctx, "payroll.manage");
       return deferPayrollObligationInstallment(db, ctx.salonId, route.id, body, actorInfo);
+
+    case "salary-advance-installment:defer":
+      requirePermission(ctx, "payroll.manage");
+      return deferSalaryAdvanceInstallment(
+        db,
+        ctx.salonId,
+        route.id,
+        body,
+        actorInfo,
+        { externalAttendanceDb: env.ATTENDANCE_DB || null }
+      );
 
     case "payroll-periods":
       if (method === "GET") {

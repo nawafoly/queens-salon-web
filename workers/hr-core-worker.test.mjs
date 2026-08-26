@@ -36,6 +36,7 @@ import {
   listPayrollRecurringDeductions,
   savePayrollRecurringDeduction,
 } from './core/repositories/payroll-obligations.js';
+import { deferSalaryAdvanceInstallment } from './core/repositories/salary-advance-deferrals.js';
 import { calculateGosi } from '../src/helpers/hr/gosiPolicy.js';
 import { getSetting, upsertSetting } from './core/repositories/settings.js';
 import { createFileMetadata, getFileContent, patchFileMetadata, putFileContent } from './core/repositories/files.js';
@@ -131,6 +132,7 @@ async function setup() {
     '0032_service_season_price.sql',
     '0033_app_user_profile_photo.sql',
     '0034_employee_offboarding_invariants.sql',
+    '0035_salary_advance_installment_deferrals.sql',
   ]) {
     const sql = (await readFile(new URL(`../migrations/core/${name}`, import.meta.url), 'utf8'))
       .replace(/\r/g, '')
@@ -3641,3 +3643,1042 @@ test('Core workforce communications, notifications and recruitment are D1-owned'
   assert.equal(reviewed.reviewed_by_uid, 'uid-admin');
   assert.equal((await listRecruitmentApplications(db, 'main')).length, 1);
 });
+async function seedSalaryAdvanceDeferralFixture(
+  db,
+  {
+    prefix,
+    installmentStatus = 'scheduled',
+    sourceStatus = 'draft',
+    targetStatus = 'draft',
+  } = {}
+) {
+  if (!prefix) throw new Error('fixture_prefix_required');
+
+  const now = '2026-08-25T21:30:00.000Z';
+  const employeeId = `${prefix}-employee`;
+  const advanceId = `${prefix}-advance`;
+  const installmentId = `${prefix}-installment`;
+  const sourcePayrollId = `${prefix}-source-payroll`;
+  const targetPayrollId = `${prefix}-target-payroll`;
+
+  await seedNonSaudiPayrollEmployment(
+    db,
+    employeeId,
+    400000
+  );
+
+  await db.prepare(`
+    INSERT INTO salary_advances
+      (id, salon_id, request_id, employee_id,
+       requested_halalas, approved_halalas,
+       repayment_method, installment_count,
+       first_deduction_month, remaining_halalas,
+       payment_status, approved_by_uid,
+       approved_at, created_at, updated_at)
+    VALUES (?, 'main', ?, ?,
+            15000, 15000,
+            'single', 1,
+            '2026-08', 15000,
+            'paid', 'uid-admin',
+            ?, ?, ?)
+  `).bind(
+    advanceId,
+    `${prefix}-request`,
+    employeeId,
+    now,
+    now,
+    now
+  ).run();
+
+  await db.prepare(`
+    INSERT INTO salary_advance_installments
+      (id, salon_id, advance_id, installment_number,
+       payroll_month, amount_halalas, status,
+       payroll_entry_id, deducted_at,
+       created_at, updated_at)
+    VALUES (?, 'main', ?, 1,
+            '2026-08', 15000, 'scheduled',
+            NULL, NULL, ?, ?)
+  `).bind(
+    installmentId,
+    advanceId,
+    now,
+    now
+  ).run();
+
+  const sourcePayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: sourcePayrollId,
+      employeeId,
+      payrollMonth: '2026-08',
+      status: 'draft',
+      baseSalaryHalalas: 400000,
+      allowancesHalalas: 0,
+      workDays: 30,
+      monthlyHours: 240,
+      dailyRateHalalas: 13333,
+      hourlyRateHalalas: 1667,
+      grossSalaryHalalas: 400000,
+      netSalaryHalalas: 400000,
+      finalSalaryHalalas: 400000,
+      additions: [],
+      deductions: [],
+      scheduleSnapshot: {
+        workDays: 30,
+        monthlyHours: 240,
+        dailyScheduledHours: 8,
+        payrollSetupComplete: true,
+        payrollSetupMissing: [],
+      },
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  const targetPayroll = await upsertPayrollEntry(
+    db,
+    'main',
+    {
+      id: targetPayrollId,
+      employeeId,
+      payrollMonth: '2026-09',
+      status: 'draft',
+      baseSalaryHalalas: 400000,
+      allowancesHalalas: 0,
+      workDays: 30,
+      monthlyHours: 240,
+      dailyRateHalalas: 13333,
+      hourlyRateHalalas: 1667,
+      grossSalaryHalalas: 400000,
+      netSalaryHalalas: 400000,
+      finalSalaryHalalas: 400000,
+      additions: [],
+      deductions: [],
+      scheduleSnapshot: {
+        workDays: 30,
+        monthlyHours: 240,
+        dailyScheduledHours: 8,
+        payrollSetupComplete: true,
+        payrollSetupMissing: [],
+      },
+      skipTargetBonus: true,
+    },
+    actor
+  );
+
+  if (sourceStatus !== 'draft') {
+    await db.prepare(`
+      UPDATE payroll_entries
+         SET status = ?
+       WHERE id = ?
+    `).bind(
+      sourceStatus,
+      sourcePayroll.id
+    ).run();
+  }
+
+  if (targetStatus !== 'draft') {
+    await db.prepare(`
+      UPDATE payroll_entries
+         SET status = ?
+       WHERE id = ?
+    `).bind(
+      targetStatus,
+      targetPayroll.id
+    ).run();
+  }
+
+  if (installmentStatus !== 'scheduled') {
+    await db.prepare(`
+      UPDATE salary_advance_installments
+         SET status = ?
+       WHERE id = ?
+    `).bind(
+      installmentStatus,
+      installmentId
+    ).run();
+  }
+
+  return {
+    employeeId,
+    advanceId,
+    installmentId,
+    sourcePayrollId,
+    targetPayrollId,
+  };
+}
+
+test(
+  'salary advance installment deferral atomically moves one canonical installment and replays without rewriting payroll',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const fixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-success' }
+    );
+
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const payload = {
+      targetPayrollMonth: '2026-09',
+      reason: 'Approved business deferral',
+      note: 'Move August deduction to September',
+      idempotencyKey: 'salary-advance-deferral-success-1',
+    };
+
+    let source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    let target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+
+    assert.equal(Number(source.advances_halalas), 15000);
+    assert.equal(Number(target.advances_halalas), 0);
+
+    const result = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      payload,
+      deferralActor
+    );
+
+    assert.equal(result.idempotent, false);
+    assert.deepEqual(
+      result.payrollRefresh.map((item) => item.status),
+      ['refreshed', 'refreshed']
+    );
+    assert.equal(result.installment.payrollMonth, '2026-09');
+    assert.equal(result.installment.amountHalalas, 15000);
+    assert.equal(result.installment.status, 'scheduled');
+    assert.equal(result.installment.payrollEntryId, fixture.targetPayrollId);
+
+    assert.equal(result.deferral.originalPayrollMonth, '2026-08');
+    assert.equal(result.deferral.fromPayrollMonth, '2026-08');
+    assert.equal(result.deferral.toPayrollMonth, '2026-09');
+    assert.equal(result.deferral.amountHalalas, 15000);
+    assert.equal(result.deferral.reason, payload.reason);
+    assert.equal(result.deferral.note, payload.note);
+    assert.equal(result.deferral.createdByUid, deferralActor.uid);
+    assert.equal(result.deferral.createdByEmail, deferralActor.email);
+    assert.deepEqual(result.deferral.deferredBy, {
+      uid: deferralActor.uid,
+      email: deferralActor.email,
+    });
+    assert.equal(result.deferral.deferredAt, result.deferral.createdAt);
+    assert.equal(result.deferral.source, 'core_api');
+    assert.equal(result.deferral.fromPayrollEntryId, fixture.sourcePayrollId);
+    assert.equal(result.deferral.toPayrollEntryId, fixture.targetPayrollId);
+
+    const advance = await db.prepare(`
+      SELECT first_deduction_month, remaining_halalas, paid_halalas
+        FROM salary_advances
+       WHERE salon_id = 'main' AND id = ?
+    `).bind(fixture.advanceId).first();
+    assert.equal(advance.first_deduction_month, '2026-08');
+    assert.equal(Number(advance.remaining_halalas), 15000);
+    assert.equal(Number(advance.paid_halalas || 0), 0);
+
+    source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+
+    assert.equal(Number(source.advances_halalas), 0);
+    assert.equal(Number(target.advances_halalas), 15000);
+
+    const sourceUpdatedAt = source.updated_at;
+    const targetUpdatedAt = target.updated_at;
+
+    const retry = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      payload,
+      deferralActor
+    );
+
+    assert.equal(retry.idempotent, true);
+    assert.equal(retry.deferral.id, result.deferral.id);
+    assert.deepEqual(
+      retry.payrollRefresh.map((item) => item.status),
+      ['already_applied', 'already_applied']
+    );
+
+    const eventCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM salary_advance_installment_deferrals
+       WHERE salon_id = 'main' AND installment_id = ?
+    `).bind(fixture.installmentId).first();
+    assert.equal(Number(eventCount.count), 1);
+
+    const installmentCount = await db.prepare(`
+      SELECT COUNT(*) AS count, COALESCE(SUM(amount_halalas), 0) AS amount
+        FROM salary_advance_installments
+       WHERE salon_id = 'main' AND advance_id = ?
+    `).bind(fixture.advanceId).first();
+    assert.equal(Number(installmentCount.count), 1);
+    assert.equal(Number(installmentCount.amount), 15000);
+
+    source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(source.updated_at, sourceUpdatedAt);
+    assert.equal(target.updated_at, targetUpdatedAt);
+    assert.equal(Number(source.advances_halalas), 0);
+    assert.equal(Number(target.advances_halalas), 15000);
+
+    await assert.rejects(() =>
+      db.prepare(`
+        UPDATE salary_advance_installments
+           SET payroll_month = '2026-10',
+               updated_at = '2026-08-25T22:00:00.000Z'
+         WHERE id = ?
+      `).bind(fixture.installmentId).run()
+    );
+
+    await assert.rejects(() =>
+      db.prepare(`
+        UPDATE salary_advance_installment_deferrals
+           SET reason = 'tampered'
+         WHERE id = ?
+      `).bind(result.deferral.id).run()
+    );
+
+    await assert.rejects(() =>
+      db.prepare(`
+        DELETE FROM salary_advance_installment_deferrals WHERE id = ?
+      `).bind(result.deferral.id).run()
+    );
+  }
+);
+
+test(
+  'salary advance installment deferral preserves original month across repeated moves and relinks reviewed target payroll',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const fixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      {
+        prefix: 'deferral-original-chain',
+        targetStatus: 'reviewed',
+      }
+    );
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const first = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      {
+        targetPayrollMonth: '2026-09',
+        reason: 'First canonical move',
+        idempotencyKey: 'deferral-original-chain-1',
+      },
+      deferralActor
+    );
+
+    assert.equal(first.deferral.originalPayrollMonth, '2026-08');
+    assert.equal(first.deferral.fromPayrollMonth, '2026-08');
+    assert.equal(first.deferral.toPayrollMonth, '2026-09');
+    assert.equal(first.installment.payrollEntryId, fixture.targetPayrollId);
+
+    let reviewedTarget = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(reviewedTarget.status, 'reviewed');
+    assert.equal(Number(reviewedTarget.advances_halalas), 15000);
+
+    const second = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      {
+        targetPayrollMonth: '2026-10',
+        reason: 'Second canonical move',
+        idempotencyKey: 'deferral-original-chain-2',
+      },
+      deferralActor
+    );
+
+    assert.equal(second.deferral.originalPayrollMonth, '2026-08');
+    assert.equal(second.deferral.fromPayrollMonth, '2026-09');
+    assert.equal(second.deferral.toPayrollMonth, '2026-10');
+    assert.equal(second.installment.payrollMonth, '2026-10');
+    assert.equal(second.installment.payrollEntryId, null);
+
+    reviewedTarget = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(reviewedTarget.status, 'reviewed');
+    assert.equal(Number(reviewedTarget.advances_halalas), 0);
+
+    const events = await db.prepare(`
+      SELECT original_payroll_month, from_payroll_month, to_payroll_month, source
+        FROM salary_advance_installment_deferrals
+       WHERE salon_id = 'main' AND installment_id = ?
+       ORDER BY created_at, id
+    `).bind(fixture.installmentId).all();
+
+    assert.deepEqual(
+      events.results.map((row) => ({
+        original: row.original_payroll_month,
+        from: row.from_payroll_month,
+        to: row.to_payroll_month,
+        source: row.source,
+      })),
+      [
+        { original: '2026-08', from: '2026-08', to: '2026-09', source: 'core_api' },
+        { original: '2026-08', from: '2026-09', to: '2026-10', source: 'core_api' },
+      ]
+    );
+  }
+);
+
+test(
+  'salary advance installment deferral validates month reason idempotency actor scope and advance state',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const scheduled = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-validation' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-08',
+          reason: 'Same month',
+          idempotencyKey: 'deferral-same-month',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_target_must_be_later' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-07',
+          reason: 'Backward month',
+          idempotencyKey: 'deferral-backward-month',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_target_must_be_later' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: '   ',
+          idempotencyKey: 'deferral-missing-reason',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_reason_required' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Missing key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_idempotency_required' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Missing actor',
+          idempotencyKey: 'deferral-missing-actor',
+        },
+        {}
+      ),
+      { code: 'core_payroll:salary_advance_deferral_actor_required' }
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'other-salon',
+        scheduled.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Wrong scope',
+          idempotencyKey: 'deferral-wrong-scope',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_installment_not_found' }
+    );
+
+    const deducted = await seedSalaryAdvanceDeferralFixture(
+      db,
+      {
+        prefix: 'deferral-deducted',
+        installmentStatus: 'deducted',
+      }
+    );
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        deducted.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Cannot defer deducted installment',
+          idempotencyKey: 'deferral-deducted-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_installment_not_scheduled' }
+    );
+
+    for (const paymentStatus of ['cancelled', 'repaid']) {
+      const fixture = await seedSalaryAdvanceDeferralFixture(
+        db,
+        { prefix: `deferral-${paymentStatus}` }
+      );
+      await db.prepare(`
+        UPDATE salary_advances SET payment_status = ? WHERE id = ?
+      `).bind(paymentStatus, fixture.advanceId).run();
+
+      await assert.rejects(
+        () => deferSalaryAdvanceInstallment(
+          db,
+          'main',
+          fixture.installmentId,
+          {
+            targetPayrollMonth: '2026-09',
+            reason: `Cannot defer ${paymentStatus} advance`,
+            idempotencyKey: `deferral-${paymentStatus}-key`,
+          },
+          deferralActor
+        ),
+        { code: 'core_payroll:salary_advance_not_open' }
+      );
+    }
+  }
+);
+
+test(
+  'salary advance installment deferral fails closed for payroll locks period locks and stale source linkage',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const sourceLocked = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-source-locked', sourceStatus: 'approved' }
+    );
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        sourceLocked.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Locked source',
+          idempotencyKey: 'deferral-source-locked-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_source_payroll_locked' }
+    );
+
+    const targetLocked = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-target-locked', targetStatus: 'approved' }
+    );
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        targetLocked.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Locked target',
+          idempotencyKey: 'deferral-target-locked-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_target_payroll_locked' }
+    );
+
+    const staleLink = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-stale-link' }
+    );
+    await db.prepare(`
+      UPDATE salary_advance_installments
+         SET payroll_entry_id = ?
+       WHERE id = ?
+    `).bind(staleLink.targetPayrollId, staleLink.installmentId).run();
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        staleLink.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Stale source link',
+          idempotencyKey: 'deferral-stale-link-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_source_payroll_link_mismatch' }
+    );
+
+    const periodLocked = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-period-locked' }
+    );
+
+    await upsertPayrollPeriod(db, 'main', {
+      id: 'deferral-period-source',
+      payrollMonth: '2026-08',
+      monthStart: '2026-08-01',
+      monthEnd: '2026-08-31',
+      status: 'closed',
+    }, actor);
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        periodLocked.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Closed source period',
+          idempotencyKey: 'deferral-source-period-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_source_period_locked' }
+    );
+
+    await upsertPayrollPeriod(db, 'main', {
+      id: 'deferral-period-source',
+      payrollMonth: '2026-08',
+      monthStart: '2026-08-01',
+      monthEnd: '2026-08-31',
+      status: 'open',
+    }, actor);
+    await upsertPayrollPeriod(db, 'main', {
+      id: 'deferral-period-target',
+      payrollMonth: '2026-09',
+      monthStart: '2026-09-01',
+      monthEnd: '2026-09-30',
+      status: 'locked',
+    }, actor);
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        periodLocked.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Locked target period',
+          idempotencyKey: 'deferral-target-period-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_target_period_locked' }
+    );
+  }
+);
+
+test(
+  'salary advance installment deferral rolls back event schedule and both payroll projections when target mutation fails',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const fixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-atomic-rollback' }
+    );
+
+    const beforeSource = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    const beforeTarget = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+
+    await db.prepare(`
+      CREATE TRIGGER fail_salary_advance_deferral_target_atomic_write
+      BEFORE UPDATE ON payroll_entries
+      WHEN OLD.id = 'deferral-atomic-rollback-target-payroll'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced_salary_advance_deferral_atomic_failure');
+      END;
+    `).run();
+
+    const payload = {
+      targetPayrollMonth: '2026-09',
+      reason: 'Atomic rollback test',
+      idempotencyKey: 'deferral-atomic-rollback-key',
+    };
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        fixture.installmentId,
+        payload,
+        deferralActor
+      ),
+      /forced_salary_advance_deferral_atomic_failure/
+    );
+
+    const eventCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM salary_advance_installment_deferrals
+       WHERE installment_id = ?
+    `).bind(fixture.installmentId).first();
+    assert.equal(Number(eventCount.count), 0);
+
+    let installment = await db.prepare(`
+      SELECT * FROM salary_advance_installments WHERE id = ?
+    `).bind(fixture.installmentId).first();
+    assert.equal(installment.payroll_month, '2026-08');
+    assert.equal(installment.payroll_entry_id, fixture.sourcePayrollId);
+
+    let source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    let target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(Number(source.advances_halalas), 15000);
+    assert.equal(Number(target.advances_halalas), 0);
+    assert.equal(source.updated_at, beforeSource.updated_at);
+    assert.equal(target.updated_at, beforeTarget.updated_at);
+
+    await db.prepare(`
+      DROP TRIGGER fail_salary_advance_deferral_target_atomic_write
+    `).run();
+
+    const retry = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      payload,
+      deferralActor
+    );
+    assert.equal(retry.idempotent, false);
+
+    installment = await db.prepare(`
+      SELECT * FROM salary_advance_installments WHERE id = ?
+    `).bind(fixture.installmentId).first();
+    source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+
+    assert.equal(installment.payroll_month, '2026-09');
+    assert.equal(installment.payroll_entry_id, fixture.targetPayrollId);
+    assert.equal(Number(source.advances_halalas), 0);
+    assert.equal(Number(target.advances_halalas), 15000);
+  }
+);
+
+test(
+  'salary advance installment deferral rejects stale concurrent payroll and installment state with structured conflicts',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const projectionFixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-race-projection' }
+    );
+
+    let projectionRaceApplied = false;
+    const projectionRaceDb = {
+      prepare: (...args) => db.prepare(...args),
+      batch: async (statements) => {
+        if (!projectionRaceApplied) {
+          projectionRaceApplied = true;
+          await db.prepare(`
+            UPDATE payroll_entries
+               SET notes = 'concurrent payroll edit',
+                   updated_at = '2026-08-25T23:10:00.000Z'
+             WHERE id = ?
+          `).bind(projectionFixture.sourcePayrollId).run();
+        }
+        return db.batch(statements);
+      },
+    };
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        projectionRaceDb,
+        'main',
+        projectionFixture.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Projection race',
+          idempotencyKey: 'deferral-projection-race-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_source_projection_stale' }
+    );
+
+    let eventCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM salary_advance_installment_deferrals
+       WHERE installment_id = ?
+    `).bind(projectionFixture.installmentId).first();
+    assert.equal(Number(eventCount.count), 0);
+
+    let installment = await db.prepare(`
+      SELECT * FROM salary_advance_installments WHERE id = ?
+    `).bind(projectionFixture.installmentId).first();
+    assert.equal(installment.payroll_month, '2026-08');
+
+    const installmentFixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-race-installment' }
+    );
+
+    let installmentRaceApplied = false;
+    const installmentRaceDb = {
+      prepare: (...args) => db.prepare(...args),
+      batch: async (statements) => {
+        if (!installmentRaceApplied) {
+          installmentRaceApplied = true;
+          await db.prepare(`
+            UPDATE salary_advance_installments
+               SET status = 'deducted',
+                   updated_at = '2026-08-25T23:20:00.000Z'
+             WHERE id = ?
+          `).bind(installmentFixture.installmentId).run();
+        }
+        return db.batch(statements);
+      },
+    };
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        installmentRaceDb,
+        'main',
+        installmentFixture.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Installment race',
+          idempotencyKey: 'deferral-installment-race-key',
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_source_conflict' }
+    );
+
+    eventCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM salary_advance_installment_deferrals
+       WHERE installment_id = ?
+    `).bind(installmentFixture.installmentId).first();
+    assert.equal(Number(eventCount.count), 0);
+  }
+);
+
+test(
+  'salary advance installment deferral rejects conflicting idempotency reuse',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const fixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-idempotency-conflict' }
+    );
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+    const key = 'deferral-idempotency-conflict-key';
+
+    await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      {
+        targetPayrollMonth: '2026-09',
+        reason: 'First request',
+        idempotencyKey: key,
+      },
+      deferralActor
+    );
+
+    await assert.rejects(
+      () => deferSalaryAdvanceInstallment(
+        db,
+        'main',
+        fixture.installmentId,
+        {
+          targetPayrollMonth: '2026-09',
+          reason: 'Different request body',
+          idempotencyKey: key,
+        },
+        deferralActor
+      ),
+      { code: 'core_payroll:salary_advance_deferral_idempotency_conflict' }
+    );
+
+    const eventCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+        FROM salary_advance_installment_deferrals
+       WHERE installment_id = ?
+    `).bind(fixture.installmentId).first();
+    assert.equal(Number(eventCount.count), 1);
+  }
+);
+
+test(
+  'deferred salary advance settles exactly once in target payroll while immutable deferral history remains',
+  async (t) => {
+    const { mf, db } = await setup();
+    t.after(() => mf.dispose());
+
+    const fixture = await seedSalaryAdvanceDeferralFixture(
+      db,
+      { prefix: 'deferral-settlement' }
+    );
+    const deferralActor = {
+      uid: 'uid-admin',
+      email: 'admin@example.com',
+    };
+
+    const result = await deferSalaryAdvanceInstallment(
+      db,
+      'main',
+      fixture.installmentId,
+      {
+        targetPayrollMonth: '2026-09',
+        reason: 'Settle in September',
+        idempotencyKey: 'deferral-settlement-key',
+      },
+      deferralActor
+    );
+
+    let target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(Number(target.advances_halalas), 15000);
+
+    await approvePayrollEntry(db, 'main', fixture.targetPayrollId, actor);
+    const paid = await markPayrollEntryPaid(
+      db,
+      'main',
+      fixture.targetPayrollId,
+      actor
+    );
+    assert.equal(paid.status, 'paid');
+
+    let installment = await db.prepare(`
+      SELECT * FROM salary_advance_installments WHERE id = ?
+    `).bind(fixture.installmentId).first();
+    assert.equal(installment.payroll_month, '2026-09');
+    assert.equal(installment.status, 'deducted');
+    assert.equal(installment.payroll_entry_id, fixture.targetPayrollId);
+    assert.ok(installment.deducted_at);
+
+    let advance = await db.prepare(`
+      SELECT * FROM salary_advances WHERE id = ?
+    `).bind(fixture.advanceId).first();
+    assert.equal(advance.first_deduction_month, '2026-08');
+    assert.equal(Number(advance.paid_halalas), 15000);
+    assert.equal(Number(advance.remaining_halalas), 0);
+    assert.equal(advance.payment_status, 'repaid');
+
+    await markPayrollEntryPaid(db, 'main', fixture.targetPayrollId, actor);
+    advance = await db.prepare(`
+      SELECT * FROM salary_advances WHERE id = ?
+    `).bind(fixture.advanceId).first();
+    assert.equal(Number(advance.paid_halalas), 15000);
+    assert.equal(Number(advance.remaining_halalas), 0);
+
+    const event = await db.prepare(`
+      SELECT * FROM salary_advance_installment_deferrals WHERE id = ?
+    `).bind(result.deferral.id).first();
+    assert.ok(event);
+    assert.equal(event.from_payroll_month, '2026-08');
+    assert.equal(event.to_payroll_month, '2026-09');
+    assert.equal(Number(event.amount_halalas), 15000);
+
+    const source = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.sourcePayrollId).first();
+    target = await db.prepare(`
+      SELECT * FROM payroll_entries WHERE id = ?
+    `).bind(fixture.targetPayrollId).first();
+    assert.equal(Number(source.advances_halalas), 0);
+    assert.equal(Number(target.advances_halalas), 15000);
+  }
+);
